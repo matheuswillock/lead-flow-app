@@ -382,6 +382,69 @@ export async function cancelCalendarEvent({
   );
 }
 
+export async function upsertBusyBlockEvent({
+  organizer,
+  summary,
+  startsAt,
+  endsAt,
+  allDay,
+  timezone,
+  recurrence,
+  existingEventId,
+}: {
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
+  summary: string;
+  startsAt: Date;
+  endsAt: Date;
+  allDay: boolean;
+  timezone: string;
+  recurrence?: string[];
+  existingEventId?: string | null;
+}): Promise<{ eventId: string; calendarId: string }> {
+  const accessToken = await getValidAccessToken(organizer);
+  const resolvedTimezone = resolveTimezone(timezone || DEFAULT_TZ);
+  const calendarId = "primary";
+
+  const body: Record<string, unknown> = {
+    summary,
+    description: "Indisponibilidade marcada no Corretor Studio.",
+    transparency: "opaque",
+    status: "confirmed",
+  };
+
+  if (allDay) {
+    const startDate = startsAt.toISOString().slice(0, 10);
+    const endDate = endsAt.toISOString().slice(0, 10);
+    body.start = { date: startDate };
+    body.end = { date: endDate };
+  } else {
+    body.start = { dateTime: startsAt.toISOString(), timeZone: resolvedTimezone };
+    body.end = { dateTime: endsAt.toISOString(), timeZone: resolvedTimezone };
+  }
+
+  if (recurrence && recurrence.length > 0) {
+    body.recurrence = recurrence;
+  }
+
+  const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`;
+
+  if (existingEventId) {
+    const updated = await googleCalendarFetch<{ id: string }>(
+      `${baseUrl}/${encodeURIComponent(existingEventId)}?sendUpdates=none`,
+      accessToken,
+      { method: "PUT", body: JSON.stringify(body) }
+    );
+    return { eventId: updated.id, calendarId };
+  }
+
+  const created = await googleCalendarFetch<{ id: string }>(`${baseUrl}?sendUpdates=none`, accessToken, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  return { eventId: created.id, calendarId };
+}
+
 export async function upsertCalendarEvent({
   organizer,
   lead,

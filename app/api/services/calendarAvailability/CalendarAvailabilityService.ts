@@ -9,6 +9,8 @@ import {
   calendarAvailabilityRepository,
 } from "@/app/api/infra/data/repositories/calendarAvailability/CalendarAvailabilityRepository";
 import type { ICalendarAvailabilityRepository } from "@/app/api/infra/data/repositories/calendarAvailability/ICalendarAvailabilityRepository";
+import { closerBusyBlockRepository } from "@/app/api/infra/data/repositories/closerBusyBlock/CloserBusyBlockRepository";
+import { materializeBusyBlockOccurrences } from "@/lib/closer-busy-block/materialize";
 import {
   DEFAULT_TZ,
   addDaysInTz,
@@ -119,6 +121,41 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
       {}
     );
 
+    const busyBlockBusyByCloser: Record<string, Array<{ start: string; end: string }>> = {};
+    const busyBlocks = await closerBusyBlockRepository.findOverlapping({
+      teamId,
+      profileIds: requestedCloserIds,
+      rangeStart,
+      rangeEnd,
+    });
+
+    for (const block of busyBlocks) {
+      const blockTimezone = resolveTimezone(block.profile.timezone ?? timezone);
+      const occurrences = materializeBusyBlockOccurrences(
+        {
+          id: block.id,
+          profileId: block.profileId,
+          startsAt: block.startsAt,
+          endsAt: block.endsAt,
+          allDay: block.allDay,
+          isRecurring: block.isRecurring,
+          weekdays: block.weekdays,
+          recurrenceEndsAt: block.recurrenceEndsAt,
+        },
+        rangeStart,
+        rangeEnd,
+        blockTimezone
+      );
+
+      for (const occurrence of occurrences) {
+        busyBlockBusyByCloser[block.profileId] = busyBlockBusyByCloser[block.profileId] || [];
+        busyBlockBusyByCloser[block.profileId].push({
+          start: occurrence.startsAt.toISOString(),
+          end: occurrence.endsAt.toISOString(),
+        });
+      }
+    }
+
     const now = new Date();
     const todayKey = formatLocalDateValue(now, timezone);
     const nowMinutes = getMinutesInTz(now, timezone);
@@ -180,7 +217,14 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
               timeMin,
               timeMax,
             });
-            return { closerProfile, busyIntervals, usedGoogle: true };
+            return {
+              closerProfile,
+              busyIntervals: [
+                ...busyIntervals,
+                ...(busyBlockBusyByCloser[closerProfile.id] ?? []),
+              ],
+              usedGoogle: true,
+            };
           } catch (error) {
             const reason = isExpectedGoogleFallbackError(error)
               ? "google_connection_unavailable"
@@ -193,7 +237,10 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
 
         return {
           closerProfile,
-          busyIntervals: internalBusyByCloser[closerProfile.id] ?? [],
+          busyIntervals: [
+            ...(internalBusyByCloser[closerProfile.id] ?? []),
+            ...(busyBlockBusyByCloser[closerProfile.id] ?? []),
+          ],
           usedGoogle: false,
         };
       })

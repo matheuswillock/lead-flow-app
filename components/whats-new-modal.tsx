@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { BarChart3, Briefcase, Calculator } from "lucide-react"
+import { CalendarOff } from "lucide-react"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-const WHATS_NEW_VERSION = "v1"
+const WHATS_NEW_VERSION = "v2"
 
 type TeamRole = "manager" | "backoffice" | "operator"
 
@@ -20,33 +20,19 @@ interface WhatsNewItem {
   title: string
   description: string
   roles: TeamRole[]
+  audienceLabel: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 const WHATS_NEW_ITEMS: WhatsNewItem[] = [
   {
-    id: "wallet",
-    title: "Carteira",
+    id: "calendar-availability",
+    title: "Disponibilidade no calendário",
     description:
-      "Agora ficou mais fácil acompanhar sua carteira com uma visão clara dos clientes e oportunidades para priorizar melhor suas ações.",
-    roles: ["manager", "backoffice"],
-    icon: Briefcase,
-  },
-  {
-    id: "performance",
-    title: "Performance",
-    description:
-      "Acompanhe resultados com mais clareza por meio de métricas de desempenho para identificar gargalos e agir mais rápido.",
-    roles: ["manager", "backoffice"],
-    icon: BarChart3,
-  },
-  {
-    id: "plan-simulator",
-    title: "Simulador de Planos",
-    description:
-      "Faça simulações de planos de forma prática e rápida para apoiar suas conversas comerciais com mais confiança.",
+      "Marque períodos em que você estará ocupado para não receber novos agendamentos. Defina data de início e fim, escolha dia inteiro ou horário, configure recorrência e, se quiser, ocupe também a agenda do Google Calendar.",
     roles: ["manager", "backoffice", "operator"],
-    icon: Calculator,
+    audienceLabel: "Closers e managers",
+    icon: CalendarOff,
   },
 ]
 
@@ -110,11 +96,7 @@ export function WhatsNewModal({ supabaseId, enabled = true }: WhatsNewModalProps
                 <div className="flex flex-1 flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold">{item.title}</h3>
-                    {item.roles.includes("operator") ? (
-                      <Badge variant="secondary">Para todos</Badge>
-                    ) : (
-                      <Badge variant="secondary">Managers e backoffices</Badge>
-                    )}
+                    <Badge variant="secondary">{item.audienceLabel}</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{item.description}</p>
                 </div>

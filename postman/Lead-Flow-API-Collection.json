@@ -3971,6 +3971,97 @@
                     }
                   },
                   "response": []
+                },
+                {
+                  "name": "GET /api/v1/calendar/busy-blocks",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/calendar/busy-blocks?from={{fromIso}}&to={{toIso}}",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "calendar", "busy-blocks"],
+                      "query": [
+                        { "key": "from", "value": "{{fromIso}}" },
+                        { "key": "to", "value": "{{toIso}}" },
+                        { "key": "closerId", "value": "{{closerId}}", "disabled": true }
+                      ]
+                    },
+                    "description": "Lista períodos de ocupação do closer (ocorrências materializadas no intervalo)."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/calendar/busy-blocks",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/calendar/busy-blocks",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "calendar", "busy-blocks"]
+                    },
+                    "description": "Cria período ocupado (dia inteiro ou com horário, recorrência opcional, sync Google opcional).",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"profileId\": \"{{closerId}}\",\n  \"startsAt\": \"2026-07-28T12:00:00.000Z\",\n  \"endsAt\": \"2026-07-28T21:00:00.000Z\",\n  \"allDay\": false,\n  \"isRecurring\": false,\n  \"weekdays\": [],\n  \"recurrenceEndsAt\": null,\n  \"syncToGoogle\": false,\n  \"reason\": \"Treinamento\"\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PATCH /api/v1/calendar/busy-blocks/:id",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/calendar/busy-blocks/{{busyBlockId}}",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "calendar", "busy-blocks", "{{busyBlockId}}"]
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"profileId\": \"{{closerId}}\",\n  \"startsAt\": \"2026-07-28T12:00:00.000Z\",\n  \"endsAt\": \"2026-07-29T21:00:00.000Z\",\n  \"allDay\": false,\n  \"isRecurring\": true,\n  \"weekdays\": [1, 3, 5],\n  \"recurrenceEndsAt\": \"2026-08-30T23:59:59.000Z\",\n  \"syncToGoogle\": true,\n  \"reason\": \"Indisponível\"\n}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "DELETE /api/v1/calendar/busy-blocks/:id",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/calendar/busy-blocks/{{busyBlockId}}",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "calendar", "busy-blocks", "{{busyBlockId}}"]
+                    }
+                  },
+                  "response": []
                 }
               ]
             },

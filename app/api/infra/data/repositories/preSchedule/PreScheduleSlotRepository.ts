@@ -44,6 +44,26 @@ export class PreScheduleSlotRepository implements IPreScheduleSlotRepository {
       select: { meetingDate: true },
     })
   }
+
+  async findEligibleTargetCloserIds(sourceTeamId: string): Promise<string[]> {
+    const routes = await prisma.teamTransferRoute.findMany({
+      where: { sourceTeamId },
+      select: { targetTeamId: true },
+    })
+
+    const targetTeamIds = [...new Set(routes.map((route) => route.targetTeamId))]
+    if (targetTeamIds.length === 0) return []
+
+    const members = await prisma.teamMember.findMany({
+      where: {
+        teamId: { in: targetTeamIds },
+        functions: { has: "CLOSER" },
+      },
+      select: { profileId: true },
+    })
+
+    return [...new Set(members.map((member) => member.profileId))]
+  }
 }
 
 export const preScheduleSlotRepository = new PreScheduleSlotRepository()

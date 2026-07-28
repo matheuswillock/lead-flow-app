@@ -22,7 +22,7 @@ import {
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
-import { CheckCircle2, XCircle, HelpCircle, Clock, MoreVertical, BadgeCheck, BadgeIcon, Loader2, CalendarIcon } from "lucide-react"
+import { CheckCircle2, XCircle, HelpCircle, Clock, MoreVertical, BadgeCheck, BadgeIcon, Loader2, CalendarIcon, Ban } from "lucide-react"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
 import { TaskFormDialog, type TaskCreatedPayload } from "@/components/task-form-dialog"
 import { TaskCard, type TaskItem } from "@/components/task-card"
@@ -45,8 +45,31 @@ import {
   getMinutesInTz,
   nowInTz,
   parseDateKeyToUtc,
+  startOfMonthInTz,
+  endOfMonthInTz,
+  addDaysInTz,
 } from "@/lib/dates"
 import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient"
+import { BusyBlockDialog } from "../components/BusyBlockDialog"
+import { BusyBlockCard } from "../components/BusyBlockCard"
+import {
+  closerBusyBlockService,
+} from "../services/CloserBusyBlockService"
+import type {
+  CloserBusyBlockItem,
+  UpsertCloserBusyBlockPayload,
+} from "../services/ICloserBusyBlockService"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { isManagerLikeRole } from "@/lib/roles"
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -270,11 +293,21 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
   const [tasksLoading, setTasksLoading] = React.useState(false)
   const [monthTasks, setMonthTasks] = React.useState<TaskItem[]>([])
   const [suppressLeadDialogOpen, setSuppressLeadDialogOpen] = React.useState(false)
+  const [busyBlocks, setBusyBlocks] = React.useState<CloserBusyBlockItem[]>([])
+  const [busyBlocksLoading, setBusyBlocksLoading] = React.useState(false)
+  const [busyDialogOpen, setBusyDialogOpen] = React.useState(false)
+  const [busySaving, setBusySaving] = React.useState(false)
+  const [editingBusyBlock, setEditingBusyBlock] = React.useState<CloserBusyBlockItem | null>(null)
+  const [busyBlockToDelete, setBusyBlockToDelete] = React.useState<CloserBusyBlockItem | null>(null)
+  const [busyDeleting, setBusyDeleting] = React.useState(false)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster, activeRole } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
   const suppressLeadDialogTimerRef = React.useRef<number | null>(null)
+
+  const canManageBusyBlocks = isTeamMaster || isManagerLikeRole(activeRole) || activeFunctions.includes("CLOSER")
+  const canSelectBusyCloser = isTeamMaster || isManagerLikeRole(activeRole)
 
   const blockLeadDialogOpen = React.useCallback(() => {
     setSuppressLeadDialogOpen(true)
@@ -482,13 +515,29 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       const key = formatLocalDateValue(event.date, tz)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
+    busyBlocks.forEach((block) => {
+      const start = new Date(block.occurrenceStartsAt ?? block.startsAt)
+      if (Number.isNaN(start.getTime())) return
+      const key = formatLocalDateValue(start, tz)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
     return counts
-  }, [visibleCalendarEvents, tz])
+  }, [visibleCalendarEvents, busyBlocks, tz])
 
   const selectedDateKey = React.useMemo(
     () => (date ? getCalendarDateKey(date) : null),
     [date]
   )
+
+  const dayBusyBlocks = React.useMemo(() => {
+    if (!selectedDateKey) return [] as CloserBusyBlockItem[]
+    return busyBlocks.filter((block) => {
+      if (closerFilter.length > 0 && !closerFilter.includes(block.profileId)) return false
+      const start = new Date(block.occurrenceStartsAt ?? block.startsAt)
+      if (Number.isNaN(start.getTime())) return false
+      return formatLocalDateValue(start, tz) === selectedDateKey
+    })
+  }, [busyBlocks, selectedDateKey, closerFilter, tz])
 
   const dayEvents = React.useMemo(() => {
     if (!selectedDateKey) return [] as CalendarEventItem[]
@@ -949,6 +998,96 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
     }
   }, [refreshTaskDayCounts])
 
+  const refreshBusyBlocks = React.useCallback(
+    async (cancelled = false) => {
+      if (!supabaseId || !activeTeamId) {
+        if (!cancelled) setBusyBlocks([])
+        return
+      }
+
+      setBusyBlocksLoading(true)
+      const monthStart = startOfMonthInTz(calendarMonth, tz)
+      const from = addDaysInTz(monthStart, -7, tz)
+      const to = addDaysInTz(endOfMonthInTz(calendarMonth, tz), 8, tz)
+
+      try {
+        const items = await closerBusyBlockService.list({
+          supabaseId,
+          teamId: activeTeamId,
+          from: from.toISOString(),
+          to: to.toISOString(),
+          closerId: isRestrictedToOwnEvents && user?.id ? user.id : undefined,
+        })
+        if (!cancelled) setBusyBlocks(items)
+      } catch {
+        if (!cancelled) setBusyBlocks([])
+      } finally {
+        if (!cancelled) setBusyBlocksLoading(false)
+      }
+    },
+    [supabaseId, activeTeamId, calendarMonth, tz, isRestrictedToOwnEvents, user?.id]
+  )
+
+  React.useEffect(() => {
+    let cancelled = false
+    void refreshBusyBlocks(cancelled)
+    return () => {
+      cancelled = true
+    }
+  }, [refreshBusyBlocks])
+
+  const handleSaveBusyBlock = React.useCallback(
+    async (payload: UpsertCloserBusyBlockPayload) => {
+      if (!supabaseId || !activeTeamId) return
+      setBusySaving(true)
+      try {
+        if (editingBusyBlock) {
+          await closerBusyBlockService.update({
+            supabaseId,
+            teamId: activeTeamId,
+            id: editingBusyBlock.id,
+            payload,
+          })
+          toast.success("Ocupação atualizada")
+        } else {
+          await closerBusyBlockService.create({
+            supabaseId,
+            teamId: activeTeamId,
+            payload,
+          })
+          toast.success("Ocupação criada")
+        }
+        setBusyDialogOpen(false)
+        setEditingBusyBlock(null)
+        await refreshBusyBlocks()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Não foi possível salvar a ocupação.")
+      } finally {
+        setBusySaving(false)
+      }
+    },
+    [supabaseId, activeTeamId, editingBusyBlock, refreshBusyBlocks]
+  )
+
+  const handleDeleteBusyBlock = React.useCallback(async () => {
+    if (!supabaseId || !activeTeamId || !busyBlockToDelete) return
+    setBusyDeleting(true)
+    try {
+      await closerBusyBlockService.remove({
+        supabaseId,
+        teamId: activeTeamId,
+        id: busyBlockToDelete.id,
+      })
+      toast.success("Ocupação excluída")
+      setBusyBlockToDelete(null)
+      await refreshBusyBlocks()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a ocupação.")
+    } finally {
+      setBusyDeleting(false)
+    }
+  }, [supabaseId, activeTeamId, busyBlockToDelete, refreshBusyBlocks])
+
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
       <div className="grid w-full min-w-0 max-w-full gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-full">
@@ -1041,13 +1180,28 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
           <CardContent className="flex h-full min-h-0 w-full flex-col gap-4 p-4">
             <LeadsFiltersLayout
               actions={
-                <Button onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
-                  <CirclePlus
-                    className="mr-2 transition-transform duration-300 group-hover:rotate-90"
-                    size={16}
-                  />
-                  Agendar Reunião
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {canManageBusyBlocks && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingBusyBlock(null)
+                        setBusyDialogOpen(true)
+                      }}
+                      className="shrink-0"
+                    >
+                      <Ban data-icon="inline-start" />
+                      Marcar ocupado
+                    </Button>
+                  )}
+                  <Button onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
+                    <CirclePlus
+                      className="mr-2 transition-transform duration-300 group-hover:rotate-90"
+                      size={16}
+                    />
+                    Agendar Reunião
+                  </Button>
+                </div>
               }
             >
               <Input
@@ -1130,19 +1284,49 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
             </div>
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-              {isLoading || tasksLoading ? (
+              {isLoading || tasksLoading || busyBlocksLoading ? (
                 Array.from({ length: 6 }).map((_, idx) => (
                   <Skeleton key={idx} className="h-28 w-full rounded-md" />
                 ))
-              ) : (showMeetings ? filteredEvents.length : 0) === 0 && (showTasks ? filteredTasks.length : 0) === 0 ? (
+              ) : (showMeetings ? filteredEvents.length : 0) === 0 &&
+                (showTasks ? filteredTasks.length : 0) === 0 &&
+                dayBusyBlocks.length === 0 ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
-                    Nenhuma agenda, tarefa ou lembrete para este dia e horário.
+                    Nenhuma agenda, tarefa, ocupação ou lembrete para este dia e horário.
                   </p>
-                  <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {canManageBusyBlocks && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingBusyBlock(null)
+                          setBusyDialogOpen(true)
+                        }}
+                      >
+                        Marcar ocupado
+                      </Button>
+                    )}
+                    <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
+                  </div>
                 </div>
               ) : (
                 <>
+                {dayBusyBlocks.map((block) => (
+                  <BusyBlockCard
+                    key={`${block.id}:${block.occurrenceStartsAt ?? block.startsAt}`}
+                    block={block}
+                    timezone={tz}
+                    canManage={
+                      canSelectBusyCloser || (!!user?.id && block.profileId === user.id)
+                    }
+                    onEdit={(selected) => {
+                      setEditingBusyBlock(selected)
+                      setBusyDialogOpen(true)
+                    }}
+                    onDelete={(selected) => setBusyBlockToDelete(selected)}
+                  />
+                ))}
                 {showTasks && filteredTasks.map((task) => (
                   <TaskCard
                     key={task.id}
@@ -1628,6 +1812,61 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
           }}
         />
       )}
+
+      {canManageBusyBlocks && user?.id && (
+        <BusyBlockDialog
+          open={busyDialogOpen}
+          onOpenChange={(next) => {
+            setBusyDialogOpen(next)
+            if (!next) setEditingBusyBlock(null)
+          }}
+          timezone={tz}
+          closers={closers.map((closer) => ({
+            id: closer.id,
+            name: closer.name || closer.email || "Sem nome",
+            googleCalendarConnected: closer.googleCalendarConnected,
+          }))}
+          canSelectCloser={canSelectBusyCloser}
+          defaultProfileId={
+            canSelectBusyCloser
+              ? (editingBusyBlock?.profileId ?? closers[0]?.id ?? user.id)
+              : user.id
+          }
+          editing={editingBusyBlock}
+          saving={busySaving}
+          onSubmit={handleSaveBusyBlock}
+        />
+      )}
+
+      <AlertDialog
+        open={Boolean(busyBlockToDelete)}
+        onOpenChange={(next) => {
+          if (!next) setBusyBlockToDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir ocupação?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação remove o período ocupado
+              {busyBlockToDelete?.isRecurring ? " (série completa)" : ""} e libera os horários
+              para novos agendamentos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busyDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busyDeleting}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteBusyBlock()
+              }}
+            >
+              {busyDeleting ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

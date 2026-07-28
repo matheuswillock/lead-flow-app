@@ -7,4 +7,5 @@ export interface IPreScheduleSlotRepository {
     dayEnd: Date,
     excludeLeadId?: string
   ): Promise<Array<{ meetingDate: Date | null }>>
+  findEligibleTargetCloserIds(sourceTeamId: string): Promise<string[]>
 }

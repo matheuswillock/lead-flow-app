@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ActivityType, InviteDispatchStatus, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { closerBusyBlockRepository } from "@/app/api/infra/data/repositories/closerBusyBlock/CloserBusyBlockRepository";
 import {
   cancelCalendarEvent,
   upsertCalendarEvent,
@@ -21,6 +22,10 @@ import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
+import {
+  isInstantInBusyOccurrences,
+  materializeBusyBlockOccurrences,
+} from "@/lib/closer-busy-block/materialize";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -218,6 +223,46 @@ export class LeadScheduleService implements ILeadScheduleService {
     const scheduleId = existingSchedule?.id ?? randomUUID();
     const noShowCount = existingSchedule?.noShowCount ?? 0;
     const isReschedule = !!(existingSchedule?.googleEventId);
+
+    {
+      const slotDuration = Number.isFinite(durationMinutes) && (durationMinutes as number) >= 5
+        ? Math.floor(durationMinutes as number)
+        : 30;
+      const busyBlocks = await closerBusyBlockRepository.findOverlapping({
+        teamId,
+        profileIds: [closerId],
+        rangeStart: meetingDate,
+        rangeEnd: new Date(meetingDate.getTime() + slotDuration * 60_000),
+      });
+      const blocked = busyBlocks.some((block) => {
+        const timezone = resolveTimezone(block.profile.timezone);
+        const occurrences = materializeBusyBlockOccurrences(
+          {
+            id: block.id,
+            profileId: block.profileId,
+            startsAt: block.startsAt,
+            endsAt: block.endsAt,
+            allDay: block.allDay,
+            isRecurring: block.isRecurring,
+            weekdays: block.weekdays,
+            recurrenceEndsAt: block.recurrenceEndsAt,
+          },
+          meetingDate,
+          new Date(meetingDate.getTime() + slotDuration * 60_000),
+          timezone
+        );
+        return isInstantInBusyOccurrences(meetingDate, slotDuration, occurrences);
+      });
+
+      if (blocked) {
+        return new Output(
+          false,
+          [],
+          ["O closer está marcado como ocupado neste horário e não pode receber agendamentos."],
+          null
+        );
+      }
+    }
 
     if (
       leadStatus === LeadStatus.no_show &&

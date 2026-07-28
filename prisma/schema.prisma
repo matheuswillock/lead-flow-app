@@ -931,6 +931,9 @@ model Profile {
 
   auditLogsAsActor              AuditLog[]                    @relation("AuditLogActor")
 
+  closerBusyBlocks              CloserBusyBlock[]             @relation("CloserBusyBlockProfile")
+  closerBusyBlocksCreated       CloserBusyBlock[]             @relation("CloserBusyBlockCreator")
+
   deletedByProfile              Profile?                      @relation("ProfileDeletedBy", fields: [deletedByProfileId], references: [id], onDelete: SetNull)
   profilesDeleted               Profile[]                     @relation("ProfileDeletedBy")
   leadsDeleted                  Lead[]                        @relation("LeadDeletedBy")
@@ -2041,6 +2044,34 @@ model LeadsSchedule {
   @@map("corretor_studio_leads_schedule")
 }
 
+model CloserBusyBlock {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @db.Uuid
+  profileId          String    @db.Uuid
+  startsAt           DateTime  @db.Timestamptz(6)
+  endsAt             DateTime  @db.Timestamptz(6)
+  allDay             Boolean   @default(false)
+  isRecurring        Boolean   @default(false)
+  weekdays           Int[]     @default([])
+  recurrenceEndsAt   DateTime? @db.Timestamptz(6)
+  syncToGoogle       Boolean   @default(false)
+  googleEventId      String?   @db.Text
+  googleCalendarId   String?   @db.Text
+  reason             String?   @db.Text
+  createdByProfileId String    @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profile   Profile @relation("CloserBusyBlockProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  createdBy Profile @relation("CloserBusyBlockCreator", fields: [createdByProfileId], references: [id], onDelete: Restrict)
+
+  @@index([teamId, profileId, startsAt])
+  @@index([teamId, startsAt, endsAt])
+  @@index([profileId, recurrenceEndsAt])
+  @@map("corretor_studio_closer_busy_blocks")
+}
+
 model LeadFinalized {
   id                  String       @id @default(uuid()) @db.Uuid
   leadId              String       @db.Uuid
@@ -2293,6 +2324,7 @@ model Team {
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants   BackofficeOperationalAccessGrant[]
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
+  closerBusyBlocks            CloserBusyBlock[]
 
   @@index([masterId])
   @@index([deletedAt])

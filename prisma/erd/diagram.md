@@ -1925,6 +1925,23 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_closer_busy_blocks" {
+    String id "🗝️"
+    DateTime startsAt 
+    DateTime endsAt 
+    Boolean allDay 
+    Boolean isRecurring 
+    Int weekdays 
+    DateTime recurrenceEndsAt "❓"
+    Boolean syncToGoogle 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    String reason "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_lead_finalized" {
     String id "🗝️"
     DateTime finalizedDateAt 
@@ -3523,6 +3540,9 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_task_assignees" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "corretor_studio_leads_schedule" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_closer_busy_blocks" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_closer_busy_blocks" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_closer_busy_blocks" }o--|| corretor_studio_profiles : "createdBy"
     "corretor_studio_lead_finalized" |o--|| "ContractType" : "enum:contractType"
     "corretor_studio_lead_finalized" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_finalized" }o--|o corretor_studio_profiles : "closer"
