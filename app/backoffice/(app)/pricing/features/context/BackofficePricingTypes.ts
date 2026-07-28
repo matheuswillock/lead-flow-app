@@ -30,7 +30,7 @@ export interface BackofficeProductPaymentRuleFormEntry {
 export interface BackofficeProductItem {
   id: string
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   description: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -67,7 +67,7 @@ export const BILLING_CYCLE_LABELS: Record<BackofficeAdhesionBillingCycleKey, str
 
 export interface BackofficeProductFormData {
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   description: string
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -98,7 +98,7 @@ const EMPTY_RULE_ENTRY: BackofficeProductPaymentRuleFormEntry = {
 
 export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   name: "",
-  featureSlug: "",
+  featureSlugs: [],
   description: "",
   type: "PLAN",
   billingMode: "RECURRING",

@@ -71,7 +71,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     ownerProfileId: string
   ): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
-      product: { featureSlug: string } | null
+      product: { featureSlugs: string[] } | null
     }) | null
   > {
     return prisma.profileSubscription.findUnique({
@@ -79,7 +79,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
-        product: { select: { featureSlug: true } },
+        product: { select: { featureSlugs: true } },
       },
     })
   }
@@ -94,7 +94,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       },
       select: {
         product: {
-          select: { featureSlug: true },
+          select: { featureSlugs: true },
         },
       },
     })

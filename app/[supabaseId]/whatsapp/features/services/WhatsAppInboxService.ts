@@ -78,6 +78,15 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     return ((output as Record<string, unknown>).result as WhatsAppConfig) ?? null
   }
 
+  async syncHistory(teamId: string, supabaseId: string): Promise<void> {
+    const response = await fetch(`/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-history`, {
+      method: 'POST',
+      headers: this.authHeaders(teamId, supabaseId),
+    })
+    const output: unknown = await this.parseJsonResponse(response)
+    this.throwIfInvalid(response, output, 'Não foi possível sincronizar o histórico do WhatsApp')
+  }
+
   async fetchConversations(
     teamId: string,
     supabaseId: string,

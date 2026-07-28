@@ -2,6 +2,7 @@ import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppC
 
 export interface IWhatsAppInboxService {
   fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null>
+  syncHistory(teamId: string, supabaseId: string): Promise<void>
   fetchConversations(
     teamId: string,
     supabaseId: string,

@@ -60,6 +60,7 @@ export interface WhatsAppSettingsState {
   isReconnecting: boolean
   isDisconnecting: boolean
   isSyncingContacts: boolean
+  isPurgingConversations: boolean
 }
 
 export interface WhatsAppSettingsActions {
@@ -68,6 +69,7 @@ export interface WhatsAppSettingsActions {
   disconnect: () => Promise<void>
   reload: () => void
   syncPhoneContacts: () => Promise<void>
+  purgeConversations: () => Promise<void>
 }
 
 export type WhatsAppSettingsContextValue = WhatsAppSettingsState & WhatsAppSettingsActions

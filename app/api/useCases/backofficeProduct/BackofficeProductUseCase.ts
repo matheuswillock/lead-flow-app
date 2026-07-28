@@ -28,7 +28,7 @@ export interface BackofficeProductPaymentRuleDTO {
 export interface BackofficeProductDTO {
   id: string
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   description: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -46,7 +46,7 @@ export interface BackofficeProductDTO {
 
 export interface CreateBackofficeProductUseCaseInput {
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   description?: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -62,7 +62,7 @@ export interface CreateBackofficeProductUseCaseInput {
 
 export interface UpdateBackofficeProductUseCaseInput {
   name?: string
-  featureSlug?: string
+  featureSlugs?: string[]
   description?: string | null
   type?: BackofficeProductType
   billingMode?: BackofficeProductBillingMode
@@ -111,14 +111,19 @@ export class BackofficeProductUseCase {
       if (!input.name?.trim()) {
         return new Output(false, [], ["Nome é obrigatório"], null)
       }
-      if (!input.featureSlug?.trim()) {
-        return new Output(false, [], ["Slug é obrigatório"], null)
+
+      const featureSlugs = Array.from(
+        new Set((input.featureSlugs ?? []).map((slug) => slug.trim()).filter(Boolean))
+      )
+      if (featureSlugs.length === 0) {
+        return new Output(false, [], ["Selecione ao menos um slug de funcionalidade"], null)
       }
 
-      const featureSlug = input.featureSlug.trim()
-      const feature = await this.featureRepo.findBySlug(featureSlug)
-      if (!feature) {
-        return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
+      for (const slug of featureSlugs) {
+        const feature = await this.featureRepo.findBySlug(slug)
+        if (!feature) {
+          return new Output(false, [], [`Slug inválido: ${slug}`], null)
+        }
       }
 
       const validationError = this.validatePrices(input.billingMode, input, input.paymentRules)
@@ -130,14 +135,17 @@ export class BackofficeProductUseCase {
         return new Output(false, [], ["Informe ao menos uma regra de pagamento"], null)
       }
 
-      const existingCount = await this.productRepo.countByFeatureSlug(featureSlug)
+      const primarySlug = featureSlugs[0]
+      const existingCount = await this.productRepo.countByFeatureSlug(primarySlug)
       const isDefault = existingCount === 0 ? true : (input.isDefault ?? false)
 
       if (isDefault) {
-        await this.productRepo.clearDefaultForFeatureSlug(featureSlug)
+        for (const slug of featureSlugs) {
+          await this.productRepo.clearDefaultForFeatureSlug(slug)
+        }
       }
 
-      const product = await this.productRepo.create({ ...input, featureSlug, isDefault })
+      const product = await this.productRepo.create({ ...input, featureSlugs, isDefault })
       if (input.billingMode === "RECURRING" && input.paymentRules?.length) {
         await this.productRepo.upsertPaymentRules(product.id, input.paymentRules)
       }
@@ -161,10 +169,18 @@ export class BackofficeProductUseCase {
         return new Output(false, [], ["Produto não encontrado"], null)
       }
 
-      if (input.featureSlug && input.featureSlug !== existing.featureSlug) {
-        const feature = await this.featureRepo.findBySlug(input.featureSlug.trim())
-        if (!feature) {
-          return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
+      if (input.featureSlugs) {
+        const featureSlugs = Array.from(
+          new Set(input.featureSlugs.map((slug) => slug.trim()).filter(Boolean))
+        )
+        if (featureSlugs.length === 0) {
+          return new Output(false, [], ["Selecione ao menos um slug de funcionalidade"], null)
+        }
+        for (const slug of featureSlugs) {
+          const feature = await this.featureRepo.findBySlug(slug)
+          if (!feature) {
+            return new Output(false, [], [`Slug inválido: ${slug}`], null)
+          }
         }
       }
 
@@ -204,13 +220,18 @@ export class BackofficeProductUseCase {
         return new Output(false, [], [validationError], null)
       }
 
-      const targetFeatureSlug = input.featureSlug?.trim() ?? existing.featureSlug
+      const targetFeatureSlugs = input.featureSlugs?.length
+        ? Array.from(new Set(input.featureSlugs.map((slug) => slug.trim()).filter(Boolean)))
+        : existing.featureSlugs
+      const primarySlug = targetFeatureSlugs[0]
       const willBeDefault = input.isDefault === true
 
       if (willBeDefault) {
-        await this.productRepo.clearDefaultForFeatureSlug(targetFeatureSlug, id)
+        for (const slug of targetFeatureSlugs) {
+          await this.productRepo.clearDefaultForFeatureSlug(slug, id)
+        }
       } else if (input.isDefault === false && existing.isDefault) {
-        const siblings = await this.productRepo.findByFeatureSlug(targetFeatureSlug)
+        const siblings = await this.productRepo.findByFeatureSlug(primarySlug)
         const otherActive = siblings.filter((s) => s.id !== id && s.isActive)
         if (otherActive.length === 0) {
           return new Output(
@@ -308,11 +329,14 @@ export class BackofficeProductUseCase {
       await this.productRepo.delete(id)
 
       if (existing.isDefault) {
-        const siblings = await this.productRepo.findByFeatureSlug(existing.featureSlug)
-        const nextDefault = siblings.find((s) => s.isActive)
-        if (nextDefault) {
-          await this.productRepo.clearDefaultForFeatureSlug(existing.featureSlug)
-          await this.productRepo.update(nextDefault.id, { isDefault: true })
+        const primarySlug = existing.featureSlugs[0]
+        if (primarySlug) {
+          const siblings = await this.productRepo.findByFeatureSlug(primarySlug)
+          const nextDefault = siblings.find((s) => s.isActive)
+          if (nextDefault) {
+            await this.productRepo.clearDefaultForFeatureSlug(primarySlug)
+            await this.productRepo.update(nextDefault.id, { isDefault: true })
+          }
         }
       }
 
@@ -391,7 +415,7 @@ export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO 
   return {
     id: product.id,
     name: product.name,
-    featureSlug: product.featureSlug,
+    featureSlugs: product.featureSlugs,
     description: product.description,
     type: product.type,
     billingMode: product.billingMode,

@@ -4,6 +4,8 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { listConversationsUseCase } from "@/app/api/useCases/whatsapp/ListConversationsUseCase"
 import { createConversationUseCase } from "@/app/api/useCases/whatsapp/CreateConversationUseCase"
+import { purgeTeamConversationsUseCase } from "@/app/api/useCases/whatsapp/PurgeTeamConversationsUseCase"
+import { denyIfCannotManageWhatsAppInfrastructure } from "@/app/api/v1/teams/[teamId]/whatsapp/utils/requireWhatsAppInfrastructureAccess"
 
 const createConversationSchema = z.object({
   phone: z.string().min(8).optional(),
@@ -113,4 +115,32 @@ export async function POST(
   }
 
   return NextResponse.json(output, { status: 201 })
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ teamId: string }> }
+) {
+  const { teamId } = await params
+  const teamAccess = await getTeamAccess(request)
+  if ("error" in teamAccess) {
+    return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+  }
+
+  if (teamAccess.access.teamId !== teamId) {
+    return NextResponse.json(
+      new Output(false, [], ["Acesso negado a este time"], null),
+      { status: 403 }
+    )
+  }
+
+  const denied = denyIfCannotManageWhatsAppInfrastructure(teamAccess.access)
+  if (denied) return denied
+
+  const output = await purgeTeamConversationsUseCase.execute({
+    teamId,
+    actorProfileId: teamAccess.access.profileId,
+  })
+
+  return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
 }

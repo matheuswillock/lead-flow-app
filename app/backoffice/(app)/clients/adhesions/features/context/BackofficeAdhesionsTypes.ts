@@ -51,7 +51,7 @@ export interface BackofficeAdhesionItem {
 export interface BackofficeAdhesionProductVariant {
   id: string
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   isDefault: boolean
   availableCycles: BackofficeAdhesionBillingCycleKey[]
   installmentByCycle: Partial<

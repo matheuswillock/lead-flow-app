@@ -11,7 +11,7 @@ export type BackofficeProductWithPaymentRules = BackofficeProduct & {
 
 export interface CreateBackofficeProductInput {
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   description?: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -26,7 +26,7 @@ export interface CreateBackofficeProductInput {
 
 export interface UpdateBackofficeProductInput {
   name?: string
-  featureSlug?: string
+  featureSlugs?: string[]
   description?: string | null
   type?: BackofficeProductType
   billingMode?: BackofficeProductBillingMode
