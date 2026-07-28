@@ -88,6 +88,7 @@ export class TeamWebhookService implements ITeamWebhookService {
     params: {
       direction: TeamWebhookDirection;
       status?: TeamWebhookStatus;
+      search?: string;
       page: number;
       pageSize: number;
     },

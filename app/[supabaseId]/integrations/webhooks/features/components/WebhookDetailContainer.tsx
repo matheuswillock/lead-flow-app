@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Copy, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +17,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -26,9 +35,17 @@ import type {
   TeamWebhookDirection,
   TeamWebhookLogItem,
   TeamWebhookSummary,
+  UpdateTeamWebhookPayload,
 } from "../services/ITeamWebhooksService";
-import { WEBHOOK_EVENT_OPTIONS } from "../services/ITeamWebhooksService";
 import { WebhookStatusBadge } from "./WebhookStatusBadge";
+import {
+  WebhookInboundConfigFields,
+  type WebhookInboundFormValues,
+} from "./WebhookInboundConfigFields";
+import {
+  WebhookOutboundConfigFields,
+  type WebhookOutboundFormValues,
+} from "./WebhookOutboundConfigFields";
 
 type Props = {
   supabaseId: string;
@@ -36,17 +53,110 @@ type Props = {
   direction: TeamWebhookDirection;
 };
 
+function inferInboundTokenMode(webhook: TeamWebhookSummary): WebhookInboundFormValues["tokenMode"] {
+  if (webhook.tokenPreview === "sem-token") return "none";
+  return "auto";
+}
+
+function inboundValuesFromWebhook(webhook: TeamWebhookSummary): WebhookInboundFormValues {
+  return {
+    name: webhook.name,
+    tokenMode: inferInboundTokenMode(webhook),
+    manualToken: "",
+    expiryMode: webhook.expiryMode ?? "indeterminate",
+  };
+}
+
+function outboundValuesFromWebhook(webhook: TeamWebhookSummary): WebhookOutboundFormValues {
+  return {
+    name: webhook.name,
+    targetUrl: webhook.targetUrl ?? "",
+    destinationPreset: webhook.destinationPreset ?? "generic",
+    selectedEvents: webhook.selectedEvents.length > 0 ? webhook.selectedEvents : ["lead_created"],
+    failureThreshold: webhook.failureThreshold,
+  };
+}
+
+function buildInboundUpdatePayload(
+  draft: WebhookInboundFormValues,
+  initial: WebhookInboundFormValues
+): UpdateTeamWebhookPayload | null {
+  const payload: UpdateTeamWebhookPayload = {};
+  if (draft.name.trim() !== initial.name.trim()) payload.name = draft.name.trim();
+  if (draft.expiryMode !== initial.expiryMode) payload.expiryMode = draft.expiryMode;
+
+  const tokenModeChanged = draft.tokenMode !== initial.tokenMode;
+  const manualTokenProvided =
+    draft.tokenMode === "manual" && draft.manualToken.trim().length >= 8;
+
+  if (tokenModeChanged || manualTokenProvided) {
+    payload.tokenMode = draft.tokenMode;
+    if (draft.tokenMode === "manual") {
+      payload.manualToken = draft.manualToken.trim();
+    }
+    if (draft.expiryMode !== initial.expiryMode) {
+      payload.expiryMode = draft.expiryMode;
+    }
+  }
+
+  return Object.keys(payload).length > 0 ? payload : null;
+}
+
+function buildOutboundUpdatePayload(
+  draft: WebhookOutboundFormValues,
+  initial: WebhookOutboundFormValues
+): UpdateTeamWebhookPayload | null {
+  const payload: UpdateTeamWebhookPayload = {};
+  if (draft.name.trim() !== initial.name.trim()) payload.name = draft.name.trim();
+  if (draft.targetUrl.trim() !== initial.targetUrl.trim()) payload.targetUrl = draft.targetUrl.trim();
+  if (draft.destinationPreset !== initial.destinationPreset) {
+    payload.destinationPreset = draft.destinationPreset;
+  }
+  if (draft.failureThreshold !== initial.failureThreshold) {
+    payload.failureThreshold = draft.failureThreshold;
+  }
+  const eventsChanged =
+    draft.selectedEvents.length !== initial.selectedEvents.length ||
+    draft.selectedEvents.some((event) => !initial.selectedEvents.includes(event));
+  if (eventsChanged) payload.selectedEvents = draft.selectedEvents;
+
+  return Object.keys(payload).length > 0 ? payload : null;
+}
+
 export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Props) {
   const { activeTeam } = useTeamContext();
   const { tz } = useTimezone();
   const [webhook, setWebhook] = useState<TeamWebhookSummary | null>(null);
+  const [inboundDraft, setInboundDraft] = useState<WebhookInboundFormValues | null>(null);
+  const [outboundDraft, setOutboundDraft] = useState<WebhookOutboundFormValues | null>(null);
+  const [inboundInitial, setInboundInitial] = useState<WebhookInboundFormValues | null>(null);
+  const [outboundInitial, setOutboundInitial] = useState<WebhookOutboundFormValues | null>(null);
   const [logs, setLogs] = useState<TeamWebhookLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [logsPage, setLogsPage] = useState(1);
   const [logsTotal, setLogsTotal] = useState(0);
+  const [rotatedToken, setRotatedToken] = useState<{ url: string; token?: string } | null>(null);
 
   const listPath = `/${supabaseId}/integrations/webhooks/${direction}`;
+
+  const applyWebhookToDraft = useCallback((detail: TeamWebhookSummary) => {
+    setWebhook(detail);
+    if (detail.direction === "inbound") {
+      const values = inboundValuesFromWebhook(detail);
+      setInboundDraft(values);
+      setInboundInitial(values);
+      setOutboundDraft(null);
+      setOutboundInitial(null);
+    } else {
+      const values = outboundValuesFromWebhook(detail);
+      setOutboundDraft(values);
+      setOutboundInitial(values);
+      setInboundDraft(null);
+      setInboundInitial(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!activeTeam?.id) return;
@@ -59,7 +169,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           pageSize: 20,
         }),
       ]);
-      setWebhook(detail);
+      applyWebhookToDraft(detail);
       setLogs(logResult.items);
       setLogsTotal(logResult.total);
     } catch (error) {
@@ -67,11 +177,38 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     } finally {
       setLoading(false);
     }
-  }, [activeTeam?.id, logsPage, supabaseId, webhookId]);
+  }, [activeTeam?.id, applyWebhookToDraft, logsPage, supabaseId, webhookId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const updatePayload = useMemo(() => {
+    if (direction === "inbound" && inboundDraft && inboundInitial) {
+      return buildInboundUpdatePayload(inboundDraft, inboundInitial);
+    }
+    if (direction === "outbound" && outboundDraft && outboundInitial) {
+      return buildOutboundUpdatePayload(outboundDraft, outboundInitial);
+    }
+    return null;
+  }, [direction, inboundDraft, inboundInitial, outboundDraft, outboundInitial]);
+
+  const canSaveInbound =
+    inboundDraft &&
+    inboundDraft.name.trim().length > 0 &&
+    (inboundDraft.tokenMode !== "manual" || inboundDraft.manualToken.trim().length >= 8);
+
+  const canSaveOutbound =
+    outboundDraft &&
+    outboundDraft.name.trim().length > 0 &&
+    outboundDraft.targetUrl.trim().length > 0 &&
+    outboundDraft.selectedEvents.length > 0;
+
+  const canSave =
+    Boolean(updatePayload) &&
+    !saving &&
+    !actionPending &&
+    (direction === "inbound" ? canSaveInbound : canSaveOutbound);
 
   const runStatus = async (body: { status: "active" | "disabled" } | { action: "reactivate" }) => {
     if (!activeTeam?.id || actionPending) return;
@@ -107,6 +244,31 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     }
   };
 
+  const runSave = async () => {
+    if (!activeTeam?.id || !updatePayload || !canSave) return;
+    setSaving(true);
+    try {
+      const updated = await teamWebhooksService.update(
+        supabaseId,
+        activeTeam.id,
+        webhookId,
+        updatePayload
+      );
+      applyWebhookToDraft(updated);
+      toast.success("Configuração salva");
+      if (updated.token || (updated.direction === "inbound" && updatePayload.tokenMode)) {
+        setRotatedToken({
+          url: updated.webhookUrl ?? "",
+          token: updated.token,
+        });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar configuração");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const copyValue = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -124,10 +286,6 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       </div>
     );
   }
-
-  const eventLabels = webhook.selectedEvents
-    .map((key) => WEBHOOK_EVENT_OPTIONS.find((option) => option.value === key)?.label ?? key)
-    .join(", ");
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -152,7 +310,11 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             </Button>
           ) : null}
           {webhook.status === "active" ? (
-            <Button variant="outline" onClick={() => runStatus({ status: "disabled" })} disabled={actionPending}>
+            <Button
+              variant="outline"
+              onClick={() => runStatus({ status: "disabled" })}
+              disabled={actionPending}
+            >
               Desativar
             </Button>
           ) : null}
@@ -178,36 +340,38 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           <TabsTrigger value="logs">Logs</TabsTrigger>
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
-          {direction === "inbound" ? (
-            <div className="flex flex-col gap-2">
-              <Label>URL do webhook</Label>
-              <div className="flex gap-2">
-                <Input readOnly value={webhook.webhookUrl ?? ""} />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => webhook.webhookUrl && void copyValue(webhook.webhookUrl)}
-                >
-                  <Copy />
-                </Button>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Token: {webhook.tokenPreview ?? "—"} · Expiração: {webhook.expiryMode ?? "—"}
-              </p>
+          <div className="mx-auto w-full max-w-2xl">
+            {direction === "inbound" && inboundDraft ? (
+              <WebhookInboundConfigFields
+                idPrefix="detail-inbound"
+                values={inboundDraft}
+                onChange={(patch) => setInboundDraft((current) => (current ? { ...current, ...patch } : current))}
+                showUrl
+                webhookUrl={webhook.webhookUrl}
+                tokenPreview={webhook.tokenPreview}
+                onCopyUrl={(value) => void copyValue(value)}
+              />
+            ) : null}
+            {direction === "outbound" && outboundDraft ? (
+              <>
+                <WebhookOutboundConfigFields
+                  idPrefix="detail-outbound"
+                  values={outboundDraft}
+                  onChange={(patch) =>
+                    setOutboundDraft((current) => (current ? { ...current, ...patch } : current))
+                  }
+                />
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Falhas consecutivas: {webhook.failureStreak}/{webhook.failureThreshold}
+                </p>
+              </>
+            ) : null}
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => void runSave()} disabled={!canSave}>
+                {saving ? "Salvando..." : "Salvar alterações"}
+              </Button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>URL de destino</Label>
-                <Input readOnly value={webhook.targetUrl ?? ""} />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Preset: {webhook.destinationPreset ?? "generic"} · Falhas: {webhook.failureStreak}/
-                {webhook.failureThreshold}
-              </p>
-              <p className="text-sm text-muted-foreground">Eventos: {eventLabels || "—"}</p>
-            </div>
-          )}
+          </div>
         </TabsContent>
         <TabsContent value="logs" className="pt-4">
           <div className="rounded-lg border">
@@ -230,7 +394,9 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                 ) : (
                   logs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell>{formatIntimezone(new Date(log.createdAt), "dd/MM/yyyy HH:mm", tz)}</TableCell>
+                      <TableCell>
+                        {formatIntimezone(new Date(log.createdAt), "dd/MM/yyyy HH:mm", tz)}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -279,6 +445,52 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           </div>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={Boolean(rotatedToken)} onOpenChange={(open) => !open && setRotatedToken(null)}>
+        <AlertDialogContent className="max-h-[90vh] flex flex-col">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Token atualizado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Copie a URL e o token agora. Depois desta tela o token completo não será exibido novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex flex-1 flex-col gap-3 overflow-y-auto">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rotated-url">URL do webhook</Label>
+              <div className="flex gap-2">
+                <Input id="rotated-url" readOnly value={rotatedToken?.url ?? ""} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => rotatedToken?.url && void copyValue(rotatedToken.url)}
+                >
+                  <Copy />
+                </Button>
+              </div>
+            </div>
+            {rotatedToken?.token ? (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="rotated-token">Token</Label>
+                <div className="flex gap-2">
+                  <Input id="rotated-token" readOnly value={rotatedToken.token} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void copyValue(rotatedToken.token!)}
+                  >
+                    <Copy />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setRotatedToken(null)}>Entendi</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
