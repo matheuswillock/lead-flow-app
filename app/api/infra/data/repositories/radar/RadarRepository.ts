@@ -356,6 +356,24 @@ export class RadarRepository {
     return Boolean(duplicate)
   }
 
+  /**
+   * Checa se um evento já ocorreu para essa entidade em QUALQUER `occurredAt`
+   * — ao contrário de `hasDuplicateEvent`, que dedupa por ocorrência exata
+   * (mesmo `occurredAt`). Usado por marcos "de uma vez só" (ex.: portfolio.
+   * renewed/brokerage_transfer) cujo `occurredAt` vem de `updatedAt` da
+   * entidade — um campo mutável que avança em qualquer edição não
+   * relacionada, o que faria `appendEventIfNew` (dedupe por ocorrência)
+   * criar um evento novo a cada edição. Aqui, uma vez registrado, nunca
+   * mais se repete.
+   */
+  async hasEventEverOccurredForSource(teamId: string, sourceType: string, sourceId: string, eventType: string) {
+    const existing = await prisma.radarEvent.findFirst({
+      where: { teamId, sourceType, sourceId, eventType },
+      select: { id: true },
+    })
+    return Boolean(existing)
+  }
+
   async appendEventIfNew(input: AppendEventInput) {
     if (
       input.sourceId &&
@@ -563,6 +581,7 @@ export class RadarRepository {
       where: {
         teamId,
         ...(filters.leadId ? { leadId: filters.leadId } : {}),
+        ...(filters.portfolioId ? { id: filters.portfolioId } : {}),
         ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
       },
       select: {
@@ -571,6 +590,7 @@ export class RadarRepository {
         renewalStatus: true,
         portfolioStatus: true,
         renewalAmount: true,
+        source: true,
         updatedAt: true,
         createdAt: true,
         lead: {

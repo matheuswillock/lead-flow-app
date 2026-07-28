@@ -68,6 +68,7 @@ import { leadCustomFieldRepository } from "@/app/api/infra/data/repositories/lea
 import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
 import { leadDuplicateCheckService } from "@/app/api/services/leadDuplicateCheck/LeadDuplicateCheckService";
 import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
+import { outboundEventPublisher } from "@/app/api/services/teamWebhook/OutboundEventPublisher";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -532,6 +533,24 @@ export class LeadUseCase implements ILeadUseCase {
             leadId: lead.id,
           })
           .catch(console.error);
+
+        await outboundEventPublisher.publish({
+          teamId,
+          eventKey: "lead_created",
+          leadId: lead.id,
+          payload: {
+            lead: {
+              id: lead.id,
+              leadCode: lead.leadCode,
+              name: lead.name,
+              status: lead.status,
+              email: lead.email,
+              phone: lead.phone,
+            },
+          },
+        }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
       }
 
       if (data.customFields !== undefined) {
@@ -1135,6 +1154,21 @@ export class LeadUseCase implements ILeadUseCase {
             data.assignedTo,
           );
         }
+
+        if (existingLead?.teamId && data.assignedTo) {
+          await outboundEventPublisher.publish({
+            teamId: existingLead.teamId,
+            eventKey: "lead_assigned",
+            leadId: id,
+            payload: {
+              lead: { id, name: lead.name },
+              assigned_to: data.assignedTo,
+              previous_assigned_to: existingLead.assignedTo ?? null,
+            },
+          }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
+        }
       }
 
       const resolvedCloserId =
@@ -1732,6 +1766,22 @@ export class LeadUseCase implements ILeadUseCase {
             })
             .catch(console.error);
 
+          await outboundEventPublisher.publish({
+            teamId: existingLead.teamId,
+            eventKey: "lead_status_changed",
+            leadId: id,
+            payload: {
+              lead: {
+                id,
+                name: lead.name,
+                status,
+                previous_status: existingLead.status,
+              },
+            },
+          }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
+
           this.syncLeadToRadarInline(id, existingLead.teamId);
         }
       }
@@ -1814,6 +1864,21 @@ export class LeadUseCase implements ILeadUseCase {
           { id: lead.id, leadCode: lead.leadCode ?? null, name: lead.name },
           operatorId,
         );
+
+        if (existingLead.teamId) {
+          await outboundEventPublisher.publish({
+            teamId: existingLead.teamId,
+            eventKey: "lead_assigned",
+            leadId: id,
+            payload: {
+              lead: { id, name: lead.name },
+              assigned_to: operatorId,
+              previous_assigned_to: existingLead.assignedTo ?? null,
+            },
+          }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
+        }
       }
 
       return new Output(true, ["Lead atribuído ao operador com sucesso"], [], this.transformToDTO(lead));

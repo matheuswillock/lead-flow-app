@@ -427,6 +427,13 @@ enum BackofficeProductBillingMode {
   @@map("backoffice_product_billing_mode")
 }
 
+enum InstallmentSplitMode {
+  EQUAL
+  CUSTOM
+
+  @@map("installment_split_mode")
+}
+
 enum BackofficePaymentMethod {
   PIX
   CREDIT_CARD
@@ -600,8 +607,62 @@ enum NotificationType {
   BETHANIA_AUTH_CODE
   EMAIL_IMPORT_COMPLETED
   AUTOMATION_RULE
+  WEBHOOK_AUTO_PAUSED
 
   @@map("notification_type")
+}
+
+enum TeamWebhookDirection {
+  inbound
+  outbound
+
+  @@map("team_webhook_direction")
+}
+
+enum TeamWebhookStatus {
+  active
+  paused
+  disabled
+
+  @@map("team_webhook_status")
+}
+
+enum TeamWebhookDestinationPreset {
+  generic
+  slack
+  teams
+  zapier
+
+  @@map("team_webhook_destination_preset")
+}
+
+enum TeamWebhookEventKey {
+  lead_created
+  lead_status_changed
+  lead_assigned
+  appointment_created
+  appointment_reminder
+  activity_created
+
+  @@map("team_webhook_event_key")
+}
+
+enum TeamWebhookLogResult {
+  success
+  failure
+  rejected
+
+  @@map("team_webhook_log_result")
+}
+
+enum TeamWebhookOutboxStatus {
+  pending
+  processing
+  delivered
+  failed
+  cancelled
+
+  @@map("team_webhook_outbox_status")
 }
 
 enum TeamAutomationTriggerType {
@@ -856,6 +917,7 @@ model Profile {
   webPushSubscriptions        ProfileWebPushSubscription[] @relation("ProfileWebPushSubscriptions")
   webPushConsent              ProfileWebPushConsent?       @relation("ProfileWebPushConsents")
   updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
+  updatedTeamWebhooks         TeamWebhook[]             @relation("TeamWebhookUpdater")
   createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
   createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
   createdTeamAutomationRules  TeamAutomationRule[]      @relation("TeamAutomationRuleCreator")
@@ -2233,6 +2295,9 @@ model Team {
   notifications            Notification[]
   studioWebhookConfig      TeamStudioWebhookConfig?
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
+  teamWebhooks             TeamWebhook[]
+  teamWebhookEventLogs     TeamWebhookEventLog[]
+  teamWebhookOutbox        TeamWebhookOutbox[]
   filterPresets            TeamFilterPreset[]
   statusRules              TeamStatusRule[]
   automationRules          TeamAutomationRule[]
@@ -2467,6 +2532,89 @@ model TeamStudioWebhookRequestLog {
   @@index([teamId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("corretor_studio_team_studio_webhook_request_logs")
+}
+
+model TeamWebhook {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  teamId             String                        @db.Uuid
+  direction          TeamWebhookDirection
+  status             TeamWebhookStatus             @default(active)
+  name               String                        @db.Text
+  targetUrl          String?                       @db.Text
+  destinationPreset  TeamWebhookDestinationPreset?
+  selectedEvents     TeamWebhookEventKey[]         @default([])
+  failureStreak      Int                           @default(0)
+  failureThreshold   Int                           @default(10)
+  pausedAt           DateTime?                     @db.Timestamptz(6)
+  pauseReason        String?                       @db.Text
+  tokenHash          String?                       @db.Text
+  tokenCipher        String?                       @db.Text
+  tokenPreview       String?                       @db.Text
+  expiryMode         StudioWebhookTokenExpiryMode?
+  expiresAt          DateTime?                     @db.Timestamptz(6)
+  lastUsedAt         DateTime?                     @db.Timestamptz(6)
+  lastSuccessAt      DateTime?                     @db.Timestamptz(6)
+  lastFailureAt      DateTime?                     @db.Timestamptz(6)
+  updatedByProfileId String                        @db.Uuid
+  createdAt          DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                      @updatedAt @db.Timestamptz(6)
+
+  team      Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  updatedBy Profile              @relation("TeamWebhookUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+  eventLogs TeamWebhookEventLog[]
+  outbox    TeamWebhookOutbox[]
+
+  @@index([teamId, direction, status])
+  @@index([teamId, direction, createdAt(sort: Desc)])
+  @@index([updatedByProfileId])
+  @@index([expiresAt])
+  @@map("corretor_studio_team_webhooks")
+}
+
+model TeamWebhookEventLog {
+  id              String               @id @default(uuid()) @db.Uuid
+  teamId          String               @db.Uuid
+  webhookId       String               @db.Uuid
+  direction       TeamWebhookDirection
+  result          TeamWebhookLogResult
+  eventKey        TeamWebhookEventKey?
+  method          String?              @db.Text
+  endpoint        String?              @db.Text
+  statusCode      Int?
+  requestPayload  Json?
+  responsePayload Json?
+  errorMessage    String?              @db.Text
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
+
+  team    Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  webhook TeamWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt(sort: Desc)])
+  @@index([teamId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("corretor_studio_team_webhook_event_logs")
+}
+
+model TeamWebhookOutbox {
+  id            String                  @id @default(uuid()) @db.Uuid
+  teamId        String                  @db.Uuid
+  webhookId     String                  @db.Uuid
+  eventKey      TeamWebhookEventKey
+  payload       Json
+  status        TeamWebhookOutboxStatus @default(pending)
+  attemptCount  Int                     @default(0)
+  nextAttemptAt DateTime                @default(now()) @db.Timestamptz(6)
+  lastError     String?                 @db.Text
+  createdAt     DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime                @updatedAt @db.Timestamptz(6)
+
+  team    Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  webhook TeamWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([webhookId, status])
+  @@index([teamId, createdAt(sort: Desc)])
+  @@map("corretor_studio_team_webhook_outbox")
 }
 
 model Notification {
@@ -3107,11 +3255,13 @@ model BackofficeProductPaymentRule {
   productId       String                         @db.Uuid
   paymentMethod   BackofficePaymentMethod
   billingCycle    BackofficeAdhesionBillingCycle
-  price           Decimal                        @db.Decimal(10, 2)
-  canInstallment  Boolean                        @default(false)
-  maxInstallments Int                            @default(1)
-  createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
+  price                Decimal              @db.Decimal(10, 2)
+  canInstallment       Boolean              @default(false)
+  maxInstallments      Int                  @default(1)
+  installmentSplitMode InstallmentSplitMode @default(EQUAL) @map("installmentSplitMode")
+  installmentSchedule  Json                 @default("[]") @map("installmentSchedule")
+  createdAt            DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
 
   product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "backoffice_product_payment_rules_productid_fkey")
 

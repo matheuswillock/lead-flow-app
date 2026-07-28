@@ -9,6 +9,7 @@ import {
 import { emailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
+import { outboundEventPublisher } from "@/app/api/services/teamWebhook/OutboundEventPublisher";
 import { Output } from "@/lib/output";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
@@ -945,6 +946,20 @@ export class LeadScheduleService implements ILeadScheduleService {
         },
       })
       .catch(console.error);
+
+    await outboundEventPublisher.publish({
+      teamId,
+      eventKey: "appointment_created",
+      leadId,
+      payload: {
+        schedule: {
+          id: persisted.schedule.id,
+          meeting_date: meetingDate.toISOString(),
+        },
+      },
+    }).catch((error) => {
+            console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
+          });
 
     return new Output(
       true,

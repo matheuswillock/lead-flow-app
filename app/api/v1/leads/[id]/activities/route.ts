@@ -8,6 +8,7 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 import { createTaskUseCase } from "@/app/api/useCases/task/CreateTaskUseCase";
 import { invalidateLeadActivitiesCache, invalidateTeamTasksCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { outboundEventPublisher } from "@/app/api/services/teamWebhook/OutboundEventPublisher";
 
 const mentionSchema = z.object({
   profileId: z.string().uuid("profileId deve ser um UUID válido"),
@@ -188,6 +189,28 @@ export async function POST(
         console.error("[LeadActivitiesRoute][POST] Erro ao criar notificações de menção:", notificationError);
       }
     }
+
+    await outboundEventPublisher
+      .publish({
+        teamId: teamAccess.access.teamId,
+        eventKey: "activity_created",
+        leadId: lead.id,
+        payload: {
+          lead: {
+            id: lead.id,
+            leadCode: lead.leadCode ?? null,
+            name: lead.name,
+          },
+          activity: {
+            id: activity.id,
+            type: activity.type,
+            body: validation.data.body.trim(),
+          },
+        },
+      })
+      .catch((error) => {
+        console.error("[LeadActivitiesRoute][POST] Falha ao enfileirar activity_created:", error);
+      });
 
     const output = new Output(true, ["Atividade adicionada com sucesso"], [], activity);
     invalidateLeadActivitiesCache({ leadId });

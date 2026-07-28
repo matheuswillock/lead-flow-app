@@ -136,7 +136,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
-      expect(output.errorMessages[0]).toContain("Falha ao executar backup")
+      expect(output.errorMessages[0]).toBe("pg_dump failed")
       expect(lastUpdate[0]?.status).toBe("failed")
       expect(lastUpdate[0]?.errorMessage).toBe("pg_dump failed")
     })
