@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -91,7 +92,7 @@ function isCycleValid(
 }
 
 function canSubmit(formData: BackofficeProductFormData): boolean {
-  if (!formData.name.trim() || !formData.featureSlug.trim()) return false
+  if (!formData.name.trim() || formData.featureSlugs.length === 0) return false
   if (formData.billingMode === "RECURRING") {
     if (formData.activeCycles.length === 0) return false
     return formData.activeCycles.every((key) => isCycleValid(formData, key))
@@ -101,7 +102,7 @@ function canSubmit(formData: BackofficeProductFormData): boolean {
 
 function submitBlockedReason(formData: BackofficeProductFormData): string | null {
   if (!formData.name.trim()) return "Informe o nome da precificação."
-  if (!formData.featureSlug.trim()) return "Selecione a funcionalidade."
+  if (formData.featureSlugs.length === 0) return "Selecione ao menos uma funcionalidade."
   if (formData.billingMode === "LIFETIME") {
     if (formData.priceLifetime && !hasPositivePrice(formData.priceLifetime)) {
       return "Informe um preço vitalício válido ou deixe em branco."
@@ -137,6 +138,7 @@ export function BackofficeProductDialog() {
     availableFeatureSlugs,
     isSaving,
     setFormField,
+    toggleFeatureSlug,
     setPaymentRuleField,
     setInstallmentSplitMode,
     setInstallmentGroup,
@@ -180,48 +182,50 @@ export function BackofficeProductDialog() {
                 placeholder="Ex.: CRM - Radar"
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="product-slug">Slug da funcionalidade *</Label>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>Slugs da funcionalidade *</Label>
               {dialogMode === "edit" ? (
                 <>
-                  <Input
-                    id="product-slug"
-                    value={formData.featureSlug}
-                    disabled
-                    className="font-mono text-xs"
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    {formData.featureSlugs.map((slug) => (
+                      <Badge key={slug} variant="outline" className="font-mono text-xs">
+                        {slug}
+                      </Badge>
+                    ))}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    O slug da funcionalidade não pode ser alterado após a criação.
+                    Os slugs não podem ser alterados após a criação.
                   </p>
                 </>
               ) : (
                 <>
-                  <Select
-                    value={formData.featureSlug}
-                    disabled={isSaving}
-                    onValueChange={(value) => setFormField("featureSlug", value)}
-                  >
-                    <SelectTrigger id="product-slug">
-                      <SelectValue placeholder="Selecione a funcionalidade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {availableFeatureSlugs.length === 0 ? (
-                          <SelectItem value="__none__" disabled>
-                            Nenhuma funcionalidade disponível
-                          </SelectItem>
-                        ) : (
-                          availableFeatureSlugs.map((slug) => (
-                            <SelectItem key={slug} value={slug}>
-                              {slug}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex max-h-40 flex-col gap-2 overflow-y-auto rounded-md border p-3">
+                    {availableFeatureSlugs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhuma funcionalidade disponível</p>
+                    ) : (
+                      availableFeatureSlugs.map((slug) => {
+                        const checked = formData.featureSlugs.includes(slug)
+                        return (
+                          <label
+                            key={slug}
+                            htmlFor={`feature-slug-${slug}`}
+                            className="flex cursor-pointer items-center gap-2 text-sm"
+                          >
+                            <Checkbox
+                              id={`feature-slug-${slug}`}
+                              checked={checked}
+                              disabled={isSaving}
+                              onCheckedChange={() => toggleFeatureSlug(slug)}
+                            />
+                            <span className="font-mono text-xs">{slug}</span>
+                          </label>
+                        )
+                      })
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Várias precificações podem usar o mesmo slug (ex.: CRM padrão e CRM - Radar).
+                    Um pacote pode liberar vários slugs (ex.: CRM + Radar). Várias precificações
+                    podem incluir o mesmo slug.
                   </p>
                 </>
               )}

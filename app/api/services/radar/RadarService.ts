@@ -31,6 +31,7 @@ import {
   type RadarResolvableProfile,
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
+import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
   formatDisplayPhone,
   isValidRadarPrimaryIdentity,
@@ -397,81 +398,115 @@ export class RadarService {
     return counters
   }
 
+  private async processEmailContactForRadar(
+    scope: RadarTeamScope,
+    contact: {
+      id: string
+      email: string
+      name: string | null
+      isUnsubscribed: boolean
+      isBounced: boolean
+      isComplained: boolean
+      updatedAt: Date
+    },
+    counters: SyncCounters
+  ): Promise<void> {
+    try {
+      const normalizedEmail = normalizeRadarEmail(contact.email)
+
+      const phoneFromCustom = contact.name
+        ? await radarRepository.findLeadPhoneByEmail(scope.teamId, normalizedEmail)
+        : null
+      const hasValidPhone = Boolean(
+        contact.name && phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)
+      )
+
+      const resolved = hasValidPhone
+        ? await radarRepository.resolveProfileForPhone({
+            teamId: scope.teamId,
+            normalizedPhone: normalizeRadarPhone(phoneFromCustom!.phone),
+            normalizedName: normalizeRadarName(contact.name!),
+            displayName: contact.name!.trim(),
+            displayPhone: formatDisplayPhone(phoneFromCustom!.phone),
+            phoneValue: phoneFromCustom!.phone,
+            phoneSource: "email",
+            primaryEmail: contact.email,
+            normalizedPrimaryEmail: normalizedEmail,
+            lastSeenAt: contact.updatedAt,
+          })
+        : await radarRepository.resolveProfileForEmail({
+            teamId: scope.teamId,
+            normalizedEmail,
+            emailValue: contact.email,
+            displayName: contact.name?.trim() ?? null,
+            normalizedName: contact.name ? normalizeRadarName(contact.name) : null,
+            emailSource: "email_contact",
+            lastSeenAt: contact.updatedAt,
+          })
+
+      const profile = resolved.profile
+      if (resolved.wasExisting) counters.enriched += 1
+      else counters.created += 1
+
+      await radarRepository.upsertIdentity({
+        profileId: profile.id,
+        teamId: scope.teamId,
+        type: "email",
+        value: contact.email,
+        normalizedValue: normalizedEmail,
+        source: "email",
+      })
+
+      await radarRepository.upsertIdentity({
+        profileId: profile.id,
+        teamId: scope.teamId,
+        type: "email_contact_id",
+        value: contact.id,
+        normalizedValue: contact.id,
+        source: "email",
+      })
+
+      await radarRepository.upsertSourceLink({
+        profileId: profile.id,
+        teamId: scope.teamId,
+        sourceType: "email_contact",
+        sourceId: contact.id,
+      })
+
+      const consent = consentFromEmailFlags(contact)
+      await radarRepository.upsertConsent({
+        profileId: profile.id,
+        teamId: scope.teamId,
+        channel: "email",
+        status: consent.status,
+        reason: consent.reason,
+        sourceType: "email_contact",
+        sourceId: contact.id,
+      })
+    } catch (error) {
+      counters.errors.push(`contact:${contact.id}`)
+      console.error("[RadarService][syncFromEmail] contact", contact.id, error)
+    }
+  }
+
   async syncFromEmail(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
+
+    if (filters.emailContactId) {
+      const contact = await radarRepository.findEmailContactById(filters.emailContactId)
+      if (contact && contact.list.teamId === scope.teamId) {
+        await this.processEmailContactForRadar(scope, contact, counters)
+      }
+      return counters
+    }
+
     const lists = await radarRepository.findEmailContactLists(scope.teamId)
 
     for (const list of lists) {
       const contacts = await radarRepository.findEmailContacts(list.id)
 
       for (const contact of contacts) {
-        try {
-          const normalizedEmail = normalizeRadarEmail(contact.email)
-          let profile = await radarRepository.findProfileByEmail(scope.teamId, normalizedEmail)
-
-          if (!profile && contact.name) {
-            const phoneFromCustom = await radarRepository.findLeadPhoneByEmail(scope.teamId, normalizedEmail)
-            if (phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)) {
-              profile = await radarRepository.upsertProfile({
-                teamId: scope.teamId,
-                displayName: contact.name.trim(),
-                normalizedName: normalizeRadarName(contact.name),
-                displayPhone: formatDisplayPhone(phoneFromCustom.phone),
-                normalizedPhone: normalizeRadarPhone(phoneFromCustom.phone),
-                primaryEmail: contact.email,
-                normalizedPrimaryEmail: normalizedEmail,
-                lastSeenAt: contact.updatedAt,
-              })
-              counters.created += 1
-            }
-          }
-
-          if (!profile) {
-            counters.skipped += 1
-            continue
-          }
-
-          counters.enriched += 1
-
-          await radarRepository.upsertIdentity({
-            profileId: profile.id,
-            teamId: scope.teamId,
-            type: "email",
-            value: contact.email,
-            normalizedValue: normalizedEmail,
-            source: "email",
-          })
-
-          await radarRepository.upsertIdentity({
-            profileId: profile.id,
-            teamId: scope.teamId,
-            type: "email_contact_id",
-            value: contact.id,
-            normalizedValue: contact.id,
-            source: "email",
-          })
-
-          await radarRepository.upsertSourceLink({
-            profileId: profile.id,
-            teamId: scope.teamId,
-            sourceType: "email_contact",
-            sourceId: contact.id,
-          })
-
-          const consent = consentFromEmailFlags(contact)
-          await radarRepository.upsertConsent({
-            profileId: profile.id,
-            teamId: scope.teamId,
-            channel: "email",
-            status: consent.status,
-            reason: consent.reason,
-            sourceType: "email_contact",
-            sourceId: contact.id,
-          })
-        } catch (error) {
-          counters.errors.push(`contact:${contact.id}`)
-          console.error("[RadarService][syncFromEmail] contact", contact.id, error)
-        }
+        await this.processEmailContactForRadar(scope, contact, counters)
       }
     }
 
@@ -785,26 +820,41 @@ export class RadarService {
     occurredAt: Date
     metadata?: Record<string, unknown>
   }) {
-    const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
-    let profile = await radarRepository.findProfileByEmail(input.teamId, normalizedEmail)
+    if (!(await teamHasRadarFeature(input.teamId))) return
 
-    if (!profile && input.recipientName) {
-      const lead = await radarRepository.findLeadPhoneByEmail(input.teamId, normalizedEmail)
-      if (lead?.phone && isValidRadarPrimaryIdentity(lead.phone, input.recipientName)) {
-        profile = await radarRepository.upsertProfile({
+    const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
+
+    const lead = input.recipientName
+      ? await radarRepository.findLeadPhoneByEmail(input.teamId, normalizedEmail)
+      : null
+    const hasValidPhone = Boolean(
+      input.recipientName && lead?.phone && isValidRadarPrimaryIdentity(lead.phone, input.recipientName)
+    )
+
+    const resolved = hasValidPhone
+      ? await radarRepository.resolveProfileForPhone({
           teamId: input.teamId,
-          displayName: input.recipientName.trim(),
-          normalizedName: normalizeRadarName(input.recipientName),
-          displayPhone: formatDisplayPhone(lead.phone),
-          normalizedPhone: normalizeRadarPhone(lead.phone),
+          normalizedPhone: normalizeRadarPhone(lead!.phone),
+          normalizedName: normalizeRadarName(input.recipientName!),
+          displayName: input.recipientName!.trim(),
+          displayPhone: formatDisplayPhone(lead!.phone),
+          phoneValue: lead!.phone,
+          phoneSource: "email",
           primaryEmail: input.recipientEmail,
           normalizedPrimaryEmail: normalizedEmail,
           lastSeenAt: input.occurredAt,
         })
-      }
-    }
+      : await radarRepository.resolveProfileForEmail({
+          teamId: input.teamId,
+          normalizedEmail,
+          emailValue: input.recipientEmail,
+          displayName: input.recipientName?.trim() ?? null,
+          normalizedName: input.recipientName ? normalizeRadarName(input.recipientName) : null,
+          emailSource: "email_log",
+          lastSeenAt: input.occurredAt,
+        })
 
-    if (!profile) return
+    const profile = resolved.profile
 
     const mapped = EMAIL_EVENT_MAP[input.eventType]
     if (!mapped) return

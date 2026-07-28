@@ -95,12 +95,15 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
     const pageSize = Math.min(50, Math.max(1, Number(searchParams.get("pageSize") ?? "20") || 20));
     const status = searchParams.get("status") as "active" | "paused" | "disabled" | null;
+    const searchRaw = searchParams.get("search")?.trim() ?? "";
+    const search = searchRaw.length > 0 ? searchRaw.slice(0, 120) : undefined;
 
     const output = await teamWebhookUseCase.list(
       auth.access,
       {
         direction: directionParse.data,
         status: status ?? undefined,
+        search,
         page,
         pageSize,
       },

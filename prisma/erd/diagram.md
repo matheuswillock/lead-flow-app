@@ -2555,7 +2555,7 @@ meeting_scheduled meeting_scheduled
   "backoffice_products" {
     String id "🗝️"
     String name 
-    String featureSlug 
+    String featureSlugs 
     String description "❓"
     BackofficeProductType type 
     BackofficeProductBillingMode billingMode 
@@ -3100,8 +3100,8 @@ meeting_scheduled meeting_scheduled
     String id "🗝️"
     String normalizedName 
     String displayName 
-    String normalizedPhone 
-    String displayPhone 
+    String normalizedPhone "❓"
+    String displayPhone "❓"
     String primaryEmail "❓"
     String normalizedPrimaryEmail "❓"
     String primaryDocument "❓"

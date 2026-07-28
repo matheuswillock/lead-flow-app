@@ -370,9 +370,21 @@ export function BackofficeStudioBotOpsContainer() {
                   </Button>
                 </div>
                 {rotatedToken ? (
-                  <p className="break-all rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs">
-                    {rotatedToken}
-                  </p>
+                  <div className="flex flex-col gap-2">
+                    <p className="break-all rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs">
+                      {rotatedToken}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Copie este valor para{" "}
+                      <span className="font-mono">/opt/lead-flow-bot/.env.ops</span> como{" "}
+                      <span className="font-mono">OPS_AGENT_TOKEN</span> e para a Vercel como{" "}
+                      <span className="font-mono">BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN</span>.
+                      Depois:{" "}
+                      <span className="font-mono">
+                        docker compose -f docker-compose.vps.yml up -d --force-recreate studio-bot-ops
+                      </span>
+                    </p>
+                  </div>
                 ) : null}
               </CardContent>
             </Card>

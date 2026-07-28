@@ -22,7 +22,7 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   const payload: Record<string, unknown> = {}
 
   if (data.name !== undefined) payload.name = data.name
-  if (data.featureSlug !== undefined) payload.featureSlug = data.featureSlug
+  if (data.featureSlugs !== undefined) payload.featureSlugs = data.featureSlugs
   if ("description" in data) payload.description = data.description || null
   if (data.type !== undefined) payload.type = data.type
   if (data.billingMode !== undefined) payload.billingMode = data.billingMode

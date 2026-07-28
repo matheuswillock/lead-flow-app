@@ -23,7 +23,7 @@ export type ActiveFeatureRecord = Pick<
 }
 
 export interface ActiveUserSubscriptionRecord {
-  product: { featureSlug: string }
+  product: { featureSlugs: string[] }
 }
 
 export interface OwnerUserTypeAssignment {
@@ -62,7 +62,7 @@ export interface IFeatureAccessRepository {
   findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
   findOwnerProfileSubscription(ownerProfileId: string): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
-      product: { featureSlug: string } | null
+      product: { featureSlugs: string[] } | null
     }) | null
   >
   listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]>

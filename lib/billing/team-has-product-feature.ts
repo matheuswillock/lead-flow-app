@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
+import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
 
 export async function teamHasProductFeature(
   teamId: string,
@@ -59,8 +60,8 @@ export async function teamHasProductFeature(
 
   const products = await prisma.backofficeProduct.findMany({
     where: { id: { in: productIds } },
-    select: { featureSlug: true },
+    select: { featureSlugs: true },
   })
 
-  return products.some((product) => product.featureSlug === productFeatureSlug)
+  return products.some((product) => productHasFeatureSlug(product, productFeatureSlug))
 }

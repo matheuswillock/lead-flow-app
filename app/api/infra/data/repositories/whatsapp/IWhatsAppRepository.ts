@@ -497,6 +497,16 @@ export interface IWhatsAppRepository {
     patch: Record<string, unknown>
   ): Promise<void>
 
+  softDeleteAllTeamConversationsWithAudit(input: {
+    teamId: string
+    actorProfileId: string
+  }): Promise<number>
+
+  requeueAllDeadLetterEvents(input: {
+    teamId: string
+    actorProfileId: string
+  }): Promise<number>
+
   getTeamOpsMetrics(teamId: string): Promise<{
     deadLetterCount: number
     pendingWebhookCount: number

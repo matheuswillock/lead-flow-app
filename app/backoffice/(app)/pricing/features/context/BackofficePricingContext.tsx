@@ -31,7 +31,8 @@ interface PricingContextValue {
   openEditDialog: (product: BackofficeProductItem) => void
   openDuplicateDialog: (product: BackofficeProductItem) => void
   closeDialog: () => void
-  setFormField: (field: keyof BackofficeProductFormData, value: string | boolean) => void
+  toggleFeatureSlug: (slug: string) => void
+  setFormField: (field: keyof BackofficeProductFormData, value: string | boolean | string[]) => void
   setPaymentRuleField: (
     cycle: BackofficeAdhesionBillingCycleKey,
     field: keyof BackofficeProductPaymentRuleFormEntry,
@@ -89,7 +90,7 @@ function productToFormData(product: BackofficeProductItem): BackofficeProductFor
 
   return {
     name: product.name,
-    featureSlug: product.featureSlug,
+    featureSlugs: product.featureSlugs,
     description: product.description ?? "",
     type: product.type,
     billingMode: product.billingMode,
@@ -181,11 +182,21 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
   }, [isSaving])
 
   const setFormField = useCallback(
-    (field: keyof BackofficeProductFormData, value: string | boolean) => {
+    (field: keyof BackofficeProductFormData, value: string | boolean | string[]) => {
       setFormData((prev) => ({ ...prev, [field]: value }))
     },
     []
   )
+
+  const toggleFeatureSlug = useCallback((slug: string) => {
+    setFormData((prev) => {
+      const has = prev.featureSlugs.includes(slug)
+      const featureSlugs = has
+        ? prev.featureSlugs.filter((item) => item !== slug)
+        : [...prev.featureSlugs, slug]
+      return { ...prev, featureSlugs }
+    })
+  }, [])
 
   const setPaymentRuleField = useCallback(
     (
@@ -362,6 +373,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         openDuplicateDialog,
         closeDialog,
         setFormField,
+        toggleFeatureSlug,
         setPaymentRuleField,
         setInstallmentSplitMode,
         setInstallmentGroup,
