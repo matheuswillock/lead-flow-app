@@ -171,6 +171,133 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     )
   }
 
+  async findLockedBillingCycles(
+    productId: string
+  ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">> {
+    // Lock via tabela Backoffice* (não consulta ProfileSubscription do domínio produto).
+    const userSubs = await prisma.backofficeUserSubscription.findMany({
+      where: { productId, status: "active" },
+      select: { cycle: true },
+    })
+
+    const locked = new Set<"monthly" | "quarterly" | "semiannual" | "annual">()
+    const normalize = (value: string | null | undefined) => {
+      if (!value) return null
+      const lower = value.toLowerCase()
+      if (
+        lower === "monthly" ||
+        lower === "quarterly" ||
+        lower === "semiannual" ||
+        lower === "annual"
+      ) {
+        return lower as "monthly" | "quarterly" | "semiannual" | "annual"
+      }
+      return null
+    }
+
+    for (const sub of userSubs) {
+      const cycle = normalize(sub.cycle)
+      if (cycle) locked.add(cycle)
+    }
+
+    // Assinatura ativa sem ciclo: trava todos os ciclos já existentes no produto
+    const hasActiveWithoutCycle = userSubs.some((sub) => !sub.cycle)
+    if (hasActiveWithoutCycle) {
+      const existing = await prisma.backofficeProductPaymentRule.findMany({
+        where: { productId },
+        select: { billingCycle: true },
+      })
+      for (const rule of existing) {
+        const cycle = normalize(rule.billingCycle)
+        if (cycle) locked.add(cycle)
+      }
+    }
+
+    return Array.from(locked)
+  }
+
+  async syncPaymentRules(
+    productId: string,
+    rules: UpsertPaymentRuleInput[],
+    lockedCycles: Array<"monthly" | "quarterly" | "semiannual" | "annual">
+  ): Promise<{ blockedRemovals: string[]; blockedUpdates: string[] }> {
+    const existing = await prisma.backofficeProductPaymentRule.findMany({ where: { productId } })
+    const locked = new Set(lockedCycles)
+    const incomingKeys = new Set(rules.map((r) => `${r.paymentMethod}:${r.billingCycle}`))
+    const blockedRemovals: string[] = []
+    const blockedUpdates: string[] = []
+
+    const toDelete = existing.filter((rule) => {
+      const key = `${rule.paymentMethod}:${rule.billingCycle}`
+      if (incomingKeys.has(key)) return false
+      if (locked.has(rule.billingCycle as "monthly" | "quarterly" | "semiannual" | "annual")) {
+        blockedRemovals.push(rule.billingCycle)
+        return false
+      }
+      return true
+    })
+
+    const safeRules: UpsertPaymentRuleInput[] = []
+    for (const rule of rules) {
+      const current = existing.find(
+        (item) =>
+          item.paymentMethod === rule.paymentMethod && item.billingCycle === rule.billingCycle
+      )
+      if (
+        current &&
+        locked.has(rule.billingCycle) &&
+        (Number(current.price.toString()) !== rule.price ||
+          (current.installmentSplitMode ?? "EQUAL") !== (rule.installmentSplitMode ?? "EQUAL") ||
+          (current.canInstallment ?? false) !== (rule.canInstallment ?? false) ||
+          current.maxInstallments !== rule.maxInstallments ||
+          JSON.stringify(current.installmentSchedule ?? []) !==
+            JSON.stringify(rule.installmentSchedule ?? []))
+      ) {
+        blockedUpdates.push(rule.billingCycle)
+        continue
+      }
+      safeRules.push(rule)
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (toDelete.length) {
+        await tx.backofficeProductPaymentRule.deleteMany({
+          where: { id: { in: toDelete.map((r) => r.id) } },
+        })
+      }
+      for (const rule of safeRules) {
+        await tx.backofficeProductPaymentRule.upsert({
+          where: {
+            productId_paymentMethod_billingCycle: {
+              productId,
+              paymentMethod: rule.paymentMethod,
+              billingCycle: rule.billingCycle,
+            },
+          },
+          create: {
+            productId,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+            price: new Prisma.Decimal(rule.price),
+            canInstallment: rule.canInstallment,
+            maxInstallments: rule.maxInstallments,
+            installmentSplitMode: rule.installmentSplitMode ?? "EQUAL",
+            installmentSchedule: rule.installmentSchedule ?? [],
+          },
+          update: {
+            price: new Prisma.Decimal(rule.price),
+            canInstallment: rule.canInstallment,
+            maxInstallments: rule.maxInstallments,
+            installmentSplitMode: rule.installmentSplitMode ?? "EQUAL",
+            installmentSchedule: rule.installmentSchedule ?? [],
+          },
+        })
+      }
+    })
+
+    return { blockedRemovals: Array.from(new Set(blockedRemovals)), blockedUpdates: Array.from(new Set(blockedUpdates)) }
+  }
+
   async delete(id: string): Promise<void> {
     await prisma.backofficeProduct.delete({ where: { id } })
   }

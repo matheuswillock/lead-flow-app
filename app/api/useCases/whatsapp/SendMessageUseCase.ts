@@ -19,6 +19,7 @@ function requestHash(input: SendMessageUseCaseInput): string {
       conversationId: input.conversationId,
       contentText: input.contentText ?? null,
       mentionedJids: input.mentionedJids ?? [],
+      quotedMessageId: input.quotedMessageId ?? null,
       media: input.media
         ? {
             mediatype: input.media.mediatype,
@@ -52,7 +53,26 @@ class SendMessageUseCase {
   async execute(input: SendMessageUseCaseInput): Promise<Output> {
     try {
       await assertCanAccessConversation(input.access, input.conversationId)
-      const intentHash = requestHash(input)
+
+      let quotedProviderMessageId = input.quotedProviderMessageId
+      const quotedMessageId = input.quotedMessageId
+      let quotedFromMe = input.quotedFromMe
+      if (quotedMessageId) {
+        const quoted = await whatsAppRepository.findMessageByIdForTeam(input.teamId, quotedMessageId)
+        if (!quoted || quoted.conversationId !== input.conversationId) {
+          return new Output(false, [], ["Mensagem citada não encontrada."], whatsappError("VALIDATION_ERROR"))
+        }
+        quotedProviderMessageId = quoted.providerMessageId ?? quotedProviderMessageId
+        quotedFromMe = quoted.direction === "OUTBOUND"
+      }
+
+      const resolvedInput: SendMessageUseCaseInput = {
+        ...input,
+        quotedMessageId,
+        quotedProviderMessageId,
+        quotedFromMe,
+      }
+      const intentHash = requestHash(resolvedInput)
 
       let claimedRetry = false
       const existing = await whatsAppRepository.findOutboundCommand(input.teamId, input.clientMessageId)
@@ -110,6 +130,8 @@ class SendMessageUseCase {
         storagePath: input.media?.storagePath,
         mediaSha256: input.media?.sha256?.toLowerCase(),
         mediaSizeBytes: input.media?.sizeBytes,
+        quotedMessageId: quotedMessageId,
+        quotedProviderMessageId: quotedProviderMessageId,
       })
       if (!durable.messageId) {
         return new Output(false, [], ["Não foi possível registrar a intenção de envio."], whatsappError("INTERNAL_ERROR"))
@@ -134,7 +156,7 @@ class SendMessageUseCase {
       }
 
       const result = await this.service.sendMessage({
-        ...input,
+        ...resolvedInput,
         pendingMessageId: durable.messageId,
         clientMessageId: input.clientMessageId,
       })

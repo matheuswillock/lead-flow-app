@@ -922,6 +922,23 @@ FAILED FAILED
     
 
 
+        WhatsAppMessageActionCommandKind {
+            REACT REACT
+UNREACT UNREACT
+DELETE_FOR_EVERYONE DELETE_FOR_EVERYONE
+        }
+    
+
+
+        WhatsAppMessageActionCommandStatus {
+            PENDING PENDING
+APPLIED APPLIED
+UNKNOWN UNKNOWN
+FAILED FAILED
+        }
+    
+
+
         WhatsAppOutboundCommandStatus {
             PENDING PENDING
 SENT SENT
@@ -1623,6 +1640,8 @@ meeting_scheduled meeting_scheduled
     Boolean hasUnlimitedUsers 
     Json additional_users_data 
     Json additional_teams_data 
+    Json installmentSchedule 
+    Json installmentLedger 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2831,7 +2850,6 @@ meeting_scheduled meeting_scheduled
     String qrCodeText "❓"
     String qrCodeImageUrl "❓"
     String webhookSecret 
-    String hostBaseUrl "❓"
     DateTime lastConnectedAt "❓"
     DateTime lastDisconnectedAt "❓"
     DateTime lastSyncAt "❓"
@@ -2901,7 +2919,58 @@ meeting_scheduled meeting_scheduled
     Int mediaAttemptCount 
     String mediaLastErrorCode "❓"
     DateTime mediaRetrievedAt "❓"
+    String quotedProviderMessageId "❓"
+    DateTime deletedForEveryoneAt "❓"
     DateTime deletedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_message_reactions" {
+    String id "🗝️"
+    String actorPhone "❓"
+    String emoji 
+    String providerReactionId "❓"
+    DateTime removedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_message_favorites" {
+    String id "🗝️"
+    DateTime createdAt 
+    }
+  
+
+  "whatsapp_message_pins" {
+    String id "🗝️"
+    DateTime pinnedAt 
+    DateTime expiresAt "❓"
+    DateTime removedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "whatsapp_message_visibility" {
+    String id "🗝️"
+    DateTime hiddenAt 
+    }
+  
+
+  "whatsapp_message_action_commands" {
+    String id "🗝️"
+    String clientActionId 
+    WhatsAppMessageActionCommandKind kind 
+    WhatsAppMessageActionCommandStatus status 
+    String requestHash "❓"
+    String emoji "❓"
+    Int attemptCount 
+    DateTime claimedAt "❓"
+    String lastError "❓"
+    DateTime reconciledAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3855,7 +3924,27 @@ meeting_scheduled meeting_scheduled
     "whatsapp_messages" }o--|| team_whatsapp_configs : "config"
     "whatsapp_messages" }o--|o corretor_studio_leads : "lead"
     "whatsapp_messages" }o--|o corretor_studio_profiles : "sentByProfile"
+    "whatsapp_messages" }o--|o corretor_studio_profiles : "deletedByProfile"
     "whatsapp_messages" }o--|o whatsapp_auto_response_rules : "autoResponseRule"
+    "whatsapp_messages" |o--|o whatsapp_messages : "quotedMessage"
+    "whatsapp_message_reactions" }o--|| whatsapp_messages : "message"
+    "whatsapp_message_reactions" }o--|| corretor_studio_teams : "team"
+    "whatsapp_message_reactions" }o--|o corretor_studio_profiles : "profile"
+    "whatsapp_message_favorites" }o--|| whatsapp_messages : "message"
+    "whatsapp_message_favorites" }o--|| corretor_studio_teams : "team"
+    "whatsapp_message_favorites" }o--|| corretor_studio_profiles : "profile"
+    "whatsapp_message_pins" }o--|| whatsapp_messages : "message"
+    "whatsapp_message_pins" }o--|| corretor_studio_teams : "team"
+    "whatsapp_message_pins" }o--|| whatsapp_conversations : "conversation"
+    "whatsapp_message_pins" }o--|| corretor_studio_profiles : "pinnedBy"
+    "whatsapp_message_visibility" }o--|| whatsapp_messages : "message"
+    "whatsapp_message_visibility" }o--|| corretor_studio_teams : "team"
+    "whatsapp_message_visibility" }o--|| corretor_studio_profiles : "profile"
+    "whatsapp_message_action_commands" |o--|| "WhatsAppMessageActionCommandKind" : "enum:kind"
+    "whatsapp_message_action_commands" |o--|| "WhatsAppMessageActionCommandStatus" : "enum:status"
+    "whatsapp_message_action_commands" }o--|| whatsapp_messages : "message"
+    "whatsapp_message_action_commands" }o--|| corretor_studio_teams : "team"
+    "whatsapp_message_action_commands" }o--|| corretor_studio_profiles : "profile"
     "whatsapp_outbound_commands" |o--|| "WhatsAppOutboundCommandStatus" : "enum:status"
     "whatsapp_outbound_commands" }o--|| corretor_studio_teams : "team"
     "whatsapp_outbound_commands" }o--|| whatsapp_conversations : "conversation"

@@ -74,6 +74,7 @@ export async function PATCH(
       phone: typeof data.phone === "string" ? data.phone : undefined,
       email: optionalString(data, "email"),
       cpfCnpj: optionalString(data, "cpfCnpj"),
+      productId: optionalString(data, "productId"),
       cycle: parseCycle(data.cycle),
       extraTeams: optionalInteger(data, "extraTeams"),
       extraUsers: optionalInteger(data, "extraUsers"),

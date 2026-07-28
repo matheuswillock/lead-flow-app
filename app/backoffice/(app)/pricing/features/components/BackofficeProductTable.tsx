@@ -17,7 +17,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { BackofficeProductItem } from "../context/BackofficePricingTypes"
+import type {
+  BackofficeAdhesionBillingCycleKey,
+  BackofficeProductItem,
+} from "../context/BackofficePricingTypes"
+import { BILLING_CYCLE_LABELS } from "../context/BackofficePricingTypes"
 import { useBackofficePricing } from "../context/BackofficePricingContext"
 
 function formatPrice(value: number | null): string {
@@ -25,27 +29,65 @@ function formatPrice(value: number | null): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
-function getCardPrice(
-  product: BackofficeProductItem,
-  cycle: "monthly" | "quarterly" | "semiannual" | "annual"
-): number | null {
-  const rule = product.paymentRules.find(
-    (r) => r.paymentMethod === "CREDIT_CARD" && r.billingCycle === cycle
-  )
-  return rule ? rule.price : null
+function getDefinedCycles(product: BackofficeProductItem): {
+  key: BackofficeAdhesionBillingCycleKey
+  price: number
+  splitMode: "EQUAL" | "CUSTOM"
+}[] {
+  const order: BackofficeAdhesionBillingCycleKey[] = [
+    "monthly",
+    "quarterly",
+    "semiannual",
+    "annual",
+  ]
+  const result: {
+    key: BackofficeAdhesionBillingCycleKey
+    price: number
+    splitMode: "EQUAL" | "CUSTOM"
+  }[] = []
+  for (const key of order) {
+    const card = product.paymentRules.find(
+      (r) => r.paymentMethod === "CREDIT_CARD" && r.billingCycle === key
+    )
+    const pix = product.paymentRules.find(
+      (r) => r.paymentMethod === "PIX" && r.billingCycle === key
+    )
+    if (card) {
+      result.push({
+        key,
+        price: card.price,
+        splitMode: card.installmentSplitMode,
+      })
+    } else if (pix) {
+      result.push({ key, price: pix.price, splitMode: "EQUAL" })
+    }
+  }
+  return result
 }
 
 interface Props {
   products: BackofficeProductItem[]
+  onCreate?: () => void
 }
 
-export function BackofficeProductTable({ products }: Props) {
+export function BackofficeProductTable({ products, onCreate }: Props) {
   const { canManage, openEditDialog, openDuplicateDialog, openDeleteDialog } = useBackofficePricing()
 
   if (products.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-sm gap-2">
-        <p>Nenhum produto cadastrado.</p>
+      <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-dashed py-16 text-center">
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium text-foreground">Nenhuma precificação cadastrada</p>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Crie tabelas de preço para as adesões. Uma precificação pode ter só um ciclo (ex.:
+            CRM - Radar só com trimestral) ou vários.
+          </p>
+        </div>
+        {canManage && onCreate ? (
+          <Button type="button" onClick={onCreate}>
+            Criar primeira precificação
+          </Button>
+        ) : null}
       </div>
     )
   }
@@ -59,28 +101,15 @@ export function BackofficeProductTable({ products }: Props) {
             <TableHead>Nome</TableHead>
             <TableHead className="text-center">Tipo</TableHead>
             <TableHead className="text-center">Modo</TableHead>
-            <TableHead className="text-center">Mensal</TableHead>
-            <TableHead className="text-center">Trimestral</TableHead>
-            <TableHead className="text-center">Semestral</TableHead>
-            <TableHead className="text-center">Anual</TableHead>
+            <TableHead>Ciclos</TableHead>
             <TableHead className="text-center">Vitalício</TableHead>
-            <TableHead className="text-center">Total</TableHead>
             <TableHead className="text-center">Status</TableHead>
             <TableHead className="text-center">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {products.map((product) => {
-            const cardMonthly = getCardPrice(product, "monthly")
-            const cardQuarterly = getCardPrice(product, "quarterly")
-            const cardSemiannual = getCardPrice(product, "semiannual")
-            const cardAnnual = getCardPrice(product, "annual")
-            const total =
-              product.billingMode === "LIFETIME"
-                ? product.priceLifetime
-                : cardAnnual != null
-                  ? cardAnnual * 12
-                  : null
+            const cycles = getDefinedCycles(product)
 
             return (
               <TableRow key={product.id}>
@@ -108,23 +137,26 @@ export function BackofficeProductTable({ products }: Props) {
                     {product.billingMode === "RECURRING" ? "Parcelado" : "Vitalício"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-center font-mono text-sm">
-                  {product.billingMode === "RECURRING" ? formatPrice(cardMonthly) : "—"}
-                </TableCell>
-                <TableCell className="text-center font-mono text-sm">
-                  {product.billingMode === "RECURRING" ? formatPrice(cardQuarterly) : "—"}
-                </TableCell>
-                <TableCell className="text-center font-mono text-sm">
-                  {product.billingMode === "RECURRING" ? formatPrice(cardSemiannual) : "—"}
-                </TableCell>
-                <TableCell className="text-center font-mono text-sm">
-                  {product.billingMode === "RECURRING" ? formatPrice(cardAnnual) : "—"}
+                <TableCell>
+                  {product.billingMode !== "RECURRING" ? (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  ) : cycles.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">Sem ciclos</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {cycles.map((cycle) => (
+                        <Badge key={cycle.key} variant="outline" className="font-normal">
+                          {BILLING_CYCLE_LABELS[cycle.key]}
+                          {cycle.splitMode === "CUSTOM" ? " · CUSTOM" : ""}
+                          {" · "}
+                          {formatPrice(cycle.price)}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell className="text-center font-mono text-sm">
                   {formatPrice(product.priceLifetime)}
-                </TableCell>
-                <TableCell className="text-center font-mono text-sm font-medium">
-                  {formatPrice(total)}
                 </TableCell>
                 <TableCell className="text-center">
                   <Badge variant={product.isActive ? "default" : "secondary"}>

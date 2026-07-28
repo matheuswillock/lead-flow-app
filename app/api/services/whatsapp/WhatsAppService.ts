@@ -514,6 +514,13 @@ class WhatsAppService implements IWhatsAppService {
           fileName: input.media.fileName,
           base64,
           caption: input.media.caption,
+          quoted: input.quotedProviderMessageId
+            ? {
+                providerMessageId: input.quotedProviderMessageId,
+                fromMe: input.quotedFromMe ?? false,
+                remoteJid: recipientJid,
+              }
+            : undefined,
         })
       } catch (error) {
         // Keep the private object for retry by clientMessageId; do not delete on provider failure.
@@ -531,6 +538,13 @@ class WhatsAppService implements IWhatsAppService {
         text,
         mentioned: input.mentionedJids,
         linkPreview: true,
+        quoted: input.quotedProviderMessageId
+          ? {
+              providerMessageId: input.quotedProviderMessageId,
+              fromMe: input.quotedFromMe ?? false,
+              remoteJid: recipientJid,
+            }
+          : undefined,
       })
     }
 
@@ -587,6 +601,12 @@ class WhatsAppService implements IWhatsAppService {
             storagePath,
             mediaSha256,
             mediaSizeBytes,
+            ...(input.quotedMessageId
+              ? { quotedMessage: { connect: { id: input.quotedMessageId } } }
+              : {}),
+            ...(input.quotedProviderMessageId
+              ? { quotedProviderMessageId: input.quotedProviderMessageId }
+              : {}),
             rawPayload,
           })
     } catch {

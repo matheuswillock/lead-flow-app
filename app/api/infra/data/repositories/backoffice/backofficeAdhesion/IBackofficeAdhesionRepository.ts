@@ -65,6 +65,8 @@ export interface CreateBackofficeAdhesionInput {
   hasUnlimitedUsers?: boolean
   additionalUsersData?: unknown[]
   additionalTeamsData?: unknown[]
+  installmentSchedule?: number[]
+  installmentLedger?: unknown[]
 }
 
 export interface UpdateBackofficeAdhesionInput {
@@ -91,6 +93,10 @@ export interface UpdateBackofficeAdhesionInput {
   tokenPlain?: string | null
   expiresAt?: Date
   hasUnlimitedUsers?: boolean
+  installmentLedger?: unknown[]
+  installmentSchedule?: number[]
+  asaasCustomerId?: string | null
+  paidAt?: Date | null
 }
 
 export interface UpdateBackofficeAdhesionCheckoutInput {
@@ -175,6 +181,11 @@ export interface IBackofficeAdhesionRepository {
   findById(id: string): Promise<BackofficeAdhesionWithRelations | null>
   findByLeadId(leadId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
+  findByLedgerAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
+  mutateInstallmentLedger(
+    id: string,
+    apply: (ledger: unknown) => unknown
+  ): Promise<BackofficeAdhesionWithRelations>
   findByTokenHash(tokenHash: string): Promise<BackofficeAdhesionWithRelations | null>
   update(
     id: string,
@@ -209,6 +220,7 @@ export interface IBackofficeAdhesionRepository {
       subscriptionNextDueDate: Date
     }
   ): Promise<void>
+  revokePaidAdhesionAccess(profileId: string): Promise<void>
   upsertProfileSubscription(data: {
     profileId: string
     adhesionId: string

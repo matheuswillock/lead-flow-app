@@ -2,11 +2,13 @@ import { Output } from "@/lib/output"
 import { processEvoWebhookUseCase } from "./ProcessEvoWebhookUseCase"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { getWhatsAppWebhookRetryAt, WHATSAPP_WEBHOOK_MAX_ATTEMPTS } from "./whatsappWebhookRetry"
+import { emitWhatsAppSloMetric } from "@/lib/whatsapp/slo-metrics"
 
 const OUTBOX_CONCURRENCY = 10
 
 class ProcessWhatsAppWebhookOutboxUseCase {
   async process(eventId: string): Promise<Output> {
+    const startedAt = Date.now()
     const event = await whatsAppRepository.claimWebhookEvent(eventId)
     if (!event) {
       return new Output(true, [], [], { skipped: true })
@@ -31,6 +33,18 @@ class ProcessWhatsAppWebhookOutboxUseCase {
       error: output.isValid ? undefined : output.errorMessages.join(" "),
       nextAttemptAt,
     })
+
+    emitWhatsAppSloMetric("whatsapp_webhook_to_ui_ms", {
+      result: output.isValid ? "ok" : "error",
+      ms: Date.now() - startedAt,
+      status: nextStatus,
+    })
+    if (nextStatus === "DEAD_LETTER") {
+      emitWhatsAppSloMetric("whatsapp_outbox_failure", {
+        status: "DEAD_LETTER",
+      })
+    }
+
     return output
   }
 

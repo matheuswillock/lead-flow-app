@@ -39,6 +39,9 @@ export interface SendMessageInput {
   clientMessageId?: string
   contentText?: string
   mentionedJids?: string[]
+  quotedMessageId?: string
+  quotedProviderMessageId?: string
+  quotedFromMe?: boolean
   media?: {
     mediatype: "image" | "document" | "audio" | "video"
     mimeType: string

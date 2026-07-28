@@ -1,5 +1,5 @@
 import type { IWhatsAppSettingsService } from './IWhatsAppSettingsService'
-import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber } from '../context/WhatsAppSettingsTypes'
+import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber, WhatsAppOpsMetrics } from '../context/WhatsAppSettingsTypes'
 
 class WhatsAppSettingsService implements IWhatsAppSettingsService {
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
@@ -96,6 +96,18 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
       throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar o uso do WhatsApp'))
     }
     return output.result as WhatsAppUsage
+  }
+
+  async fetchOpsMetrics(teamId: string, supabaseId: string): Promise<WhatsAppOpsMetrics> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/ops-metrics`, {
+      method: 'GET',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar as métricas operacionais'))
+    }
+    return output.result as WhatsAppOpsMetrics
   }
 
   async syncHistory(teamId: string, supabaseId: string): Promise<void> {
