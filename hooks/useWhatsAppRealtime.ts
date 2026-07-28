@@ -47,6 +47,7 @@ export type WhatsAppConversationRealtimeRow = {
   assignedProfileId: string | null
   leadId: string | null
   isArchived: boolean
+  deletedAt: string | null
   handoffMode: 'BOT' | 'HUMAN'
   createdAt: string
   updatedAt: string
@@ -124,6 +125,7 @@ function mapConversationRow(
     assignedProfileId: row.assignedProfileId ?? null,
     leadId: row.leadId ?? null,
     isArchived: row.isArchived ?? false,
+    deletedAt: row.deletedAt ?? null,
     handoffMode: row.handoffMode === 'HUMAN' ? 'HUMAN' : 'BOT',
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),

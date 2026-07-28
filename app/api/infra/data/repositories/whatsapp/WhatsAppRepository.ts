@@ -950,22 +950,26 @@ class WhatsAppRepository implements IWhatsAppRepository {
   }
 
   async requeueAllDeadLetterEvents(input: { teamId: string; actorProfileId: string }): Promise<number> {
-    const requeuedCount = await prisma.$executeRaw`
-      update whatsapp_webhook_events
-      set status = 'PENDING', "attemptCount" = 0, "lastError" = null,
-        "nextAttemptAt" = now(), "processingStartedAt" = null, "updatedAt" = now()
-      where "teamId" = ${input.teamId}::uuid and status = 'DEAD_LETTER'
-    `
-    const count = Number(requeuedCount)
-    if (count > 0) {
-      await this.createAuditEvent({
-        teamId: input.teamId,
-        actorProfileId: input.actorProfileId,
-        action: "webhook.dead_letter.requeue_all",
-        metadata: { requeuedCount: count },
-      })
-    }
-    return count
+    return prisma.$transaction(async (tx) => {
+      const requeuedCount = await tx.$executeRaw`
+        update whatsapp_webhook_events
+        set status = 'PENDING', "attemptCount" = 0, "lastError" = null,
+          "nextAttemptAt" = now(), "processingStartedAt" = null, "updatedAt" = now()
+        where "teamId" = ${input.teamId}::uuid and status = 'DEAD_LETTER'
+      `
+      const count = Number(requeuedCount)
+      if (count > 0) {
+        await tx.whatsAppAuditEvent.create({
+          data: {
+            teamId: input.teamId,
+            actorProfileId: input.actorProfileId,
+            action: "webhook.dead_letter.requeue_all",
+            metadata: { requeuedCount: count },
+          },
+        })
+      }
+      return count
+    })
   }
 
   async reconcileStaleOutboundCommands(now = new Date()): Promise<number> {

@@ -1316,8 +1316,18 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       assignedProfileId: string | null
       leadId: string | null
       isArchived: boolean
+      deletedAt?: string | null
       handoffMode?: 'BOT' | 'HUMAN'
     }) => {
+      if (row.deletedAt) {
+        setConversations((prev) => prev.filter((c) => c.id !== row.id))
+        if (selectedConversationIdRef.current === row.id) {
+          setSelectedConversationId(null)
+        }
+        void refreshUnreadCounts()
+        return
+      }
+
       if (!conversationIdsRef.current.has(row.id)) {
         if (filterTagIdsRef.current.length > 0) {
           scheduleConversationsRefetchForTagFilter()
@@ -1423,11 +1433,13 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       assignedProfileId: string | null
       leadId: string | null
       isArchived: boolean
+      deletedAt?: string | null
       handoffMode?: 'BOT' | 'HUMAN'
       welcomeSentAt?: string | null
       createdAt: string
       updatedAt: string
     }) => {
+      if (row.deletedAt) return
       if (row.teamId !== activeTeamId) return
 
       if (filterTagIdsRef.current.length > 0) {
