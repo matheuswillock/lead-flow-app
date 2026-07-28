@@ -427,6 +427,13 @@ enum BackofficeProductBillingMode {
   @@map("backoffice_product_billing_mode")
 }
 
+enum InstallmentSplitMode {
+  EQUAL
+  CUSTOM
+
+  @@map("installment_split_mode")
+}
+
 enum BackofficePaymentMethod {
   PIX
   CREDIT_CARD
@@ -3107,11 +3114,13 @@ model BackofficeProductPaymentRule {
   productId       String                         @db.Uuid
   paymentMethod   BackofficePaymentMethod
   billingCycle    BackofficeAdhesionBillingCycle
-  price           Decimal                        @db.Decimal(10, 2)
-  canInstallment  Boolean                        @default(false)
-  maxInstallments Int                            @default(1)
-  createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
+  price                Decimal              @db.Decimal(10, 2)
+  canInstallment       Boolean              @default(false)
+  maxInstallments      Int                  @default(1)
+  installmentSplitMode InstallmentSplitMode @default(EQUAL) @map("installmentSplitMode")
+  installmentSchedule  Json                 @default("[]") @map("installmentSchedule")
+  createdAt            DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
 
   product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "backoffice_product_payment_rules_productid_fkey")
 

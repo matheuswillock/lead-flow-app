@@ -10,8 +10,10 @@ import type {
   BackofficeProductItem,
   BackofficeProductPaymentRuleFormEntry,
   BackofficeProductPaymentRuleItem,
+  InstallmentGroup,
+  InstallmentSplitMode,
 } from "./BackofficePricingTypes"
-import { EMPTY_PRODUCT_FORM } from "./BackofficePricingTypes"
+import { EMPTY_PRODUCT_FORM, groupSchedule } from "./BackofficePricingTypes"
 import { toast } from "sonner"
 
 interface PricingContextValue {
@@ -35,6 +37,10 @@ interface PricingContextValue {
     field: keyof BackofficeProductPaymentRuleFormEntry,
     value: string
   ) => void
+  setInstallmentSplitMode: (cycle: BackofficeAdhesionBillingCycleKey, mode: InstallmentSplitMode) => void
+  setInstallmentGroup: (cycle: BackofficeAdhesionBillingCycleKey, index: number, field: keyof InstallmentGroup, value: string) => void
+  addInstallmentGroup: (cycle: BackofficeAdhesionBillingCycleKey) => void
+  removeInstallmentGroup: (cycle: BackofficeAdhesionBillingCycleKey, index: number) => void
   submitForm: () => Promise<void>
 
   deleteDialogOpen: boolean
@@ -55,10 +61,13 @@ function productToFormData(product: BackofficeProductItem): BackofficeProductFor
   function ruleEntry(cycle: BackofficeAdhesionBillingCycleKey, defaultMax: string): BackofficeProductPaymentRuleFormEntry {
     const pix = findRule(cycle, "PIX")
     const card = findRule(cycle, "CREDIT_CARD")
+    const splitMode = card?.installmentSplitMode ?? "EQUAL"
     return {
       pixPrice: pix ? String(pix.price) : "",
       cardPrice: card ? String(card.price) : "",
       maxInstallments: card ? String(card.maxInstallments) : defaultMax,
+      installmentSplitMode: splitMode,
+      installmentSchedule: splitMode === "CUSTOM" ? groupSchedule(card?.installmentSchedule ?? []) : [{ count: "1", value: "" }],
     }
   }
 
@@ -183,6 +192,75 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
     []
   )
 
+  const setInstallmentSplitMode = useCallback(
+    (cycle: BackofficeAdhesionBillingCycleKey, mode: InstallmentSplitMode) => {
+      setFormData((prev) => ({
+        ...prev,
+        paymentRules: {
+          ...prev.paymentRules,
+          [cycle]: {
+            ...prev.paymentRules[cycle],
+            installmentSplitMode: mode,
+            installmentSchedule: mode === "CUSTOM" ? [{ count: "1", value: "" }] : prev.paymentRules[cycle].installmentSchedule,
+          },
+        },
+      }))
+    },
+    []
+  )
+
+  const setInstallmentGroup = useCallback(
+    (cycle: BackofficeAdhesionBillingCycleKey, index: number, field: keyof InstallmentGroup, value: string) => {
+      setFormData((prev) => {
+        const groups = [...prev.paymentRules[cycle].installmentSchedule]
+        groups[index] = { ...groups[index], [field]: value }
+        return {
+          ...prev,
+          paymentRules: {
+            ...prev.paymentRules,
+            [cycle]: { ...prev.paymentRules[cycle], installmentSchedule: groups },
+          },
+        }
+      })
+    },
+    []
+  )
+
+  const addInstallmentGroup = useCallback(
+    (cycle: BackofficeAdhesionBillingCycleKey) => {
+      setFormData((prev) => ({
+        ...prev,
+        paymentRules: {
+          ...prev.paymentRules,
+          [cycle]: {
+            ...prev.paymentRules[cycle],
+            installmentSchedule: [...prev.paymentRules[cycle].installmentSchedule, { count: "1", value: "" }],
+          },
+        },
+      }))
+    },
+    []
+  )
+
+  const removeInstallmentGroup = useCallback(
+    (cycle: BackofficeAdhesionBillingCycleKey, index: number) => {
+      setFormData((prev) => {
+        const groups = prev.paymentRules[cycle].installmentSchedule.filter((_, i) => i !== index)
+        return {
+          ...prev,
+          paymentRules: {
+            ...prev.paymentRules,
+            [cycle]: {
+              ...prev.paymentRules[cycle],
+              installmentSchedule: groups.length ? groups : [{ count: "1", value: "" }],
+            },
+          },
+        }
+      })
+    },
+    []
+  )
+
   const submitForm = useCallback(async () => {
     if (isSaving) return
     setIsSaving(true)
@@ -248,6 +326,10 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         closeDialog,
         setFormField,
         setPaymentRuleField,
+        setInstallmentSplitMode,
+        setInstallmentGroup,
+        addInstallmentGroup,
+        removeInstallmentGroup,
         submitForm,
         deleteDialogOpen,
         deleteProduct,
