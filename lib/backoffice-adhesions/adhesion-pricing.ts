@@ -128,10 +128,17 @@ export function calculateBackofficeAdhesionPricing(
 
     try {
       const cardRule = resolvePaymentRule(paymentRules, input.cycle, "CREDIT_CARD")
-      const cardBaseMonthly = roundCurrency(Number(cardRule.price.toString()))
+      const cardRulePrice = roundCurrency(Number(cardRule.price.toString()))
       const cardMonthlyExtras = roundCurrency(monthlyExtraTeamsAmount + monthlyExtraUsersAmount)
-      creditCardMonthlyTotalAmount = roundCurrency(cardBaseMonthly + cardMonthlyExtras)
-      creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      const isCustom = cardRule.installmentSplitMode === "CUSTOM"
+      if (isCustom) {
+        // Em CUSTOM, `price` é o total do ciclo (soma do schedule), não o valor mensal.
+        creditCardTotalAmount = roundCurrency(cardRulePrice + cardMonthlyExtras * cycleMonths)
+        creditCardMonthlyTotalAmount = roundCurrency(creditCardTotalAmount / cycleMonths)
+      } else {
+        creditCardMonthlyTotalAmount = roundCurrency(cardRulePrice + cardMonthlyExtras)
+        creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      }
       maxCardInstallments = cardRule.maxInstallments
     } catch {
       // fallback to flat price

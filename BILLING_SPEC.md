@@ -60,10 +60,13 @@ Override só em `BackofficeAdhesion`; teto em config; acima do teto → aprovaç
 Transicionar conta entre **quaisquer** níveis suportados: `ProfileUserType` + produtos do catálogo + capacidades. Exemplos: `common` → `member_pro` → plano pago; `associate`; vitalício; upgrade/downgrade de pack. Por transição: reconciliar Asaas vs catálogo, entitlements, ChangeLog.  
 Casos especiais (ex. expiração Member PRO): gatilho `after()` no bootstrap + cron rede de segurança — **instâncias** do motor, não o modelo inteiro.
 
-### D12 — P-MS multi-slug + parcelas
-- Produto: `featureSlugs String[]` (1..N).
-- Payment rule cartão: `installmentSplitMode EQUAL|CUSTOM`; EQUAL → `maxInstallments`; CUSTOM → `installmentSchedule` (soma = price); checkout: à vista **ou** schedule fixo.
-- Asaas: EQUAL → `installmentCount`/`installmentValue`; CUSTOM → **N cobranças avulsas**.
+### D12 — P-MS multi-slug + parcelas + ciclos opcionais
+- Produto: `featureSlugs String[]` (1..N) — **multi-slug ainda pendente**; hoje `featureSlug` singular com N precificações por slug.
+- Ciclos de billing (`monthly`/`quarterly`/`semiannual`/`annual`) são **opcionais** (subset 1..4). Ciclos sem regra não aparecem na adesão.
+- Update de produto: não remover/alterar preço ou schedule de ciclo com assinatura ativa (`ProfileSubscription` / `BackofficeUserSubscription`).
+- Payment rule cartão: `installmentSplitMode EQUAL|CUSTOM`; EQUAL → `maxInstallments`; CUSTOM → `installmentSchedule` (soma = price); checkout/adesão: à vista **ou** schedule fixo.
+- Adesão: `installmentSchedule` + `installmentLedger`; operador marca parcelas pagas externamente (parcial ou 100%); saldo gera cobranças Asaas; **conta ativa na criação** mesmo com saldo pendente.
+- Asaas: EQUAL no checkout público → `installmentCount`/`installmentValue`; CUSTOM / saldo parcial → **N cobranças avulsas**.
 
 ### D13 — Cutover estrutural sem legado
 Migrar **todas** as assinaturas/preços/capacidades System A → modelo novo. Dry-run + reconciliação Asaas. Remover literais só após cutover validado. Rollback documentado. Sem push remoto sem auth.
@@ -161,16 +164,17 @@ flowchart TD
 ### Estágio 4 — Schema alvo: P-MS + D14 (D12 / D14)
 
 **Fazer:**
-1. `BackofficeProduct.featureSlugs String[]` — backfill de `featureSlug`; dropar coluna singular após callers.
-2. `BackofficeProductPaymentRule`: `installmentSplitMode`, `installmentSchedule Decimal[]?`.
-3. Validação use case: slugs ≥1 existem em `BackofficeFeature`; CUSTOM soma = price.
-4. UI [`BackofficeProductDialog`](app/backoffice/(app)/pricing/features/components/BackofficeProductDialog.tsx): multi-select slugs; toggle iguais vs custom.
-5. API pricing + Postman; `adhesion-pricing` / AdhesionService consomem EQUAL vs CUSTOM (N cobranças avulsas).
-6. Documentar no PR o inventário §3A: lista de writers a migrar no Estágio 5–6 (sem dual-write novo).
+1. `BackofficeProduct.featureSlugs String[]` — backfill de `featureSlug`; dropar coluna singular após callers. (**pendente**)
+2. `BackofficeProductPaymentRule`: `installmentSplitMode`, `installmentSchedule` — **feito**.
+3. Ciclos opcionais (subset 1..4) + UI opt-in + sync com lock de ciclos em uso — **feito**.
+4. Adesão: filtrar ciclos do produto; `productId` no POST/PATCH; ledger de parcelas externas + cobrança Asaas do saldo + ativação na criação — **feito**.
+5. Seed `CRM - Radar` (trimestral CUSTOM 1200+990+990) — **feito**.
+6. Validação use case: CUSTOM soma = price; Asaas checkout EQUAL completo — parcial (N cobranças no saldo da adesão).
+7. Documentar no PR o inventário §3A: lista de writers a migrar no Estágio 5–6 (sem dual-write novo).
 
-Migration: `bun run db:migrate:from-prisma -- pricing-multi-slug-installments` (+ dados se preciso).
+**Aceite (atual):** produto só com trimestral salva; adesão lista só ciclos definidos; CRM - Radar seedável; parcelas externas parciais ativam conta e cobram saldo.
 
-**Aceite:** criar produto com 2+ slugs; CUSTOM bloqueia save se soma ≠ total; checkout EQUAL 1..max / CUSTOM só à vista|schedule.
+**Aceite (ainda pendente multi-slug):** criar produto com 2+ slugs.
 
 ---
 
@@ -298,3 +302,16 @@ Migration: `bun run db:migrate:from-prisma -- pricing-multi-slug-installments` (
 **Pendente (próximo agente — Estágio 4 continuação):**
 - Integração Asaas: CUSTOM → N cobranças avulsas; EQUAL → `installmentCount`/`installmentValue` (spec D12).
 - Multi-slug: `featureSlugs String[]` substituindo `featureSlug` singular (spec D12 primeiro bullet).
+
+### [Estágio 4 continuação] Ciclos opcionais + adesão ledger + CRM - Radar — 2026-07-28
+
+**Branch:** `feat/pricing-optional-cycles`
+
+**O que foi feito:**
+- Catálogo: ciclos opt-in na UI; validação API exige ≥1 ciclo; sync de rules com lock de ciclos em uso por assinatura.
+- UI impeccable: copy “Nova precificação”, toggle Parcelas iguais/Valores diferentes, empty state com CTA, badges de ciclos na tabela.
+- Adesão: `availableCycles` / `installmentByCycle` no options DTO; select de ciclo filtrado; `productId` no POST/PATCH.
+- Adesão: `installmentSchedule` + `installmentLedger`; marcar parcelas externas (parcial/100%); cobranças Asaas do saldo; conta ativa na criação.
+- Seed migration `seed-crm-radar-pricing` + `prisma/seed-backoffice-products.ts` (CRM - Radar trimestral CUSTOM).
+
+**Pendente:** multi-slug `featureSlugs[]`; checkout público EQUAL/CUSTOM completo no fluxo do cliente.

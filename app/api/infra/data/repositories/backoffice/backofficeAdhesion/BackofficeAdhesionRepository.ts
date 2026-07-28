@@ -95,6 +95,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           hasUnlimitedUsers: data.hasUnlimitedUsers ?? false,
           additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
           additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
+          installmentSchedule: (data.installmentSchedule ?? []) as Prisma.InputJsonValue,
+          installmentLedger: (data.installmentLedger ?? []) as Prisma.InputJsonValue,
         },
         include: backofficeAdhesionInclude,
       })
@@ -217,6 +219,14 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         ...(data.tokenPreview !== undefined ? { tokenPreview: data.tokenPreview } : {}),
         ...(data.tokenPlain !== undefined ? ({ tokenPlain: data.tokenPlain } as object) : {}),
         ...(data.expiresAt !== undefined ? { expiresAt: data.expiresAt } : {}),
+        ...(data.installmentLedger !== undefined
+          ? { installmentLedger: data.installmentLedger as Prisma.InputJsonValue }
+          : {}),
+        ...(data.installmentSchedule !== undefined
+          ? { installmentSchedule: data.installmentSchedule as Prisma.InputJsonValue }
+          : {}),
+        ...(data.asaasCustomerId !== undefined ? { asaasCustomerId: data.asaasCustomerId } : {}),
+        ...(data.paidAt !== undefined ? { paidAt: data.paidAt } : {}),
       },
       include: backofficeAdhesionInclude,
     })

@@ -65,6 +65,8 @@ export interface CreateBackofficeAdhesionInput {
   hasUnlimitedUsers?: boolean
   additionalUsersData?: unknown[]
   additionalTeamsData?: unknown[]
+  installmentSchedule?: number[]
+  installmentLedger?: unknown[]
 }
 
 export interface UpdateBackofficeAdhesionInput {
@@ -91,6 +93,10 @@ export interface UpdateBackofficeAdhesionInput {
   tokenPlain?: string | null
   expiresAt?: Date
   hasUnlimitedUsers?: boolean
+  installmentLedger?: unknown[]
+  installmentSchedule?: number[]
+  asaasCustomerId?: string | null
+  paidAt?: Date | null
 }
 
 export interface UpdateBackofficeAdhesionCheckoutInput {

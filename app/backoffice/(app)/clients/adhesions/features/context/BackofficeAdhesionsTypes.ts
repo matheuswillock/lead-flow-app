@@ -53,12 +53,26 @@ export interface BackofficeAdhesionProductVariant {
   name: string
   featureSlug: string
   isDefault: boolean
-  pricesByCycle: Record<
-    BackofficeAdhesionBillingCycleKey,
-    {
-      pixMonthlyPrice: number | null
-      cardMonthlyPrice: number | null
-    }
+  availableCycles: BackofficeAdhesionBillingCycleKey[]
+  installmentByCycle: Partial<
+    Record<
+      BackofficeAdhesionBillingCycleKey,
+      {
+        splitMode: "EQUAL" | "CUSTOM"
+        maxInstallments: number
+        schedule: number[]
+        cardTotal: number | null
+      }
+    >
+  >
+  pricesByCycle: Partial<
+    Record<
+      BackofficeAdhesionBillingCycleKey,
+      {
+        pixMonthlyPrice: number | null
+        cardMonthlyPrice: number | null
+      }
+    >
   >
 }
 
@@ -119,6 +133,8 @@ export interface BackofficeAdhesionFormValues {
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
   activationMode: "checkout" | "external_paid"
+  /** Índices das parcelas do cronograma marcadas como pagas externamente (0-based). */
+  externalInstallmentIndexes: number[]
   userType: "common" | "member_pro" | "associate" | "guest"
   memberProAccessDays: string
   sponsorMasterId: string | null

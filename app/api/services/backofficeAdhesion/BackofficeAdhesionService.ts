@@ -381,6 +381,13 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
     }
 
+    const availableCycles = new Set(crmWithRules.paymentRules.map((rule) => rule.billingCycle))
+    if (!availableCycles.has(normalized.cycle)) {
+      throw new Error(
+        `O ciclo ${normalized.cycle} não está disponível na precificação selecionada`
+      )
+    }
+
     const prices = await this.resolvePrices(normalized.cycle, crmWithRules.id)
     const pricing = calculateBackofficeAdhesionPricing(normalized, prices, crmWithRules.paymentRules)
     const resolvedBillingType = normalized.billingType ?? "PIX"
@@ -388,12 +395,40 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       resolvedBillingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
     const resolvedTotalAmount =
       resolvedBillingType === "PIX" ? pricing.pixTotalAmount : pricing.creditCardTotalAmount
+
+    const cardRule = crmWithRules.paymentRules.find(
+      (rule) => rule.billingCycle === normalized.cycle && rule.paymentMethod === "CREDIT_CARD"
+    )
+    const schedule = buildAdhesionInstallmentSchedule({
+      cardRule,
+      cycleTotal: resolvedTotalAmount,
+      maxInstallments: pricing.maxCardInstallments,
+    })
+    const externalIndexes = new Set(
+      normalized.activationMode === "external_paid" &&
+        (!normalized.externalInstallmentIndexes ||
+          normalized.externalInstallmentIndexes.length === 0)
+        ? schedule.map((_, index) => index)
+        : (normalized.externalInstallmentIndexes ?? [])
+    )
+    const ledger = schedule.map((amount, index) => ({
+      index,
+      amount,
+      paymentSource: externalIndexes.has(index) ? ("EXTERNAL" as const) : ("ASAAS" as const),
+      status: externalIndexes.has(index) ? ("paid" as const) : ("pending" as const),
+      asaasPaymentId: null as string | null,
+      paidAt: externalIndexes.has(index) ? new Date().toISOString() : null,
+    }))
+    const allExternal = ledger.length > 0 && ledger.every((entry) => entry.paymentSource === "EXTERNAL")
+    const anyExternal = ledger.some((entry) => entry.paymentSource === "EXTERNAL")
+    const pendingAsaas = ledger.filter((entry) => entry.status === "pending")
+
     const token = generateBackofficeAdhesionToken()
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
       fullName: normalized.fullName,
       phone: normalized.phone ?? "",
-      billingType: resolvedBillingType,
+      billingType: allExternal ? "EXTERNAL" : resolvedBillingType,
       plan: "crm",
       productId: crmWithRules.id,
       cycle: normalized.cycle,
@@ -424,6 +459,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       hasUnlimitedUsers: normalized.hasUnlimitedUsers === true,
       additionalUsersData: normalized.additionalUsers ?? [],
       additionalTeamsData: normalized.additionalTeams ?? [],
+      installmentSchedule: schedule,
+      installmentLedger: ledger,
     })
 
     if (normalized.userType === "guest") {
@@ -457,7 +494,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
-    if (normalized.activationMode === "external_paid") {
+    if (normalized.activationMode === "external_paid" || anyExternal) {
       const externalEmail = normalized.email
       if (!externalEmail) {
         throw new Error("E-mail é obrigatório para pagamento por fora")
@@ -475,20 +512,61 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           cpfCnpj: normalizedCpfCnpj,
           phone: normalized.phone ?? "",
         })
-        const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
-          fullName: normalized.fullName,
-          phone: normalized.phone ?? "",
+
+        let nextLedger = ledger
+        if (pendingAsaas.length > 0) {
+          nextLedger = await this.chargePendingInstallments({
+            adhesion,
+            customerId: asaasCustomerId,
+            email: externalEmail,
+            billingType: resolvedBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
+            ledger,
+            pending: pendingAsaas,
+          })
+        }
+
+        if (allExternal || pendingAsaas.length === 0) {
+          const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
+            fullName: normalized.fullName,
+            phone: normalized.phone ?? "",
+            email: externalEmail,
+            cpfCnpj: normalizedCpfCnpj,
+            paidAt,
+            asaasCustomerId,
+          })
+          await this.persistInstallmentLedger(adhesion.id, nextLedger, {
+            email: externalEmail,
+            cpfCnpj: normalizedCpfCnpj,
+            asaasCustomerId,
+          })
+          await this.ensureAccountForPaidAdhesion(paidAdhesion)
+          return {
+            adhesion: mapAdhesion((await this.repo.findById(adhesion.id)) ?? paidAdhesion),
+            publicUrl: null,
+            expiresAt: paidAdhesion.expiresAt.toISOString(),
+            activationMode: "external_paid",
+          }
+        }
+
+        await this.persistInstallmentLedger(adhesion.id, nextLedger, {
           email: externalEmail,
           cpfCnpj: normalizedCpfCnpj,
+          asaasCustomerId,
           paidAt,
+          billingType: resolvedBillingType,
+        })
+        const refreshed = await this.repo.findById(adhesion.id)
+        if (!refreshed) throw new Error("Adesão não encontrada após cobrança parcial")
+        await this.ensureAccountForPaidAdhesion({
+          ...refreshed,
+          paidAt: refreshed.paidAt ?? paidAt,
+          email: externalEmail,
           asaasCustomerId,
         })
-        await this.ensureAccountForPaidAdhesion(paidAdhesion)
-
         return {
-          adhesion: mapAdhesion(paidAdhesion),
+          adhesion: mapAdhesion((await this.repo.findById(adhesion.id)) ?? refreshed),
           publicUrl: null,
-          expiresAt: paidAdhesion.expiresAt.toISOString(),
+          expiresAt: refreshed.expiresAt.toISOString(),
           activationMode: "external_paid",
         }
       } catch (externalPaidErr) {
@@ -1015,7 +1093,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const email = normalizeText(input.email)?.toLowerCase() ?? null
     const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
 
-    if (activationMode === "external_paid" || input.userType === "guest") {
+    if (
+      activationMode === "external_paid" ||
+      input.userType === "guest" ||
+      (input.externalInstallmentIndexes?.length ?? 0) > 0
+    ) {
       if (!email || !isValidEmail(email)) {
         throw new Error("E-mail inválido")
       }
@@ -1049,6 +1131,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         input.hasUnlimitedUsers === true,
       additionalUsers: input.additionalUsers ?? [],
       additionalTeams: input.additionalTeams ?? [],
+      externalInstallmentIndexes: input.externalInstallmentIndexes ?? [],
     }
   }
 
@@ -1537,31 +1620,126 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   private mapProductVariants(
     products: BackofficeProductWithPaymentRules[]
   ): BackofficeAdhesionOptionsDTO["productVariants"] {
-    const cycles = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
+    const cycleOrder = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
 
-    return products.map((product) => ({
-      id: product.id,
-      name: product.name,
-      featureSlug: product.featureSlug,
-      isDefault: product.isDefault,
-      pricesByCycle: Object.fromEntries(
-        cycles.map((cycle) => {
-          const pixRule = product.paymentRules.find(
-            (rule) => rule.billingCycle === cycle && rule.paymentMethod === "PIX"
-          )
-          const cardRule = product.paymentRules.find(
-            (rule) => rule.billingCycle === cycle && rule.paymentMethod === "CREDIT_CARD"
-          )
-          return [
-            cycle,
-            {
-              pixMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
-              cardMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
-            },
-          ] as const
-        })
-      ) as BackofficeAdhesionOptionsDTO["productVariants"][number]["pricesByCycle"],
-    }))
+    return products.map((product) => {
+      const availableCycles = cycleOrder.filter((cycle) =>
+        product.paymentRules.some((rule) => rule.billingCycle === cycle)
+      )
+      const pricesByCycle: BackofficeAdhesionOptionsDTO["productVariants"][number]["pricesByCycle"] = {}
+      const installmentByCycle: BackofficeAdhesionOptionsDTO["productVariants"][number]["installmentByCycle"] =
+        {}
+
+      for (const cycle of availableCycles) {
+        const pixRule = product.paymentRules.find(
+          (rule) => rule.billingCycle === cycle && rule.paymentMethod === "PIX"
+        )
+        const cardRule = product.paymentRules.find(
+          (rule) => rule.billingCycle === cycle && rule.paymentMethod === "CREDIT_CARD"
+        )
+        pricesByCycle[cycle] = {
+          pixMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
+          cardMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
+        }
+        if (cardRule) {
+          const schedule = Array.isArray(cardRule.installmentSchedule)
+            ? (cardRule.installmentSchedule as number[])
+            : []
+          installmentByCycle[cycle] = {
+            splitMode: (cardRule.installmentSplitMode as "EQUAL" | "CUSTOM") ?? "EQUAL",
+            maxInstallments: cardRule.maxInstallments,
+            schedule,
+            cardTotal: Number(cardRule.price.toString()),
+          }
+        }
+      }
+
+      return {
+        id: product.id,
+        name: product.name,
+        featureSlug: product.featureSlug,
+        isDefault: product.isDefault,
+        availableCycles,
+        installmentByCycle,
+        pricesByCycle,
+      }
+    })
+  }
+
+  private async persistInstallmentLedger(
+    adhesionId: string,
+    ledger: Array<{
+      index: number
+      amount: number
+      paymentSource: "EXTERNAL" | "ASAAS"
+      status: "paid" | "pending"
+      asaasPaymentId: string | null
+      paidAt: string | null
+    }>,
+    extras?: {
+      email?: string
+      cpfCnpj?: string | null
+      asaasCustomerId?: string | null
+      paidAt?: Date
+      billingType?: string
+    }
+  ): Promise<void> {
+    await this.repo.update(adhesionId, {
+      installmentLedger: ledger,
+      ...(extras?.email !== undefined ? { email: extras.email } : {}),
+      ...(extras?.cpfCnpj !== undefined ? { cpfCnpj: extras.cpfCnpj } : {}),
+      ...(extras?.asaasCustomerId !== undefined ? { asaasCustomerId: extras.asaasCustomerId } : {}),
+      ...(extras?.paidAt !== undefined ? { paidAt: extras.paidAt } : {}),
+      ...(extras?.billingType !== undefined ? { billingType: extras.billingType } : {}),
+    })
+  }
+
+  private async chargePendingInstallments(input: {
+    adhesion: BackofficeAdhesionWithRelations
+    customerId: string
+    email: string
+    billingType: "PIX" | "CREDIT_CARD"
+    ledger: Array<{
+      index: number
+      amount: number
+      paymentSource: "EXTERNAL" | "ASAAS"
+      status: "paid" | "pending"
+      asaasPaymentId: string | null
+      paidAt: string | null
+    }>
+    pending: Array<{
+      index: number
+      amount: number
+      paymentSource: "EXTERNAL" | "ASAAS"
+      status: "paid" | "pending"
+      asaasPaymentId: string | null
+      paidAt: string | null
+    }>
+  }): Promise<typeof input.ledger> {
+    const next = [...input.ledger]
+    const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", DEFAULT_TZ)
+    for (const entry of input.pending) {
+      const payment = await asaasFetch(asaasApi.payments, {
+        method: "POST",
+        body: JSON.stringify({
+          customer: input.customerId,
+          billingType: input.billingType,
+          value: entry.amount,
+          dueDate,
+          description: `Corretor Studio - Parcela ${entry.index + 1} adesão ${BACKOFFICE_ADHESION_CYCLE_LABELS[input.adhesion.cycle]}`,
+          externalReference: `backoffice-adhesion-${input.adhesion.id}-installment-${entry.index}`,
+        }),
+      })
+      const paymentId = payment?.id ? String(payment.id) : null
+      if (!paymentId) {
+        throw new Error(`Falha ao criar cobrança Asaas da parcela ${entry.index + 1}`)
+      }
+      next[entry.index] = {
+        ...next[entry.index],
+        asaasPaymentId: paymentId,
+      }
+    }
+    return next
   }
 
   private async ensureUserSubscriptionForPaidAdhesion(
@@ -1639,3 +1817,25 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 }
 
 export const backofficeAdhesionService = new BackofficeAdhesionService()
+
+function buildAdhesionInstallmentSchedule(input: {
+  cardRule?: BackofficeProductPaymentRule
+  cycleTotal: number
+  maxInstallments: number
+}): number[] {
+  if (input.cardRule?.installmentSplitMode === "CUSTOM") {
+    const schedule = Array.isArray(input.cardRule.installmentSchedule)
+      ? (input.cardRule.installmentSchedule as number[])
+      : []
+    if (schedule.length > 0) {
+      return schedule.map((value) => Number(Number(value).toFixed(2)))
+    }
+  }
+  const count = Math.max(1, Math.trunc(input.maxInstallments || 1))
+  if (count === 1) return [Number(input.cycleTotal.toFixed(2))]
+  const base = Number((input.cycleTotal / count).toFixed(2))
+  const parts = Array.from({ length: count }, () => base)
+  const drift = Number((input.cycleTotal - parts.reduce((sum, value) => sum + value, 0)).toFixed(2))
+  parts[parts.length - 1] = Number((parts[parts.length - 1] + drift).toFixed(2))
+  return parts
+}
