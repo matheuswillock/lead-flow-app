@@ -415,27 +415,27 @@ export function SectionCardsWithContext() {
       <div className="grid grid-cols-1 gap-4 @md/main:grid-cols-2 @4xl/main:grid-cols-4">
         <PrimaryMetricCard
           icon={<DollarSign className="size-4 text-muted-foreground" />}
-          label="Receita Total"
-          tooltip="Soma do ticket dos leads fechados no CRM no período selecionado."
+          label="Receita Realizada"
+          tooltip="Soma do ticket dos leads com contrato finalizado no período selecionado."
           value={`R$ ${metrics.receitaTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           valueClassName="text-semantic-success"
-          caption={`Total vendido (ticket) nos ${periodText}`}
+          caption={`Contratos finalizados nos ${periodText}`}
           isBlurred={isBlurred}
         />
         <PrimaryMetricCard
           icon={<TrendingUp className="size-4 text-muted-foreground" />}
-          label="Intenção de Compra"
-          tooltip="Soma de ticket dos leads do CRM no período selecionado."
+          label="Valor em Pipeline"
+          tooltip="Soma do ticket de todos os leads ativos no período — valor total que pode se tornar receita."
           value={`R$ ${metrics.ticket.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          caption="Valor total de vendas"
+          caption={`Total em negociação nos ${periodText}`}
           isBlurred={isBlurred}
         />
         <PrimaryMetricCard
           icon={<Target className="size-4 text-muted-foreground" />}
           label="Taxa de Conversão"
-          tooltip="Leads convertidos (Proposta + Boleto gerado + DPS + Contrato fechado) dividido pelo total de leads no período."
+          tooltip="Contratos finalizados dividido pelo total de leads criados no período."
           value={`${metrics.taxaConversao}%`}
-          caption="Vendas / total de leads"
+          caption={`Contratos fechados ÷ total de leads nos ${periodText}`}
           isBlurred={isBlurred}
         />
         <PrimaryMetricCard
@@ -510,19 +510,19 @@ export function SectionCardsWithContext() {
             isBlurred={isBlurred}
             icon={<TrendingUp className="h-4 w-4 text-green-500" />}
             title="Vendas"
-            tooltip="Total de leads convertidos: boleto gerado, DPS e contrato fechado."
+            tooltip="Total de leads que avançaram para boleto gerado, DPS preenchido ou contrato finalizado no período."
             total={metrics.convertedCount}
             totalColor="text-green-600 dark:text-green-400"
             subtitle="Conversões no período"
             items={[
               {
                 icon: <CheckCircle2 className="h-4 w-4 text-green-500" />,
-                label: "Vendas realizadas",
+                label: "Contratos finalizados",
                 value: metrics.salesCount,
               },
               {
                 icon: <TrendingUp className="h-4 w-4 text-green-500" />,
-                label: "Vendas fechadas",
+                label: "DPS preenchidos",
                 value: metrics.dpsCount,
               },
               {
@@ -576,8 +576,8 @@ export function SectionCardsWithContext() {
               <div className="flex items-center gap-2">
                 <UserX className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Taxa de No-show
-                  <InfoTooltip text="No-show dividido por (agendados + no-show) no período selecionado." />
+                  Taxa de Ausência
+                  <InfoTooltip text="Clientes sem comparecimento ÷ (reuniões realizadas + sem comparecimento) no período." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -590,7 +590,7 @@ export function SectionCardsWithContext() {
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Taxa de ausência</CardAction>
+              <CardAction className="text-xs text-muted-foreground">Clientes que não compareceram à reunião</CardAction>
             </CardFooter>
           </Card>
 
@@ -600,8 +600,8 @@ export function SectionCardsWithContext() {
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-red-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Perdidos e desqualificados
-                  <InfoTooltip text="(Perdidos + desqualificados) dividido pelo total de leads criados no período selecionado." />
+                  Taxa de Perda
+                  <InfoTooltip text="Leads perdidos ou desqualificados ÷ total de leads criados no período." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -615,7 +615,7 @@ export function SectionCardsWithContext() {
             </CardHeader>
             <CardFooter className="pt-0">
               <CardAction className="text-xs text-muted-foreground">
-                Perdidos e desqualificados no período
+                Leads perdidos ou desqualificados no período
               </CardAction>
             </CardFooter>
           </Card>
