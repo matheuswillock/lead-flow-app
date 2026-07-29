@@ -38,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
+import type { EditorSidebar } from "../components/EditorSidebar";
 import { TemplateTestDialog } from "../components/TemplateTestDialog";
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 
@@ -82,7 +83,11 @@ function StatusBadge({ approvalStatus, status }: { approvalStatus: string | unde
   );
 }
 
-export function EditorContainer() {
+export function EditorContainer({
+  SidebarComponent,
+}: {
+  SidebarComponent?: typeof EditorSidebar
+}) {
   const params = useParams<{ supabaseId: string; id: string }>();
   const {
     draft,
@@ -288,7 +293,7 @@ export function EditorContainer() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          <EmailEditorStudio ref={editorRef} />
+          <EmailEditorStudio ref={editorRef} SidebarComponent={SidebarComponent} />
         </div>
       </div>
 

@@ -12,12 +12,12 @@ import type {
   CampaignSheetTab,
 } from "./CampanhasTypes"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { useTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 const DEFAULT_PAGE_SIZE = 10
-const service = new CampanhasService()
+const defaultService = new CampanhasService()
 
 const EDITABLE_STATUSES = new Set(["draft", "scheduled", "sent", "failed"])
 
@@ -100,8 +100,16 @@ export type CampanhasHookReturn = {
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const { isBeta } = useFeatureAccess()
-  const { activeTeamId, isLoading: teamLoading } = useTeamContext()
-  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  const {
+    host,
+    teamId: activeTeamId,
+    teamLoading,
+    hideRadarSegments,
+    bypassCreditsCheck,
+    skipBetaGate,
+  } = useStudioEmailRuntime()
+  const service = host?.services.campanhas ?? defaultService
+  const isCampaignsBetaAccess = skipBetaGate ? true : isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -276,7 +284,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [fetchCampaigns, pageSize])
 
   const handleSend = useCallback(async (id: string) => {
-    if (!credits?.hasSubscription && !isCampaignsBetaAccess && !credits?.isBetaExempt) {
+    if (
+      !bypassCreditsCheck &&
+      !credits?.hasSubscription &&
+      !isCampaignsBetaAccess &&
+      !credits?.isBetaExempt
+    ) {
       toast.error("Ative um plano em Assinaturas para disparar campanhas")
       return
     }
@@ -553,7 +566,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setTemplates(tmpl)
       setContactLists(lists)
       try {
-        if (activeTeamId) {
+        if (activeTeamId && !hideRadarSegments) {
           const segmentsRes = await radarFrontendService.listSegments(supabaseId, activeTeamId)
           setRadarSegments(segmentsRes.segments as RadarSegmentOption[])
         } else {

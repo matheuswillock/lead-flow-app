@@ -389,6 +389,16 @@ export class BackofficeStudioEmailUseCase {
     return decorateOutput(output)
   }
 
+  async unpublishTemplate(actor: StudioEmailActor, templateId: string): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    const output = await this.templates.unpublish(templateId, resolved.ctx)
+    if (output.isValid) {
+      await stampTemplate(templateId, actor.access.backofficeUserId)
+    }
+    return decorateOutput(output)
+  }
+
   async testTemplate(
     actor: StudioEmailActor,
     templateId: string,

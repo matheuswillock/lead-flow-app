@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, MoreVertical, Send, History, Ban } from "lucide-react"
+import { Loader2, MoreVertical, Send, History, Ban, Pencil } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -33,6 +33,7 @@ import { useBackofficeEmailCampaigns } from "../context/BackofficeEmailCampaigns
 import { CreateEmailCampaignDialog } from "../components/CreateEmailCampaignDialog"
 import { EmailCampaignStatusBadge } from "../components/EmailCampaignStatusBadge"
 import { EmailCampaignDispatchHistoryPanel } from "../components/EmailCampaignDispatchHistoryPanel"
+import { EditEmailCampaignDialog } from "../components/EditEmailCampaignDialog"
 import type { BackofficeEmailCampaignItem } from "../context/BackofficeEmailCampaignsTypes"
 
 type ConfirmAction = { type: "send-now" | "cancel"; campaign: BackofficeEmailCampaignItem } | null
@@ -40,6 +41,7 @@ type ConfirmAction = { type: "send-now" | "cancel"; campaign: BackofficeEmailCam
 export function BackofficeEmailCampaignsContainer() {
   const { campaigns, isLoading, error, sendNow, cancelCampaign } = useBackofficeEmailCampaigns()
   const [historyCampaign, setHistoryCampaign] = useState<BackofficeEmailCampaignItem | null>(null)
+  const [editCampaign, setEditCampaign] = useState<BackofficeEmailCampaignItem | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const showLoader = isLoading && campaigns.length === 0
@@ -63,9 +65,9 @@ export function BackofficeEmailCampaignsContainer() {
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Campanhas de E-mail</h1>
+          <h1 className="text-2xl font-semibold">Campanhas operacionais</h1>
           <p className="text-sm text-muted-foreground">
-            Gerencie as campanhas de e-mail marketing do Backoffice, incluindo a Live semanal.
+            Campanhas de e-mail do Corretor Studio (ex.: live semanal). Para gerenciar e-mails de clientes, use a página do cliente.
           </p>
         </div>
         <CreateEmailCampaignDialog />
@@ -126,6 +128,12 @@ export function BackofficeEmailCampaignsContainer() {
                           <History data-icon="inline-start" />
                           Histórico de disparos
                         </DropdownMenuItem>
+                        {canOperate && (
+                          <DropdownMenuItem onClick={() => setEditCampaign(campaign)}>
+                            <Pencil data-icon="inline-start" />
+                            Editar campanha
+                          </DropdownMenuItem>
+                        )}
                         {canOperate && (
                           <DropdownMenuItem
                             onClick={() => setConfirmAction({ type: "send-now", campaign })}
@@ -195,6 +203,16 @@ export function BackofficeEmailCampaignsContainer() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {editCampaign ? (
+        <EditEmailCampaignDialog
+          campaign={editCampaign}
+          open={Boolean(editCampaign)}
+          onOpenChange={(open) => {
+            if (!open) setEditCampaign(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

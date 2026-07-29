@@ -22,8 +22,10 @@ export interface EmailEditorStudioRef {
   getCurrentSnapshot: () => Promise<EditorSnapshot | null>;
 }
 
-export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(
-  function EmailEditorStudio(_props, ref) {
+export const EmailEditorStudio = forwardRef<
+  EmailEditorStudioRef,
+  { SidebarComponent?: typeof EditorSidebar }
+>(function EmailEditorStudio({ SidebarComponent = EditorSidebar }, ref) {
     const {
       template,
       draft,
@@ -101,7 +103,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(
     return (
       <div className="flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
         <div className="relative flex h-full min-h-0 flex-1 gap-3 overflow-hidden bg-muted/20 p-3">
-          <EditorSidebar
+          <SidebarComponent
             history={template?.history ?? []}
             collapsed={sidebarCollapsed}
             onCollapsedChange={handleSidebarCollapsedChange}

@@ -10628,6 +10628,52 @@
                       ]
                     }
                   }
+                },
+                {
+                  "name": "DELETE Studio Email Template Publish",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/templates/:templateId/publish",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "templates",
+                        ":templateId",
+                        "publish"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        },
+                        {
+                          "key": "templateId",
+                          "value": "{{emailTemplateId}}"
+                        }
+                      ]
+                    },
+                    "description": "Despublica template do time do cliente (published -> draft)."
+                  }
                 }
               ]
             },

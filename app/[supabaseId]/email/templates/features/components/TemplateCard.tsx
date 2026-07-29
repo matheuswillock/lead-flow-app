@@ -34,6 +34,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import type { Template } from '../context/TemplatesTypes'
+import { useOptionalStudioEmailHost } from '@/lib/email/studio-email-host'
 
 function getBannerGradientIndex(id: string): number {
   const sum = id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
@@ -109,7 +110,8 @@ export function TemplateCard({
 }: TemplateCardProps) {
   const router = useRouter()
   const params = useParams()
-  const supabaseId = params.supabaseId as string
+  const host = useOptionalStudioEmailHost()
+  const supabaseId = (host?.supabaseId ?? params.supabaseId) as string
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [reviewNote, setReviewNote] = useState('')
@@ -130,7 +132,9 @@ export function TemplateCard({
   const creatorLabel = template.creator?.fullName?.trim() || template.creator?.email || '—'
 
   const handleEdit = () => {
-    router.push(`/${supabaseId}/email/templates/${template.id}`)
+    router.push(
+      host?.hrefs.templateEditor(template.id) ?? `/${supabaseId}/email/templates/${template.id}`
+    )
   }
 
   const handleConfirmDelete = async () => {

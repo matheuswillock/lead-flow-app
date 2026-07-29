@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { useTemplatesContext } from '../context/TemplatesContext'
 import { TemplateCard } from '../components/TemplateCard'
 import type { TemplateTab } from '../context/TemplatesTypes'
+import { useOptionalStudioEmailHost } from '@/lib/email/studio-email-host'
 
 const TABS: { key: TemplateTab; label: string }[] = [
   { key: 'all', label: 'Todos' },
@@ -58,7 +59,8 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
 export function TemplatesContainer() {
   const router = useRouter()
   const params = useParams()
-  const supabaseId = params.supabaseId as string
+  const host = useOptionalStudioEmailHost()
+  const supabaseId = (host?.supabaseId ?? params.supabaseId) as string
   const [search, setSearch] = useState('')
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
 
@@ -109,7 +111,9 @@ export function TemplatesContainer() {
   const handleCreateTemplate = () => {
     if (isCreatingTemplate) return
     setIsCreatingTemplate(true)
-    router.push(`/${supabaseId}/email/templates/new`)
+    router.push(
+      host?.hrefs.templateEditor("new") ?? `/${supabaseId}/email/templates/new`
+    )
   }
 
   return (
