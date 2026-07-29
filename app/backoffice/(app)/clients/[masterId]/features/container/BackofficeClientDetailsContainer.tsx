@@ -499,18 +499,12 @@ export function BackofficeClientDetailsContainer() {
                     <Badge variant="secondary">Usuários ilimitados</Badge>
                   ) : null}
                   {details.subscription.hasAccess ? (
-                    <Badge
-                      variant="outline"
-                      className="border-semantic-success-border bg-semantic-success-surface text-semantic-success gap-1"
-                    >
+                    <Badge className="gap-1 border-transparent bg-semantic-success text-sm font-bold text-semantic-success-foreground">
                       <ShieldCheck className="h-3 w-3" />
                       Acesso ativo
                     </Badge>
                   ) : (
-                    <Badge
-                      variant="outline"
-                      className="border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger gap-1"
-                    >
+                    <Badge className="gap-1 border-transparent bg-semantic-danger text-sm font-bold text-semantic-danger-foreground">
                       <ShieldX className="h-3 w-3" />
                       Sem acesso
                     </Badge>
@@ -635,6 +629,7 @@ export function BackofficeClientDetailsContainer() {
                 </div>
               )}
 
+              <h2 className="sr-only">Times do cliente</h2>
               <div className="rounded-md border overflow-hidden">
                 <div
                   className={cn(
