@@ -391,8 +391,8 @@ export function BackofficeStudioBotOpsContainer() {
                               e recrie o container (um restart simples não relê o arquivo):
                             </p>
                             <code className="rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
-                              docker compose -f docker-compose.vps.yml up -d --force-recreate
-                              studio-bot-ops
+                              cd /opt/lead-flow-bot &amp;&amp; docker compose -f docker-compose.vps.yml up
+                              -d --force-recreate studio-bot-ops
                             </code>
                           </li>
                           <li className="flex flex-col gap-1">
@@ -492,8 +492,8 @@ export function BackofficeStudioBotOpsContainer() {
                         <span className="font-mono">BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN</span>.
                         Depois:{" "}
                         <span className="font-mono">
-                          docker compose -f docker-compose.vps.yml up -d --force-recreate
-                          studio-bot-ops
+                          cd /opt/lead-flow-bot &amp;&amp; docker compose -f docker-compose.vps.yml
+                          up -d --force-recreate studio-bot-ops
                         </span>
                       </p>
                     </div>
