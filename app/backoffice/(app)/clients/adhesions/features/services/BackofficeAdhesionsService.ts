@@ -118,6 +118,18 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     )
   }
 
+  async getPendingInvoiceUrls(id: string): Promise<{
+    invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+  }> {
+    return parseOutput<{
+      invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+    }>(
+      await fetch(`/api/v1/backoffice/adhesions/${id}/pending-invoice-url`, {
+        cache: "no-store",
+      })
+    )
+  }
+
   async resendInvite(id: string): Promise<void> {
     await parseOutput(
       await fetch(`/api/v1/backoffice/adhesions/${id}/invite`, {

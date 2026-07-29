@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { RadarProfileDetail } from "../context/RadarTypes"
-import { getEventTypeIcon } from "../utils/radarSegmentBuilderUtils"
+import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 
 type RadarProfileSheetProps = {
@@ -105,6 +105,9 @@ export function RadarProfileSheet({
                         <div key={event.id} className="flex items-center gap-2 text-sm">
                           <EventIcon className="size-4 text-muted-foreground" />
                           <span className="font-medium">{event.eventType}</span>
+                          {isMilestoneEventType(event.eventType) ? (
+                            <Badge variant="secondary">Marco</Badge>
+                          ) : null}
                           <span className="text-muted-foreground">
                             {" "}
                             — {format(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
@@ -142,6 +145,9 @@ export function RadarProfileSheet({
                         <div className="flex items-center gap-2">
                           <EventIcon className="size-4 text-muted-foreground" />
                           <p className="font-medium">{event.eventType}</p>
+                          {isMilestoneEventType(event.eventType) ? (
+                            <Badge variant="secondary">Marco</Badge>
+                          ) : null}
                         </div>
                         <p className="text-muted-foreground">
                           {format(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", { locale: ptBR })} — {event.sourceType}

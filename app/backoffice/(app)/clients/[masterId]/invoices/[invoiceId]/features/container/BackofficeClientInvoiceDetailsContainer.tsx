@@ -73,6 +73,7 @@ const BILLING_LABELS: Record<string, string> = {
   PIX: "Pix",
   BOLETO: "Boleto",
   CREDIT_CARD: "Cartão de crédito",
+  EXTERNAL: "Pago externamente",
   UNDEFINED: "Não definido",
 }
 
@@ -144,14 +145,17 @@ export function BackofficeClientInvoiceDetailsContainer() {
   }
 
   const currentInvoice = invoice
+  const isExternalAdhesionInvoice = currentInvoice.source === "adhesion_external"
   const statusBadge = STATUS_BADGES[currentInvoice.statusGroup]
   const isPaidInvoice = currentInvoice.statusGroup === "paid"
   const canEditInvoice =
+    !isExternalAdhesionInvoice &&
     !currentInvoice.deleted &&
     (currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue")
   const hasReceipt = Boolean(currentInvoice.transactionReceiptUrl)
   const canSendNotification =
-    currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue"
+    !isExternalAdhesionInvoice &&
+    (currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue")
   const notificationLabel =
     currentInvoice.statusGroup === "overdue"
       ? "Disparar e-mail de assinatura vencida"
@@ -227,11 +231,17 @@ export function BackofficeClientInvoiceDetailsContainer() {
                 {invoice.invoiceName} · {invoice.invoiceIdDisplay}
               </span>
               <Badge variant={statusBadge.variant} className={statusBadge.className}>
-                {invoice.status === "WAIVED" ? "Dispensada" : statusBadge.label}
+                {isExternalAdhesionInvoice
+                  ? "Pago externamente"
+                  : invoice.status === "WAIVED"
+                    ? "Dispensada"
+                    : statusBadge.label}
               </Badge>
             </CardTitle>
 
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              {!isExternalAdhesionInvoice ? (
+                <>
               <Button
                 type="button"
                 variant="outline"
@@ -292,6 +302,8 @@ export function BackofficeClientInvoiceDetailsContainer() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+                </>
+              ) : null}
             </div>
           </div>
 

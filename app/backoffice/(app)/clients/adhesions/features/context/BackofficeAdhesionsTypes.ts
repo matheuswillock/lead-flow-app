@@ -46,6 +46,8 @@ export interface BackofficeAdhesionItem {
   productId: string | null
   multiskillEnabled?: boolean
   hasUnlimitedUsers?: boolean
+  accountProvisioned: boolean
+  hasExternalActivation: boolean
 }
 
 export interface BackofficeAdhesionProductVariant {

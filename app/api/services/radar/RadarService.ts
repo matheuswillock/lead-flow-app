@@ -32,6 +32,7 @@ import {
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
+import { LEAD_STATUS_MILESTONE_EVENT_TYPE } from "@/lib/radar/lead-milestone-map"
 import {
   formatDisplayPhone,
   isValidRadarPrimaryIdentity,
@@ -125,6 +126,45 @@ function consentFromEmailFlags(flags: {
 }
 
 export class RadarService {
+  /**
+   * D5 (fix review PR #561): compartilhado pelos 2 caminhos de `syncFromCrm`
+   * (lead com telefone válido e lead só-com-e-mail que já tem perfil via
+   * identidade) — antes só o caminho com telefone emitia `lead.status_changed`
+   * e o marco de status; o caminho só-com-e-mail dava `continue` antes de
+   * chegar lá, então mudanças de status de leads só-com-e-mail nunca geravam
+   * marco nenhum.
+   */
+  private async appendLeadStatusEvents(
+    scope: RadarTeamScope,
+    profileId: string,
+    lead: { id: string; status: LeadStatus | null; statusEnteredAt: Date }
+  ): Promise<void> {
+    if (!lead.status) return
+
+    await radarRepository.appendEventIfNew({
+      profileId,
+      teamId: scope.teamId,
+      eventType: "lead.status_changed",
+      sourceType: "crm_lead",
+      sourceId: `${lead.id}:${lead.status}`,
+      occurredAt: lead.statusEnteredAt,
+      metadata: { status: lead.status },
+    })
+
+    const milestoneEventType = LEAD_STATUS_MILESTONE_EVENT_TYPE[lead.status]
+    if (milestoneEventType) {
+      await radarRepository.appendEventIfNew({
+        profileId,
+        teamId: scope.teamId,
+        eventType: milestoneEventType,
+        sourceType: "crm_lead",
+        sourceId: `${lead.id}:${lead.status}:milestone`,
+        occurredAt: lead.statusEnteredAt,
+        metadata: { status: lead.status },
+      })
+    }
+  }
+
   async syncFromCrm(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
     const leads = await radarRepository.findLeadsForRadarSync(scope.teamId, filters)
@@ -181,6 +221,8 @@ export class RadarService {
             sourceId: lead.id,
             occurredAt: lead.createdAt,
           })
+
+          await this.appendLeadStatusEvents(scope, existingByEmailIdentity.profileId, lead)
 
           counters.enriched += 1
           continue
@@ -257,15 +299,7 @@ export class RadarService {
           occurredAt: lead.createdAt,
         })
 
-        await radarRepository.appendEventIfNew({
-          profileId: profile.id,
-          teamId: scope.teamId,
-          eventType: "lead.status_changed",
-          sourceType: "crm_lead",
-          sourceId: `${lead.id}:${lead.status}`,
-          occurredAt: lead.statusEnteredAt,
-          metadata: { status: lead.status },
-        })
+        await this.appendLeadStatusEvents(scope, profile.id, lead)
       } catch (error) {
         counters.errors.push(`lead:${lead.id}`)
         console.error("[RadarService][syncFromCrm]", lead.id, error)

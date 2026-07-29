@@ -52,6 +52,7 @@ export interface MasterPlatformUserTypeRecord {
 
 export interface MasterPlatformUserDetailsRecord {
   id: string
+  supabaseId: string | null
   fullName: string | null
   email: string
   phone: string | null
