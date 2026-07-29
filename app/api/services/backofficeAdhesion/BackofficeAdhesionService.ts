@@ -2237,13 +2237,17 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const emailService = createEmailService()
-    await emailService.sendAdhesionCompletedEmail({
+    const result = await emailService.sendAdhesionCompletedEmail({
       userName: adhesion.fullName,
       userEmail: adhesion.email,
       setPasswordUrl: buildSetPasswordEmailAuthLink(linkData, type),
       profileId: adhesion.createdProfileId ?? undefined,
       adhesionId: adhesion.id,
     })
+
+    if (!result.success) {
+      throw new Error(result.error || "Erro ao enviar e-mail de convite")
+    }
   }
 }
 

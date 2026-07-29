@@ -1,4 +1,4 @@
-import { assertResend } from "@/lib/email";
+import { assertResend, buildResendIdempotencyKeyWithVariant } from "@/lib/email";
 import { getResendOwnerEmail } from "@/lib/email/resend-owner-email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
@@ -1138,7 +1138,13 @@ export class EmailService {
         html,
         sourceType: "backoffice_adhesion",
         sourceId: data.adhesionId,
-        idempotencyKey: data.adhesionId ? `adhesion-invite/${data.adhesionId}` : undefined,
+        idempotencyKey: data.adhesionId
+          ? buildResendIdempotencyKeyWithVariant(
+              "adhesion-invite",
+              data.adhesionId,
+              data.setPasswordUrl
+            )
+          : undefined,
       })
     }
 
