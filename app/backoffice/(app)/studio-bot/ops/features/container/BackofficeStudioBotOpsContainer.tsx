@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import {
+  CircleHelp,
   Download,
   FileUp,
   KeyRound,
@@ -14,8 +15,23 @@ import {
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Field, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -337,6 +353,83 @@ export function BackofficeStudioBotOpsContainer() {
                 <CardDescription>
                   URL pública do agente (ex.: https://ops.corretorstudio.com) e token Bearer.
                 </CardDescription>
+                <CardAction>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Como configurar o agente Ops"
+                      >
+                        <CircleHelp data-icon="inline-start" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Como configurar o agente Ops</DialogTitle>
+                        <DialogDescription>
+                          O token precisa ser idêntico nos três lugares abaixo. Se um deles ficar
+                          desatualizado, o backup e as demais ações desta página falham com
+                          &quot;unauthorized&quot;.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex-1 overflow-y-auto">
+                        <ol className="flex flex-col gap-4 text-sm">
+                          <li className="flex flex-col gap-1">
+                            <p className="font-medium">1. Gerar token</p>
+                            <p className="text-muted-foreground">
+                              Clique em <span className="font-mono">Gerar token</span> abaixo. O
+                              valor só é exibido uma vez — copie antes de sair da tela.
+                            </p>
+                          </li>
+                          <li className="flex flex-col gap-1">
+                            <p className="font-medium">2. Colar na VPS</p>
+                            <p className="text-muted-foreground">
+                              Em <span className="font-mono">/opt/lead-flow-bot/.env.ops</span>,
+                              defina <span className="font-mono">OPS_AGENT_TOKEN=&lt;token&gt;</span>{" "}
+                              e recrie o container (um restart simples não relê o arquivo):
+                            </p>
+                            <code className="rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
+                              docker compose -f docker-compose.vps.yml up -d --force-recreate
+                              studio-bot-ops
+                            </code>
+                          </li>
+                          <li className="flex flex-col gap-1">
+                            <p className="font-medium">3. Colar na Vercel</p>
+                            <p className="text-muted-foreground">
+                              Defina{" "}
+                              <span className="font-mono">
+                                BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN
+                              </span>{" "}
+                              (Production) com o mesmo valor. Se existir a variável{" "}
+                              <span className="font-mono">BACKUP_VPS_TOKEN</span>, remova-a ou
+                              atualize-a junto — ela tem prioridade e, se ficar com um valor antigo,
+                              volta a causar o mesmo erro.
+                            </p>
+                          </li>
+                          <li className="flex flex-col gap-1">
+                            <p className="font-medium">4. Redeploy</p>
+                            <p className="text-muted-foreground">
+                              Variáveis de ambiente só valem para lambdas depois de um novo deploy
+                              — faça um redeploy de Production após salvar a variável na Vercel.
+                            </p>
+                          </li>
+                          <li className="flex flex-col gap-1">
+                            <p className="font-medium">
+                              Campo &quot;Versão do host&quot; não é o token
+                            </p>
+                            <p className="text-muted-foreground">
+                              O campo de versão abaixo (desiredHostVersion) identifica o deploy do
+                              host (git sha curto/tag) usado pelo Sync host version — não cole o
+                              token gerado ali.
+                            </p>
+                          </li>
+                        </ol>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </CardAction>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <FieldGroup>
@@ -348,44 +441,64 @@ export function BackofficeStudioBotOpsContainer() {
                     placeholder="https://ops.corretorstudio.com"
                     onChange={setAgentBaseUrl}
                   />
+                </FieldGroup>
+
+                <FieldSeparator />
+
+                <FieldGroup>
                   <HostEnvField
                     id="desiredHostVersion"
-                    label="desiredHostVersion"
+                    label="Versão do host alvo (desiredHostVersion)"
+                    description="Identificador do deploy do host (git sha curto ou tag) usado pelo Sync host version — não é o token do agente."
                     value={desiredHostVersion}
                     isSecret={false}
                     placeholder="git sha / tag"
                     onChange={setDesiredHostVersion}
                   />
                 </FieldGroup>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={settings?.agentTokenConfigured ? "default" : "secondary"}>
-                    Token {settings?.agentTokenConfigured ? "configurado" : "ausente"}
-                  </Badge>
-                  <Button type="button" variant="outline" disabled={locked} onClick={() => void handleRotate()}>
-                    <KeyRound data-icon="inline-start" />
-                    Gerar token
-                  </Button>
+                <div>
                   <Button type="button" disabled={locked} onClick={() => void handleSave()}>
                     Salvar
                   </Button>
                 </div>
-                {rotatedToken ? (
-                  <div className="flex flex-col gap-2">
-                    <p className="break-all rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs">
-                      {rotatedToken}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Copie este valor para{" "}
-                      <span className="font-mono">/opt/lead-flow-bot/.env.ops</span> como{" "}
-                      <span className="font-mono">OPS_AGENT_TOKEN</span> e para a Vercel como{" "}
-                      <span className="font-mono">BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN</span>.
-                      Depois:{" "}
-                      <span className="font-mono">
-                        docker compose -f docker-compose.vps.yml up -d --force-recreate studio-bot-ops
-                      </span>
-                    </p>
+
+                <FieldSeparator />
+
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm font-medium">Token do agente</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={settings?.agentTokenConfigured ? "default" : "secondary"}>
+                      Token {settings?.agentTokenConfigured ? "configurado" : "ausente"}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={locked}
+                      onClick={() => void handleRotate()}
+                    >
+                      <KeyRound data-icon="inline-start" />
+                      Gerar token
+                    </Button>
                   </div>
-                ) : null}
+                  {rotatedToken ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="break-all rounded-lg border border-border/60 bg-muted/30 p-3 font-mono text-xs">
+                        {rotatedToken}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Copie este valor para{" "}
+                        <span className="font-mono">/opt/lead-flow-bot/.env.ops</span> como{" "}
+                        <span className="font-mono">OPS_AGENT_TOKEN</span> e para a Vercel como{" "}
+                        <span className="font-mono">BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN</span>.
+                        Depois:{" "}
+                        <span className="font-mono">
+                          docker compose -f docker-compose.vps.yml up -d --force-recreate
+                          studio-bot-ops
+                        </span>
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               </CardContent>
             </Card>
 
