@@ -89,9 +89,13 @@ export async function upsertLeadFromFormAnswers(input: {
 
   if (match) {
     if (!canUpdateLeadFromExtracted(extracted)) return null
+    const incomingNotes = extracted.notes.join("\n").trim()
+    const notes = incomingNotes
+      ? [match.notes?.trim(), incomingNotes].filter(Boolean).join("\n")
+      : match.notes
     const lead = await publicFormsRepository.updateLead(match.id, {
       ...extracted.native,
-      notes: extracted.notes.join("\n") || match.notes,
+      notes,
       updatedBy: input.form.team.master.id,
     })
     for (const [key, value] of Object.entries(extracted.custom)) {
