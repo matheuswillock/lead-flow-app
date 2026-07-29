@@ -9896,6 +9896,39 @@
               }
             },
             {
+              "name": "GET Pending Backoffice Adhesion Invoice URLs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id/pending-invoice-url",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "adhesions",
+                    ":id",
+                    "pending-invoice-url"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{backofficeAdhesionId}}"
+                    }
+                  ]
+                },
+                "description": "Retorna os links de fatura (invoiceUrl) das parcelas pendentes de uma assinatura já ativada."
+              }
+            },
+            {
               "name": "GET Public Adhesion",
               "request": {
                 "method": "GET",

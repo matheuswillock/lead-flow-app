@@ -219,6 +219,21 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
     }
   }
 
+  async getPendingInvoiceUrls(id: string): Promise<Output> {
+    try {
+      const result = await this.service.getPendingInvoiceUrls(id)
+      return new Output(true, [], [], result)
+    } catch (error) {
+      console.error("[BackofficeAdhesionUseCase][getPendingInvoiceUrls]", error)
+      return new Output(
+        false,
+        [],
+        [error instanceof Error ? error.message : "Erro ao obter link de fatura"],
+        null
+      )
+    }
+  }
+
   async getPublicUrl(id: string): Promise<Output> {
     try {
       const result = await this.service.getPublicUrl(id)
