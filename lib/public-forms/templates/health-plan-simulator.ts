@@ -1,5 +1,6 @@
 import type { PublicFormDraftInput } from "../types"
 import { redistributeQuestionScoresEvenly } from "../scoring"
+import { createDefaultThankYouPage } from "../thank-you-pages"
 
 const FALLBACK_HEALTH_PLANS = [
   "Alice",
@@ -204,6 +205,29 @@ export function createHealthPlanSimulatorDraft(
     },
   ]
 
+  const simulationThankYouPage = createDefaultThankYouPage({
+    name: "Resultado da simulação",
+    title: "Simulação de {firstName} está pronta",
+    description:
+      "Veja abaixo a estimativa de economia com base nas suas respostas. Os valores podem variar.",
+    kind: "simulation",
+    isDefault: false,
+    actions: [
+      {
+        id: crypto.randomUUID(),
+        label: "Agendar reunião gratuita",
+        type: "close",
+      },
+    ],
+  })
+  const defaultThankYouPage = createDefaultThankYouPage({
+    name: "Confirmação",
+    title: "Reunião agendada!",
+    description:
+      "Você vai receber um convite no seu e-mail com o link da reunião e todos os detalhes.",
+    isDefault: true,
+  })
+
   return {
     name: "Simulador de Redução",
     description: "Simule a redução do seu plano de saúde em menos de 2 minutos.",
@@ -219,10 +243,11 @@ export function createHealthPlanSimulatorDraft(
       { id: crypto.randomUUID(), value: "100%", label: "gratuito" },
     ],
     ctaLabel: "Começar",
-    successTitle: "Reunião agendada!",
-    successDescription:
-      "Você vai receber um convite no seu e-mail com o link da reunião e todos os detalhes.",
-    successActions: [],
+    successTitle: defaultThankYouPage.title,
+    successDescription: defaultThankYouPage.description,
+    successActions: defaultThankYouPage.actions,
+    thankYouPages: [simulationThankYouPage, defaultThankYouPage],
+    defaultThankYouPageId: defaultThankYouPage.id,
     useDefaultTheme: true,
     backgroundColor: "#FFF5F0",
     textColor: "#1A1A1A",

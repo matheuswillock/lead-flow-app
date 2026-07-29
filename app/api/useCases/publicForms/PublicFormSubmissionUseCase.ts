@@ -1,15 +1,10 @@
 import { LeadStatus, Prisma } from "@prisma/client"
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
-import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService"
 import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService"
-import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase"
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase"
-import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase"
-import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
 import { formatLocalDateValue, formatLocalTimeValue, DEFAULT_TZ } from "@/lib/dates"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
-import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import {
@@ -17,39 +12,18 @@ import {
   resolveVisibleQuestionIds,
   validateAnswer,
 } from "@/lib/public-forms/engine"
-import { parseCurrencyBR } from "@/lib/public-forms/masks"
-import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
-
-const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
-const nativeKeys = new Set([
-  "name",
-  "email",
-  "phone",
-  "cnpj",
-  "age",
-  "currentHealthPlan",
-  "currentValue",
-  "referenceHospital",
-  "currentTreatment",
-])
-
-function valueText(value: unknown) {
-  return Array.isArray(value) ? value.map(String).join(", ") : String(value ?? "")
-}
+import type { PublicFormSubmissionInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import {
+  extractLeadDataFromSnapshot,
+  upsertLeadFromFormAnswers,
+} from "./publicFormLeadSync"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
-type SubmissionInput = {
-  requestKey: string
-  answers: PublicFormAnswerInput[]
-  origin: Record<string, unknown>
-  scheduling?: { startsAt: string }
-}
-
 export class PublicFormSubmissionUseCase {
-  async execute(publicId: string, input: SubmissionInput): Promise<Output> {
+  async execute(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
@@ -69,9 +43,16 @@ export class PublicFormSubmissionUseCase {
       )
     }
 
+    const progressSubmission =
+      input.visitorSessionId != null
+        ? await publicFormsRepository.findProgressSubmission(
+            current.publicationId,
+            input.visitorSessionId,
+          )
+        : null
+
     const { snapshot } = current
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
-    // Ignore answers for questions that became hidden after conditional navigation.
     const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
     const answerMap = new Map(visibleAnswers.map((answer) => [answer.questionId, answer.value]))
     const errors = snapshot.questions.flatMap((question) => {
@@ -86,144 +67,47 @@ export class PublicFormSubmissionUseCase {
       (item) => score >= item.minScore && score <= item.maxScore,
     )
     const origin = sanitizePublicFormOrigin(input.origin)
-    const submission = await publicFormsRepository.createSubmission({
-      formId: snapshot.formId,
-      publicationId: current.publicationId,
-      requestKey: input.requestKey,
-      score,
-      scoreBandLabel: band?.label,
-      origin: origin as Prisma.InputJsonValue,
-    })
+
+    const nameCheck = extractLeadDataFromSnapshot(snapshot, visibleAnswers, visible).name
+    if (!nameCheck) {
+      return new Output(false, [], ["O formulário não forneceu o nome obrigatório do lead"], null)
+    }
+
+    const bandNote = band
+      ? [`Qualificação: ${band.label}${band.summary ? ` — ${band.summary}` : ""}`]
+      : undefined
+
+    const submission =
+      progressSubmission ??
+      (await publicFormsRepository.createSubmission({
+        formId: snapshot.formId,
+        publicationId: current.publicationId,
+        requestKey: input.requestKey,
+        visitorSessionId: input.visitorSessionId ?? null,
+        score,
+        scoreBandLabel: band?.label,
+        origin: origin as Prisma.InputJsonValue,
+        completionStatus: "partial",
+      }))
 
     try {
       const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
-      const native: Record<string, string | number> = {}
-      const custom: Record<string, unknown> = {}
-      const notes: string[] = []
-      for (const question of snapshot.questions) {
-        if (!visible.has(question.id) || !answerMap.has(question.id)) continue
-        const value = answerMap.get(question.id)
-        if (
-          question.mappingTarget === "native_field" &&
-          question.mappingKey &&
-          nativeKeys.has(question.mappingKey)
-        ) {
-          if (question.mappingKey === "currentValue" || question.type === "currency") {
-            const amount =
-              typeof value === "number" && Number.isFinite(value)
-                ? value
-                : parseCurrencyBR(String(value ?? ""))
-            if (Number.isFinite(amount) && amount >= 0) {
-              native[question.mappingKey] = amount
-            }
-          } else {
-            native[question.mappingKey] = valueText(value)
-          }
-        }
-        if (question.mappingTarget === "custom_field" && question.mappingKey) {
-          custom[question.mappingKey] = value
-        }
-        if (question.mappingTarget === "notes") notes.push(`${question.title}: ${valueText(value)}`)
-      }
-      if (band) {
-        notes.push(`Qualificação: ${band.label}${band.summary ? ` — ${band.summary}` : ""}`)
-      }
-      const name = typeof native.name === "string" ? native.name.trim() : ""
-      if (!name) throw new Error("O formulário não forneceu o nome obrigatório do lead")
-
-      const email = typeof native.email === "string" ? native.email.trim().toLowerCase() : ""
-      const phone = typeof native.phone === "string" ? native.phone : ""
-      const normalizedPhone = phone ? normalizeLeadPhoneDigits(phone) : ""
-      const candidates = await publicFormsRepository.findLeadCandidates(
-        form.teamId,
-        email,
-        phone,
-        normalizedPhone,
-      )
-      const match = candidates.find(
-        (lead) =>
-          (email && lead.email?.toLowerCase() === email) ||
-          (normalizedPhone && normalizeLeadPhoneDigits(lead.phone ?? "") === normalizedPhone),
-      )
-
-      let lead = match
-      let created = false
-      if (lead) {
-        lead = await publicFormsRepository.updateLead(lead.id, {
-          ...native,
-          notes: [lead.notes, notes.join("\n")].filter(Boolean).join("\n\n"),
-          updatedBy: form.team.master.id,
-        })
-        for (const [key, value] of Object.entries(custom)) {
-          const definitionId = await publicFormsRepository.findCustomFieldDefinitionId(
-            form.teamId,
-            key,
-          )
-          if (definitionId) {
-            await publicFormsRepository.upsertLeadCustomFieldValue(
-              lead.id,
-              definitionId,
-              value as Prisma.InputJsonValue,
-            )
-          }
-        }
-      } else {
-        if (!form.team.master.supabaseId) {
-          throw new Error("Master do time sem identificação de autenticação")
-        }
-        const createData: CreateLeadRequest = {
-          name,
-          email: email || undefined,
-          phone: phone || undefined,
-          cnpj: typeof native.cnpj === "string" ? native.cnpj : undefined,
-          age: typeof native.age === "string" ? native.age : undefined,
-          currentHealthPlan:
-            typeof native.currentHealthPlan === "string" ? native.currentHealthPlan : undefined,
-          currentValue: typeof native.currentValue === "number" ? native.currentValue : undefined,
-          referenceHospital:
-            typeof native.referenceHospital === "string" ? native.referenceHospital : undefined,
-          currentTreatment:
-            typeof native.currentTreatment === "string" ? native.currentTreatment : undefined,
-          meetingDate: undefined,
-          meetingTitle: undefined,
-          meetingNotes: undefined,
-          meetingLink: undefined,
-          notes: notes.join("\n") || undefined,
-          assignedTo: form.assignedSdrId ?? undefined,
-          closerId: undefined,
-          status: LeadStatus.new_opportunity,
-          ticket: undefined,
-          contractDueDate: undefined,
-          soldPlan: undefined,
-          customFields: custom,
-          confirmDuplicate: true,
-          originChannel: "public_form",
-        }
-        const output = await leadUseCase.createLead(
-          form.team.master.supabaseId,
-          createData,
-          form.teamId,
-          {
-            authorAsStudio: true,
-            body: "Lead criado via formulário público",
-            payload: {
-              kind: "public_form_submission",
-              formId: form.id,
-              publicationId: current.publicationId,
-              submissionId: submission.id,
-              score,
-              scoreBand: band?.label ?? null,
-              origin,
-            },
-          },
-          { autoScheduleMeeting: false },
-        )
-        if (!output.isValid) throw new Error(output.errorMessages.join("; "))
-        lead = output.result as NonNullable<typeof match>
-        created = true
-      }
-
+      const upserted = await upsertLeadFromFormAnswers({
+        form,
+        snapshot,
+        answers: visibleAnswers,
+        visibleIds: visible,
+        score,
+        scoreBandLabel: band?.label ?? null,
+        submissionId: submission.id,
+        publicationId: current.publicationId,
+        origin: origin as Record<string, unknown>,
+        extraNotes: bandNote,
+      })
+      const lead = upserted?.lead
       if (!lead) throw new Error("Não foi possível criar ou localizar o lead")
+      const created = upserted.created
+
       let scheduled = false
       if (input.scheduling) {
         if (!snapshot.schedulingEnabled || snapshot.eligibleCloserIds.length === 0) {
@@ -262,7 +146,6 @@ export class PublicFormSubmissionUseCase {
 
         const closerProfile = await publicFormsRepository.findCloserGoogleConnection(closerId)
         const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection)
-        // Public forms cannot collect a manual Meet link; fall back to call when Google is offline.
         const meetingType = canUseGoogleCalendar ? "online" : "call"
 
         const scheduleOutput = await leadScheduleService.createSchedule({
@@ -291,7 +174,7 @@ export class PublicFormSubmissionUseCase {
       }
 
       const eventType = created ? ("lead_created" as const) : ("lead_attached" as const)
-      const visitorSessionId = input.requestKey.slice(0, 100)
+      const visitorSessionId = (input.visitorSessionId ?? input.requestKey).slice(0, 100)
       const metricEvents: Array<{
         formId: string
         publicationId: string
@@ -344,9 +227,11 @@ export class PublicFormSubmissionUseCase {
         activityPayload: json({
           kind: "public_form_submission",
           formId: snapshot.formId,
+          formName: form.name,
           publicationId: current.publicationId,
           publicationVersion: snapshot.version,
           submissionId: submission.id,
+          thankYouPageId: input.thankYouPageId ?? null,
           score,
           scoreBand: band?.label ?? null,
           origin,

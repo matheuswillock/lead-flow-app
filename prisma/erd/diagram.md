@@ -1293,6 +1293,14 @@ failed failed
     
 
 
+        PublicFormCompletionStatus {
+            initial initial
+partial partial
+complete complete
+        }
+    
+
+
         PublicFormMetricType {
             form_viewed form_viewed
 form_started form_started
@@ -3394,6 +3402,8 @@ meeting_scheduled meeting_scheduled
     String successTitle 
     String successDescription "❓"
     Json successActions "❓"
+    Json thankYouPages "❓"
+    String defaultThankYouPageId "❓"
     Boolean useDefaultTheme 
     String backgroundColor "❓"
     String textColor "❓"
@@ -3449,6 +3459,7 @@ meeting_scheduled meeting_scheduled
 
   "corretor_studio_public_form_rules" {
     String id "🗝️"
+    String targetThankYouPageId "❓"
     PublicFormRuleOperator operator 
     Json comparisonValue "❓"
     PublicFormRuleAction action 
@@ -3482,6 +3493,8 @@ meeting_scheduled meeting_scheduled
   "corretor_studio_public_form_submissions" {
     String id "🗝️"
     String requestKey 
+    String visitorSessionId "❓"
+    PublicFormCompletionStatus completionStatus 
     PublicFormSubmissionStatus status 
     Int score 
     String scoreBandLabel "❓"
@@ -3964,6 +3977,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_score_bands" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_publications" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_publications" }o--|| corretor_studio_profiles : "publishedBy"
+    "corretor_studio_public_form_submissions" |o--|| "PublicFormCompletionStatus" : "enum:completionStatus"
     "corretor_studio_public_form_submissions" |o--|| "PublicFormSubmissionStatus" : "enum:status"
     "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_form_publications : "publication"

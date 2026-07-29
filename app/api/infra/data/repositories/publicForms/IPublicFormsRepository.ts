@@ -30,6 +30,8 @@ export const publicFormDetailSelect = {
   successTitle: true,
   successDescription: true,
   successActions: true,
+  thankYouPages: true,
+  defaultThankYouPageId: true,
   useDefaultTheme: true,
   backgroundColor: true,
   textColor: true,
@@ -76,6 +78,7 @@ export const publicFormDetailSelect = {
       id: true,
       sourceQuestionId: true,
       targetQuestionId: true,
+      targetThankYouPageId: true,
       operator: true,
       comparisonValue: true,
       action: true,
@@ -130,6 +133,8 @@ export type PublicFormPublishedSnapshot = {
 
 export type PublicFormSubmissionContext = {
   id: string
+  name: string
+  publicId: string
   teamId: string
   assignedSdrId: string | null
   assignedSdr: { email: string | null } | null
@@ -249,13 +254,33 @@ export interface IPublicFormsRepository {
   ): Promise<Array<{ origin: Prisma.JsonValue | null; visitorSessionId: string }>>
   listLeadSubmissions(teamId: string, leadId: string): Promise<unknown[]>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
+  findProgressSubmission(
+    publicationId: string,
+    visitorSessionId: string,
+  ): Promise<PublicFormSubmission | null>
   createSubmission(data: {
     formId: string
     publicationId: string
     requestKey: string
-    score: number
+    visitorSessionId?: string | null
+    score?: number
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
+    completionStatus?: import("@prisma/client").PublicFormCompletionStatus
+  }): Promise<PublicFormSubmission>
+  upsertProgressSubmission(data: {
+    formId: string
+    publicationId: string
+    visitorSessionId: string
+    requestKey: string
+    origin: Prisma.InputJsonValue
+    completionStatus: import("@prisma/client").PublicFormCompletionStatus
+    leadId?: string | null
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>
   }): Promise<PublicFormSubmission>
   findFormSubmissionContext(formId: string): Promise<PublicFormSubmissionContext>
   findCloserGoogleConnection(closerId: string): Promise<{

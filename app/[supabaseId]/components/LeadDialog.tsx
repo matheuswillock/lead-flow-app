@@ -44,6 +44,7 @@ import { EmojiStyle, Theme } from "emoji-picker-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
@@ -121,6 +122,11 @@ type PendingStatusConfirmation = {
 function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: string; teamId: string; supabaseId: string }) {
   const [items, setItems] = useState<any[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const completionLabel = (status?: string) => {
+    if (status === "complete") return "Completo";
+    if (status === "partial") return "Parcial";
+    return "Inicial";
+  };
   useEffect(() => {
     const controller = new AbortController();
     void fetch(`/api/v1/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
@@ -137,9 +143,16 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
     return () => controller.abort();
   }, [leadId, teamId, supabaseId]);
   if (error) return <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">{error}</div>;
-  if (!items) return <div className="mt-4 space-y-2"><div className="h-20 animate-pulse rounded-lg bg-muted"/><div className="h-20 animate-pulse rounded-lg bg-muted"/></div>;
+  if (!items) {
+    return (
+      <div className="mt-4 flex flex-col gap-2">
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+      </div>
+    );
+  }
   if (!items.length) return <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Este lead ainda não respondeu formulários públicos.</div>;
-  return <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">{items.map((submission) => <div className="rounded-lg border p-3" key={submission.id}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{submission.form.name}</p><p className="text-xs text-muted-foreground">Versão {submission.publication.version} · {new Date(submission.createdAt).toLocaleString("pt-BR")}</p></div>{submission.scoreBandLabel ? <Badge variant="secondary">{submission.scoreBandLabel} · {submission.score} pts</Badge> : null}</div><div className="mt-3 space-y-2">{submission.answers.map((answer: any) => { const snapshot = answer.questionSnapshot as { title?: string }; const value = Array.isArray(answer.value) ? answer.value.join(", ") : typeof answer.value === "object" ? JSON.stringify(answer.value) : String(answer.value ?? "—"); return <div key={answer.id}><p className="text-xs font-medium text-muted-foreground">{snapshot.title ?? "Pergunta"}</p><p className="text-sm break-words">{value}</p></div> })}</div></div>)}</div>;
+  return <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">{items.map((submission) => <div className="rounded-lg border p-3" key={submission.id}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{submission.form.name}</p><p className="text-xs text-muted-foreground">Versão {submission.publication.version} · {new Date(submission.createdAt).toLocaleString("pt-BR")}</p></div><div className="flex flex-col items-end gap-1">{submission.completionStatus ? <Badge variant="outline">{completionLabel(submission.completionStatus)}</Badge> : null}{submission.scoreBandLabel ? <Badge variant="secondary">{submission.scoreBandLabel} · {submission.score} pts</Badge> : null}</div></div><div className="mt-3 space-y-2">{submission.answers.map((answer: any) => { const snapshot = answer.questionSnapshot as { title?: string }; const value = Array.isArray(answer.value) ? answer.value.join(", ") : typeof answer.value === "object" ? JSON.stringify(answer.value) : String(answer.value ?? "—"); return <div key={answer.id}><p className="text-xs font-medium text-muted-foreground">{snapshot.title ?? "Pergunta"}</p><p className="text-sm break-words">{value}</p></div> })}</div></div>)}</div>;
 }
 
 type PendingSalesInfoGate = {
@@ -469,10 +482,6 @@ export default function LeadDialog({
     currentLead.status === "offerSubmission"
   );
   const shouldShowMeetingHeald = !!currentLead && currentLead.status === "scheduled";
-  const isTransferWithoutPreSchedule = useMemo(
-    () => !!currentLead && currentLead.isTransfer === true && !currentLead.meetingDate,
-    [currentLead]
-  );
   const isAssignedCloser = !!(currentLead && user && currentLead.closerId && currentLead.closerId === user.id);
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
@@ -525,13 +534,15 @@ export default function LeadDialog({
         channel?: string;
         provider?: string;
         source?: string;
+        formName?: string;
       };
       const channel = typeof payload.channel === "string" ? payload.channel.toLowerCase() : "";
       const provider = typeof payload.provider === "string" ? payload.provider.toLowerCase() : "";
       const source = typeof payload.source === "string" ? payload.source.trim() : "";
+      const formName = typeof payload.formName === "string" ? payload.formName.trim() : "";
 
-      if (channel === "public_lead_form") {
-        return { label: "Formulário Público", variant: "secondary" };
+      if (channel === "public_form" || channel === "public_lead_form") {
+        return { label: formName || source || "Formulário público", variant: "secondary" };
       }
 
       if (channel === "webhook" && provider === "meta") {
@@ -2824,8 +2835,6 @@ export default function LeadDialog({
                       currentUserIsSdr={isOperatorSdr}
                       currentUserIsCloser={isCloserOperator}
                       isCloserSelectDisabled={isCloserOperator}
-                      isFullSaveDisabled={isTransferWithoutPreSchedule}
-                      fullSaveDisabledReason="Selecione uma data para o pré-agendamento da transferência."
                       supabaseId={supabaseId}
                       activeTeamId={activeTeamId ?? undefined}
                     />

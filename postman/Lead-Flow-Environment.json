@@ -344,6 +344,27 @@
       "type": "default",
       "enabled": true,
       "description": "Token de descadastro de campanha de e-mail do backoffice"
+    },
+    {
+      "key": "publicFormPublicId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "publicId do formulário público publicado"
+    },
+    {
+      "key": "publicFormVisitorSessionId",
+      "value": "visitor-session-postman-01",
+      "type": "default",
+      "enabled": true,
+      "description": "Sessão do visitante para progresso/submissão de formulário público"
+    },
+    {
+      "key": "publicFormQuestionId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de pergunta do formulário público para testes de progresso"
     }
   ],
   "_postman_variable_scope": "environment"

@@ -22,6 +22,18 @@ export type PublicFormSuccessAction = {
   whatsappMessage?: string | null
 }
 
+export type PublicFormThankYouPageKind = "standard" | "simulation"
+
+export type PublicFormThankYouPage = {
+  id: string
+  name: string
+  title: string
+  description?: string | null
+  actions: PublicFormSuccessAction[]
+  kind?: PublicFormThankYouPageKind
+  isDefault?: boolean
+}
+
 export type PublicFormThemeColors = {
   backgroundColor: string
   textColor: string
@@ -60,6 +72,8 @@ export type PublicFormRuleInput = {
   sourceQuestionId: string
   /** Question UUID or `PUBLIC_FORM_THANK_YOU_TARGET`. */
   targetQuestionId: string
+  /** Thank-you page when target is thank-you; null/undefined uses default page. */
+  targetThankYouPageId?: string | null
   operator: PublicFormRuleOperator
   comparisonValue?: unknown
   action: PublicFormRuleAction
@@ -87,6 +101,8 @@ export type PublicFormDraftInput = {
   successTitle: string
   successDescription?: string | null
   successActions: PublicFormSuccessAction[]
+  thankYouPages: PublicFormThankYouPage[]
+  defaultThankYouPageId: string
   useDefaultTheme: boolean
   backgroundColor?: string | null
   textColor?: string | null
@@ -125,6 +141,24 @@ export type PublicFormListFilters = {
 }
 
 export type PublicFormAnswerInput = { questionId: string; value: unknown }
+
+export type PublicFormCompletionStatus = "initial" | "partial" | "complete"
+
+export type PublicFormProgressInput = {
+  visitorSessionId: string
+  answers: PublicFormAnswerInput[]
+  origin?: Record<string, unknown>
+  lastQuestionId?: string
+}
+
+export type PublicFormSubmissionInput = {
+  requestKey: string
+  answers: PublicFormAnswerInput[]
+  origin: Record<string, unknown>
+  scheduling?: { startsAt: string }
+  thankYouPageId?: string
+  visitorSessionId?: string
+}
 
 export type PublicFormMetricEventInput = {
   visitorSessionId: string
