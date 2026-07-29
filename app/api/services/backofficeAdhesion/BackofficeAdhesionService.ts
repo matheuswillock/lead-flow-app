@@ -1855,12 +1855,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return
     }
 
-    const deliverInviteEmail = () =>
-      this.sendSetPasswordEmail(
-        { ...adhesion, createdProfileId: provisionedProfileId },
-        "invite",
-        linkData
-      ).catch((emailError) => {
+    const deliverInviteEmail = async () => {
+      try {
+        await this.sendSetPasswordEmail(
+          { ...adhesion, createdProfileId: provisionedProfileId },
+          "invite",
+          linkData
+        )
+      } catch (emailError) {
         console.error(
           "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][invite-email]",
           {
@@ -1869,11 +1871,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
             error: emailError,
           }
         )
-        throw emailError
-      })
+      }
+    }
 
     if (options?.deferEmailDelivery) {
-      void deliverInviteEmail().catch(() => undefined)
+      void deliverInviteEmail()
       return
     }
 
