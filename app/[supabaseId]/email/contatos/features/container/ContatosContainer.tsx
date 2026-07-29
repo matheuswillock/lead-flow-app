@@ -16,9 +16,10 @@ import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
+import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
 
 export function ContatosContainer() {
-  const { selectedListId, lists, handleSelectList } = useContactsContext()
+  const { selectedListId, lists, supabaseId, handleSelectList, handleSetListSegment } = useContactsContext()
 
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null
 
@@ -80,21 +81,36 @@ export function ContatosContainer() {
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-semibold">{selectedList?.name}</h2>
-                {!selectedList?.isBlocklist ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-semibold">{selectedList?.name}</h2>
+                  {!selectedList?.isBlocklist ? (
+                    <div className="flex items-center gap-2">
+                      <ContactAddModal
+                        trigger={
+                          <Button size="sm" variant="outline">+ Adicionar contato</Button>
+                        }
+                      />
+                      <ContactImportButton />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Lista somente leitura — contatos entram via descadastro.
+                    </p>
+                  )}
+                </div>
+                {!selectedList?.isBlocklist && selectedListId && (
                   <div className="flex items-center gap-2">
-                    <ContactAddModal
-                      trigger={
-                        <Button size="sm" variant="outline">+ Adicionar contato</Button>
-                      }
+                    <span className="text-xs text-muted-foreground">Segmento do Radar:</span>
+                    <ContactListSegmentPicker
+                      listId={selectedListId}
+                      supabaseId={supabaseId}
+                      selectedSegmentId={selectedList?.radarSegmentId ?? null}
+                      selectedSegmentName={selectedList?.radarSegment?.name ?? null}
+                      onSelect={(id, _name) => void handleSetListSegment(selectedListId, id)}
+                      onClear={() => void handleSetListSegment(selectedListId, null)}
                     />
-                    <ContactImportButton />
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Lista somente leitura — contatos entram via descadastro.
-                  </p>
                 )}
               </div>
               <ContactsTable />

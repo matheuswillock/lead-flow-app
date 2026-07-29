@@ -11,6 +11,8 @@ import {
 } from "@/lib/email/email-import-storage"
 import { generateEmailImportId } from "@/lib/email/generate-import-id"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
+import { syncEmailContactToRadarUseCase } from "@/app/api/useCases/radar/SyncEmailContactToRadarUseCase"
 
 const DEFAULT_LIST_NAME = "Todos contatos"
 const BATCH_SIZE = 500
@@ -451,6 +453,7 @@ export class EmailContactImportUseCase {
 
       const totalBatches = Math.ceil(validRows.length / BATCH_SIZE) || 0
       let batchIndex = Math.floor(processedRows / BATCH_SIZE)
+      const hasRadarFeature = await teamHasRadarFeature(claimed.teamId)
 
       while (batchIndex < totalBatches) {
         if (Date.now() - startedAt > MAX_PROCESSING_MS) {
@@ -485,6 +488,30 @@ export class EmailContactImportUseCase {
           importedCount += batchResult.imported
           updatedCount += batchResult.updated
           processedRows += batch.length
+
+          if (hasRadarFeature) {
+            // D6: sync síncrono (não fire-and-forget) — "já deve constar na
+            // lista de segmentos assim que for importado" exige que o job só
+            // marque o import como concluído depois que os perfis existirem.
+            // Se estourar MAX_PROCESSING_MS, o job já re-enfileira e retoma
+            // do próximo lote (mesmo mecanismo existente, sem estado novo).
+            const batchContacts = await prisma.emailContact.findMany({
+              where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
+              select: { id: true },
+            })
+            for (const batchContact of batchContacts) {
+              const syncResult = await syncEmailContactToRadarUseCase.execute({
+                emailContactId: batchContact.id,
+                teamId: claimed.teamId,
+              })
+              if (!syncResult.isValid) {
+                console.error(
+                  `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
+                  syncResult.errorMessages
+                )
+              }
+            }
+          }
 
           if (!list.isSystemDefault) {
             const defaultList = await this.ensureDefaultList(ctx)

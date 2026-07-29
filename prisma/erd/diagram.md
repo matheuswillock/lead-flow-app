@@ -3816,6 +3816,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contact_lists" }o--|o backoffice_users : "managedByBackofficeUser"
+    "corretor_studio_email_contact_lists" }o--|o corretor_studio_radar_segments : "radarSegment"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"

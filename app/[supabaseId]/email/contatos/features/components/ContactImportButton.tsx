@@ -7,7 +7,7 @@ import { useContactsContext } from "../context/ContactsContext";
 import { ContactImportDialog } from "./contact-import/ContactImportDialog";
 
 export function ContactImportButton() {
-  const { selectedListId, refreshSelectedList } = useContactsContext();
+  const { selectedListId, supabaseId, refreshSelectedList } = useContactsContext();
   const [open, setOpen] = useState(false);
 
   if (!selectedListId) return null;
@@ -26,6 +26,7 @@ export function ContactImportButton() {
         open={open}
         onOpenChange={setOpen}
         listId={selectedListId}
+        supabaseId={supabaseId}
         onImportComplete={handleImportComplete}
       />
     </>

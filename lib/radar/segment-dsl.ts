@@ -162,12 +162,32 @@ const leadStatusConditionSchema = z.object({
   statuses: z.array(leadStatusSchema).min(1, "informe ao menos um status"),
 })
 
+const emailContactListConditionSchema = z.object({
+  kind: z.literal("email_contact_list"),
+  listIds: z.array(z.string().uuid("listIds deve conter UUIDs válidos")).min(1, "informe ao menos uma lista"),
+})
+
+const emailContactFieldConditionSchema = z
+  .object({
+    kind: z.literal("email_contact_field"),
+    fieldKey: z.string().min(1, "fieldKey é obrigatório"),
+    operator: leadCustomFieldOperatorSchema,
+    value: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (OPERATORS_REQUIRING_VALUE.has(data.operator) && data.value === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `O operador "${data.operator}" exige um valor`, path: ["value"] })
+    }
+  })
+
 export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
   profileFieldConditionSchema,
   consentConditionSchema,
   eventConditionSchema,
   leadCustomFieldConditionSchema,
   leadStatusConditionSchema,
+  emailContactListConditionSchema,
+  emailContactFieldConditionSchema,
 ])
 
 export const radarSegmentRulesSchema = z.object({

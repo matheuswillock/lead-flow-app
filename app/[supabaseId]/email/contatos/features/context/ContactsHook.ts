@@ -17,9 +17,10 @@ export type ContactsActions = {
   handleSearch: (query: string) => void
   handlePageChange: (page: number) => void
   refreshSelectedList: () => Promise<void>
+  handleSetListSegment: (listId: string, segmentId: string | null) => Promise<void>
 }
 
-export type ContactsHookReturn = ContactsState & ContactsActions
+export type ContactsHookReturn = ContactsState & ContactsActions & { supabaseId: string }
 
 export function useContacts(supabaseId: string): ContactsHookReturn {
   const [lists, setLists] = useState<ContactList[]>([]);
@@ -237,7 +238,24 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     [selectedListId, fetchContacts, search]
   );
 
+  const handleSetListSegment = useCallback(
+    async (listId: string, segmentId: string | null) => {
+      console.info("[useContatos] handleSetListSegment", { listId, segmentId });
+      try {
+        await service.setListRadarSegment(listId, segmentId);
+        await fetchLists();
+        toast.success(segmentId ? "Segmento vinculado à lista" : "Segmento desvinculado da lista");
+      } catch (error) {
+        console.error("[useContatos] handleSetListSegment error", error);
+        toast.error("Erro ao vincular segmento à lista");
+        throw error;
+      }
+    },
+    [fetchLists]
+  );
+
   return {
+    supabaseId,
     lists,
     selectedListId,
     contacts,
@@ -256,5 +274,6 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     handleSearch,
     handlePageChange,
     refreshSelectedList,
+    handleSetListSegment,
   };
 }
