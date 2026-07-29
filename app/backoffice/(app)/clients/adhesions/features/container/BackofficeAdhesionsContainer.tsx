@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Copy, Edit, MailCheck, MoreHorizontal, RefreshCw, Trash2, X } from "lucide-react"
+import { Copy, Edit, FileText, MailCheck, MoreHorizontal, RefreshCw, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -96,6 +96,28 @@ function getStatusBadgeClass(status: BackofficeAdhesionStatusKey): string {
   return classes[status]
 }
 
+function isAdhesionInviteEnabled(adhesion: BackofficeAdhesionItem): boolean {
+  return adhesion.accountProvisioned || adhesion.hasExternalActivation
+}
+
+function isAdhesionCheckoutLinkEnabled(adhesion: BackofficeAdhesionItem): boolean {
+  return adhesion.status !== "paid" && !isAdhesionInviteEnabled(adhesion)
+}
+
+function isAdhesionInvoiceCheckoutEnabled(adhesion: BackofficeAdhesionItem): boolean {
+  return adhesion.status !== "paid" && isAdhesionInviteEnabled(adhesion)
+}
+
+function getAdhesionFinancialStatusLabel(adhesion: BackofficeAdhesionItem): string {
+  if (adhesion.status === "pending" && adhesion.accountProvisioned) {
+    return "Ativa — parcelas em aberto"
+  }
+  if (adhesion.status === "pending" && !adhesion.accountProvisioned) {
+    return "Aguardando pagamento"
+  }
+  return BACKOFFICE_ADHESION_STATUS_LABELS[adhesion.status]
+}
+
 export function BackofficeAdhesionsContainer() {
   const { tz } = useTimezone()
   const {
@@ -118,6 +140,7 @@ export function BackofficeAdhesionsContainer() {
   const [resendResult, setResendResult] = useState<BackofficeAdhesionCreationResult | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
+  const [copyingInvoiceId, setCopyingInvoiceId] = useState<string | null>(null)
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BackofficeAdhesionItem | null>(null)
@@ -204,6 +227,26 @@ export function BackofficeAdhesionsContainer() {
     }
   }
 
+  async function handleCopyInvoiceLink(adhesion: BackofficeAdhesionItem) {
+    if (copyingInvoiceId) return
+    setCopyingInvoiceId(adhesion.id)
+    try {
+      const result = await service.getPendingInvoiceUrls(adhesion.id)
+      const links = result.invoices.map((invoice) => invoice.invoiceUrl).join("\n")
+      await copyLink(
+        links,
+        result.invoices.length > 1
+          ? { toastMessage: `${result.invoices.length} links de fatura copiados` }
+          : { toastMessage: "Link de fatura copiado" }
+      )
+    } catch (err) {
+      console.error("[BackofficeAdhesionsContainer][copyInvoiceUrl]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao copiar link de fatura")
+    } finally {
+      setCopyingInvoiceId(null)
+    }
+  }
+
   async function handleDeletePending(adhesion: BackofficeAdhesionItem) {
     if (deletingId) return
     setDeletingId(adhesion.id)
@@ -220,9 +263,9 @@ export function BackofficeAdhesionsContainer() {
     }
   }
 
-  async function copyLink(url: string) {
+  async function copyLink(url: string, options?: { toastMessage?: string }) {
     await navigator.clipboard.writeText(url)
-    toast.success("Link copiado")
+    toast.success(options?.toastMessage ?? "Link copiado")
   }
 
   return (
@@ -325,13 +368,13 @@ export function BackofficeAdhesionsContainer() {
                       variant="outline"
                       className={cn("font-medium", getStatusBadgeClass(adhesion.status))}
                     >
-                      {BACKOFFICE_ADHESION_STATUS_LABELS[adhesion.status]}
+                      {getAdhesionFinancialStatusLabel(adhesion)}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {adhesion.paidAt
                       ? `Pago em ${formatDate(adhesion.paidAt, tz)}`
-                      : BACKOFFICE_ADHESION_STATUS_LABELS[adhesion.status]}
+                      : getAdhesionFinancialStatusLabel(adhesion)}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
@@ -361,14 +404,18 @@ export function BackofficeAdhesionsContainer() {
                             Editar
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            disabled={resendingId === adhesion.id || adhesion.status === "paid"}
+                            disabled={
+                              resendingId === adhesion.id || !isAdhesionCheckoutLinkEnabled(adhesion)
+                            }
                             onSelect={() => void handleResend(adhesion)}
                           >
                             <RefreshCw data-icon="inline-start" />
                             Reenviar adesão
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            disabled={copyingId === adhesion.id || adhesion.status === "paid"}
+                            disabled={
+                              copyingId === adhesion.id || !isAdhesionCheckoutLinkEnabled(adhesion)
+                            }
                             onSelect={() => void handleCopyPublicLink(adhesion)}
                           >
                             <Copy data-icon="inline-start" />
@@ -376,7 +423,17 @@ export function BackofficeAdhesionsContainer() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={
-                              resendingInviteId === adhesion.id || adhesion.status !== "paid"
+                              copyingInvoiceId === adhesion.id ||
+                              !isAdhesionInvoiceCheckoutEnabled(adhesion)
+                            }
+                            onSelect={() => void handleCopyInvoiceLink(adhesion)}
+                          >
+                            <FileText data-icon="inline-start" />
+                            Copiar link de fatura
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={
+                              resendingInviteId === adhesion.id || !isAdhesionInviteEnabled(adhesion)
                             }
                             onSelect={() => void handleResendInvite(adhesion)}
                           >

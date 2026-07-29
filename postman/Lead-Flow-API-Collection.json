@@ -9896,6 +9896,39 @@
               }
             },
             {
+              "name": "GET Pending Backoffice Adhesion Invoice URLs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id/pending-invoice-url",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "adhesions",
+                    ":id",
+                    "pending-invoice-url"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{backofficeAdhesionId}}"
+                    }
+                  ]
+                },
+                "description": "Retorna os links de fatura (invoiceUrl) das parcelas pendentes de uma assinatura já ativada."
+              }
+            },
+            {
               "name": "GET Public Adhesion",
               "request": {
                 "method": "GET",
@@ -10812,6 +10845,37 @@
                         }
                       ]
                     }
+                  }
+                },
+                {
+                  "name": "POST Public Form Progress",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"visitorSessionId\": \"{{publicFormVisitorSessionId}}\",\n  \"answers\": [\n    {\n      \"questionId\": \"{{publicFormQuestionId}}\",\n      \"value\": \"Maria Silva\"\n    }\n  ],\n  \"origin\": {\n    \"utm_source\": \"postman\"\n  }\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/public-forms/:publicId/progress",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "public-forms",
+                        ":publicId",
+                        "progress"
+                      ],
+                      "variable": [
+                        { "key": "publicId", "value": "{{publicFormPublicId}}" }
+                      ]
+                    },
+                    "description": "Salva progresso parcial do formulário público (status inicial/parcial, upsert de lead quando há identidade)."
                   }
                 }
               ]

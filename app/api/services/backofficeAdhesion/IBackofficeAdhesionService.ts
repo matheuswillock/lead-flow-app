@@ -108,6 +108,8 @@ export interface BackofficeAdhesionDTO {
   productId: string | null
   hasUnlimitedUsers?: boolean
   multiskillEnabled?: boolean
+  accountProvisioned: boolean
+  hasExternalActivation: boolean
 }
 
 export interface BackofficeAdhesionPublicDTO {
@@ -275,6 +277,9 @@ export interface IBackofficeAdhesionService {
   deletePending(id: string): Promise<void>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
   resendInvite(id: string): Promise<{ email: string }>
+  getPendingInvoiceUrls(id: string): Promise<{
+    invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+  }>
   getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }>
   getPublicDetails(token: string): Promise<BackofficeAdhesionPublicDTO | BackofficeAdhesionTokenError>
   createCheckout(

@@ -231,10 +231,6 @@ function PublicLeadFormReady() {
   const submitFormData = useCallback(
     async (data: PublicLeadFormWithCustomFields, saveAsDraft: boolean) => {
       if (submitting || isSubmitting) return;
-      if (!saveAsDraft && isTransfer && !meetingDate) {
-        toast.error("Selecione uma data para o pré-agendamento da transferência.");
-        return;
-      }
       setSubmitting(true);
 
       try {
@@ -345,10 +341,9 @@ function PublicLeadFormReady() {
   const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
     return (error as { type?: string } | undefined)?.type === "manual";
   });
-  const isTransferWithoutMeetingDate = isTransfer && !meetingDate;
   const isDraftDisabled =
     isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
-  const isSaveDisabled = isDraftDisabled || isTransferWithoutMeetingDate;
+  const isSaveDisabled = isDraftDisabled;
 
   useEffect(() => {
     if (isSchemaValid) {

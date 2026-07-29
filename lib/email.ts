@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { Resend } from "resend"
 
 // Only instantiate when key exists.
@@ -20,6 +21,16 @@ export function buildResendIdempotencyKey(eventType: string, entityId: string): 
 	return key.length > RESEND_IDEMPOTENCY_KEY_MAX_LENGTH
 		? key.slice(0, RESEND_IDEMPOTENCY_KEY_MAX_LENGTH)
 		: key
+}
+
+/** Same entity + same payload variant reuses the key; payload changes rotate the key (e.g. new invite URL). */
+export function buildResendIdempotencyKeyWithVariant(
+	eventType: string,
+	entityId: string,
+	variant: string
+): string {
+	const digest = createHash("sha256").update(variant).digest("hex").slice(0, 16)
+	return buildResendIdempotencyKey(eventType, `${entityId}/${digest}`)
 }
 
 /** Batch sends use `batch-<event-type>/<batch-id>` per Resend API contract. */

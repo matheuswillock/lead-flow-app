@@ -412,18 +412,12 @@ export class LeadUseCase implements ILeadUseCase {
             null
           );
         }
-        if (!data.meetingDate) {
-          return new Output(
-            false,
-            [],
-            ["Selecione uma data para o pré-agendamento da transferência."],
-            null
-          );
-        }
-        const meetingDate = new Date(data.meetingDate);
-        const slotCheck = await isPreScheduleSlotAvailable(teamId, meetingDate);
-        if (!slotCheck.available) {
-          return new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
+        if (data.meetingDate) {
+          const meetingDate = new Date(data.meetingDate);
+          const slotCheck = await isPreScheduleSlotAvailable(teamId, meetingDate);
+          if (!slotCheck.available) {
+            return new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
+          }
         }
       }
 
@@ -970,15 +964,6 @@ export class LeadUseCase implements ILeadUseCase {
             ? new Date(data.meetingDate)
             : null
           : leadForDraft.meetingDate;
-
-      if (!saveAsDraft && effectiveIsTransferForSave && !resolvedMeetingDate) {
-        return new Output(
-          false,
-          [],
-          ["Selecione uma data para o pré-agendamento da transferência."],
-          null
-        );
-      }
 
       if (
         !saveAsDraft &&

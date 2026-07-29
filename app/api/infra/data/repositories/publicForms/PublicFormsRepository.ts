@@ -2,7 +2,7 @@ import { ActivityType, Prisma } from "@prisma/client"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
-import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
+import { isThankYouRuleTarget, normalizeThankYouPages } from "@/lib/public-forms/thank-you-pages"
 import {
   type IPublicFormsRepository,
   type PublicFormCompleteSubmissionInput,
@@ -112,7 +112,10 @@ async function replaceDraftRelations(
         formId,
         sourceQuestionId: rule.sourceQuestionId,
         targetQuestionId:
-          rule.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET ? null : rule.targetQuestionId,
+          isThankYouRuleTarget(rule.targetQuestionId) ? null : rule.targetQuestionId,
+        targetThankYouPageId: isThankYouRuleTarget(rule.targetQuestionId)
+          ? rule.targetThankYouPageId ?? null
+          : null,
         operator: rule.operator,
         comparisonValue:
           rule.comparisonValue === undefined ? Prisma.JsonNull : json(rule.comparisonValue),
@@ -227,36 +230,39 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     createdById: string,
     input: PublicFormDraftInput,
   ): Promise<PublicFormDetailRecord> {
+    const draft = normalizeThankYouPages(input)
     return prisma.$transaction(async (tx) => {
       const form = await tx.publicForm.create({
         data: {
           teamId,
           createdById,
-          name: input.name,
-          description: input.description,
-          assignedSdrId: input.assignedSdrId,
-          coverTitle: input.coverTitle,
-          coverDescription: input.coverDescription,
-          coverBadge: input.coverBadge,
-          coverHighlights: json(input.coverHighlights ?? []),
-          ctaLabel: input.ctaLabel,
-          successTitle: input.successTitle,
-          successDescription: input.successDescription,
-          successActions: json(input.successActions ?? []),
-          useDefaultTheme: input.useDefaultTheme,
-          backgroundColor: input.backgroundColor,
-          textColor: input.textColor,
-          lineColor: input.lineColor,
-          accentColor: input.accentColor,
-          buttonTextColor: input.buttonTextColor,
-          inputBackgroundColor: input.inputBackgroundColor,
-          schedulingEnabled: input.schedulingEnabled,
-          meetingDurationMinutes: input.meetingDurationMinutes,
-          schedulingMessage: input.schedulingMessage,
-          formKind: input.formKind ?? "standard",
+          name: draft.name,
+          description: draft.description,
+          assignedSdrId: draft.assignedSdrId,
+          coverTitle: draft.coverTitle,
+          coverDescription: draft.coverDescription,
+          coverBadge: draft.coverBadge,
+          coverHighlights: json(draft.coverHighlights ?? []),
+          ctaLabel: draft.ctaLabel,
+          successTitle: draft.successTitle,
+          successDescription: draft.successDescription,
+          successActions: json(draft.successActions ?? []),
+          thankYouPages: json(draft.thankYouPages),
+          defaultThankYouPageId: draft.defaultThankYouPageId,
+          useDefaultTheme: draft.useDefaultTheme,
+          backgroundColor: draft.backgroundColor,
+          textColor: draft.textColor,
+          lineColor: draft.lineColor,
+          accentColor: draft.accentColor,
+          buttonTextColor: draft.buttonTextColor,
+          inputBackgroundColor: draft.inputBackgroundColor,
+          schedulingEnabled: draft.schedulingEnabled,
+          meetingDurationMinutes: draft.meetingDurationMinutes,
+          schedulingMessage: draft.schedulingMessage,
+          formKind: draft.formKind ?? "standard",
         },
       })
-      await replaceDraftRelations(tx, form.id, input)
+      await replaceDraftRelations(tx, form.id, draft)
       return tx.publicForm.findUniqueOrThrow({
         where: { id: form.id },
         select: publicFormDetailSelect,
@@ -265,39 +271,42 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   }
 
   async updateWithDraft(id: string, input: PublicFormDraftInput): Promise<PublicFormDetailRecord> {
+    const draft = normalizeThankYouPages(input)
     return prisma.$transaction(async (tx) => {
       await tx.publicForm.update({
         where: { id },
         data: {
-          name: input.name,
-          description: input.description,
-          assignedSdrId: input.assignedSdrId,
-          coverTitle: input.coverTitle,
-          coverDescription: input.coverDescription,
-          coverBadge: input.coverBadge,
-          coverHighlights: json(input.coverHighlights ?? []),
-          ctaLabel: input.ctaLabel,
-          successTitle: input.successTitle,
-          successDescription: input.successDescription,
-          successActions: json(input.successActions ?? []),
-          useDefaultTheme: input.useDefaultTheme,
-          backgroundColor: input.backgroundColor,
-          textColor: input.textColor,
-          lineColor: input.lineColor,
-          accentColor: input.accentColor,
-          buttonTextColor: input.buttonTextColor,
-          inputBackgroundColor: input.inputBackgroundColor,
-          schedulingEnabled: input.schedulingEnabled,
-          meetingDurationMinutes: input.meetingDurationMinutes,
-          schedulingMessage: input.schedulingMessage,
-          formKind: input.formKind ?? "standard",
+          name: draft.name,
+          description: draft.description,
+          assignedSdrId: draft.assignedSdrId,
+          coverTitle: draft.coverTitle,
+          coverDescription: draft.coverDescription,
+          coverBadge: draft.coverBadge,
+          coverHighlights: json(draft.coverHighlights ?? []),
+          ctaLabel: draft.ctaLabel,
+          successTitle: draft.successTitle,
+          successDescription: draft.successDescription,
+          successActions: json(draft.successActions ?? []),
+          thankYouPages: json(draft.thankYouPages),
+          defaultThankYouPageId: draft.defaultThankYouPageId,
+          useDefaultTheme: draft.useDefaultTheme,
+          backgroundColor: draft.backgroundColor,
+          textColor: draft.textColor,
+          lineColor: draft.lineColor,
+          accentColor: draft.accentColor,
+          buttonTextColor: draft.buttonTextColor,
+          inputBackgroundColor: draft.inputBackgroundColor,
+          schedulingEnabled: draft.schedulingEnabled,
+          meetingDurationMinutes: draft.meetingDurationMinutes,
+          schedulingMessage: draft.schedulingMessage,
+          formKind: draft.formKind ?? "standard",
           approvalStatus: "draft",
           reviewedById: null,
           reviewedAt: null,
           reviewComment: null,
         },
       })
-      await replaceDraftRelations(tx, id, input)
+      await replaceDraftRelations(tx, id, draft)
       return tx.publicForm.findUniqueOrThrow({
         where: { id },
         select: publicFormDetailSelect,
@@ -478,6 +487,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         leadId: true,
         requestKey: true,
         status: true,
+        completionStatus: true,
+        visitorSessionId: true,
         score: true,
         scoreBandLabel: true,
         origin: true,
@@ -505,15 +516,90 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return prisma.publicFormSubmission.findUnique({ where: { requestKey } })
   }
 
+  findProgressSubmission(publicationId: string, visitorSessionId: string) {
+    return prisma.publicFormSubmission.findFirst({
+      where: {
+        publicationId,
+        visitorSessionId,
+        completionStatus: { in: ["initial", "partial"] },
+      },
+      orderBy: { updatedAt: "desc" },
+    })
+  }
+
   createSubmission(data: {
     formId: string
     publicationId: string
     requestKey: string
-    score: number
+    visitorSessionId?: string | null
+    score?: number
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
+    completionStatus?: import("@prisma/client").PublicFormCompletionStatus
   }) {
-    return prisma.publicFormSubmission.create({ data })
+    return prisma.publicFormSubmission.create({
+      data: {
+        ...data,
+        score: data.score ?? 0,
+      },
+    })
+  }
+
+  async upsertProgressSubmission(data: {
+    formId: string
+    publicationId: string
+    visitorSessionId: string
+    requestKey: string
+    origin: Prisma.InputJsonValue
+    completionStatus: import("@prisma/client").PublicFormCompletionStatus
+    leadId?: string | null
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>
+  }) {
+    const existing = await this.findProgressSubmission(data.publicationId, data.visitorSessionId)
+    if (existing) {
+      await prisma.$transaction(async (tx) => {
+        await tx.publicFormSubmission.update({
+          where: { id: existing.id },
+          data: {
+            completionStatus: data.completionStatus,
+            leadId: data.leadId ?? existing.leadId,
+            origin: data.origin,
+          },
+        })
+        await this.syncSubmissionAnswers(tx, existing.id, data.answers)
+      })
+      return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: existing.id } })
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const submission = await tx.publicFormSubmission.create({
+        data: {
+          formId: data.formId,
+          publicationId: data.publicationId,
+          requestKey: data.requestKey,
+          visitorSessionId: data.visitorSessionId,
+          completionStatus: data.completionStatus,
+          leadId: data.leadId ?? null,
+          origin: data.origin,
+          score: 0,
+        },
+      })
+      for (const answer of data.answers) {
+        await tx.publicFormAnswer.create({
+          data: {
+            submissionId: submission.id,
+            questionId: answer.questionId,
+            value: answer.value,
+            questionSnapshot: answer.questionSnapshot,
+          },
+        })
+      }
+      return submission
+    })
   }
 
   findFormSubmissionContext(formId: string): Promise<PublicFormSubmissionContext> {
@@ -521,6 +607,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       where: { id: formId },
       select: {
         id: true,
+        name: true,
+        publicId: true,
         teamId: true,
         assignedSdrId: true,
         assignedSdr: { select: { email: true } },
@@ -582,30 +670,90 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  async completeSubmission(input: PublicFormCompleteSubmissionInput) {
-    await prisma.$transaction([
-      prisma.publicFormSubmission.update({
-        where: { id: input.submissionId },
-        data: { leadId: input.leadId, status: "completed", submittedAt: new Date() },
-      }),
-      prisma.publicFormAnswer.createMany({
-        data: input.answers.map((answer) => ({
-          submissionId: input.submissionId,
+  private async syncSubmissionAnswers(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>,
+  ) {
+    const questionIds = answers.map((answer) => answer.questionId)
+    await tx.publicFormAnswer.deleteMany({
+      where: {
+        submissionId,
+        ...(questionIds.length > 0 ? { questionId: { notIn: questionIds } } : {}),
+      },
+    })
+    for (const answer of answers) {
+      await tx.publicFormAnswer.upsert({
+        where: {
+          submissionId_questionId: {
+            submissionId,
+            questionId: answer.questionId,
+          },
+        },
+        create: {
+          submissionId,
           questionId: answer.questionId,
           value: answer.value,
           questionSnapshot: answer.questionSnapshot,
-        })),
-      }),
-      prisma.leadActivity.create({
+        },
+        update: {
+          value: answer.value,
+          questionSnapshot: answer.questionSnapshot,
+        },
+      })
+    }
+  }
+
+  finalizeProgressSubmission(
+    submissionId: string,
+    data: {
+      requestKey: string
+      score: number
+      scoreBandLabel?: string | null
+      origin: Prisma.InputJsonValue
+      visitorSessionId?: string | null
+    },
+  ) {
+    return prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        requestKey: data.requestKey,
+        score: data.score,
+        scoreBandLabel: data.scoreBandLabel,
+        origin: data.origin,
+        visitorSessionId: data.visitorSessionId,
+        completionStatus: "partial",
+      },
+      select: { id: true },
+    })
+  }
+
+  async completeSubmission(input: PublicFormCompleteSubmissionInput) {
+    await prisma.$transaction(async (tx) => {
+      await tx.publicFormSubmission.update({
+        where: { id: input.submissionId },
+        data: {
+          leadId: input.leadId,
+          status: "completed",
+          completionStatus: "complete",
+          submittedAt: new Date(),
+        },
+      })
+      await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
+      await tx.leadActivity.create({
         data: {
           leadId: input.leadId,
           type: ActivityType.note,
           body: input.activityBody,
           payload: input.activityPayload,
         },
-      }),
-      ...input.metricEvents.map((event) =>
-        prisma.publicFormMetricEvent.upsert({
+      })
+      for (const event of input.metricEvents) {
+        await tx.publicFormMetricEvent.upsert({
           where: { eventKey: event.eventKey },
           create: {
             formId: event.formId,
@@ -616,9 +764,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             origin: event.origin,
           },
           update: {},
-        }),
-      ),
-    ])
+        })
+      }
+    })
   }
 
   async markSubmissionFailed(submissionId: string, errorMessage: string) {
