@@ -594,6 +594,34 @@ export function BackofficeStudioBotOpsContainer() {
                         ))}
                       </ul>
                     ) : null}
+                    {health.backupReadiness ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Backup readiness (VPS)</span>
+                          <Badge variant={health.backupReadiness.ok ? "default" : "destructive"}>
+                            {health.backupReadiness.ok ? "ok" : "pendente"}
+                          </Badge>
+                        </div>
+                        <ul className="grid gap-1 md:grid-cols-2">
+                          {(
+                            [
+                              ["bash", health.backupReadiness.bash],
+                              ["pg_dump", health.backupReadiness.pgDump],
+                              ["script", health.backupReadiness.scriptExists],
+                              ["BACKUP_DATABASE_URL", health.backupReadiness.backupDatabaseUrl],
+                              ["diretório gravável", health.backupReadiness.backupRootWritable],
+                            ] as const
+                          ).map(([label, ok]) => (
+                            <li key={label} className="flex items-center justify-between gap-3">
+                              <span className="font-mono text-xs">{label}</span>
+                              <Badge variant={ok ? "outline" : "destructive"}>
+                                {ok ? "ok" : "faltando"}
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <Separator />

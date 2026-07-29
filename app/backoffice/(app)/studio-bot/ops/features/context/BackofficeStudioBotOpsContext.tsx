@@ -98,6 +98,8 @@ export function BackofficeStudioBotOpsProvider({
     setActionLock(lock)
     try {
       await fn()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro inesperado")
     } finally {
       setActionLock(null)
     }

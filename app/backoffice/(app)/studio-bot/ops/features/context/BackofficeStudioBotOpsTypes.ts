@@ -53,6 +53,16 @@ export type HostHealth = {
     containers: { n8nImage: string | null; imagePinned: boolean }
     productionEvidenceRequired: string[]
   }
+  backupReadiness?: {
+    ok: boolean
+    bash: boolean
+    pgDump: boolean
+    scriptExists: boolean
+    backupDatabaseUrl: boolean
+    backupRootWritable: boolean
+    backupScriptPath: string
+    backupRoot: string
+  }
   error?: string
 }
 
