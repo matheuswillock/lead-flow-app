@@ -199,6 +199,7 @@ export function BackofficeClientDetailsContainer() {
   const [isRemovingFromTeam, setIsRemovingFromTeam] = useState(false)
   const removeFromTeamInFlight = useRef(false)
   const [memberAccessActionId, setMemberAccessActionId] = useState<string | null>(null)
+  const [masterAccessActionId, setMasterAccessActionId] = useState<string | null>(null)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
   const [selectedMemberTeamId, setSelectedMemberTeamId] = useState<string | null>(null)
@@ -433,6 +434,34 @@ export function BackofficeClientDetailsContainer() {
     }
   }
 
+  async function handleSendMasterAccessEmail(mode: "invite" | "reset_password") {
+    if (!details || masterAccessActionId) return
+
+    setMasterAccessActionId(mode)
+    const toastId = toast.loading(
+      mode === "invite" ? "Enviando convite..." : "Enviando reset de senha..."
+    )
+
+    try {
+      const result = await service.sendAccessEmail(details.id, mode)
+      toast.success(
+        mode === "invite"
+          ? `Convite enviado para ${result.email}.`
+          : `Reset de senha enviado para ${result.email}.`,
+        { id: toastId }
+      )
+      await reload()
+    } catch (error) {
+      console.error("[BackofficeClientDetailsContainer][handleSendMasterAccessEmail]", error)
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.",
+        { id: toastId }
+      )
+    } finally {
+      setMasterAccessActionId(null)
+    }
+  }
+
   async function handleAddMasterToTeam(team: BackofficeClientTeam) {
     if (addingMasterTeamId) return
 
@@ -585,6 +614,30 @@ export function BackofficeClientDetailsContainer() {
                   <Pencil className="mr-2 h-4 w-4" />
                   Editar
                 </Button>
+                {details.accessStatus === "pending_first_access" ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    disabled={Boolean(masterAccessActionId)}
+                    onClick={() => void handleSendMasterAccessEmail("invite")}
+                    className="shrink-0"
+                  >
+                    <Mail data-icon="inline-start" />
+                    Enviar convite
+                  </Button>
+                ) : null}
+                {details.accessStatus === "active" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={Boolean(masterAccessActionId)}
+                    onClick={() => void handleSendMasterAccessEmail("reset_password")}
+                    className="shrink-0"
+                  >
+                    <KeyRound data-icon="inline-start" />
+                    Redefinir senha
+                  </Button>
+                ) : null}
               </div>
             )}
           </div>
@@ -1080,9 +1133,11 @@ export function BackofficeClientDetailsContainer() {
                               const statusLabel =
                                 invoice.status === "WAIVED"
                                   ? "Dispensada"
-                                  : invoice.status === "PENDING" && invoice.source === "pending_action"
-                                    ? "Aguardando checkout"
-                                    : statusInfo.label
+                                  : invoice.source === "adhesion_external"
+                                    ? "Pago externamente"
+                                    : invoice.status === "PENDING" && invoice.source === "pending_action"
+                                      ? "Aguardando checkout"
+                                      : statusInfo.label
 
                               return (
                                 <TableRow key={invoice.id} className="h-12">

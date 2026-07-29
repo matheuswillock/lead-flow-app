@@ -173,6 +173,14 @@ export interface BackofficeAdhesionOptions {
   sponsorOptions: Array<{ id: string; fullName: string | null; email: string | null }>
 }
 
+export interface BackofficeAdhesionInvoiceSource {
+  id: string
+  productName: string | null
+  installmentLedger: unknown
+  paidAt: Date | null
+  createdAt: Date
+}
+
 export interface IBackofficeAdhesionRepository {
   createAndMoveLeadToAdhesion(
     data: CreateBackofficeAdhesionInput
@@ -182,6 +190,7 @@ export interface IBackofficeAdhesionRepository {
   findByLeadId(leadId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
   findByLedgerAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
+  findByCreatedProfileId(profileId: string): Promise<BackofficeAdhesionInvoiceSource[]>
   mutateInstallmentLedger(
     id: string,
     apply: (ledger: unknown) => unknown

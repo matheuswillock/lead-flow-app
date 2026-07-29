@@ -38,8 +38,17 @@ export async function logResendDispatchesForRecipients(input: {
   sourceId?: string
   resendEmailId?: string | null
   errorMessage?: string | null
+  profileId?: string
 }) {
-  const matches = await backofficeEmailDispatchService.resolveProfilesByRecipientEmails(input.recipients)
+  const matches = input.profileId
+    ? input.recipients.map((email) => ({
+        profileId: input.profileId!,
+        email,
+        kind: "account" as const,
+      }))
+    : await backofficeEmailDispatchService.resolveProfilesByRecipientEmails(input.recipients)
+
+  if (matches.length === 0) return
 
   await Promise.all(
     matches.map(async (match) => {

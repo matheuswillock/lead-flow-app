@@ -108,6 +108,8 @@ export interface BackofficeAdhesionDTO {
   productId: string | null
   hasUnlimitedUsers?: boolean
   multiskillEnabled?: boolean
+  accountProvisioned: boolean
+  hasExternalActivation: boolean
 }
 
 export interface BackofficeAdhesionPublicDTO {
