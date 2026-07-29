@@ -1047,12 +1047,6 @@ export async function PUT(
       return NextResponse.json(output, { status: 403 });
     }
 
-    const nextDelegatedPermissions = resolveDelegatedPermissions(
-      validatedData.role ?? (targetMember.role.toLowerCase() as CreateUserRequest["role"]),
-      validatedData,
-      { canManageDelegation: isMaster }
-    );
-
     if (
       validatedData.name ||
       validatedData.email

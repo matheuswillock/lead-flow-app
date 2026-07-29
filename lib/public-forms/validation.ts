@@ -1,5 +1,7 @@
 import { z } from "zod"
+import { normalizeThankYouPages } from "./thank-you-pages"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+import type { PublicFormDraftInput } from "./types"
 
 const uuid = z.string().uuid("Identificador inválido"),
   color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor inválida"),
@@ -77,6 +79,16 @@ const question = z.object({
   options: z.array(option).max(100).default([]),
 })
 
+const thankYouPage = z.object({
+  id: uuid,
+  name: z.string().trim().min(1).max(120),
+  title: z.string().trim().min(1).max(200),
+  description: text,
+  actions: z.array(successAction).max(6).default([]),
+  kind: z.enum(["standard", "simulation"]).default("standard"),
+  isDefault: z.boolean().optional(),
+})
+
 export const publicFormDraftSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
@@ -91,6 +103,8 @@ export const publicFormDraftSchema = z
     successTitle: z.string().trim().min(1).max(200).default("Respostas enviadas"),
     successDescription: text,
     successActions: z.array(successAction).max(6).default([]),
+    thankYouPages: z.array(thankYouPage).min(1).max(20).default([]),
+    defaultThankYouPageId: uuid.optional(),
     useDefaultTheme: z.boolean().default(true),
     backgroundColor: color.nullable().optional(),
     textColor: color.nullable().optional(),
@@ -109,6 +123,7 @@ export const publicFormDraftSchema = z
           id: uuid.optional(),
           sourceQuestionId: uuid,
           targetQuestionId: z.union([uuid, z.literal(PUBLIC_FORM_THANK_YOU_TARGET)]),
+          targetThankYouPageId: uuid.nullable().optional(),
           operator: z.enum(["equals", "not_equals", "contains", "selected", "not_selected"]),
           comparisonValue: z.unknown().optional(),
           action: z.enum(["show", "skip"]),
@@ -140,7 +155,36 @@ export const publicFormDraftSchema = z
         message: "A soma das pontuações das perguntas deve ser 100%",
       })
     }
+    if (value.thankYouPages.length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["thankYouPages"],
+        message: "Adicione ao menos uma página de agradecimentos",
+      })
+    }
+    const defaultCount = value.thankYouPages.filter((page) => page.isDefault).length
+    if (value.thankYouPages.length > 0 && defaultCount !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["thankYouPages"],
+        message: "Defina exatamente uma página de agradecimentos como padrão",
+      })
+    }
+    const pageIds = new Set(value.thankYouPages.map((page) => page.id))
+    for (const rule of value.rules) {
+      if (
+        rule.targetThankYouPageId &&
+        !pageIds.has(rule.targetThankYouPageId)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["rules"],
+          message: "Regra referencia página de agradecimentos inexistente",
+        })
+      }
+    }
   })
+  .transform((value) => normalizeThankYouPages(value as PublicFormDraftInput))
 
 export const publicFormSettingsSchema = z
   .object({
@@ -168,6 +212,15 @@ export const publicFormSubmissionSchema = z.object({
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
   scheduling: z.object({ startsAt: z.string().datetime() }).optional(),
+  thankYouPageId: uuid.optional(),
+  visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/).optional(),
+})
+
+export const publicFormProgressSchema = z.object({
+  visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/),
+  answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
+  origin: z.record(z.string(), z.unknown()).default({}),
+  lastQuestionId: uuid.optional(),
 })
 
 export const publicFormMetricEventSchema = z.object({
