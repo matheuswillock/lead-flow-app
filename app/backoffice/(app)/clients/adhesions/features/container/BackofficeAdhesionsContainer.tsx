@@ -96,6 +96,20 @@ function getStatusBadgeClass(status: BackofficeAdhesionStatusKey): string {
   return classes[status]
 }
 
+function isAdhesionInviteEnabled(adhesion: BackofficeAdhesionItem): boolean {
+  return adhesion.accountProvisioned || adhesion.hasExternalActivation
+}
+
+function getAdhesionFinancialStatusLabel(adhesion: BackofficeAdhesionItem): string {
+  if (adhesion.status === "pending" && adhesion.accountProvisioned) {
+    return "Ativa — parcelas em aberto"
+  }
+  if (adhesion.status === "pending" && !adhesion.accountProvisioned) {
+    return "Aguardando pagamento"
+  }
+  return BACKOFFICE_ADHESION_STATUS_LABELS[adhesion.status]
+}
+
 export function BackofficeAdhesionsContainer() {
   const { tz } = useTimezone()
   const {
@@ -325,13 +339,13 @@ export function BackofficeAdhesionsContainer() {
                       variant="outline"
                       className={cn("font-medium", getStatusBadgeClass(adhesion.status))}
                     >
-                      {BACKOFFICE_ADHESION_STATUS_LABELS[adhesion.status]}
+                      {getAdhesionFinancialStatusLabel(adhesion)}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {adhesion.paidAt
                       ? `Pago em ${formatDate(adhesion.paidAt, tz)}`
-                      : BACKOFFICE_ADHESION_STATUS_LABELS[adhesion.status]}
+                      : getAdhesionFinancialStatusLabel(adhesion)}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
@@ -376,7 +390,7 @@ export function BackofficeAdhesionsContainer() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={
-                              resendingInviteId === adhesion.id || adhesion.status !== "paid"
+                              resendingInviteId === adhesion.id || !isAdhesionInviteEnabled(adhesion)
                             }
                             onSelect={() => void handleResendInvite(adhesion)}
                           >

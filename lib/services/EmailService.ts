@@ -1,4 +1,4 @@
-import { assertResend } from "@/lib/email";
+import { assertResend, buildResendIdempotencyKeyWithVariant } from "@/lib/email";
 import { getResendOwnerEmail } from "@/lib/email/resend-owner-email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
@@ -131,6 +131,8 @@ export interface AdhesionCompletedEmailData {
   userName: string;
   userEmail: string;
   setPasswordUrl: string;
+  profileId?: string;
+  adhesionId?: string;
 }
 
 export interface OperatorInviteEmailData {
@@ -1126,11 +1128,50 @@ export class EmailService {
       </html>
     `
 
-    return this.sendEmailUntracked({
+    const subject = "Corretor Studio — Adesão concluída com sucesso"
+
+    if (data.profileId) {
+      return sendTrackedEmailToProfileRecipients({
+        profileId: data.profileId,
+        category: "adhesion_invite",
+        subject,
+        html,
+        sourceType: "backoffice_adhesion",
+        sourceId: data.adhesionId,
+        idempotencyKey: data.adhesionId
+          ? buildResendIdempotencyKeyWithVariant(
+              "adhesion-invite",
+              data.adhesionId,
+              data.setPasswordUrl
+            )
+          : undefined,
+      })
+    }
+
+    const result = await this.sendEmailUntracked({
       to: [data.userEmail],
-      subject: "Corretor Studio — Adesão concluída com sucesso",
+      subject,
       html,
     })
+
+    const resendEmailId =
+      result.success && result.data && typeof result.data === "object"
+        ? ((result.data as { data?: { id?: string } }).data?.id ?? null)
+        : null
+
+    if (data.adhesionId) {
+      await logResendDispatchesForRecipients({
+        recipients: [data.userEmail],
+        subject,
+        category: "adhesion_invite",
+        sourceType: "backoffice_adhesion",
+        sourceId: data.adhesionId,
+        resendEmailId,
+        errorMessage: result.success ? null : result.error,
+      })
+    }
+
+    return result
   }
 
   // Notificação de novo lead para managers

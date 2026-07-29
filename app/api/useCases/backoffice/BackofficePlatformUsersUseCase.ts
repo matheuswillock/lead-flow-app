@@ -24,6 +24,12 @@ import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBil
 import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
 import { backofficeBannedUsersRepository } from "../../infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository"
+import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
+import {
+  buildExternalInvoiceRowsFromAdhesion,
+  parseAdhesionExternalInvoiceId,
+  readInstallmentLedger,
+} from "@/lib/backoffice-adhesions/installment-ledger"
 import {
   buildPendingActionInvoiceId,
   classifyAsaasPaymentInvoice,
@@ -151,7 +157,7 @@ type UnifiedInvoiceRow = {
   invoiceIdDisplay: string
   invoiceName: string
   invoiceKind: "subscription" | "addon_user" | "addon_team" | "other"
-  source: "asaas" | "pending_action"
+  source: "asaas" | "pending_action" | "adhesion_external"
   status: string
   statusGroup: "paid" | "overdue" | "upcoming" | "other"
   value: number
@@ -346,7 +352,10 @@ function getPlanInfo(
 }
 
 export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersUseCase {
-  constructor(private readonly platformUsersRepository: IBackofficePlatformUsersRepository) {}
+  constructor(
+    private readonly platformUsersRepository: IBackofficePlatformUsersRepository,
+    private readonly adhesionRepository: BackofficeAdhesionRepository = new BackofficeAdhesionRepository()
+  ) {}
 
   private async fetchAllCustomerPayments(customerId: string): Promise<AsaasPaymentItem[]> {
     const limit = 100
@@ -475,8 +484,16 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         master.hasPermanentSubscription ||
         (!!master.subscriptionId && master.subscriptionStatus === "active")
 
-      const accessByProfileId = await resolveBackofficeMemberAccess(
-        master.teams.flatMap((team) =>
+      const accessByProfileId = await resolveBackofficeMemberAccess([
+        {
+          profileId: master.id,
+          supabaseId: master.supabaseId,
+          email: master.email,
+          fullName: master.fullName,
+          role: "manager",
+          isMaster: true,
+        },
+        ...master.teams.flatMap((team) =>
           team.members.map((member) => ({
             profileId: member.id,
             supabaseId: member.supabaseId,
@@ -486,8 +503,15 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             isMaster: member.isMaster,
             managerName: master.fullName ?? master.email,
           }))
-        )
-      )
+        ),
+      ])
+
+      const masterAccess =
+        accessByProfileId.get(master.id) ?? {
+          accessStatus: "pending_first_access" as const,
+          hasCompletedFirstAccess: false,
+          lastSignInAt: null,
+        }
 
       const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(masterProfileId)
 
@@ -513,6 +537,9 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           hasAccess,
           status: master.subscriptionStatus,
         },
+        accessStatus: masterAccess.accessStatus,
+        hasCompletedFirstAccess: masterAccess.hasCompletedFirstAccess,
+        lastSignInAt: masterAccess.lastSignInAt,
         userType: master.userType,
         hasUnlimitedUsers: master.hasUnlimitedUsers || master.hasPermanentSubscription,
         multiskillEnabled: master.multiskillEnabled,
@@ -691,7 +718,12 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         })
       }
 
-      const allRows = [...asaasRows, ...pendingRows]
+      const adhesions = await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+      const externalRows = adhesions.flatMap((adhesion) =>
+        buildExternalInvoiceRowsFromAdhesion(adhesion)
+      )
+
+      const allRows = [...asaasRows, ...pendingRows, ...externalRows]
         .filter((row) => statusFilter === "all" || row.statusGroup === statusFilter)
         .filter((row) => matchesPeriodFilter(row.dueDate ?? undefined, periodFilter, now, timezone))
         .sort((a, b) => b.sortDate - a.sortDate)
@@ -802,6 +834,63 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           checkoutUrl:
             action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
           pendingActionId: action.id,
+        })
+      }
+
+      const externalInvoiceRef = parseAdhesionExternalInvoiceId(invoiceId)
+      if (externalInvoiceRef) {
+        const adhesions = await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+        const adhesion = adhesions.find((item) => item.id === externalInvoiceRef.adhesionId)
+        if (!adhesion) {
+          return new Output(false, [], ["Fatura não encontrada"], null)
+        }
+
+        const ledgerEntry = readInstallmentLedger(adhesion.installmentLedger).find(
+          (entry) => entry.index === externalInvoiceRef.index
+        )
+        if (
+          !ledgerEntry ||
+          ledgerEntry.paymentSource !== "EXTERNAL" ||
+          ledgerEntry.status !== "paid"
+        ) {
+          return new Output(false, [], ["Fatura não encontrada"], null)
+        }
+
+        const externalRow = buildExternalInvoiceRowsFromAdhesion(adhesion).find(
+          (row) => row.id === invoiceId
+        )
+        if (!externalRow) {
+          return new Output(false, [], ["Fatura não encontrada"], null)
+        }
+
+        return new Output(true, [], [], {
+          id: externalRow.id,
+          invoiceIdDisplay: externalRow.invoiceIdDisplay,
+          invoiceName: externalRow.invoiceName,
+          invoiceKind: externalRow.invoiceKind,
+          source: "adhesion_external",
+          customerName: master.fullName ?? master.email,
+          status: externalRow.status,
+          statusGroup: externalRow.statusGroup,
+          value: externalRow.value,
+          netValue: externalRow.value,
+          originalValue: externalRow.value,
+          interestValue: 0,
+          billingType: externalRow.billingType,
+          description: externalRow.description,
+          dateCreated: externalRow.dateCreated,
+          dueDate: externalRow.dueDate,
+          paymentDate: externalRow.paymentDate,
+          confirmedDate: externalRow.paymentDate,
+          invoiceNumber: null,
+          installmentNumber: externalInvoiceRef.index + 1,
+          externalReference: externalRow.id,
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          transactionReceiptUrl: null,
+          deleted: false,
+          checkoutUrl: null,
+          pendingActionId: null,
         })
       }
 
