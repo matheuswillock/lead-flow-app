@@ -20,7 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { resolveVisibleQuestionIds, shouldGoToThankYou, validateAnswer } from "@/lib/public-forms/engine"
+import { resolveVisibleQuestionIds, resolveThankYouPageId, shouldGoToThankYou, validateAnswer } from "@/lib/public-forms/engine"
+import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
@@ -116,6 +117,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
+  const [resolvedThankYouPageId, setResolvedThankYouPageId] = useState<string | null>(null)
   const [session, setSession] = useState<string | null>(null)
   const [phase, setPhase] = useState<"form" | "loading" | "result" | "agenda">("form")
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
@@ -165,6 +167,17 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   )
   const isSimulator = snapshot.formKind === "health_plan_simulator"
   const hasCalculationQuestion = snapshot.questions.some((item) => item.type === "calculation")
+  const normalizedSnapshot = useMemo(() => normalizeThankYouPages(snapshot), [snapshot])
+  const thankYouPage = useMemo(
+    () => resolveThankYouPage(normalizedSnapshot, resolvedThankYouPageId),
+    [normalizedSnapshot, resolvedThankYouPageId],
+  )
+  const simulationThankYouPage = useMemo(
+    () =>
+      normalizedSnapshot.thankYouPages.find((page) => page.kind === "simulation") ??
+      thankYouPage,
+    [normalizedSnapshot.thankYouPages, thankYouPage],
+  )
   const coverHighlights =
     Array.isArray(snapshot.coverHighlights) && snapshot.coverHighlights.length > 0
       ? snapshot.coverHighlights
@@ -248,13 +261,27 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     void runSimulationFlow()
   }, [started, phase, pageQuestionsKey])
 
+  const saveProgress = useCallback(async () => {
+    if (preview || !publicId || !session) return
+    await fetch(`/api/v1/public-forms/${publicId}/progress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        visitorSessionId: session,
+        answers: answerList,
+        origin: getOrigin(),
+      }),
+      keepalive: true,
+    })
+  }, [answerList, preview, publicId, session])
+
   function start() {
     previousVisibleIds.current = visibleIds
     setStarted(true)
     track("form_started")
   }
 
-  function goNext() {
+  async function goNext() {
     if (!pageQuestions.length) return
     for (const item of pageQuestions) {
       const validationError = validateAnswer(item, answers[item.id])
@@ -267,8 +294,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     for (const item of pageQuestions) {
       track("question_answered", item.id)
     }
+    await saveProgress()
     if (shouldGoToThankYou(snapshot, answerList)) {
-      void submit()
+      await submit()
       return
     }
     if (pageQuestions.some((item) => item.type === "calculation")) {
@@ -280,7 +308,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       const onlySchedulingAhead = pagesAhead.every((page) =>
         page.every((item) => item.type === "scheduling"),
       )
-      if ((isSimulator || hasCalculationQuestion) && phase === "form" && onlySchedulingAhead) {
+      if (hasCalculationQuestion && phase === "form" && onlySchedulingAhead) {
         void runSimulationFlow()
         return
       }
@@ -288,14 +316,14 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       return
     }
     if (
-      (isSimulator || hasCalculationQuestion) &&
+      hasCalculationQuestion &&
       phase === "form" &&
       !pageQuestions.some((item) => item.type === "scheduling")
     ) {
       void runSimulationFlow()
       return
     }
-    void submit()
+    await submit()
   }
 
   async function runSimulationFlow() {
@@ -318,6 +346,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       .find((item) => item?.startsAt)
 
     setSending(true)
+    const thankYouPageId = resolveThankYouPageId(snapshot, answerList)
+    setResolvedThankYouPageId(thankYouPageId)
     try {
       const response = await fetch(`/api/v1/public-forms/${publicId}/submissions`, {
         method: "POST",
@@ -326,6 +356,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
           requestKey: `${session}:${crypto.randomUUID()}`,
           answers: answerList,
           origin: getOrigin(),
+          visitorSessionId: session,
+          thankYouPageId: thankYouPageId ?? undefined,
           scheduling: scheduleAnswer?.startsAt
             ? { startsAt: scheduleAnswer.startsAt }
             : undefined,
@@ -352,7 +384,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     phase === "result" || phase === "agenda"
       ? 100
       : ((index + 1) / Math.max(pages.length, 1)) * 100
-  const successActions = Array.isArray(snapshot.successActions) ? snapshot.successActions : []
+  const successActions = thankYouPage.actions ?? []
+  const resultTitle = (title: string, firstName: string) =>
+    title.replaceAll("{firstName}", firstName)
 
   return (
     <div
@@ -393,12 +427,34 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                 <Check aria-hidden="true" style={{ color: "var(--form-accent)" }} />
               </div>
               <h1 className="text-balance text-3xl font-semibold tracking-tight">
-                {snapshot.successTitle}
+                {thankYouPage.title}
               </h1>
-              {snapshot.successDescription ? (
+              {thankYouPage.description ? (
                 <p className="mt-3 text-pretty text-muted-foreground">
-                  {snapshot.successDescription}
+                  {thankYouPage.description}
                 </p>
+              ) : null}
+              {thankYouPage.kind === "simulation" && simulationResult ? (
+                <div className="mt-6 flex flex-col gap-5 text-left">
+                  {simulationResult.prices.map((price, priceIndex) => (
+                    <div
+                      key={price.op}
+                      className={cn(
+                        "relative rounded-2xl border p-4",
+                        priceIndex === 0
+                          ? "border-primary bg-primary/5"
+                          : "border-[var(--form-line)]",
+                      )}
+                    >
+                      {priceIndex === 0 ? (
+                        <span className="absolute -top-2 right-3 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                          Melhor opção
+                        </span>
+                      ) : null}
+                      <p className="mb-3 font-semibold">{price.op}</p>
+                    </div>
+                  ))}
+                </div>
               ) : null}
               {successActions.length > 0 ? (
                 <div className="mt-8 flex flex-col gap-3">
@@ -428,12 +484,21 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
             <div className="flex flex-col gap-5">
               <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
                 <h2 className="text-xl font-semibold">
-                  Simulação de {simulationResult.firstName} está pronta
+                  {resultTitle(
+                    simulationThankYouPage.title,
+                    simulationResult.firstName,
+                  )}
                 </h2>
-                <p className="mt-2 text-sm opacity-90">
-                  Em {simulationResult.tempoLabel} no plano, você acumulou em média{" "}
-                  <span className="font-semibold">{simulationResult.reajustePct}% de reajuste</span>.
-                </p>
+                {simulationThankYouPage.description ? (
+                  <p className="mt-2 text-sm opacity-90">
+                    {resultTitle(simulationThankYouPage.description, simulationResult.firstName)}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm opacity-90">
+                    Em {simulationResult.tempoLabel} no plano, você acumulou em média{" "}
+                    <span className="font-semibold">{simulationResult.reajustePct}% de reajuste</span>.
+                  </p>
+                )}
               </div>
               {simulationResult.prices.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -477,27 +542,52 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                 Os valores são estimativas baseadas em médias de mercado e podem variar.
               </p>
               <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 text-center">
-                <h3 className="font-semibold">Quero garantir essa economia!</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Agende uma reunião gratuita com nosso especialista.
-                </p>
-                <Button
-                  className="mt-4 w-full"
-                  onClick={() => {
-                    const scheduleIndex = pages.findIndex((page) =>
-                      page.some((item) => item.type === "scheduling"),
-                    )
-                    if (scheduleIndex >= 0) {
-                      setIndex(scheduleIndex)
-                      setPhase("form")
-                      return
-                    }
-                    void submit()
-                  }}
-                >
-                  Agendar reunião gratuita
-                  <ArrowRight data-icon="inline-end" />
-                </Button>
+                {simulationThankYouPage.actions[0] ? (
+                  <Button
+                    className="mt-4 w-full"
+                    onClick={() => {
+                      const action = simulationThankYouPage.actions[0]!
+                      if (action.type === "close") {
+                        const scheduleIndex = pages.findIndex((page) =>
+                          page.some((item) => item.type === "scheduling"),
+                        )
+                        if (scheduleIndex >= 0) {
+                          setIndex(scheduleIndex)
+                          setPhase("form")
+                          return
+                        }
+                      }
+                      runSuccessAction(action)
+                    }}
+                  >
+                    {simulationThankYouPage.actions[0].label}
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                ) : (
+                  <>
+                    <h3 className="font-semibold">Quero garantir essa economia!</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Agende uma reunião gratuita com nosso especialista.
+                    </p>
+                    <Button
+                      className="mt-4 w-full"
+                      onClick={() => {
+                        const scheduleIndex = pages.findIndex((page) =>
+                          page.some((item) => item.type === "scheduling"),
+                        )
+                        if (scheduleIndex >= 0) {
+                          setIndex(scheduleIndex)
+                          setPhase("form")
+                          return
+                        }
+                        void submit()
+                      }}
+                    >
+                      Agendar reunião gratuita
+                      <ArrowRight data-icon="inline-end" />
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ) : !started ? (

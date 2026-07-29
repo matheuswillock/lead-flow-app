@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.181.0",
+  "version": "0.181.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -73,6 +73,7 @@
     "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",
     "prisma:backfill-import-leads": "bunx tsx scripts/backfill-import-leads.ts",
     "prisma:import-onside-backstage-leads": "bunx tsx scripts/import-onside-backstage-leads.ts --confirm",
+    "prisma:import-multiskill-noshow-leads": "bunx tsx scripts/import-multiskill-noshow-leads.ts --confirm",
     "prisma:backfill-teams": "bunx tsx scripts/backfill-teams.ts",
     "prisma:backfill-subscription-capacities": "bunx tsx scripts/backfill-subscription-capacities.ts",
     "prisma:backfill-waive-pending-add-user": "bunx tsx scripts/backfill-waive-pending-add-user.ts",

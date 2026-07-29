@@ -212,10 +212,20 @@ class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
       finishedAt: new Date(),
     });
 
+    // Diferencia agente inacessível (timeout/erro de rede — sem "HTTP <status>"
+    // no error) de agente alcançável mas respondendo com falha (HTTP não-2xx),
+    // para o toast do frontend não mostrar sempre a mesma mensagem genérica.
+    const unreachable = !result.ok && !result.error?.startsWith("HTTP ");
+    const errorMessage = result.ok
+      ? undefined
+      : unreachable
+        ? `Agente Ops inacessível: ${result.error ?? "erro desconhecido"}`
+        : `Agente Ops respondeu com falha: ${result.error ?? "Falha no health"}`;
+
     return new Output(
       result.ok,
       result.ok ? ["Health obtido"] : [],
-      result.ok ? [] : [result.error ?? "Falha no health"],
+      result.ok ? [] : [errorMessage ?? "Falha no health"],
       { jobId: job.id, health: result }
     );
   }

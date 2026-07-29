@@ -6,7 +6,7 @@ import {
   signedOptionScore,
 } from "./scoring"
 import type { PublicFormAnswerInput, PublicFormDraftInput, PublicFormQuestionInput } from "./types"
-import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+import { isThankYouRuleTarget } from "./thank-you-pages"
 
 const values = (v: unknown) => (Array.isArray(v) ? v.map(String) : v == null ? [] : [String(v)])
 
@@ -35,6 +35,23 @@ function getMaxSelections(question: PublicFormQuestionInput): number | null {
   return floored > 0 ? floored : null
 }
 
+function isThankYouRule(rule: PublicFormDraftInput["rules"][number]): boolean {
+  return isThankYouRuleTarget(rule.targetQuestionId)
+}
+
+function effectiveRuleAction(
+  rule: PublicFormDraftInput["rules"][number],
+  map: Map<string, unknown>,
+): "show" | "skip" | null {
+  const sourceAnswer = map.get(rule.sourceQuestionId)
+  if (!isAnswered(sourceAnswer)) return null
+  const got = values(sourceAnswer)
+  const expected = values(rule.comparisonValue)
+  const hit = ruleHits(rule.operator, got, expected)
+  const elseAction = rule.elseAction ?? inverseAction(rule.action)
+  return hit ? rule.action : elseAction
+}
+
 /**
  * Earliest question index that triggers "show thank-you", or null when the flow continues.
  */
@@ -45,18 +62,36 @@ export function getThankYouCutoffIndex(
   const map = new Map(answers.map((a) => [a.questionId, a.value]))
   let cutoff: number | null = null
   for (const rule of form.rules) {
-    if (rule.targetQuestionId !== PUBLIC_FORM_THANK_YOU_TARGET) continue
-    const got = values(map.get(rule.sourceQuestionId))
-    const expected = values(rule.comparisonValue)
-    const hit = ruleHits(rule.operator, got, expected)
-    const elseAction = rule.elseAction ?? inverseAction(rule.action)
-    const effective = hit ? rule.action : elseAction
+    if (!isThankYouRule(rule)) continue
+    const effective = effectiveRuleAction(rule, map)
     if (effective !== "show") continue
     const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
     if (sourceIndex < 0) continue
     cutoff = cutoff == null ? sourceIndex : Math.min(cutoff, sourceIndex)
   }
   return cutoff
+}
+
+/** Resolves which thank-you page to show; null means use default page at completion. */
+export function resolveThankYouPageId(
+  form: PublicFormDraftInput,
+  answers: PublicFormAnswerInput[],
+): string | null {
+  const map = new Map(answers.map((a) => [a.questionId, a.value]))
+  let winner: { sourceIndex: number; pageId: string | null } | null = null
+  for (const rule of form.rules) {
+    if (!isThankYouRule(rule)) continue
+    const effective = effectiveRuleAction(rule, map)
+    if (effective !== "show") continue
+    const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
+    if (sourceIndex < 0) continue
+    const pageId = rule.targetThankYouPageId ?? null
+    if (!winner || sourceIndex < winner.sourceIndex) {
+      winner = { sourceIndex, pageId }
+    }
+  }
+  if (winner) return winner.pageId
+  return form.defaultThankYouPageId ?? null
 }
 
 export function resolveVisibleQuestionIds(
@@ -66,13 +101,10 @@ export function resolveVisibleQuestionIds(
   const map = new Map(answers.map((a) => [a.questionId, a.value])),
     visible = new Set(form.questions.map((q) => q.id).filter(Boolean) as string[])
   for (const r of form.rules) {
-    if (r.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET) continue
-    const got = values(map.get(r.sourceQuestionId)),
-      expected = values(r.comparisonValue)
-    const hit = ruleHits(r.operator, got, expected)
-    const elseAction = r.elseAction ?? inverseAction(r.action)
-    const effective = hit ? r.action : elseAction
-    if (effective === "skip") visible.delete(r.targetQuestionId)
+    if (isThankYouRule(r)) continue
+    const effective = effectiveRuleAction(r, map)
+    if (effective !== "skip") continue
+    visible.delete(r.targetQuestionId)
   }
 
   // Early thank-you exit: remaining questions after the terminating source are not required.

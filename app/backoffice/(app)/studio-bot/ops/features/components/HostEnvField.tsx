@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Check, Copy, Eye, EyeOff } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +15,7 @@ type HostEnvFieldProps = {
   isSecret: boolean
   isSet?: boolean
   placeholder?: string
+  description?: string
   onChange: (value: string) => void
   className?: string
 }
@@ -26,6 +27,7 @@ export function HostEnvField({
   isSecret,
   isSet,
   placeholder,
+  description,
   onChange,
   className,
 }: HostEnvFieldProps) {
@@ -57,6 +59,7 @@ export function HostEnvField({
         {label}
         {isSecret ? " (secret)" : ""}
       </FieldLabel>
+      {description ? <FieldDescription>{description}</FieldDescription> : null}
       <div className="relative">
         <Input
           id={id}
