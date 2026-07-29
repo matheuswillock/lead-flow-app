@@ -3,6 +3,7 @@ import {
   conditionNeedsValueInput,
   isRulesValidForSave,
   getEventTypeIcon,
+  isMilestoneEventType,
   buildTabHref,
   buildProfileHref,
 } from "./radarSegmentBuilderUtils"
@@ -162,6 +163,34 @@ describe("getEventTypeIcon", () => {
 
   it("cai no fallback para prefixo desconhecido", () => {
     expect(getEventTypeIcon("unknown.thing")).toBeDefined()
+  })
+
+  it("marcos (D5) usam ícones distintos dos genéricos equivalentes", () => {
+    expect(getEventTypeIcon("lead.milestone.new_opportunity")).not.toBe(getEventTypeIcon("lead.created"))
+    expect(getEventTypeIcon("portfolio.renewed")).not.toBe(getEventTypeIcon("portfolio.created"))
+    expect(getEventTypeIcon("portfolio.brokerage_transfer")).toBe(getEventTypeIcon("lead.milestone.new_opportunity"))
+    expect(getEventTypeIcon("profile.first_contact")).toBeDefined()
+    expect(getEventTypeIcon("profile.first_contact")).not.toBe(getEventTypeIcon("lead.milestone.new_opportunity"))
+  })
+})
+
+describe("isMilestoneEventType", () => {
+  it("reconhece marcos de status de lead, carteira e primeiro contato", () => {
+    expect(isMilestoneEventType("lead.milestone.new_opportunity")).toBe(true)
+    expect(isMilestoneEventType("lead.milestone.invoice_payment")).toBe(true)
+    expect(isMilestoneEventType("lead.milestone.future_sale")).toBe(true)
+    expect(isMilestoneEventType("lead.milestone.contract_finalized")).toBe(true)
+    expect(isMilestoneEventType("portfolio.renewed")).toBe(true)
+    expect(isMilestoneEventType("portfolio.brokerage_transfer")).toBe(true)
+    expect(isMilestoneEventType("profile.first_contact")).toBe(true)
+  })
+
+  it("não marca eventos comuns como marco", () => {
+    expect(isMilestoneEventType("lead.created")).toBe(false)
+    expect(isMilestoneEventType("lead.status_changed")).toBe(false)
+    expect(isMilestoneEventType("portfolio.created")).toBe(false)
+    expect(isMilestoneEventType("portfolio.renewal_due")).toBe(false)
+    expect(isMilestoneEventType("email.opened")).toBe(false)
   })
 })
 

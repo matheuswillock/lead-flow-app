@@ -272,6 +272,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       },
       select: {
         id: true,
+        supabaseId: true,
         fullName: true,
         email: true,
         phone: true,
@@ -439,6 +440,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     return {
       id: master.id,
+      supabaseId: master.supabaseId,
       fullName: master.fullName,
       email: master.email,
       phone: master.phone,
