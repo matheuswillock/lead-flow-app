@@ -9896,6 +9896,39 @@
               }
             },
             {
+              "name": "GET Pending Backoffice Adhesion Invoice URLs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id/pending-invoice-url",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "adhesions",
+                    ":id",
+                    "pending-invoice-url"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{backofficeAdhesionId}}"
+                    }
+                  ]
+                },
+                "description": "Retorna os links de fatura (invoiceUrl) das parcelas pendentes de uma assinatura já ativada."
+              }
+            },
+            {
               "name": "GET Public Adhesion",
               "request": {
                 "method": "GET",
@@ -16336,7 +16369,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"5511999999999\",\n  \"contactName\": \"Cliente\",\n  \"initialMessage\": \"Olá!\"\n}"
+              "raw": "{\n  \"phone\": \"5511999999999\",\n  \"contactName\": \"Cliente\",\n  \"clientMessageId\": \"{{$guid}}\",\n  \"firstMessage\": {\n    \"type\": \"TEXT\",\n    \"text\": \"Olá!\"\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations",
@@ -16471,7 +16504,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"clientMessageId\": \"{{$guid}}\",\n  \"contentText\": \"Olá\"\n}"
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"clientMessageId\": \"{{$guid}}\",\n  \"contentText\": \"Olá\",\n  \"quotedMessageId\": \"{{quotedMessageId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages",
@@ -16488,6 +16521,181 @@
               ]
             },
             "description": "Envia mensagem outbound V3 com clientMessageId. Mídia usa storagePath após POST /media/uploads (sem Base64)."
+          },
+          "response": []
+        },
+        {
+          "name": "Executar ação de mensagem WhatsApp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-id",
+                "value": "{{supabaseId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientActionId\": \"{{clientActionId}}\",\n  \"action\": {\n    \"kind\": \"FAVORITE\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages/{{messageId}}/actions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "messages",
+                "{{messageId}}",
+                "actions"
+              ]
+            },
+            "description": "Ações locais (PIN/FAVORITE/DELETE_FOR_ME) ou externas (REACT/DELETE_FOR_EVERYONE). Externas retornam 409 CAPABILITY_UNAVAILABLE até homologação Evolution."
+          },
+          "response": []
+        },
+        {
+          "name": "Estado das ações de mensagem WhatsApp",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-id",
+                "value": "{{supabaseId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages/{{messageId}}/actions-state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "messages",
+                "{{messageId}}",
+                "actions-state"
+              ]
+            },
+            "description": "Retorna capabilities e estado local (favorite/pin/hidden/reactions)."
+          },
+          "response": []
+        },
+        {
+          "name": "Encaminhar mensagem WhatsApp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-id",
+                "value": "{{supabaseId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destinations\": [\n    {\n      \"conversationId\": \"{{conversationId}}\",\n      \"clientMessageId\": \"{{clientMessageId}}\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/messages/{{messageId}}/forward",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "messages",
+                "{{messageId}}",
+                "forward"
+              ]
+            },
+            "description": "Encaminha mensagem para destinos; cada destino usa clientMessageId próprio no fluxo durável."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar mensagens dentro da conversa",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-id",
+                "value": "{{supabaseId}}",
+                "description": "ID do usuário autenticado no Supabase"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}",
+                "description": "ID do time ativo"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/conversations/{{conversationId}}/messages/search?q=ola&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "conversations",
+                "{{conversationId}}",
+                "messages",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "ola"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Busca paginada de texto/caption dentro de uma conversa (exclui mensagens ocultas para o perfil)."
           },
           "response": []
         },
@@ -16614,6 +16822,38 @@
               ]
             },
             "description": "Retorna contagem do período: limite, uso atual, percentual consumido e status de alerta."
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar métricas operacionais WhatsApp",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/whatsapp/ops-metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "teams",
+                "{{teamId}}",
+                "whatsapp",
+                "ops-metrics"
+              ]
+            },
+            "description": "Contagens agregadas sem PII (dead-letter, UNKNOWN, mídia FAILED, actions). Requer gestão de infraestrutura WhatsApp."
           },
           "response": []
         },

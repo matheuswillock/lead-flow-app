@@ -21,7 +21,9 @@ mkdirSync(STAGE, { recursive: true });
 
 const includes = [
   ["n8n/workflows", "n8n/workflows"],
-  ["deploy/hostinger/studio-bot-ops", "studio-bot-ops"],
+  ["deploy/hostinger/studio-bot-ops", "deploy/hostinger/studio-bot-ops"],
+  ["deploy/hostinger/backup-supabase.sh", "deploy/hostinger/backup-supabase.sh"],
+  ["deploy/hostinger/.env.ops.example", "deploy/hostinger/.env.ops.example"],
   ["deploy/hostinger/Caddyfile", "Caddyfile"],
 ];
 
@@ -35,14 +37,8 @@ for (const [from, to] of includes) {
   cpSync(src, dest, { recursive: true });
 }
 
-// Compose na VPS usa context ./studio-bot-ops (layout /opt/lead-flow-bot).
-const composeSrc = resolve(ROOT, "docker-compose.vps.yml");
-let composeText = readFileSync(composeSrc, "utf8");
-composeText = composeText.replace(
-  "context: ./deploy/hostinger/studio-bot-ops",
-  "context: ./studio-bot-ops"
-);
-writeFileSync(resolve(STAGE, "docker-compose.vps.yml"), composeText);
+// Compose na VPS referencia ./deploy/hostinger (layout /opt/lead-flow-bot).
+writeFileSync(resolve(STAGE, "docker-compose.vps.yml"), readFileSync(resolve(ROOT, "docker-compose.vps.yml"), "utf8"));
 
 writeFileSync(resolve(STAGE, ".host-version"), `${version}\n`);
 

@@ -51,6 +51,48 @@ function roundCurrency(value: number): number {
   return Number(value.toFixed(2))
 }
 
+/** Em CUSTOM, `price` é o total do ciclo; em EQUAL, é o valor mensal. */
+export function resolveCardMonthlyPriceFromRule(
+  cardRule: Pick<BackofficeProductPaymentRule, "price" | "installmentSplitMode">,
+  cycle: BackofficeAdhesionBillingCycle
+): number {
+  const price = roundCurrency(Number(cardRule.price.toString()))
+  if (cardRule.installmentSplitMode === "CUSTOM") {
+    const months = BACKOFFICE_ADHESION_CYCLE_MONTHS[cycle] ?? 1
+    return roundCurrency(price / months)
+  }
+  return price
+}
+
+/**
+ * Escala um schedule CUSTOM (ou lista de parcelas) para somar exatamente `targetTotal`.
+ * Usado para incluir add-ons no ledger sem distorcer a proporção das parcelas.
+ */
+export function scaleInstallmentScheduleToTotal(
+  schedule: number[],
+  targetTotal: number
+): number[] {
+  if (schedule.length === 0) return []
+  const safeTarget = roundCurrency(targetTotal)
+  if (schedule.length === 1) return [safeTarget]
+
+  const baseSum = schedule.reduce((sum, value) => sum + Number(value || 0), 0)
+  if (!(baseSum > 0)) {
+    const base = roundCurrency(safeTarget / schedule.length)
+    const parts = Array.from({ length: schedule.length }, () => base)
+    const drift = roundCurrency(safeTarget - parts.reduce((sum, value) => sum + value, 0))
+    parts[parts.length - 1] = roundCurrency(parts[parts.length - 1] + drift)
+    return parts
+  }
+
+  const scaled = schedule.map((value) =>
+    roundCurrency((Number(value) / baseSum) * safeTarget)
+  )
+  const drift = roundCurrency(safeTarget - scaled.reduce((sum, value) => sum + value, 0))
+  scaled[scaled.length - 1] = roundCurrency(scaled[scaled.length - 1] + drift)
+  return scaled
+}
+
 export function resolveProductPriceForCycle(
   product: BackofficeProduct,
   cycle: BackofficeAdhesionBillingCycle
@@ -65,12 +107,12 @@ export function resolveProductPriceForCycle(
         : product.priceMonthly
 
   if (value == null) {
-    throw new Error(`Produto ${product.featureSlug} sem preço para o ciclo ${cycle}`)
+    throw new Error(`Produto ${product.name} sem preço para o ciclo ${cycle}`)
   }
 
   const price = Number(value.toString())
   if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`Produto ${product.featureSlug} com preço inválido para o ciclo ${cycle}`)
+    throw new Error(`Produto ${product.name} com preço inválido para o ciclo ${cycle}`)
   }
 
   return price
@@ -128,10 +170,17 @@ export function calculateBackofficeAdhesionPricing(
 
     try {
       const cardRule = resolvePaymentRule(paymentRules, input.cycle, "CREDIT_CARD")
-      const cardBaseMonthly = roundCurrency(Number(cardRule.price.toString()))
       const cardMonthlyExtras = roundCurrency(monthlyExtraTeamsAmount + monthlyExtraUsersAmount)
-      creditCardMonthlyTotalAmount = roundCurrency(cardBaseMonthly + cardMonthlyExtras)
-      creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      if (cardRule.installmentSplitMode === "CUSTOM") {
+        const cardBaseTotal = roundCurrency(Number(cardRule.price.toString()))
+        creditCardTotalAmount = roundCurrency(cardBaseTotal + cardMonthlyExtras * cycleMonths)
+        creditCardMonthlyTotalAmount = roundCurrency(creditCardTotalAmount / cycleMonths)
+      } else {
+        creditCardMonthlyTotalAmount = roundCurrency(
+          resolveCardMonthlyPriceFromRule(cardRule, input.cycle) + cardMonthlyExtras
+        )
+        creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      }
       maxCardInstallments = cardRule.maxInstallments
     } catch {
       // fallback to flat price

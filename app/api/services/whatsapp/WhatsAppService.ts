@@ -202,10 +202,15 @@ class WhatsAppService implements IWhatsAppService {
     const config = await whatsAppRepository.findConfigByTeamId(teamId)
     if (!config) return null
 
+    const needsLiveSync =
+      config.status === "QR_READY" ||
+      config.status === "PENDING" ||
+      (config.status === "DISCONNECTED" && Boolean(config.qrCodeImageUrl))
+
     // Evita chamada externa à Evolution no caminho quente: só sincroniza se o
-    // último sync tiver mais de CONFIG_SYNC_TTL_MS.
+    // último sync tiver mais de CONFIG_SYNC_TTL_MS (exceto durante espera de QR).
     const lastSyncMs = config.lastSyncAt?.getTime() ?? 0
-    if (Date.now() - lastSyncMs < CONFIG_SYNC_TTL_MS) {
+    if (!needsLiveSync && Date.now() - lastSyncMs < CONFIG_SYNC_TTL_MS) {
       return toConfigOutput(config)
     }
 
@@ -514,6 +519,13 @@ class WhatsAppService implements IWhatsAppService {
           fileName: input.media.fileName,
           base64,
           caption: input.media.caption,
+          quoted: input.quotedProviderMessageId
+            ? {
+                providerMessageId: input.quotedProviderMessageId,
+                fromMe: input.quotedFromMe ?? false,
+                remoteJid: recipientJid,
+              }
+            : undefined,
         })
       } catch (error) {
         // Keep the private object for retry by clientMessageId; do not delete on provider failure.
@@ -531,6 +543,13 @@ class WhatsAppService implements IWhatsAppService {
         text,
         mentioned: input.mentionedJids,
         linkPreview: true,
+        quoted: input.quotedProviderMessageId
+          ? {
+              providerMessageId: input.quotedProviderMessageId,
+              fromMe: input.quotedFromMe ?? false,
+              remoteJid: recipientJid,
+            }
+          : undefined,
       })
     }
 
@@ -587,6 +606,12 @@ class WhatsAppService implements IWhatsAppService {
             storagePath,
             mediaSha256,
             mediaSizeBytes,
+            ...(input.quotedMessageId
+              ? { quotedMessage: { connect: { id: input.quotedMessageId } } }
+              : {}),
+            ...(input.quotedProviderMessageId
+              ? { quotedProviderMessageId: input.quotedProviderMessageId }
+              : {}),
             rawPayload,
           })
     } catch {

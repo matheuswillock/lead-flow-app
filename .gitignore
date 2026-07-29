@@ -49,6 +49,7 @@ yarn-error.log*
 .vercel
 
 # db clone dumps
+/tmp/
 /tmp/db-clone/
 /backup_*.sql
 

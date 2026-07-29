@@ -99,6 +99,10 @@ export interface WhatsAppMessageSelect {
   failedAt: Date | null
   isAutoResponse: boolean
   autoResponseRuleId: string | null
+  quotedMessageId: string | null
+  quotedProviderMessageId: string | null
+  deletedForEveryoneAt: Date | null
+  deletedByProfileId: string | null
   createdAt: Date
 }
 
@@ -247,6 +251,8 @@ export interface IWhatsAppRepository {
     }
   ): Promise<WhatsAppMessageSelect>
 
+  markMessageDeletedForEveryone(id: string, deletedByProfileId?: string | null): Promise<void>
+
   findMessageIdByStoragePath(storagePath: string): Promise<string | null>
 
   claimMediaIngestBatch(limit?: number): Promise<Array<{
@@ -274,6 +280,7 @@ export interface IWhatsAppRepository {
 
   listMessages(params: {
     conversationId: string
+    profileId?: string
     page?: number
     limit?: number
   }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }>
@@ -302,6 +309,8 @@ export interface IWhatsAppRepository {
     storagePath?: string
     mediaSha256?: string
     mediaSizeBytes?: number
+    quotedMessageId?: string
+    quotedProviderMessageId?: string
   }): Promise<{
     created: boolean
     messageId: string | null
@@ -427,4 +436,83 @@ export interface IWhatsAppRepository {
     teamId: string,
     externalChatIds: string[]
   ): Promise<WhatsAppConversationSelect[]>
+
+  // Message actions (Phase 4)
+  getMessageActionsState(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+  }): Promise<{
+    messageId: string
+    conversationId: string
+    isFavorite: boolean
+    isPinned: boolean
+    isHidden: boolean
+    reactions: Array<{ emoji: string; profileId: string | null; removedAt: Date | null }>
+    deletedForEveryoneAt: Date | null
+  } | null>
+
+  upsertMessageFavorite(input: { teamId: string; messageId: string; profileId: string }): Promise<void>
+  removeMessageFavorite(input: { teamId: string; messageId: string; profileId: string }): Promise<void>
+  pinMessage(input: {
+    teamId: string
+    conversationId: string
+    messageId: string
+    pinnedByProfileId: string
+    expiresAt?: Date | null
+  }): Promise<void>
+  unpinMessage(input: { teamId: string; messageId: string }): Promise<void>
+  hideMessageForProfile(input: { teamId: string; messageId: string; profileId: string }): Promise<void>
+  findActionCommand(input: {
+    teamId: string
+    clientActionId: string
+  }): Promise<{
+    id: string
+    messageId: string
+    kind: string
+    status: string
+    requestHash: string | null
+  } | null>
+  createActionCommand(input: {
+    teamId: string
+    messageId: string
+    profileId: string
+    clientActionId: string
+    kind: "REACT" | "UNREACT" | "DELETE_FOR_EVERYONE"
+    requestHash: string
+    emoji?: string | null
+  }): Promise<{ created: boolean; id: string; status: string }>
+
+  searchMessagesInConversation(input: {
+    teamId: string
+    conversationId: string
+    profileId: string
+    query: string
+    page?: number
+    limit?: number
+  }): Promise<{ messages: WhatsAppMessageSelect[]; total: number }>
+
+  mergeMessageRawPayload(
+    messageId: string,
+    patch: Record<string, unknown>
+  ): Promise<void>
+
+  softDeleteAllTeamConversationsWithAudit(input: {
+    teamId: string
+    actorProfileId: string
+  }): Promise<number>
+
+  requeueAllDeadLetterEvents(input: {
+    teamId: string
+    actorProfileId: string
+  }): Promise<number>
+
+  getTeamOpsMetrics(teamId: string): Promise<{
+    deadLetterCount: number
+    pendingWebhookCount: number
+    unknownOutboundCount: number
+    failedMediaCount: number
+    pendingActionCommandCount: number
+    unknownActionCommandCount: number
+  }>
 }

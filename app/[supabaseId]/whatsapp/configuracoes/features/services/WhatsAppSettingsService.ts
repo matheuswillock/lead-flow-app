@@ -1,5 +1,5 @@
 import type { IWhatsAppSettingsService } from './IWhatsAppSettingsService'
-import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber } from '../context/WhatsAppSettingsTypes'
+import type { WhatsAppConfig, WhatsAppUsage, ReusableWhatsAppNumber, WhatsAppOpsMetrics } from '../context/WhatsAppSettingsTypes'
 
 class WhatsAppSettingsService implements IWhatsAppSettingsService {
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
@@ -98,6 +98,18 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
     return output.result as WhatsAppUsage
   }
 
+  async fetchOpsMetrics(teamId: string, supabaseId: string): Promise<WhatsAppOpsMetrics> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/ops-metrics`, {
+      method: 'GET',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível carregar as métricas operacionais'))
+    }
+    return output.result as WhatsAppOpsMetrics
+  }
+
   async syncHistory(teamId: string, supabaseId: string): Promise<void> {
     const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/sync-history`, {
       method: 'POST',
@@ -129,6 +141,33 @@ class WhatsAppSettingsService implements IWhatsAppSettingsService {
         totalContacts: number
       }) ?? { imported: 0, updatedConversations: 0, totalContacts: 0 }
     )
+  }
+
+  async purgeConversations(teamId: string, supabaseId: string): Promise<{ deletedCount: number }> {
+    const response = await fetch(`/api/v1/teams/${teamId}/whatsapp/conversations`, {
+      method: 'DELETE',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível zerar as conversas'))
+    }
+    return (output.result as { deletedCount: number }) ?? { deletedCount: 0 }
+  }
+
+  async requeueDeadLetterEvents(teamId: string, supabaseId: string): Promise<{ requeuedCount: number }> {
+    const response = await fetch(
+      `/api/v1/teams/${teamId}/whatsapp/webhook-events/requeue-dead-letter`,
+      {
+        method: 'POST',
+        headers: this.buildHeaders(supabaseId, teamId),
+      }
+    )
+    const output = await response.json() as Record<string, unknown>
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, 'Não foi possível reenfileirar os eventos dead-letter'))
+    }
+    return (output.result as { requeuedCount: number }) ?? { requeuedCount: 0 }
   }
 }
 

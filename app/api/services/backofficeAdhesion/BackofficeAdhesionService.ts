@@ -1,11 +1,14 @@
 import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
+import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
   BACKOFFICE_ADHESION_CYCLE_MONTHS,
   type BackofficeAdhesionPrices,
   calculateBackofficeAdhesionPricing,
+  resolveCardMonthlyPriceFromRule,
   resolveProductPriceForCycle,
+  scaleInstallmentScheduleToTotal,
 } from "@/lib/backoffice-adhesions/adhesion-pricing"
 import {
   generateBackofficeAdhesionToken,
@@ -13,6 +16,13 @@ import {
   hashBackofficeAdhesionToken,
   validateBackofficeAdhesionToken,
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
+import {
+  hasExternalActivation,
+  isAdhesionAccountActivated,
+  readInstallmentLedger,
+  type AdhesionInstallmentLedgerEntry,
+} from "@/lib/backoffice-adhesions/installment-ledger"
+import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -62,6 +72,45 @@ const CANCELED_ASAAS_STATUSES = new Set([
   "CHARGEBACK",
   "REFUSED",
 ])
+
+const ADHESION_UUID =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+const ADHESION_INSTALLMENT_REF_RE = new RegExp(
+  `^backoffice-adhesion-(${ADHESION_UUID})-installment-(\\d+)$`,
+  "i"
+)
+const ADHESION_LEGACY_REF_RE = new RegExp(`^backoffice-adhesion-(${ADHESION_UUID})$`, "i")
+
+function parseAdhesionExternalReference(
+  externalReference: string | null | undefined
+): { adhesionId: string; installmentIndex: number | null } | null {
+  if (!externalReference) return null
+  const installmentMatch = ADHESION_INSTALLMENT_REF_RE.exec(externalReference)
+  if (installmentMatch) {
+    return {
+      adhesionId: installmentMatch[1],
+      installmentIndex: Number(installmentMatch[2]),
+    }
+  }
+  const legacyMatch = ADHESION_LEGACY_REF_RE.exec(externalReference)
+  if (legacyMatch) {
+    return { adhesionId: legacyMatch[1], installmentIndex: null }
+  }
+  return null
+}
+
+function usesCustomInstallmentCheckout(
+  adhesion: BackofficeAdhesionWithRelations,
+  paymentRules: BackofficeProductPaymentRule[],
+  billingType: string
+): boolean {
+  if (billingType !== "CREDIT_CARD") return false
+  const cardRule = paymentRules.find(
+    (rule) => rule.billingCycle === adhesion.cycle && rule.paymentMethod === "CREDIT_CARD"
+  )
+  if (cardRule?.installmentSplitMode === "CUSTOM") return true
+  return false
+}
 
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2))
@@ -126,7 +175,31 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     productId: adhesion.productId,
     hasUnlimitedUsers: adhesion.hasUnlimitedUsers === true,
     multiskillEnabled: adhesion.multiskillEnabled === true,
+    accountProvisioned: Boolean(adhesion.createdProfileId),
+    hasExternalActivation: hasExternalActivation(adhesion.installmentLedger),
   }
+}
+
+function sumPendingLedgerAmount(ledger: AdhesionInstallmentLedgerEntry[]): number {
+  return roundCurrency(
+    ledger.filter((entry) => entry.status === "pending").reduce((sum, entry) => sum + entry.amount, 0)
+  )
+}
+
+function resolveCheckoutChargeAmount(
+  publicDetails: BackofficeAdhesionPublicDTO,
+  billingType: "PIX" | "CREDIT_CARD"
+): number {
+  const ledgerHasPending =
+    publicDetails.installmentSchedule.length > 0 && publicDetails.remainingBalance > 0
+
+  if (ledgerHasPending) {
+    return publicDetails.remainingBalance
+  }
+
+  return billingType === "PIX"
+    ? publicDetails.pixTotalAmount
+    : publicDetails.creditCardTotalAmount
 }
 
 function mapPublicAdhesion(
@@ -144,6 +217,8 @@ function mapPublicAdhesion(
   let creditCardMonthlyTotalAmount = decimalToNumber(adhesion.monthlyTotalAmount)
   let creditCardTotalAmount = decimalToNumber(adhesion.totalAmount)
   let maxCardInstallments = cycleMonths
+  let installmentSplitMode: "EQUAL" | "CUSTOM" | null = null
+  let productInstallmentSchedule: number[] = []
 
   if (paymentRules && paymentRules.length > 0) {
     const pixRule = paymentRules.find(
@@ -158,18 +233,43 @@ function mapPublicAdhesion(
       (r) => r.billingCycle === adhesion.cycle && r.paymentMethod === "CREDIT_CARD"
     )
     if (cardRule) {
-      creditCardMonthlyTotalAmount = roundCurrency(Number(cardRule.price.toString()) + monthlyExtras)
+      creditCardMonthlyTotalAmount = roundCurrency(
+        resolveCardMonthlyPriceFromRule(cardRule, adhesion.cycle) + monthlyExtras
+      )
       creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
       maxCardInstallments = cardRule.maxInstallments
+      installmentSplitMode = (cardRule.installmentSplitMode as "EQUAL" | "CUSTOM") ?? "EQUAL"
+      productInstallmentSchedule =
+        installmentSplitMode === "CUSTOM" && Array.isArray(cardRule.installmentSchedule)
+          ? (cardRule.installmentSchedule as number[]).map((value) => Number(value))
+          : []
     }
   }
+
+  const ledger = readInstallmentLedger(adhesion.installmentLedger)
+  const remainingBalance =
+    ledger.length > 0 ? sumPendingLedgerAmount(ledger) : roundCurrency(decimalToNumber(adhesion.totalAmount))
+  const installmentSchedule =
+    ledger.length > 0 ? ledger.map((entry) => entry.amount) : productInstallmentSchedule
 
   const presetBillingType = adhesion.billingType === "PIX" ? "PIX" : "CREDIT_CARD"
   const resolvedMonthlyTotalAmount =
     presetBillingType === "PIX" ? pixMonthlyTotalAmount : creditCardMonthlyTotalAmount
   const resolvedTotalAmount = presetBillingType === "PIX" ? pixTotalAmount : creditCardTotalAmount
   const resolvedMaxInstallments =
-    presetBillingType === "PIX" ? 1 : Math.max(1, Math.trunc(maxCardInstallments || 1))
+    presetBillingType === "PIX"
+      ? 1
+      : installmentSplitMode === "CUSTOM"
+        ? Math.max(1, installmentSchedule.length)
+        : Math.max(1, Math.trunc(maxCardInstallments || 1))
+  const chargeAmount =
+    presetBillingType === "PIX"
+      ? ledger.length > 0
+        ? remainingBalance
+        : pixTotalAmount
+      : ledger.length > 0
+        ? remainingBalance
+        : creditCardTotalAmount
 
   return {
     id: adhesion.id,
@@ -201,6 +301,10 @@ function mapPublicAdhesion(
     creditCardMonthlyTotalAmount,
     creditCardTotalAmount,
     maxCardInstallments,
+    installmentSplitMode,
+    installmentSchedule,
+    remainingBalance,
+    chargeAmount,
     createdAt: adhesion.createdAt.toISOString(),
     paidAt: adhesion.paidAt?.toISOString() ?? null,
     expiresAt: adhesion.expiresAt.toISOString(),
@@ -208,12 +312,14 @@ function mapPublicAdhesion(
 }
 
 function mapPayment(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhesionPaymentDTO {
+  const ledger = readInstallmentLedger(adhesion.installmentLedger)
+  const pendingAmount = sumPendingLedgerAmount(ledger)
   const payment: BackofficeAdhesionPaymentDTO = {
     adhesionId: adhesion.id,
     paymentId: adhesion.asaasPaymentId,
     status: adhesion.status,
     billingType: adhesion.billingType,
-    amount: decimalToNumber(adhesion.totalAmount),
+    amount: ledger.length > 0 ? pendingAmount : decimalToNumber(adhesion.totalAmount),
     invoiceUrl: adhesion.invoiceUrl,
     bankSlipUrl: adhesion.bankSlipUrl,
   }
@@ -381,6 +487,13 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
     }
 
+    const availableCycles = new Set(crmWithRules.paymentRules.map((rule) => rule.billingCycle))
+    if (!availableCycles.has(normalized.cycle)) {
+      throw new Error(
+        `O ciclo ${normalized.cycle} não está disponível na precificação selecionada`
+      )
+    }
+
     const prices = await this.resolvePrices(normalized.cycle, crmWithRules.id)
     const pricing = calculateBackofficeAdhesionPricing(normalized, prices, crmWithRules.paymentRules)
     const resolvedBillingType = normalized.billingType ?? "PIX"
@@ -388,12 +501,40 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       resolvedBillingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
     const resolvedTotalAmount =
       resolvedBillingType === "PIX" ? pricing.pixTotalAmount : pricing.creditCardTotalAmount
+
+    const cardRule = crmWithRules.paymentRules.find(
+      (rule) => rule.billingCycle === normalized.cycle && rule.paymentMethod === "CREDIT_CARD"
+    )
+    const schedule = buildAdhesionInstallmentSchedule({
+      cardRule,
+      cycleTotal: resolvedTotalAmount,
+      maxInstallments: pricing.maxCardInstallments,
+    })
+    const externalIndexes = new Set(
+      normalized.activationMode === "external_paid" &&
+        (!normalized.externalInstallmentIndexes ||
+          normalized.externalInstallmentIndexes.length === 0)
+        ? schedule.map((_, index) => index)
+        : (normalized.externalInstallmentIndexes ?? [])
+    )
+    const ledger = schedule.map((amount, index) => ({
+      index,
+      amount,
+      paymentSource: externalIndexes.has(index) ? ("EXTERNAL" as const) : ("ASAAS" as const),
+      status: externalIndexes.has(index) ? ("paid" as const) : ("pending" as const),
+      asaasPaymentId: null as string | null,
+      paidAt: externalIndexes.has(index) ? new Date().toISOString() : null,
+    }))
+    const allExternal = ledger.length > 0 && ledger.every((entry) => entry.paymentSource === "EXTERNAL")
+    const anyExternal = ledger.some((entry) => entry.paymentSource === "EXTERNAL")
+    const pendingAsaas = ledger.filter((entry) => entry.status === "pending")
+
     const token = generateBackofficeAdhesionToken()
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
       fullName: normalized.fullName,
       phone: normalized.phone ?? "",
-      billingType: resolvedBillingType,
+      billingType: allExternal ? "EXTERNAL" : resolvedBillingType,
       plan: "crm",
       productId: crmWithRules.id,
       cycle: normalized.cycle,
@@ -424,6 +565,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       hasUnlimitedUsers: normalized.hasUnlimitedUsers === true,
       additionalUsersData: normalized.additionalUsers ?? [],
       additionalTeamsData: normalized.additionalTeams ?? [],
+      installmentSchedule: schedule,
+      installmentLedger: ledger,
     })
 
     if (normalized.userType === "guest") {
@@ -457,7 +600,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
-    if (normalized.activationMode === "external_paid") {
+    if (normalized.activationMode === "external_paid" || anyExternal) {
       const externalEmail = normalized.email
       if (!externalEmail) {
         throw new Error("E-mail é obrigatório para pagamento por fora")
@@ -475,20 +618,61 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           cpfCnpj: normalizedCpfCnpj,
           phone: normalized.phone ?? "",
         })
-        const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
-          fullName: normalized.fullName,
-          phone: normalized.phone ?? "",
+
+        let nextLedger = ledger
+        if (pendingAsaas.length > 0) {
+          nextLedger = await this.chargePendingInstallments({
+            adhesion,
+            customerId: asaasCustomerId,
+            email: externalEmail,
+            billingType: resolvedBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
+            ledger,
+            pending: pendingAsaas,
+          })
+        }
+
+        if (allExternal || pendingAsaas.length === 0) {
+          const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
+            fullName: normalized.fullName,
+            phone: normalized.phone ?? "",
+            email: externalEmail,
+            cpfCnpj: normalizedCpfCnpj,
+            paidAt,
+            asaasCustomerId,
+          })
+          await this.persistInstallmentLedger(adhesion.id, nextLedger, {
+            email: externalEmail,
+            cpfCnpj: normalizedCpfCnpj,
+            asaasCustomerId,
+          })
+          await this.ensureAccountForPaidAdhesion(paidAdhesion)
+          return {
+            adhesion: mapAdhesion((await this.repo.findById(adhesion.id)) ?? paidAdhesion),
+            publicUrl: null,
+            expiresAt: paidAdhesion.expiresAt.toISOString(),
+            activationMode: "external_paid",
+          }
+        }
+
+        await this.persistInstallmentLedger(adhesion.id, nextLedger, {
           email: externalEmail,
           cpfCnpj: normalizedCpfCnpj,
+          asaasCustomerId,
           paidAt,
+          billingType: resolvedBillingType,
+        })
+        const refreshed = await this.repo.findById(adhesion.id)
+        if (!refreshed) throw new Error("Adesão não encontrada após cobrança parcial")
+        await this.ensureAccountForPaidAdhesion({
+          ...refreshed,
+          paidAt: refreshed.paidAt ?? paidAt,
+          email: externalEmail,
           asaasCustomerId,
         })
-        await this.ensureAccountForPaidAdhesion(paidAdhesion)
-
         return {
-          adhesion: mapAdhesion(paidAdhesion),
+          adhesion: mapAdhesion((await this.repo.findById(adhesion.id)) ?? refreshed),
           publicUrl: null,
-          expiresAt: paidAdhesion.expiresAt.toISOString(),
+          expiresAt: refreshed.expiresAt.toISOString(),
           activationMode: "external_paid",
         }
       } catch (externalPaidErr) {
@@ -692,6 +876,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (!existing) {
       throw new Error("Adesão não encontrada")
     }
+    if (isAdhesionAccountActivated(existing)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para cobrança."
+      )
+    }
     if (existing.status === "paid") {
       throw new Error("Adesões pagas não podem ser reenviadas")
     }
@@ -729,11 +918,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (!existing) {
       throw new Error("Adesão não encontrada")
     }
-    if (existing.status !== "paid") {
-      throw new Error("Convite só pode ser reenviado para adesões pagas")
+    if (!isAdhesionAccountActivated(existing)) {
+      throw new Error("Convite disponível apenas após ativação da conta ou pagamento externo")
     }
     if (!existing.email) {
-      throw new Error("Adesão paga sem e-mail para reenvio de convite")
+      throw new Error("Adesão sem e-mail para reenvio de convite")
     }
 
     if (!existing.createdSupabaseId && !existing.createdProfileId) {
@@ -745,10 +934,83 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return { email: existing.email }
   }
 
+  async getPendingInvoiceUrls(id: string): Promise<{
+    invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+  }> {
+    const adhesion = await this.repo.findById(id)
+    if (!adhesion) {
+      throw new Error("Adesão não encontrada")
+    }
+    if (!isAdhesionAccountActivated(adhesion)) {
+      throw new Error("Checkout de fatura disponível apenas para assinaturas já ativadas")
+    }
+
+    let ledger = readInstallmentLedger(adhesion.installmentLedger)
+    let pendingAsaas = ledger.filter(
+      (entry) => entry.status === "pending" && entry.paymentSource === "ASAAS"
+    )
+
+    if (pendingAsaas.length === 0) {
+      throw new Error("Não há parcelas pendentes para cobrança")
+    }
+
+    const missingPayments = pendingAsaas.filter((entry) => !entry.asaasPaymentId)
+    if (missingPayments.length > 0) {
+      if (!adhesion.asaasCustomerId) {
+        throw new Error("Cliente Asaas não configurado para esta adesão")
+      }
+      if (!adhesion.email) {
+        throw new Error("E-mail não configurado para esta adesão")
+      }
+
+      ledger = await this.chargePendingInstallments({
+        adhesion,
+        customerId: adhesion.asaasCustomerId,
+        email: adhesion.email,
+        billingType: adhesion.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
+        ledger,
+        pending: missingPayments,
+      })
+      await this.persistInstallmentLedger(adhesion.id, ledger, {
+        email: adhesion.email,
+        cpfCnpj: adhesion.cpfCnpj,
+        asaasCustomerId: adhesion.asaasCustomerId,
+      })
+      pendingAsaas = ledger.filter(
+        (entry) => entry.status === "pending" && entry.paymentSource === "ASAAS"
+      )
+    }
+
+    const invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }> = []
+    for (const entry of pendingAsaas) {
+      if (!entry.asaasPaymentId) continue
+      const payment = await asaasFetch(`${asaasApi.payments}/${entry.asaasPaymentId}`)
+      const invoiceUrl = (payment.invoiceUrl as string | undefined)?.trim()
+      if (invoiceUrl) {
+        invoices.push({
+          installmentIndex: entry.index,
+          amount: entry.amount,
+          invoiceUrl,
+        })
+      }
+    }
+
+    if (invoices.length === 0) {
+      throw new Error("Nenhuma fatura pendente com link de pagamento disponível")
+    }
+
+    return { invoices }
+  }
+
   async getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }> {
     const existing = await this.repo.findById(id)
     if (!existing) {
       throw new Error("Adesão não encontrada")
+    }
+    if (isAdhesionAccountActivated(existing)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para cobrança."
+      )
     }
 
     const token = existing.tokenPlain?.trim()
@@ -812,6 +1074,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return tokenError("not_found")
     }
 
+    if (isAdhesionAccountActivated(adhesion)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para pagamento."
+      )
+    }
+
     if (adhesion.asaasPaymentId) {
       if (adhesion.status === "paid") {
         return mapPayment(adhesion)
@@ -824,24 +1092,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         return mapPayment(adhesion)
       }
 
-      try {
-        await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
-          method: "DELETE",
-        })
-      } catch (error) {
-        console.error(
-          "[BackofficeAdhesionService][createCheckout] Failed to cancel old Asaas payment:",
-          error
-        )
-      }
-
-      adhesion = await this.repo.clearPaymentArtifacts(adhesion.id)
-    }
-
-    const normalized = this.normalizeCheckoutInput(input, adhesion.cycle)
-    const existingProfileId = await this.repo.findProfileIdByEmail(normalized.email)
-    if (existingProfileId) {
-      throw new Error("Já existe uma conta cadastrada com este e-mail")
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
+    } else if (readInstallmentLedger(adhesion.installmentLedger).some((entry) => entry.asaasPaymentId)) {
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
     }
 
     const crmProduct = await this.getProductForAdhesion(
@@ -849,13 +1102,108 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       adhesion.productId
     )
     const paymentRules = crmProduct?.paymentRules ?? []
-    const publicDetails = mapPublicAdhesion(adhesion, paymentRules)
-    const chargeAmount =
-      normalized.billingType === "PIX"
-        ? publicDetails.pixTotalAmount
-        : publicDetails.creditCardTotalAmount
+    const cardRule = paymentRules.find(
+      (rule) => rule.billingCycle === adhesion.cycle && rule.paymentMethod === "CREDIT_CARD"
+    )
+    const maxCardInstallments =
+      cardRule?.maxInstallments ?? BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
 
+    const normalized = this.normalizeCheckoutInput(input, adhesion.cycle, maxCardInstallments)
+    const existingProfileId = await this.repo.findProfileIdByEmail(normalized.email)
+    if (existingProfileId) {
+      throw new Error("Já existe uma conta cadastrada com este e-mail")
+    }
+
+    const publicDetails = mapPublicAdhesion(adhesion, paymentRules)
     const customerId = await this.ensureAsaasCustomer(adhesion, normalized)
+
+    if (usesCustomInstallmentCheckout(adhesion, paymentRules, normalized.billingType)) {
+      const ledger = readInstallmentLedger(adhesion.installmentLedger)
+      const pending = ledger.filter((entry) => entry.status === "pending")
+      if (pending.length === 0) {
+        throw new Error("Não há parcelas pendentes para checkout")
+      }
+
+      const [firstPending, ...remainingPending] = pending
+      const firstResult = await this.createAsaasPayment(
+        adhesion,
+        customerId,
+        normalized,
+        firstPending.amount,
+        { singleCharge: true }
+      )
+
+      let nextLedger = ledger.map((entry) =>
+        entry.index === firstPending.index
+          ? { ...entry, asaasPaymentId: firstResult.paymentId }
+          : entry
+      )
+
+      if (remainingPending.length > 0) {
+        try {
+          nextLedger = await this.chargePendingInstallments({
+            adhesion,
+            customerId,
+            email: normalized.email,
+            billingType: "CREDIT_CARD",
+            ledger: nextLedger,
+            pending: remainingPending,
+          })
+        } catch (chargeError) {
+          try {
+            await asaasFetch(`${asaasApi.payments}/${firstResult.paymentId}`, {
+              method: "DELETE",
+            })
+          } catch (rollbackErr) {
+            console.error(
+              "[BackofficeAdhesionService][createCheckout][rollback-first-payment]",
+              rollbackErr
+            )
+          }
+          throw chargeError
+        }
+      }
+
+      await this.persistInstallmentLedger(adhesion.id, nextLedger, {
+        email: normalized.email,
+        cpfCnpj: normalized.cpfCnpj,
+        asaasCustomerId: customerId,
+        billingType: normalized.billingType,
+      })
+
+      const updated = await this.repo.updateCheckoutData(adhesion.id, {
+        fullName: normalized.fullName,
+        phone: normalized.phone,
+        email: normalized.email,
+        cpfCnpj: normalized.cpfCnpj,
+        postalCode: normalized.postalCode,
+        address: normalized.address,
+        addressNumber: normalized.addressNumber,
+        neighborhood: normalized.neighborhood,
+        complement: normalized.complement,
+        city: normalized.city,
+        state: normalized.state,
+        asaasCustomerId: customerId,
+        asaasPaymentId: firstResult.paymentId,
+        asaasInstallmentId: null,
+        installmentCount: pending.length,
+        billingType: normalized.billingType,
+        paymentDueDate: firstResult.paymentDueDate,
+        invoiceUrl: firstResult.invoiceUrl,
+        bankSlipUrl: firstResult.bankSlipUrl,
+        pixQrCode: firstResult.pix?.encodedImage ?? null,
+        pixPayload: firstResult.pix?.payload ?? null,
+      })
+
+      return {
+        ...mapPayment(updated),
+        pix: firstResult.pix,
+        boleto: firstResult.boleto,
+      }
+    }
+
+    const chargeAmount = resolveCheckoutChargeAmount(publicDetails, normalized.billingType)
+
     const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
     const updated = await this.repo.updateCheckoutData(adhesion.id, {
       fullName: normalized.fullName,
@@ -924,11 +1272,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return { processed: false }
     }
 
+    const parsedRef = parseAdhesionExternalReference(payment.externalReference)
     const adhesion =
       (await this.repo.findByAsaasPaymentId(payment.id)) ??
-      (payment.externalReference?.startsWith("backoffice-adhesion-")
-        ? await this.repo.findById(payment.externalReference.replace("backoffice-adhesion-", ""))
-        : null)
+      (await this.repo.findByLedgerAsaasPaymentId(payment.id)) ??
+      (parsedRef ? await this.repo.findById(parsedRef.adhesionId) : null)
 
     if (!adhesion) {
       console.info("[BackofficeAdhesionService][processPaymentWebhook] adesão não encontrada", {
@@ -937,6 +1285,25 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         event,
       })
       return { processed: false }
+    }
+
+    const ledger = readInstallmentLedger(adhesion.installmentLedger)
+    const installmentIndexFromLedger = ledger.findIndex(
+      (entry) => entry.asaasPaymentId === payment.id
+    )
+    const installmentIndex =
+      parsedRef?.installmentIndex ??
+      (installmentIndexFromLedger >= 0 ? installmentIndexFromLedger : null)
+
+    if (installmentIndex != null && ledger.length > 0) {
+      return this.processInstallmentPaymentWebhook({
+        event,
+        payment,
+        adhesion,
+        ledger,
+        installmentIndex,
+        options,
+      })
     }
 
     const status = payment.status?.toUpperCase() ?? ""
@@ -982,6 +1349,131 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return { processed: true, adhesionId: adhesion.id }
   }
 
+  private async processInstallmentPaymentWebhook(input: {
+    event: string
+    payment: BackofficeAdhesionPaymentWebhookInput
+    adhesion: BackofficeAdhesionWithRelations
+    ledger: AdhesionInstallmentLedgerEntry[]
+    installmentIndex: number
+    options?: { deferEmailDelivery?: boolean }
+  }): Promise<{ processed: boolean; adhesionId?: string }> {
+    const { event, payment, adhesion, options } = input
+    const status = payment.status?.toUpperCase() ?? ""
+    const isPaid =
+      PAID_ASAAS_STATUSES.has(status) ||
+      event === "PAYMENT_RECEIVED" ||
+      event === "PAYMENT_CONFIRMED" ||
+      event === "PAYMENT_APPROVED"
+    const isOverdue = OVERDUE_ASAAS_STATUSES.has(status) || event === "PAYMENT_OVERDUE"
+    const isCanceled =
+      CANCELED_ASAAS_STATUSES.has(status) ||
+      event === "PAYMENT_REFUNDED" ||
+      event === "PAYMENT_DELETED" ||
+      event === "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED"
+
+    const paymentId = payment.id ?? null
+    const entryPreview =
+      input.ledger.find((item) => item.index === input.installmentIndex) ??
+      input.ledger[input.installmentIndex]
+    if (!entryPreview) {
+      console.info("[BackofficeAdhesionService][processInstallmentPaymentWebhook] parcela ausente", {
+        adhesionId: adhesion.id,
+        installmentIndex: input.installmentIndex,
+        paymentId: payment.id,
+      })
+      return { processed: false, adhesionId: adhesion.id }
+    }
+
+    const updated = await this.repo.mutateInstallmentLedger(adhesion.id, (raw) => {
+      const ledger = readInstallmentLedger(raw)
+      const entry =
+        ledger.find((item) => item.index === input.installmentIndex) ??
+        ledger[input.installmentIndex]
+      if (!entry) return raw
+
+      return ledger.map((item) => {
+        if (item.index !== entry.index) return item
+        if (isPaid) {
+          const paidAt = (this.resolvePaymentDate(payment) ?? new Date()).toISOString()
+          return {
+            ...item,
+            status: "paid" as const,
+            paymentSource: "ASAAS" as const,
+            asaasPaymentId: paymentId,
+            paidAt,
+          }
+        }
+        if (isCanceled) {
+          return {
+            ...item,
+            status: "pending" as const,
+            asaasPaymentId: item.asaasPaymentId === paymentId ? null : item.asaasPaymentId,
+            paidAt: null,
+          }
+        }
+        return {
+          ...item,
+          asaasPaymentId: paymentId,
+        }
+      })
+    })
+
+    const nextLedger = readInstallmentLedger(updated.installmentLedger)
+
+    if (isPaid) {
+      const allPaid = nextLedger.every((item) => item.status === "paid")
+      if (allPaid) {
+        const paidAt = this.resolvePaymentDate(payment) ?? new Date()
+        const paidAdhesion = await this.repo.updateStatus(updated.id, "paid", { paidAt })
+        try {
+          await this.ensureAccountForPaidAdhesion(paidAdhesion, {
+            deferEmailDelivery: options?.deferEmailDelivery,
+          })
+        } catch (accountError) {
+          console.error(
+            "[BackofficeAdhesionService][processInstallmentPaymentWebhook][ensureAccount]",
+            { adhesionId: updated.id, error: accountError }
+          )
+          throw accountError
+        }
+      }
+      return { processed: true, adhesionId: updated.id }
+    }
+
+    if (isOverdue && updated.status !== "paid") {
+      await this.repo.updateStatus(updated.id, "overdue", { overdueAt: new Date() })
+      return { processed: true, adhesionId: updated.id }
+    }
+
+    if (isCanceled) {
+      await this.reconcileAdhesionAfterInstallmentCancellation(updated, nextLedger)
+      return { processed: true, adhesionId: updated.id }
+    }
+
+    return { processed: true, adhesionId: updated.id }
+  }
+
+  private async reconcileAdhesionAfterInstallmentCancellation(
+    adhesion: BackofficeAdhesionWithRelations,
+    ledger: AdhesionInstallmentLedgerEntry[]
+  ): Promise<void> {
+    const allPaid = ledger.every((item) => item.status === "paid")
+    const hasAnyPaid = ledger.some((item) => item.status === "paid")
+
+    if (adhesion.status === "paid" && !allPaid) {
+      await this.repo.update(adhesion.id, { status: "pending", paidAt: null })
+      await this.userSubscriptionRepo.cancelActiveByAdhesionId(adhesion.id)
+      if (adhesion.createdProfileId) {
+        await this.repo.revokePaidAdhesionAccess(adhesion.createdProfileId)
+      }
+      return
+    }
+
+    if (adhesion.status !== "paid" && !hasAnyPaid) {
+      await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+    }
+  }
+
   private async invalidateTokenAfterPayment(adhesionId: string): Promise<void> {
     const token = generateBackofficeAdhesionToken()
     await this.repo.update(adhesionId, {
@@ -1015,7 +1507,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const email = normalizeText(input.email)?.toLowerCase() ?? null
     const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
 
-    if (activationMode === "external_paid" || input.userType === "guest") {
+    if (
+      activationMode === "external_paid" ||
+      input.userType === "guest" ||
+      (input.externalInstallmentIndexes?.length ?? 0) > 0
+    ) {
       if (!email || !isValidEmail(email)) {
         throw new Error("E-mail inválido")
       }
@@ -1049,12 +1545,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         input.hasUnlimitedUsers === true,
       additionalUsers: input.additionalUsers ?? [],
       additionalTeams: input.additionalTeams ?? [],
+      externalInstallmentIndexes: input.externalInstallmentIndexes ?? [],
     }
   }
 
   private normalizeCheckoutInput(
     input: BackofficeAdhesionCheckoutInput,
-    cycle: BackofficeAdhesionBillingCycle
+    cycle: BackofficeAdhesionBillingCycle,
+    maxCardInstallments: number
   ): BackofficeAdhesionCheckoutInput {
     const fullName = normalizeText(input.fullName)
     const email = normalizeText(input.email)?.toLowerCase()
@@ -1080,7 +1578,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Dados do cartão são obrigatórios")
     }
 
-    const maxInstallments = BACKOFFICE_ADHESION_CYCLE_MONTHS[cycle] ?? 1
+    const maxInstallments = Math.max(1, Math.trunc(maxCardInstallments || 1))
     const installments = Math.min(
       Math.max(1, Math.trunc(input.installments || maxInstallments)),
       maxInstallments
@@ -1162,7 +1660,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     adhesion: BackofficeAdhesionWithRelations,
     customerId: string,
     input: BackofficeAdhesionCheckoutInput,
-    chargeAmount: number
+    chargeAmount: number,
+    options?: { singleCharge?: boolean }
   ): Promise<{
     paymentId: string
     installmentId: string | null
@@ -1201,7 +1700,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         mobilePhone: input.phone,
       }
       payload.remoteIp = input.remoteIp
-      if ((input.installments ?? 1) > 1) {
+      if (!options?.singleCharge && (input.installments ?? 1) > 1) {
         payload.installmentCount = input.installments
         payload.installmentValue = roundCurrency(chargeAmount / Math.max(input.installments ?? 1, 1))
       }
@@ -1321,6 +1820,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(linkError?.message || "Erro ao criar convite de acesso")
     }
 
+    let provisionedProfileId: string | null = null
+
     try {
       const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
       const subscriptionStartDate = adhesion.paidAt ?? new Date()
@@ -1426,22 +1927,45 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionNextDueDate: subscriptionEndDate,
       })
 
-      if (options?.deferEmailDelivery) {
-        void this.sendSetPasswordEmail(adhesion, "invite", linkData).catch((emailError) => {
-          console.error(
-            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][deferred-email]",
-            { adhesionId: adhesion.id, error: emailError }
-          )
-        })
-      } else {
-        await this.sendSetPasswordEmail(adhesion, "invite", linkData)
-      }
+      provisionedProfileId = createdProfile.profileId
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
         console.error("[BackofficeAdhesionService][ensureAccountForPaidAdhesion][rollback]", deleteError)
       })
       throw accountError
     }
+
+    if (!provisionedProfileId) {
+      return
+    }
+
+    await this.invalidateTokenAfterPayment(adhesion.id)
+
+    const deliverInviteEmail = async () => {
+      try {
+        await this.sendSetPasswordEmail(
+          { ...adhesion, createdProfileId: provisionedProfileId },
+          "invite",
+          linkData
+        )
+      } catch (emailError) {
+        console.error(
+          "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][invite-email]",
+          {
+            adhesionId: adhesion.id,
+            profileId: provisionedProfileId,
+            error: emailError,
+          }
+        )
+      }
+    }
+
+    if (options?.deferEmailDelivery) {
+      void deliverInviteEmail()
+      return
+    }
+
+    await deliverInviteEmail()
   }
 
   private async resolvePricingOptions(): Promise<
@@ -1476,7 +2000,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         extraTeamPrice,
         extraUserPrice,
         pixBaseMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
-        cardBaseMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
+        cardBaseMonthlyPrice: cardRule
+          ? resolveCardMonthlyPriceFromRule(cardRule, cycle)
+          : null,
       }] as const
     })
 
@@ -1521,7 +2047,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   ): Promise<BackofficeProductWithPaymentRules> {
     if (productId) {
       const product = await this.productRepo.findByIdWithPaymentRules(productId)
-      if (!product || !product.isActive || product.featureSlug !== featureSlug) {
+      if (!product || !product.isActive || !productHasFeatureSlug(product, featureSlug)) {
         throw new Error(`Variante de produto inválida para ${featureSlug}`)
       }
       return product
@@ -1537,31 +2063,205 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   private mapProductVariants(
     products: BackofficeProductWithPaymentRules[]
   ): BackofficeAdhesionOptionsDTO["productVariants"] {
-    const cycles = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
+    const cycleOrder = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
 
-    return products.map((product) => ({
-      id: product.id,
-      name: product.name,
-      featureSlug: product.featureSlug,
-      isDefault: product.isDefault,
-      pricesByCycle: Object.fromEntries(
-        cycles.map((cycle) => {
-          const pixRule = product.paymentRules.find(
-            (rule) => rule.billingCycle === cycle && rule.paymentMethod === "PIX"
-          )
-          const cardRule = product.paymentRules.find(
-            (rule) => rule.billingCycle === cycle && rule.paymentMethod === "CREDIT_CARD"
-          )
-          return [
-            cycle,
-            {
-              pixMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
-              cardMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
-            },
-          ] as const
+    return products.map((product) => {
+      const availableCycles = cycleOrder.filter((cycle) =>
+        product.paymentRules.some((rule) => rule.billingCycle === cycle)
+      )
+      const pricesByCycle: BackofficeAdhesionOptionsDTO["productVariants"][number]["pricesByCycle"] = {}
+      const installmentByCycle: BackofficeAdhesionOptionsDTO["productVariants"][number]["installmentByCycle"] =
+        {}
+
+      for (const cycle of availableCycles) {
+        const pixRule = product.paymentRules.find(
+          (rule) => rule.billingCycle === cycle && rule.paymentMethod === "PIX"
+        )
+        const cardRule = product.paymentRules.find(
+          (rule) => rule.billingCycle === cycle && rule.paymentMethod === "CREDIT_CARD"
+        )
+        pricesByCycle[cycle] = {
+          pixMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
+          cardMonthlyPrice: cardRule
+            ? resolveCardMonthlyPriceFromRule(cardRule, cycle)
+            : null,
+        }
+        if (cardRule) {
+          const schedule = Array.isArray(cardRule.installmentSchedule)
+            ? (cardRule.installmentSchedule as number[])
+            : []
+          installmentByCycle[cycle] = {
+            splitMode: (cardRule.installmentSplitMode as "EQUAL" | "CUSTOM") ?? "EQUAL",
+            maxInstallments: cardRule.maxInstallments,
+            schedule,
+            cardTotal: Number(cardRule.price.toString()),
+          }
+        }
+      }
+
+      return {
+        id: product.id,
+        name: product.name,
+        featureSlugs: product.featureSlugs,
+        isDefault: product.isDefault,
+        availableCycles,
+        installmentByCycle,
+        pricesByCycle,
+      }
+    })
+  }
+
+  private async persistInstallmentLedger(
+    adhesionId: string,
+    ledger: Array<{
+      index: number
+      amount: number
+      paymentSource: "EXTERNAL" | "ASAAS"
+      status: "paid" | "pending"
+      asaasPaymentId: string | null
+      paidAt: string | null
+    }>,
+    extras?: {
+      email?: string
+      cpfCnpj?: string | null
+      asaasCustomerId?: string | null
+      paidAt?: Date
+      billingType?: string
+    }
+  ): Promise<void> {
+    await this.repo.update(adhesionId, {
+      installmentLedger: ledger,
+      ...(extras?.email !== undefined ? { email: extras.email } : {}),
+      ...(extras?.cpfCnpj !== undefined ? { cpfCnpj: extras.cpfCnpj } : {}),
+      ...(extras?.asaasCustomerId !== undefined ? { asaasCustomerId: extras.asaasCustomerId } : {}),
+      ...(extras?.paidAt !== undefined ? { paidAt: extras.paidAt } : {}),
+      ...(extras?.billingType !== undefined ? { billingType: extras.billingType } : {}),
+    })
+  }
+
+  private collectLedgerAsaasPaymentIds(ledger: AdhesionInstallmentLedgerEntry[]): string[] {
+    const ids = new Set<string>()
+    for (const entry of ledger) {
+      if (entry.asaasPaymentId) ids.add(entry.asaasPaymentId)
+    }
+    return [...ids]
+  }
+
+  private async cancelAsaasPayments(paymentIds: string[]): Promise<void> {
+    for (const paymentId of [...new Set(paymentIds)]) {
+      try {
+        await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+      } catch (error) {
+        console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
+      }
+    }
+  }
+
+  private resetPendingLedgerPaymentIds(
+    ledger: AdhesionInstallmentLedgerEntry[]
+  ): AdhesionInstallmentLedgerEntry[] {
+    return ledger.map((entry) =>
+      entry.status === "paid"
+        ? entry
+        : { ...entry, asaasPaymentId: null, paidAt: null }
+    )
+  }
+
+  private async cancelExistingCheckoutPayments(
+    adhesion: BackofficeAdhesionWithRelations
+  ): Promise<BackofficeAdhesionWithRelations> {
+    const ledger = readInstallmentLedger(adhesion.installmentLedger)
+    const paymentIds = this.collectLedgerAsaasPaymentIds(ledger)
+    if (adhesion.asaasPaymentId) {
+      paymentIds.push(adhesion.asaasPaymentId)
+    }
+
+    if (paymentIds.length > 0) {
+      await this.cancelAsaasPayments(paymentIds)
+    }
+
+    const resetLedger = this.resetPendingLedgerPaymentIds(ledger)
+    const ledgerChanged = JSON.stringify(resetLedger) !== JSON.stringify(ledger)
+    const hadMainPayment =
+      Boolean(adhesion.asaasPaymentId) ||
+      Boolean(adhesion.pixPayload) ||
+      Boolean(adhesion.invoiceUrl)
+
+    if (hadMainPayment) {
+      await this.repo.update(adhesion.id, { installmentLedger: resetLedger })
+      return this.repo.clearPaymentArtifacts(adhesion.id)
+    }
+
+    if (ledgerChanged) {
+      return this.repo.update(adhesion.id, { installmentLedger: resetLedger })
+    }
+
+    return adhesion
+  }
+
+  private async chargePendingInstallments(input: {
+    adhesion: BackofficeAdhesionWithRelations
+    customerId: string
+    email: string
+    billingType: "PIX" | "CREDIT_CARD"
+    ledger: Array<{
+      index: number
+      amount: number
+      paymentSource: "EXTERNAL" | "ASAAS"
+      status: "paid" | "pending"
+      asaasPaymentId: string | null
+      paidAt: string | null
+    }>
+    pending: Array<{
+      index: number
+      amount: number
+      paymentSource: "EXTERNAL" | "ASAAS"
+      status: "paid" | "pending"
+      asaasPaymentId: string | null
+      paidAt: string | null
+    }>
+  }): Promise<typeof input.ledger> {
+    const next = [...input.ledger]
+    const scheduleBaseDate = input.adhesion.createdAt
+    const createdPaymentIds: string[] = []
+    try {
+      for (const entry of input.pending) {
+        const dueDate = resolveAdhesionInstallmentDueDate(scheduleBaseDate, entry.index)
+        const payment = await asaasFetch(asaasApi.payments, {
+          method: "POST",
+          body: JSON.stringify({
+            customer: input.customerId,
+            billingType: input.billingType,
+            value: entry.amount,
+            dueDate,
+            description: `Corretor Studio - Parcela ${entry.index + 1} adesão ${BACKOFFICE_ADHESION_CYCLE_LABELS[input.adhesion.cycle]}`,
+            externalReference: `backoffice-adhesion-${input.adhesion.id}-installment-${entry.index}`,
+          }),
         })
-      ) as BackofficeAdhesionOptionsDTO["productVariants"][number]["pricesByCycle"],
-    }))
+        const paymentId = payment?.id ? String(payment.id) : null
+        if (!paymentId) {
+          throw new Error(`Falha ao criar cobrança Asaas da parcela ${entry.index + 1}`)
+        }
+        createdPaymentIds.push(paymentId)
+        next[entry.index] = {
+          ...next[entry.index],
+          asaasPaymentId: paymentId,
+        }
+      }
+      return next
+    } catch (error) {
+      for (const paymentId of createdPaymentIds) {
+        try {
+          await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+        } catch (rollbackErr) {
+          console.error(
+            "[BackofficeAdhesionService][chargePendingInstallments][rollback]",
+            { paymentId, rollbackErr }
+          )
+        }
+      }
+      throw error
+    }
   }
 
   private async ensureUserSubscriptionForPaidAdhesion(
@@ -1630,12 +2330,40 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const emailService = createEmailService()
-    await emailService.sendAdhesionCompletedEmail({
+    const result = await emailService.sendAdhesionCompletedEmail({
       userName: adhesion.fullName,
       userEmail: adhesion.email,
       setPasswordUrl: buildSetPasswordEmailAuthLink(linkData, type),
+      profileId: adhesion.createdProfileId ?? undefined,
+      adhesionId: adhesion.id,
     })
+
+    if (!result.success) {
+      throw new Error(result.error || "Erro ao enviar e-mail de convite")
+    }
   }
 }
 
 export const backofficeAdhesionService = new BackofficeAdhesionService()
+
+function buildAdhesionInstallmentSchedule(input: {
+  cardRule?: BackofficeProductPaymentRule
+  cycleTotal: number
+  maxInstallments: number
+}): number[] {
+  if (input.cardRule?.installmentSplitMode === "CUSTOM") {
+    const schedule = Array.isArray(input.cardRule.installmentSchedule)
+      ? (input.cardRule.installmentSchedule as number[])
+      : []
+    if (schedule.length > 0) {
+      return scaleInstallmentScheduleToTotal(schedule, input.cycleTotal)
+    }
+  }
+  const count = Math.max(1, Math.trunc(input.maxInstallments || 1))
+  if (count === 1) return [Number(input.cycleTotal.toFixed(2))]
+  const base = Number((input.cycleTotal / count).toFixed(2))
+  const parts = Array.from({ length: count }, () => base)
+  const drift = Number((input.cycleTotal - parts.reduce((sum, value) => sum + value, 0)).toFixed(2))
+  parts[parts.length - 1] = Number((parts[parts.length - 1] + drift).toFixed(2))
+  return parts
+}

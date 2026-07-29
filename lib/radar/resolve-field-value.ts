@@ -5,7 +5,7 @@ import { getRadarFieldCatalogEntry } from "@/lib/radar/field-catalog"
 
 export type RadarResolvableProfile = {
   displayName: string
-  displayPhone: string
+  displayPhone: string | null
   primaryEmail: string | null
   primaryDocument: string | null
   lastSeenAt: Date | null

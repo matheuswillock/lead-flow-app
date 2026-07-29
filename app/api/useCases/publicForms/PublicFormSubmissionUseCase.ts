@@ -77,18 +77,24 @@ export class PublicFormSubmissionUseCase {
       ? [`Qualificação: ${band.label}${band.summary ? ` — ${band.summary}` : ""}`]
       : undefined
 
-    const submission =
-      progressSubmission ??
-      (await publicFormsRepository.createSubmission({
-        formId: snapshot.formId,
-        publicationId: current.publicationId,
-        requestKey: input.requestKey,
-        visitorSessionId: input.visitorSessionId ?? null,
-        score,
-        scoreBandLabel: band?.label,
-        origin: origin as Prisma.InputJsonValue,
-        completionStatus: "partial",
-      }))
+    const submission = progressSubmission
+      ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
+          requestKey: input.requestKey,
+          score,
+          scoreBandLabel: band?.label,
+          origin: origin as Prisma.InputJsonValue,
+          visitorSessionId: input.visitorSessionId ?? null,
+        })
+      : await publicFormsRepository.createSubmission({
+          formId: snapshot.formId,
+          publicationId: current.publicationId,
+          requestKey: input.requestKey,
+          visitorSessionId: input.visitorSessionId ?? null,
+          score,
+          scoreBandLabel: band?.label,
+          origin: origin as Prisma.InputJsonValue,
+          completionStatus: "partial",
+        })
 
     try {
       const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)

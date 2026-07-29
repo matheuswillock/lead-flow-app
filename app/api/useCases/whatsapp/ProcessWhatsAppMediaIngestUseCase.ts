@@ -3,6 +3,7 @@ import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/W
 import { evolutionWhatsAppProvider } from "@/app/api/services/whatsapp/provider/EvolutionWhatsAppProvider"
 import type { IWhatsAppProvider } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
 import { uploadWhatsAppMediaBuffer, fetchRemoteMediaBuffer } from "@/app/api/services/whatsapp/WhatsAppMediaStorage"
+import { emitWhatsAppSloMetric } from "@/lib/whatsapp/slo-metrics"
 
 const MAX_ATTEMPTS = 5
 
@@ -108,8 +109,12 @@ class ProcessWhatsAppMediaIngestUseCase {
           status: exhausted ? "FAILED" : "PROCESSING",
           errorCode: "MEDIA_UNAVAILABLE",
         })
-        if (exhausted) failed += 1
-        else deferred += 1
+        if (exhausted) {
+          failed += 1
+          emitWhatsAppSloMetric("whatsapp_media_ingest_failure", {
+            status: "FAILED",
+          })
+        } else deferred += 1
         console.error("[ProcessWhatsAppMediaIngestUseCase]", {
           code: "MEDIA_INGEST_ATTEMPT_FAILED",
           attempt: message.mediaAttemptCount,

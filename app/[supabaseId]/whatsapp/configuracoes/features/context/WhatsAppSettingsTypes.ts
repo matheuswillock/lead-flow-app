@@ -39,6 +39,16 @@ export interface ReusableWhatsAppNumber {
   configId: string
 }
 
+export interface WhatsAppOpsMetrics {
+  deadLetterCount: number
+  pendingWebhookCount: number
+  unknownOutboundCount: number
+  failedMediaCount: number
+  pendingActionCommandCount: number
+  unknownActionCommandCount: number
+  requeueHint: string
+}
+
 export interface WhatsAppSettingsState {
   config: WhatsAppConfig | null
   usage: WhatsAppUsage | null
@@ -50,6 +60,7 @@ export interface WhatsAppSettingsState {
   isReconnecting: boolean
   isDisconnecting: boolean
   isSyncingContacts: boolean
+  isPurgingConversations: boolean
 }
 
 export interface WhatsAppSettingsActions {
@@ -58,6 +69,7 @@ export interface WhatsAppSettingsActions {
   disconnect: () => Promise<void>
   reload: () => void
   syncPhoneContacts: () => Promise<void>
+  purgeConversations: () => Promise<void>
 }
 
 export type WhatsAppSettingsContextValue = WhatsAppSettingsState & WhatsAppSettingsActions

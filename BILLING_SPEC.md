@@ -60,10 +60,13 @@ Override só em `BackofficeAdhesion`; teto em config; acima do teto → aprovaç
 Transicionar conta entre **quaisquer** níveis suportados: `ProfileUserType` + produtos do catálogo + capacidades. Exemplos: `common` → `member_pro` → plano pago; `associate`; vitalício; upgrade/downgrade de pack. Por transição: reconciliar Asaas vs catálogo, entitlements, ChangeLog.  
 Casos especiais (ex. expiração Member PRO): gatilho `after()` no bootstrap + cron rede de segurança — **instâncias** do motor, não o modelo inteiro.
 
-### D12 — P-MS multi-slug + parcelas
-- Produto: `featureSlugs String[]` (1..N).
-- Payment rule cartão: `installmentSplitMode EQUAL|CUSTOM`; EQUAL → `maxInstallments`; CUSTOM → `installmentSchedule` (soma = price); checkout: à vista **ou** schedule fixo.
-- Asaas: EQUAL → `installmentCount`/`installmentValue`; CUSTOM → **N cobranças avulsas**.
+### D12 — P-MS multi-slug + parcelas + ciclos opcionais
+- Produto: `featureSlugs String[]` (1..N) — **multi-slug ainda pendente**; hoje `featureSlug` singular com N precificações por slug.
+- Ciclos de billing (`monthly`/`quarterly`/`semiannual`/`annual`) são **opcionais** (subset 1..4). Ciclos sem regra não aparecem na adesão.
+- Update de produto: não remover/alterar preço ou schedule de ciclo com assinatura ativa (`ProfileSubscription` / `BackofficeUserSubscription`).
+- Payment rule cartão: `installmentSplitMode EQUAL|CUSTOM`; EQUAL → `maxInstallments`; CUSTOM → `installmentSchedule` (soma = price); checkout/adesão: à vista **ou** schedule fixo.
+- Adesão: `installmentSchedule` + `installmentLedger`; operador marca parcelas pagas externamente (parcial ou 100%); saldo gera cobranças Asaas; **conta ativa na criação** mesmo com saldo pendente.
+- Asaas: EQUAL no checkout público → `installmentCount`/`installmentValue`; CUSTOM / saldo parcial → **N cobranças avulsas**.
 
 ### D13 — Cutover estrutural sem legado
 Migrar **todas** as assinaturas/preços/capacidades System A → modelo novo. Dry-run + reconciliação Asaas. Remover literais só após cutover validado. Rollback documentado. Sem push remoto sem auth.
@@ -158,19 +161,49 @@ flowchart TD
 
 ---
 
-### Estágio 4 — Schema alvo: P-MS + D14 (D12 / D14)
+### Estágio 4 — Schema alvo: P-MS + D14 (D12 / D14) — **fechado 2026-07-28**
 
 **Fazer:**
-1. `BackofficeProduct.featureSlugs String[]` — backfill de `featureSlug`; dropar coluna singular após callers.
-2. `BackofficeProductPaymentRule`: `installmentSplitMode`, `installmentSchedule Decimal[]?`.
-3. Validação use case: slugs ≥1 existem em `BackofficeFeature`; CUSTOM soma = price.
-4. UI [`BackofficeProductDialog`](app/backoffice/(app)/pricing/features/components/BackofficeProductDialog.tsx): multi-select slugs; toggle iguais vs custom.
-5. API pricing + Postman; `adhesion-pricing` / AdhesionService consomem EQUAL vs CUSTOM (N cobranças avulsas).
-6. Documentar no PR o inventário §3A: lista de writers a migrar no Estágio 5–6 (sem dual-write novo).
+1. `BackofficeProduct.featureSlugs String[]` — backfill de `featureSlug`; dropar coluna singular após callers — **feito**.
+2. `BackofficeProductPaymentRule`: `installmentSplitMode`, `installmentSchedule` — **feito**.
+3. Ciclos opcionais (subset 1..4) + UI opt-in + sync com lock de ciclos em uso — **feito**.
+4. Adesão: filtrar ciclos do produto; `productId` no POST/PATCH; ledger de parcelas externas + cobrança Asaas do saldo + ativação na criação — **feito**.
+5. Seed `CRM - Radar` bundle `["crm","radar"]` (trimestral CUSTOM 1200+990+990) — **feito**.
+6. Checkout público EQUAL/CUSTOM: `normalizeCheckoutInput` com `maxCardInstallments`; DTO com schedule/saldo; UI CUSTOM — **feito**.
+7. Inventário §3A documentado abaixo (writers/readers Estágios 5–6).
 
-Migration: `bun run db:migrate:from-prisma -- pricing-multi-slug-installments` (+ dados se preciso).
+**Aceite:** produto com 2+ slugs libera todos no `FeatureAccessService`; checkout público CRM-Radar CUSTOM exibe cronograma; EQUAL respeita `maxCardInstallments`.
 
-**Aceite:** criar produto com 2+ slugs; CUSTOM bloqueia save se soma ≠ total; checkout EQUAL 1..max / CUSTOM só à vista|schedule.
+---
+
+### Inventário writers/readers — Estágios 5–6
+
+Fonte: [`BILLING_AUDIT.md`](BILLING_AUDIT.md) §3A.2–3.3. **Meta Estágio 6:** escrita/leitura canônica só em `ProfileSubscription` + `BackofficeUserSubscription` + `ProfileSubscriptionCapacity` + `ProfileUserTypeAssignment` (D14).
+
+| Writer / Reader | Arquivo | Ação no Estágio 6 |
+|---|---|---|
+| `PaymentRepository` (dual-write) | `app/api/infra/data/repositories/payment/PaymentRepository.ts` | Só `ProfileSubscription` (+ produtos/capacity); remover espelho em `Profile` |
+| `AsaasSubscriptionSyncRepository` (dual-write) | `app/api/infra/data/repositories/billing/AsaasSubscriptionSyncRepository.ts` | Só `ProfileSubscription` |
+| `BillingRepository` (misto) | `app/api/infra/data/repositories/billing/BillingRepository.ts` | Só PS + capacity; remover `getLegacyAdhesionQuota` |
+| `BackofficeAdhesionRepository` | `app/api/infra/data/repositories/backoffice/backofficeAdhesion/` | Manter upsert PS + capacity (já modelo novo) |
+| `SubscriptionCreditRepository` | repositório de créditos | Só PS + capacity |
+| `CheckoutAsaasUseCase` | `app/api/useCases/checkout/` | Migrar de só `Profile` → PS + `BackofficeUserSubscription` |
+| `SubscriptionUpgradeUseCase` | use case upgrade | Idem |
+| `CreateManagerOnboarding` | onboarding | Idem |
+| `processAsaasWebhookEvent` | webhook handler | Idem |
+| `SubscriptionManagementUseCase` | cancel/update misto | Só PS; remover updates espelhados em `Profile` |
+| `TogglePermanentSubscriptionUseCase` | vitalício | PS canônico (ou flag dedicada acordada) |
+| `BackofficeUserSubscriptionRepository` | já novo modelo | Manter |
+| `BackofficeAllUsersRepository.upsertUserTypeAssignment` | user types | Manter |
+| `FeatureAccessRepository` / `FeatureAccessService` | `app/api/services/featureAccess/` | Já lê PS + BO subscriptions; alinhar com `SubscriptionCheck` |
+| `SubscriptionCheckService` | check ativo | Migrar para PS (hoje só `Profile.subscriptionStatus`) |
+| `PaymentRepository.findBySubscriptionId` | fallback Profile | Remover fallback legado |
+| `AsaasSubscriptionSyncRepository.getSyncSnapshot` | OR Profile/PS | Só PS |
+| `BillingRepository.getBillingSnapshot` | dual path capacity | Só capacity + catálogo |
+| `SubscriptionManagementUseCase` (read) | misto | Só PS |
+| Backoffice platform/users | listagem | PS relation canônica |
+
+**Regra:** nenhum **novo** dual-write Profile+PS após Estágio 4.
 
 ---
 
@@ -298,3 +331,29 @@ Migration: `bun run db:migrate:from-prisma -- pricing-multi-slug-installments` (
 **Pendente (próximo agente — Estágio 4 continuação):**
 - Integração Asaas: CUSTOM → N cobranças avulsas; EQUAL → `installmentCount`/`installmentValue` (spec D12).
 - Multi-slug: `featureSlugs String[]` substituindo `featureSlug` singular (spec D12 primeiro bullet).
+
+### [Estágio 4 continuação] Ciclos opcionais + adesão ledger + CRM - Radar — 2026-07-28
+
+**Branch:** `feat/pricing-optional-cycles`
+
+**O que foi feito:**
+- Catálogo: ciclos opt-in na UI; validação API exige ≥1 ciclo; sync de rules com lock de ciclos em uso por assinatura.
+- UI impeccable: copy “Nova precificação”, toggle Parcelas iguais/Valores diferentes, empty state com CTA, badges de ciclos na tabela.
+- Adesão: `availableCycles` / `installmentByCycle` no options DTO; select de ciclo filtrado; `productId` no POST/PATCH.
+- Adesão: `installmentSchedule` + `installmentLedger`; marcar parcelas externas (parcial/100%); cobranças Asaas do saldo; conta ativa na criação.
+- Seed migration `seed-crm-radar-pricing` + `prisma/seed-backoffice-products.ts` (CRM - Radar trimestral CUSTOM).
+
+**Pendente:** multi-slug `featureSlugs[]`; checkout público EQUAL/CUSTOM completo no fluxo do cliente.
+
+### [Estágio 4 fechado] Multi-slug + checkout público D12 + inventário §3A — 2026-07-28
+
+**Branch:** `feat/billing-stage-4-close`
+
+**O que foi feito:**
+- Schema: `featureSlugs String[]` com backfill, índice GIN e drop de `featureSlug` singular.
+- Backend: repositório/use case pricing, entitlements (`FeatureAccessService`), adesão e `team-has-product-feature` com `has` no array.
+- UI pricing: multi-select de slugs; tabela com badges; seed/migration CRM-Radar `["crm","radar"]`.
+- Checkout público: `normalizeCheckoutInput` usa `maxCardInstallments` da regra; DTO expõe `installmentSplitMode`, `installmentSchedule`, `remainingBalance`, `chargeAmount`; UI CUSTOM mostra cronograma fixo.
+- Documentação: inventário writers/readers Estágios 5–6 nesta SPEC (seção acima).
+
+**Estágio 4 encerrado.** Próximo: Estágio 5 (cutover de dados).

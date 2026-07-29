@@ -570,26 +570,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             origin: data.origin,
           },
         })
-        for (const answer of data.answers) {
-          await tx.publicFormAnswer.upsert({
-            where: {
-              submissionId_questionId: {
-                submissionId: existing.id,
-                questionId: answer.questionId,
-              },
-            },
-            create: {
-              submissionId: existing.id,
-              questionId: answer.questionId,
-              value: answer.value,
-              questionSnapshot: answer.questionSnapshot,
-            },
-            update: {
-              value: answer.value,
-              questionSnapshot: answer.questionSnapshot,
-            },
-          })
-        }
+        await this.syncSubmissionAnswers(tx, existing.id, data.answers)
       })
       return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: existing.id } })
     }
@@ -689,6 +670,68 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  private async syncSubmissionAnswers(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>,
+  ) {
+    const questionIds = answers.map((answer) => answer.questionId)
+    await tx.publicFormAnswer.deleteMany({
+      where: {
+        submissionId,
+        ...(questionIds.length > 0 ? { questionId: { notIn: questionIds } } : {}),
+      },
+    })
+    for (const answer of answers) {
+      await tx.publicFormAnswer.upsert({
+        where: {
+          submissionId_questionId: {
+            submissionId,
+            questionId: answer.questionId,
+          },
+        },
+        create: {
+          submissionId,
+          questionId: answer.questionId,
+          value: answer.value,
+          questionSnapshot: answer.questionSnapshot,
+        },
+        update: {
+          value: answer.value,
+          questionSnapshot: answer.questionSnapshot,
+        },
+      })
+    }
+  }
+
+  finalizeProgressSubmission(
+    submissionId: string,
+    data: {
+      requestKey: string
+      score: number
+      scoreBandLabel?: string | null
+      origin: Prisma.InputJsonValue
+      visitorSessionId?: string | null
+    },
+  ) {
+    return prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        requestKey: data.requestKey,
+        score: data.score,
+        scoreBandLabel: data.scoreBandLabel,
+        origin: data.origin,
+        visitorSessionId: data.visitorSessionId,
+        completionStatus: "partial",
+      },
+      select: { id: true },
+    })
+  }
+
   async completeSubmission(input: PublicFormCompleteSubmissionInput) {
     await prisma.$transaction(async (tx) => {
       await tx.publicFormSubmission.update({
@@ -700,26 +743,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           submittedAt: new Date(),
         },
       })
-      for (const answer of input.answers) {
-        await tx.publicFormAnswer.upsert({
-          where: {
-            submissionId_questionId: {
-              submissionId: input.submissionId,
-              questionId: answer.questionId,
-            },
-          },
-          create: {
-            submissionId: input.submissionId,
-            questionId: answer.questionId,
-            value: answer.value,
-            questionSnapshot: answer.questionSnapshot,
-          },
-          update: {
-            value: answer.value,
-            questionSnapshot: answer.questionSnapshot,
-          },
-        })
-      }
+      await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
       await tx.leadActivity.create({
         data: {
           leadId: input.leadId,

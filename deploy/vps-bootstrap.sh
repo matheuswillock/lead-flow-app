@@ -9,7 +9,7 @@
 # Pré-requisitos:
 #   - Ubuntu 24.04 com Docker (template Hostinger)
 #   - DNS: evo.corretorstudio.com e n8n.corretorstudio.com → IP desta VPS
-#   - Arquivos .env.evolution e .env.n8n preenchidos em DEPLOY_DIR
+#   - Arquivos .env.evolution, .env.n8n e .env.ops preenchidos em DEPLOY_DIR
 #
 # =============================================================================
 
@@ -121,6 +121,20 @@ sync_deploy_dir() {
       die "Arquivo .env.n8n ausente em ${DEPLOY_DIR}"
     fi
   fi
+
+  if [[ ! -f "${DEPLOY_DIR}/.env.ops" ]]; then
+    if [[ -f "${REPO_DIR}/deploy/hostinger/.env.ops.example" ]]; then
+      cp "${REPO_DIR}/deploy/hostinger/.env.ops.example" "${DEPLOY_DIR}/.env.ops"
+      log "Criado ${DEPLOY_DIR}/.env.ops — PREENCHA OPS_AGENT_TOKEN e BACKUP_DATABASE_URL"
+    else
+      log "AVISO: deploy/hostinger/.env.ops.example ausente — crie ${DEPLOY_DIR}/.env.ops manualmente"
+    fi
+  fi
+
+  mkdir -p "${DEPLOY_DIR}/deploy/hostinger"
+  cp -a "${REPO_DIR}/deploy/hostinger/studio-bot-ops" "${DEPLOY_DIR}/deploy/hostinger/" 2>/dev/null || true
+  cp "${REPO_DIR}/deploy/hostinger/backup-supabase.sh" "${DEPLOY_DIR}/deploy/hostinger/" 2>/dev/null || true
+  cp "${REPO_DIR}/deploy/hostinger/.env.ops.example" "${DEPLOY_DIR}/deploy/hostinger/" 2>/dev/null || true
 
   chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${DEPLOY_DIR}" 2>/dev/null || true
 }

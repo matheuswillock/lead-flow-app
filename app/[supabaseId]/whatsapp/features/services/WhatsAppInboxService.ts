@@ -1,5 +1,17 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
-import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppInboxSearchResult, WhatsAppMessage, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppForwardMessageResult, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+
+export class WhatsAppApiError extends Error {
+  readonly code: string | null
+  readonly status: number
+
+  constructor(message: string, code: string | null = null, status = 400) {
+    super(message)
+    this.name = 'WhatsAppApiError'
+    this.code = code
+    this.status = status
+  }
+}
 
 class WhatsAppInboxService implements IWhatsAppInboxService {
   private async parseJsonResponse(response: Response): Promise<unknown> {
@@ -18,6 +30,31 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
       return errors.join(', ')
     }
     return fallback
+  }
+
+  private extractErrorCode(output: unknown): string | null {
+    if (!output || typeof output !== 'object') return null
+    const result = (output as Record<string, unknown>).result
+    if (!result || typeof result !== 'object') return null
+    const code = (result as Record<string, unknown>).code
+    return typeof code === 'string' ? code : null
+  }
+
+  private throwIfInvalid(response: Response, output: unknown, fallback: string): void {
+    if (response.ok && (output as Record<string, unknown>)?.isValid) return
+    throw new WhatsAppApiError(
+      this.extractErrorMessage(output, fallback),
+      this.extractErrorCode(output),
+      response.status
+    )
+  }
+
+  private authHeaders(teamId: string, supabaseId: string): HeadersInit {
+    return {
+      'Content-Type': 'application/json',
+      'x-supabase-user-id': supabaseId,
+      'x-team-id': teamId,
+    }
   }
 
   async fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null> {
@@ -39,6 +76,15 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }
 
     return ((output as Record<string, unknown>).result as WhatsAppConfig) ?? null
+  }
+
+  async syncHistory(teamId: string, supabaseId: string): Promise<void> {
+    const response = await fetch(`/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-history`, {
+      method: 'POST',
+      headers: this.authHeaders(teamId, supabaseId),
+    })
+    const output: unknown = await this.parseJsonResponse(response)
+    this.throwIfInvalid(response, output, 'Não foi possível sincronizar o histórico do WhatsApp')
   }
 
   async fetchConversations(
@@ -121,7 +167,8 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     text: string,
     media?: SendMessageMediaInput,
     mentionedJids?: string[],
-    retryFailed?: boolean
+    retryFailed?: boolean,
+    quotedMessageId?: string
   ): Promise<{ messageId: string; status: WhatsAppMessage['status'] }> {
     const body: Record<string, unknown> = media
       ? {
@@ -139,26 +186,119 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (retryFailed) {
       body.retryFailed = true
     }
+    if (quotedMessageId) {
+      body.quotedMessageId = quotedMessageId
+    }
 
     const response = await fetch(
       `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-supabase-user-id': supabaseId,
-          'x-team-id': teamId,
-        },
+        headers: this.authHeaders(teamId, supabaseId),
         body: JSON.stringify(body),
       }
     )
 
     const output: unknown = await this.parseJsonResponse(response)
-    if (!response.ok || !(output as Record<string, unknown>)?.isValid) {
-      throw new Error(this.extractErrorMessage(output, 'Não foi possível enviar a mensagem'))
-    }
+    this.throwIfInvalid(response, output, 'Não foi possível enviar a mensagem')
 
     return (output as Record<string, unknown>).result as { messageId: string; status: WhatsAppMessage['status'] }
+  }
+
+  async fetchMessageActionsState(
+    teamId: string,
+    supabaseId: string,
+    messageId: string
+  ): Promise<WhatsAppMessageActionsState> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/actions-state`,
+      {
+        method: 'GET',
+        headers: {
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+      }
+    )
+    const output: unknown = await this.parseJsonResponse(response)
+    this.throwIfInvalid(response, output, 'Não foi possível carregar as ações da mensagem')
+    return (output as Record<string, unknown>).result as WhatsAppMessageActionsState
+  }
+
+  async postMessageAction(
+    teamId: string,
+    supabaseId: string,
+    messageId: string,
+    clientActionId: string,
+    action: WhatsAppMessageActionPayload
+  ): Promise<void> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/actions`,
+      {
+        method: 'POST',
+        headers: this.authHeaders(teamId, supabaseId),
+        body: JSON.stringify({ clientActionId, action }),
+      }
+    )
+    const output: unknown = await this.parseJsonResponse(response)
+    this.throwIfInvalid(response, output, 'Não foi possível aplicar a ação')
+  }
+
+  async forwardMessage(
+    teamId: string,
+    supabaseId: string,
+    messageId: string,
+    destinations: Array<{ conversationId: string; clientMessageId: string }>
+  ): Promise<WhatsAppForwardMessageResult> {
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/forward`,
+      {
+        method: 'POST',
+        headers: this.authHeaders(teamId, supabaseId),
+        body: JSON.stringify({ destinations }),
+      }
+    )
+    const output: unknown = await this.parseJsonResponse(response)
+    const result = (output as Record<string, unknown>).result as WhatsAppForwardMessageResult | null
+    if (result?.results?.length) {
+      if (response.ok && (output as Record<string, unknown>)?.isValid) {
+        return result
+      }
+      const allFailed = result.results.every((item) => !item.ok)
+      if (!allFailed) {
+        return result
+      }
+    }
+    this.throwIfInvalid(response, output, 'Não foi possível encaminhar a mensagem')
+    return result ?? { sourceMessageId: messageId, results: [] }
+  }
+
+  async searchConversationMessages(
+    teamId: string,
+    supabaseId: string,
+    conversationId: string,
+    query: string,
+    signal?: AbortSignal
+  ): Promise<{ messages: WhatsAppMessage[]; total: number }> {
+    const searchParams = new URLSearchParams({ q: query })
+    const response = await fetch(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages/search?${searchParams.toString()}`,
+      {
+        method: 'GET',
+        headers: {
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
+        },
+        signal,
+      }
+    )
+    const output: unknown = await this.parseJsonResponse(response)
+    this.throwIfInvalid(response, output, 'Não foi possível buscar nesta conversa')
+    const result = (output as Record<string, unknown>).result as {
+      messages?: WhatsAppMessage[]
+      total?: number
+    }
+    return { messages: result.messages ?? [], total: result.total ?? 0 }
   }
 
   async fetchContacts(

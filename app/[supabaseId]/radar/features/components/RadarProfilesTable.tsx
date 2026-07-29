@@ -78,7 +78,7 @@ export function RadarProfilesTable({
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="font-medium">{profile.displayName}</span>
-                    <span className="text-xs text-muted-foreground">{profile.displayPhone}</span>
+                    <span className="text-xs text-muted-foreground">{profile.displayPhone ?? "—"}</span>
                     {profile.primaryEmail ? (
                       <span className="text-xs text-muted-foreground">{profile.primaryEmail}</span>
                     ) : null}
@@ -129,7 +129,7 @@ export function RadarProfilesTable({
                   {profile.primarySegmentName}
                 </Badge>
               ) : null}
-              <p className="text-xs text-muted-foreground">{profile.displayPhone}</p>
+              <p className="text-xs text-muted-foreground">{profile.displayPhone ?? "—"}</p>
               <Button size="sm" variant="outline" onClick={() => onViewProfile(profile.id)}>
                 Ver detalhe
               </Button>

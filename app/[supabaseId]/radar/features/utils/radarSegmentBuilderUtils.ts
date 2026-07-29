@@ -4,6 +4,8 @@ import {
   RefreshCw,
   User,
   CircleDot,
+  Flag,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react"
 import type { LeadCustomFieldType } from "@prisma/client"
@@ -85,8 +87,21 @@ export function isRulesValidForSave(rules: RadarSegmentRules): boolean {
   return rules.conditions.every(isConditionCompleteForSave)
 }
 
+const MILESTONE_EVENT_TYPES = ["portfolio.renewed", "portfolio.brokerage_transfer"]
+
+/** Marcos de timeline (D5): status de LeadStatus, carteira e "primeiro contato". */
+export function isMilestoneEventType(eventType: string): boolean {
+  return (
+    eventType.startsWith("lead.milestone.") ||
+    eventType === "profile.first_contact" ||
+    MILESTONE_EVENT_TYPES.includes(eventType)
+  )
+}
+
 /** Ícone da timeline por prefixo de eventType (ex.: "email.opened", "whatsapp.message_received"). */
 export function getEventTypeIcon(eventType: string): LucideIcon {
+  if (eventType === "profile.first_contact") return Sparkles
+  if (eventType.startsWith("lead.milestone.") || MILESTONE_EVENT_TYPES.includes(eventType)) return Flag
   if (eventType.startsWith("email.")) return Mail
   if (eventType.startsWith("whatsapp.")) return MessageCircle
   if (eventType.startsWith("portfolio.")) return RefreshCw

@@ -232,10 +232,20 @@ export class LeadUseCase implements ILeadUseCase {
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    const output = await this.createLeadInternal(supabaseId, data, true, teamId, {
-      body: "Lead criado via importação manual",
-      payload: { source: "import_manual" },
-    });
+    const output = await this.createLeadInternal(
+      supabaseId,
+      {
+        ...data,
+        // Both CSV import routes (legacy + mapped) must land as csv_import for Radar.
+        originChannel: data.originChannel ?? "csv_import",
+      },
+      true,
+      teamId,
+      {
+        body: "Lead criado via importação manual",
+        payload: { source: "import_manual" },
+      }
+    );
 
     if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
       const amount = Number(data.ticket ?? data.currentValue ?? 0);

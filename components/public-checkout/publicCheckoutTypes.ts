@@ -43,6 +43,8 @@ export interface PublicCheckoutDetails {
   totalSubtitle: string
   totalValue: string
   totalHint: string
+  installmentSplitMode?: "EQUAL" | "CUSTOM" | null
+  installmentSchedule?: number[]
   startLabel: string
   startValue: string
   dueLabel: string

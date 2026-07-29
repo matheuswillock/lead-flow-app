@@ -80,7 +80,7 @@ const question = z.object({
 })
 
 const thankYouPage = z.object({
-  id: z.string().min(1).max(80),
+  id: uuid,
   name: z.string().trim().min(1).max(120),
   title: z.string().trim().min(1).max(200),
   description: text,
@@ -104,7 +104,7 @@ export const publicFormDraftSchema = z
     successDescription: text,
     successActions: z.array(successAction).max(6).default([]),
     thankYouPages: z.array(thankYouPage).min(1).max(20).default([]),
-    defaultThankYouPageId: z.string().min(1).max(80).optional(),
+    defaultThankYouPageId: uuid.optional(),
     useDefaultTheme: z.boolean().default(true),
     backgroundColor: color.nullable().optional(),
     textColor: color.nullable().optional(),

@@ -14,16 +14,17 @@ export function BackofficePricingContainer() {
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="flex flex-col gap-1">
           <h1 className="text-lg font-semibold">Precificação</h1>
-          <p className="text-sm text-muted-foreground">
-            Produtos e preços usados nos fluxos de adesão do backoffice.
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Tabelas de preço usadas nas adesões. Uma precificação pode ter só um ciclo (ex.:
+            trimestral) ou vários.
           </p>
         </div>
         {canManage && (
           <Button type="button" onClick={openCreateDialog}>
             <Plus data-icon="inline-start" />
-            Novo Produto
+            Nova precificação
           </Button>
         )}
       </div>
@@ -37,7 +38,7 @@ export function BackofficePricingContainer() {
           </div>
         </div>
       ) : (
-        <BackofficeProductTable products={products} />
+        <BackofficeProductTable products={products} onCreate={openCreateDialog} />
       )}
 
       <BackofficeProductDialog />

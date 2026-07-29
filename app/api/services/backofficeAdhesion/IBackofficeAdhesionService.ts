@@ -29,6 +29,8 @@ export interface BackofficeAdhesionCreateInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
+  /** Parcelas (0-based) já pagas fora do Asaas. */
+  externalInstallmentIndexes?: number[]
   userType?: "common" | "member_pro" | "associate" | "guest"
   accessExpiresAt?: string | null
   sponsorMasterId?: string | null
@@ -106,6 +108,8 @@ export interface BackofficeAdhesionDTO {
   productId: string | null
   hasUnlimitedUsers?: boolean
   multiskillEnabled?: boolean
+  accountProvisioned: boolean
+  hasExternalActivation: boolean
 }
 
 export interface BackofficeAdhesionPublicDTO {
@@ -133,6 +137,10 @@ export interface BackofficeAdhesionPublicDTO {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  installmentSplitMode: "EQUAL" | "CUSTOM" | null
+  installmentSchedule: number[]
+  remainingBalance: number
+  chargeAmount: number
   createdAt: string
   paidAt: string | null
   expiresAt: string
@@ -176,14 +184,28 @@ export interface BackofficeAdhesionOptionsDTO {
   productVariants: Array<{
     id: string
     name: string
-    featureSlug: string
+    featureSlugs: string[]
     isDefault: boolean
-    pricesByCycle: Record<
-      BackofficeAdhesionBillingCycle,
-      {
-        pixMonthlyPrice: number | null
-        cardMonthlyPrice: number | null
-      }
+    availableCycles: BackofficeAdhesionBillingCycle[]
+    installmentByCycle: Partial<
+      Record<
+        BackofficeAdhesionBillingCycle,
+        {
+          splitMode: "EQUAL" | "CUSTOM"
+          maxInstallments: number
+          schedule: number[]
+          cardTotal: number | null
+        }
+      >
+    >
+    pricesByCycle: Partial<
+      Record<
+        BackofficeAdhesionBillingCycle,
+        {
+          pixMonthlyPrice: number | null
+          cardMonthlyPrice: number | null
+        }
+      >
     >
   }>
   pricing: {
@@ -255,6 +277,9 @@ export interface IBackofficeAdhesionService {
   deletePending(id: string): Promise<void>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
   resendInvite(id: string): Promise<{ email: string }>
+  getPendingInvoiceUrls(id: string): Promise<{
+    invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+  }>
   getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }>
   getPublicDetails(token: string): Promise<BackofficeAdhesionPublicDTO | BackofficeAdhesionTokenError>
   createCheckout(

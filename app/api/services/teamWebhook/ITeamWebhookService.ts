@@ -67,7 +67,13 @@ export type TeamWebhookStatusAction =
 export interface ITeamWebhookService {
   list(
     access: TeamAccess,
-    params: { direction: TeamWebhookDirection; status?: TeamWebhookStatus; page: number; pageSize: number },
+    params: {
+      direction: TeamWebhookDirection;
+      status?: TeamWebhookStatus;
+      search?: string;
+      page: number;
+      pageSize: number;
+    },
     appUrl: string
   ): Promise<{ items: TeamWebhookSummaryDto[]; total: number; page: number; pageSize: number }>;
   getById(access: TeamAccess, id: string, appUrl: string): Promise<TeamWebhookSummaryDto | null>;

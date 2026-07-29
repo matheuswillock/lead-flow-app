@@ -304,6 +304,16 @@ export interface IPublicFormsRepository {
     definitionId: string,
     value: Prisma.InputJsonValue,
   ): Promise<void>
+  finalizeProgressSubmission(
+    submissionId: string,
+    data: {
+      requestKey: string
+      score: number
+      scoreBandLabel?: string | null
+      origin: Prisma.InputJsonValue
+      visitorSessionId?: string | null
+    },
+  ): Promise<{ id: string }>
   completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>
   markSubmissionFailed(submissionId: string, errorMessage: string): Promise<void>
 }

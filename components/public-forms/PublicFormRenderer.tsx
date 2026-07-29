@@ -281,7 +281,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     track("form_started")
   }
 
-  function goNext() {
+  async function goNext() {
     if (!pageQuestions.length) return
     for (const item of pageQuestions) {
       const validationError = validateAnswer(item, answers[item.id])
@@ -294,9 +294,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     for (const item of pageQuestions) {
       track("question_answered", item.id)
     }
-    void saveProgress()
+    await saveProgress()
     if (shouldGoToThankYou(snapshot, answerList)) {
-      void submit()
+      await submit()
       return
     }
     if (pageQuestions.some((item) => item.type === "calculation")) {
@@ -323,7 +323,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       void runSimulationFlow()
       return
     }
-    void submit()
+    await submit()
   }
 
   async function runSimulationFlow() {

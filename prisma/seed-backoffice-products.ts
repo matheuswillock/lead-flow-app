@@ -17,7 +17,7 @@ const prisma = new PrismaClient()
 
 const PRODUCTS = [
   {
-    featureSlug: "crm",
+    featureSlugs: ["crm"],
     name: "CRM",
     description: "Plano CRM — acesso completo ao módulo de gestão de leads.",
     type: BackofficeProductType.PLAN,
@@ -31,7 +31,7 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "crm-lifetime",
+    featureSlugs: ["crm-lifetime"],
     name: "CRM Vitalício",
     description: "Plano CRM com acesso vitalício — pagamento único, sem mensalidade.",
     type: BackofficeProductType.PLAN,
@@ -45,7 +45,7 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "extra-team",
+    featureSlugs: ["extra-team"],
     name: "Time Adicional",
     description: "Adiciona um time extra à conta.",
     type: BackofficeProductType.ADDON,
@@ -59,7 +59,7 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "extra-user",
+    featureSlugs: ["extra-user"],
     name: "Usuário Adicional",
     description: "Adiciona um usuário operador extra à conta.",
     type: BackofficeProductType.ADDON,
@@ -73,7 +73,7 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "email",
+    featureSlugs: ["email"],
     name: "Email",
     description: "Módulo de email para campanhas, contatos, templates e analytics.",
     type: BackofficeProductType.ADDON,
@@ -87,7 +87,7 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "whatsapp",
+    featureSlugs: ["whatsapp"],
     name: "WhatsApp",
     description: "Módulo WhatsApp — inbox, conversas e envio de mensagens via Evolution API.",
     type: BackofficeProductType.ADDON,
@@ -101,7 +101,7 @@ const PRODUCTS = [
     isDefault: true,
   },
   {
-    featureSlug: "radar",
+    featureSlugs: ["radar"],
     name: "Radar",
     description: "Radar — perfis unificados, segmentos e timeline para campanhas de e-mail.",
     type: BackofficeProductType.ADDON,
@@ -432,14 +432,15 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
 async function main() {
   console.info("[seed:backoffice-products] Iniciando...")
 
-  // 1. Upsert products (default variant per featureSlug)
+  // 1. Upsert products (default variant per feature slug)
   for (const product of PRODUCTS) {
+    const primarySlug = product.featureSlugs[0]
     const existing = await prisma.backofficeProduct.findFirst({
-      where: { featureSlug: product.featureSlug, isDefault: true },
+      where: { featureSlugs: { has: primarySlug }, isDefault: true, name: product.name },
     })
 
     const data = {
-      featureSlug: product.featureSlug,
+      featureSlugs: product.featureSlugs,
       name: product.name,
       description: product.description,
       type: product.type,
@@ -461,7 +462,7 @@ async function main() {
     } else {
       await prisma.backofficeProduct.create({ data })
     }
-    console.info(`[seed:backoffice-products] Produto pronto: ${product.featureSlug}`)
+    console.info(`[seed:backoffice-products] Produto pronto: ${product.featureSlugs.join(", ")}`)
   }
 
   // 2. Upsert features without parentId first (resolve parents in second pass)
@@ -565,7 +566,7 @@ async function main() {
 
   // 6. CRM payment rules
   const crmProduct = await prisma.backofficeProduct.findFirst({
-    where: { featureSlug: "crm", isDefault: true },
+    where: { featureSlugs: { has: "crm" }, isDefault: true },
   })
   if (crmProduct) {
     for (const rule of CRM_PAYMENT_RULES) {
@@ -586,7 +587,7 @@ async function main() {
 
   // 7. WhatsApp payment rules
   const whatsappProduct = await prisma.backofficeProduct.findFirst({
-    where: { featureSlug: "whatsapp", isDefault: true },
+    where: { featureSlugs: { has: "whatsapp" }, isDefault: true },
   })
   if (whatsappProduct) {
     for (const rule of WHATSAPP_PAYMENT_RULES) {
@@ -606,7 +607,7 @@ async function main() {
   }
 
   const radarProduct = await prisma.backofficeProduct.findFirst({
-    where: { featureSlug: "radar", isDefault: true },
+    where: { featureSlugs: { has: "radar" }, isDefault: true },
   })
   if (radarProduct) {
     for (const rule of RADAR_PAYMENT_RULES) {
@@ -624,6 +625,87 @@ async function main() {
     }
     console.info("[seed:backoffice-products] Regras de pagamento Radar prontas")
   }
+
+  // 8. CRM - Radar (precificação trimestral CUSTOM, não default)
+  const crmRadarData = {
+    featureSlugs: ["crm", "radar"],
+    name: "CRM - Radar",
+    description:
+      "Precificação trimestral CRM para Radar — à vista ou cronograma 1x R$1.200 + 2x R$990.",
+    type: BackofficeProductType.PLAN,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: null as number | null,
+    priceQuarterly: 1060,
+    priceSemiannual: null as number | null,
+    priceAnnual: null as number | null,
+    priceLifetime: null as number | null,
+    isActive: true,
+    isDefault: false,
+  }
+  let crmRadarProduct = await prisma.backofficeProduct.findFirst({
+    where: { name: "CRM - Radar" },
+  })
+  if (crmRadarProduct) {
+    crmRadarProduct = await prisma.backofficeProduct.update({
+      where: { id: crmRadarProduct.id },
+      data: crmRadarData,
+    })
+  } else {
+    crmRadarProduct = await prisma.backofficeProduct.create({ data: crmRadarData })
+  }
+  await prisma.backofficeProductPaymentRule.upsert({
+    where: {
+      productId_paymentMethod_billingCycle: {
+        productId: crmRadarProduct.id,
+        paymentMethod: BackofficePaymentMethod.PIX,
+        billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      },
+    },
+    create: {
+      productId: crmRadarProduct.id,
+      paymentMethod: BackofficePaymentMethod.PIX,
+      billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      price: 1060,
+      canInstallment: false,
+      maxInstallments: 1,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+    update: {
+      price: 1060,
+      canInstallment: false,
+      maxInstallments: 1,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+  })
+  await prisma.backofficeProductPaymentRule.upsert({
+    where: {
+      productId_paymentMethod_billingCycle: {
+        productId: crmRadarProduct.id,
+        paymentMethod: BackofficePaymentMethod.CREDIT_CARD,
+        billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      },
+    },
+    create: {
+      productId: crmRadarProduct.id,
+      paymentMethod: BackofficePaymentMethod.CREDIT_CARD,
+      billingCycle: BackofficeAdhesionBillingCycle.quarterly,
+      price: 3180,
+      canInstallment: true,
+      maxInstallments: 3,
+      installmentSplitMode: "CUSTOM",
+      installmentSchedule: [1200, 990, 990],
+    },
+    update: {
+      price: 3180,
+      canInstallment: true,
+      maxInstallments: 3,
+      installmentSplitMode: "CUSTOM",
+      installmentSchedule: [1200, 990, 990],
+    },
+  })
+  console.info("[seed:backoffice-products] Precificação CRM - Radar pronta")
 
   console.info("[seed:backoffice-products] Concluído.")
 }

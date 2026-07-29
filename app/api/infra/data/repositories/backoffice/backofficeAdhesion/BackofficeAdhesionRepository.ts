@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   BackofficeAdhesionOptions,
   BackofficeAdhesionWithRelations,
+  BackofficeAdhesionInvoiceSource,
   CreateBackofficeAdhesionManagerProfileInput,
   CreateBackofficeAdhesionInput,
   IBackofficeAdhesionRepository,
@@ -95,6 +96,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           hasUnlimitedUsers: data.hasUnlimitedUsers ?? false,
           additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
           additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
+          installmentSchedule: (data.installmentSchedule ?? []) as Prisma.InputJsonValue,
+          installmentLedger: (data.installmentLedger ?? []) as Prisma.InputJsonValue,
         },
         include: backofficeAdhesionInclude,
       })
@@ -166,6 +169,68 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     })
   }
 
+  async findByLedgerAsaasPaymentId(
+    paymentId: string
+  ): Promise<BackofficeAdhesionWithRelations | null> {
+    const payload = JSON.stringify([{ asaasPaymentId: paymentId }])
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM backoffice_adhesions
+      WHERE "installmentLedger" @> CAST(${payload} AS jsonb)
+      LIMIT 1
+    `
+    const id = rows[0]?.id
+    if (!id) return null
+    return this.findById(id)
+  }
+
+  async findByCreatedProfileId(profileId: string): Promise<BackofficeAdhesionInvoiceSource[]> {
+    const adhesions = await prisma.backofficeAdhesion.findMany({
+      where: { createdProfileId: profileId },
+      select: {
+        id: true,
+        installmentLedger: true,
+        paidAt: true,
+        createdAt: true,
+        product: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    return adhesions.map((adhesion) => ({
+      id: adhesion.id,
+      productName: adhesion.product?.name ?? null,
+      installmentLedger: adhesion.installmentLedger,
+      paidAt: adhesion.paidAt,
+      createdAt: adhesion.createdAt,
+    }))
+  }
+
+  async mutateInstallmentLedger(
+    id: string,
+    apply: (ledger: unknown) => unknown
+  ): Promise<BackofficeAdhesionWithRelations> {
+    return prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ installmentLedger: unknown }>>`
+        SELECT "installmentLedger"
+        FROM backoffice_adhesions
+        WHERE id = ${id}::uuid
+        FOR UPDATE
+      `
+      const current = rows[0]?.installmentLedger ?? []
+      const next = apply(current)
+      return tx.backofficeAdhesion.update({
+        where: { id },
+        data: { installmentLedger: next as Prisma.InputJsonValue },
+        include: backofficeAdhesionInclude,
+      })
+    })
+  }
+
   async findByTokenHash(tokenHash: string): Promise<BackofficeAdhesionWithRelations | null> {
     return prisma.backofficeAdhesion.findUnique({
       where: { tokenHash },
@@ -217,6 +282,14 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         ...(data.tokenPreview !== undefined ? { tokenPreview: data.tokenPreview } : {}),
         ...(data.tokenPlain !== undefined ? ({ tokenPlain: data.tokenPlain } as object) : {}),
         ...(data.expiresAt !== undefined ? { expiresAt: data.expiresAt } : {}),
+        ...(data.installmentLedger !== undefined
+          ? { installmentLedger: data.installmentLedger as Prisma.InputJsonValue }
+          : {}),
+        ...(data.installmentSchedule !== undefined
+          ? { installmentSchedule: data.installmentSchedule as Prisma.InputJsonValue }
+          : {}),
+        ...(data.asaasCustomerId !== undefined ? { asaasCustomerId: data.asaasCustomerId } : {}),
+        ...(data.paidAt !== undefined ? { paidAt: data.paidAt } : {}),
       },
       include: backofficeAdhesionInclude,
     })
@@ -367,6 +440,19 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       where: { id: profileId },
       data,
     })
+  }
+
+  async revokePaidAdhesionAccess(profileId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.profile.update({
+        where: { id: profileId },
+        data: { subscriptionStatus: SubscriptionStatus.canceled },
+      }),
+      prisma.profileSubscription.updateMany({
+        where: { profileId },
+        data: { subscriptionStatus: SubscriptionStatus.canceled },
+      }),
+    ])
   }
 
   async upsertProfileSubscription(data: {

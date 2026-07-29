@@ -3,6 +3,11 @@ import { LeadStatus, MeetingHeald, LeadOriginChannel } from "@prisma/client";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "./leadValueLimits";
 import { isValidCNPJ, sanitizeDocumentDigits } from "@/lib/masks";
 
+/**
+ * Public HTTP DTO for POST /api/v1/leads.
+ * Provenance (`originChannel` / `originMetadata`) MUST NOT be accepted from clients —
+ * trusted server-side creators set it on {@link CreateLeadRequest} after parse.
+ */
 export const CreateLeadRequestSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("Email deve ser válido").nullish().transform(val => val || undefined),
@@ -59,8 +64,10 @@ export const CreateLeadRequestSchema = z.object({
   referrerPhone: z.string().optional(),
   confirmDuplicate: z.boolean().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
-  originChannel: z.nativeEnum(LeadOriginChannel).optional(),
-  originMetadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;
+export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema> & {
+  /** Set only by trusted server-side creators (webhooks, forms, CSV import, etc.). */
+  originChannel?: LeadOriginChannel;
+  originMetadata?: Record<string, unknown>;
+};

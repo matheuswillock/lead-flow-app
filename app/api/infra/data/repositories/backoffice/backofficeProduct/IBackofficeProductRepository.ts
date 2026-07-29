@@ -11,7 +11,7 @@ export type BackofficeProductWithPaymentRules = BackofficeProduct & {
 
 export interface CreateBackofficeProductInput {
   name: string
-  featureSlug: string
+  featureSlugs: string[]
   description?: string | null
   type: BackofficeProductType
   billingMode: BackofficeProductBillingMode
@@ -26,7 +26,7 @@ export interface CreateBackofficeProductInput {
 
 export interface UpdateBackofficeProductInput {
   name?: string
-  featureSlug?: string
+  featureSlugs?: string[]
   description?: string | null
   type?: BackofficeProductType
   billingMode?: BackofficeProductBillingMode
@@ -55,6 +55,18 @@ export interface IBackofficeProductRepository {
   update(id: string, data: UpdateBackofficeProductInput): Promise<BackofficeProduct>
   clearDefaultForFeatureSlug(featureSlug: string, exceptId?: string): Promise<void>
   upsertPaymentRules(productId: string, rules: UpsertPaymentRuleInput[]): Promise<void>
+  /**
+   * Substitui o conjunto de regras do produto pelos enviados.
+   * Ciclos em `lockedCycles` não podem ser removidos nem ter price/schedule alterados.
+   */
+  syncPaymentRules(
+    productId: string,
+    rules: UpsertPaymentRuleInput[],
+    lockedCycles: Array<"monthly" | "quarterly" | "semiannual" | "annual">
+  ): Promise<{ blockedRemovals: string[]; blockedUpdates: string[] }>
+  findLockedBillingCycles(
+    productId: string
+  ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">>
   delete(id: string): Promise<void>
   hasActiveSubscriptions(id: string): Promise<boolean>
 }

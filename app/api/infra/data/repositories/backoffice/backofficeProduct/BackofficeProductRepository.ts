@@ -19,13 +19,13 @@ function toDecimalOrNull(value: number | null | undefined): Prisma.Decimal | nul
 export class BackofficeProductRepository implements IBackofficeProductRepository {
   async findAll(): Promise<BackofficeProduct[]> {
     return prisma.backofficeProduct.findMany({
-      orderBy: [{ featureSlug: "asc" }, { isDefault: "desc" }, { name: "asc" }],
+      orderBy: [{ name: "asc" }, { isDefault: "desc" }],
     })
   }
 
   async findAllWithPaymentRules(): Promise<BackofficeProductWithPaymentRules[]> {
     return prisma.backofficeProduct.findMany({
-      orderBy: [{ featureSlug: "asc" }, { isDefault: "desc" }, { name: "asc" }],
+      orderBy: [{ name: "asc" }, { isDefault: "desc" }],
       include: paymentRulesInclude,
     })
   }
@@ -43,7 +43,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
 
   async findByFeatureSlug(featureSlug: string): Promise<BackofficeProduct[]> {
     return prisma.backofficeProduct.findMany({
-      where: { featureSlug },
+      where: { featureSlugs: { has: featureSlug } },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     })
   }
@@ -52,7 +52,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     featureSlug: string
   ): Promise<BackofficeProductWithPaymentRules[]> {
     return prisma.backofficeProduct.findMany({
-      where: { featureSlug, isActive: true },
+      where: { featureSlugs: { has: featureSlug }, isActive: true },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       include: paymentRulesInclude,
     })
@@ -60,7 +60,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
 
   async findDefaultByFeatureSlug(featureSlug: string): Promise<BackofficeProduct | null> {
     return prisma.backofficeProduct.findFirst({
-      where: { featureSlug, isDefault: true, isActive: true },
+      where: { featureSlugs: { has: featureSlug }, isDefault: true, isActive: true },
     })
   }
 
@@ -68,20 +68,20 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     featureSlug: string
   ): Promise<BackofficeProductWithPaymentRules | null> {
     return prisma.backofficeProduct.findFirst({
-      where: { featureSlug, isDefault: true, isActive: true },
+      where: { featureSlugs: { has: featureSlug }, isDefault: true, isActive: true },
       include: paymentRulesInclude,
     })
   }
 
   async countByFeatureSlug(featureSlug: string): Promise<number> {
-    return prisma.backofficeProduct.count({ where: { featureSlug } })
+    return prisma.backofficeProduct.count({ where: { featureSlugs: { has: featureSlug } } })
   }
 
   async create(data: CreateBackofficeProductInput): Promise<BackofficeProduct> {
     return prisma.backofficeProduct.create({
       data: {
         name: data.name,
-        featureSlug: data.featureSlug,
+        featureSlugs: data.featureSlugs,
         description: data.description ?? null,
         type: data.type,
         billingMode: data.billingMode,
@@ -101,7 +101,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name }),
-        ...(data.featureSlug !== undefined && { featureSlug: data.featureSlug }),
+        ...(data.featureSlugs !== undefined && { featureSlugs: data.featureSlugs }),
         ...(Object.prototype.hasOwnProperty.call(data, "description") && {
           description: data.description ?? null,
         }),
@@ -129,12 +129,87 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   }
 
   async clearDefaultForFeatureSlug(featureSlug: string, exceptId?: string): Promise<void> {
-    await prisma.backofficeProduct.updateMany({
+    const demoted = await prisma.backofficeProduct.findMany({
       where: {
-        featureSlug,
+        featureSlugs: { has: featureSlug },
+        isDefault: true,
         ...(exceptId ? { id: { not: exceptId } } : {}),
       },
+      select: { id: true, featureSlugs: true },
+    })
+
+    if (demoted.length === 0) {
+      return
+    }
+
+    await prisma.backofficeProduct.updateMany({
+      where: { id: { in: demoted.map((product) => product.id) } },
       data: { isDefault: false },
+    })
+
+    const companionSlugs = new Set<string>()
+    for (const product of demoted) {
+      for (const slug of product.featureSlugs) {
+        if (slug !== featureSlug) {
+          companionSlugs.add(slug)
+        }
+      }
+    }
+
+    for (const slug of companionSlugs) {
+      await this.ensureDefaultForFeatureSlug(slug, exceptId)
+    }
+  }
+
+  private async ensureDefaultForFeatureSlug(
+    featureSlug: string,
+    exceptId?: string
+  ): Promise<void> {
+    const hasDefault = await prisma.backofficeProduct.findFirst({
+      where: {
+        featureSlugs: { has: featureSlug },
+        isDefault: true,
+        isActive: true,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true },
+    })
+
+    if (hasDefault) {
+      return
+    }
+
+    const candidates = await prisma.backofficeProduct.findMany({
+      where: {
+        featureSlugs: { has: featureSlug },
+        isActive: true,
+        isDefault: false,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true, featureSlugs: true, name: true },
+    })
+
+    const candidate =
+      candidates
+        .slice()
+        .sort((left, right) => {
+          const leftIsSingle =
+            left.featureSlugs.length === 1 && left.featureSlugs[0] === featureSlug ? 0 : 1
+          const rightIsSingle =
+            right.featureSlugs.length === 1 && right.featureSlugs[0] === featureSlug ? 0 : 1
+          if (leftIsSingle !== rightIsSingle) {
+            return leftIsSingle - rightIsSingle
+          }
+          return left.name.localeCompare(right.name)
+        })[0] ?? null
+
+    if (!candidate) {
+      return
+    }
+
+    await prisma.backofficeProduct.update({
+      where: { id: candidate.id },
+      data: { isDefault: true },
     })
   }
 
@@ -169,6 +244,131 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         })
       )
     )
+  }
+
+  async findLockedBillingCycles(
+    productId: string
+  ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">> {
+    const userSubs = await prisma.backofficeUserSubscription.findMany({
+      where: { productId, status: "active" },
+      select: { cycle: true },
+    })
+
+    const locked = new Set<"monthly" | "quarterly" | "semiannual" | "annual">()
+    const normalize = (value: string | null | undefined) => {
+      if (!value) return null
+      const lower = value.toLowerCase()
+      if (
+        lower === "monthly" ||
+        lower === "quarterly" ||
+        lower === "semiannual" ||
+        lower === "annual"
+      ) {
+        return lower as "monthly" | "quarterly" | "semiannual" | "annual"
+      }
+      return null
+    }
+
+    for (const sub of userSubs) {
+      const cycle = normalize(sub.cycle)
+      if (cycle) locked.add(cycle)
+    }
+
+    const hasActiveWithoutCycle = userSubs.some((sub) => !sub.cycle)
+    if (hasActiveWithoutCycle) {
+      const existing = await prisma.backofficeProductPaymentRule.findMany({
+        where: { productId },
+        select: { billingCycle: true },
+      })
+      for (const rule of existing) {
+        const cycle = normalize(rule.billingCycle)
+        if (cycle) locked.add(cycle)
+      }
+    }
+
+    return Array.from(locked)
+  }
+
+  async syncPaymentRules(
+    productId: string,
+    rules: UpsertPaymentRuleInput[],
+    lockedCycles: Array<"monthly" | "quarterly" | "semiannual" | "annual">
+  ): Promise<{ blockedRemovals: string[]; blockedUpdates: string[] }> {
+    const existing = await prisma.backofficeProductPaymentRule.findMany({ where: { productId } })
+    const locked = new Set(lockedCycles)
+    const incomingKeys = new Set(rules.map((r) => `${r.paymentMethod}:${r.billingCycle}`))
+    const blockedRemovals: string[] = []
+    const blockedUpdates: string[] = []
+
+    const toDelete = existing.filter((rule) => {
+      const key = `${rule.paymentMethod}:${rule.billingCycle}`
+      if (incomingKeys.has(key)) return false
+      if (locked.has(rule.billingCycle as "monthly" | "quarterly" | "semiannual" | "annual")) {
+        blockedRemovals.push(rule.billingCycle)
+        return false
+      }
+      return true
+    })
+
+    const safeRules: UpsertPaymentRuleInput[] = []
+    for (const rule of rules) {
+      const current = existing.find(
+        (item) =>
+          item.paymentMethod === rule.paymentMethod && item.billingCycle === rule.billingCycle
+      )
+      if (
+        current &&
+        locked.has(rule.billingCycle) &&
+        (Number(current.price.toString()) !== rule.price ||
+          (current.installmentSplitMode ?? "EQUAL") !== (rule.installmentSplitMode ?? "EQUAL") ||
+          (current.canInstallment ?? false) !== (rule.canInstallment ?? false) ||
+          current.maxInstallments !== rule.maxInstallments ||
+          JSON.stringify(current.installmentSchedule ?? []) !==
+            JSON.stringify(rule.installmentSchedule ?? []))
+      ) {
+        blockedUpdates.push(rule.billingCycle)
+        continue
+      }
+      safeRules.push(rule)
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (toDelete.length) {
+        await tx.backofficeProductPaymentRule.deleteMany({
+          where: { id: { in: toDelete.map((r) => r.id) } },
+        })
+      }
+      for (const rule of safeRules) {
+        await tx.backofficeProductPaymentRule.upsert({
+          where: {
+            productId_paymentMethod_billingCycle: {
+              productId,
+              paymentMethod: rule.paymentMethod,
+              billingCycle: rule.billingCycle,
+            },
+          },
+          create: {
+            productId,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+            price: new Prisma.Decimal(rule.price),
+            canInstallment: rule.canInstallment,
+            maxInstallments: rule.maxInstallments,
+            installmentSplitMode: rule.installmentSplitMode ?? "EQUAL",
+            installmentSchedule: rule.installmentSchedule ?? [],
+          },
+          update: {
+            price: new Prisma.Decimal(rule.price),
+            canInstallment: rule.canInstallment,
+            maxInstallments: rule.maxInstallments,
+            installmentSplitMode: rule.installmentSplitMode ?? "EQUAL",
+            installmentSchedule: rule.installmentSchedule ?? [],
+          },
+        })
+      }
+    })
+
+    return { blockedRemovals: Array.from(new Set(blockedRemovals)), blockedUpdates: Array.from(new Set(blockedUpdates)) }
   }
 
   async delete(id: string): Promise<void> {
