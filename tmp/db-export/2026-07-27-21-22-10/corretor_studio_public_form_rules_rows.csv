@@ -1,3 +1,0 @@
-id,formId,sourceQuestionId,targetQuestionId,operator,comparisonValue,action,createdAt,updatedAt,elseAction
-118f5b0e-8f9a-4954-948f-0c820ec809e0,3d48cb9d-069e-4fe1-a6c5-ef9b4684d697,70231e95-38ed-4e16-a1e4-92c8673e22e9,b5639c8e-4afd-4898-9942-0217d9963496,equals,"""""",skip,2026-07-22 12:41:59.647+00,2026-07-22 12:41:59.647+00,show
-1c40a6bf-f30f-441e-a624-3d15fcb20326,e1397c97-d109-4fd0-b1e0-7f5e287e4976,cb0311f2-c770-4050-bb84-58d7fc3562a2,f2d8022b-37bd-4d90-88c3-fb14b08bc6d8,equals,"""sim""",skip,2026-07-22 17:58:31.729+00,2026-07-22 17:58:31.729+00,show

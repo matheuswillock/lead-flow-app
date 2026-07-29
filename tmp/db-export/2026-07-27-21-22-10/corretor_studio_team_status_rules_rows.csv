@@ -1,7 +1,0 @@
-id,teamId,createdBy,type,targetStatus,requiredStatus,leadTimeValue,leadTimeUnit,requireConfirmation,confirmationMessage,isEnabled,createdAt,updatedAt
-93d7c041-bb06-4381-8491-3aea01277ac7,a9c81e05-8b1a-47ad-a80d-dbc45603f068,0c96a57e-6cc1-400f-bf3a-5740b699ac21,lead_time,no_show,,2,days,f,,t,2026-04-10 01:49:53.971+00,2026-04-10 01:49:53.971+00
-eb63abac-22cf-4369-b9c5-77bc05477265,a9c81e05-8b1a-47ad-a80d-dbc45603f068,0c96a57e-6cc1-400f-bf3a-5740b699ac21,lead_time,pending_documents,,2,days,f,,t,2026-04-10 01:49:53.971+00,2026-04-10 01:49:53.971+00
-ebbb7814-b587-47ad-8c62-759927feae86,a9c81e05-8b1a-47ad-a80d-dbc45603f068,0c96a57e-6cc1-400f-bf3a-5740b699ac21,lead_time,offerSubmission,,2,days,f,,t,2026-04-10 01:49:53.971+00,2026-04-10 01:49:53.971+00
-f333babb-0a77-46cd-81ed-cbb8c26cfe98,a9c81e05-8b1a-47ad-a80d-dbc45603f068,0c96a57e-6cc1-400f-bf3a-5740b699ac21,combined_transition,contract_finalized,invoicePayment,,,t,Cliente já realizou o pagamento do boleto?,t,2026-04-10 01:49:53.971+00,2026-04-10 01:49:53.971+00
-c5feb256-1f97-4442-8a4f-8050c2a8d309,27edf455-e61a-48a9-a846-e2c6f42999b5,0c96a57e-6cc1-400f-bf3a-5740b699ac21,lead_time,no_show,,3,days,f,,t,2026-05-28 19:39:38.881+00,2026-05-28 19:39:38.881+00
-a7d37dfd-3ef3-47a6-b574-2e5c21cf45e4,27edf455-e61a-48a9-a846-e2c6f42999b5,0c96a57e-6cc1-400f-bf3a-5740b699ac21,combined_transition,offerNegotiation,scheduled,,,f,,f,2026-05-28 19:39:38.881+00,2026-05-28 19:39:38.881+00

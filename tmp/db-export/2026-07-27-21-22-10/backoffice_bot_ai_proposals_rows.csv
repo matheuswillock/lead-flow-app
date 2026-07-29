@@ -1,1 +1,0 @@
-id,userLinkId,profileId,interactionId,teamIdSnapshot,action,paramsSummary,paramsCiphertext,encryptionKeyVersion,confirmationMessage,status,idempotencyKey,expiresAt,confirmedAt,executedAt,resultCode,createdAt

@@ -1,2 +1,0 @@
-id,plan,monthlyCredits,status,currentPeriodStart,currentPeriodEnd,canceledAt,createdAt,updatedAt,teamId
-2de74b09-2f30-4bb8-88d5-fc3ac20187e8,starter,1000,canceled,2026-06-01 20:12:56.191+00,2026-07-01 03:00:00+00,2026-06-01 20:13:24.223+00,2026-06-01 20:12:56.193+00,2026-06-01 20:13:24.224+00,32ccdbe1-627f-4fe3-a506-056b997ed89b

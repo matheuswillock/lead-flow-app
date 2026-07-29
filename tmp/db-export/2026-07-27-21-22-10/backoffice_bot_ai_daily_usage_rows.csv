@@ -1,1 +1,0 @@
-day,provider,model,capability,requests,successes,failures,fallbacks,inputTokens,outputTokens,estimatedCostUsd,uniqueUsers,latencyP50Ms,latencyP95Ms,createdAt,updatedAt

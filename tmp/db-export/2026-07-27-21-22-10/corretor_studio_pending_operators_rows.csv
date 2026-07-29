@@ -1,5 +1,0 @@
-id,managerId,teamId,name,email,role,functions,paymentId,subscriptionId,paymentStatus,paymentMethod,operatorCreated,operatorId,createdAt,updatedAt
-1bdf7bde-eed2-447f-ad21-8f8856b16120,0c96a57e-6cc1-400f-bf3a-5740b699ac21,a1b2c3d4-0002-4000-8000-000000000002,Ivan Bochiard,fusioncorretora@gmail.com,manager,,,,free,free,f,,2026-05-20 19:24:58.355433+00,2026-05-20 19:24:58.355433+00
-3b56c684-e9be-4f09-bc62-df447f2f158a,0c96a57e-6cc1-400f-bf3a-5740b699ac21,a1b2c3d4-0002-4000-8000-000000000002,Marília Bochiard,marilia@uniforteseguros.com.br,operator,,,,free,free,f,,2026-05-20 19:24:58.355433+00,2026-05-20 19:24:58.355433+00
-526b540e-c489-4886-99e8-63278eafe34c,0c96a57e-6cc1-400f-bf3a-5740b699ac21,a94fc469-4603-487f-ab7f-e2712197d510,Barbara Rodrigues,barbaralunnar25@gmail.com,operator,{SDR},,,free,free,f,,2026-05-26 15:02:27.639957+00,2026-05-26 15:02:27.639957+00
-e174a8c7-becf-44d3-9502-6f83f91b7c7c,0c96a57e-6cc1-400f-bf3a-5740b699ac21,a94fc469-4603-487f-ab7f-e2712197d510,Bruna Molina,brumolina0107@gmail.com,operator,{SDR},,,free,free,f,,2026-05-26 15:02:27.639957+00,2026-05-26 15:02:27.639957+00

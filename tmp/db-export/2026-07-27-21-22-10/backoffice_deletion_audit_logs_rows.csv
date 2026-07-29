@@ -1,2 +1,0 @@
-id,entityType,entityId,action,actorProfileId,requestId,payload,createdAt
-32f23689-db39-4b65-a165-0adee3ee8403,TEAM_MEMBERSHIP,88826808-567c-46b2-b41d-2168ef6c85d2,remove_from_team,b5e11290-e1f5-40a9-9b8a-f651aad261fb,,"{""teamId"": ""7b577c22-5513-42cc-ab19-2bf867e14ebc"", ""profileId"": ""88826808-567c-46b2-b41d-2168ef6c85d2""}",2026-07-27 16:39:47.582+00

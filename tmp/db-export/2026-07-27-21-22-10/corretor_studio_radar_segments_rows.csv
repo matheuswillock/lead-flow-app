@@ -1,2 +1,0 @@
-id,teamId,createdBy,name,description,rulesJson,isSystem,isActive,createdAt,updatedAt
-c56d8dac-94d6-40cd-b27f-37cbff899b85,32ccdbe1-627f-4fe3-a506-056b997ed89b,8474aaf6-e7d1-4165-9bef-bf76bc701038,VIP,,"{""match"": ""all"", ""conditions"": [{""kind"": ""lead_status"", ""statuses"": [""opportunityLost""]}]}",f,t,2026-07-23 22:30:47.826+00,2026-07-23 22:30:47.826+00

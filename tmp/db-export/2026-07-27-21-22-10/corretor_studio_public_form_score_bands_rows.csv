@@ -1,7 +1,0 @@
-id,formId,label,summary,minScore,maxScore,position,createdAt,updatedAt
-5b151b64-c57d-498c-8128-a25372f98b21,3d48cb9d-069e-4fe1-a6c5-ef9b4684d697,Alta intenção,Lead engajado no simulador com perfil completo.,8,100,0,2026-07-22 12:41:59.663+00,2026-07-22 12:41:59.663+00
-671edef9-ab1b-4fe5-b62a-937419d05ad0,3d48cb9d-069e-4fe1-a6c5-ef9b4684d697,Qualificado,Lead captado via simulador.,0,7,1,2026-07-22 12:41:59.663+00,2026-07-22 12:41:59.663+00
-611c5d52-ad78-4896-a0ef-3df7dc57cb2e,e1397c97-d109-4fd0-b1e0-7f5e287e4976,Qualificado,"",0,10,0,2026-07-22 17:58:31.743+00,2026-07-22 17:58:31.743+00
-a6ececed-deb1-4e20-8ead-1b0fd1931df6,c0cb61f1-0d1c-4b7e-98f3-5e977b642356,Alta intenção,Lead engajado no simulador com perfil completo.,71,100,0,2026-07-26 15:37:09.768+00,2026-07-26 15:37:09.768+00
-b074e540-eb95-413e-8ed8-7972de2e35a4,c0cb61f1-0d1c-4b7e-98f3-5e977b642356,Qualificado,Lead com interesse intermediário.,41,70,1,2026-07-26 15:37:09.768+00,2026-07-26 15:37:09.768+00
-517db156-bcce-47c9-bc2e-2e2ce967119f,c0cb61f1-0d1c-4b7e-98f3-5e977b642356,Inicial,Lead captado via simulador.,0,40,2,2026-07-26 15:37:09.768+00,2026-07-26 15:37:09.768+00
