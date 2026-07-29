@@ -20,6 +20,7 @@ export interface IBackofficeAdhesionUseCase {
   deletePending(id: string): Promise<Output>
   resend(id: string): Promise<Output>
   resendInvite(id: string): Promise<Output>
+  getPendingInvoiceUrls(id: string): Promise<Output>
   getPublicUrl(id: string): Promise<Output>
   getPublicDetails(token: string): Promise<Output>
   createCheckout(token: string, input: BackofficeAdhesionCheckoutInput): Promise<Output>

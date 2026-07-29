@@ -1495,6 +1495,7 @@ model BackofficeAdhesion {
   @@index([leadId], map: "backoffice_adhesions_lead_id_idx")
   @@index([sdrBackofficeUserId], map: "backoffice_adhesions_sdr_user_id_idx")
   @@index([closerBackofficeUserId], map: "backoffice_adhesions_closer_user_id_idx")
+  @@index([createdProfileId, createdAt(sort: Desc)], map: "backoffice_adhesions_created_profile_id_created_at_idx")
   @@map("backoffice_adhesions")
 }
 
