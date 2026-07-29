@@ -190,6 +190,27 @@ export class RadarRepository {
       select: { id: true, sourceType: true, sourceId: true, eventType: true, occurredAt: true },
     })
     for (const event of losingEvents) {
+      // D5 (fix review PR #561): profile.first_contact usa o próprio
+      // profileId como sourceId — perdedor e vencedor sempre têm sourceId
+      // diferente entre si, então o dedupe genérico abaixo (que exige
+      // sourceId igual) nunca encontraria o conflito. Mantém só o mais
+      // antigo dos dois "primeiro contato".
+      if (event.eventType === "profile.first_contact") {
+        const existingFirstContact = await tx.radarEvent.findFirst({
+          where: { teamId, profileId: winningProfileId, eventType: "profile.first_contact" },
+          select: { id: true, occurredAt: true },
+        })
+        if (!existingFirstContact) {
+          await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+        } else if (event.occurredAt < existingFirstContact.occurredAt) {
+          await tx.radarEvent.delete({ where: { id: existingFirstContact.id } })
+          await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+        } else {
+          await tx.radarEvent.delete({ where: { id: event.id } })
+        }
+        continue
+      }
+
       const conflict = await tx.radarEvent.findFirst({
         where: {
           teamId,
@@ -455,6 +476,22 @@ export class RadarRepository {
         },
       })
 
+      if (!existingByKey) {
+        // D5: "primeiro contato" — profile.id é sempre novo neste ponto,
+        // então uma segunda ocorrência para o mesmo perfil é estruturalmente
+        // impossível; não precisa de appendEventIfNew/dedupe.
+        await tx.radarEvent.create({
+          data: {
+            profileId: profile.id,
+            teamId: input.teamId,
+            eventType: "profile.first_contact",
+            sourceType: "profile",
+            sourceId: profile.id,
+            occurredAt: input.lastSeenAt ?? new Date(),
+          },
+        })
+      }
+
       return { profile, wasExisting: Boolean(existingByKey) }
     })
   }
@@ -523,6 +560,20 @@ export class RadarRepository {
           normalizedValue: input.normalizedEmail,
           source: input.emailSource,
           isPrimary: true,
+        },
+      })
+
+      // D5: "primeiro contato" — este branch só é alcançado quando é uma
+      // criação genuína (o branch existingByIdentity acima já retorna
+      // antes), então profile.id é sempre novo aqui.
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
         },
       })
 
