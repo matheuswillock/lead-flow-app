@@ -1,0 +1,1 @@
+id,interactionId,sequence,provider,model,capability,status,inputTokens,outputTokens,totalTokens,estimatedCostUsd,latencyMs,httpStatus,errorCode,providerRequestId,requestSchemaVersion,responseSchemaVersion,createdAt

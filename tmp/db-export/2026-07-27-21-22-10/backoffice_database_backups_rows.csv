@@ -1,0 +1,3 @@
+id,startedAt,finishedAt,status,filePath,fileName,sizeBytes,checksumSha256,storageSyncPath,errorMessage,createdAt,source,triggeredByProfileId
+3f1d0705-d401-4c19-9db2-40eb152b578f,2026-07-27 16:18:44.733+00,2026-07-27 16:18:44.966+00,failed,,,,,,BACKUP_VPS_WEBHOOK_URL ou BACKUP_VPS_TOKEN não configurados,2026-07-27 16:18:44.733+00,manual,f88f2b3b-3f45-4170-83e1-4e7999d2c012
+cdbdb868-e873-4fcb-a8a4-b22b64a1a0e4,2026-07-27 16:19:13.073+00,2026-07-27 16:19:13.086+00,failed,,,,,,BACKUP_VPS_WEBHOOK_URL ou BACKUP_VPS_TOKEN não configurados,2026-07-27 16:19:13.073+00,manual,f88f2b3b-3f45-4170-83e1-4e7999d2c012

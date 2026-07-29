@@ -1,0 +1,2 @@
+id,enabled,shadowMode,rolloutPercentage,primaryProvider,primaryModel,fallbackModel,confidenceThreshold,dailyUserLimit,dailyGlobalLimit,timeoutMs,circuitBreakerFailureThreshold,circuitBreakerResetSeconds,retentionDays,updatedByProfileId,createdAt,updatedAt
+t,f,t,0,groq,openai/gpt-oss-20b,llama-3.1-8b-instant,0.78,60,900,8000,5,60,365,,2026-07-20 14:43:07.184258+00,2026-07-20 14:43:07.184258+00

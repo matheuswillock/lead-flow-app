@@ -1,0 +1,2 @@
+id,displayName,avatarUrl,avatarStoragePath,aboutText,phoneNumber,lastProfileSyncAt,channelType,status,providerConfig,webhookSecret,n8nInboundUrl,n8nOutboundSecret,isActive,createdAt,updatedAt
+124683ce-e101-4dc6-b91e-daabc9e37639,Bethânia,,,,551151951303,,whatsapp,disconnected,"{""instanceName"": ""bethania""}",15d9a1e02ac0287f83d918bab05a92b505ca5609124a1e6e5dcb58609e796879,http://n8n:5678/webhook/bethania-inbound,15d9a1e02ac0287f83d918bab05a92b505ca5609124a1e6e5dcb58609e796879,t,2026-07-02 13:50:29.616+00,2026-07-22 18:12:33.493+00

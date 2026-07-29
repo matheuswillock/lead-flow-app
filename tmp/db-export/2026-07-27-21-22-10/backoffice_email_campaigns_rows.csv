@@ -1,0 +1,2 @@
+id,name,type,status,resendTemplateId,resendTemplateName,contactListId,fromName,fromEmail,replyTo,scheduledAt,sentAt,totalRecipients,totalSent,totalDelivered,totalOpened,totalClicked,totalBounced,totalComplained,dispatchCount,errorMessage,createdByBackofficeUserId,createdAt,updatedAt
+fe5bcd62-b7d8-4c36-a6e1-a3ac286ed5bf,Live — 30/07/2026,live_weekly,draft,,,fb0264f6-35d6-4424-8380-1a810f19adcc,,,,2026-07-30 16:00:00+00,,0,0,0,0,0,0,0,0,,,2026-07-23 16:00:15.42+00,2026-07-23 16:00:15.42+00

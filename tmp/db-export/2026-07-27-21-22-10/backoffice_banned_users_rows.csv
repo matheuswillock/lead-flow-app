@@ -1,0 +1,2 @@
+id,profileId,supabaseId,email,fullName,reason,status,scope,bannedByProfileId,bannedAt,liftedByProfileId,liftedAt,liftReason,createdAt,updatedAt
+d48b15dd-e3c4-4455-8cf9-0770d0b1a728,433f8342-5727-49e3-8ac2-8a23feb880c0,265d5e50-5164-45f1-8e72-78d591d767c3,romuloalbertogarcia@gmail.com,Rômulo Garcia,,ACTIVE,ACCOUNT,f88f2b3b-3f45-4170-83e1-4e7999d2c012,2026-07-07 14:18:06.964+00,,,,2026-07-07 14:18:06.964+00,2026-07-07 14:18:06.964+00

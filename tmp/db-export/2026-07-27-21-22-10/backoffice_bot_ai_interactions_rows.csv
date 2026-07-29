@@ -1,0 +1,1 @@
+id,inboundMessageId,userLinkId,profileId,sessionId,teamIdSnapshot,capability,status,intent,confidence,promptKey,promptVersion,isShadow,usedFallback,inputHash,outputHash,errorCode,latencyMs,createdAt

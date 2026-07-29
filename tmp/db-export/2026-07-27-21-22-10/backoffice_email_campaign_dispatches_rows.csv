@@ -1,0 +1,1 @@
+id,campaignId,dispatchNumber,templateSubjectSnapshot,templateHtmlSnapshot,resendTemplateIdSnapshot,status,totalRecipients,totalSent,totalDelivered,totalOpened,totalClicked,totalBounced,totalComplained,triggeredByBackofficeUserId,errorMessage,createdAt,updatedAt

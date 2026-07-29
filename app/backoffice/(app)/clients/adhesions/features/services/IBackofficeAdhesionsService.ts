@@ -20,5 +20,8 @@ export interface IBackofficeAdhesionsService {
   deletePending(id: string): Promise<void>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
   getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }>
+  getPendingInvoiceUrls(id: string): Promise<{
+    invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+  }>
   resendInvite(id: string): Promise<void>
 }

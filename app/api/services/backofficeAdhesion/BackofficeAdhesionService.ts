@@ -876,6 +876,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (!existing) {
       throw new Error("Adesão não encontrada")
     }
+    if (isAdhesionAccountActivated(existing)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para cobrança."
+      )
+    }
     if (existing.status === "paid") {
       throw new Error("Adesões pagas não podem ser reenviadas")
     }
@@ -929,10 +934,83 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return { email: existing.email }
   }
 
+  async getPendingInvoiceUrls(id: string): Promise<{
+    invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
+  }> {
+    const adhesion = await this.repo.findById(id)
+    if (!adhesion) {
+      throw new Error("Adesão não encontrada")
+    }
+    if (!isAdhesionAccountActivated(adhesion)) {
+      throw new Error("Checkout de fatura disponível apenas para assinaturas já ativadas")
+    }
+
+    let ledger = readInstallmentLedger(adhesion.installmentLedger)
+    let pendingAsaas = ledger.filter(
+      (entry) => entry.status === "pending" && entry.paymentSource === "ASAAS"
+    )
+
+    if (pendingAsaas.length === 0) {
+      throw new Error("Não há parcelas pendentes para cobrança")
+    }
+
+    const missingPayments = pendingAsaas.filter((entry) => !entry.asaasPaymentId)
+    if (missingPayments.length > 0) {
+      if (!adhesion.asaasCustomerId) {
+        throw new Error("Cliente Asaas não configurado para esta adesão")
+      }
+      if (!adhesion.email) {
+        throw new Error("E-mail não configurado para esta adesão")
+      }
+
+      ledger = await this.chargePendingInstallments({
+        adhesion,
+        customerId: adhesion.asaasCustomerId,
+        email: adhesion.email,
+        billingType: adhesion.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
+        ledger,
+        pending: missingPayments,
+      })
+      await this.persistInstallmentLedger(adhesion.id, ledger, {
+        email: adhesion.email,
+        cpfCnpj: adhesion.cpfCnpj,
+        asaasCustomerId: adhesion.asaasCustomerId,
+      })
+      pendingAsaas = ledger.filter(
+        (entry) => entry.status === "pending" && entry.paymentSource === "ASAAS"
+      )
+    }
+
+    const invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }> = []
+    for (const entry of pendingAsaas) {
+      if (!entry.asaasPaymentId) continue
+      const payment = await asaasFetch(`${asaasApi.payments}/${entry.asaasPaymentId}`)
+      const invoiceUrl = (payment.invoiceUrl as string | undefined)?.trim()
+      if (invoiceUrl) {
+        invoices.push({
+          installmentIndex: entry.index,
+          amount: entry.amount,
+          invoiceUrl,
+        })
+      }
+    }
+
+    if (invoices.length === 0) {
+      throw new Error("Nenhuma fatura pendente com link de pagamento disponível")
+    }
+
+    return { invoices }
+  }
+
   async getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }> {
     const existing = await this.repo.findById(id)
     if (!existing) {
       throw new Error("Adesão não encontrada")
+    }
+    if (isAdhesionAccountActivated(existing)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para cobrança."
+      )
     }
 
     const token = existing.tokenPlain?.trim()
@@ -994,6 +1072,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     let adhesion = await this.repo.findById(validation.adhesionId)
     if (!adhesion) {
       return tokenError("not_found")
+    }
+
+    if (isAdhesionAccountActivated(adhesion)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para pagamento."
+      )
     }
 
     if (adhesion.asaasPaymentId) {
@@ -1854,6 +1938,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (!provisionedProfileId) {
       return
     }
+
+    await this.invalidateTokenAfterPayment(adhesion.id)
 
     const deliverInviteEmail = async () => {
       try {

@@ -1,0 +1,5 @@
+id,slug,name,description,createdAt,updatedAt
+55ba239b-5a92-4cc6-aaf0-0558ced08725,common,Comum,"Tipo padrão de usuário, sem limites ou prazos especiais.",2026-06-08 14:03:23.87478+00,2026-06-08 14:03:23.87478+00
+a02fc672-648a-44c7-8152-2fc4e9d321d7,member_pro,Member PRO,Acesso com prazo definido pelo backoffice e limites configuráveis de usuários/times.,2026-06-08 14:03:23.87478+00,2026-06-08 14:03:23.87478+00
+a043463a-4c2e-4842-b8ec-14485ad57d73,associate,Associado,Conta parceira patrocinada; opera CRM autônomo com backoffice do patrocinador responsável pela subida na operadora.,2026-06-29 02:46:45.43413+00,2026-06-29 02:46:45.43413+00
+32dba750-7f35-46fd-a098-876e43d579d4,guest,Convidado,Conta gratuita patrocinada sem cobrança e com recursos ilimitados (times e usuários).,2026-07-01 05:05:54.470747+00,2026-07-01 05:05:54.470747+00
