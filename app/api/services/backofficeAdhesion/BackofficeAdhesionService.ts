@@ -1736,6 +1736,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(linkError?.message || "Erro ao criar convite de acesso")
     }
 
+    let provisionedProfileId: string | null = null
+
     try {
       const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
       const subscriptionStartDate = adhesion.paidAt ?? new Date()
@@ -1841,38 +1843,41 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionNextDueDate: subscriptionEndDate,
       })
 
-      if (options?.deferEmailDelivery) {
-        void this.sendSetPasswordEmail(adhesion, "invite", linkData).catch((emailError) => {
-          console.error(
-            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][deferred-email]",
-            { adhesionId: adhesion.id, error: emailError }
-          )
-        })
-      } else {
-        try {
-          await this.sendSetPasswordEmail(
-            { ...adhesion, createdProfileId: createdProfile.profileId },
-            "invite",
-            linkData
-          )
-        } catch (emailError) {
-          console.error(
-            "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][invite-email]",
-            {
-              adhesionId: adhesion.id,
-              profileId: createdProfile.profileId,
-              error: emailError,
-            }
-          )
-          throw emailError
-        }
-      }
+      provisionedProfileId = createdProfile.profileId
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
         console.error("[BackofficeAdhesionService][ensureAccountForPaidAdhesion][rollback]", deleteError)
       })
       throw accountError
     }
+
+    if (!provisionedProfileId) {
+      return
+    }
+
+    const deliverInviteEmail = () =>
+      this.sendSetPasswordEmail(
+        { ...adhesion, createdProfileId: provisionedProfileId },
+        "invite",
+        linkData
+      ).catch((emailError) => {
+        console.error(
+          "[BackofficeAdhesionService][ensureAccountForPaidAdhesion][invite-email]",
+          {
+            adhesionId: adhesion.id,
+            profileId: provisionedProfileId,
+            error: emailError,
+          }
+        )
+        throw emailError
+      })
+
+    if (options?.deferEmailDelivery) {
+      void deliverInviteEmail().catch(() => undefined)
+      return
+    }
+
+    await deliverInviteEmail()
   }
 
   private async resolvePricingOptions(): Promise<
