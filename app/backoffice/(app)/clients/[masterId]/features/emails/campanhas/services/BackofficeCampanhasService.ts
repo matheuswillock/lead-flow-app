@@ -7,15 +7,15 @@ import type {
   Template,
 } from "@/app/[supabaseId]/email/campanhas/features/context/CampanhasTypes"
 import type {
-  CreateCampaignData,
-  ICampanhasService,
-  ListCampaignsResult,
-  SendResult,
-  UpdateCampaignData,
-} from "@/app/[supabaseId]/email/campanhas/features/services/ICampanhasService"
+  StudioEmailCampanhasService,
+  StudioEmailCreateCampaignData,
+  StudioEmailListCampaignsResult,
+  StudioEmailSendResult,
+  StudioEmailUpdateCampaignData,
+} from "@/lib/email/studio-email-service-contracts"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
-export class BackofficeCampanhasService implements ICampanhasService {
+export class BackofficeCampanhasService implements StudioEmailCampanhasService {
   private path(supabaseId: string, teamId: string | null | undefined, suffix = ""): string {
     if (!teamId) throw new Error("teamId é obrigatório")
     return `${studioEmailBasePath(supabaseId, teamId)}/campaigns${suffix}`
@@ -30,7 +30,7 @@ export class BackofficeCampanhasService implements ICampanhasService {
     name?: string,
     createdAtFrom?: string,
     createdAtTo?: string
-  ): Promise<ListCampaignsResult> {
+  ): Promise<StudioEmailListCampaignsResult> {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (status && status.length > 0) params.set("status", status.join(","))
     if (name) params.set("name", name)
@@ -57,7 +57,7 @@ export class BackofficeCampanhasService implements ICampanhasService {
   async create(
     supabaseId: string,
     teamId: string | null | undefined,
-    data: CreateCampaignData
+    data: StudioEmailCreateCampaignData
   ): Promise<Campaign> {
     const response = await fetch(this.path(supabaseId, teamId), {
       method: "POST",
@@ -80,7 +80,7 @@ export class BackofficeCampanhasService implements ICampanhasService {
     supabaseId: string,
     teamId: string | null | undefined,
     id: string,
-    data: UpdateCampaignData
+    data: StudioEmailUpdateCampaignData
   ): Promise<Campaign> {
     const response = await fetch(`${this.path(supabaseId, teamId)}/${id}`, {
       method: "PATCH",
@@ -94,11 +94,11 @@ export class BackofficeCampanhasService implements ICampanhasService {
     supabaseId: string,
     teamId: string | null | undefined,
     id: string
-  ): Promise<SendResult> {
+  ): Promise<StudioEmailSendResult> {
     const response = await fetch(`${this.path(supabaseId, teamId)}/${id}/send`, {
       method: "POST",
     })
-    return parseStudioEmailOutput<SendResult>(response)
+    return parseStudioEmailOutput<StudioEmailSendResult>(response)
   }
 
   async cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void> {

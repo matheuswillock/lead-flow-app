@@ -16,5 +16,6 @@ export function useStudioEmailRuntime(explicitHost?: StudioEmailHost | null) {
     hideRadarSegments: host?.flags?.hideRadarSegments ?? false,
     bypassCreditsCheck: host?.flags?.bypassCreditsCheck ?? false,
     skipBetaGate: host?.flags?.skipBetaGate ?? false,
+    readOnly: host?.flags?.readOnly ?? false,
   }
 }

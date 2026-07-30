@@ -1,11 +1,12 @@
 import type { EmailLog, LogDetail } from "@/app/[supabaseId]/email/historico/features/context/HistoricoTypes"
-import type { IHistoricoService } from "@/app/[supabaseId]/email/historico/features/services/HistoricoService"
+import type {
+  StudioEmailHistoricoListParams,
+  StudioEmailHistoricoListResult,
+  StudioEmailHistoricoService,
+} from "@/lib/email/studio-email-service-contracts"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
-type GetLogsParams = Parameters<IHistoricoService["getLogs"]>[0]
-type GetLogsResult = Awaited<ReturnType<IHistoricoService["getLogs"]>>
-
-export class BackofficeHistoricoService implements IHistoricoService {
+export class BackofficeHistoricoService implements StudioEmailHistoricoService {
   constructor(
     private readonly masterId: string,
     private readonly teamId: string
@@ -15,7 +16,7 @@ export class BackofficeHistoricoService implements IHistoricoService {
     return `${studioEmailBasePath(this.masterId, this.teamId)}/logs`
   }
 
-  async getLogs(params: GetLogsParams): Promise<GetLogsResult> {
+  async getLogs(params: StudioEmailHistoricoListParams): Promise<StudioEmailHistoricoListResult> {
     const query = new URLSearchParams({
       page: String(params.page),
       pageSize: String(params.pageSize),

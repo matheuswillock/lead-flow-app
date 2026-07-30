@@ -13,6 +13,7 @@ import { useTemplatesContext } from '../context/TemplatesContext'
 import { TemplateCard } from '../components/TemplateCard'
 import type { TemplateTab } from '../context/TemplatesTypes'
 import { useOptionalStudioEmailHost } from '@/lib/email/studio-email-host'
+import { useStudioEmailRuntime } from '@/lib/email/use-studio-email-runtime'
 
 const TABS: { key: TemplateTab; label: string }[] = [
   { key: 'all', label: 'Todos' },
@@ -60,6 +61,7 @@ export function TemplatesContainer() {
   const router = useRouter()
   const params = useParams()
   const host = useOptionalStudioEmailHost()
+  const { readOnly } = useStudioEmailRuntime()
   const supabaseId = (host?.supabaseId ?? params.supabaseId) as string
   const [search, setSearch] = useState('')
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
@@ -120,7 +122,7 @@ export function TemplatesContainer() {
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
-        <Button onClick={handleCreateTemplate} disabled={isCreatingTemplate}>
+        <Button onClick={handleCreateTemplate} disabled={isCreatingTemplate || readOnly}>
           {isCreatingTemplate ? <Spinner data-icon="inline-start" /> : null}
           {isCreatingTemplate ? 'Abrindo...' : '+ Criar Template'}
         </Button>

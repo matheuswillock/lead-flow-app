@@ -50,12 +50,13 @@ export function BackofficeClientStudioEmailsPanel({
   teams,
   selectedTeamId,
   onSelectedTeamIdChange,
+  canManage,
 }: Props) {
   const [subSection, setSubSection] = useState<EmailSubSection>("campanhas")
   const teamId = selectedTeamId
   const host = useMemo(
-    () => (teamId ? createStudioEmailHost(masterId, teamId) : null),
-    [masterId, teamId]
+    () => (teamId ? createStudioEmailHost(masterId, teamId, { canManage }) : null),
+    [masterId, teamId, canManage]
   )
 
   if (teams.length === 0) {
@@ -97,7 +98,7 @@ export function BackofficeClientStudioEmailsPanel({
       {!teamId || !host ? (
         <p className="text-sm text-muted-foreground">Selecione um time para continuar.</p>
       ) : (
-        <StudioEmailHostProvider host={host}>
+        <StudioEmailHostProvider key={teamId} host={host}>
           <Tabs
             value={subSection}
             onValueChange={(value) => setSubSection(value as EmailSubSection)}

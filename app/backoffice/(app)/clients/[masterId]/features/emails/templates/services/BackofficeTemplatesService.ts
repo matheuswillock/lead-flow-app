@@ -1,11 +1,11 @@
 import type { Template } from "@/app/[supabaseId]/email/templates/features/context/TemplatesTypes"
 import type {
-  CreateTemplateData,
-  ITemplatesService,
-} from "@/app/[supabaseId]/email/templates/features/services/ITemplatesService"
+  StudioEmailCreateTemplateData,
+  StudioEmailTemplatesService,
+} from "@/lib/email/studio-email-service-contracts"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
-export class BackofficeTemplatesService implements ITemplatesService {
+export class BackofficeTemplatesService implements StudioEmailTemplatesService {
   private templatesPath(supabaseId: string, teamId: string | null | undefined): string {
     if (!teamId) throw new Error("teamId é obrigatório")
     return `${studioEmailBasePath(supabaseId, teamId)}/templates`
@@ -32,7 +32,7 @@ export class BackofficeTemplatesService implements ITemplatesService {
 
   async create(
     supabaseId: string,
-    data: CreateTemplateData,
+    data: StudioEmailCreateTemplateData,
     teamId?: string | null
   ): Promise<Template> {
     const response = await fetch(this.templatesPath(supabaseId, teamId), {

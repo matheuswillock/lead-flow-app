@@ -1,15 +1,15 @@
 import type { ContactList } from "@/app/[supabaseId]/email/contatos/features/context/ContatosTypes"
 import type {
-  CreateListData,
-  EmailContactImportEnqueueResult,
-  GetContactsResult,
-  IContatosService,
-  UploadCsvResult,
-} from "@/app/[supabaseId]/email/contatos/features/services/IContatosService"
+  StudioEmailContatosService,
+  StudioEmailCreateListData,
+  StudioEmailContactImportEnqueueResult,
+  StudioEmailGetContactsResult,
+  StudioEmailUploadCsvResult,
+} from "@/lib/email/studio-email-service-contracts"
 import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContactImportFields"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
-export class BackofficeContatosService implements IContatosService {
+export class BackofficeContatosService implements StudioEmailContatosService {
   constructor(
     private readonly masterId: string,
     private readonly teamId: string
@@ -24,7 +24,7 @@ export class BackofficeContatosService implements IContatosService {
     return parseStudioEmailOutput<ContactList[]>(response)
   }
 
-  async createList(data: CreateListData): Promise<ContactList> {
+  async createList(data: StudioEmailCreateListData): Promise<ContactList> {
     const response = await fetch(this.base(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -43,33 +43,33 @@ export class BackofficeContatosService implements IContatosService {
     page: number,
     pageSize: number,
     search: string
-  ): Promise<GetContactsResult> {
+  ): Promise<StudioEmailGetContactsResult> {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (search) params.set("search", search)
     const response = await fetch(`${this.base()}/${listId}/contacts?${params}`)
-    return parseStudioEmailOutput<GetContactsResult>(response)
+    return parseStudioEmailOutput<StudioEmailGetContactsResult>(response)
   }
 
-  async uploadCsv(listId: string, file: File): Promise<UploadCsvResult> {
+  async uploadCsv(listId: string, file: File): Promise<StudioEmailUploadCsvResult> {
     const formData = new FormData()
     formData.append("file", file)
     const response = await fetch(`${this.base()}/${listId}/upload`, {
       method: "POST",
       body: formData,
     })
-    return parseStudioEmailOutput<UploadCsvResult>(response)
+    return parseStudioEmailOutput<StudioEmailUploadCsvResult>(response)
   }
 
   async importMapped(
     listId: string,
     rows: EmailContactImportRow[]
-  ): Promise<EmailContactImportEnqueueResult> {
+  ): Promise<StudioEmailContactImportEnqueueResult> {
     const response = await fetch(`${this.base()}/${listId}/import/mapped`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rows }),
     })
-    return parseStudioEmailOutput<EmailContactImportEnqueueResult>(response)
+    return parseStudioEmailOutput<StudioEmailContactImportEnqueueResult>(response)
   }
 
   async deleteContact(listId: string, contactId: string): Promise<void> {

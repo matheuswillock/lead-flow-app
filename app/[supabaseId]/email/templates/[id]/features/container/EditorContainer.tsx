@@ -37,6 +37,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
 import type { EditorSidebar } from "../components/EditorSidebar";
 import { TemplateTestDialog } from "../components/TemplateTestDialog";
@@ -104,6 +105,7 @@ export function EditorContainer({
     rejectTemplate,
     sendTestTemplate,
   } = useTemplateEditorContext();
+  const { readOnly } = useStudioEmailRuntime();
 
   const isPublished = template?.status === "published";
   const isPending = template?.approvalStatus === "pending_approval";
@@ -159,9 +161,15 @@ export function EditorContainer({
     );
   }
 
-  const showSubmitButton = templateApprovalRequired && !isPublished && !isPending && (isApproved || isRejected);
-  const showApproveReject = isManager && isPending;
-  const showPublish = !isPublished && isApproved && !isPending && (!templateApprovalRequired || Boolean(template?.approvedAt));
+  const showSubmitButton =
+    !readOnly && templateApprovalRequired && !isPublished && !isPending && (isApproved || isRejected);
+  const showApproveReject = !readOnly && isManager && isPending;
+  const showPublish =
+    !readOnly &&
+    !isPublished &&
+    isApproved &&
+    !isPending &&
+    (!templateApprovalRequired || Boolean(template?.approvedAt));
   const pendingVariableReviewCount = draft.variables.filter((variable) => variable.reviewStatus === "pending").length;
   const hasPendingVariableReview = pendingVariableReviewCount > 0;
 
@@ -181,6 +189,8 @@ export function EditorContainer({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {!readOnly ? (
+            <>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -252,6 +262,10 @@ export function EditorContainer({
                 {isRejected ? "Reenviar para aprovação" : "Enviar para aprovação"}
               </Button>
             ) : null}
+            </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Modo somente leitura</p>
+            )}
           </div>
         </div>
         {error ? (

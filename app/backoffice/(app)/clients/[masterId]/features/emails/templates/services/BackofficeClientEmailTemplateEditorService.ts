@@ -5,14 +5,14 @@ import type {
   TemplateVersionItem,
 } from "@/app/[supabaseId]/email/templates/[id]/features/context/TemplateEditorTypes"
 import type {
-  EmailTemplateAssetUploadResult,
-  ITemplateEditorService,
-  XPostEmbedResult,
-} from "@/app/[supabaseId]/email/templates/[id]/features/services/ITemplateEditorService"
+  StudioEmailTemplateAssetUploadResult,
+  StudioEmailTemplateEditorService,
+  StudioEmailXPostEmbedResult,
+} from "@/lib/email/studio-email-service-contracts"
 import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
-export class BackofficeClientEmailTemplateEditorService implements ITemplateEditorService {
+export class BackofficeClientEmailTemplateEditorService implements StudioEmailTemplateEditorService {
   private templatesPath(supabaseId: string, teamId: string | null | undefined): string {
     if (!teamId) throw new Error("teamId é obrigatório")
     return `${studioEmailBasePath(supabaseId, teamId)}/templates`
@@ -193,7 +193,7 @@ export class BackofficeClientEmailTemplateEditorService implements ITemplateEdit
     return { assets: [] }
   }
 
-  async uploadAsset(): Promise<EmailTemplateAssetUploadResult> {
+  async uploadAsset(): Promise<StudioEmailTemplateAssetUploadResult> {
     throw new Error("Upload de imagens não disponível no backoffice")
   }
 
@@ -201,7 +201,7 @@ export class BackofficeClientEmailTemplateEditorService implements ITemplateEdit
     throw new Error("Exclusão de imagens não disponível no backoffice")
   }
 
-  async resolveXPostEmbed(): Promise<XPostEmbedResult> {
+  async resolveXPostEmbed(): Promise<StudioEmailXPostEmbedResult> {
     throw new Error("Embed de post do X não disponível no backoffice")
   }
 }

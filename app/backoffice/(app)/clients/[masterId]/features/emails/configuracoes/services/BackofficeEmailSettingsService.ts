@@ -6,14 +6,14 @@ import type {
   ResendDomainStatus,
 } from "@/app/[supabaseId]/email/configuracoes/features/context/EmailSettingsTypes"
 import type {
-  IEmailSettingsService,
-  UpdateEmailSettingsData,
-  UpsertEmailSenderData,
-  UpsertEmailVariableData,
-} from "@/app/[supabaseId]/email/configuracoes/features/services/IEmailSettingsService"
+  StudioEmailSettingsService,
+  StudioEmailUpdateSettingsData,
+  StudioEmailUpsertSenderData,
+  StudioEmailUpsertVariableData,
+} from "@/lib/email/studio-email-service-contracts"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
-export class BackofficeEmailSettingsService implements IEmailSettingsService {
+export class BackofficeEmailSettingsService implements StudioEmailSettingsService {
   constructor(
     private readonly masterId: string,
     private readonly teamId: string
@@ -28,7 +28,7 @@ export class BackofficeEmailSettingsService implements IEmailSettingsService {
     return parseStudioEmailOutput<EmailSettings>(response)
   }
 
-  async update(data: UpdateEmailSettingsData): Promise<EmailSettings> {
+  async update(data: StudioEmailUpdateSettingsData): Promise<EmailSettings> {
     const response = await fetch(this.base(), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -42,7 +42,7 @@ export class BackofficeEmailSettingsService implements IEmailSettingsService {
     return parseStudioEmailOutput<EmailSender[]>(response)
   }
 
-  async createSender(data: UpsertEmailSenderData): Promise<EmailSender> {
+  async createSender(data: StudioEmailUpsertSenderData): Promise<EmailSender> {
     const response = await fetch(`${this.base()}/senders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -51,7 +51,7 @@ export class BackofficeEmailSettingsService implements IEmailSettingsService {
     return parseStudioEmailOutput<EmailSender>(response)
   }
 
-  async updateSender(senderId: string, data: UpsertEmailSenderData): Promise<EmailSender> {
+  async updateSender(senderId: string, data: StudioEmailUpsertSenderData): Promise<EmailSender> {
     const response = await fetch(`${this.base()}/senders/${senderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -101,7 +101,7 @@ export class BackofficeEmailSettingsService implements IEmailSettingsService {
     return parseStudioEmailOutput<EmailGlobalVariable[]>(response)
   }
 
-  async createVariable(data: UpsertEmailVariableData): Promise<EmailGlobalVariable> {
+  async createVariable(data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable> {
     const response = await fetch(`${this.base()}/variables`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -112,7 +112,7 @@ export class BackofficeEmailSettingsService implements IEmailSettingsService {
 
   async updateVariable(
     variableId: string,
-    data: UpsertEmailVariableData
+    data: StudioEmailUpsertVariableData
   ): Promise<EmailGlobalVariable> {
     const response = await fetch(`${this.base()}/variables/${variableId}`, {
       method: "PATCH",

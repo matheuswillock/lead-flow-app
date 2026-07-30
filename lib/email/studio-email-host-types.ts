@@ -1,10 +1,12 @@
-import type { ICampanhasService } from "@/app/[supabaseId]/email/campanhas/features/services/ICampanhasService"
-import type { ICampaignAnalyticsService } from "@/app/[supabaseId]/email/campanhas/features/services/CampaignAnalyticsService"
-import type { IContatosService } from "@/app/[supabaseId]/email/contatos/features/services/IContatosService"
-import type { IEmailSettingsService } from "@/app/[supabaseId]/email/configuracoes/features/services/IEmailSettingsService"
-import type { IHistoricoService } from "@/app/[supabaseId]/email/historico/features/services/HistoricoService"
-import type { ITemplateEditorService } from "@/app/[supabaseId]/email/templates/[id]/features/services/ITemplateEditorService"
-import type { ITemplatesService } from "@/app/[supabaseId]/email/templates/features/services/ITemplatesService"
+import type {
+  StudioEmailCampanhasService,
+  StudioEmailCampaignAnalyticsService,
+  StudioEmailContatosService,
+  StudioEmailHistoricoService,
+  StudioEmailSettingsService,
+  StudioEmailTemplateEditorService,
+  StudioEmailTemplatesService,
+} from "@/lib/email/studio-email-service-contracts"
 
 export type StudioEmailHostRole = "manager" | "backoffice" | "operator"
 
@@ -12,6 +14,7 @@ export type StudioEmailHostFlags = {
   hideRadarSegments?: boolean
   bypassCreditsCheck?: boolean
   skipBetaGate?: boolean
+  readOnly?: boolean
 }
 
 export type StudioEmailHostHrefs = {
@@ -20,13 +23,13 @@ export type StudioEmailHostHrefs = {
 }
 
 export type StudioEmailHostServices = {
-  campanhas: ICampanhasService
-  contatos: IContatosService
-  templates: ITemplatesService
-  templateEditor: ITemplateEditorService
-  emailSettings: IEmailSettingsService
-  campaignAnalytics: ICampaignAnalyticsService
-  historico: IHistoricoService
+  campanhas: StudioEmailCampanhasService
+  contatos: StudioEmailContatosService
+  templates: StudioEmailTemplatesService
+  templateEditor: StudioEmailTemplateEditorService
+  emailSettings: StudioEmailSettingsService
+  campaignAnalytics: StudioEmailCampaignAnalyticsService
+  historico: StudioEmailHistoricoService
 }
 
 export type StudioEmailHost = {

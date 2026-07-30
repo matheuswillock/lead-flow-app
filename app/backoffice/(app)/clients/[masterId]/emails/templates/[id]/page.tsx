@@ -8,6 +8,7 @@ import { StudioEmailHostProvider } from "@/lib/email/studio-email-host"
 import { TemplateEditorProvider } from "@/app/[supabaseId]/email/templates/[id]/features/context/TemplateEditorContext"
 import { EditorContainer } from "@/app/[supabaseId]/email/templates/[id]/features/container/EditorContainer"
 import { createStudioEmailHost } from "../../../features/emails/createStudioEmailHost"
+import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 export default function BackofficeClientEmailTemplateEditorPage() {
   const params = useParams<{ masterId: string; id: string }>()
@@ -15,10 +16,12 @@ export default function BackofficeClientEmailTemplateEditorPage() {
   const teamId = searchParams.get("teamId")
   const masterId = params.masterId
   const templateId = params.id
+  const { user } = useBackofficeUser()
+  const canManage = !user?.isOperator
 
   const host = useMemo(
-    () => (teamId ? createStudioEmailHost(masterId, teamId) : null),
-    [masterId, teamId]
+    () => (teamId ? createStudioEmailHost(masterId, teamId, { canManage }) : null),
+    [masterId, teamId, canManage]
   )
 
   if (!teamId || !host) {
@@ -43,7 +46,7 @@ export default function BackofficeClientEmailTemplateEditorPage() {
           Voltar à lista
         </Link>
       </div>
-      <StudioEmailHostProvider host={host}>
+      <StudioEmailHostProvider key={teamId} host={host}>
         <TemplateEditorProvider supabaseId={masterId} templateId={templateId}>
           <EditorContainer />
         </TemplateEditorProvider>

@@ -3,7 +3,7 @@ import type {
   AnalyticsPeriod,
   DispatchPreviewData,
 } from "@/app/[supabaseId]/email/campanhas/features/components/analytics/AnalyticsTypes"
-import type { ICampaignAnalyticsService } from "@/app/[supabaseId]/email/campanhas/features/services/CampaignAnalyticsService"
+import type { StudioEmailCampaignAnalyticsService } from "@/lib/email/studio-email-service-contracts"
 import { addDaysInTz, addMonthsInTz, startOfDayInTz } from "@/lib/dates"
 import { parseStudioEmailOutput, studioEmailBasePath } from "@/lib/email/backoffice-studio-email-api"
 
@@ -17,7 +17,7 @@ function periodToDateRange(period: AnalyticsPeriod, tz: string): { from: string;
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
-export class BackofficeCampaignAnalyticsService implements ICampaignAnalyticsService {
+export class BackofficeCampaignAnalyticsService implements StudioEmailCampaignAnalyticsService {
   constructor(
     private readonly masterId: string,
     private readonly teamId: string

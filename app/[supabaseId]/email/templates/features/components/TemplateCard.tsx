@@ -35,6 +35,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import type { Template } from '../context/TemplatesTypes'
 import { useOptionalStudioEmailHost } from '@/lib/email/studio-email-host'
+import { useStudioEmailRuntime } from '@/lib/email/use-studio-email-runtime'
 
 function getBannerGradientIndex(id: string): number {
   const sum = id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
@@ -111,6 +112,7 @@ export function TemplateCard({
   const router = useRouter()
   const params = useParams()
   const host = useOptionalStudioEmailHost()
+  const { readOnly } = useStudioEmailRuntime()
   const supabaseId = (host?.supabaseId ?? params.supabaseId) as string
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -149,8 +151,10 @@ export function TemplateCard({
     setReviewNote('')
   }
 
-  const showSubmitButton = templateApprovalRequired && !isPublished && !isPending && (isDraft || isRejectedStatus)
+  const showSubmitButton =
+    !readOnly && templateApprovalRequired && !isPublished && !isPending && (isDraft || isRejectedStatus)
   const showApproveReject = isManager && isPending
+  const showMutationMenu = !readOnly
 
   return (
     <>
@@ -187,6 +191,7 @@ export function TemplateCard({
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <StatusBadge template={template} />
+              {showMutationMenu ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -253,6 +258,7 @@ export function TemplateCard({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              ) : null}
             </div>
           </div>
 

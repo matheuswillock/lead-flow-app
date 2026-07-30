@@ -39,6 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useContactsContext } from "../context/ContactsContext"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import type { Contact } from "../context/ContatosTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
@@ -197,6 +198,7 @@ function DeleteContactDialog({
 
 export function ContactsTable() {
   const { tz } = useTimezone()
+  const { readOnly: hostReadOnly } = useStudioEmailRuntime()
   const {
     contacts,
     lists,
@@ -213,6 +215,7 @@ export function ContactsTable() {
 
   const selectedList = lists.find((list) => list.id === selectedListId) ?? null
   const isBlocklist = Boolean(selectedList?.isBlocklist)
+  const readOnly = hostReadOnly || isBlocklist
   const columnCount = isBlocklist ? 6 : 5
 
   return (
@@ -278,7 +281,7 @@ export function ContactsTable() {
                   <TableCell className="text-right">
                     <DeleteContactDialog
                       contact={contact}
-                      readOnly={isBlocklist}
+                      readOnly={readOnly}
                       showUnsubscribeSource={isBlocklist}
                       onConfirm={() => handleDeleteContact(contact.id)}
                     />

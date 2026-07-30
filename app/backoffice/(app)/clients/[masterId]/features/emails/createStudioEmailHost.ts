@@ -7,11 +7,16 @@ import { BackofficeHistoricoService } from "./historico/services/BackofficeHisto
 import { BackofficeClientEmailTemplateEditorService } from "./templates/services/BackofficeClientEmailTemplateEditorService"
 import { BackofficeTemplatesService } from "./templates/services/BackofficeTemplatesService"
 
-export function createStudioEmailHost(masterId: string, teamId: string): StudioEmailHost {
+export function createStudioEmailHost(
+  masterId: string,
+  teamId: string,
+  options?: { canManage?: boolean }
+): StudioEmailHost {
+  const canManage = options?.canManage ?? true
   return {
     supabaseId: masterId,
     teamId,
-    activeRole: "manager",
+    activeRole: canManage ? "manager" : "operator",
     services: {
       campanhas: new BackofficeCampanhasService(),
       contatos: new BackofficeContatosService(masterId, teamId),
@@ -30,6 +35,7 @@ export function createStudioEmailHost(masterId: string, teamId: string): StudioE
       hideRadarSegments: true,
       bypassCreditsCheck: true,
       skipBetaGate: true,
+      readOnly: !canManage,
     },
   }
 }

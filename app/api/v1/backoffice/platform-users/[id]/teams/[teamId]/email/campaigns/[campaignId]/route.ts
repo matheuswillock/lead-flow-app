@@ -60,3 +60,21 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return studioEmailJson(new Output(false, [], ["Erro interno"], null), 500)
   }
 }
+
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const all = await params
+    const resolved = await resolveStudioEmailActor(request, Promise.resolve(all))
+    if (resolved.error) return resolved.error
+
+    const output = await backofficeStudioEmailUseCase.deleteCampaignDraft(
+      resolved.actor,
+      all.campaignId
+    )
+    return studioEmailJson(output, output.isValid ? 200 : 400)
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[BackofficeStudioEmailCampaignByIdRoute][DELETE]", error)
+    return studioEmailJson(new Output(false, [], ["Erro interno"], null), 500)
+  }
+}

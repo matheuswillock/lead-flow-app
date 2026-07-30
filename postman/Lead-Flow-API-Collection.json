@@ -10425,6 +10425,51 @@
                   }
                 },
                 {
+                  "name": "DELETE Studio Email Campaign Draft",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{backofficeSupabaseId}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams/:teamId/email/campaigns/:campaignId",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "backoffice",
+                        "platform-users",
+                        ":masterId",
+                        "teams",
+                        ":teamId",
+                        "email",
+                        "campaigns",
+                        ":campaignId"
+                      ],
+                      "variable": [
+                        {
+                          "key": "masterId",
+                          "value": "{{masterProfileId}}"
+                        },
+                        {
+                          "key": "teamId",
+                          "value": "{{teamId}}"
+                        },
+                        {
+                          "key": "campaignId",
+                          "value": "{{emailCampaignId}}"
+                        }
+                      ]
+                    },
+                    "description": "Remove rascunho de campanha do time do cliente (manager backoffice)."
+                  }
+                },
+                {
                   "name": "GET Studio Email Contact Lists",
                   "request": {
                     "method": "GET",

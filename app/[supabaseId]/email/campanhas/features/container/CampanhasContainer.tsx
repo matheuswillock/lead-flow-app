@@ -16,6 +16,7 @@ import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
 import type { ComponentType } from "react"
 import { CampaignDetailSheet } from "../components/CampaignDetailSheet"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 type AnalyticsDialogProps = {
   open: boolean
@@ -48,6 +49,7 @@ export function CampanhasContainer({
 }: {
   AnalyticsDialogComponent?: ComponentType<AnalyticsDialogProps>
 }) {
+  const { readOnly } = useStudioEmailRuntime()
   const {
     statusFilter,
     nameFilter,
@@ -109,7 +111,7 @@ export function CampanhasContainer({
             <BarChart3 data-icon="inline-start" />
             Métricas
           </Button>
-          <Button size="sm" onClick={() => void openWizard()}>
+          <Button size="sm" onClick={() => void openWizard()} disabled={readOnly}>
             + Nova Campanha
           </Button>
         </div>
