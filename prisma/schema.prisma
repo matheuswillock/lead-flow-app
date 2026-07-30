@@ -4991,6 +4991,12 @@ enum PublicFormSubmissionStatus {
   failed
 }
 
+enum PublicFormCompletionStatus {
+  initial
+  partial
+  complete
+}
+
 enum PublicFormMetricType {
   form_viewed
   form_started
@@ -5051,6 +5057,8 @@ model PublicForm {
   successTitle              String                     @default("Respostas enviadas") @db.Text
   successDescription        String?                    @db.Text
   successActions            Json?
+  thankYouPages             Json?
+  defaultThankYouPageId     String?                    @db.Uuid
   useDefaultTheme           Boolean                    @default(true)
   backgroundColor           String?                    @db.VarChar(7)
   textColor                 String?                    @db.VarChar(7)
@@ -5148,6 +5156,7 @@ model PublicFormRule {
   formId           String                 @db.Uuid
   sourceQuestionId String                 @db.Uuid
   targetQuestionId String?                @db.Uuid
+  targetThankYouPageId String?            @db.Uuid
   operator         PublicFormRuleOperator
   comparisonValue  Json?
   action           PublicFormRuleAction
@@ -5203,9 +5212,11 @@ model PublicFormSubmission {
   id             String                     @id @default(uuid()) @db.Uuid
   formId         String                     @db.Uuid
   publicationId  String                     @db.Uuid
-  leadId         String?                    @db.Uuid
-  requestKey     String                     @unique @db.Text
-  status         PublicFormSubmissionStatus @default(processing)
+  leadId             String?                    @db.Uuid
+  requestKey         String                     @unique @db.Text
+  visitorSessionId   String?                    @db.Text
+  completionStatus   PublicFormCompletionStatus @default(initial)
+  status             PublicFormSubmissionStatus @default(processing)
   score          Int                        @default(0)
   scoreBandLabel String?                    @db.Text
   origin         Json?
@@ -5221,6 +5232,7 @@ model PublicFormSubmission {
   @@index([formId, createdAt(sort: Desc)])
   @@index([publicationId, createdAt(sort: Desc)])
   @@index([leadId, submittedAt(sort: Desc)])
+  @@index([publicationId, visitorSessionId])
   @@map("corretor_studio_public_form_submissions")
 }
 

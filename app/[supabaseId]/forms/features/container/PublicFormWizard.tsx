@@ -24,8 +24,14 @@ import type {
   PublicFormScorePolarity,
   PublicFormSnapshot,
   PublicFormSuccessAction,
+  PublicFormThankYouPage,
 } from "@/lib/public-forms/types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
+import {
+  createDefaultThankYouPage,
+  normalizeThankYouPages,
+  thankYouPageLabel,
+} from "@/lib/public-forms/thank-you-pages"
 import {
   rebalanceAfterQuestionWeightEdit,
   redistributeQuestionScoresEvenly,
@@ -107,6 +113,8 @@ const steps = [
   "Revisar",
 ] as const
 
+const defaultThankYouPageSeed = createDefaultThankYouPage()
+
 const emptyDraft: PublicFormDraftInput = {
   name: "",
   description: null,
@@ -117,9 +125,11 @@ const emptyDraft: PublicFormDraftInput = {
   coverBadge: null,
   coverHighlights: [],
   ctaLabel: "Começar",
-  successTitle: "Respostas enviadas",
-  successDescription: "Obrigado pelo seu interesse.",
+  successTitle: defaultThankYouPageSeed.title,
+  successDescription: defaultThankYouPageSeed.description,
   successActions: [],
+  thankYouPages: [defaultThankYouPageSeed],
+  defaultThankYouPageId: defaultThankYouPageSeed.id,
   useDefaultTheme: true,
   backgroundColor: "#FFFFFF",
   textColor: "#18181B",
@@ -188,14 +198,21 @@ function ruleActionLabel(action: PublicFormRuleAction): string {
   return action === "show" ? "Exibir" : "Pular"
 }
 
-function questionTitleById(questions: PublicFormQuestionInput[], id: string): string {
-  if (id === PUBLIC_FORM_THANK_YOU_TARGET) return "página de agradecimentos"
+function questionTitleById(
+  questions: PublicFormQuestionInput[],
+  id: string,
+  draft?: PublicFormDraftInput,
+  thankYouPageId?: string | null,
+): string {
+  if (id === PUBLIC_FORM_THANK_YOU_TARGET) {
+    return thankYouPageLabel(draft ?? emptyDraft, thankYouPageId)
+  }
   return questions.find((q) => q.id === id)?.title?.trim() || "pergunta"
 }
 
-function buildRuleSentence(rule: PublicFormRuleInput, questions: PublicFormQuestionInput[]): string {
-  const source = questionTitleById(questions, rule.sourceQuestionId)
-  const target = questionTitleById(questions, rule.targetQuestionId)
+function buildRuleSentence(rule: PublicFormRuleInput, questions: PublicFormQuestionInput[], draft: PublicFormDraftInput): string {
+  const source = questionTitleById(questions, rule.sourceQuestionId, draft)
+  const target = questionTitleById(questions, rule.targetQuestionId, draft, rule.targetThankYouPageId)
   const value =
     rule.comparisonValue === undefined || rule.comparisonValue === null || rule.comparisonValue === ""
       ? "…"
@@ -221,10 +238,33 @@ function reorderPages(
 }
 
 function buildSavePayload(draft: PublicFormDraftInput): PublicFormDraftInput {
-  return {
+  return normalizeThankYouPages({
     ...draft,
     name: draft.name.trim(),
     description: draft.description?.trim() || null,
+  })
+}
+
+function syncThankYouPage(
+  pages: PublicFormThankYouPage[],
+  pageId: string,
+  patch: Partial<PublicFormThankYouPage>,
+): PublicFormThankYouPage[] {
+  return pages.map((page) => (page.id === pageId ? { ...page, ...patch } : page))
+}
+
+function syncThankYouDraft(
+  pages: PublicFormThankYouPage[],
+  defaultThankYouPageId: string,
+): Partial<PublicFormDraftInput> {
+  const defaultPage = pages.find((page) => page.id === defaultThankYouPageId) ?? pages[0]
+  if (!defaultPage) return { thankYouPages: pages, defaultThankYouPageId }
+  return {
+    thankYouPages: pages.map((page) => ({ ...page, isDefault: page.id === defaultPage.id })),
+    defaultThankYouPageId: defaultPage.id,
+    successTitle: defaultPage.title,
+    successDescription: defaultPage.description,
+    successActions: defaultPage.actions,
   }
 }
 
@@ -753,30 +793,130 @@ function Thanks({
   draft: PublicFormDraftInput
   change: (p: Partial<PublicFormDraftInput>) => void
 }) {
-  const actions = d.successActions ?? []
+  const pages = d.thankYouPages?.length ? d.thankYouPages : [createDefaultThankYouPage()]
+  const [activePageId, setActivePageId] = useState(
+    () => d.defaultThankYouPageId || pages[0]?.id || "",
+  )
+  const activePage = pages.find((page) => page.id === activePageId) ?? pages[0]!
+  const actions = activePage.actions ?? []
+
+  function applyPages(nextPages: PublicFormThankYouPage[], defaultId = activePageId) {
+    change(syncThankYouDraft(nextPages, defaultId))
+  }
+
+  function updateActivePage(patch: Partial<PublicFormThankYouPage>) {
+    applyPages(syncThankYouPage(pages, activePage.id, patch))
+  }
 
   function updateAction(id: string, patch: Partial<PublicFormSuccessAction>) {
-    change({
-      successActions: actions.map((action) =>
-        action.id === id ? { ...action, ...patch } : action,
-      ),
+    updateActivePage({
+      actions: actions.map((action) => (action.id === id ? { ...action, ...patch } : action)),
     })
   }
 
   return (
     <FieldGroup>
+      <div className="flex flex-wrap items-center gap-2">
+        {pages.map((page) => (
+          <Button
+            key={page.id}
+            type="button"
+            size="sm"
+            variant={page.id === activePage.id ? "default" : "outline"}
+            onClick={() => setActivePageId(page.id)}
+          >
+            {page.name}
+            {page.isDefault ? " (padrão)" : ""}
+          </Button>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const page = createDefaultThankYouPage({
+              name: `Página ${pages.length + 1}`,
+              isDefault: false,
+            })
+            const next = [...pages, page]
+            setActivePageId(page.id)
+            applyPages(next, d.defaultThankYouPageId)
+          }}
+        >
+          <Plus data-icon="inline-start" />
+          Nova página
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={activePage.isDefault ? "default" : "outline"}
+          onClick={() => applyPages(pages, activePage.id)}
+        >
+          Definir como padrão
+        </Button>
+        {pages.length > 1 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const next = pages.filter((page) => page.id !== activePage.id)
+              const defaultId =
+                activePage.isDefault && next[0] ? next[0].id : d.defaultThankYouPageId
+              setActivePageId(next[0]?.id ?? "")
+              applyPages(next, defaultId)
+            }}
+          >
+            <Trash2 data-icon="inline-start" />
+            Remover página
+          </Button>
+        ) : null}
+      </div>
+      <Field>
+        <FieldLabel>Nome interno da página</FieldLabel>
+        <FieldContent>
+          <Input
+            value={activePage.name}
+            onChange={(e) => updateActivePage({ name: e.target.value })}
+          />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel>Tipo</FieldLabel>
+        <FieldContent>
+          <Select
+            value={activePage.kind ?? "standard"}
+            onValueChange={(value) =>
+              updateActivePage({ kind: value as PublicFormThankYouPage["kind"] })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="standard">Padrão</SelectItem>
+              <SelectItem value="simulation">Simulação</SelectItem>
+            </SelectContent>
+          </Select>
+        </FieldContent>
+      </Field>
       <Field>
         <FieldLabel>Título de conclusão</FieldLabel>
         <FieldContent>
-          <Input value={d.successTitle} onChange={(e) => change({ successTitle: e.target.value })} />
+          <Input
+            value={activePage.title}
+            onChange={(e) => updateActivePage({ title: e.target.value })}
+          />
         </FieldContent>
       </Field>
       <Field>
         <FieldLabel>Mensagem de conclusão</FieldLabel>
         <FieldContent>
           <Textarea
-            value={d.successDescription ?? ""}
-            onChange={(e) => change({ successDescription: e.target.value })}
+            value={activePage.description ?? ""}
+            onChange={(e) => updateActivePage({ description: e.target.value })}
           />
         </FieldContent>
       </Field>
@@ -861,7 +1001,9 @@ function Thanks({
               type="button"
               variant="ghost"
               onClick={() =>
-                change({ successActions: actions.filter((item) => item.id !== action.id) })
+                updateActivePage({
+                  actions: actions.filter((item) => item.id !== action.id),
+                })
               }
             >
               <Trash2 data-icon="inline-start" />
@@ -874,8 +1016,8 @@ function Thanks({
           variant="outline"
           disabled={actions.length >= 6}
           onClick={() =>
-            change({
-              successActions: [
+            updateActivePage({
+              actions: [
                 ...actions,
                 {
                   id: crypto.randomUUID(),
@@ -1733,7 +1875,7 @@ function Rules({
         const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
         return (
           <div className="flex flex-col gap-3 rounded-lg border p-4" key={rule.id}>
-            <p className="text-sm text-muted-foreground">{buildRuleSentence(rule, d.questions)}</p>
+            <p className="text-sm text-muted-foreground">{buildRuleSentence(rule, d.questions, d)}</p>
             <div className="grid gap-3">
               <Field>
                 <FieldLabel>Se — pergunta</FieldLabel>
@@ -1838,7 +1980,15 @@ function Rules({
                   <FieldContent>
                     <Select
                       value={rule.targetQuestionId}
-                      onValueChange={(v) => updateRule(rule.id!, { targetQuestionId: v })}
+                      onValueChange={(v) =>
+                        updateRule(rule.id!, {
+                          targetQuestionId: v,
+                          targetThankYouPageId:
+                            v === PUBLIC_FORM_THANK_YOU_TARGET
+                              ? (rule.targetThankYouPageId ?? null)
+                              : null,
+                        })
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -1856,6 +2006,31 @@ function Rules({
                     </Select>
                   </FieldContent>
                 </Field>
+                {rule.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET ? (
+                  <Field>
+                    <FieldLabel>Página de agradecimentos</FieldLabel>
+                    <FieldContent>
+                      <Select
+                        value={rule.targetThankYouPageId ?? d.defaultThankYouPageId}
+                        onValueChange={(v) =>
+                          updateRule(rule.id!, { targetThankYouPageId: v })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(d.thankYouPages ?? []).map((page) => (
+                            <SelectItem key={page.id} value={page.id}>
+                              {page.name}
+                              {page.isDefault ? " (padrão)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FieldContent>
+                  </Field>
+                ) : null}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field>
@@ -2337,8 +2512,8 @@ function Review({
       step: 2,
     },
     {
-      ok: Boolean(d.successTitle.trim()),
-      text: "Título de agradecimento definido",
+      ok: (d.thankYouPages?.length ?? 0) > 0 && Boolean(d.defaultThankYouPageId),
+      text: "Página de agradecimento definida",
       step: 3,
     },
   ]

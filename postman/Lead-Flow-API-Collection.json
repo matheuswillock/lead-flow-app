@@ -10846,6 +10846,37 @@
                       ]
                     }
                   }
+                },
+                {
+                  "name": "POST Public Form Progress",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"visitorSessionId\": \"{{publicFormVisitorSessionId}}\",\n  \"answers\": [\n    {\n      \"questionId\": \"{{publicFormQuestionId}}\",\n      \"value\": \"Maria Silva\"\n    }\n  ],\n  \"origin\": {\n    \"utm_source\": \"postman\"\n  }\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/public-forms/:publicId/progress",
+                      "host": ["{{baseUrl}}"],
+                      "path": [
+                        "api",
+                        "v1",
+                        "public-forms",
+                        ":publicId",
+                        "progress"
+                      ],
+                      "variable": [
+                        { "key": "publicId", "value": "{{publicFormPublicId}}" }
+                      ]
+                    },
+                    "description": "Salva progresso parcial do formulário público (status inicial/parcial, upsert de lead quando há identidade)."
+                  }
                 }
               ]
             }
