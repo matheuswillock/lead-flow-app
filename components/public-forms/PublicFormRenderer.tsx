@@ -294,7 +294,11 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     for (const item of pageQuestions) {
       track("question_answered", item.id)
     }
-    await saveProgress()
+    try {
+      await saveProgress()
+    } catch (error) {
+      console.error("[PublicFormRenderer][goNext] Falha ao salvar progresso", error)
+    }
     if (shouldGoToThankYou(snapshot, answerList)) {
       await submit()
       return
