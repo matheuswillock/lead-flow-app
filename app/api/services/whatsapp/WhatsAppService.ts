@@ -889,7 +889,7 @@ class WhatsAppService implements IWhatsAppService {
             config: { connect: { id: config.id } },
             providerMessageId: item.providerMessageId,
             direction,
-            messageType: item.content.messageType,
+            messageType: item.content.messageType as import("@prisma/client").WhatsAppMessageType,
             status: item.fromMe ? "SENT" : "RECEIVED",
             contentText: item.content.contentText,
             mediaUrl: item.content.mediaUrl,

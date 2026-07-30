@@ -135,4 +135,17 @@ export interface IEvoApiService {
   disconnectInstance(instanceName: string): Promise<void>
 
   deleteInstance(instanceName: string): Promise<void>
+
+  sendReaction(params: {
+    instanceName: string
+    key: { remoteJid: string; fromMe: boolean; id: string }
+    reaction: string
+  }): Promise<void>
+
+  deleteMessage(params: {
+    instanceName: string
+    remoteJid: string
+    messageId: string
+    fromMe: boolean
+  }): Promise<void>
 }

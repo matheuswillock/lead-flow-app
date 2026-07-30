@@ -13,6 +13,7 @@ import {
   extractLeadDataFromSnapshot,
   type ExtractedLeadData,
 } from "@/lib/public-forms/lead-identity"
+import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
 import type {
   PublicFormAnswerInput,
   PublicFormSnapshot,
@@ -89,9 +90,10 @@ export async function upsertLeadFromFormAnswers(input: {
 
   if (match) {
     if (!canUpdateLeadFromExtracted(extracted)) return null
+    const notes = mergeFormMappedLeadNotes(match.notes, input.snapshot, extracted.notes)
     const lead = await publicFormsRepository.updateLead(match.id, {
       ...extracted.native,
-      notes: extracted.notes.join("\n") || match.notes,
+      notes,
       updatedBy: input.form.team.master.id,
     })
     for (const [key, value] of Object.entries(extracted.custom)) {

@@ -229,6 +229,7 @@ export interface InboxState {
   allUnreadTotal: number
   mineUnreadTotal: number
   replyTarget: WhatsAppMessage | null
+  contactIsTyping: boolean
 }
 
 export interface SendMessageMediaInput {

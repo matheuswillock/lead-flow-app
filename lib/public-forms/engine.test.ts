@@ -298,4 +298,119 @@ describe("motor dos formulários públicos", () => {
       defaultThanks.id,
     )
   })
+
+  it("pula perguntas intermediárias com jump_to (cenário simulador de saúde)", () => {
+    const planoId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    const operadoraId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    const valorId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    const idadesId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    const draft: PublicFormDraftInput = {
+      ...form(),
+      questions: [
+        {
+          id: planoId,
+          type: "boolean",
+          title: "Já possui plano de saúde?",
+          required: true,
+          scoreWeight: 25,
+          options: [],
+        },
+        {
+          id: operadoraId,
+          type: "health_plan",
+          title: "Qual é a sua operadora atual?",
+          required: true,
+          scoreWeight: 25,
+          options: [{ value: "unimed", label: "Unimed", score: 0, scorePolarity: "positive" }],
+        },
+        {
+          id: valorId,
+          type: "currency",
+          title: "Qual é o valor atual do plano?",
+          required: false,
+          scoreWeight: 25,
+          options: [],
+        },
+        {
+          id: idadesId,
+          type: "text",
+          title: "Quais são as idades dos beneficiários?",
+          required: true,
+          scoreWeight: 25,
+          options: [],
+        },
+      ],
+      rules: [
+        {
+          sourceQuestionId: planoId,
+          targetQuestionId: idadesId,
+          operator: "equals",
+          comparisonValue: "Não",
+          action: "jump_to",
+          elseAction: "show",
+        },
+      ],
+    }
+
+    expect(
+      resolveVisibleQuestionIds(draft, [{ questionId: planoId, value: "nao" }]),
+    ).toEqual([planoId, idadesId])
+    expect(
+      resolveVisibleQuestionIds(draft, [{ questionId: planoId, value: "sim" }]),
+    ).toEqual([planoId, operadoraId, valorId, idadesId])
+  })
+
+  it("normaliza comparação boolean com acento e maiúsculas", () => {
+    const draft = form()
+    draft.questions[0] = {
+      ...draft.questions[0],
+      type: "boolean",
+      options: [],
+    }
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: targetId,
+        operator: "equals",
+        comparisonValue: "Não",
+        action: "skip",
+        elseAction: "show",
+      },
+    ]
+    expect(
+      resolveVisibleQuestionIds(draft, [{ questionId: sourceId, value: "nao" }]),
+    ).toEqual([sourceId])
+  })
+
+  it("aceita moeda opcional vazia ou zero", () => {
+    const currencyQuestion = {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      type: "currency" as const,
+      title: "Valor",
+      required: false,
+      scoreWeight: 0,
+      options: [],
+    }
+    expect(validateAnswer(currencyQuestion, "")).toBeNull()
+    expect(validateAnswer(currencyQuestion, "0,00")).toBeNull()
+    expect(validateAnswer(currencyQuestion, 0)).toBeNull()
+    expect(validateAnswer(currencyQuestion, "abc")).toBe("Informe um valor válido")
+    expect(validateAnswer({ ...currencyQuestion, required: true }, "0,00")).toBe(
+      "Informe um valor válido",
+    )
+  })
+
+  it("valida e-mail quando mappingKey é email em pergunta de texto", () => {
+    const emailAsText = {
+      id: targetId,
+      type: "text" as const,
+      title: "E-mail",
+      required: true,
+      scoreWeight: 0,
+      mappingKey: "email",
+      options: [],
+    }
+    expect(validateAnswer(emailAsText, "invalido")).toBe("Informe um e-mail válido")
+    expect(validateAnswer(emailAsText, "a@b.com")).toBeNull()
+  })
 })

@@ -14,8 +14,9 @@ import type {
   EmailSettings,
   ResendDomainStatus,
 } from "./EmailSettingsTypes"
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 
-const service = new EmailSettingsService()
+const defaultService = new EmailSettingsService()
 
 export type EmailSettingsHookReturn = {
   settings: EmailSettings | null
@@ -84,6 +85,8 @@ export type EmailSettingsHookReturn = {
 }
 
 export function useEmailSettings(): EmailSettingsHookReturn {
+  const host = useOptionalStudioEmailHost()
+  const service = host?.services.emailSettings ?? defaultService
   const [settings, setSettings] = useState<EmailSettings | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)

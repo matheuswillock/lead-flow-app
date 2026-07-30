@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Braces, ChevronLeft, ChevronRight, ClipboardList, Clock3, ImageIcon, Lightbulb, PanelLeftClose, PanelLeftOpen, Video, AtSign } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, ClipboardList, Clock3, ImageIcon, Lightbulb, MailX, PanelLeftClose, PanelLeftOpen, Video, AtSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +20,12 @@ import type { SidebarSection } from "./EditorStudioTypes";
 import { EmailCreationTipsPanel } from "./EmailCreationTipsPanel";
 import { EmailTemplateAssetsPanel } from "./EmailTemplateAssetsPanel";
 import { EmailTemplateFormsPanel } from "./EmailTemplateFormsPanel";
+import { EmailTemplateUnsubscribePanel } from "./EmailTemplateUnsubscribePanel";
 import { EmailTemplateVideosPanel } from "./EmailTemplateVideosPanel";
 import { EmailTemplateXPostPanel } from "./EmailTemplateXPostPanel";
 import { TemplateHistoryPanel } from "./TemplateHistoryPanel";
 import { VariablesPanel } from "./VariablesPanel";
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
 
 const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   variables: "Variáveis",
@@ -33,6 +35,7 @@ const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   videos: "Vídeos",
   "x-post": "Post do X",
   forms: "Formulários",
+  unsubscribe: "Descadastro",
 };
 
 interface EditorSidebarProps {
@@ -43,6 +46,8 @@ interface EditorSidebarProps {
 
 export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorSidebarProps) {
   const { draft, versions, restoringVersionId, restoreTemplateVersion } = useTemplateEditorContext();
+  const host = useOptionalStudioEmailHost();
+  const isStudioHost = Boolean(host);
 
   const [section, setSection] = useState<SidebarSection>("menu");
 
@@ -133,6 +138,8 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             </span>
           </Button>
 
+          {!isStudioHost ? (
+            <>
           <Button
             type="button"
             variant="outline"
@@ -181,6 +188,21 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             <span className="flex items-center gap-2">
               <ClipboardList data-icon="inline-start" />
               Formulários
+            </span>
+            <ChevronRight />
+          </Button>
+            </>
+          ) : null}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-between px-3 py-3"
+            onClick={() => setSection("unsubscribe")}
+          >
+            <span className="flex items-center gap-2">
+              <MailX data-icon="inline-start" />
+              Descadastro
             </span>
             <ChevronRight />
           </Button>
@@ -251,6 +273,7 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
         {section === "videos" ? <EmailTemplateVideosPanel embedded /> : null}
         {section === "x-post" ? <EmailTemplateXPostPanel embedded /> : null}
         {section === "forms" ? <EmailTemplateFormsPanel embedded /> : null}
+        {section === "unsubscribe" ? <EmailTemplateUnsubscribePanel embedded /> : null}
       </div>
     </EditorFloatingPanel>
   );

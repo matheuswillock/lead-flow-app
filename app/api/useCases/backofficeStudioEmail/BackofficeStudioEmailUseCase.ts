@@ -5,6 +5,7 @@ import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import {
   EmailCampaignUseCase,
   type CreateCampaignInput,
+  type ManualDispatchJob,
 } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
 import { EmailContactImportUseCase } from "@/app/api/useCases/email/EmailContactImportUseCase"
@@ -171,6 +172,26 @@ export class BackofficeStudioEmailUseCase {
       await stampCampaignTree(campaignId, actor.access.backofficeUserId, resolved.ctx.teamId)
     }
     return decorateOutput(output)
+  }
+
+  async startManualDispatch(actor: StudioEmailActor, campaignId: string): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    const output = await this.campaigns.startManualDispatch(campaignId, resolved.ctx)
+    if (output.isValid) {
+      await stampCampaignTree(campaignId, actor.access.backofficeUserId, resolved.ctx.teamId)
+    }
+    return decorateOutput(output)
+  }
+
+  async completeManualDispatch(job: ManualDispatchJob): Promise<Output> {
+    return decorateOutput(await this.campaigns.completeManualDispatch(job))
+  }
+
+  async deleteCampaignDraft(actor: StudioEmailActor, campaignId: string): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    return decorateOutput(await this.campaigns.deleteDraft(campaignId, resolved.ctx))
   }
 
   async cancelCampaign(actor: StudioEmailActor, campaignId: string): Promise<Output> {
@@ -383,6 +404,16 @@ export class BackofficeStudioEmailUseCase {
     const resolved = await resolveCtx(actor)
     if (resolved.error) return resolved.error
     const output = await this.templates.publish(templateId, resolved.ctx)
+    if (output.isValid) {
+      await stampTemplate(templateId, actor.access.backofficeUserId)
+    }
+    return decorateOutput(output)
+  }
+
+  async unpublishTemplate(actor: StudioEmailActor, templateId: string): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    const output = await this.templates.unpublish(templateId, resolved.ctx)
     if (output.isValid) {
       await stampTemplate(templateId, actor.access.backofficeUserId)
     }

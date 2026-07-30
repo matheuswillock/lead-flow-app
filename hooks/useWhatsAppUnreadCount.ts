@@ -47,6 +47,8 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
     void fetchCount()
   }, [enabled, activeTeamId, fetchCount])
 
+  // When on the /whatsapp page, useWhatsAppRealtime already holds the channel
+  // and dispatches this event — avoids a redundant HTTP fetch on every event.
   useEffect(() => {
     if (!enabled) return
     const onUnreadChanged = () => void fetchCount()
@@ -54,6 +56,8 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
     return () => window.removeEventListener(WHATSAPP_UNREAD_CHANGED_EVENT, onUnreadChanged)
   }, [enabled, fetchCount])
 
+  // Standalone Realtime channel so the sidebar badge updates on all routes,
+  // not only while the /whatsapp page provider is mounted.
   useEffect(() => {
     if (!enabled || !activeTeamId) return
 

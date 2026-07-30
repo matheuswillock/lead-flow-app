@@ -1,5 +1,6 @@
 "use client"
 
+import { memo } from "react"
 import { Link2 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +24,7 @@ function getAssignedMemberInitials(name: string): string {
     .toUpperCase()
 }
 
-export function ConversationItem({ conversation }: ConversationItemProps) {
+function ConversationItemInner({ conversation }: ConversationItemProps) {
   const { selectedConversationId, selectConversation, teamMembers } = useWhatsAppInboxContext()
   const { user } = useUserContext()
 
@@ -64,3 +65,14 @@ export function ConversationItem({ conversation }: ConversationItemProps) {
     />
   )
 }
+
+export const ConversationItem = memo(
+  ConversationItemInner,
+  (prev, next) =>
+    prev.conversation.id === next.conversation.id &&
+    prev.conversation.lastMessageAt === next.conversation.lastMessageAt &&
+    prev.conversation.unreadCount === next.conversation.unreadCount &&
+    prev.conversation.assignedProfileId === next.conversation.assignedProfileId &&
+    prev.conversation.handoffMode === next.conversation.handoffMode &&
+    prev.conversation.tags?.length === next.conversation.tags?.length,
+)

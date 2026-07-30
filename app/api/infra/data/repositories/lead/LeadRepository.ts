@@ -734,8 +734,9 @@ export class LeadRepository implements ILeadRepository {
       calendarWindowEnd?: Date;
       customFieldFilters?: CustomFieldFilterInput[];
       customFieldSort?: CustomFieldSortInput;
+      limit?: number;
     }
-  ): Promise<{ leads: Lead[] }> {
+  ): Promise<{ leads: Lead[]; total: number }> {
     const {
       status,
       assignedTo,
@@ -747,7 +748,10 @@ export class LeadRepository implements ILeadRepository {
       calendarWindowEnd,
       customFieldFilters,
       customFieldSort,
+      limit,
     } = options || {};
+
+    const take = limit !== undefined ? Math.min(limit, 1000) : undefined;
 
     const andClauses: Prisma.LeadWhereInput[] = [];
     if (calendarWindowStart && calendarWindowEnd) {
@@ -790,17 +794,18 @@ export class LeadRepository implements ILeadRepository {
         }
       : CRM_LEAD_LIST_SELECT;
 
-    const rawLeads = await prisma.lead.findMany({
-      where,
-      select,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    // When customFieldSort is active the in-memory sort must run over the full
+    // matching set, so skip the take to avoid returning a mis-ordered subset.
+    const effectiveTake = customFieldSort ? undefined : take;
+
+    const [rawLeads, total] = await prisma.$transaction([
+      prisma.lead.findMany({ where, select, orderBy: { createdAt: 'desc' }, take: effectiveTake }),
+      prisma.lead.count({ where }),
+    ]);
 
     const leads = customFieldSort ? sortByCustomField(rawLeads, customFieldSort) : rawLeads;
 
-    return { leads: leads as unknown as Lead[] };
+    return { leads: leads as unknown as Lead[], total };
   }
 
   async findAllByOperatorId(
@@ -892,8 +897,9 @@ export class LeadRepository implements ILeadRepository {
       calendarWindowEnd?: Date;
       customFieldFilters?: CustomFieldFilterInput[];
       customFieldSort?: CustomFieldSortInput;
+      limit?: number;
     }
-  ): Promise<{ leads: Lead[] }> {
+  ): Promise<{ leads: Lead[]; total: number }> {
     const {
       status,
       assignedTo,
@@ -905,6 +911,7 @@ export class LeadRepository implements ILeadRepository {
       calendarWindowEnd,
       customFieldFilters,
       customFieldSort,
+      limit,
     } = options || {};
 
     const filters: Prisma.LeadWhereInput[] = [];
@@ -965,52 +972,30 @@ export class LeadRepository implements ILeadRepository {
       AND: [visibilityFilter, ...filters],
     };
 
-    const rawLeads = await prisma.lead.findMany({
-      where,
-      include: {
-        ...(customFieldSort && {
+    const take = limit !== undefined ? Math.min(limit, 1000) : undefined;
+
+    const select = customFieldSort
+      ? {
+          ...CRM_LEAD_LIST_SELECT,
           customFieldValues: {
             where: { definitionId: customFieldSort.definitionId },
             select: { value: true },
           },
-        }),
-        manager: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        assignee: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-          },
-        },
-        closer: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-          },
-        },
-        _count: {
-          select: {
-            attachments: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        }
+      : CRM_LEAD_LIST_SELECT;
+
+    // When customFieldSort is active the in-memory sort must run over the full
+    // matching set, so skip the take to avoid returning a mis-ordered subset.
+    const effectiveTake = customFieldSort ? undefined : take;
+
+    const [rawLeads, total] = await prisma.$transaction([
+      prisma.lead.findMany({ where, select, orderBy: { createdAt: 'desc' }, take: effectiveTake }),
+      prisma.lead.count({ where }),
+    ]);
 
     const leads = customFieldSort ? sortByCustomField(rawLeads, customFieldSort) : rawLeads;
 
-    return { leads: leads as unknown as Lead[] };
+    return { leads: leads as unknown as Lead[], total };
   }
 
   async reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number> {
