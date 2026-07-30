@@ -1493,7 +1493,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     if (!activeTeamId || !config) return
 
     const HEALTHY_INTERVAL_MS = 60_000
-    const UNHEALTHY_INTERVAL_MS = 12_000
+    const UNHEALTHY_INTERVAL_MS = 60_000
 
     let currentIntervalId: number | null = null
     let wasHealthy = realtimeHealthyRef.current
