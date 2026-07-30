@@ -63,10 +63,12 @@ type Params = {
   enabled: boolean
   teamId: string | null
   selectedConversationId: string | null
+  selectedConversationRemoteJid: string | null
   onMessageInserted: (row: WhatsAppMessageRealtimeRow) => void
   onMessageUpdated: (row: WhatsAppMessageRealtimeRow) => void
   onConversationUpdated: (row: WhatsAppConversationRealtimeRow) => void
   onConversationInserted: (row: WhatsAppConversationRealtimeRow) => void
+  onContactTyping?: (remoteJid: string, isTyping: boolean) => void
   onRealtimeHealthChange?: (healthy: boolean) => void
 }
 
@@ -174,23 +176,29 @@ export function useWhatsAppRealtime({
   enabled,
   teamId,
   selectedConversationId,
+  selectedConversationRemoteJid,
   onMessageInserted,
   onMessageUpdated,
   onConversationUpdated,
   onConversationInserted,
+  onContactTyping,
   onRealtimeHealthChange,
 }: Params) {
   const onMessageInsertedRef = useRef(onMessageInserted)
   const onMessageUpdatedRef = useRef(onMessageUpdated)
   const onConversationUpdatedRef = useRef(onConversationUpdated)
   const onConversationInsertedRef = useRef(onConversationInserted)
+  const onContactTypingRef = useRef(onContactTyping)
   const onRealtimeHealthChangeRef = useRef(onRealtimeHealthChange)
+  const selectedConversationRemoteJidRef = useRef(selectedConversationRemoteJid)
 
   useEffect(() => { onMessageInsertedRef.current = onMessageInserted }, [onMessageInserted])
   useEffect(() => { onMessageUpdatedRef.current = onMessageUpdated }, [onMessageUpdated])
   useEffect(() => { onConversationUpdatedRef.current = onConversationUpdated }, [onConversationUpdated])
   useEffect(() => { onConversationInsertedRef.current = onConversationInserted }, [onConversationInserted])
+  useEffect(() => { onContactTypingRef.current = onContactTyping }, [onContactTyping])
   useEffect(() => { onRealtimeHealthChangeRef.current = onRealtimeHealthChange }, [onRealtimeHealthChange])
+  useEffect(() => { selectedConversationRemoteJidRef.current = selectedConversationRemoteJid }, [selectedConversationRemoteJid])
 
   const convsStatusRef = useRef<RealtimeChannelStatus | null>(null)
   const msgsStatusRef = useRef<RealtimeChannelStatus | null>(null)
@@ -472,4 +480,25 @@ export function useWhatsAppRealtime({
       publishHealth()
     }
   }, [enabled, teamId, selectedConversationId, publishHealth])
+
+  // Canal de presença: escuta broadcasts PRESENCE_UPDATE do servidor para indicador de digitação.
+  useEffect(() => {
+    if (!enabled || !teamId) return
+    const supabase = createSupabaseBrowser()
+    if (!supabase) return
+
+    const channel = supabase
+      .channel(`whatsapp-presence:${teamId}`)
+      .on('broadcast', { event: 'contact_typing' }, ({ payload }) => {
+        const p = payload as { remoteJid?: string; isTyping?: boolean }
+        if (typeof p?.remoteJid !== 'string') return
+        if (p.remoteJid !== selectedConversationRemoteJidRef.current) return
+        onContactTypingRef.current?.(p.remoteJid, p.isTyping === true)
+      })
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [enabled, teamId])
 }

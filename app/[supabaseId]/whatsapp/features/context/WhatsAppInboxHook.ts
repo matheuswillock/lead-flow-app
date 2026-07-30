@@ -178,6 +178,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [allUnreadTotal, setAllUnreadTotal] = useState(0)
   const [mineUnreadTotal, setMineUnreadTotal] = useState(0)
   const [replyTarget, setReplyTarget] = useState<WhatsAppMessage | null>(null)
+  const [contactIsTyping, setContactIsTyping] = useState(false)
+  const contactIsTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
@@ -1486,14 +1488,28 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, scheduleConversationsRefetchForTagFilter]
   )
 
+  const handleContactTyping = useCallback((remoteJid: string, isTyping: boolean) => {
+    if (contactIsTypingTimerRef.current) clearTimeout(contactIsTypingTimerRef.current)
+    setContactIsTyping(isTyping)
+    if (isTyping) {
+      contactIsTypingTimerRef.current = setTimeout(() => {
+        setContactIsTyping(false)
+      }, 5_000)
+    }
+  }, [])
+
+  const selectedConversationRemoteJid = selectedConversation?.externalChatId ?? null
+
   useWhatsAppRealtime({
     enabled: Boolean(activeTeamId && config),
     teamId: activeTeamId ?? null,
     selectedConversationId,
+    selectedConversationRemoteJid,
     onMessageInserted: handleMessageInserted,
     onMessageUpdated: handleMessageUpdated,
     onConversationUpdated: handleConversationUpdated,
     onConversationInserted: handleConversationInserted,
+    onContactTyping: handleContactTyping,
     onRealtimeHealthChange: handleRealtimeHealthChange,
   })
 
@@ -2038,6 +2054,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     allUnreadTotal,
     mineUnreadTotal,
     replyTarget,
+    contactIsTyping,
     selectConversation,
     loadMoreConversations,
     loadOlderMessages,

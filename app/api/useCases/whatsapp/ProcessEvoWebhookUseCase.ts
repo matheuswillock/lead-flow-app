@@ -43,6 +43,7 @@ import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/wha
 import { shouldApplyOutboundMessageStatus } from "@/lib/whatsapp/outbound-message-status"
 import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 import { logSafeWhatsAppError } from "@/lib/whatsapp/safe-observability"
+import { createSupabaseAdmin } from "@/lib/supabase/server"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
@@ -134,6 +135,8 @@ class ProcessEvoWebhookUseCase {
         eventType === "CONTACTS_UPDATE" || eventType === "CONTACTS.UPDATE"
       ) {
         await this.handleContactsUpsert(input.teamId, input.configId, data)
+      } else if (eventType === "PRESENCE_UPDATE" || eventType === "PRESENCE.UPDATE") {
+        await this.handlePresenceUpdate(input.teamId, data)
       } else {
         console.info("[ProcessEvoWebhookUseCase][execute] Unhandled event type:", eventType)
       }
@@ -1012,6 +1015,35 @@ class ProcessEvoWebhookUseCase {
         updatedCount,
         "conversation contact names"
       )
+    }
+  }
+
+  private async handlePresenceUpdate(teamId: string, data: unknown): Promise<void> {
+    const payload = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
+    const remoteJid = typeof payload["remoteJid"] === "string" ? payload["remoteJid"] : null
+    if (!remoteJid) return
+
+    const presencesArr = Array.isArray(payload["presences"]) ? payload["presences"] : null
+    const presenceType: string | null = presencesArr
+      ? (typeof (presencesArr[0] as Record<string, unknown>)?.["type"] === "string"
+          ? String((presencesArr[0] as Record<string, unknown>)["type"])
+          : null)
+      : typeof payload["presence"] === "string"
+        ? String(payload["presence"])
+        : null
+
+    const isTyping = presenceType === "composing" || presenceType === "recording"
+
+    try {
+      const supabase = createSupabaseAdmin()
+      if (!supabase) return
+      await supabase.channel(`whatsapp-presence:${teamId}`).send({
+        type: "broadcast",
+        event: "contact_typing",
+        payload: { remoteJid, isTyping, ts: Date.now() },
+      })
+    } catch (error) {
+      console.error("[ProcessEvoWebhookUseCase][handlePresenceUpdate] broadcast failed", error)
     }
   }
 }

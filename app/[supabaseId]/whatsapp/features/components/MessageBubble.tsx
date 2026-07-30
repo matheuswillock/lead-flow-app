@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, Fragment } from "react"
+import { useCallback, useEffect, useMemo, useState, Fragment, memo } from "react"
 import { MoreVertical } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -109,7 +109,7 @@ function ActionItems({
   )
 }
 
-export function MessageBubble({ message, previousMessage = null }: MessageBubbleProps) {
+function MessageBubbleInner({ message, previousMessage = null }: MessageBubbleProps) {
   const {
     resendMessage,
     teamMembers,
@@ -502,3 +502,16 @@ export function MessageBubble({ message, previousMessage = null }: MessageBubble
     </>
   )
 }
+
+export const MessageBubble = memo(
+  MessageBubbleInner,
+  (prev, next) =>
+    prev.message.id === next.message.id &&
+    prev.message.status === next.message.status &&
+    prev.message.deletedForEveryoneAt === next.message.deletedForEveryoneAt &&
+    prev.message.mediaStatus === next.message.mediaStatus &&
+    prev.message.isPinned === next.message.isPinned &&
+    prev.message.isFavorite === next.message.isFavorite &&
+    prev.message.isHiddenForMe === next.message.isHiddenForMe &&
+    prev.previousMessage?.id === next.previousMessage?.id,
+)
