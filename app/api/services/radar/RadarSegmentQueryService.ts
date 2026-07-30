@@ -1,7 +1,7 @@
 import { subDays } from "date-fns"
 import type { Prisma } from "@prisma/client"
 import { radarRepository, type RadarTeamScope } from "@/app/api/infra/data/repositories/radar/RadarRepository"
-import type { RadarSegmentCondition, RadarSegmentRules } from "@/lib/radar/segment-dsl"
+import { LEAD_FIELD_CATALOG, type RadarSegmentCondition, type RadarSegmentRules } from "@/lib/radar/segment-dsl"
 import { buildCustomFieldWhereFilter } from "@/lib/leadCustomFields/customFieldQuery"
 import { normalizeRadarDocument, normalizeRadarEmail } from "@/lib/radar/normalization"
 
@@ -103,6 +103,59 @@ async function translateLeadStatus(
   return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
 }
 
+function buildLeadFieldWhere(
+  condition: Extract<RadarSegmentCondition, { kind: "lead_field" }>
+): Prisma.LeadWhereInput {
+  const { fieldKey, operator, value } = condition
+  const entry = LEAD_FIELD_CATALOG[fieldKey]
+
+  if (operator === "is_empty") return { [fieldKey]: null } as Prisma.LeadWhereInput
+  if (operator === "not_empty") return { [fieldKey]: { not: null } } as Prisma.LeadWhereInput
+
+  if (entry.valueKind === "lead_status_multi") {
+    const statuses = (Array.isArray(value) ? value : [value]) as string[]
+    if (operator === "neq") return { status: { notIn: statuses as never[] } }
+    return { status: { in: statuses as never[] } }
+  }
+
+  if (entry.valueKind === "number") {
+    const num = Number(value)
+    if (operator === "gt") return { [fieldKey]: { gt: num } } as Prisma.LeadWhereInput
+    if (operator === "gte") return { [fieldKey]: { gte: num } } as Prisma.LeadWhereInput
+    if (operator === "lt") return { [fieldKey]: { lt: num } } as Prisma.LeadWhereInput
+    if (operator === "lte") return { [fieldKey]: { lte: num } } as Prisma.LeadWhereInput
+    if (operator === "neq") return { [fieldKey]: { not: num } } as Prisma.LeadWhereInput
+    return { [fieldKey]: { equals: num } } as Prisma.LeadWhereInput
+  }
+
+  if (entry.valueKind === "date") {
+    if (operator === "within_days") {
+      return { [fieldKey]: { gte: subDays(new Date(), Number(value)) } } as Prisma.LeadWhereInput
+    }
+    const date = new Date(String(value))
+    if (operator === "before") return { [fieldKey]: { lt: date } } as Prisma.LeadWhereInput
+    return { [fieldKey]: { gt: date } } as Prisma.LeadWhereInput
+  }
+
+  if (entry.valueKind === "boolean") {
+    return { [fieldKey]: value === true || value === "true" } as Prisma.LeadWhereInput
+  }
+
+  // text: eq, neq, contains
+  const str = String(value ?? "")
+  if (operator === "contains") return { [fieldKey]: { contains: str, mode: "insensitive" } } as Prisma.LeadWhereInput
+  if (operator === "neq") return { [fieldKey]: { not: str } } as Prisma.LeadWhereInput
+  return { [fieldKey]: str } as Prisma.LeadWhereInput
+}
+
+async function translateLeadField(
+  teamId: string,
+  condition: Extract<RadarSegmentCondition, { kind: "lead_field" }>
+): Promise<Prisma.RadarProfileWhereInput> {
+  const leadIds = await radarRepository.findLeadIdsByWhere({ teamId, ...buildLeadFieldWhere(condition) })
+  return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
+}
+
 async function translateCondition(
   teamId: string,
   condition: RadarSegmentCondition
@@ -118,6 +171,8 @@ async function translateCondition(
       return translateLeadCustomField(teamId, condition)
     case "lead_status":
       return translateLeadStatus(teamId, condition)
+    case "lead_field":
+      return translateLeadField(teamId, condition)
   }
 }
 
