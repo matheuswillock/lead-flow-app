@@ -30,6 +30,22 @@ describe("interpolateEmailTemplate", () => {
     expect(result).toBe("Cidade: São Paulo")
   })
 
+  test("prioriza authoritativeDefaults sobre customFields", () => {
+    const result = interpolateEmailTemplate(
+      "Descadastro: {{link_descadastro}}",
+      {
+        email: "lead@example.com",
+        name: "Maria",
+        customFields: { link_descadastro: "https://spoof.example/unsub" },
+      },
+      { link_descadastro: "https://ignored.example/unsub" },
+      null,
+      { link_descadastro: "https://app.example/email-unsubscribe/token" },
+    )
+
+    expect(result).toBe("Descadastro: https://app.example/email-unsubscribe/token")
+  })
+
   test("usa default global quando customField está vazio", () => {
     const result = interpolateEmailTemplate(
       "Empresa: {{empresa}}",
