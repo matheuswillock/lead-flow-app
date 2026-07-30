@@ -9,8 +9,10 @@ import { DispatchRestrictionsCard } from "../components/DispatchRestrictionsCard
 import { GlobalVariablesCard } from "../components/GlobalVariablesCard"
 import { SenderCard } from "../components/SenderCard"
 import { TemplateApprovalCard } from "../components/TemplateApprovalCard"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 export function EmailSettingsContainer() {
+  const { readOnly } = useStudioEmailRuntime()
   const { saving, loading, senders, handleSave } = useEmailSettingsContext()
 
   return (
@@ -47,13 +49,16 @@ export function EmailSettingsContainer() {
         </div>
       </section>
 
-      <CustomDomainCard />
-      <SenderCard />
-      <GlobalVariablesCard />
-      <DispatchRestrictionsCard />
-      <AccessPermissionsCard />
-      <TemplateApprovalCard />
+      <div className={readOnly ? "pointer-events-none opacity-60" : undefined}>
+        <CustomDomainCard />
+        <SenderCard />
+        <GlobalVariablesCard />
+        <DispatchRestrictionsCard />
+        <AccessPermissionsCard />
+        <TemplateApprovalCard />
+      </div>
 
+      {!readOnly ? (
       <div className="sticky bottom-4 z-10 mt-2">
         <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/95 p-4 shadow-[var(--precision-shadow-2)] backdrop-blur md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
@@ -76,6 +81,11 @@ export function EmailSettingsContainer() {
           </Button>
         </div>
       </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Você tem acesso somente leitura às configurações de e-mail deste cliente.
+        </p>
+      )}
     </div>
   )
 }

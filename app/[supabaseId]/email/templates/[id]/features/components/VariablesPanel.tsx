@@ -30,6 +30,7 @@ import {
   extractTemplateVariableKeys,
 } from "@/lib/email/interpolate";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
 import type {
   TemplateFunctionDefinition,
   TemplateFunctionOperator,
@@ -145,12 +146,29 @@ interface VariablesPanelProps {
 export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
   const { draft, updateDraft } = useTemplateEditorContext();
   const params = useParams<{ supabaseId: string }>();
+  const host = useOptionalStudioEmailHost();
   const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
+        if (host) {
+          const vars = await host.services.emailSettings.getVariables();
+          if (active) {
+            setGlobalVariables(
+              vars.map((v) => ({
+                id: v.id,
+                key: v.key,
+                description: v.description,
+                defaultValue: v.defaultValue,
+                valueSource: v.valueSource,
+                radarFieldKey: v.radarFieldKey,
+              }))
+            );
+          }
+          return;
+        }
         const res = await fetch("/api/v1/email/settings/variables", { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json();
@@ -162,7 +180,7 @@ export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [host]);
 
   const declared = draft.variables;
   const pendingReviewCount = declared.filter((variable) => variable.reviewStatus === "pending").length;

@@ -5,12 +5,20 @@ import { toast } from "sonner"
 import { CampaignAnalyticsService } from "../../services/CampaignAnalyticsService"
 import type { AnalyticsData, AnalyticsPeriod } from "./AnalyticsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
+import type { ICampaignAnalyticsService } from "../../services/CampaignAnalyticsService"
 
-const service = new CampaignAnalyticsService()
+const defaultService = new CampaignAnalyticsService()
 
 const WEBHOOK_POLL_INTERVAL_MS = 30_000
 
-export function useCampaignAnalytics(campaignId?: string, open = false) {
+export function useCampaignAnalytics(
+  campaignId?: string,
+  open = false,
+  analyticsService?: ICampaignAnalyticsService
+) {
+  const host = useOptionalStudioEmailHost()
+  const service = analyticsService ?? host?.services.campaignAnalytics ?? defaultService
   const { tz } = useTimezone()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(false)
