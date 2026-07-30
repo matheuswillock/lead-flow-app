@@ -3875,6 +3875,7 @@ model WhatsAppMessage {
   failedAt                DateTime?                @db.Timestamptz(6)
   isAutoResponse          Boolean                  @default(false)
   autoResponseRuleId      String?                  @db.Uuid
+  providerTimestamp       BigInt?
   rawPayload              Json
   storagePath             String?                  @db.Text
   mediaSha256             String?                  @db.Text
@@ -3910,7 +3911,7 @@ model WhatsAppMessage {
   @@unique([teamId, providerMessageId])
   @@unique([teamId, providerEventId])
   @@unique([teamId, clientMessageId])
-  @@index([conversationId, createdAt(sort: Asc)])
+  @@index([conversationId, providerTimestamp(sort: Asc), createdAt(sort: Asc)])
   @@index([sentByProfileId])
   @@index([deletedAt])
   @@index([quotedMessageId])
