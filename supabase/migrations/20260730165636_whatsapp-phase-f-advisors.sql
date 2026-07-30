@@ -73,79 +73,85 @@ CREATE INDEX IF NOT EXISTS "whatsapp_contact_identities_contactId_idx"
   ON "public"."whatsapp_contact_identities" ("contactId");
 
 -- Recreate RLS policies for whatsapp_auto_response_rules using
--- (select auth.uid()) pattern to avoid per-row function evaluation
-DROP POLICY IF EXISTS "whatsapp_auto_response_rules_team_member_select" ON "public"."whatsapp_auto_response_rules";
-DROP POLICY IF EXISTS "whatsapp_auto_response_rules_team_member_insert" ON "public"."whatsapp_auto_response_rules";
-DROP POLICY IF EXISTS "whatsapp_auto_response_rules_team_member_update" ON "public"."whatsapp_auto_response_rules";
-DROP POLICY IF EXISTS "whatsapp_auto_response_rules_team_member_delete" ON "public"."whatsapp_auto_response_rules";
+-- (select auth.uid()) pattern to avoid per-row function evaluation.
+-- whatsapp_auto_response_rules has no teamId column; team is derived
+-- through configId → team_whatsapp_configs → corretor_studio_team_members.
+DROP POLICY IF EXISTS "whatsapp_auto_response_rules_select" ON "public"."whatsapp_auto_response_rules";
+DROP POLICY IF EXISTS "whatsapp_auto_response_rules_insert" ON "public"."whatsapp_auto_response_rules";
+DROP POLICY IF EXISTS "whatsapp_auto_response_rules_update" ON "public"."whatsapp_auto_response_rules";
+DROP POLICY IF EXISTS "whatsapp_auto_response_rules_delete" ON "public"."whatsapp_auto_response_rules";
 
-CREATE POLICY "whatsapp_auto_response_rules_team_member_select"
+CREATE POLICY "whatsapp_auto_response_rules_select"
   ON "public"."whatsapp_auto_response_rules"
-  FOR SELECT
+  FOR SELECT TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."corretor_studio_team_members" tm
-      WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
-        AND tm."profileId" = (SELECT auth.uid())
+      SELECT 1
+      FROM "public"."team_whatsapp_configs" c
+      JOIN "public"."corretor_studio_team_members" tm ON tm."teamId" = c."teamId"
+      JOIN "public"."corretor_studio_profiles" p ON p.id = tm."profileId"
+      WHERE c.id = "whatsapp_auto_response_rules"."configId"
+        AND (p."supabaseId" = (SELECT auth.uid()) OR p.id = (SELECT auth.uid()))
     )
   );
 
-CREATE POLICY "whatsapp_auto_response_rules_team_member_insert"
+CREATE POLICY "whatsapp_auto_response_rules_insert"
   ON "public"."whatsapp_auto_response_rules"
-  FOR INSERT
+  FOR INSERT TO authenticated
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM "public"."corretor_studio_team_members" tm
-      WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
-        AND tm."profileId" = (SELECT auth.uid())
+      SELECT 1
+      FROM "public"."team_whatsapp_configs" c
+      JOIN "public"."corretor_studio_team_members" tm ON tm."teamId" = c."teamId"
+      JOIN "public"."corretor_studio_profiles" p ON p.id = tm."profileId"
+      WHERE c.id = "whatsapp_auto_response_rules"."configId"
+        AND (p."supabaseId" = (SELECT auth.uid()) OR p.id = (SELECT auth.uid()))
     )
   );
 
-CREATE POLICY "whatsapp_auto_response_rules_team_member_update"
+CREATE POLICY "whatsapp_auto_response_rules_update"
   ON "public"."whatsapp_auto_response_rules"
-  FOR UPDATE
+  FOR UPDATE TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."corretor_studio_team_members" tm
-      WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
-        AND tm."profileId" = (SELECT auth.uid())
+      SELECT 1
+      FROM "public"."team_whatsapp_configs" c
+      JOIN "public"."corretor_studio_team_members" tm ON tm."teamId" = c."teamId"
+      JOIN "public"."corretor_studio_profiles" p ON p.id = tm."profileId"
+      WHERE c.id = "whatsapp_auto_response_rules"."configId"
+        AND (p."supabaseId" = (SELECT auth.uid()) OR p.id = (SELECT auth.uid()))
     )
   );
 
-CREATE POLICY "whatsapp_auto_response_rules_team_member_delete"
+CREATE POLICY "whatsapp_auto_response_rules_delete"
   ON "public"."whatsapp_auto_response_rules"
-  FOR DELETE
+  FOR DELETE TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."corretor_studio_team_members" tm
-      WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
-        AND tm."profileId" = (SELECT auth.uid())
+      SELECT 1
+      FROM "public"."team_whatsapp_configs" c
+      JOIN "public"."corretor_studio_team_members" tm ON tm."teamId" = c."teamId"
+      JOIN "public"."corretor_studio_profiles" p ON p.id = tm."profileId"
+      WHERE c.id = "whatsapp_auto_response_rules"."configId"
+        AND (p."supabaseId" = (SELECT auth.uid()) OR p.id = (SELECT auth.uid()))
     )
   );
 
 -- Recreate RLS policies for whatsapp_auto_response_logs using
--- (select auth.uid()) pattern
-DROP POLICY IF EXISTS "whatsapp_auto_response_logs_team_member_select" ON "public"."whatsapp_auto_response_logs";
-DROP POLICY IF EXISTS "whatsapp_auto_response_logs_team_member_insert" ON "public"."whatsapp_auto_response_logs";
+-- (select auth.uid()) pattern.
+-- Team is derived through conversationId → whatsapp_conversations.
+DROP POLICY IF EXISTS "whatsapp_auto_response_logs_select" ON "public"."whatsapp_auto_response_logs";
 
-CREATE POLICY "whatsapp_auto_response_logs_team_member_select"
+CREATE POLICY "whatsapp_auto_response_logs_select"
   ON "public"."whatsapp_auto_response_logs"
-  FOR SELECT
+  FOR SELECT TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."corretor_studio_team_members" tm
-      WHERE tm."teamId" = "public"."whatsapp_auto_response_logs"."teamId"
-        AND tm."profileId" = (SELECT auth.uid())
-    )
-  );
-
-CREATE POLICY "whatsapp_auto_response_logs_team_member_insert"
-  ON "public"."whatsapp_auto_response_logs"
-  FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM "public"."corretor_studio_team_members" tm
-      WHERE tm."teamId" = "public"."whatsapp_auto_response_logs"."teamId"
-        AND tm."profileId" = (SELECT auth.uid())
+      SELECT 1
+      FROM "public"."whatsapp_conversations" conv
+      JOIN "public"."corretor_studio_team_members" tm ON tm."teamId" = conv."teamId"
+      JOIN "public"."corretor_studio_profiles" p ON p.id = tm."profileId"
+      WHERE conv.id = "whatsapp_auto_response_logs"."conversationId"
+        AND (p."supabaseId" = (SELECT auth.uid()) OR p.id = (SELECT auth.uid()))
     )
   );
