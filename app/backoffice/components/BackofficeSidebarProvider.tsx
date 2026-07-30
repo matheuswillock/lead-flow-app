@@ -31,11 +31,21 @@ export function BackofficeSidebarProvider({ children, defaultOpen }: BackofficeS
           } as React.CSSProperties
         }
       >
+        <a
+          href="#backoffice-main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          Pular para o conteúdo
+        </a>
         <BackofficeSidebar />
         <SidebarInset>
           <SiteHeader />
           <div className="flex min-h-0 flex-1 flex-col h-[calc(100dvh-var(--header-height))] overflow-auto pt-3">
-            <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
+            <div
+              id="backoffice-main-content"
+              tabIndex={-1}
+              className="@container/main flex min-h-0 flex-1 flex-col gap-2 outline-none"
+            >
               {children}
             </div>
           </div>
