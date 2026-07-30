@@ -680,7 +680,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppMessage.findMany({
         where,
         select: MESSAGE_SELECT,
-        orderBy: [{ providerTimestamp: "asc" }, { createdAt: "asc" }],
+        orderBy: [
+          { providerTimestamp: { sort: "desc", nulls: "last" } },
+          { createdAt: "desc" },
+        ],
         skip,
         take: limit,
       }),
