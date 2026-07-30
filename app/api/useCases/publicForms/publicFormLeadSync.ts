@@ -1,0 +1,187 @@
+import { LeadStatus, Prisma } from "@prisma/client"
+import type { Lead } from "@prisma/client"
+import type { PublicFormSubmissionContext } from "@/app/api/infra/data/repositories/publicForms/IPublicFormsRepository"
+import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
+import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
+import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase"
+import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase"
+import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
+import { normalizeLeadPhoneDigits } from "@/lib/masks"
+import {
+  canCreateLeadFromExtracted,
+  canUpdateLeadFromExtracted,
+  extractLeadDataFromSnapshot,
+  type ExtractedLeadData,
+} from "@/lib/public-forms/lead-identity"
+import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
+import type {
+  PublicFormAnswerInput,
+  PublicFormSnapshot,
+} from "@/lib/public-forms/types"
+
+export {
+  canCreateLeadFromExtracted,
+  canUpdateLeadFromExtracted,
+  extractLeadDataFromSnapshot,
+  type ExtractedLeadData,
+} from "@/lib/public-forms/lead-identity"
+
+const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
+
+function json(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+export async function findMatchingLead(
+  teamId: string,
+  data: ExtractedLeadData,
+): Promise<Lead | undefined> {
+  const candidates = await publicFormsRepository.findLeadCandidates(
+    teamId,
+    data.email,
+    data.phone,
+    data.normalizedPhone,
+  )
+  if (candidates.length === 0) return undefined
+
+  const byEmail = data.email
+    ? candidates.find((lead) => lead.email?.toLowerCase() === data.email)
+    : undefined
+  if (byEmail) return byEmail
+
+  const byPhone = data.normalizedPhone
+    ? candidates.find(
+        (lead) => normalizeLeadPhoneDigits(lead.phone ?? "") === data.normalizedPhone,
+      )
+    : undefined
+  if (byPhone) return byPhone
+
+  if (data.name) {
+    const normalizedName = data.name.toLowerCase()
+    const byName = candidates.filter((lead) => lead.name.toLowerCase() === normalizedName)
+    if (byName.length === 1) return byName[0]
+  }
+
+  return undefined
+}
+
+export type UpsertLeadResult = {
+  lead: Lead
+  created: boolean
+}
+
+export async function upsertLeadFromFormAnswers(input: {
+  form: PublicFormSubmissionContext
+  snapshot: PublicFormSnapshot
+  answers: PublicFormAnswerInput[]
+  visibleIds: Set<string>
+  score?: number
+  scoreBandLabel?: string | null
+  submissionId?: string
+  publicationId: string
+  origin: Record<string, unknown>
+  extraNotes?: string[]
+}): Promise<UpsertLeadResult | null> {
+  const extracted = extractLeadDataFromSnapshot(input.snapshot, input.answers, input.visibleIds)
+  if (input.extraNotes?.length) {
+    extracted.notes.push(...input.extraNotes)
+  }
+  const match = await findMatchingLead(input.form.teamId, extracted)
+
+  if (match) {
+    if (!canUpdateLeadFromExtracted(extracted)) return null
+    const notes = mergeFormMappedLeadNotes(match.notes, input.snapshot, extracted.notes)
+    const lead = await publicFormsRepository.updateLead(match.id, {
+      ...extracted.native,
+      notes,
+      updatedBy: input.form.team.master.id,
+    })
+    for (const [key, value] of Object.entries(extracted.custom)) {
+      const definitionId = await publicFormsRepository.findCustomFieldDefinitionId(
+        input.form.teamId,
+        key,
+      )
+      if (definitionId) {
+        await publicFormsRepository.upsertLeadCustomFieldValue(
+          lead.id,
+          definitionId,
+          value as Prisma.InputJsonValue,
+        )
+      }
+    }
+    return { lead, created: false }
+  }
+
+  if (!canCreateLeadFromExtracted(extracted)) return null
+  if (!input.form.team.master.supabaseId) {
+    throw new Error("Master do time sem identificação de autenticação")
+  }
+
+  const createData: CreateLeadRequest = {
+    name: extracted.name,
+    email: extracted.email || undefined,
+    phone: extracted.phone || undefined,
+    cnpj: typeof extracted.native.cnpj === "string" ? extracted.native.cnpj : undefined,
+    age: typeof extracted.native.age === "string" ? extracted.native.age : undefined,
+    currentHealthPlan:
+      typeof extracted.native.currentHealthPlan === "string"
+        ? extracted.native.currentHealthPlan
+        : undefined,
+    currentValue:
+      typeof extracted.native.currentValue === "number" ? extracted.native.currentValue : undefined,
+    referenceHospital:
+      typeof extracted.native.referenceHospital === "string"
+        ? extracted.native.referenceHospital
+        : undefined,
+    currentTreatment:
+      typeof extracted.native.currentTreatment === "string"
+        ? extracted.native.currentTreatment
+        : undefined,
+    meetingDate: undefined,
+    meetingTitle: undefined,
+    meetingNotes: undefined,
+    meetingLink: undefined,
+    notes: extracted.notes.join("\n") || undefined,
+    assignedTo: input.form.assignedSdrId ?? undefined,
+    closerId: undefined,
+    status: LeadStatus.new_opportunity,
+    ticket: undefined,
+    contractDueDate: undefined,
+    soldPlan: undefined,
+    customFields: extracted.custom,
+    confirmDuplicate: true,
+    originChannel: "public_form",
+    originMetadata: {
+      source: input.form.name,
+      formId: input.form.id,
+      formPublicId: input.form.publicId,
+      firstFormAt: new Date().toISOString(),
+    },
+  }
+
+  const output = await leadUseCase.createLead(
+    input.form.team.master.supabaseId,
+    createData,
+    input.form.teamId,
+    {
+      authorAsStudio: true,
+      body: "Lead criado via formulário público",
+      payload: {
+        kind: "lead_creation",
+        channel: "public_form",
+        formName: input.form.name,
+        formId: input.form.id,
+        formPublicId: input.form.publicId,
+        publicationId: input.publicationId,
+        submissionId: input.submissionId ?? null,
+        score: input.score ?? null,
+        scoreBand: input.scoreBandLabel ?? null,
+        origin: json(input.origin),
+        submittedAt: new Date().toISOString(),
+      },
+    },
+    { autoScheduleMeeting: false },
+  )
+  if (!output.isValid) throw new Error(output.errorMessages.join("; "))
+  return { lead: output.result as Lead, created: true }
+}

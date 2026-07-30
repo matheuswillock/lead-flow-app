@@ -9,11 +9,22 @@ import type {
 import type { IBackofficeStudioBotOpsService } from "./IBackofficeStudioBotOpsService"
 
 export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsService {
+  private async parseResponse<T>(res: Response): Promise<ApiOutput<T>> {
+    let data: ApiOutput<T>
+    try {
+      data = await res.json()
+    } catch {
+      throw new Error(`Resposta inválida do servidor (HTTP ${res.status})`)
+    }
+    if (!res.ok && !data?.errorMessages?.length) {
+      throw new Error(`Erro HTTP ${res.status}`)
+    }
+    return data
+  }
+
   async getSettings() {
     const res = await fetch("/api/v1/backoffice/bot/host/settings", { cache: "no-store" })
-    const data = (await res.json()) as ApiOutput<{
-      id: string
-    } & BackofficeBotHostSettings>
+    const data = await this.parseResponse<{ id: string } & BackofficeBotHostSettings>(res)
     if (!data.isValid || !data.result) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao carregar settings")
     }
@@ -31,35 +42,35 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     })
-    return res.json() as Promise<
-      ApiOutput<{ id: string; agentBaseUrl: string | null; desiredHostVersion: string | null }>
-    >
+    return this.parseResponse<{
+      id: string
+      agentBaseUrl: string | null
+      desiredHostVersion: string | null
+    }>(res)
   }
 
   async exportEnvFile() {
     const res = await fetch("/api/v1/backoffice/bot/host/settings/env-file", {
       cache: "no-store",
     })
-    return res.json() as Promise<
-      ApiOutput<{
-        content: string
-        fileName: string
-        agentBaseUrl: string | null
-        desiredHostVersion: string | null
-        n8nEnv: Record<string, string>
-        evolutionEnv: Record<string, string>
-      }>
-    >
+    return this.parseResponse<{
+      content: string
+      fileName: string
+      agentBaseUrl: string | null
+      desiredHostVersion: string | null
+      n8nEnv: Record<string, string>
+      evolutionEnv: Record<string, string>
+    }>(res)
   }
 
   async rotateToken() {
     const res = await fetch("/api/v1/backoffice/bot/host/rotate-token", { method: "POST" })
-    return res.json() as Promise<ApiOutput<{ agentToken: string; settingsId: string }>>
+    return this.parseResponse<{ agentToken: string; settingsId: string }>(res)
   }
 
   async listJobs() {
     const res = await fetch("/api/v1/backoffice/bot/host/jobs", { cache: "no-store" })
-    const data = (await res.json()) as ApiOutput<{ jobs: BackofficeBotHostJob[] }>
+    const data = await this.parseResponse<{ jobs: BackofficeBotHostJob[] }>(res)
     if (!data.isValid) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao listar jobs")
     }
@@ -68,7 +79,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
 
   async health() {
     const res = await fetch("/api/v1/backoffice/bot/host/health", { method: "POST" })
-    return res.json() as Promise<ApiOutput<{ jobId: string; health: HostHealth }>>
+    return this.parseResponse<{ jobId: string; health: HostHealth }>(res)
   }
 
   async fetchLogs(input: { service: "n8n" | "api"; tail?: number }) {
@@ -79,12 +90,12 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
     const res = await fetch(`/api/v1/backoffice/bot/host/logs?${qs.toString()}`, {
       cache: "no-store",
     })
-    return res.json() as Promise<ApiOutput<HostLogsResult>>
+    return this.parseResponse<HostLogsResult>(res)
   }
 
   async applyEnv() {
     const res = await fetch("/api/v1/backoffice/bot/host/apply", { method: "POST" })
-    return res.json() as Promise<ApiOutput<{ jobId: string }>>
+    return this.parseResponse<{ jobId: string }>(res)
   }
 
   async restart(service: "n8n" | "api" | "all") {
@@ -93,12 +104,12 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ service }),
     })
-    return res.json() as Promise<ApiOutput<{ jobId: string }>>
+    return this.parseResponse<{ jobId: string }>(res)
   }
 
   async importWorkflows() {
     const res = await fetch("/api/v1/backoffice/bot/host/workflows/import", { method: "POST" })
-    return res.json() as Promise<ApiOutput<{ jobId: string }>>
+    return this.parseResponse<{ jobId: string }>(res)
   }
 
   async previewResyncBethaniaWebhook() {
@@ -107,7 +118,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: false }),
     })
-    return res.json() as Promise<ApiOutput<BethaniaWebhookResyncResult>>
+    return this.parseResponse<BethaniaWebhookResyncResult>(res)
   }
 
   async confirmResyncBethaniaWebhook() {
@@ -116,7 +127,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: true }),
     })
-    return res.json() as Promise<ApiOutput<BethaniaWebhookResyncResult>>
+    return this.parseResponse<BethaniaWebhookResyncResult>(res)
   }
 
   async syncHost(input: { version: string; packBase64: string; packSha256: string }) {
@@ -125,6 +136,6 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     })
-    return res.json() as Promise<ApiOutput<{ jobId: string }>>
+    return this.parseResponse<{ jobId: string }>(res)
   }
 }

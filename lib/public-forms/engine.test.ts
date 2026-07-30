@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import type { PublicFormDraftInput } from "./types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+import { createDefaultThankYouPage } from "./thank-you-pages"
 import {
   calculatePublicFormMaxPossibleScore,
   calculatePublicFormScore,
   calculatePublicFormScorePercent,
+  resolveThankYouPageId,
   resolveVisibleQuestionIds,
   shouldGoToThankYou,
   validateAnswer,
@@ -12,6 +14,13 @@ import {
 
 const sourceId = "11111111-1111-4111-8111-111111111111"
 const targetId = "22222222-2222-4222-8222-222222222222"
+const defaultThanks = createDefaultThankYouPage({ id: "33333333-3333-4333-8333-333333333333" })
+const branchThanks = createDefaultThankYouPage({
+  id: "44444444-4444-4444-8444-444444444444",
+  name: "Saída antecipada",
+  title: "Obrigado",
+  isDefault: false,
+})
 
 function form(): PublicFormDraftInput {
   return {
@@ -21,6 +30,8 @@ function form(): PublicFormDraftInput {
     ctaLabel: "Começar",
     successTitle: "Concluído",
     successActions: [],
+    thankYouPages: [defaultThanks],
+    defaultThankYouPageId: defaultThanks.id,
     useDefaultTheme: true,
     schedulingEnabled: false,
     meetingDurationMinutes: 30,
@@ -61,10 +72,13 @@ function form(): PublicFormDraftInput {
 
 describe("motor dos formulários públicos", () => {
   it("resolve perguntas condicionais sem confiar no cliente", () => {
-    expect(resolveVisibleQuestionIds(form(), [])).toEqual([sourceId])
+    expect(resolveVisibleQuestionIds(form(), [])).toEqual([sourceId, targetId])
     expect(
       resolveVisibleQuestionIds(form(), [{ questionId: sourceId, value: "sim" }]),
     ).toEqual([sourceId, targetId])
+    expect(
+      resolveVisibleQuestionIds(form(), [{ questionId: sourceId, value: "nao" }]),
+    ).toEqual([sourceId])
   })
 
   it("calcula pontuação pelo orçamento das perguntas (0–100)", () => {
@@ -227,5 +241,61 @@ describe("motor dos formulários públicos", () => {
       sourceId,
       targetId,
     ])
+  })
+
+  it("ignora regras quando a pergunta-fonte ainda não foi respondida", () => {
+    const draft = form()
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: targetId,
+        operator: "not_equals",
+        comparisonValue: "sim",
+        action: "skip",
+        elseAction: "show",
+      },
+    ]
+    expect(resolveVisibleQuestionIds(draft, [])).toEqual([sourceId, targetId])
+    expect(shouldGoToThankYou(draft, [])).toBe(false)
+  })
+
+  it("não dispara thank-you antecipado sem resposta na pergunta-fonte", () => {
+    const draft = form()
+    draft.thankYouPages = [defaultThanks, branchThanks]
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        targetThankYouPageId: branchThanks.id,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(shouldGoToThankYou(draft, [])).toBe(false)
+    expect(resolveThankYouPageId(draft, [])).toBe(defaultThanks.id)
+  })
+
+  it("resolve página de agradecimentos pela regra de menor sourceIndex", () => {
+    const draft = form()
+    draft.thankYouPages = [defaultThanks, branchThanks]
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        targetThankYouPageId: branchThanks.id,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(resolveThankYouPageId(draft, [{ questionId: sourceId, value: "nao" }])).toBe(
+      branchThanks.id,
+    )
+    expect(resolveThankYouPageId(draft, [{ questionId: sourceId, value: "sim" }])).toBe(
+      defaultThanks.id,
+    )
   })
 })

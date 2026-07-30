@@ -1,6 +1,7 @@
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import {
   buildPublicFormPreviewSnapshot,
+  mapPublicFormDraft,
   publicFormsService,
 } from "@/app/api/services/PublicForms/PublicFormsService"
 import { Output } from "@/lib/output"
@@ -25,7 +26,7 @@ async function canApprove(access: TeamAccess) {
 function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.get>>) {
   if (!form) return ["Formulário não encontrado"]
   const errors: string[] = []
-  const draft = form
+  const draft = mapPublicFormDraft(form)
   if (!draft.name.trim()) errors.push("Informe o nome do formulário")
   if (draft.questions.length === 0) errors.push("Adicione pelo menos uma pergunta")
   const nameQuestion = draft.questions.find(
@@ -39,7 +40,7 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
       errors.push("A pergunta mapeada para Nome não pode ser condicional")
     }
   }
-  if (draft.schedulingEnabled && draft.eligibleClosers.length === 0) {
+  if (draft.schedulingEnabled && draft.eligibleCloserIds.length === 0) {
     errors.push("Selecione ao menos um closer para o agendamento")
   }
   const schedulingQuestions = draft.questions.filter((question) => question.type === "scheduling")
@@ -94,9 +95,21 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
     if (typeof sourceId !== "string" || !questionIds.has(sourceId) || !targetOk) {
       errors.push("Remova regras que apontam para perguntas inexistentes")
     }
+    if (
+      targetId === PUBLIC_FORM_THANK_YOU_TARGET &&
+      rule.targetThankYouPageId &&
+      !draft.thankYouPages.some((page) => page.id === rule.targetThankYouPageId)
+    ) {
+      errors.push("Regra referencia página de agradecimentos inexistente")
+    }
     if (sourceId === targetId) {
       errors.push("Uma regra não pode controlar a própria pergunta")
     }
+  }
+  if (draft.thankYouPages.length === 0) {
+    errors.push("Adicione ao menos uma página de agradecimentos")
+  } else if (draft.thankYouPages.filter((page) => page.isDefault).length !== 1) {
+    errors.push("Defina exatamente uma página de agradecimentos como padrão")
   }
   if (draft.questions.length > 0) {
     const totalWeight = draft.questions.reduce(

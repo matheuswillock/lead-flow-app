@@ -24,6 +24,7 @@ import { EmailTemplateVideosPanel } from "./EmailTemplateVideosPanel";
 import { EmailTemplateXPostPanel } from "./EmailTemplateXPostPanel";
 import { TemplateHistoryPanel } from "./TemplateHistoryPanel";
 import { VariablesPanel } from "./VariablesPanel";
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
 
 const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   variables: "Variáveis",
@@ -43,6 +44,8 @@ interface EditorSidebarProps {
 
 export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorSidebarProps) {
   const { draft, versions, restoringVersionId, restoreTemplateVersion } = useTemplateEditorContext();
+  const host = useOptionalStudioEmailHost();
+  const isStudioHost = Boolean(host);
 
   const [section, setSection] = useState<SidebarSection>("menu");
 
@@ -133,6 +136,8 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             </span>
           </Button>
 
+          {!isStudioHost ? (
+            <>
           <Button
             type="button"
             variant="outline"
@@ -184,6 +189,8 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             </span>
             <ChevronRight />
           </Button>
+            </>
+          ) : null}
 
           <Button
             type="button"

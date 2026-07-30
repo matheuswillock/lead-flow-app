@@ -23,8 +23,8 @@ env:
   NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
-  quality:
-    name: Lint & Typecheck
+  lint-and-governance:
+    name: Lint & Governance
     if: >-
       ${{
         startsWith(github.ref, 'refs/heads/claude/') &&
@@ -34,15 +34,12 @@ jobs:
         )
       }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
-      governance-sync: ${{ steps['quality-result'].outputs['governance-sync'] }}
-      governance-check: ${{ steps['quality-result'].outputs['governance-check'] }}
-      lint: ${{ steps['quality-result'].outputs.lint }}
-      typecheck: ${{ steps['quality-result'].outputs.typecheck }}
-      proxy-tests: ${{ steps['quality-result'].outputs['proxy-tests'] }}
-      unit-tests: ${{ steps['quality-result'].outputs['unit-tests'] }}
-      quality-passed: ${{ steps['quality-result'].outputs.passed }}
+      governance-sync: ${{ steps.resolve.outputs['governance-sync'] }}
+      governance-check: ${{ steps.resolve.outputs['governance-check'] }}
+      lint: ${{ steps.resolve.outputs.lint }}
+      passed: ${{ steps.resolve.outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,10 +68,61 @@ jobs:
         continue-on-error: true
         run: bun run lint
 
+      - name: Resolve Result
+        id: resolve
+        if: always()
+        run: |
+          echo "governance-sync=${{ steps['governance-sync'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" ]]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  typecheck:
+    name: Typecheck
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
       - name: Typecheck
-        id: typecheck
-        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: bun run typecheck
+
+  tests:
+    name: Tests
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
 
       - name: Proxy Tests
         id: proxy-tests
@@ -86,28 +134,35 @@ jobs:
         continue-on-error: true
         run: bun run test
 
-      - name: Spellcheck PT-BR
-        id: spellcheck-pt-br
-        continue-on-error: true
-        run: bun run lint:pt-br
-
-      - name: Resolve Quality Result
-        id: quality-result
+      - name: Resolve Tests
         if: always()
         run: |
-          echo "governance-sync=${{ steps['governance-sync'].outcome }}" >> "$GITHUB_OUTPUT"
-          echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
-          echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
-          echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
-          echo "proxy-tests=${{ steps['proxy-tests'].outcome }}" >> "$GITHUB_OUTPUT"
-          echo "unit-tests=${{ steps['unit-tests'].outcome }}" >> "$GITHUB_OUTPUT"
-          echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
-
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['proxy-tests'].outcome }}" == "success" && "${{ steps['unit-tests'].outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "passed=false" >> "$GITHUB_OUTPUT"
+          if [[ "${{ steps['proxy-tests'].outcome }}" != "success" || "${{ steps['unit-tests'].outcome }}" != "success" ]]; then
+            echo "::error::proxy-tests=${{ steps['proxy-tests'].outcome }} unit-tests=${{ steps['unit-tests'].outcome }}"
+            exit 1
           fi
+
+  spellcheck:
+    name: Spellcheck PT-BR
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/claude/') &&
+        (
+          github.event.head_commit == null ||
+          !contains(github.event.head_commit.message, '[skip ci]')
+        )
+      }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Spellcheck PT-BR
+        run: bun run lint:pt-br
 
   build:
     name: Build
@@ -168,25 +223,36 @@ jobs:
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 2
     needs:
-      - quality
+      - lint-and-governance
+      - typecheck
+      - tests
+      - spellcheck
       - build
     steps:
       - name: Enforce Quality Checks
         run: |
           failed=0
-          if [[ "${{ needs.quality.result }}" != "success" || "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
-            echo "::error::One or more quality checks failed."
-            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
-            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
-            echo "lint=${{ needs.quality.outputs.lint }}"
-            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
-            echo "proxy-tests=${{ needs.quality.outputs['proxy-tests'] }}"
-            echo "unit-tests=${{ needs.quality.outputs['unit-tests'] }}"
+          if [[ "${{ needs['lint-and-governance'].outputs.passed }}" != "true" ]]; then
+            echo "::error::Lint and/or governance checks failed."
+            echo "governance:sync=${{ needs['lint-and-governance'].outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs['lint-and-governance'].outputs['governance-check'] }}"
+            echo "lint=${{ needs['lint-and-governance'].outputs.lint }}"
+            failed=1
+          fi
+          if [[ "${{ needs.typecheck.result }}" != "success" ]]; then
+            echo "::error::Typecheck failed."
+            failed=1
+          fi
+          if [[ "${{ needs.tests.result }}" != "success" ]]; then
+            echo "::error::Tests failed."
+            failed=1
+          fi
+          if [[ "${{ needs.spellcheck.result }}" != "success" ]]; then
+            echo "::error::Spellcheck PT-BR failed."
             failed=1
           fi
           if [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "::error::Build failed."
-            echo "build=${{ needs.build.result }}"
             failed=1
           fi
           exit "$failed"
@@ -205,7 +271,8 @@ jobs:
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     needs:
-      - quality
+      - lint-and-governance
+      - typecheck
       - quality-gate
       - build
     steps:
@@ -236,10 +303,10 @@ jobs:
             const base = 'develop';
             const claudeDescription = process.env.CLAUDE_DESCRIPTION || '';
             const checks = {
-              governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
-              governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
-              lint: '${{ needs.quality.outputs.lint }}',
-              typecheck: '${{ needs.quality.outputs.typecheck }}',
+              governanceSync: '${{ needs['lint-and-governance'].outputs['governance-sync'] }}',
+              governanceCheck: '${{ needs['lint-and-governance'].outputs['governance-check'] }}',
+              lint: '${{ needs['lint-and-governance'].outputs.lint }}',
+              typecheck: '${{ needs.typecheck.result }}',
               build: '${{ needs.build.result }}',
             };
             const isSuccess = (status) => status === 'success';

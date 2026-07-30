@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { runHealthPlanSimulation } from "./simulation"
+import { createDefaultThankYouPage } from "./thank-you-pages"
 import type { PublicFormSnapshot } from "./types"
+
+const defaultThanks = createDefaultThankYouPage({ id: "55555555-5555-4555-8555-555555555555" })
 
 function snapshot(partial: Partial<PublicFormSnapshot> & { questions: PublicFormSnapshot["questions"] }): PublicFormSnapshot {
   return {
@@ -12,6 +15,8 @@ function snapshot(partial: Partial<PublicFormSnapshot> & { questions: PublicForm
     eligibleCloserIds: [],
     ctaLabel: "Começar",
     successTitle: "Ok",
+    thankYouPages: [defaultThanks],
+    defaultThankYouPageId: defaultThanks.id,
     useDefaultTheme: true,
     schedulingEnabled: false,
     meetingDurationMinutes: 30,

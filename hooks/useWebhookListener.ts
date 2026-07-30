@@ -18,50 +18,58 @@ export function useWebhookListener({
   onPaymentConfirmed,
   enabled = true,
 }: WebhookListenerOptions) {
-  
+
   useEffect(() => {
     if (!enabled || !subscriptionId) {
-      console.warn('⚠️ [useWebhookListener] Hook desabilitado:', { enabled, subscriptionId });
+      console.warn('[useWebhookListener] Hook desabilitado:', { enabled, subscriptionId });
       return;
     }
 
-    console.info('👂 [useWebhookListener] Escutando confirmação para:', subscriptionId);
-    
+    console.info('[useWebhookListener] Escutando confirmacao para:', subscriptionId);
+
+    const MAX_ATTEMPTS = 100;
+    let attempts = 0;
+
     // Polling simples verificando o endpoint
     const checkInterval = setInterval(async () => {
+      attempts += 1;
+      if (attempts > MAX_ATTEMPTS) {
+        console.warn('[useWebhookListener] Limite de tentativas atingido. Encerrando polling.');
+        clearInterval(checkInterval);
+        return;
+      }
+
       try {
-        console.info('🔄 [useWebhookListener] Verificando pagamento...');
-        
+        console.info('[useWebhookListener] Verificando pagamento...');
+
         const response = await fetch(
           `/api/v1/subscriptions/${subscriptionId}/notify-payment`
         );
-        
+
         if (!response.ok) {
-          console.warn('⚠️ [useWebhookListener] Erro ao verificar:', response.status);
+          console.warn('[useWebhookListener] Erro ao verificar:', response.status);
           return;
         }
 
         const data = await response.json();
-        
-        console.info('📦 [useWebhookListener] Resposta recebida:', {
+
+        console.info('[useWebhookListener] Resposta recebida:', {
           isPaid: data.isPaid,
           hasData: !!data
         });
-        
+
         if (data.isPaid) {
-          console.info('✅ [useWebhookListener] Pagamento confirmado via webhook!');
-          console.info('🎯 [useWebhookListener] Chamando onPaymentConfirmed...');
+          console.info('[useWebhookListener] Pagamento confirmado via webhook!');
           clearInterval(checkInterval);
           onPaymentConfirmed();
-          console.info('✅ [useWebhookListener] onPaymentConfirmed executado!');
         }
       } catch (error) {
-        console.error('❌ [useWebhookListener] Erro:', error);
+        console.error('[useWebhookListener] Erro:', error);
       }
     }, 3000); // Verificar a cada 3 segundos
 
     return () => {
-      console.info('🛑 [useWebhookListener] Limpando interval');
+      console.info('[useWebhookListener] Limpando interval');
       clearInterval(checkInterval);
     };
   }, [subscriptionId, onPaymentConfirmed, enabled]);

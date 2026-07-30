@@ -23,10 +23,10 @@ env:
   NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
-  quality:
-    name: Lint & Typecheck
+  lint-and-governance:
+    name: Lint & Governance
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,14 +48,50 @@ jobs:
       - name: Lint
         run: bun run lint
 
+  typecheck:
+    name: Typecheck
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
       - name: Typecheck
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: bun run typecheck
 
+  tests:
+    name: Tests
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
       - name: Proxy Tests
+        id: proxy-tests
+        continue-on-error: true
         run: bun run test:proxy
 
       - name: Unit Tests
+        id: unit-tests
+        continue-on-error: true
         run: bun run test
+
+      - name: Resolve Tests
+        if: always()
+        run: |
+          if [[ "${{ steps['proxy-tests'].outcome }}" != "success" || "${{ steps['unit-tests'].outcome }}" != "success" ]]; then
+            echo "::error::proxy-tests=${{ steps['proxy-tests'].outcome }} unit-tests=${{ steps['unit-tests'].outcome }}"
+            exit 1
+          fi
 
   migration-status:
     name: Migration Status
@@ -63,7 +99,9 @@ jobs:
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
-      - quality
+      - lint-and-governance
+      - typecheck
+      - tests
       - build
     steps:
       - name: Checkout

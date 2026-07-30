@@ -36,6 +36,7 @@ import {
 import { CircleHelp, Info } from "lucide-react"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { useCampanhasContext } from "../context/CampanhasContext"
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import {
@@ -64,6 +65,7 @@ function fieldErrorMessage(
 
 export function CampaignCreateWizard() {
   const { tz } = useTimezone()
+  const host = useOptionalStudioEmailHost()
   const {
     wizardOpen,
     wizardStep,
@@ -202,6 +204,7 @@ export function CampaignCreateWizard() {
 
           {wizardStep === 2 && (
             <FieldGroup>
+              {!host ? (
               <Field>
                 <FieldLabel>Origem dos destinatários *</FieldLabel>
                 <Select
@@ -222,8 +225,9 @@ export function CampaignCreateWizard() {
                   </SelectContent>
                 </Select>
               </Field>
+              ) : null}
 
-              {wizardRecipientSource === "contact_list" ? (
+              {wizardRecipientSource === "contact_list" || host ? (
                 <Field data-invalid={Boolean(fieldErrorMessage(step2Issues, "contactListId")) || undefined}>
                   <FieldLabel>Lista de contatos *</FieldLabel>
                   <Select value={wizardContactListId} onValueChange={setWizardContactListId} disabled={wizardCreating}>
