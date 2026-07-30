@@ -10,8 +10,33 @@ import { isThankYouRuleTarget } from "./thank-you-pages"
 
 const values = (v: unknown) => (Array.isArray(v) ? v.map(String) : v == null ? [] : [String(v)])
 
-function inverseAction(action: "show" | "skip"): "show" | "skip" {
-  return action === "show" ? "skip" : "show"
+export type RuleEffectiveAction = "show" | "skip" | "jump_to"
+
+function normalizeBooleanValue(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+  if (["sim", "yes", "true", "s"].includes(normalized)) return "sim"
+  if (["nao", "no", "false", "n"].includes(normalized)) return "nao"
+  return value
+}
+
+function normalizeComparisonValues(
+  rawValues: string[],
+  sourceQuestion?: PublicFormQuestionInput,
+): string[] {
+  if (sourceQuestion?.type === "boolean") {
+    return rawValues.map(normalizeBooleanValue)
+  }
+  return rawValues
+}
+
+export function inverseRuleAction(action: RuleEffectiveAction): RuleEffectiveAction {
+  if (action === "show") return "skip"
+  if (action === "skip") return "show"
+  return "show"
 }
 
 function ruleHits(
@@ -42,13 +67,15 @@ function isThankYouRule(rule: PublicFormDraftInput["rules"][number]): boolean {
 function effectiveRuleAction(
   rule: PublicFormDraftInput["rules"][number],
   map: Map<string, unknown>,
-): "show" | "skip" | null {
+  questions: PublicFormQuestionInput[],
+): RuleEffectiveAction | null {
+  const sourceQuestion = questions.find((question) => question.id === rule.sourceQuestionId)
   const sourceAnswer = map.get(rule.sourceQuestionId)
   if (!isAnswered(sourceAnswer)) return null
-  const got = values(sourceAnswer)
-  const expected = values(rule.comparisonValue)
+  const got = normalizeComparisonValues(values(sourceAnswer), sourceQuestion)
+  const expected = normalizeComparisonValues(values(rule.comparisonValue), sourceQuestion)
   const hit = ruleHits(rule.operator, got, expected)
-  const elseAction = rule.elseAction ?? inverseAction(rule.action)
+  const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
   return hit ? rule.action : elseAction
 }
 
@@ -63,7 +90,7 @@ export function getThankYouCutoffIndex(
   let cutoff: number | null = null
   for (const rule of form.rules) {
     if (!isThankYouRule(rule)) continue
-    const effective = effectiveRuleAction(rule, map)
+    const effective = effectiveRuleAction(rule, map, form.questions)
     if (effective !== "show") continue
     const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
     if (sourceIndex < 0) continue
@@ -81,7 +108,7 @@ export function resolveThankYouPageId(
   let winner: { sourceIndex: number; pageId: string | null } | null = null
   for (const rule of form.rules) {
     if (!isThankYouRule(rule)) continue
-    const effective = effectiveRuleAction(rule, map)
+    const effective = effectiveRuleAction(rule, map, form.questions)
     if (effective !== "show") continue
     const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
     if (sourceIndex < 0) continue
@@ -102,9 +129,21 @@ export function resolveVisibleQuestionIds(
     visible = new Set(form.questions.map((q) => q.id).filter(Boolean) as string[])
   for (const r of form.rules) {
     if (isThankYouRule(r)) continue
-    const effective = effectiveRuleAction(r, map)
-    if (effective !== "skip") continue
-    visible.delete(r.targetQuestionId)
+    const effective = effectiveRuleAction(r, map, form.questions)
+    if (effective === "skip") {
+      visible.delete(r.targetQuestionId)
+      continue
+    }
+    if (effective === "jump_to") {
+      const sourceIndex = form.questions.findIndex((question) => question.id === r.sourceQuestionId)
+      const targetIndex = form.questions.findIndex((question) => question.id === r.targetQuestionId)
+      if (sourceIndex >= 0 && targetIndex > sourceIndex) {
+        for (let index = sourceIndex + 1; index < targetIndex; index += 1) {
+          const questionId = form.questions[index]?.id
+          if (questionId) visible.delete(questionId)
+        }
+      }
+    }
   }
 
   // Early thank-you exit: remaining questions after the terminating source are not required.
@@ -243,13 +282,17 @@ export function calculatePublicFormScorePercent(
   return Math.min(100, Math.round((100 * raw) / max))
 }
 
+function isEmailQuestion(question: PublicFormQuestionInput): boolean {
+  return question.type === "email" || (question.type === "text" && question.mappingKey === "email")
+}
+
 export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   if (q.type === "calculation") return null
   const empty = v == null || v === "" || (Array.isArray(v) && !v.length)
   if (q.required && empty) return "Esta resposta é obrigatória"
   if (empty) return null
   const s = String(v)
-  if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
+  if (isEmailQuestion(q) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
     return "Informe um e-mail válido"
   if (q.type === "phone") {
     const digits = phoneDigitCount(s)
@@ -257,6 +300,7 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   }
   if (q.type === "currency") {
     const amount = typeof v === "number" ? v : parseCurrencyBR(s)
+    if (!q.required && (!amount || amount <= 0)) return null
     if (!amount || amount <= 0) return "Informe um valor válido"
   }
   if (q.type === "date") {

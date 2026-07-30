@@ -38,6 +38,7 @@ import {
   sumQuestionScoreWeights,
   withEqualOptionScores,
 } from "@/lib/public-forms/scoring"
+import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   getPageKey,
   getQuestionStepErrors,
@@ -171,10 +172,37 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)))
 }
 
-function inverseRuleAction(action: PublicFormRuleAction): PublicFormRuleAction {
-  return action === "show" ? "skip" : "show"
+function ruleActionLabel(action: PublicFormRuleAction): string {
+  if (action === "show") return "Exibir pergunta"
+  if (action === "skip") return "Ocultar pergunta"
+  return "Pular até pergunta"
 }
 
+function ruleActionTargetLabel(
+  action: PublicFormRuleAction,
+  target: string,
+  elseBranch: boolean,
+): string {
+  if (action === "jump_to" && elseBranch) return "fluxo padrão"
+  return target
+}
+
+function questionIndexById(questions: PublicFormQuestionInput[], id: string): number {
+  return questions.findIndex((question) => question.id === id)
+}
+
+function ruleTargetQuestions(
+  questions: PublicFormQuestionInput[],
+  sourceQuestionId: string,
+  action: PublicFormRuleAction,
+) {
+  if (action === "jump_to") {
+    const sourceIndex = questionIndexById(questions, sourceQuestionId)
+    if (sourceIndex < 0) return questions
+    return questions.filter((_, index) => index > sourceIndex)
+  }
+  return questions
+}
 function ruleOperatorLabel(operator: PublicFormRuleOperator): string {
   switch (operator) {
     case "equals":
@@ -192,10 +220,6 @@ function ruleOperatorLabel(operator: PublicFormRuleOperator): string {
       return String(_exhaustive)
     }
   }
-}
-
-function ruleActionLabel(action: PublicFormRuleAction): string {
-  return action === "show" ? "Exibir" : "Pular"
 }
 
 function questionTitleById(
@@ -218,7 +242,12 @@ function buildRuleSentence(rule: PublicFormRuleInput, questions: PublicFormQuest
       ? "…"
       : String(rule.comparisonValue)
   const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
-  return `Se ${source} ${ruleOperatorLabel(rule.operator)} ${value}, então ${ruleActionLabel(rule.action).toLowerCase()} ${target}; senão ${ruleActionLabel(elseAction).toLowerCase()} ${target}.`
+  const elseTarget = ruleActionTargetLabel(
+    elseAction,
+    questionTitleById(questions, rule.targetQuestionId, draft, rule.targetThankYouPageId),
+    true,
+  )
+  return `Se ${source} ${ruleOperatorLabel(rule.operator)} ${value}, então ${ruleActionLabel(rule.action).toLowerCase()} ${target}; senão ${ruleActionLabel(elseAction).toLowerCase()} ${elseTarget}.`
 }
 
 function flattenPages(pages: Array<{ pageKey: string; questions: PublicFormQuestionInput[] }>) {
@@ -1432,7 +1461,13 @@ function Questions({
               <FieldContent>
                 <Select
                   value={q.mappingKey ?? ""}
-                  onValueChange={(v) => updateQuestion(q.id!, { mappingKey: v })}
+                  onValueChange={(v) =>
+                    updateQuestion(q.id!, {
+                      mappingKey: v,
+                      ...(v === "email" && q.type === "text" ? { type: "email" as const } : {}),
+                      ...(v === "phone" && q.type === "text" ? { type: "phone" as const } : {}),
+                    })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Campo do lead" />
@@ -1828,6 +1863,12 @@ function Rules({
 
   function choiceOptions(question: PublicFormQuestionInput | undefined) {
     if (!question) return []
+    if (question.type === "boolean") {
+      return [
+        { id: "sim", value: "sim", label: "Sim" },
+        { id: "nao", value: "nao", label: "Não" },
+      ]
+    }
     if (!["single_choice", "multiple_choice", "health_plan"].includes(question.type)) return []
     return question.options
   }
@@ -1857,8 +1898,16 @@ function Rules({
                 a ação <strong>Então</strong> é aplicada ao destino (exibir ou pular).
               </p>
               <p>
-                Caso contrário, usa-se a ação <strong>Senão</strong> — normalmente o oposto de Então,
-                para cobrir os dois caminhos do fluxo.
+                <strong>Ocultar pergunta</strong> remove uma pergunta específica do fluxo quando a
+                condição é atendida.
+              </p>
+              <p>
+                <strong>Pular até pergunta</strong> ignora todas as perguntas intermediárias e leva o
+                respondente direto à pergunta de destino.
+              </p>
+              <p>
+                Caso contrário, usa-se a ação <strong>Senão</strong> — normalmente o oposto de
+                Então, para cobrir os dois caminhos do fluxo.
               </p>
             </div>
           </DialogContent>
@@ -1873,6 +1922,7 @@ function Rules({
         const source = sourceQuestion(rule)
         const options = choiceOptions(source)
         const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
+        const thenTargets = ruleTargetQuestions(d.questions, rule.sourceQuestionId, rule.action)
         return (
           <div className="flex flex-col gap-3 rounded-lg border p-4" key={rule.id}>
             <p className="text-sm text-muted-foreground">{buildRuleSentence(rule, d.questions, d)}</p>
@@ -1969,8 +2019,9 @@ function Rules({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="show">Exibir</SelectItem>
-                        <SelectItem value="skip">Pular</SelectItem>
+                        <SelectItem value="show">Exibir pergunta</SelectItem>
+                        <SelectItem value="skip">Ocultar pergunta</SelectItem>
+                        <SelectItem value="jump_to">Pular até pergunta</SelectItem>
                       </SelectContent>
                     </Select>
                   </FieldContent>
@@ -1994,14 +2045,16 @@ function Rules({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {d.questions.map((q) => (
+                        {thenTargets.map((q) => (
                           <SelectItem key={q.id} value={q.id!}>
                             {q.title}
                           </SelectItem>
                         ))}
-                        <SelectItem value={PUBLIC_FORM_THANK_YOU_TARGET}>
-                          Página de agradecimentos
-                        </SelectItem>
+                        {rule.action !== "jump_to" ? (
+                          <SelectItem value={PUBLIC_FORM_THANK_YOU_TARGET}>
+                            Página de agradecimentos
+                          </SelectItem>
+                        ) : null}
                       </SelectContent>
                     </Select>
                   </FieldContent>
@@ -2046,8 +2099,9 @@ function Rules({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="show">Exibir</SelectItem>
-                        <SelectItem value="skip">Pular</SelectItem>
+                        <SelectItem value="show">Exibir pergunta</SelectItem>
+                        <SelectItem value="skip">Ocultar pergunta</SelectItem>
+                        <SelectItem value="jump_to">Pular até pergunta</SelectItem>
                       </SelectContent>
                     </Select>
                   </FieldContent>
@@ -2055,21 +2109,27 @@ function Rules({
                 <Field>
                   <FieldLabel>Senão — destino</FieldLabel>
                   <FieldContent>
-                    <Select value={rule.targetQuestionId} disabled>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {d.questions.map((q) => (
-                          <SelectItem key={q.id} value={q.id!}>
-                            {q.title}
+                    {rule.action === "jump_to" && elseAction === "show" ? (
+                      <p className="text-sm text-muted-foreground">
+                        Fluxo padrão (todas as perguntas)
+                      </p>
+                    ) : (
+                      <Select value={rule.targetQuestionId} disabled>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {d.questions.map((q) => (
+                            <SelectItem key={q.id} value={q.id!}>
+                              {q.title}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={PUBLIC_FORM_THANK_YOU_TARGET}>
+                            Página de agradecimentos
                           </SelectItem>
-                        ))}
-                        <SelectItem value={PUBLIC_FORM_THANK_YOU_TARGET}>
-                          Página de agradecimentos
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </FieldContent>
                 </Field>
               </div>
@@ -2090,14 +2150,19 @@ function Rules({
         type="button"
         disabled={d.questions.length < 1}
         onClick={() => {
-          const defaultAction: PublicFormRuleAction = "skip"
+          const sourceId = d.questions[0].id!
+          const defaultTarget =
+            d.questions.find((question, index) => index > 0 && question.id)?.id ??
+            PUBLIC_FORM_THANK_YOU_TARGET
+          const defaultAction: PublicFormRuleAction =
+            defaultTarget !== PUBLIC_FORM_THANK_YOU_TARGET ? "jump_to" : "skip"
           change({
             rules: [
               ...d.rules,
               {
                 id: crypto.randomUUID(),
-                sourceQuestionId: d.questions[0].id!,
-                targetQuestionId: d.questions[1]?.id ?? PUBLIC_FORM_THANK_YOU_TARGET,
+                sourceQuestionId: sourceId,
+                targetQuestionId: defaultTarget,
                 operator: "equals",
                 comparisonValue: "",
                 action: defaultAction,

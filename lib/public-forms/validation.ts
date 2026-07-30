@@ -126,8 +126,8 @@ export const publicFormDraftSchema = z
           targetThankYouPageId: uuid.nullable().optional(),
           operator: z.enum(["equals", "not_equals", "contains", "selected", "not_selected"]),
           comparisonValue: z.unknown().optional(),
-          action: z.enum(["show", "skip"]),
-          elseAction: z.enum(["show", "skip"]).optional(),
+          action: z.enum(["show", "skip", "jump_to"]),
+          elseAction: z.enum(["show", "skip", "jump_to"]).optional(),
         }),
       )
       .max(500)

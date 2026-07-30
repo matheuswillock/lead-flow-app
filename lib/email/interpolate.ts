@@ -1,4 +1,5 @@
 import { DEFAULT_TZ, formatIntimezone, formatLocalDateValue, formatLocalTimeValue, nowInTz } from "@/lib/dates"
+import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
 
 export interface EmailTemplateRecipient {
   email: string
@@ -46,6 +47,10 @@ export const BUILTIN_EMAIL_VARIABLES = [
   { key: "nome_do_lead", description: "Nome do destinatário (alias)" },
   { key: "name", description: "Nome do destinatário (alias em inglês)" },
   { key: "email", description: "Endereço de e-mail do destinatário" },
+  {
+    key: EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+    description: "Link de descadastro do destinatário (substituído automaticamente no envio)",
+  },
 ] as const
 
 export const BUILTIN_EMAIL_FUNCTIONS = [
@@ -363,7 +368,13 @@ export function getBuiltinEmailFunctionDefinition(
   return builtin ? { ...builtin.definition } : null
 }
 
-const BUILTIN_RECIPIENT_KEYS = new Set(["nome", "nome_do_lead", "name", "email"])
+const BUILTIN_RECIPIENT_KEYS = new Set([
+  "nome",
+  "nome_do_lead",
+  "name",
+  "email",
+  EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+])
 
 export function applyMasterTimezoneToTemplateVariables(
   definitions: EmailTemplateVariableDefinition[],
