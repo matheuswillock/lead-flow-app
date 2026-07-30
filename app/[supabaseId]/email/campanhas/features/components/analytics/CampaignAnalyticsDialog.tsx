@@ -18,6 +18,7 @@ import { DispatchAccordionTable } from "./DispatchAccordionTable"
 import { MetricsSummaryCards } from "./MetricsSummaryCards"
 import { PeriodSelector } from "./PeriodSelector"
 import { useCampaignAnalytics } from "./useCampaignAnalytics"
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 
 type CampaignAnalyticsDialogProps = {
   open: boolean
@@ -34,6 +35,7 @@ export function CampaignAnalyticsDialog({
   campaignName,
   campaignErrorMessage,
 }: CampaignAnalyticsDialogProps) {
+  const host = useOptionalStudioEmailHost()
   const [activeTab, setActiveTab] = useState<"metrics" | "logs">("metrics")
   const { data, initialLoading, refreshing, period, handlePeriodChange, handleRefresh } =
     useCampaignAnalytics(campaignId, open)
@@ -95,7 +97,7 @@ export function CampaignAnalyticsDialog({
           </div>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-          {campaignId ? (
+          {campaignId && !host ? (
             <Tabs
               value={activeTab}
               onValueChange={(value) => setActiveTab(value as "metrics" | "logs")}

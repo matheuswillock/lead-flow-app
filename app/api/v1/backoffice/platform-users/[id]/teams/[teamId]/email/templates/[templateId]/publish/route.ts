@@ -23,3 +23,20 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return studioEmailError(["Erro interno"])
   }
 }
+
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const all = await params
+    const resolved = await resolveStudioEmailActor(request, Promise.resolve(all))
+    if (resolved.error) return resolved.error
+    const output = await backofficeStudioEmailUseCase.unpublishTemplate(
+      resolved.actor,
+      all.templateId
+    )
+    return studioEmailJson(output)
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[BackofficeStudioEmailTemplatePublishTemplateRoute][DELETE]", error)
+    return studioEmailError(["Erro interno"])
+  }
+}
