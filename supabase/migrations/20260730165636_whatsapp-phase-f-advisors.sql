@@ -84,7 +84,7 @@ CREATE POLICY "whatsapp_auto_response_rules_team_member_select"
   FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."team_members" tm
+      SELECT 1 FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
         AND tm."profileId" = (SELECT auth.uid())
     )
@@ -95,7 +95,7 @@ CREATE POLICY "whatsapp_auto_response_rules_team_member_insert"
   FOR INSERT
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM "public"."team_members" tm
+      SELECT 1 FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
         AND tm."profileId" = (SELECT auth.uid())
     )
@@ -106,7 +106,7 @@ CREATE POLICY "whatsapp_auto_response_rules_team_member_update"
   FOR UPDATE
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."team_members" tm
+      SELECT 1 FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
         AND tm."profileId" = (SELECT auth.uid())
     )
@@ -117,7 +117,7 @@ CREATE POLICY "whatsapp_auto_response_rules_team_member_delete"
   FOR DELETE
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."team_members" tm
+      SELECT 1 FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = "public"."whatsapp_auto_response_rules"."teamId"
         AND tm."profileId" = (SELECT auth.uid())
     )
@@ -133,7 +133,7 @@ CREATE POLICY "whatsapp_auto_response_logs_team_member_select"
   FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM "public"."team_members" tm
+      SELECT 1 FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = "public"."whatsapp_auto_response_logs"."teamId"
         AND tm."profileId" = (SELECT auth.uid())
     )
@@ -144,7 +144,7 @@ CREATE POLICY "whatsapp_auto_response_logs_team_member_insert"
   FOR INSERT
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM "public"."team_members" tm
+      SELECT 1 FROM "public"."corretor_studio_team_members" tm
       WHERE tm."teamId" = "public"."whatsapp_auto_response_logs"."teamId"
         AND tm."profileId" = (SELECT auth.uid())
     )
