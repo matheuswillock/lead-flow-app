@@ -17,9 +17,13 @@ import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
 import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 export function ContatosContainer() {
   const { selectedListId, lists, supabaseId, handleSelectList, handleSetListSegment } = useContactsContext()
+  const { hasAccess } = useFeatureAccess()
+  const hasRadar = hasAccess(FEATURE_SLUGS.RADAR)
 
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null
 
@@ -99,7 +103,7 @@ export function ContatosContainer() {
                     </p>
                   )}
                 </div>
-                {!selectedList?.isBlocklist && selectedListId && (
+                {hasRadar && !selectedList?.isBlocklist && selectedListId && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Segmento do Radar:</span>
                     <ContactListSegmentPicker

@@ -493,13 +493,33 @@ export class EmailContactImportUseCase {
             // D6: sync síncrono (não fire-and-forget) — "já deve constar na
             // lista de segmentos assim que for importado" exige que o job só
             // marque o import como concluído depois que os perfis existirem.
-            // Se estourar MAX_PROCESSING_MS, o job já re-enfileira e retoma
-            // do próximo lote (mesmo mecanismo existente, sem estado novo).
             const batchContacts = await prisma.emailContact.findMany({
               where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
               select: { id: true },
             })
             for (const batchContact of batchContacts) {
+              if (Date.now() - startedAt > MAX_PROCESSING_MS) {
+                await prisma.emailImportJob.update({
+                  where: { id: claimed.id },
+                  data: {
+                    status: "pending",
+                    processedRows,
+                    importedCount,
+                    updatedCount,
+                    skippedCount,
+                    skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
+                    failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
+                    attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
+                  },
+                })
+                console.info(
+                  `[EmailContactImport][${claimed.importId}] Tempo esgotado no sync Radar do lote ${batchIndex + 1}/${totalBatches} — re-enfileirado`
+                )
+                return new Output(true, ["Job re-enfileirado por tempo"], [], {
+                  importId: claimed.importId,
+                  resumedAtBatch: batchIndex + 1,
+                })
+              }
               const syncResult = await syncEmailContactToRadarUseCase.execute({
                 emailContactId: batchContact.id,
                 teamId: claimed.teamId,
@@ -508,6 +528,10 @@ export class EmailContactImportUseCase {
                 console.error(
                   `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
                   syncResult.errorMessages
+                )
+              } else if ((syncResult.result as { errors?: number } | null)?.errors) {
+                console.error(
+                  `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${(syncResult.result as { errors?: number }).errors} erro(s)`
                 )
               }
             }

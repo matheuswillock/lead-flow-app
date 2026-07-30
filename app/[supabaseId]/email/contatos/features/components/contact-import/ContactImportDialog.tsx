@@ -29,6 +29,8 @@ import {
 } from "./autoMapEmailContactColumns";
 import { ContatosService } from "../../services/ContatosService";
 import { ContactListSegmentPicker } from "./ContactListSegmentPicker";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 
 type ContactImportStep = "upload" | "mapping" | "summary";
 
@@ -71,6 +73,8 @@ export function ContactImportDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [segmentId, setSegmentId] = useState<string | null>(null);
   const [segmentName, setSegmentName] = useState<string | null>(null);
+  const { hasAccess } = useFeatureAccess();
+  const hasRadar = hasAccess(FEATURE_SLUGS.RADAR);
 
   const resetState = () => {
     setStep("upload");
@@ -153,10 +157,10 @@ export function ContactImportDialog({
 
     setIsSubmitting(true);
     try {
-      await service.importMapped(listId, mappedRows);
       if (segmentId) {
         await service.setListRadarSegment(listId, segmentId);
       }
+      await service.importMapped(listId, mappedRows);
       toast.success("Processando importação em segundo plano");
       if (onImportComplete) {
         await onImportComplete();
@@ -224,21 +228,23 @@ export function ContactImportDialog({
                 preview={importPreview}
                 mapping={mapping}
               />
-              <div className="flex flex-col gap-2 rounded-md border p-4">
-                <p className="text-sm font-medium">Segmento do Radar (opcional)</p>
-                <p className="text-xs text-muted-foreground">
-                  Vincule os contatos importados a um segmento para usá-los em campanhas e filtros.
-                </p>
-                <ContactListSegmentPicker
-                  listId={listId}
-                  supabaseId={supabaseId}
-                  selectedSegmentId={segmentId}
-                  selectedSegmentName={segmentName}
-                  onSelect={(id, name) => { setSegmentId(id); setSegmentName(name); }}
-                  onClear={() => { setSegmentId(null); setSegmentName(null); }}
-                  disabled={isSubmitting}
-                />
-              </div>
+              {hasRadar && (
+                <div className="flex flex-col gap-2 rounded-md border p-4">
+                  <p className="text-sm font-medium">Segmento do Radar (opcional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Vincule os contatos importados a um segmento para usá-los em campanhas e filtros.
+                  </p>
+                  <ContactListSegmentPicker
+                    listId={listId}
+                    supabaseId={supabaseId}
+                    selectedSegmentId={segmentId}
+                    selectedSegmentName={segmentName}
+                    onSelect={(id, name) => { setSegmentId(id); setSegmentName(name); }}
+                    onClear={() => { setSegmentId(null); setSegmentName(null); }}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

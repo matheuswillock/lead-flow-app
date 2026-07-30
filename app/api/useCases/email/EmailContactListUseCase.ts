@@ -475,6 +475,31 @@ export class EmailContactListUseCase {
     }
   }
 
+  private async cleanupSegmentListId(listId: string, segmentId: string): Promise<void> {
+    const seg = await prisma.teamRadarSegment.findFirst({
+      where: { id: segmentId },
+      select: { id: true, rulesJson: true },
+    })
+    if (!seg) return
+    const rules = parseRadarSegmentRules(seg.rulesJson)
+    const listCondition = rules.conditions.find(
+      (c): c is Extract<RadarSegmentCondition, { kind: "email_contact_list" }> =>
+        c.kind === "email_contact_list"
+    )
+    if (!listCondition || !listCondition.listIds.includes(listId)) return
+    const nextListIds = listCondition.listIds.filter((id) => id !== listId)
+    const nextConditions =
+      nextListIds.length > 0
+        ? rules.conditions.map((c) =>
+            c === listCondition ? { ...listCondition, listIds: nextListIds } : c
+          )
+        : rules.conditions.filter((c) => c !== listCondition)
+    await prisma.teamRadarSegment.update({
+      where: { id: segmentId },
+      data: { rulesJson: { ...rules, conditions: nextConditions } as unknown as object },
+    })
+  }
+
   async setRadarSegment(listId: string, segmentId: string | null, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailContactList.findFirst({
@@ -485,11 +510,18 @@ export class EmailContactListUseCase {
       }
 
       if (segmentId === null) {
+        if (existing.radarSegmentId) {
+          await this.cleanupSegmentListId(listId, existing.radarSegmentId)
+        }
         await prisma.emailContactList.update({
           where: { id: listId },
           data: { radarSegmentId: null },
         })
         return new Output(true, ["Segmento desvinculado da lista"], [], null)
+      }
+
+      if (existing.radarSegmentId && existing.radarSegmentId !== segmentId) {
+        await this.cleanupSegmentListId(listId, existing.radarSegmentId)
       }
 
       const segment = await teamRadarSegmentService.findById(ctx.teamId, segmentId)
