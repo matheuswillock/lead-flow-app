@@ -41,6 +41,7 @@ import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 function CampaignActionsMenu({
   campaign,
@@ -49,6 +50,7 @@ function CampaignActionsMenu({
   deletingId,
   cancelingId,
   archivingId,
+  readOnly,
   openView,
   openEdit,
   handleSend,
@@ -63,6 +65,7 @@ function CampaignActionsMenu({
   deletingId: string | null
   cancelingId: string | null
   archivingId: string | null
+  readOnly: boolean
   openView: (campaign: Campaign) => void
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
@@ -137,49 +140,57 @@ function CampaignActionsMenu({
             <Eye className="mr-2 h-4 w-4" />
             Visualizar
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setSendConfirmOpen(true)}
-            disabled={!canSend}
-            title={!canSend ? sendDisabledReason : undefined}
-          >
-            <Send className="mr-2 h-4 w-4" />
-            Disparar
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Editar
-          </DropdownMenuItem>
+          {!readOnly ? (
+            <>
+              <DropdownMenuItem
+                onClick={() => setSendConfirmOpen(true)}
+                disabled={!canSend}
+                title={!canSend ? sendDisabledReason : undefined}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Disparar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
             <BarChart3 className="mr-2 h-4 w-4" />
             Métricas
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setCancelConfirmOpen(true)}
-            disabled={!canCancel || cancelingId === campaign.id}
-          >
-            <CalendarX className="mr-2 h-4 w-4" />
-            {cancelingId === campaign.id ? "Cancelando..." : "Cancelar agendamento"}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {canDelete && (
-            <DropdownMenuItem
-              onClick={() => setDeleteConfirmOpen(true)}
-              disabled={deletingId === campaign.id}
-              className="text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
-            </DropdownMenuItem>
-          )}
-          {canArchive && (
-            <DropdownMenuItem
-              onClick={() => setArchiveConfirmOpen(true)}
-              disabled={archivingId === campaign.id}
-            >
-              <Archive className="mr-2 h-4 w-4" />
-              {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
-            </DropdownMenuItem>
-          )}
+          {!readOnly ? (
+            <>
+              <DropdownMenuItem
+                onClick={() => setCancelConfirmOpen(true)}
+                disabled={!canCancel || cancelingId === campaign.id}
+              >
+                <CalendarX className="mr-2 h-4 w-4" />
+                {cancelingId === campaign.id ? "Cancelando..." : "Cancelar agendamento"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {canDelete && (
+                <DropdownMenuItem
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  disabled={deletingId === campaign.id}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+                </DropdownMenuItem>
+              )}
+              {canArchive && (
+                <DropdownMenuItem
+                  onClick={() => setArchiveConfirmOpen(true)}
+                  disabled={archivingId === campaign.id}
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
+                </DropdownMenuItem>
+              )}
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -295,6 +306,7 @@ export function CampaignList({
 }) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
+  const { readOnly } = useStudioEmailRuntime()
   const {
     campaigns,
     total,
@@ -372,7 +384,7 @@ export function CampaignList({
                         Crie uma campanha para disparar comunicações para a sua base.
                       </p>
                     </div>
-                    <Button type="button" size="sm" onClick={() => void openWizard()}>
+                    <Button type="button" size="sm" onClick={() => void openWizard()} disabled={readOnly}>
                       Criar campanha
                     </Button>
                   </div>
@@ -459,6 +471,7 @@ export function CampaignList({
                             deletingId={deletingId}
                             cancelingId={cancelingId}
                             archivingId={archivingId}
+                            readOnly={readOnly}
                             openView={openView}
                             openEdit={openEdit}
                             handleSend={handleSend}

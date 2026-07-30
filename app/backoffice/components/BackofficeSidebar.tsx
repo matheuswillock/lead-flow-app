@@ -140,13 +140,13 @@ const navigationItems: NavItem[] = [
   { title: "Bethânia", url: "/backoffice/studio-bot", icon: Bot },
   { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
   {
-    title: "Campanhas de E-mail",
+    title: "E-mails operacionais",
     url: "/backoffice/emails/campanhas",
     icon: Megaphone,
     match: (pathname) => pathname.startsWith("/backoffice/emails"),
     children: [
       {
-        title: "Campanhas",
+        title: "Campanhas CS",
         url: "/backoffice/emails/campanhas",
         match: (pathname) => pathname === "/backoffice/emails/campanhas",
       },

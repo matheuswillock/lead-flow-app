@@ -16,8 +16,10 @@ import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 export function ContatosContainer() {
+  const { readOnly } = useStudioEmailRuntime()
   const { selectedListId, lists, handleSelectList } = useContactsContext()
 
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null
@@ -31,7 +33,7 @@ export function ContatosContainer() {
         </div>
         <ContactListCreateModal
           trigger={
-            <Button size="sm">+ Nova Lista</Button>
+            <Button size="sm" disabled={readOnly}>+ Nova Lista</Button>
           }
         />
       </div>
@@ -82,7 +84,7 @@ export function ContatosContainer() {
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-semibold">{selectedList?.name}</h2>
-                {!selectedList?.isBlocklist ? (
+                {!selectedList?.isBlocklist && !readOnly ? (
                   <div className="flex items-center gap-2">
                     <ContactAddModal
                       trigger={
@@ -91,11 +93,11 @@ export function ContatosContainer() {
                     />
                     <ContactImportButton />
                   </div>
-                ) : (
+                ) : selectedList?.isBlocklist ? (
                   <p className="text-sm text-muted-foreground">
                     Lista somente leitura — contatos entram via descadastro.
                   </p>
-                )}
+                ) : null}
               </div>
               <ContactsTable />
             </>

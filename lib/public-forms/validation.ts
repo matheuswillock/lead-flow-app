@@ -156,6 +156,9 @@ export const publicFormDraftSchema = z
         message: "A soma das pontuações das perguntas deve ser 100%",
       })
     }
+  })
+  .transform((value) => normalizeThankYouPages(value as PublicFormDraftInput))
+  .superRefine((value, context) => {
     if (value.thankYouPages.length === 0) {
       context.addIssue({
         code: "custom",
@@ -212,7 +215,6 @@ export const publicFormDraftSchema = z
       }
     }
   })
-  .transform((value) => normalizeThankYouPages(value as PublicFormDraftInput))
 
 export const publicFormSettingsSchema = z
   .object({

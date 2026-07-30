@@ -14,15 +14,25 @@ import { format } from "date-fns"
 import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
+import type { ComponentType } from "react"
 import { CampaignDetailSheet } from "../components/CampaignDetailSheet"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
-const CampaignAnalyticsDialog = dynamic(
+type AnalyticsDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  campaignId?: string
+  campaignName?: string
+  campaignErrorMessage?: string | null
+}
+
+const DefaultCampaignAnalyticsDialog = dynamic(
   () =>
     import("../components/analytics/CampaignAnalyticsDialog").then(
       (mod) => mod.CampaignAnalyticsDialog
     ),
   { ssr: false }
-)
+) as ComponentType<AnalyticsDialogProps>
 
 const STATUS_FILTER_OPTIONS = [
   { value: "draft", label: "Rascunhos" },
@@ -34,7 +44,12 @@ const STATUS_FILTER_OPTIONS = [
   { value: "archived", label: "Arquivadas" },
 ]
 
-export function CampanhasContainer() {
+export function CampanhasContainer({
+  AnalyticsDialogComponent = DefaultCampaignAnalyticsDialog,
+}: {
+  AnalyticsDialogComponent?: ComponentType<AnalyticsDialogProps>
+}) {
+  const { readOnly } = useStudioEmailRuntime()
   const {
     statusFilter,
     nameFilter,
@@ -96,7 +111,7 @@ export function CampanhasContainer() {
             <BarChart3 data-icon="inline-start" />
             Métricas
           </Button>
-          <Button size="sm" onClick={() => void openWizard()}>
+          <Button size="sm" onClick={() => void openWizard()} disabled={readOnly}>
             + Nova Campanha
           </Button>
         </div>
@@ -133,7 +148,7 @@ export function CampanhasContainer() {
       <CampaignList onOpenAnalytics={openCampaignAnalytics} />
       <CampaignCreateWizard />
       <CampaignDetailSheet onOpenAnalytics={openCampaignAnalytics} />
-      <CampaignAnalyticsDialog
+      <AnalyticsDialogComponent
         open={analyticsOpen}
         onOpenChange={setAnalyticsOpen}
         campaignId={analyticsCampaign?.id}
