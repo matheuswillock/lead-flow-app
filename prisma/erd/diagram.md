@@ -2910,6 +2910,7 @@ meeting_scheduled meeting_scheduled
     DateTime playedAt "❓"
     DateTime failedAt "❓"
     Boolean isAutoResponse 
+    BigInt providerTimestamp "❓"
     Json rawPayload 
     String storagePath "❓"
     String mediaSha256 "❓"

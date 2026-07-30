@@ -1269,6 +1269,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       deliveredAt: string | null
       readAt: string | null
       failedAt: string | null
+      deletedForEveryoneAt?: string | null
+      isPinned?: boolean
+      isFavorite?: boolean
+      isHiddenForMe?: boolean
       mediaFileName?: string | null
       mediaMimeType?: string | null
       storagePath?: string | null
@@ -1287,6 +1291,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
                 deliveredAt: row.deliveredAt,
                 readAt: row.readAt,
                 failedAt: row.failedAt,
+                ...(row.deletedForEveryoneAt !== undefined ? { deletedForEveryoneAt: row.deletedForEveryoneAt } : {}),
+                ...(row.isPinned !== undefined ? { isPinned: row.isPinned } : {}),
+                ...(row.isFavorite !== undefined ? { isFavorite: row.isFavorite } : {}),
+                ...(row.isHiddenForMe !== undefined ? { isHiddenForMe: row.isHiddenForMe } : {}),
                 ...(row.mediaFileName !== undefined ? { mediaFileName: row.mediaFileName } : {}),
                 ...(row.mediaMimeType !== undefined ? { mediaMimeType: row.mediaMimeType } : {}),
                 ...(row.storagePath !== undefined ? { storagePath: row.storagePath } : {}),

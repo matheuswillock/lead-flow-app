@@ -112,6 +112,7 @@ const MESSAGE_SELECT = {
   sentByProfileId: true,
   senderPhone: true,
   recipientPhone: true,
+  providerTimestamp: true,
   sentAt: true,
   deliveredAt: true,
   readAt: true,
@@ -643,7 +644,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppMessage.findMany({
         where,
         select: MESSAGE_SELECT,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ providerTimestamp: "asc" }, { createdAt: "asc" }],
         skip,
         take: limit,
       }),
@@ -1311,7 +1312,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         phone: { not: null },
         OR: [
           { phone: normalizedPhone },
-          ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+          ...(digits ? [{ phone: { endsWith: digits.slice(-11) } }] : []),
         ],
       },
       select: { teamId: true, updatedAt: true },
@@ -1715,7 +1716,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppMessage.findMany({
         where,
         select: MESSAGE_SELECT,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ providerTimestamp: "asc" }, { createdAt: "asc" }],
         skip: (page - 1) * limit,
         take: limit,
       }),

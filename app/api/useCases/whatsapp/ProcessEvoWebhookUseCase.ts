@@ -263,6 +263,12 @@ class ProcessEvoWebhookUseCase {
           senderPhone: fromMe ? undefined : normalizedPhone,
           recipientPhone: fromMe ? normalizedPhone : undefined,
           sentAt: now,
+          providerTimestamp:
+            typeof (data as Record<string, unknown>).messageTimestamp === "number"
+              ? BigInt((data as Record<string, unknown>).messageTimestamp as number)
+              : typeof (data as Record<string, unknown>).messageTimestamp === "string"
+                ? BigInt(parseInt((data as Record<string, unknown>).messageTimestamp as string, 10)) || null
+                : null,
           quotedProviderMessageId: parsed.quotedProviderMessageId,
           ...(quotedMessageId ? { quotedMessage: { connect: { id: quotedMessageId } } } : {}),
           rawPayload: data as Prisma.InputJsonValue,
@@ -746,12 +752,16 @@ class ProcessEvoWebhookUseCase {
       const providerMessageId = typeof keyObj["id"] === "string" ? keyObj["id"] : undefined
       if (!providerMessageId) continue
 
+      const remoteJid = typeof keyObj["remoteJid"] === "string" ? keyObj["remoteJid"] : undefined
       const updateObj = (item["update"] as Record<string, unknown> | undefined) ?? {}
       const rawStatus =
         normalizeMessageStatus(updateObj["status"]) ||
         normalizeMessageStatus(item["status"])
 
-      await this.applyOutboundMessageStatus(teamId, providerMessageId, rawStatus)
+      const effectiveTeamId = remoteJid
+        ? await this.repository.findLeadTeamIdByPhoneForMaster(teamId, remoteJid, teamId)
+        : teamId
+      await this.applyOutboundMessageStatus(effectiveTeamId, providerMessageId, rawStatus)
     }
   }
 
@@ -839,7 +849,12 @@ class ProcessEvoWebhookUseCase {
       return
     }
 
-    const existing = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
+    const remoteJid = typeof keyObj["remoteJid"] === "string" ? keyObj["remoteJid"] : undefined
+    const effectiveTeamId = remoteJid
+      ? await this.repository.findLeadTeamIdByPhoneForMaster(teamId, remoteJid, teamId)
+      : teamId
+
+    const existing = await this.repository.findMessageByProviderMessageId(effectiveTeamId, providerMessageId)
     if (!existing) {
       console.info(
         "[ProcessEvoWebhookUseCase][handleMessagesDelete] Message not found, skipping",

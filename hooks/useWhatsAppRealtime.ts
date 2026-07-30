@@ -28,6 +28,10 @@ export type WhatsAppMessageRealtimeRow = {
   deliveredAt: string | null
   readAt: string | null
   failedAt: string | null
+  deletedForEveryoneAt: string | null
+  isPinned: boolean
+  isFavorite: boolean
+  isHiddenForMe: boolean
   createdAt: string
 }
 
@@ -100,6 +104,10 @@ function mapMessageRow(row: Partial<WhatsAppMessageRealtimeRow>): WhatsAppMessag
     deliveredAt: row.deliveredAt ?? null,
     readAt: row.readAt ?? null,
     failedAt: row.failedAt ?? null,
+    deletedForEveryoneAt: row.deletedForEveryoneAt ?? null,
+    isPinned: row.isPinned ?? false,
+    isFavorite: row.isFavorite ?? false,
+    isHiddenForMe: row.isHiddenForMe ?? false,
     createdAt: row.createdAt ?? new Date().toISOString(),
   }
 }
