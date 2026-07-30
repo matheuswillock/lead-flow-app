@@ -96,7 +96,6 @@ export function WhatsAppInboxProvider({ supabaseId, children }: WhatsAppInboxPro
       loadContacts: hook.loadContacts,
       searchInbox: hook.searchInbox,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       hook.config, hook.conversations, hook.selectedConversationId, hook.selectedConversation,
       hook.messages, hook.totalConversations, hook.isLoadingConfig, hook.isLoadingConversations,
