@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
 import { computeWhatsAppRealtimeHealth } from '@/lib/whatsapp/realtime-health'
+import { dispatchWhatsAppUnreadChanged } from '@/lib/whatsapp/unread-events'
 import type { WhatsAppContactNameSource } from '@/app/[supabaseId]/whatsapp/features/context/WhatsAppInboxTypes'
 
 export type WhatsAppMessageRealtimeRow = {
@@ -279,7 +280,10 @@ export function useWhatsAppRealtime({
               const row = payload.new as Partial<WhatsAppConversationRealtimeRow>
               if (!row?.id || !row.teamId) return
               const mapped = mapConversationRow(row, teamId)
-              if (mapped) onConversationInsertedRef.current(mapped)
+              if (mapped) {
+                onConversationInsertedRef.current(mapped)
+                dispatchWhatsAppUnreadChanged()
+              }
             }
           )
           .on(
@@ -288,7 +292,10 @@ export function useWhatsAppRealtime({
             (payload) => {
               console.info('[WhatsAppRealtime] Evento:', { event: 'UPDATE', table: 'whatsapp_conversations' })
               const mapped = mapConversationRow(payload.new as Partial<WhatsAppConversationRealtimeRow>, teamId)
-              if (mapped) onConversationUpdatedRef.current(mapped)
+              if (mapped) {
+                onConversationUpdatedRef.current(mapped)
+                dispatchWhatsAppUnreadChanged()
+              }
             }
           )
           .subscribe((status) => {

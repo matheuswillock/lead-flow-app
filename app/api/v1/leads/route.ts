@@ -97,6 +97,8 @@ export async function GET(request: NextRequest) {
     const onlyTransfer = searchParams.get('onlyTransfer') === 'true';
     const calendarWindowStart = searchParams.get('calendarWindowStart');
     const calendarWindowEnd = searchParams.get('calendarWindowEnd');
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 1000) : undefined;
 
     if (!role) {
       console.warn('[LeadsRoute][GET] No role in query params');
@@ -128,6 +130,7 @@ export async function GET(request: NextRequest) {
       }),
       ...(customFieldFilters && { customFieldFilters }),
       ...(customFieldSort && { customFieldSort }),
+      ...(limit !== undefined && { limit }),
     };
 
     const output = await leadUseCase.getAllLeadsByUserRoleWithCtx(access, options);

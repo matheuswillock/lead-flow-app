@@ -710,6 +710,7 @@ export class LeadUseCase implements ILeadUseCase {
       calendarWindowEnd?: Date;
       customFieldFilters?: CustomFieldFilterInput[];
       customFieldSort?: CustomFieldSortInput;
+      limit?: number;
     }
   ): Promise<Output> {
     try {
@@ -725,6 +726,7 @@ export class LeadUseCase implements ILeadUseCase {
       const teamId = access.teamId;
       const teamRole = access.teamMember.role;
       let leads: Awaited<ReturnType<ILeadRepository["findAllByTeamId"]>>["leads"] = [];
+      let total = 0;
 
       if (isManagerLikeRole(teamRole)) {
         const result = await this.leadRepository.findAllByTeamId(teamId, {
@@ -738,8 +740,10 @@ export class LeadUseCase implements ILeadUseCase {
           calendarWindowEnd: options?.calendarWindowEnd,
           customFieldFilters: options?.customFieldFilters,
           customFieldSort: options?.customFieldSort,
+          limit: options?.limit,
         });
         leads = result.leads;
+        total = result.total;
       } else if (teamRole === "operator") {
         const result = await this.leadRepository.findAllByOperatorIdInTeam(access.profileId, teamId, {
           status: options?.status,
@@ -752,13 +756,15 @@ export class LeadUseCase implements ILeadUseCase {
           calendarWindowEnd: options?.calendarWindowEnd,
           customFieldFilters: options?.customFieldFilters,
           customFieldSort: options?.customFieldSort,
+          limit: options?.limit,
         });
         leads = result.leads;
+        total = result.total;
       } else {
         return new Output(false, [], ["Role inválido. Use 'manager', 'backoffice' ou 'operator'"], null);
       }
 
-      return new Output(true, [], [], leads.map((lead) => this.transformToDTO(lead)));
+      return new Output(true, [], [], { leads: leads.map((lead) => this.transformToDTO(lead)), total });
     } catch (error) {
       console.error("[LeadUseCase][getAllLeadsByUserRoleWithCtx] Erro ao buscar leads:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
