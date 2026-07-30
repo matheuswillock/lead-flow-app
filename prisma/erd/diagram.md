@@ -1298,6 +1298,7 @@ not_selected not_selected
         PublicFormRuleAction {
             show show
 skip skip
+jump_to jump_to
         }
     
 

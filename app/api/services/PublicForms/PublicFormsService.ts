@@ -17,6 +17,7 @@ import type {
 } from "@/lib/public-forms/types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
 import { normalizeThankYouPages, parseThankYouPages } from "@/lib/public-forms/thank-you-pages"
+import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import type { IPublicFormsService } from "./IPublicFormsService"
@@ -123,7 +124,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
       operator: rule.operator,
       comparisonValue: rule.comparisonValue,
       action: rule.action,
-      elseAction: rule.elseAction ?? (rule.action === "show" ? "skip" : "show"),
+      elseAction: rule.elseAction ?? inverseRuleAction(rule.action),
     })),
     scoreBands: form.scoreBands.map((band) => ({
       id: band.id,

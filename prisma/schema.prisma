@@ -4979,6 +4979,7 @@ enum PublicFormRuleOperator {
 enum PublicFormRuleAction {
   show
   skip
+  jump_to
 }
 
 enum PublicFormSubmissionStatus {

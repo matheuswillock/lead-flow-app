@@ -86,6 +86,18 @@ export function getQuestionStepErrors(draft: PublicFormDraftInput): string[] {
     errors.push("Só é permitido uma pergunta de cálculo por formulário")
   }
 
+  for (const question of draft.questions) {
+    if (
+      question.mappingTarget === "native_field" &&
+      question.mappingKey === "email" &&
+      question.type !== "email"
+    ) {
+      errors.push(
+        `Use o tipo E-mail na pergunta “${question.title || "sem título"}” para validar o endereço corretamente`,
+      )
+    }
+  }
+
   return [...new Set(errors)]
 }
 

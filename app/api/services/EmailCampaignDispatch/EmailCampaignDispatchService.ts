@@ -3,6 +3,10 @@ import {
   buildCampaignUnsubscribeUrl,
   buildListUnsubscribeHeaders,
 } from "@/lib/email/campaign-unsubscribe-footer"
+import {
+  EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+  templateIncludesManualUnsubscribeLink,
+} from "@/lib/email/unsubscribe-link-embed"
 import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
@@ -82,6 +86,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
 
     const chunks = this.chunkArray(sendable, BATCH_SIZE)
 
+    const manualUnsubscribeLink = templateIncludesManualUnsubscribeLink(params.html)
+
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex]
       // Callback de persistência fica fora do try/catch do Resend: falha de DB após
@@ -90,11 +96,18 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
 
       try {
         const batchPayload = chunk.map((recipient) => {
+          const unsubscribeUrl = recipient.contactId
+            ? buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId)
+            : ""
+          const usesManualUnsubscribe = manualUnsubscribeLink && Boolean(unsubscribeUrl)
           const renderedHtml = interpolateEmailTemplate(
             params.html,
             recipient,
             params.globalDefaults,
-            params.templateVariables
+            params.templateVariables,
+            unsubscribeUrl
+              ? { [EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]: unsubscribeUrl }
+              : null,
           )
           const renderedSubject = interpolateEmailTemplate(
             params.subject,
@@ -106,13 +119,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           let htmlWithFooter = renderedHtml
           let headers: Record<string, string> | undefined
 
-          if (recipient.contactId) {
-            const unsubscribeUrl = buildCampaignUnsubscribeUrl(
-              recipient.contactId,
-              params.teamId,
-              params.campaignId
-            )
-            htmlWithFooter = appendCampaignUnsubscribeFooter(renderedHtml, unsubscribeUrl)
+          if (recipient.contactId && unsubscribeUrl) {
+            if (!usesManualUnsubscribe) {
+              htmlWithFooter = appendCampaignUnsubscribeFooter(renderedHtml, unsubscribeUrl)
+            }
             headers = buildListUnsubscribeHeaders(unsubscribeUrl)
           }
 

@@ -16,6 +16,8 @@ import {
   extractTemplateVariableKeys,
   interpolateEmailTemplate,
 } from "@/lib/email/interpolate"
+import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
+import { getFullUrl } from "@/lib/utils/app-url"
 
 const templateDetailSelect = {
   id: true,
@@ -589,16 +591,23 @@ export class EmailTemplateUseCase {
       const globalDefaults = defaultsOutput.isValid
         ? { ...(defaultsOutput.result as Record<string, string>) }
         : {}
+      const authoritativeDefaults = {
+        [EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]: getFullUrl("/email-unsubscribe/exemplo"),
+      }
 
       const renderedSubject = interpolateEmailTemplate(data.subject, recipient, globalDefaults, variableInputs)
       const renderedHtml = interpolateEmailTemplate(
         inlineEmailHtml(data.html),
         recipient,
         globalDefaults,
-        variableInputs
+        variableInputs,
+        authoritativeDefaults,
       )
       const unresolvedTokens = extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
-        (token) => !["nome", "nome_do_lead", "name", "email"].includes(token.toLowerCase())
+        (token) =>
+          !["nome", "nome_do_lead", "name", "email", EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY].includes(
+            token.toLowerCase(),
+          ),
       )
 
       if (unresolvedTokens.length > 0) {

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
 import { isThankYouRuleTarget, normalizeThankYouPages } from "@/lib/public-forms/thank-you-pages"
+import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   type IPublicFormsRepository,
   type PublicFormCompleteSubmissionInput,
@@ -120,7 +121,7 @@ async function replaceDraftRelations(
         comparisonValue:
           rule.comparisonValue === undefined ? Prisma.JsonNull : json(rule.comparisonValue),
         action: rule.action,
-        elseAction: rule.elseAction ?? (rule.action === "show" ? "skip" : "show"),
+        elseAction: rule.elseAction ?? inverseRuleAction(rule.action),
       })),
     })
   }
