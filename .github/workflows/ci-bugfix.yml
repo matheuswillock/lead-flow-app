@@ -132,10 +132,22 @@ jobs:
         uses: ./.github/actions/setup-bun-deps
 
       - name: Proxy Tests
+        id: proxy-tests
+        continue-on-error: true
         run: bun run test:proxy
 
       - name: Unit Tests
+        id: unit-tests
+        continue-on-error: true
         run: bun run test
+
+      - name: Resolve Tests
+        if: always()
+        run: |
+          if [[ "${{ steps['proxy-tests'].outcome }}" != "success" || "${{ steps['unit-tests'].outcome }}" != "success" ]]; then
+            echo "::error::proxy-tests=${{ steps['proxy-tests'].outcome }} unit-tests=${{ steps['unit-tests'].outcome }}"
+            exit 1
+          fi
 
   spellcheck:
     name: Spellcheck PT-BR
