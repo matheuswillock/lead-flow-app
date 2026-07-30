@@ -751,7 +751,7 @@ export class LeadRepository implements ILeadRepository {
       limit,
     } = options || {};
 
-    const take = Math.min(limit ?? 500, 1000);
+    const take = limit !== undefined ? Math.min(limit, 1000) : undefined;
 
     const andClauses: Prisma.LeadWhereInput[] = [];
     if (calendarWindowStart && calendarWindowEnd) {
@@ -794,8 +794,12 @@ export class LeadRepository implements ILeadRepository {
         }
       : CRM_LEAD_LIST_SELECT;
 
+    // When customFieldSort is active the in-memory sort must run over the full
+    // matching set, so skip the take to avoid returning a mis-ordered subset.
+    const effectiveTake = customFieldSort ? undefined : take;
+
     const [rawLeads, total] = await prisma.$transaction([
-      prisma.lead.findMany({ where, select, orderBy: { createdAt: 'desc' }, take }),
+      prisma.lead.findMany({ where, select, orderBy: { createdAt: 'desc' }, take: effectiveTake }),
       prisma.lead.count({ where }),
     ]);
 
@@ -968,7 +972,7 @@ export class LeadRepository implements ILeadRepository {
       AND: [visibilityFilter, ...filters],
     };
 
-    const take = Math.min(limit ?? 500, 1000);
+    const take = limit !== undefined ? Math.min(limit, 1000) : undefined;
 
     const select = customFieldSort
       ? {
@@ -980,8 +984,12 @@ export class LeadRepository implements ILeadRepository {
         }
       : CRM_LEAD_LIST_SELECT;
 
+    // When customFieldSort is active the in-memory sort must run over the full
+    // matching set, so skip the take to avoid returning a mis-ordered subset.
+    const effectiveTake = customFieldSort ? undefined : take;
+
     const [rawLeads, total] = await prisma.$transaction([
-      prisma.lead.findMany({ where, select, orderBy: { createdAt: 'desc' }, take }),
+      prisma.lead.findMany({ where, select, orderBy: { createdAt: 'desc' }, take: effectiveTake }),
       prisma.lead.count({ where }),
     ]);
 
