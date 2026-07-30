@@ -286,6 +286,30 @@ function isEmailQuestion(question: PublicFormQuestionInput): boolean {
   return question.type === "email" || (question.type === "text" && question.mappingKey === "email")
 }
 
+function parseCurrencyAnswer(value: unknown): {
+  empty: boolean
+  amount: number
+  valid: boolean
+} {
+  if (value == null || value === "") {
+    return { empty: true, amount: 0, valid: true }
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return { empty: false, amount: 0, valid: false }
+    return { empty: false, amount: value, valid: true }
+  }
+
+  const raw = String(value).trim()
+  if (!raw) return { empty: true, amount: 0, valid: true }
+
+  const digits = raw.replace(/\D/g, "")
+  if (!digits) return { empty: false, amount: 0, valid: false }
+
+  const amount = parseCurrencyBR(raw)
+  if (!Number.isFinite(amount)) return { empty: false, amount: 0, valid: false }
+  return { empty: false, amount, valid: true }
+}
+
 export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   if (q.type === "calculation") return null
   const empty = v == null || v === "" || (Array.isArray(v) && !v.length)
@@ -299,9 +323,11 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
     if (digits < 10 || digits > 11) return "Informe um telefone válido"
   }
   if (q.type === "currency") {
-    const amount = typeof v === "number" ? v : parseCurrencyBR(s)
-    if (!q.required && (!amount || amount <= 0)) return null
-    if (!amount || amount <= 0) return "Informe um valor válido"
+    const parsed = parseCurrencyAnswer(v)
+    if (!q.required && parsed.empty) return null
+    if (!parsed.valid) return "Informe um valor válido"
+    if (!q.required && parsed.amount <= 0) return null
+    if (parsed.amount <= 0) return "Informe um valor válido"
   }
   if (q.type === "date") {
     const parsed = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00.000Z`) : null

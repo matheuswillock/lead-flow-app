@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { inverseRuleAction } from "./engine"
 import { normalizeThankYouPages } from "./thank-you-pages"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
 import type { PublicFormDraftInput } from "./types"
@@ -180,6 +181,33 @@ export const publicFormDraftSchema = z
           code: "custom",
           path: ["rules"],
           message: "Regra referencia página de agradecimentos inexistente",
+        })
+      }
+
+      const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
+      const jumpActions = [rule.action, elseAction].filter((action) => action === "jump_to")
+      if (jumpActions.length === 0) continue
+
+      if (rule.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET) {
+        context.addIssue({
+          code: "custom",
+          path: ["rules"],
+          message: "Pular até pergunta não pode usar a página de agradecimentos como destino",
+        })
+        continue
+      }
+
+      const sourceIndex = value.questions.findIndex(
+        (question) => question.id === rule.sourceQuestionId,
+      )
+      const targetIndex = value.questions.findIndex(
+        (question) => question.id === rule.targetQuestionId,
+      )
+      if (sourceIndex < 0 || targetIndex < 0 || targetIndex <= sourceIndex) {
+        context.addIssue({
+          code: "custom",
+          path: ["rules"],
+          message: "Pular até pergunta exige um destino posterior à pergunta de origem",
         })
       }
     }

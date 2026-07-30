@@ -394,6 +394,7 @@ describe("motor dos formulários públicos", () => {
     expect(validateAnswer(currencyQuestion, "")).toBeNull()
     expect(validateAnswer(currencyQuestion, "0,00")).toBeNull()
     expect(validateAnswer(currencyQuestion, 0)).toBeNull()
+    expect(validateAnswer(currencyQuestion, "abc")).toBe("Informe um valor válido")
     expect(validateAnswer({ ...currencyQuestion, required: true }, "0,00")).toBe(
       "Informe um valor válido",
     )

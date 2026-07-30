@@ -243,7 +243,8 @@ function resolveCustomFunction(
 function buildResolvedValueMap(
   recipient: EmailTemplateRecipient,
   globalDefaults?: Record<string, string | null | undefined> | null,
-  definitions?: EmailTemplateVariableDefinition[] | null
+  definitions?: EmailTemplateVariableDefinition[] | null,
+  authoritativeDefaults?: Record<string, string | null | undefined> | null,
 ): Record<string, string> {
   const values: Record<string, string> = {}
 
@@ -319,6 +320,15 @@ function buildResolvedValueMap(
     }
   }
 
+  if (authoritativeDefaults) {
+    for (const [key, raw] of Object.entries(authoritativeDefaults)) {
+      if (raw == null) continue
+      const value = String(raw).trim()
+      if (!value) continue
+      values[normalizeKey(key)] = value
+    }
+  }
+
   return values
 }
 
@@ -331,6 +341,7 @@ function buildResolvedValueMap(
  *   3. Team global variables' default values (case-insensitive key match)
  *   4. Template variable fallbacks (when provided)
  *   5. Built-in functions like {{currentYear}} and custom function definitions
+ *   6. Authoritative defaults (always win, e.g. reserved dispatch tokens)
  *
  * Unknown tokens are left as-is.
  */
@@ -338,9 +349,15 @@ export function interpolateEmailTemplate(
   template: string,
   recipient: EmailTemplateRecipient,
   globalDefaults?: Record<string, string | null | undefined> | null,
-  definitions?: EmailTemplateVariableDefinition[] | null
+  definitions?: EmailTemplateVariableDefinition[] | null,
+  authoritativeDefaults?: Record<string, string | null | undefined> | null,
 ): string {
-  const values = buildResolvedValueMap(recipient, globalDefaults, definitions)
+  const values = buildResolvedValueMap(
+    recipient,
+    globalDefaults,
+    definitions,
+    authoritativeDefaults,
+  )
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, rawKey: string) => {
     const resolved = values[normalizeKey(rawKey)]
     return resolved != null ? resolved : match

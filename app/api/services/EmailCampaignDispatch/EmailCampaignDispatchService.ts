@@ -99,16 +99,15 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           const unsubscribeUrl = recipient.contactId
             ? buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId)
             : ""
+          const usesManualUnsubscribe = manualUnsubscribeLink && Boolean(unsubscribeUrl)
           const renderedHtml = interpolateEmailTemplate(
             params.html,
             recipient,
-            {
-              ...params.globalDefaults,
-              ...(unsubscribeUrl
-                ? { [EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]: unsubscribeUrl }
-                : {}),
-            },
-            params.templateVariables
+            params.globalDefaults,
+            params.templateVariables,
+            unsubscribeUrl
+              ? { [EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]: unsubscribeUrl }
+              : null,
           )
           const renderedSubject = interpolateEmailTemplate(
             params.subject,
@@ -121,7 +120,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           let headers: Record<string, string> | undefined
 
           if (recipient.contactId && unsubscribeUrl) {
-            if (!manualUnsubscribeLink) {
+            if (!usesManualUnsubscribe) {
               htmlWithFooter = appendCampaignUnsubscribeFooter(renderedHtml, unsubscribeUrl)
             }
             headers = buildListUnsubscribeHeaders(unsubscribeUrl)
