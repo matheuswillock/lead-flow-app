@@ -230,6 +230,24 @@ class ProcessEvoWebhookUseCase {
     const providerEventId = extractProviderEventId(rawEvent, eventType, providerMessageId, {
       skipEnvelopeId: isBatchedPayload,
     })
+    if (!isRedelivery && parsed.messageType === "REACT") {
+      if (parsed.quotedProviderMessageId) {
+        const referencedMsg = await this.repository.findMessageByProviderMessageId(
+          routed.teamId,
+          parsed.quotedProviderMessageId
+        )
+        if (referencedMsg) {
+          await this.repository.upsertMessageReaction({
+            teamId: routed.teamId,
+            messageId: referencedMsg.id,
+            actorPhone: normalizedPhone ?? remoteJid,
+            emoji: parsed.contentText ?? "",
+          })
+        }
+      }
+      return
+    }
+
     if (!isRedelivery) {
       let messageCreated = false
       let quotedMessageId: string | undefined
@@ -248,7 +266,7 @@ class ProcessEvoWebhookUseCase {
           providerMessageId,
           ...(providerEventId ? { providerEventId } : {}),
           direction,
-          messageType: parsed.messageType,
+          messageType: parsed.messageType as import("@prisma/client").WhatsAppMessageType,
           status: fromMe ? "SENT" : "RECEIVED",
           contentText: safeContentText,
           mediaUrl: parsed.mediaUrl,

@@ -525,6 +525,42 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async upsertMessageReaction(params: {
+    teamId: string
+    messageId: string
+    actorPhone: string
+    emoji: string
+    profileId?: string | null
+    removedAt?: Date | null
+  }): Promise<void> {
+    const existing = await prisma.whatsAppMessageReaction.findFirst({
+      where: { messageId: params.messageId, actorPhone: params.actorPhone },
+      select: { id: true },
+    })
+    if (existing) {
+      await prisma.whatsAppMessageReaction.update({
+        where: { id: existing.id },
+        data: {
+          emoji: params.emoji,
+          removedAt: params.removedAt ?? (params.emoji === "" ? new Date() : undefined),
+        },
+        select: { id: true },
+      })
+    } else {
+      await prisma.whatsAppMessageReaction.create({
+        data: {
+          teamId: params.teamId,
+          messageId: params.messageId,
+          actorPhone: params.actorPhone,
+          emoji: params.emoji,
+          profileId: params.profileId ?? null,
+          removedAt: params.removedAt ?? null,
+        },
+        select: { id: true },
+      })
+    }
+  }
+
   async findMessageIdByStoragePath(storagePath: string): Promise<string | null> {
     const row = await prisma.whatsAppMessage.findFirst({
       where: { storagePath },

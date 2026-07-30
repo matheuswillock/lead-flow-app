@@ -137,42 +137,57 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   }
 
   getMessageActionCapabilities(): WhatsAppMessageActionCapabilities {
-    // Evolution methods for react/delete-for-everyone are not yet homologated.
     return {
       reply: true,
       forward: true,
-      react: false,
-      deleteForEveryone: false,
+      react: true,
+      deleteForEveryone: true,
     }
   }
 
-  async reactToMessage(_params: {
+  async reactToMessage(params: {
     instanceName: string
     remoteJid: string
     providerMessageId: string
     fromMe: boolean
     emoji: string
   }): Promise<WhatsAppProviderActionResult> {
-    throw new WhatsAppProviderCapabilityError("react")
+    await this.evo.sendReaction({
+      instanceName: params.instanceName,
+      key: { remoteJid: params.remoteJid, fromMe: params.fromMe, id: params.providerMessageId },
+      reaction: params.emoji,
+    })
+    return { providerActionId: null, status: "ok" }
   }
 
-  async unreactToMessage(_params: {
+  async unreactToMessage(params: {
     instanceName: string
     remoteJid: string
     providerMessageId: string
     fromMe: boolean
     emoji: string
   }): Promise<WhatsAppProviderActionResult> {
-    throw new WhatsAppProviderCapabilityError("react")
+    await this.evo.sendReaction({
+      instanceName: params.instanceName,
+      key: { remoteJid: params.remoteJid, fromMe: params.fromMe, id: params.providerMessageId },
+      reaction: "",
+    })
+    return { providerActionId: null, status: "ok" }
   }
 
-  async deleteForEveryone(_params: {
+  async deleteForEveryone(params: {
     instanceName: string
     remoteJid: string
     providerMessageId: string
     fromMe: boolean
   }): Promise<WhatsAppProviderActionResult> {
-    throw new WhatsAppProviderCapabilityError("deleteForEveryone")
+    await this.evo.deleteMessage({
+      instanceName: params.instanceName,
+      remoteJid: params.remoteJid,
+      messageId: params.providerMessageId,
+      fromMe: params.fromMe,
+    })
+    return { providerActionId: null, status: "ok" }
   }
 
   async resolveMediaBase64(params: {

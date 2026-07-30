@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -55,6 +56,8 @@ const DEFAULT_CAPS: WhatsAppMessageActionCapabilities = {
   react: false,
   deleteForEveryone: false,
 }
+
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const
 
 function resolveQuotedPreview(
   message: WhatsAppMessage,
@@ -127,6 +130,7 @@ export function MessageBubble({ message, previousMessage = null }: MessageBubble
   )
   const [forwardOpen, setForwardOpen] = useState(false)
   const [deleteEveryoneOpen, setDeleteEveryoneOpen] = useState(false)
+  const [reactPickerOpen, setReactPickerOpen] = useState(false)
   const [actionPending, setActionPending] = useState(false)
 
   const isOutbound = message.direction === "OUTBOUND"
@@ -260,6 +264,32 @@ export function MessageBubble({ message, previousMessage = null }: MessageBubble
     [actionPending, activeTeamId, message.id, supabaseId]
   )
 
+  const postReaction = useCallback(
+    async (emoji: string) => {
+      if (!activeTeamId || actionPending) return
+      setReactPickerOpen(false)
+      setActionPending(true)
+      try {
+        await whatsAppInboxService.postMessageAction(
+          activeTeamId,
+          supabaseId,
+          message.id,
+          crypto.randomUUID(),
+          { kind: "REACT", emoji }
+        )
+      } catch (error) {
+        if (error instanceof WhatsAppApiError && error.code === "CAPABILITY_UNAVAILABLE") {
+          toast.error("Reação indisponível neste provedor")
+          return
+        }
+        toast.error(error instanceof Error ? error.message : "Não foi possível reagir")
+      } finally {
+        setActionPending(false)
+      }
+    },
+    [actionPending, activeTeamId, message.id, supabaseId]
+  )
+
   const handleAction = useCallback(
     (kind: MessageActionKind) => {
       const definition = actionItems.find((item) => item.kind === kind)
@@ -290,7 +320,8 @@ export function MessageBubble({ message, previousMessage = null }: MessageBubble
           setForwardOpen(true)
           break
         case "REACT":
-          toast.error("Ação indisponível neste provedor")
+          if (caps.react) setReactPickerOpen(true)
+          else toast.error("Reação indisponível neste provedor")
           break
         case "PIN":
         case "UNPIN":
@@ -416,6 +447,29 @@ export function MessageBubble({ message, previousMessage = null }: MessageBubble
           />
         </ContextMenuContent>
       </ContextMenu>
+
+      <Popover open={reactPickerOpen} onOpenChange={setReactPickerOpen}>
+        <PopoverTrigger asChild>
+          <span aria-hidden className="sr-only" />
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-2" align={isOutbound ? "end" : "start"} side="top">
+          <div className="flex gap-1">
+            {REACTION_EMOJIS.map((emoji) => (
+              <Button
+                key={emoji}
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-9 text-lg"
+                disabled={actionPending}
+                onClick={() => void postReaction(emoji)}
+              >
+                {emoji}
+              </Button>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
 
       <ForwardMessageDialog
         open={forwardOpen}

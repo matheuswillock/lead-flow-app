@@ -923,6 +923,51 @@ export class EvoApiService implements IEvoApiService {
       "deleteInstance"
     )
   }
+
+  async sendReaction(params: {
+    instanceName: string
+    key: { remoteJid: string; fromMe: boolean; id: string }
+    reaction: string
+  }): Promise<void> {
+    const base = getBaseUrl()
+    const apiKey = getApiKey()
+    const url = `${base}/message/sendReaction/${encodeURIComponent(params.instanceName)}`
+
+    await fetchEvo<unknown>(
+      url,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({ key: params.key, reaction: params.reaction }),
+        signal: AbortSignal.timeout(EVO_SEND_REQUEST_TIMEOUT_MS),
+      },
+      "sendReaction"
+    )
+  }
+
+  async deleteMessage(params: {
+    instanceName: string
+    remoteJid: string
+    messageId: string
+    fromMe: boolean
+  }): Promise<void> {
+    const base = getBaseUrl()
+    const apiKey = getApiKey()
+    const url = `${base}/chat/delete/${encodeURIComponent(params.instanceName)}`
+
+    await fetchEvo<unknown>(
+      url,
+      {
+        method: "DELETE",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({
+          key: { remoteJid: params.remoteJid, fromMe: params.fromMe, id: params.messageId },
+        }),
+        signal: AbortSignal.timeout(EVO_SEND_REQUEST_TIMEOUT_MS),
+      },
+      "deleteMessage"
+    )
+  }
 }
 
 export const evoApiService = new EvoApiService()
