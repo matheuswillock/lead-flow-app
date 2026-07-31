@@ -1445,6 +1445,8 @@ meeting_scheduled meeting_scheduled
     String checksumSha256 "❓"
     String storageSyncPath "❓"
     String errorMessage "❓"
+    String googleDriveFileId "❓"
+    String googleDriveDownloadUrl "❓"
     DateTime createdAt 
     }
   

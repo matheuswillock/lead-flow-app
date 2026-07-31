@@ -16,6 +16,8 @@ export type BackofficeDatabaseBackupRecord = {
   checksumSha256: string | null
   storageSyncPath: string | null
   errorMessage: string | null
+  googleDriveFileId: string | null
+  googleDriveDownloadUrl: string | null
   createdAt: Date
 }
 
@@ -45,6 +47,8 @@ export interface IBackofficeDatabaseBackupRepository {
       checksumSha256?: string | null
       storageSyncPath?: string | null
       errorMessage?: string | null
+      googleDriveFileId?: string | null
+      googleDriveDownloadUrl?: string | null
     }
   ): Promise<void>
   list(limit?: number): Promise<BackofficeDatabaseBackupRecord[]>
