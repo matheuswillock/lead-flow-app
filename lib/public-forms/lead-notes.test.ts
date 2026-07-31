@@ -101,4 +101,18 @@ describe("mergeFormMappedLeadNotes", () => {
     const merged = mergeFormMappedLeadNotes(existing, snapshot(), [])
     expect(merged).toBe(existing)
   })
+
+  it("remove nota mapeada quando resposta opcional é limpa", () => {
+    const existing = "Nota manual\nObservações: valor antigo"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Observações: "])
+    expect(merged).toBe("Nota manual")
+  })
+
+  it("preserva linha indentada com outro prefixo dentro de textarea multilinha", () => {
+    const existing = "Observações: linha 1\n  Qualificação: citada pelo usuário"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Qualificação: Faixa B"])
+    expect(merged).toBe(
+      "Observações: linha 1\n  Qualificação: citada pelo usuário\nQualificação: Faixa B",
+    )
+  })
 })

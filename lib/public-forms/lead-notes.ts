@@ -17,10 +17,31 @@ function longestMatchingPrefix(line: string, prefixes: string[]): string | undef
     .sort((left, right) => right.length - left.length)[0]
 }
 
+function resolveManagedPrefix(line: string, prefixes: string[]): string | undefined {
+  const direct = longestMatchingPrefix(line, prefixes)
+  if (direct) return direct
+
+  return prefixes
+    .sort((left, right) => right.length - left.length)
+    .find((prefix) => {
+      const barePrefix = prefix.endsWith(" ") ? prefix.slice(0, -1) : prefix
+      return line === barePrefix
+    })
+}
+
+function isEmptyManagedIncomingLine(line: string, prefix: string): boolean {
+  if (line.startsWith(prefix)) {
+    return line.slice(prefix.length).trim().length === 0
+  }
+
+  const barePrefix = prefix.endsWith(" ") ? prefix.slice(0, -1) : prefix
+  return line === barePrefix
+}
+
 function prefixesInIncoming(incoming: string[], prefixes: string[]): Set<string> {
   const matched = new Set<string>()
   for (const line of incoming) {
-    const prefix = longestMatchingPrefix(line, prefixes)
+    const prefix = resolveManagedPrefix(line, prefixes)
     if (prefix) matched.add(prefix)
   }
   return matched
@@ -50,6 +71,11 @@ function parseExistingNoteBlocks(existingNotes: string, prefixes: string[]): Par
     const line = rawLine.trim()
     if (line.length === 0) continue
 
+    if (activeManaged && /^\s{2,}/.test(rawLine)) {
+      activeManaged.lines.push(`  ${line}`)
+      continue
+    }
+
     const prefix = longestMatchingPrefix(line, prefixes)
     if (prefix) {
       flushManaged()
@@ -58,11 +84,6 @@ function parseExistingNoteBlocks(existingNotes: string, prefixes: string[]): Par
     }
 
     if (activeManaged) {
-      if (/^\s{2,}/.test(rawLine)) {
-        activeManaged.lines.push(`  ${line}`)
-        continue
-      }
-
       flushManaged()
       blocks.push({ kind: "manual", text: line })
       continue
@@ -95,6 +116,12 @@ export function mergeFormMappedLeadNotes(
     return !prefixesToReplace.has(block.prefix)
   })
 
-  const merged = [...preservedBlocks.map((block) => block.text), ...incoming]
+  const incomingToAppend = incoming.filter((line) => {
+    const prefix = resolveManagedPrefix(line, prefixes)
+    if (!prefix) return true
+    return !isEmptyManagedIncomingLine(line, prefix)
+  })
+
+  const merged = [...preservedBlocks.map((block) => block.text), ...incomingToAppend]
   return merged.length > 0 ? merged.join("\n") : undefined
 }
