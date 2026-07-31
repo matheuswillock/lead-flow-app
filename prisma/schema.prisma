@@ -606,6 +606,7 @@ enum NotificationType {
   MEETING_FOLLOW_UP_DIGEST
   BETHANIA_AUTH_CODE
   EMAIL_IMPORT_COMPLETED
+  EMAIL_CAMPAIGN_DISPATCH_FAILED
   AUTOMATION_RULE
   WEBHOOK_AUTO_PAUSED
 
@@ -988,6 +989,8 @@ model Profile {
   operationalAccessGrants        BackofficeOperationalAccessGrant[] @relation("OperationalAccessProfile")
   operationalAccessGrantsGranted BackofficeOperationalAccessGrant[] @relation("OperationalAccessGrantedBy")
   operationalAccessGrantsRevoked BackofficeOperationalAccessGrant[] @relation("OperationalAccessRevokedBy")
+  teamEmailLimitGrantsGranted    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitGrantedBy")
+  teamEmailLimitGrantsRevoked    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitRevokedBy")
   sponsoredAdhesions             BackofficeAdhesion[]               @relation("BackofficeAdhesionSponsorMaster")
 
   auditLogsAsActor AuditLog[] @relation("AuditLogActor")
@@ -1230,6 +1233,27 @@ model BackofficeOperationalAccessGrant {
 
   @@index([capability, isActive], map: "backoffice_operational_access_grants_capability_active_idx")
   @@map("backoffice_operational_access_grants")
+}
+
+model BackofficeTeamEmailLimitGrant {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @unique @db.Uuid
+  maxEmailsPerDay    Int?
+  isActive           Boolean   @default(true)
+  notes              String?   @db.Text
+  grantedByProfileId String    @db.Uuid
+  grantedAt          DateTime  @default(now()) @db.Timestamptz(6)
+  revokedByProfileId String?   @db.Uuid
+  revokedAt          DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  grantedBy Profile @relation("TeamEmailLimitGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: Restrict)
+  revokedBy Profile? @relation("TeamEmailLimitRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([isActive], map: "backoffice_team_email_limit_grants_is_active_idx")
+  @@map("backoffice_team_email_limit_grants")
 }
 
 model GoogleOAuthConnection {
@@ -2364,6 +2388,7 @@ model Team {
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants     BackofficeOperationalAccessGrant[]
+  teamEmailLimitGrant         BackofficeTeamEmailLimitGrant?
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])

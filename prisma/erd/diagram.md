@@ -606,6 +606,7 @@ LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
 EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
+EMAIL_CAMPAIGN_DISPATCH_FAILED EMAIL_CAMPAIGN_DISPATCH_FAILED
 AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
         }
@@ -1479,6 +1480,18 @@ meeting_scheduled meeting_scheduled
   "backoffice_operational_access_grants" {
     String id "🗝️"
     BackofficeOperationalCapability capability 
+    Boolean isActive 
+    String notes "❓"
+    DateTime grantedAt 
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_team_email_limit_grants" {
+    String id "🗝️"
+    Int maxEmailsPerDay "❓"
     Boolean isActive 
     String notes "❓"
     DateTime grantedAt 
@@ -3631,6 +3644,9 @@ meeting_scheduled meeting_scheduled
     "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "revokedBy"
+    "backoffice_team_email_limit_grants" |o--|| corretor_studio_teams : "team"
+    "backoffice_team_email_limit_grants" }o--|| corretor_studio_profiles : "grantedBy"
+    "backoffice_team_email_limit_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"

@@ -160,6 +160,11 @@ const navigationItems: NavItem[] = [
         url: "/backoffice/emails/analytics",
         match: (pathname) => pathname.startsWith("/backoffice/emails/analytics"),
       },
+      {
+        title: "Limites por time",
+        url: "/backoffice/emails/limites-por-time",
+        match: (pathname) => pathname.startsWith("/backoffice/emails/limites-por-time"),
+      },
     ],
   },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },

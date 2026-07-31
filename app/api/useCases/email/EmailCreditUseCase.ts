@@ -4,8 +4,9 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { emailCreditService, PLAN_CREDITS } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import { addMonthsInTz, startOfMonthInTz } from "@/lib/dates"
+import { addMonthsInTz, resolveTimezone, startOfMonthInTz } from "@/lib/dates"
 import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
+import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
 
 const PLAN_PRICES: Record<EmailCreditPlan, number> = {
   starter: 25.0,
@@ -15,6 +16,21 @@ const PLAN_PRICES: Record<EmailCreditPlan, number> = {
 }
 
 export class EmailCreditUseCase {
+  private async buildDailyDispatchStatus(ctx: TeamContext) {
+    const dailyDispatch = await getTeamDailyDispatchStatus({
+      teamId: ctx.teamId,
+      timezone: resolveTimezone(ctx.userTimezone),
+      now: new Date(),
+    })
+
+    return {
+      limit: dailyDispatch.limit,
+      used: dailyDispatch.used,
+      remaining: dailyDispatch.remaining,
+      isUnlimited: dailyDispatch.isUnlimited,
+    }
+  }
+
   async subscribe(plan: EmailCreditPlan, ctx: TeamContext): Promise<Output> {
     try {
       const { teamId } = ctx
@@ -109,6 +125,7 @@ export class EmailCreditUseCase {
           currentPeriodEnd: null,
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
+          dailyDispatch: await this.buildDailyDispatchStatus(ctx),
         })
       }
 
@@ -127,6 +144,7 @@ export class EmailCreditUseCase {
           currentPeriodEnd: null,
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
+          dailyDispatch: await this.buildDailyDispatchStatus(ctx),
         })
       }
 
@@ -142,6 +160,7 @@ export class EmailCreditUseCase {
         currentPeriodEnd: status.currentPeriodEnd,
         pricePerMonth: status.plan ? PLAN_PRICES[status.plan] : null,
         availablePlans: this.getAvailablePlans(),
+        dailyDispatch: await this.buildDailyDispatchStatus(ctx),
       })
     } catch (error) {
       console.error("[EmailCreditUseCase][getStatus]", error)
