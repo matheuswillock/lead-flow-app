@@ -62,7 +62,20 @@ export function extractLeadDataFromSnapshot(
     if (question.mappingTarget === "custom_field" && question.mappingKey) {
       custom[question.mappingKey] = value
     }
-    if (question.mappingTarget === "notes") notes.push(`${question.title}: ${valueText(value)}`)
+    if (question.mappingTarget === "notes") {
+      const text = valueText(value)
+      const parts = text.split("\n")
+      if (parts.length <= 1) {
+        notes.push(`${question.title}: ${text}`)
+      } else {
+        const firstLine = `${question.title}: ${parts[0] ?? ""}`
+        const continuation = parts
+          .slice(1)
+          .map((line) => `  ${line}`)
+          .join("\n")
+        notes.push(`${firstLine}\n${continuation}`)
+      }
+    }
   }
 
   const name = typeof native.name === "string" ? native.name.trim() : ""
