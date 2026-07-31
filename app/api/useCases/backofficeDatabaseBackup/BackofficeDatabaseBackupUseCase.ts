@@ -2,8 +2,11 @@ import type { BackofficeDatabaseBackupSource } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { BackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/BackofficeDatabaseBackupRepository"
 import type { IBackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/IBackofficeDatabaseBackupRepository"
+import { BackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupExportService"
+import type { IBackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
+import { BackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupGoogleDriveService"
+import type { IBackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupGoogleDriveService"
 import { BackofficeDatabaseBackupVpsService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupVpsService"
-import type { IBackofficeDatabaseBackupVpsService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupVpsService"
 
 function serializeBackup(row: {
   id: string
@@ -18,6 +21,8 @@ function serializeBackup(row: {
   checksumSha256: string | null
   storageSyncPath: string | null
   errorMessage: string | null
+  googleDriveFileId: string | null
+  googleDriveDownloadUrl: string | null
   createdAt: Date
 }) {
   return {
@@ -32,6 +37,8 @@ function serializeBackup(row: {
     checksumSha256: row.checksumSha256,
     storageSyncPath: row.storageSyncPath,
     errorMessage: row.errorMessage,
+    googleDriveFileId: row.googleDriveFileId,
+    googleDriveDownloadUrl: row.googleDriveDownloadUrl,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -39,7 +46,8 @@ function serializeBackup(row: {
 export class BackofficeDatabaseBackupUseCase {
   constructor(
     private readonly repository: IBackofficeDatabaseBackupRepository = new BackofficeDatabaseBackupRepository(),
-    private readonly vpsService: IBackofficeDatabaseBackupVpsService = new BackofficeDatabaseBackupVpsService()
+    private readonly exportService: IBackofficeDatabaseBackupExportService = new BackofficeDatabaseBackupExportService(),
+    private readonly driveService: IBackofficeDatabaseBackupGoogleDriveService = new BackofficeDatabaseBackupGoogleDriveService()
   ) {}
 
   async list(): Promise<Output> {
@@ -92,29 +100,20 @@ export class BackofficeDatabaseBackupUseCase {
     })
 
     try {
-      const result = await this.vpsService.runBackup(pending.id)
-
-      if (!result.ok) {
-        const errorMessage = result.error || "Falha ao executar backup na VPS"
-        await this.repository.update(pending.id, {
-          status: "failed",
-          finishedAt: new Date(),
-          errorMessage,
-        })
-        return new Output(false, [], [errorMessage], {
-          id: pending.id,
-        })
-      }
+      const exported = await this.exportService.exportToZip()
+      const { fileId, downloadUrl } = await this.driveService.upload({
+        buffer: exported.buffer,
+        fileName: exported.fileName,
+      })
 
       await this.repository.update(pending.id, {
         status: "success",
         finishedAt: new Date(),
-        filePath: result.filePath ?? null,
-        fileName: result.fileName ?? null,
-        sizeBytes:
-          typeof result.sizeBytes === "number" ? BigInt(result.sizeBytes) : null,
-        checksumSha256: result.checksumSha256 ?? null,
-        storageSyncPath: result.storageSyncPath ?? null,
+        fileName: exported.fileName,
+        sizeBytes: BigInt(exported.sizeBytes),
+        checksumSha256: exported.checksumSha256,
+        googleDriveFileId: fileId,
+        googleDriveDownloadUrl: downloadUrl,
       })
 
       console.info("[BackofficeDatabaseBackupUseCase][runBackupJob] success", {
@@ -130,24 +129,45 @@ export class BackofficeDatabaseBackupUseCase {
         finishedAt: new Date(),
         errorMessage: error instanceof Error ? error.message : String(error),
       })
-      return new Output(false, [], ["Erro ao disparar backup na VPS"], { id: pending.id })
+      return new Output(false, [], ["Erro ao gerar backup"], { id: pending.id })
     }
   }
 
   async getDownloadStream(id: string): Promise<
-    | { ok: true; fileName: string; body: ReadableStream<Uint8Array> | null; contentType: string }
+    | { ok: true; redirect: true; url: string }
+    | {
+        ok: true
+        redirect: false
+        fileName: string
+        body: ReadableStream<Uint8Array> | null
+        contentType: string
+      }
     | { ok: false; status: number; message: string }
   > {
     const backup = await this.repository.findById(id)
     if (!backup) {
       return { ok: false, status: 404, message: "Backup não encontrado" }
     }
-    if (backup.status !== "success" || !backup.filePath || !backup.fileName) {
+    if (backup.status !== "success") {
       return { ok: false, status: 400, message: "Backup indisponível para download" }
     }
 
+    if (backup.googleDriveDownloadUrl) {
+      return { ok: true, redirect: true, url: backup.googleDriveDownloadUrl }
+    }
+
+    // Fallback legado para registros antigos com filePath (VPS)
+    if (!backup.filePath || !backup.fileName) {
+      return {
+        ok: false,
+        status: 400,
+        message: "Backup sem URL de download disponível",
+      }
+    }
+
     try {
-      const response = await this.vpsService.downloadBackup({
+      const vpsService = new BackofficeDatabaseBackupVpsService()
+      const response = await vpsService.downloadBackup({
         fileName: backup.fileName,
         filePath: backup.filePath,
       })
@@ -162,12 +182,17 @@ export class BackofficeDatabaseBackupUseCase {
 
       return {
         ok: true,
+        redirect: false,
         fileName: backup.fileName,
         body: response.body,
-        contentType: response.headers.get("content-type") || "application/octet-stream",
+        contentType:
+          response.headers.get("content-type") || "application/octet-stream",
       }
     } catch (error) {
-      console.error("[BackofficeDatabaseBackupUseCase][getDownloadStream]", error)
+      console.error(
+        "[BackofficeDatabaseBackupUseCase][getDownloadStream]",
+        error
+      )
       return {
         ok: false,
         status: 500,
@@ -178,4 +203,5 @@ export class BackofficeDatabaseBackupUseCase {
   }
 }
 
-export const backofficeDatabaseBackupUseCase = new BackofficeDatabaseBackupUseCase()
+export const backofficeDatabaseBackupUseCase =
+  new BackofficeDatabaseBackupUseCase()

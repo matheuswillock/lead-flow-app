@@ -26,6 +26,10 @@ export async function GET(
       })
     }
 
+    if (result.redirect) {
+      return NextResponse.redirect(result.url, 302)
+    }
+
     return new NextResponse(result.body, {
       status: 200,
       headers: {

@@ -1150,6 +1150,8 @@ model BackofficeDatabaseBackup {
   checksumSha256       String?                        @map("checksumSha256") @db.Text
   storageSyncPath      String?                        @map("storageSyncPath") @db.Text
   errorMessage         String?                        @map("errorMessage") @db.Text
+  googleDriveFileId    String?                        @map("googleDriveFileId") @db.Text
+  googleDriveDownloadUrl String?                      @map("googleDriveDownloadUrl") @db.Text
   createdAt            DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
 
   @@index([status, startedAt(sort: Desc)])
