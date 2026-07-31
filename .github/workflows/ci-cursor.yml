@@ -167,13 +167,15 @@ jobs:
   build:
     name: Build
     # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
+    # Pulado em rebases feitos pela UI do GitHub (committer noreply@github.com).
     if: >-
       ${{
         startsWith(github.ref, 'refs/heads/cursor/') &&
         (
           github.event.head_commit == null ||
           !contains(github.event.head_commit.message, '[skip ci]')
-        )
+        ) &&
+        github.event.head_commit.committer.email != 'noreply@github.com'
       }}
     runs-on: [self-hosted, linux, x64, lead-flow-build]
     timeout-minutes: 15
@@ -251,7 +253,7 @@ jobs:
             echo "::error::Spellcheck PT-BR failed."
             failed=1
           fi
-          if [[ "${{ needs.build.result }}" != "success" ]]; then
+          if [[ "${{ needs.build.result }}" != "success" && "${{ needs.build.result }}" != "skipped" ]]; then
             echo "::error::Build failed."
             failed=1
           fi
