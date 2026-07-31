@@ -322,5 +322,42 @@ describe("segment-dsl", () => {
         })
       ).toThrow()
     })
+
+    it("rejeita status inválido no array de lead_status_multi", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "status", operator: "eq", value: ["scheduled", "not_a_status"] }],
+        })
+      ).toThrow()
+    })
+
+    it("rejeita número inválido (null, boolean, array vazio) para campo numérico", () => {
+      for (const value of [null, false, [], ""]) {
+        expect(() =>
+          parseRadarSegmentRules({
+            match: "all",
+            conditions: [{ kind: "lead_field", fieldKey: "currentValue", operator: "eq", value }],
+          })
+        ).toThrow()
+      }
+    })
+
+    it("aceita assignedTo e closerId com UUID válido e rejeita texto livre", () => {
+      const uuid = "11111111-1111-4111-8111-111111111111"
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "assignedTo", operator: "eq", value: uuid }],
+        })
+      ).not.toThrow()
+
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "closerId", operator: "eq", value: "João Silva" }],
+        })
+      ).toThrow()
+    })
   })
 })

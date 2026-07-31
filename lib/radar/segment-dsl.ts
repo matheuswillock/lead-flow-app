@@ -205,13 +205,30 @@ const leadFieldConditionSchema = z
     if (entry.valueKind === "lead_status_multi") {
       if (!Array.isArray(data.value) || (data.value as unknown[]).length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "informe ao menos um status", path: ["value"] })
+        return
+      }
+      const validStatuses = new Set(leadStatusSchema.options as readonly string[])
+      for (const s of data.value as unknown[]) {
+        if (!validStatuses.has(s as string)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Status inválido: "${s}"`,
+            path: ["value"],
+          })
+        }
       }
       return
     }
     if (entry.valueKind === "number") {
-      const num = Number(data.value)
-      if (data.value === "" || Number.isNaN(num)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser um número", path: ["value"] })
+      const num = typeof data.value === "string" ? (data.value.trim() === "" ? NaN : Number(data.value)) : Number(data.value)
+      if (
+        data.value === null ||
+        data.value === undefined ||
+        typeof data.value === "boolean" ||
+        Array.isArray(data.value) ||
+        !Number.isFinite(num)
+      ) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser um número válido", path: ["value"] })
       }
       return
     }
@@ -235,6 +252,14 @@ const leadFieldConditionSchema = z
     }
     if (typeof data.value !== "string") {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser uma string", path: ["value"] })
+      return
+    }
+    const UUID_FIELDS = new Set(["assignedTo", "closerId"] as const)
+    if (UUID_FIELDS.has(data.fieldKey as never)) {
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!UUID_REGEX.test(data.value)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `"${data.fieldKey}" requer um UUID válido`, path: ["value"] })
+      }
     }
   })
 

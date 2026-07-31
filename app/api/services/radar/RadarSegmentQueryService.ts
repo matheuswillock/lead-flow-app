@@ -130,7 +130,8 @@ function buildLeadFieldWhere(
 
   if (entry.valueKind === "date") {
     if (operator === "within_days") {
-      return { [fieldKey]: { gte: subDays(new Date(), Number(value)) } } as Prisma.LeadWhereInput
+      const now = new Date()
+      return { [fieldKey]: { gte: subDays(now, Number(value)), lte: now } } as Prisma.LeadWhereInput
     }
     const date = new Date(String(value))
     if (operator === "before") return { [fieldKey]: { lt: date } } as Prisma.LeadWhereInput

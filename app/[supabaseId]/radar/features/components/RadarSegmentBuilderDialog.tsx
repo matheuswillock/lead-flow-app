@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions"
+import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction"
 import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
@@ -198,12 +199,53 @@ function LeadCustomFieldValueInput({
   )
 }
 
+function TeamMemberSelect({
+  fieldKey,
+  value,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  fieldKey: "assignedTo" | "closerId"
+  value: unknown
+  onChange: (value: unknown) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const sdrs = useTeamSdrs(supabaseId, teamId)
+  const closers = useTeamClosers(supabaseId, teamId)
+  const { members, loading } = fieldKey === "assignedTo" ? sdrs : closers
+
+  return (
+    <Select
+      value={typeof value === "string" ? value : ""}
+      onValueChange={onChange}
+      disabled={loading}
+    >
+      <SelectTrigger className="w-48">
+        <SelectValue placeholder={loading ? "Carregando…" : "Selecionar membro"} />
+      </SelectTrigger>
+      <SelectContent>
+        {members.map((m) => (
+          <SelectItem key={m.id} value={m.id}>
+            {m.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function LeadFieldValueInput({
   condition,
   onChange,
+  supabaseId,
+  teamId,
 }: {
   condition: RadarLeadFieldCondition
   onChange: (value: unknown) => void
+  supabaseId: string
+  teamId: string | null
 }) {
   const entry = LEAD_FIELD_CATALOG[condition.fieldKey]
 
@@ -276,6 +318,18 @@ function LeadFieldValueInput({
         type="date"
         value={typeof condition.value === "string" ? condition.value : ""}
         onChange={(e) => onChange(e.target.value)}
+      />
+    )
+  }
+
+  if (condition.fieldKey === "assignedTo" || condition.fieldKey === "closerId") {
+    return (
+      <TeamMemberSelect
+        fieldKey={condition.fieldKey}
+        value={condition.value}
+        onChange={onChange}
+        supabaseId={supabaseId}
+        teamId={teamId}
       />
     )
   }
@@ -711,6 +765,8 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                       <LeadFieldValueInput
                         condition={condition}
                         onChange={(value) => updateCondition(index, { ...condition, value })}
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
                       />
                     ) : null}
                   </div>
