@@ -2405,6 +2405,15 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_team_email_campaign_limit_grants" {
+    String id "🗝️"
+    Int maxEmailsPerDay "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_templates" {
     String id "🗝️"
     String name 
@@ -3837,6 +3846,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
+    "corretor_studio_team_email_campaign_limit_grants" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_templates" }o--|o backoffice_users : "managedByBackofficeUser"

@@ -5,22 +5,11 @@ type CampaignRecipientTarget = {
   totalRecipients: number
 }
 
-export function getCampaignSendBlockReason(params: {
-  campaign: CampaignRecipientTarget
+function resolveDailyDispatchBlockReason(
+  campaign: CampaignRecipientTarget,
   credits: CreditStatus | null
-  isCampaignsBetaAccess: boolean
-}): string | undefined {
-  const { campaign, credits, isCampaignsBetaAccess } = params
-
-  if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
-  if (!credits?.hasSubscription) {
-    return "Ative um plano em Assinaturas para disparar campanhas"
-  }
-  if (credits.creditsAvailable < campaign.totalRecipients) {
-    return `Créditos insuficientes para ${campaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
-  }
-
-  const dailyDispatch = credits.dailyDispatch
+): string | undefined {
+  const dailyDispatch = credits?.dailyDispatch
   if (
     dailyDispatch &&
     !dailyDispatch.isUnlimited &&
@@ -29,6 +18,27 @@ export function getCampaignSendBlockReason(params: {
     dailyDispatch.remaining < campaign.totalRecipients
   ) {
     return formatDailyLimitDispatchBlockMessage(dailyDispatch.limit, dailyDispatch.remaining)
+  }
+
+  return undefined
+}
+
+export function getCampaignSendBlockReason(params: {
+  campaign: CampaignRecipientTarget
+  credits: CreditStatus | null
+  isCampaignsBetaAccess: boolean
+}): string | undefined {
+  const { campaign, credits, isCampaignsBetaAccess } = params
+
+  const dailyBlockReason = resolveDailyDispatchBlockReason(campaign, credits)
+  if (dailyBlockReason) return dailyBlockReason
+
+  if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
+  if (!credits?.hasSubscription) {
+    return "Ative um plano em Assinaturas para disparar campanhas"
+  }
+  if (credits.creditsAvailable < campaign.totalRecipients) {
+    return `Créditos insuficientes para ${campaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
   }
 
   return undefined

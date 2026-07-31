@@ -2391,6 +2391,7 @@ model Team {
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants     BackofficeOperationalAccessGrant[]
   teamEmailLimitGrant         BackofficeTeamEmailLimitGrant?
+  emailCampaignLimitGrant     TeamEmailCampaignLimitGrant?
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])
@@ -2865,6 +2866,20 @@ model EmailCreditUsage {
 
   @@unique([subscriptionId, periodStart])
   @@map("corretor_studio_email_credit_usages")
+}
+
+model TeamEmailCampaignLimitGrant {
+  id              String   @id @default(uuid()) @db.Uuid
+  teamId          String   @unique @db.Uuid
+  maxEmailsPerDay Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([isActive], map: "team_email_campaign_limit_grants_is_active_idx")
+  @@map("corretor_studio_team_email_campaign_limit_grants")
 }
 
 model EmailTemplate {

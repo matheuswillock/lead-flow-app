@@ -16,10 +16,18 @@ const PLAN_PRICES: Record<EmailCreditPlan, number> = {
 }
 
 export class EmailCreditUseCase {
+  private async resolveTeamMasterTimezone(teamId: string): Promise<string> {
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { master: { select: { timezone: true } } },
+    })
+    return resolveTimezone(team?.master.timezone)
+  }
+
   private async buildDailyDispatchStatus(ctx: TeamContext) {
     const dailyDispatch = await getTeamDailyDispatchStatus({
       teamId: ctx.teamId,
-      timezone: resolveTimezone(ctx.userTimezone),
+      timezone: await this.resolveTeamMasterTimezone(ctx.teamId),
       now: new Date(),
     })
 

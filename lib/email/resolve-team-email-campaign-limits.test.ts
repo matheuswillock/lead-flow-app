@@ -10,7 +10,7 @@ import { resolveTeamEmailCampaignLimits } from "@/lib/email/resolve-team-email-c
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
-    backofficeTeamEmailLimitGrant: {
+    teamEmailCampaignLimitGrant: {
       findUnique: mock(async ({ where }: { where: { teamId: string } }) => {
         if (where.teamId === "unlimited-team") {
           return { isActive: true, maxEmailsPerDay: null }

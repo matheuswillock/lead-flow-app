@@ -99,6 +99,9 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     backofficeTeamEmailLimitGrant: {
       findUnique: mock(async () => null),
     },
+    teamEmailCampaignLimitGrant: {
+      findUnique: mock(async () => null),
+    },
     $transaction: transactionMock,
   },
 }))

@@ -25,7 +25,7 @@ const UNLIMITED_LIMITS: TeamEmailCampaignLimits = {
 export async function resolveTeamEmailCampaignLimits(
   teamId: string
 ): Promise<TeamEmailCampaignLimits> {
-  const grant = await prisma.backofficeTeamEmailLimitGrant.findUnique({
+  const grant = await prisma.teamEmailCampaignLimitGrant.findUnique({
     where: { teamId },
     select: { isActive: true, maxEmailsPerDay: true },
   })

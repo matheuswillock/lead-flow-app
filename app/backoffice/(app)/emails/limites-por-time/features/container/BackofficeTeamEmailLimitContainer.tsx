@@ -74,13 +74,22 @@ export function BackofficeTeamEmailLimitContainer() {
       return
     }
 
+    let cancelled = false
+
     const timeoutId = window.setTimeout(() => {
       void searchTeams(trimmed)
-        .then(setTeamResults)
-        .catch(() => setTeamResults([]))
+        .then((results) => {
+          if (!cancelled) setTeamResults(results)
+        })
+        .catch(() => {
+          if (!cancelled) setTeamResults([])
+        })
     }, 300)
 
-    return () => window.clearTimeout(timeoutId)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
   }, [grantOpen, searchTeams, teamQuery])
 
   async function handleGrant() {
