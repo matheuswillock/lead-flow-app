@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from "bun:test"
 import type { IBackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/IBackofficeDatabaseBackupRepository"
-import type { IBackofficeDatabaseBackupVpsService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupVpsService"
+import type { IBackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
+import type { IBackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupGoogleDriveService"
 import { BackofficeDatabaseBackupUseCase } from "./BackofficeDatabaseBackupUseCase"
 
 function createRepoMock(
@@ -15,25 +16,46 @@ function createRepoMock(
   }
 }
 
-function createVpsMock(
-  overrides: Partial<IBackofficeDatabaseBackupVpsService> = {}
-): IBackofficeDatabaseBackupVpsService {
+function createExportMock(
+  overrides: Partial<IBackofficeDatabaseBackupExportService> = {}
+): IBackofficeDatabaseBackupExportService {
   return {
-    runBackup: async () => ({
-      ok: true,
-      filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
-      fileName: "full.dump",
+    exportToZip: async () => ({
+      buffer: Buffer.from("zip-content"),
+      fileName: "backup-2026-07-31-10-00.zip",
       sizeBytes: 1024,
       checksumSha256: "abc123",
-      storageSyncPath: null,
     }),
-    downloadBackup: async () =>
-      new Response(new Uint8Array([1, 2, 3]), {
-        status: 200,
-        headers: { "Content-Type": "application/octet-stream" },
-      }),
     ...overrides,
   }
+}
+
+function createDriveMock(
+  overrides: Partial<IBackofficeDatabaseBackupGoogleDriveService> = {}
+): IBackofficeDatabaseBackupGoogleDriveService {
+  return {
+    upload: async () => ({ fileId: "drive-file-id-1" }),
+    downloadStream: async () => new ReadableStream(),
+    ...overrides,
+  }
+}
+
+const baseRecord = {
+  id: "b1",
+  startedAt: new Date("2026-07-31T10:00:00.000Z"),
+  finishedAt: new Date("2026-07-31T10:05:00.000Z"),
+  status: "success" as const,
+  source: "cron" as const,
+  triggeredByProfileId: null,
+  filePath: null,
+  fileName: "backup-2026-07-31-10-00.zip",
+  sizeBytes: BigInt(1024),
+  checksumSha256: "abc123",
+  storageSyncPath: null,
+  errorMessage: null,
+  googleDriveFileId: "drive-file-id-1",
+  googleDriveDownloadUrl: null,
+  createdAt: new Date("2026-07-31T10:00:00.000Z"),
 }
 
 describe("BackofficeDatabaseBackupUseCase", () => {
@@ -41,25 +63,10 @@ describe("BackofficeDatabaseBackupUseCase", () => {
     it("serializa sizeBytes bigint para number e inclui source", async () => {
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          list: async () => [
-            {
-              id: "b1",
-              startedAt: new Date("2026-07-24T08:00:00.000Z"),
-              finishedAt: new Date("2026-07-24T08:05:00.000Z"),
-              status: "success",
-              source: "cron",
-              triggeredByProfileId: null,
-              filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
-              fileName: "full.dump",
-              sizeBytes: BigInt(2048),
-              checksumSha256: "deadbeef",
-              storageSyncPath: null,
-              errorMessage: null,
-              createdAt: new Date("2026-07-24T08:00:00.000Z"),
-            },
-          ],
+          list: async () => [{ ...baseRecord, sizeBytes: BigInt(2048) }],
         }),
-        createVpsMock()
+        createExportMock(),
+        createDriveMock()
       )
 
       const output = await useCase.list()
@@ -75,13 +82,14 @@ describe("BackofficeDatabaseBackupUseCase", () => {
   })
 
   describe("triggerCronBackup", () => {
-    it("cria pending com source=cron e marca success quando VPS responde ok", async () => {
+    it("cria pending com source=cron e marca success com fileId do Drive", async () => {
       const claimCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
       const lastUpdate: {
         status?: string
         fileName?: string | null
         checksumSha256?: string | null
         sizeBytes?: bigint | null
+        googleDriveFileId?: string | null
       }[] = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
@@ -93,7 +101,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             lastUpdate.push(data)
           },
         }),
-        createVpsMock()
+        createExportMock(),
+        createDriveMock()
       )
 
       const output = await useCase.triggerCronBackup()
@@ -101,18 +110,21 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       expect((output.result as { id: string }).id).toBe("backup-1")
       expect(claimCalls[0]).toEqual({ source: "cron", triggeredByProfileId: null })
       expect(lastUpdate[0]?.status).toBe("success")
-      expect(lastUpdate[0]?.fileName).toBe("full.dump")
+      expect(lastUpdate[0]?.fileName).toBe("backup-2026-07-31-10-00.zip")
       expect(lastUpdate[0]?.checksumSha256).toBe("abc123")
       expect(lastUpdate[0]?.sizeBytes).toEqual(BigInt(1024))
+      expect(lastUpdate[0]?.googleDriveFileId).toBe("drive-file-id-1")
     })
 
     it("bloqueia quando o slot pending já está ocupado", async () => {
-      const claimPendingSlot = mock(async () => ({ ok: false as const, reason: "busy" as const }))
+      const claimPendingSlot = mock(async () => ({
+        ok: false as const,
+        reason: "busy" as const,
+      }))
       const useCase = new BackofficeDatabaseBackupUseCase(
-        createRepoMock({
-          claimPendingSlot,
-        }),
-        createVpsMock()
+        createRepoMock({ claimPendingSlot }),
+        createExportMock(),
+        createDriveMock()
       )
 
       const output = await useCase.triggerCronBackup()
@@ -121,7 +133,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       expect(claimPendingSlot).toHaveBeenCalled()
     })
 
-    it("marca failed quando VPS retorna erro", async () => {
+    it("marca failed e propaga mensagem quando o export service lança exceção", async () => {
       const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
@@ -129,19 +141,22 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             lastUpdate.push(data)
           },
         }),
-        createVpsMock({
-          runBackup: async () => ({ ok: false, error: "pg_dump failed" }),
-        })
+        createExportMock({
+          exportToZip: async () => {
+            throw new Error("Falha ao exportar dados")
+          },
+        }),
+        createDriveMock()
       )
 
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
-      expect(output.errorMessages[0]).toBe("pg_dump failed")
+      expect(output.errorMessages[0]).toBe("Erro ao gerar backup")
       expect(lastUpdate[0]?.status).toBe("failed")
-      expect(lastUpdate[0]?.errorMessage).toBe("pg_dump failed")
+      expect(lastUpdate[0]?.errorMessage).toBe("Falha ao exportar dados")
     })
 
-    it("marca failed quando VPS lança exceção", async () => {
+    it("marca failed quando o drive service lança exceção", async () => {
       const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
@@ -149,9 +164,10 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             lastUpdate.push(data)
           },
         }),
-        createVpsMock({
-          runBackup: async () => {
-            throw new Error("network down")
+        createExportMock(),
+        createDriveMock({
+          upload: async () => {
+            throw new Error("Upload falhou")
           },
         })
       )
@@ -159,7 +175,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
       expect(lastUpdate[0]?.status).toBe("failed")
-      expect(lastUpdate[0]?.errorMessage).toBe("network down")
+      expect(lastUpdate[0]?.errorMessage).toBe("Upload falhou")
     })
   })
 
@@ -173,7 +189,8 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             return { ok: true, id: "backup-manual-1" }
           },
         }),
-        createVpsMock()
+        createExportMock(),
+        createDriveMock()
       )
 
       const output = await useCase.triggerManualBackup("profile-manager-1")
@@ -186,12 +203,14 @@ describe("BackofficeDatabaseBackupUseCase", () => {
     })
 
     it("bloqueia quando o slot pending já está ocupado", async () => {
-      const claimPendingSlot = mock(async () => ({ ok: false as const, reason: "busy" as const }))
+      const claimPendingSlot = mock(async () => ({
+        ok: false as const,
+        reason: "busy" as const,
+      }))
       const useCase = new BackofficeDatabaseBackupUseCase(
-        createRepoMock({
-          claimPendingSlot,
-        }),
-        createVpsMock()
+        createRepoMock({ claimPendingSlot }),
+        createExportMock(),
+        createDriveMock()
       )
 
       const output = await useCase.triggerManualBackup("profile-manager-1")
@@ -203,7 +222,11 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
   describe("getDownloadStream", () => {
     it("retorna 404 quando backup não existe", async () => {
-      const useCase = new BackofficeDatabaseBackupUseCase(createRepoMock(), createVpsMock())
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock(),
+        createExportMock(),
+        createDriveMock()
+      )
       const result = await useCase.getDownloadStream("missing")
       expect(result.ok).toBe(false)
       if (!result.ok) {
@@ -215,22 +238,14 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           findById: async () => ({
-            id: "b1",
-            startedAt: new Date(),
-            finishedAt: null,
+            ...baseRecord,
             status: "pending",
-            source: "cron",
-            triggeredByProfileId: null,
-            filePath: null,
-            fileName: null,
-            sizeBytes: null,
-            checksumSha256: null,
-            storageSyncPath: null,
-            errorMessage: null,
-            createdAt: new Date(),
+            finishedAt: null,
+            googleDriveFileId: null,
           }),
         }),
-        createVpsMock()
+        createExportMock(),
+        createDriveMock()
       )
 
       const result = await useCase.getDownloadStream("b1")
@@ -241,33 +256,18 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       }
     })
 
-    it("faz proxy do arquivo quando backup está success", async () => {
-      const downloaded: Array<{ fileName: string; filePath?: string | null }> = []
+    it("faz proxy autenticado via Drive API quando backup tem googleDriveFileId", async () => {
+      const downloadedIds: string[] = []
+      const fakeStream = new ReadableStream()
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          findById: async () => ({
-            id: "b1",
-            startedAt: new Date(),
-            finishedAt: new Date(),
-            status: "success",
-            source: "manual",
-            triggeredByProfileId: "profile-1",
-            filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
-            fileName: "full.dump",
-            sizeBytes: BigInt(10),
-            checksumSha256: "x",
-            storageSyncPath: null,
-            errorMessage: null,
-            createdAt: new Date(),
-          }),
+          findById: async () => ({ ...baseRecord }),
         }),
-        createVpsMock({
-          downloadBackup: async (input) => {
-            downloaded.push(input)
-            return new Response(new Uint8Array([9]), {
-              status: 200,
-              headers: { "Content-Type": "application/gzip" },
-            })
+        createExportMock(),
+        createDriveMock({
+          downloadStream: async (fileId) => {
+            downloadedIds.push(fileId)
+            return fakeStream
           },
         })
       )
@@ -275,36 +275,22 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const result = await useCase.getDownloadStream("b1")
       expect(result.ok).toBe(true)
       if (result.ok) {
-        expect(result.fileName).toBe("full.dump")
-        expect(result.contentType).toBe("application/gzip")
+        expect(result.contentType).toBe("application/zip")
+        expect(result.body).toBe(fakeStream)
       }
-      expect(downloaded[0]).toEqual({
-        fileName: "full.dump",
-        filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
-      })
+      expect(downloadedIds[0]).toBe("drive-file-id-1")
     })
 
-    it("retorna 502 quando VPS não entrega o arquivo", async () => {
+    it("retorna 502 quando Drive API falha no download", async () => {
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
-          findById: async () => ({
-            id: "b1",
-            startedAt: new Date(),
-            finishedAt: new Date(),
-            status: "success",
-            source: "cron",
-            triggeredByProfileId: null,
-            filePath: "/opt/lead-flow-app/backups/2026-07-24/full.dump",
-            fileName: "full.dump",
-            sizeBytes: BigInt(10),
-            checksumSha256: "x",
-            storageSyncPath: null,
-            errorMessage: null,
-            createdAt: new Date(),
-          }),
+          findById: async () => ({ ...baseRecord }),
         }),
-        createVpsMock({
-          downloadBackup: async () => new Response(null, { status: 500 }),
+        createExportMock(),
+        createDriveMock({
+          downloadStream: async () => {
+            throw new Error("Drive indisponível")
+          },
         })
       )
 
@@ -312,6 +298,27 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       expect(result.ok).toBe(false)
       if (!result.ok) {
         expect(result.status).toBe(502)
+      }
+    })
+
+    it("retorna 400 quando backup success não tem arquivo disponível", async () => {
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock({
+          findById: async () => ({
+            ...baseRecord,
+            googleDriveFileId: null,
+            filePath: null,
+            fileName: null,
+          }),
+        }),
+        createExportMock(),
+        createDriveMock()
+      )
+
+      const result = await useCase.getDownloadStream("b1")
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.status).toBe(400)
       }
     })
   })

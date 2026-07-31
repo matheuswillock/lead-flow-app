@@ -75,4 +75,44 @@ describe("mergeFormMappedLeadNotes", () => {
     const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Qualificação: Faixa B"])
     expect(merged).toBe("Nota manual\nQualificação: Faixa B")
   })
+
+  it("preserva notas gerenciadas ausentes em progresso parcial", () => {
+    const existing = "Qualificação: Faixa A\nObservações: valor antigo"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Observações: valor parcial"])
+    expect(merged).toBe("Qualificação: Faixa A\nObservações: valor parcial")
+  })
+
+  it("remove bloco multilinha inteiro ao substituir nota mapeada", () => {
+    const existing = "Nota manual\nObservações: linha 1\n  linha 2"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Observações: valor atualizado"])
+    expect(merged).toBe("Nota manual\nObservações: valor atualizado")
+  })
+
+  it("preserva continuação indentada de textarea mapeado", () => {
+    const existing = "Observações: linha 1\n  linha 2"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), [
+      "Observações: nova linha 1\n  nova linha 2",
+    ])
+    expect(merged).toBe("Observações: nova linha 1\n  nova linha 2")
+  })
+
+  it("não altera notas existentes quando não há linhas novas", () => {
+    const existing = "Qualificação: Faixa A\nObservações: mantida"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), [])
+    expect(merged).toBe(existing)
+  })
+
+  it("remove nota mapeada quando resposta opcional é limpa", () => {
+    const existing = "Nota manual\nObservações: valor antigo"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Observações: "])
+    expect(merged).toBe("Nota manual")
+  })
+
+  it("preserva linha indentada com outro prefixo dentro de textarea multilinha", () => {
+    const existing = "Observações: linha 1\n  Qualificação: citada pelo usuário"
+    const merged = mergeFormMappedLeadNotes(existing, snapshot(), ["Qualificação: Faixa B"])
+    expect(merged).toBe(
+      "Observações: linha 1\n  Qualificação: citada pelo usuário\nQualificação: Faixa B",
+    )
+  })
 })
