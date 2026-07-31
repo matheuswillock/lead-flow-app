@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { Template, TemplatesState, TemplateTab } from './TemplatesTypes'
 import { createTemplatesService } from '../services/TemplatesService'
-import { useTeamContext } from '@/app/context/TeamContext'
+import { useStudioEmailRuntime } from '@/lib/email/use-studio-email-runtime'
 
-const service = createTemplatesService()
+const defaultService = createTemplatesService()
 
 interface UseTemplatesReturn extends TemplatesState {
   fetchTemplates: () => Promise<void>
@@ -20,7 +20,8 @@ interface UseTemplatesReturn extends TemplatesState {
 }
 
 export function useTemplates(supabaseId: string): UseTemplatesReturn {
-  const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext()
+  const { host, teamId: activeTeamId, activeRole, teamLoading } = useStudioEmailRuntime()
+  const service = host?.services.templates ?? defaultService
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

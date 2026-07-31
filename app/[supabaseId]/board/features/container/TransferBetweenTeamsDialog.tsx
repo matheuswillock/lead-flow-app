@@ -152,7 +152,7 @@ export function TransferBetweenTeamsDialog({
     setCloserId("");
     setSdrId("");
     setTeamMembers([]);
-    setScheduleEnabled(open && lead.isTransfer === true && !!lead.meetingDate);
+    setScheduleEnabled(open && lead.isTransfer === true);
     setMeetingDate(open && lead.isTransfer && lead.meetingDate ? new Date(lead.meetingDate) : undefined);
     setMeetingTitle(open && lead.isTransfer ? lead.meetingTitle ?? "" : "");
     setMeetingLink("");

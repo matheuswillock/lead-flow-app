@@ -41,7 +41,7 @@ type PresenceRecord = {
 
 const LOG_PREFIX = "[useTeamPresence]";
 const INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
-const ACTIVITY_THROTTLE_MS = 5_000;
+const ACTIVITY_THROTTLE_MS = 30_000;
 const STATUS_RECHECK_INTERVAL_MS = 30_000;
 const ACTIVITY_EVENT_NAMES = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
 
@@ -346,7 +346,17 @@ export function useTeamPresence({
           })
           .on("presence", { event: "sync" }, syncPresenceFromChannel)
           .on("presence", { event: "join" }, syncPresenceFromChannel)
-          .on("presence", { event: "leave" }, syncPresenceFromChannel);
+          .on("presence", { event: "leave" }, syncPresenceFromChannel)
+          .on("system", {}, (payload: Record<string, unknown>) => {
+            const msg = typeof payload?.message === "string" ? payload.message : "";
+            if (msg.includes("rate_limit") || payload?.status === "CHANNEL_ERROR") {
+              console.error(`${LOG_PREFIX} presence_rate_limit_reached`, {
+                event: "presence_rate_limit_reached",
+                masterId,
+                ts: new Date().toISOString(),
+              });
+            }
+          });
 
         startActivityListeners();
 

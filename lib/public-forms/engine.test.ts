@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import type { PublicFormDraftInput } from "./types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+import { createDefaultThankYouPage } from "./thank-you-pages"
 import {
   calculatePublicFormMaxPossibleScore,
   calculatePublicFormScore,
   calculatePublicFormScorePercent,
+  resolveThankYouPageId,
   resolveVisibleQuestionIds,
   shouldGoToThankYou,
   validateAnswer,
@@ -12,6 +14,13 @@ import {
 
 const sourceId = "11111111-1111-4111-8111-111111111111"
 const targetId = "22222222-2222-4222-8222-222222222222"
+const defaultThanks = createDefaultThankYouPage({ id: "33333333-3333-4333-8333-333333333333" })
+const branchThanks = createDefaultThankYouPage({
+  id: "44444444-4444-4444-8444-444444444444",
+  name: "Saída antecipada",
+  title: "Obrigado",
+  isDefault: false,
+})
 
 function form(): PublicFormDraftInput {
   return {
@@ -21,6 +30,8 @@ function form(): PublicFormDraftInput {
     ctaLabel: "Começar",
     successTitle: "Concluído",
     successActions: [],
+    thankYouPages: [defaultThanks],
+    defaultThankYouPageId: defaultThanks.id,
     useDefaultTheme: true,
     schedulingEnabled: false,
     meetingDurationMinutes: 30,
@@ -61,10 +72,13 @@ function form(): PublicFormDraftInput {
 
 describe("motor dos formulários públicos", () => {
   it("resolve perguntas condicionais sem confiar no cliente", () => {
-    expect(resolveVisibleQuestionIds(form(), [])).toEqual([sourceId])
+    expect(resolveVisibleQuestionIds(form(), [])).toEqual([sourceId, targetId])
     expect(
       resolveVisibleQuestionIds(form(), [{ questionId: sourceId, value: "sim" }]),
     ).toEqual([sourceId, targetId])
+    expect(
+      resolveVisibleQuestionIds(form(), [{ questionId: sourceId, value: "nao" }]),
+    ).toEqual([sourceId])
   })
 
   it("calcula pontuação pelo orçamento das perguntas (0–100)", () => {
@@ -227,5 +241,176 @@ describe("motor dos formulários públicos", () => {
       sourceId,
       targetId,
     ])
+  })
+
+  it("ignora regras quando a pergunta-fonte ainda não foi respondida", () => {
+    const draft = form()
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: targetId,
+        operator: "not_equals",
+        comparisonValue: "sim",
+        action: "skip",
+        elseAction: "show",
+      },
+    ]
+    expect(resolveVisibleQuestionIds(draft, [])).toEqual([sourceId, targetId])
+    expect(shouldGoToThankYou(draft, [])).toBe(false)
+  })
+
+  it("não dispara thank-you antecipado sem resposta na pergunta-fonte", () => {
+    const draft = form()
+    draft.thankYouPages = [defaultThanks, branchThanks]
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        targetThankYouPageId: branchThanks.id,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(shouldGoToThankYou(draft, [])).toBe(false)
+    expect(resolveThankYouPageId(draft, [])).toBe(defaultThanks.id)
+  })
+
+  it("resolve página de agradecimentos pela regra de menor sourceIndex", () => {
+    const draft = form()
+    draft.thankYouPages = [defaultThanks, branchThanks]
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: PUBLIC_FORM_THANK_YOU_TARGET,
+        targetThankYouPageId: branchThanks.id,
+        operator: "equals",
+        comparisonValue: "nao",
+        action: "show",
+        elseAction: "skip",
+      },
+    ]
+    expect(resolveThankYouPageId(draft, [{ questionId: sourceId, value: "nao" }])).toBe(
+      branchThanks.id,
+    )
+    expect(resolveThankYouPageId(draft, [{ questionId: sourceId, value: "sim" }])).toBe(
+      defaultThanks.id,
+    )
+  })
+
+  it("pula perguntas intermediárias com jump_to (cenário simulador de saúde)", () => {
+    const planoId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    const operadoraId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    const valorId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    const idadesId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    const draft: PublicFormDraftInput = {
+      ...form(),
+      questions: [
+        {
+          id: planoId,
+          type: "boolean",
+          title: "Já possui plano de saúde?",
+          required: true,
+          scoreWeight: 25,
+          options: [],
+        },
+        {
+          id: operadoraId,
+          type: "health_plan",
+          title: "Qual é a sua operadora atual?",
+          required: true,
+          scoreWeight: 25,
+          options: [{ value: "unimed", label: "Unimed", score: 0, scorePolarity: "positive" }],
+        },
+        {
+          id: valorId,
+          type: "currency",
+          title: "Qual é o valor atual do plano?",
+          required: false,
+          scoreWeight: 25,
+          options: [],
+        },
+        {
+          id: idadesId,
+          type: "text",
+          title: "Quais são as idades dos beneficiários?",
+          required: true,
+          scoreWeight: 25,
+          options: [],
+        },
+      ],
+      rules: [
+        {
+          sourceQuestionId: planoId,
+          targetQuestionId: idadesId,
+          operator: "equals",
+          comparisonValue: "Não",
+          action: "jump_to",
+          elseAction: "show",
+        },
+      ],
+    }
+
+    expect(
+      resolveVisibleQuestionIds(draft, [{ questionId: planoId, value: "nao" }]),
+    ).toEqual([planoId, idadesId])
+    expect(
+      resolveVisibleQuestionIds(draft, [{ questionId: planoId, value: "sim" }]),
+    ).toEqual([planoId, operadoraId, valorId, idadesId])
+  })
+
+  it("normaliza comparação boolean com acento e maiúsculas", () => {
+    const draft = form()
+    draft.questions[0] = {
+      ...draft.questions[0],
+      type: "boolean",
+      options: [],
+    }
+    draft.rules = [
+      {
+        sourceQuestionId: sourceId,
+        targetQuestionId: targetId,
+        operator: "equals",
+        comparisonValue: "Não",
+        action: "skip",
+        elseAction: "show",
+      },
+    ]
+    expect(
+      resolveVisibleQuestionIds(draft, [{ questionId: sourceId, value: "nao" }]),
+    ).toEqual([sourceId])
+  })
+
+  it("aceita moeda opcional vazia ou zero", () => {
+    const currencyQuestion = {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      type: "currency" as const,
+      title: "Valor",
+      required: false,
+      scoreWeight: 0,
+      options: [],
+    }
+    expect(validateAnswer(currencyQuestion, "")).toBeNull()
+    expect(validateAnswer(currencyQuestion, "0,00")).toBeNull()
+    expect(validateAnswer(currencyQuestion, 0)).toBeNull()
+    expect(validateAnswer(currencyQuestion, "abc")).toBe("Informe um valor válido")
+    expect(validateAnswer({ ...currencyQuestion, required: true }, "0,00")).toBe(
+      "Informe um valor válido",
+    )
+  })
+
+  it("valida e-mail quando mappingKey é email em pergunta de texto", () => {
+    const emailAsText = {
+      id: targetId,
+      type: "text" as const,
+      title: "E-mail",
+      required: true,
+      scoreWeight: 0,
+      mappingKey: "email",
+      options: [],
+    }
+    expect(validateAnswer(emailAsText, "invalido")).toBe("Informe um e-mail válido")
+    expect(validateAnswer(emailAsText, "a@b.com")).toBeNull()
   })
 })

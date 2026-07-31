@@ -178,6 +178,8 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
   const [allUnreadTotal, setAllUnreadTotal] = useState(0)
   const [mineUnreadTotal, setMineUnreadTotal] = useState(0)
   const [replyTarget, setReplyTarget] = useState<WhatsAppMessage | null>(null)
+  const [contactIsTyping, setContactIsTyping] = useState(false)
+  const contactIsTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
   const [filterMode, setFilterModeState] = useState<ConversationFilterMode>('all')
@@ -1269,6 +1271,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       deliveredAt: string | null
       readAt: string | null
       failedAt: string | null
+      deletedForEveryoneAt?: string | null
+      isPinned?: boolean
+      isFavorite?: boolean
+      isHiddenForMe?: boolean
       mediaFileName?: string | null
       mediaMimeType?: string | null
       storagePath?: string | null
@@ -1287,6 +1293,10 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
                 deliveredAt: row.deliveredAt,
                 readAt: row.readAt,
                 failedAt: row.failedAt,
+                ...(row.deletedForEveryoneAt !== undefined ? { deletedForEveryoneAt: row.deletedForEveryoneAt } : {}),
+                ...(row.isPinned !== undefined ? { isPinned: row.isPinned } : {}),
+                ...(row.isFavorite !== undefined ? { isFavorite: row.isFavorite } : {}),
+                ...(row.isHiddenForMe !== undefined ? { isHiddenForMe: row.isHiddenForMe } : {}),
                 ...(row.mediaFileName !== undefined ? { mediaFileName: row.mediaFileName } : {}),
                 ...(row.mediaMimeType !== undefined ? { mediaMimeType: row.mediaMimeType } : {}),
                 ...(row.storagePath !== undefined ? { storagePath: row.storagePath } : {}),
@@ -1478,14 +1488,28 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     [activeTeamId, scheduleConversationsRefetchForTagFilter]
   )
 
+  const handleContactTyping = useCallback((remoteJid: string, isTyping: boolean) => {
+    if (contactIsTypingTimerRef.current) clearTimeout(contactIsTypingTimerRef.current)
+    setContactIsTyping(isTyping)
+    if (isTyping) {
+      contactIsTypingTimerRef.current = setTimeout(() => {
+        setContactIsTyping(false)
+      }, 5_000)
+    }
+  }, [])
+
+  const selectedConversationRemoteJid = selectedConversation?.externalChatId ?? null
+
   useWhatsAppRealtime({
     enabled: Boolean(activeTeamId && config),
     teamId: activeTeamId ?? null,
     selectedConversationId,
+    selectedConversationRemoteJid,
     onMessageInserted: handleMessageInserted,
     onMessageUpdated: handleMessageUpdated,
     onConversationUpdated: handleConversationUpdated,
     onConversationInserted: handleConversationInserted,
+    onContactTyping: handleContactTyping,
     onRealtimeHealthChange: handleRealtimeHealthChange,
   })
 
@@ -1493,7 +1517,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     if (!activeTeamId || !config) return
 
     const HEALTHY_INTERVAL_MS = 60_000
-    const UNHEALTHY_INTERVAL_MS = 12_000
+    const UNHEALTHY_INTERVAL_MS = 60_000
 
     let currentIntervalId: number | null = null
     let wasHealthy = realtimeHealthyRef.current
@@ -2030,6 +2054,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
     allUnreadTotal,
     mineUnreadTotal,
     replyTarget,
+    contactIsTyping,
     selectConversation,
     loadMoreConversations,
     loadOlderMessages,

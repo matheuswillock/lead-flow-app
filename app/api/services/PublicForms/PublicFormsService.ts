@@ -16,6 +16,8 @@ import type {
   PublicFormThemeColors,
 } from "@/lib/public-forms/types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
+import { normalizeThankYouPages, parseThankYouPages } from "@/lib/public-forms/thank-you-pages"
+import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import type { IPublicFormsService } from "./IPublicFormsService"
@@ -84,7 +86,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     questions.length > 0 &&
     questions.reduce((sum, question) => sum + question.scoreWeight, 0) !== 100
 
-  return {
+  return normalizeThankYouPages({
     name: form.name,
     description: form.description,
     assignedSdrId: form.assignedSdrId,
@@ -99,6 +101,8 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     successTitle: form.successTitle,
     successDescription: form.successDescription,
     successActions: parseSuccessActions(form.successActions),
+    thankYouPages: parseThankYouPages(form.thankYouPages),
+    defaultThankYouPageId: form.defaultThankYouPageId ?? "",
     useDefaultTheme: form.useDefaultTheme,
     backgroundColor: form.backgroundColor,
     textColor: form.textColor,
@@ -116,10 +120,11 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
       id: rule.id,
       sourceQuestionId: rule.sourceQuestionId,
       targetQuestionId: rule.targetQuestionId ?? PUBLIC_FORM_THANK_YOU_TARGET,
+      targetThankYouPageId: rule.targetThankYouPageId,
       operator: rule.operator,
       comparisonValue: rule.comparisonValue,
       action: rule.action,
-      elseAction: rule.elseAction ?? (rule.action === "show" ? "skip" : "show"),
+      elseAction: rule.elseAction ?? inverseRuleAction(rule.action),
     })),
     scoreBands: form.scoreBands.map((band) => ({
       id: band.id,
@@ -128,7 +133,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
       minScore: band.minScore,
       maxScore: band.maxScore,
     })),
-  }
+  })
 }
 
 function resolveThemeFromDraft(
@@ -237,9 +242,23 @@ export class PublicFormsService implements IPublicFormsService {
         options: question.options.map((option) => ({ ...option, id: crypto.randomUUID() })),
       }
     })
+    const thankYouPageIdMap = new Map<string, string>()
+    const thankYouPages = input.thankYouPages.map((page) => {
+      const nextId = crypto.randomUUID()
+      thankYouPageIdMap.set(page.id, nextId)
+      return {
+        ...page,
+        id: nextId,
+        actions: page.actions.map((action) => ({ ...action, id: crypto.randomUUID() })),
+      }
+    })
+    const defaultThankYouPageId =
+      thankYouPageIdMap.get(input.defaultThankYouPageId) ?? thankYouPages[0]?.id ?? ""
     return this.create(teamId, profileId, {
       ...input,
       name: `${form.name} (cópia)`,
+      thankYouPages,
+      defaultThankYouPageId,
       questions,
       rules: input.rules.map((rule) => ({
         ...rule,
@@ -249,6 +268,9 @@ export class PublicFormsService implements IPublicFormsService {
           rule.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET
             ? PUBLIC_FORM_THANK_YOU_TARGET
             : (questionIdMap.get(rule.targetQuestionId) ?? rule.targetQuestionId),
+        targetThankYouPageId: rule.targetThankYouPageId
+          ? (thankYouPageIdMap.get(rule.targetThankYouPageId) ?? rule.targetThankYouPageId)
+          : null,
       })),
       scoreBands: input.scoreBands.map((band) => ({ ...band, id: crypto.randomUUID() })),
       successActions: input.successActions.map((action) => ({

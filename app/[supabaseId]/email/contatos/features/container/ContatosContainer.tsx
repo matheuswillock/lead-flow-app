@@ -19,8 +19,10 @@ import { ContactImportButton } from "../components/ContactImportButton"
 import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 export function ContatosContainer() {
+  const { readOnly } = useStudioEmailRuntime()
   const { selectedListId, lists, supabaseId, handleSelectList, handleSetListSegment } = useContactsContext()
   const { hasAccess } = useFeatureAccess()
   const hasRadar = hasAccess(FEATURE_SLUGS.RADAR)
@@ -36,7 +38,7 @@ export function ContatosContainer() {
         </div>
         <ContactListCreateModal
           trigger={
-            <Button size="sm">+ Nova Lista</Button>
+            <Button size="sm" disabled={readOnly}>+ Nova Lista</Button>
           }
         />
       </div>
@@ -88,7 +90,7 @@ export function ContatosContainer() {
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-semibold">{selectedList?.name}</h2>
-                  {!selectedList?.isBlocklist ? (
+                  {!selectedList?.isBlocklist && !readOnly ? (
                     <div className="flex items-center gap-2">
                       <ContactAddModal
                         trigger={
@@ -97,11 +99,11 @@ export function ContatosContainer() {
                       />
                       <ContactImportButton />
                     </div>
-                  ) : (
+                  ) : selectedList?.isBlocklist ? (
                     <p className="text-sm text-muted-foreground">
                       Lista somente leitura — contatos entram via descadastro.
                     </p>
-                  )}
+                  ) : null}
                 </div>
                 {hasRadar && !selectedList?.isBlocklist && selectedListId && (
                   <div className="flex items-center gap-2">

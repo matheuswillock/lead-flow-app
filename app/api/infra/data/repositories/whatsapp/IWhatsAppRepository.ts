@@ -253,6 +253,15 @@ export interface IWhatsAppRepository {
 
   markMessageDeletedForEveryone(id: string, deletedByProfileId?: string | null): Promise<void>
 
+  upsertMessageReaction(params: {
+    teamId: string
+    messageId: string
+    actorPhone: string
+    emoji: string
+    profileId?: string | null
+    removedAt?: Date | null
+  }): Promise<void>
+
   findMessageIdByStoragePath(storagePath: string): Promise<string | null>
 
   claimMediaIngestBatch(limit?: number): Promise<Array<{

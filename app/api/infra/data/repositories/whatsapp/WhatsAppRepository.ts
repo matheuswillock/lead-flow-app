@@ -112,6 +112,7 @@ const MESSAGE_SELECT = {
   sentByProfileId: true,
   senderPhone: true,
   recipientPhone: true,
+  providerTimestamp: true,
   sentAt: true,
   deliveredAt: true,
   readAt: true,
@@ -524,6 +525,42 @@ class WhatsAppRepository implements IWhatsAppRepository {
     })
   }
 
+  async upsertMessageReaction(params: {
+    teamId: string
+    messageId: string
+    actorPhone: string
+    emoji: string
+    profileId?: string | null
+    removedAt?: Date | null
+  }): Promise<void> {
+    const existing = await prisma.whatsAppMessageReaction.findFirst({
+      where: { messageId: params.messageId, actorPhone: params.actorPhone },
+      select: { id: true },
+    })
+    if (existing) {
+      await prisma.whatsAppMessageReaction.update({
+        where: { id: existing.id },
+        data: {
+          emoji: params.emoji,
+          removedAt: params.removedAt ?? (params.emoji === "" ? new Date() : undefined),
+        },
+        select: { id: true },
+      })
+    } else {
+      await prisma.whatsAppMessageReaction.create({
+        data: {
+          teamId: params.teamId,
+          messageId: params.messageId,
+          actorPhone: params.actorPhone,
+          emoji: params.emoji,
+          profileId: params.profileId ?? null,
+          removedAt: params.removedAt ?? null,
+        },
+        select: { id: true },
+      })
+    }
+  }
+
   async findMessageIdByStoragePath(storagePath: string): Promise<string | null> {
     const row = await prisma.whatsAppMessage.findFirst({
       where: { storagePath },
@@ -643,7 +680,10 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppMessage.findMany({
         where,
         select: MESSAGE_SELECT,
-        orderBy: { createdAt: "desc" },
+        orderBy: [
+          { providerTimestamp: { sort: "desc", nulls: "last" } },
+          { createdAt: "desc" },
+        ],
         skip,
         take: limit,
       }),
@@ -1311,7 +1351,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
         phone: { not: null },
         OR: [
           { phone: normalizedPhone },
-          ...(digits ? [{ phone: { contains: digits.slice(-11) } }] : []),
+          ...(digits ? [{ phone: { endsWith: digits.slice(-11) } }] : []),
         ],
       },
       select: { teamId: true, updatedAt: true },
@@ -1715,7 +1755,7 @@ class WhatsAppRepository implements IWhatsAppRepository {
       prisma.whatsAppMessage.findMany({
         where,
         select: MESSAGE_SELECT,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ providerTimestamp: "asc" }, { createdAt: "asc" }],
         skip: (page - 1) * limit,
         take: limit,
       }),

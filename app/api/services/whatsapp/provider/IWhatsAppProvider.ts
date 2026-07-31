@@ -41,7 +41,7 @@ export interface WhatsAppProviderChatSummary {
 }
 
 export interface WhatsAppProviderMessageContent {
-  messageType: WhatsAppMessageType
+  messageType: WhatsAppMessageType | "REACT"
   contentText: string | null
   mediaUrl: string | null
   mediaMimeType: string | null

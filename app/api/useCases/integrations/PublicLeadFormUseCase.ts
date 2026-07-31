@@ -243,14 +243,6 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
           return new Output(false, [], ["Transferência indisponível para este time."], null);
         }
 
-        if (!data.meetingDate) {
-          return new Output(
-            false,
-            [],
-            ["Selecione uma data para o pré-agendamento da transferência."],
-            null
-          );
-        }
       }
 
       const saveAsDraft = data.saveAsDraft === true;

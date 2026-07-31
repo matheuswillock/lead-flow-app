@@ -6,12 +6,37 @@ import {
   signedOptionScore,
 } from "./scoring"
 import type { PublicFormAnswerInput, PublicFormDraftInput, PublicFormQuestionInput } from "./types"
-import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+import { isThankYouRuleTarget } from "./thank-you-pages"
 
 const values = (v: unknown) => (Array.isArray(v) ? v.map(String) : v == null ? [] : [String(v)])
 
-function inverseAction(action: "show" | "skip"): "show" | "skip" {
-  return action === "show" ? "skip" : "show"
+export type RuleEffectiveAction = "show" | "skip" | "jump_to"
+
+function normalizeBooleanValue(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+  if (["sim", "yes", "true", "s"].includes(normalized)) return "sim"
+  if (["nao", "no", "false", "n"].includes(normalized)) return "nao"
+  return value
+}
+
+function normalizeComparisonValues(
+  rawValues: string[],
+  sourceQuestion?: PublicFormQuestionInput,
+): string[] {
+  if (sourceQuestion?.type === "boolean") {
+    return rawValues.map(normalizeBooleanValue)
+  }
+  return rawValues
+}
+
+export function inverseRuleAction(action: RuleEffectiveAction): RuleEffectiveAction {
+  if (action === "show") return "skip"
+  if (action === "skip") return "show"
+  return "show"
 }
 
 function ruleHits(
@@ -35,6 +60,25 @@ function getMaxSelections(question: PublicFormQuestionInput): number | null {
   return floored > 0 ? floored : null
 }
 
+function isThankYouRule(rule: PublicFormDraftInput["rules"][number]): boolean {
+  return isThankYouRuleTarget(rule.targetQuestionId)
+}
+
+function effectiveRuleAction(
+  rule: PublicFormDraftInput["rules"][number],
+  map: Map<string, unknown>,
+  questions: PublicFormQuestionInput[],
+): RuleEffectiveAction | null {
+  const sourceQuestion = questions.find((question) => question.id === rule.sourceQuestionId)
+  const sourceAnswer = map.get(rule.sourceQuestionId)
+  if (!isAnswered(sourceAnswer)) return null
+  const got = normalizeComparisonValues(values(sourceAnswer), sourceQuestion)
+  const expected = normalizeComparisonValues(values(rule.comparisonValue), sourceQuestion)
+  const hit = ruleHits(rule.operator, got, expected)
+  const elseAction = rule.elseAction ?? inverseRuleAction(rule.action)
+  return hit ? rule.action : elseAction
+}
+
 /**
  * Earliest question index that triggers "show thank-you", or null when the flow continues.
  */
@@ -45,18 +89,36 @@ export function getThankYouCutoffIndex(
   const map = new Map(answers.map((a) => [a.questionId, a.value]))
   let cutoff: number | null = null
   for (const rule of form.rules) {
-    if (rule.targetQuestionId !== PUBLIC_FORM_THANK_YOU_TARGET) continue
-    const got = values(map.get(rule.sourceQuestionId))
-    const expected = values(rule.comparisonValue)
-    const hit = ruleHits(rule.operator, got, expected)
-    const elseAction = rule.elseAction ?? inverseAction(rule.action)
-    const effective = hit ? rule.action : elseAction
+    if (!isThankYouRule(rule)) continue
+    const effective = effectiveRuleAction(rule, map, form.questions)
     if (effective !== "show") continue
     const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
     if (sourceIndex < 0) continue
     cutoff = cutoff == null ? sourceIndex : Math.min(cutoff, sourceIndex)
   }
   return cutoff
+}
+
+/** Resolves which thank-you page to show; null means use default page at completion. */
+export function resolveThankYouPageId(
+  form: PublicFormDraftInput,
+  answers: PublicFormAnswerInput[],
+): string | null {
+  const map = new Map(answers.map((a) => [a.questionId, a.value]))
+  let winner: { sourceIndex: number; pageId: string | null } | null = null
+  for (const rule of form.rules) {
+    if (!isThankYouRule(rule)) continue
+    const effective = effectiveRuleAction(rule, map, form.questions)
+    if (effective !== "show") continue
+    const sourceIndex = form.questions.findIndex((question) => question.id === rule.sourceQuestionId)
+    if (sourceIndex < 0) continue
+    const pageId = rule.targetThankYouPageId ?? null
+    if (!winner || sourceIndex < winner.sourceIndex) {
+      winner = { sourceIndex, pageId }
+    }
+  }
+  if (winner) return winner.pageId
+  return form.defaultThankYouPageId ?? null
 }
 
 export function resolveVisibleQuestionIds(
@@ -66,13 +128,22 @@ export function resolveVisibleQuestionIds(
   const map = new Map(answers.map((a) => [a.questionId, a.value])),
     visible = new Set(form.questions.map((q) => q.id).filter(Boolean) as string[])
   for (const r of form.rules) {
-    if (r.targetQuestionId === PUBLIC_FORM_THANK_YOU_TARGET) continue
-    const got = values(map.get(r.sourceQuestionId)),
-      expected = values(r.comparisonValue)
-    const hit = ruleHits(r.operator, got, expected)
-    const elseAction = r.elseAction ?? inverseAction(r.action)
-    const effective = hit ? r.action : elseAction
-    if (effective === "skip") visible.delete(r.targetQuestionId)
+    if (isThankYouRule(r)) continue
+    const effective = effectiveRuleAction(r, map, form.questions)
+    if (effective === "skip") {
+      visible.delete(r.targetQuestionId)
+      continue
+    }
+    if (effective === "jump_to") {
+      const sourceIndex = form.questions.findIndex((question) => question.id === r.sourceQuestionId)
+      const targetIndex = form.questions.findIndex((question) => question.id === r.targetQuestionId)
+      if (sourceIndex >= 0 && targetIndex > sourceIndex) {
+        for (let index = sourceIndex + 1; index < targetIndex; index += 1) {
+          const questionId = form.questions[index]?.id
+          if (questionId) visible.delete(questionId)
+        }
+      }
+    }
   }
 
   // Early thank-you exit: remaining questions after the terminating source are not required.
@@ -211,21 +282,52 @@ export function calculatePublicFormScorePercent(
   return Math.min(100, Math.round((100 * raw) / max))
 }
 
+function isEmailQuestion(question: PublicFormQuestionInput): boolean {
+  return question.type === "email" || (question.type === "text" && question.mappingKey === "email")
+}
+
+function parseCurrencyAnswer(value: unknown): {
+  empty: boolean
+  amount: number
+  valid: boolean
+} {
+  if (value == null || value === "") {
+    return { empty: true, amount: 0, valid: true }
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return { empty: false, amount: 0, valid: false }
+    return { empty: false, amount: value, valid: true }
+  }
+
+  const raw = String(value).trim()
+  if (!raw) return { empty: true, amount: 0, valid: true }
+
+  const digits = raw.replace(/\D/g, "")
+  if (!digits) return { empty: false, amount: 0, valid: false }
+
+  const amount = parseCurrencyBR(raw)
+  if (!Number.isFinite(amount)) return { empty: false, amount: 0, valid: false }
+  return { empty: false, amount, valid: true }
+}
+
 export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   if (q.type === "calculation") return null
   const empty = v == null || v === "" || (Array.isArray(v) && !v.length)
   if (q.required && empty) return "Esta resposta é obrigatória"
   if (empty) return null
   const s = String(v)
-  if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
+  if (isEmailQuestion(q) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
     return "Informe um e-mail válido"
   if (q.type === "phone") {
     const digits = phoneDigitCount(s)
     if (digits < 10 || digits > 11) return "Informe um telefone válido"
   }
   if (q.type === "currency") {
-    const amount = typeof v === "number" ? v : parseCurrencyBR(s)
-    if (!amount || amount <= 0) return "Informe um valor válido"
+    const parsed = parseCurrencyAnswer(v)
+    if (!q.required && parsed.empty) return null
+    if (!parsed.valid) return "Informe um valor válido"
+    if (!q.required && parsed.amount <= 0) return null
+    if (parsed.amount <= 0) return "Informe um valor válido"
   }
   if (q.type === "date") {
     const parsed = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00.000Z`) : null

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { HistoricoService } from "../services/HistoricoService"
 import type { EmailLog, LogDetail } from "./HistoricoTypes"
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 
 const PAGE_SIZE = 20
-const service = new HistoricoService()
+const defaultService = new HistoricoService()
 
 export type HistoricoActions = {
   handleSearch: (query: string) => void
@@ -35,6 +36,8 @@ export type HistoricoHookReturn = {
 } & HistoricoActions
 
 export function useHistorico(supabaseId: string): HistoricoHookReturn {
+  const host = useOptionalStudioEmailHost()
+  const service = host?.services.historico ?? defaultService
   const [logs, setLogs] = useState<EmailLog[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ContatosService } from "../services/ContatosService";
 import type { ContactList, Contact, ContactsState } from "./ContatosTypes";
+import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
 
 const PAGE_SIZE = 50;
-const service = new ContatosService();
+const defaultService = new ContatosService();
 
 export type ContactsActions = {
   handleCreateList: (name: string, description?: string) => Promise<void>
@@ -23,6 +24,8 @@ export type ContactsActions = {
 export type ContactsHookReturn = ContactsState & ContactsActions & { supabaseId: string }
 
 export function useContacts(supabaseId: string): ContactsHookReturn {
+  const host = useOptionalStudioEmailHost();
+  const service = host?.services.contatos ?? defaultService;
   const [lists, setLists] = useState<ContactList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);

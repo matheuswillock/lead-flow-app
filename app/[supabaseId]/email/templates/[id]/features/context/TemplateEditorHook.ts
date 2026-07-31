@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useTeamContext } from "@/app/context/TeamContext";
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime";
 import type {
   Template,
   TemplateEditorDraft,
@@ -15,7 +15,7 @@ import type {
 } from "./TemplateEditorTypes";
 import { createTemplateEditorService } from "../services/TemplateEditorService";
 
-const service = createTemplateEditorService();
+const defaultService = createTemplateEditorService();
 
 const EMPTY_DRAFT: TemplateEditorDraft = {
   name: "",
@@ -69,7 +69,8 @@ export function useTemplateEditor(
   templateId: string
 ): UseTemplateEditorReturn {
   const router = useRouter();
-  const { activeTeamId, activeRole, isLoading: teamLoading } = useTeamContext();
+  const { host, teamId: activeTeamId, activeRole, teamLoading } = useStudioEmailRuntime();
+  const service = host?.services.templateEditor ?? defaultService;
   const isNewTemplate = templateId === "new";
   const [template, setTemplate] = useState<Template | null>(null);
   const [draft, setDraft] = useState<TemplateEditorDraft>(EMPTY_DRAFT);
@@ -177,7 +178,9 @@ export function useTemplateEditor(
       setDraft(savedDraft);
       initialDraftRef.current = savedDraft;
       if (saved.id !== templateId) {
-        router.replace(`/${supabaseId}/email/templates/${saved.id}`);
+        router.replace(
+          host?.hrefs.templateEditor(saved.id) ?? `/${supabaseId}/email/templates/${saved.id}`
+        );
       }
       toast.success("Rascunho salvo com sucesso");
       return saved;
@@ -358,7 +361,9 @@ export function useTemplateEditor(
       setDraft(updatedDraft);
       initialDraftRef.current = updatedDraft;
       if (updated.id !== templateId) {
-        router.replace(`/${supabaseId}/email/templates/${updated.id}`);
+        router.replace(
+          host?.hrefs.templateEditor(updated.id) ?? `/${supabaseId}/email/templates/${updated.id}`
+        );
       }
       const versionsResult = await service.listVersions(supabaseId, updated.id, activeTeamId);
       setVersions(versionsResult.versions);

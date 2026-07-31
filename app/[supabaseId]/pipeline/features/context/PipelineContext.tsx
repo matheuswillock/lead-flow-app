@@ -444,9 +444,11 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         }
 
         if (result.isValid && result.result) {
-          console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
+          const leadsPayload = result.result as { leads: Lead[]; total: number } | Lead[];
+          const fetchedLeads: Lead[] = Array.isArray(leadsPayload) ? leadsPayload : leadsPayload.leads;
+          console.info('[PipelineContext] Leads fetched from API:', fetchedLeads.length, 'leads');
           lastLeadsLoadKeyRef.current = loadKey;
-          const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+          const leadsWithLeadTimeState = fetchedLeads.map((lead: Lead) => {
             if (!lead.status) {
               return {
                 ...lead,

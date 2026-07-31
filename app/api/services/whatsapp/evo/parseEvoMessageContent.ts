@@ -184,6 +184,18 @@ export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageCo
     return { ...EMPTY_CONTENT, messageType: "CONTACT", quotedProviderMessageId }
   }
 
+  const reactionMsg = asRecord(message["reactionMessage"])
+  if (reactionMsg) {
+    const reactionKey = asRecord(reactionMsg["key"])
+    return {
+      ...EMPTY_CONTENT,
+      messageType: "REACT",
+      contentText: typeof reactionMsg["text"] === "string" ? reactionMsg["text"] : "",
+      quotedProviderMessageId:
+        typeof reactionKey?.["id"] === "string" ? reactionKey["id"] : quotedProviderMessageId,
+    }
+  }
+
   return { ...EMPTY_CONTENT, quotedProviderMessageId }
 }
 

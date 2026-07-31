@@ -76,8 +76,9 @@ export interface ILeadRepository {
       calendarWindowEnd?: Date;
       customFieldFilters?: CustomFieldFilterInput[];
       customFieldSort?: CustomFieldSortInput;
+      limit?: number;
     }
-  ): Promise<{ leads: Lead[] }>;
+  ): Promise<{ leads: Lead[]; total: number }>;
   findAllByOperatorId(
     operatorId: string, 
     options?: {
@@ -102,8 +103,9 @@ export interface ILeadRepository {
       calendarWindowEnd?: Date;
       customFieldFilters?: CustomFieldFilterInput[];
       customFieldSort?: CustomFieldSortInput;
+      limit?: number;
     }
-  ): Promise<{ leads: Lead[] }>;
+  ): Promise<{ leads: Lead[]; total: number }>;
   update(id: string, data: LeadUpdateRepositoryInput): Promise<LeadRecord>;
   delete(id: string): Promise<void>;
   updateStatus(id: string, status: LeadStatus, extraData?: Prisma.LeadUpdateInput): Promise<Lead>;
