@@ -38,7 +38,6 @@ function serializeBackup(row: {
     storageSyncPath: row.storageSyncPath,
     errorMessage: row.errorMessage,
     googleDriveFileId: row.googleDriveFileId,
-    googleDriveDownloadUrl: row.googleDriveDownloadUrl,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -101,7 +100,7 @@ export class BackofficeDatabaseBackupUseCase {
 
     try {
       const exported = await this.exportService.exportToZip()
-      const { fileId, downloadUrl } = await this.driveService.upload({
+      const { fileId } = await this.driveService.upload({
         buffer: exported.buffer,
         fileName: exported.fileName,
       })
@@ -113,7 +112,6 @@ export class BackofficeDatabaseBackupUseCase {
         sizeBytes: BigInt(exported.sizeBytes),
         checksumSha256: exported.checksumSha256,
         googleDriveFileId: fileId,
-        googleDriveDownloadUrl: downloadUrl,
       })
 
       console.info("[BackofficeDatabaseBackupUseCase][runBackupJob] success", {
@@ -134,14 +132,7 @@ export class BackofficeDatabaseBackupUseCase {
   }
 
   async getDownloadStream(id: string): Promise<
-    | { ok: true; redirect: true; url: string }
-    | {
-        ok: true
-        redirect: false
-        fileName: string
-        body: ReadableStream<Uint8Array> | null
-        contentType: string
-      }
+    | { ok: true; fileName: string; body: ReadableStream<Uint8Array> | null; contentType: string }
     | { ok: false; status: number; message: string }
   > {
     const backup = await this.repository.findById(id)
@@ -152,8 +143,24 @@ export class BackofficeDatabaseBackupUseCase {
       return { ok: false, status: 400, message: "Backup indisponível para download" }
     }
 
-    if (backup.googleDriveDownloadUrl) {
-      return { ok: true, redirect: true, url: backup.googleDriveDownloadUrl }
+    // Download via Drive API — arquivo permanece privado, acesso autenticado.
+    if (backup.googleDriveFileId) {
+      try {
+        const body = await this.driveService.downloadStream(backup.googleDriveFileId)
+        return {
+          ok: true,
+          fileName: backup.fileName ?? `backup-${backup.id}.zip`,
+          body,
+          contentType: "application/zip",
+        }
+      } catch (error) {
+        console.error("[BackofficeDatabaseBackupUseCase][getDownloadStream]", error)
+        return {
+          ok: false,
+          status: 502,
+          message: error instanceof Error ? error.message : "Erro ao baixar backup do Drive",
+        }
+      }
     }
 
     // Fallback legado para registros antigos com filePath (VPS)
@@ -161,7 +168,7 @@ export class BackofficeDatabaseBackupUseCase {
       return {
         ok: false,
         status: 400,
-        message: "Backup sem URL de download disponível",
+        message: "Backup sem arquivo de download disponível",
       }
     }
 
@@ -182,7 +189,6 @@ export class BackofficeDatabaseBackupUseCase {
 
       return {
         ok: true,
-        redirect: false,
         fileName: backup.fileName,
         body: response.body,
         contentType:

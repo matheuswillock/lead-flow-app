@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import JSZip from "jszip"
-import { Prisma } from "@prisma/client"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { BackofficeDatabaseBackupExportRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/BackofficeDatabaseBackupExportRepository"
+import type { IBackofficeDatabaseBackupExportRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/IBackofficeDatabaseBackupExportRepository"
 import type {
   IBackofficeDatabaseBackupExportService,
   ExportZipResult,
@@ -10,29 +10,16 @@ import type {
 export class BackofficeDatabaseBackupExportService
   implements IBackofficeDatabaseBackupExportService
 {
+  constructor(
+    private readonly exportRepository: IBackofficeDatabaseBackupExportRepository = new BackofficeDatabaseBackupExportRepository()
+  ) {}
+
   async exportToZip(): Promise<ExportZipResult> {
+    const snapshot = await this.exportRepository.exportSnapshot()
+
     const zip = new JSZip()
-    const models = Prisma.dmmf.datamodel.models
-
-    for (const model of models) {
-      const hasBytesField = model.fields.some((f) => f.type === "Bytes")
-      if (hasBytesField) continue
-
-      const delegateName =
-        model.name.charAt(0).toLowerCase() + model.name.slice(1)
-
-      try {
-        const rows = await (prisma as unknown as Record<string, { findMany: () => Promise<unknown[]> }>)[delegateName].findMany()
-        const json = JSON.stringify(rows, (_key, value) =>
-          typeof value === "bigint" ? value.toString() : value
-        )
-        zip.file(`${model.name}.json`, json)
-      } catch (err) {
-        console.error(
-          `[BackofficeDatabaseBackupExportService] Pulando modelo ${model.name}`,
-          err
-        )
-      }
+    for (const [modelName, json] of snapshot) {
+      zip.file(`${modelName}.json`, json)
     }
 
     const now = new Date()

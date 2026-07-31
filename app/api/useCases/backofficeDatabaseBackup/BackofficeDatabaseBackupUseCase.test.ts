@@ -34,10 +34,8 @@ function createDriveMock(
   overrides: Partial<IBackofficeDatabaseBackupGoogleDriveService> = {}
 ): IBackofficeDatabaseBackupGoogleDriveService {
   return {
-    upload: async () => ({
-      fileId: "drive-file-id-1",
-      downloadUrl: "https://drive.google.com/uc?export=download&id=drive-file-id-1",
-    }),
+    upload: async () => ({ fileId: "drive-file-id-1" }),
+    downloadStream: async () => new ReadableStream(),
     ...overrides,
   }
 }
@@ -56,8 +54,7 @@ const baseRecord = {
   storageSyncPath: null,
   errorMessage: null,
   googleDriveFileId: "drive-file-id-1",
-  googleDriveDownloadUrl:
-    "https://drive.google.com/uc?export=download&id=drive-file-id-1",
+  googleDriveDownloadUrl: null,
   createdAt: new Date("2026-07-31T10:00:00.000Z"),
 }
 
@@ -85,7 +82,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
   })
 
   describe("triggerCronBackup", () => {
-    it("cria pending com source=cron e marca success com dados do Drive", async () => {
+    it("cria pending com source=cron e marca success com fileId do Drive", async () => {
       const claimCalls: Array<{ source: string; triggeredByProfileId?: string | null }> = []
       const lastUpdate: {
         status?: string
@@ -93,7 +90,6 @@ describe("BackofficeDatabaseBackupUseCase", () => {
         checksumSha256?: string | null
         sizeBytes?: bigint | null
         googleDriveFileId?: string | null
-        googleDriveDownloadUrl?: string | null
       }[] = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
@@ -118,7 +114,6 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       expect(lastUpdate[0]?.checksumSha256).toBe("abc123")
       expect(lastUpdate[0]?.sizeBytes).toEqual(BigInt(1024))
       expect(lastUpdate[0]?.googleDriveFileId).toBe("drive-file-id-1")
-      expect(lastUpdate[0]?.googleDriveDownloadUrl).toContain("drive-file-id-1")
     })
 
     it("bloqueia quando o slot pending já está ocupado", async () => {
@@ -138,7 +133,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       expect(claimPendingSlot).toHaveBeenCalled()
     })
 
-    it("marca failed quando o export service lança exceção", async () => {
+    it("marca failed e propaga mensagem quando o export service lança exceção", async () => {
       const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
@@ -247,7 +242,6 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             status: "pending",
             finishedAt: null,
             googleDriveFileId: null,
-            googleDriveDownloadUrl: null,
           }),
         }),
         createExportMock(),
@@ -262,32 +256,57 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       }
     })
 
-    it("retorna redirect para Google Drive quando backup tem googleDriveDownloadUrl", async () => {
+    it("faz proxy autenticado via Drive API quando backup tem googleDriveFileId", async () => {
+      const downloadedIds: string[] = []
+      const fakeStream = new ReadableStream()
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           findById: async () => ({ ...baseRecord }),
         }),
         createExportMock(),
-        createDriveMock()
+        createDriveMock({
+          downloadStream: async (fileId) => {
+            downloadedIds.push(fileId)
+            return fakeStream
+          },
+        })
       )
 
       const result = await useCase.getDownloadStream("b1")
       expect(result.ok).toBe(true)
       if (result.ok) {
-        expect(result.redirect).toBe(true)
-        if (result.redirect) {
-          expect(result.url).toContain("drive.google.com")
-        }
+        expect(result.contentType).toBe("application/zip")
+        expect(result.body).toBe(fakeStream)
+      }
+      expect(downloadedIds[0]).toBe("drive-file-id-1")
+    })
+
+    it("retorna 502 quando Drive API falha no download", async () => {
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock({
+          findById: async () => ({ ...baseRecord }),
+        }),
+        createExportMock(),
+        createDriveMock({
+          downloadStream: async () => {
+            throw new Error("Drive indisponível")
+          },
+        })
+      )
+
+      const result = await useCase.getDownloadStream("b1")
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.status).toBe(502)
       }
     })
 
-    it("retorna 400 quando backup success não tem URL de download", async () => {
+    it("retorna 400 quando backup success não tem arquivo disponível", async () => {
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           findById: async () => ({
             ...baseRecord,
             googleDriveFileId: null,
-            googleDriveDownloadUrl: null,
             filePath: null,
             fileName: null,
           }),

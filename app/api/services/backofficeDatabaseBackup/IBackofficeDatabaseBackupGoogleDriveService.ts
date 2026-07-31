@@ -5,9 +5,9 @@ export type DriveUploadInput = {
 
 export type DriveUploadResult = {
   fileId: string
-  downloadUrl: string
 }
 
 export interface IBackofficeDatabaseBackupGoogleDriveService {
   upload(input: DriveUploadInput): Promise<DriveUploadResult>
+  downloadStream(fileId: string): Promise<ReadableStream<Uint8Array>>
 }

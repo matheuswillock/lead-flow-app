@@ -9,30 +9,34 @@ import type {
 export class BackofficeDatabaseBackupGoogleDriveService
   implements IBackofficeDatabaseBackupGoogleDriveService
 {
-  async upload({ buffer, fileName }: DriveUploadInput): Promise<DriveUploadResult> {
+  private getAuth() {
     const serviceAccountJson =
       process.env.BACKOFFICE_GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
-    const folderId = process.env.BACKOFFICE_GOOGLE_DRIVE_BACKUP_FOLDER_ID
 
     if (!serviceAccountJson) {
       throw new Error(
         "Variável BACKOFFICE_GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON não configurada"
       )
     }
+
+    const credentials = JSON.parse(serviceAccountJson) as object
+
+    return new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/drive.file"],
+    })
+  }
+
+  async upload({ buffer, fileName }: DriveUploadInput): Promise<DriveUploadResult> {
+    const folderId = process.env.BACKOFFICE_GOOGLE_DRIVE_BACKUP_FOLDER_ID
+
     if (!folderId) {
       throw new Error(
         "Variável BACKOFFICE_GOOGLE_DRIVE_BACKUP_FOLDER_ID não configurada"
       )
     }
 
-    const credentials = JSON.parse(serviceAccountJson) as object
-
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
-    })
-
-    const drive = google.drive({ version: "v3", auth })
+    const drive = google.drive({ version: "v3", auth: this.getAuth() })
 
     const createResponse = await drive.files.create({
       requestBody: {
@@ -44,7 +48,7 @@ export class BackofficeDatabaseBackupGoogleDriveService
         mimeType: "application/zip",
         body: Readable.from(buffer),
       },
-      fields: "id,webContentLink",
+      fields: "id",
     })
 
     const fileId = createResponse.data.id
@@ -52,26 +56,17 @@ export class BackofficeDatabaseBackupGoogleDriveService
       throw new Error("Google Drive não retornou ID do arquivo após upload")
     }
 
-    await drive.permissions.create({
-      fileId,
-      requestBody: {
-        role: "reader",
-        type: "anyone",
-      },
-    })
+    return { fileId }
+  }
 
-    const meta = await drive.files.get({
-      fileId,
-      fields: "webContentLink",
-    })
+  async downloadStream(fileId: string): Promise<ReadableStream<Uint8Array>> {
+    const drive = google.drive({ version: "v3", auth: this.getAuth() })
 
-    const downloadUrl = meta.data.webContentLink
-    if (!downloadUrl) {
-      throw new Error(
-        "Google Drive não retornou webContentLink após criação da permissão"
-      )
-    }
+    const response = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "stream" }
+    )
 
-    return { fileId, downloadUrl }
+    return Readable.toWeb(response.data) as unknown as ReadableStream<Uint8Array>
   }
 }
