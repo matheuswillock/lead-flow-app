@@ -1150,6 +1150,8 @@ model BackofficeDatabaseBackup {
   checksumSha256       String?                        @map("checksumSha256") @db.Text
   storageSyncPath      String?                        @map("storageSyncPath") @db.Text
   errorMessage         String?                        @map("errorMessage") @db.Text
+  googleDriveFileId    String?                        @map("googleDriveFileId") @db.Text
+  googleDriveDownloadUrl String?                      @map("googleDriveDownloadUrl") @db.Text
   createdAt            DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
 
   @@index([status, startedAt(sort: Desc)])
@@ -3875,6 +3877,7 @@ model WhatsAppMessage {
   failedAt                DateTime?                @db.Timestamptz(6)
   isAutoResponse          Boolean                  @default(false)
   autoResponseRuleId      String?                  @db.Uuid
+  providerTimestamp       BigInt?
   rawPayload              Json
   storagePath             String?                  @db.Text
   mediaSha256             String?                  @db.Text
@@ -3910,7 +3913,7 @@ model WhatsAppMessage {
   @@unique([teamId, providerMessageId])
   @@unique([teamId, providerEventId])
   @@unique([teamId, clientMessageId])
-  @@index([conversationId, createdAt(sort: Asc)])
+  @@index([conversationId, providerTimestamp(sort: Asc), createdAt(sort: Asc)])
   @@index([sentByProfileId])
   @@index([deletedAt])
   @@index([quotedMessageId])
@@ -4978,6 +4981,7 @@ enum PublicFormRuleOperator {
 enum PublicFormRuleAction {
   show
   skip
+  jump_to
 }
 
 enum PublicFormSubmissionStatus {

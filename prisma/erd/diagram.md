@@ -1298,6 +1298,7 @@ not_selected not_selected
         PublicFormRuleAction {
             show show
 skip skip
+jump_to jump_to
         }
     
 
@@ -1444,6 +1445,8 @@ meeting_scheduled meeting_scheduled
     String checksumSha256 "❓"
     String storageSyncPath "❓"
     String errorMessage "❓"
+    String googleDriveFileId "❓"
+    String googleDriveDownloadUrl "❓"
     DateTime createdAt 
     }
   
@@ -2918,6 +2921,7 @@ meeting_scheduled meeting_scheduled
     DateTime playedAt "❓"
     DateTime failedAt "❓"
     Boolean isAutoResponse 
+    BigInt providerTimestamp "❓"
     Json rawPayload 
     String storagePath "❓"
     String mediaSha256 "❓"

@@ -120,6 +120,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
     supabaseId,
     replyTarget,
     setReplyTarget,
+    contactIsTyping,
   } = useWhatsAppInboxContext()
   const [text, setText] = useState("")
   const [mentionedJids, setMentionedJids] = useState<string[]>([])
@@ -478,6 +479,10 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
           O WhatsApp está desconectado. Reconecte em Configurações do WhatsApp para enviar mensagens.
         </p>
       )}
+
+      {contactIsTyping ? (
+        <p className="px-1 pb-1 text-xs text-muted-foreground">digitando...</p>
+      ) : null}
 
       {replyTarget ? (
         <div className="flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2">

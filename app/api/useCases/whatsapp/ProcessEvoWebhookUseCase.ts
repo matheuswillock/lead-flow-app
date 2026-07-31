@@ -43,6 +43,7 @@ import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/wha
 import { shouldApplyOutboundMessageStatus } from "@/lib/whatsapp/outbound-message-status"
 import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 import { logSafeWhatsAppError } from "@/lib/whatsapp/safe-observability"
+import { createSupabaseAdmin } from "@/lib/supabase/server"
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
@@ -134,6 +135,8 @@ class ProcessEvoWebhookUseCase {
         eventType === "CONTACTS_UPDATE" || eventType === "CONTACTS.UPDATE"
       ) {
         await this.handleContactsUpsert(input.teamId, input.configId, data)
+      } else if (eventType === "PRESENCE_UPDATE" || eventType === "PRESENCE.UPDATE") {
+        await this.handlePresenceUpdate(input.teamId, data)
       } else {
         console.info("[ProcessEvoWebhookUseCase][execute] Unhandled event type:", eventType)
       }
@@ -230,6 +233,24 @@ class ProcessEvoWebhookUseCase {
     const providerEventId = extractProviderEventId(rawEvent, eventType, providerMessageId, {
       skipEnvelopeId: isBatchedPayload,
     })
+    if (!isRedelivery && parsed.messageType === "REACT") {
+      if (parsed.quotedProviderMessageId) {
+        const referencedMsg = await this.repository.findMessageByProviderMessageId(
+          routed.teamId,
+          parsed.quotedProviderMessageId
+        )
+        if (referencedMsg) {
+          await this.repository.upsertMessageReaction({
+            teamId: routed.teamId,
+            messageId: referencedMsg.id,
+            actorPhone: normalizedPhone ?? remoteJid,
+            emoji: parsed.contentText ?? "",
+          })
+        }
+      }
+      return
+    }
+
     if (!isRedelivery) {
       let messageCreated = false
       let quotedMessageId: string | undefined
@@ -248,7 +269,7 @@ class ProcessEvoWebhookUseCase {
           providerMessageId,
           ...(providerEventId ? { providerEventId } : {}),
           direction,
-          messageType: parsed.messageType,
+          messageType: parsed.messageType as import("@prisma/client").WhatsAppMessageType,
           status: fromMe ? "SENT" : "RECEIVED",
           contentText: safeContentText,
           mediaUrl: parsed.mediaUrl,
@@ -263,6 +284,12 @@ class ProcessEvoWebhookUseCase {
           senderPhone: fromMe ? undefined : normalizedPhone,
           recipientPhone: fromMe ? normalizedPhone : undefined,
           sentAt: now,
+          providerTimestamp:
+            typeof (data as Record<string, unknown>).messageTimestamp === "number"
+              ? BigInt((data as Record<string, unknown>).messageTimestamp as number)
+              : typeof (data as Record<string, unknown>).messageTimestamp === "string"
+                ? BigInt(parseInt((data as Record<string, unknown>).messageTimestamp as string, 10)) || null
+                : null,
           quotedProviderMessageId: parsed.quotedProviderMessageId,
           ...(quotedMessageId ? { quotedMessage: { connect: { id: quotedMessageId } } } : {}),
           rawPayload: data as Prisma.InputJsonValue,
@@ -746,12 +773,16 @@ class ProcessEvoWebhookUseCase {
       const providerMessageId = typeof keyObj["id"] === "string" ? keyObj["id"] : undefined
       if (!providerMessageId) continue
 
+      const remoteJid = typeof keyObj["remoteJid"] === "string" ? keyObj["remoteJid"] : undefined
       const updateObj = (item["update"] as Record<string, unknown> | undefined) ?? {}
       const rawStatus =
         normalizeMessageStatus(updateObj["status"]) ||
         normalizeMessageStatus(item["status"])
 
-      await this.applyOutboundMessageStatus(teamId, providerMessageId, rawStatus)
+      const effectiveTeamId = remoteJid
+        ? await this.repository.findLeadTeamIdByPhoneForMaster(teamId, remoteJid, teamId)
+        : teamId
+      await this.applyOutboundMessageStatus(effectiveTeamId, providerMessageId, rawStatus)
     }
   }
 
@@ -839,7 +870,12 @@ class ProcessEvoWebhookUseCase {
       return
     }
 
-    const existing = await this.repository.findMessageByProviderMessageId(teamId, providerMessageId)
+    const remoteJid = typeof keyObj["remoteJid"] === "string" ? keyObj["remoteJid"] : undefined
+    const effectiveTeamId = remoteJid
+      ? await this.repository.findLeadTeamIdByPhoneForMaster(teamId, remoteJid, teamId)
+      : teamId
+
+    const existing = await this.repository.findMessageByProviderMessageId(effectiveTeamId, providerMessageId)
     if (!existing) {
       console.info(
         "[ProcessEvoWebhookUseCase][handleMessagesDelete] Message not found, skipping",
@@ -979,6 +1015,35 @@ class ProcessEvoWebhookUseCase {
         updatedCount,
         "conversation contact names"
       )
+    }
+  }
+
+  private async handlePresenceUpdate(teamId: string, data: unknown): Promise<void> {
+    const payload = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}
+    const remoteJid = typeof payload["remoteJid"] === "string" ? payload["remoteJid"] : null
+    if (!remoteJid) return
+
+    const presencesArr = Array.isArray(payload["presences"]) ? payload["presences"] : null
+    const presenceType: string | null = presencesArr
+      ? (typeof (presencesArr[0] as Record<string, unknown>)?.["type"] === "string"
+          ? String((presencesArr[0] as Record<string, unknown>)["type"])
+          : null)
+      : typeof payload["presence"] === "string"
+        ? String(payload["presence"])
+        : null
+
+    const isTyping = presenceType === "composing" || presenceType === "recording"
+
+    try {
+      const supabase = createSupabaseAdmin()
+      if (!supabase) return
+      await supabase.channel(`whatsapp-presence:${teamId}`).send({
+        type: "broadcast",
+        event: "contact_typing",
+        payload: { remoteJid, isTyping, ts: Date.now() },
+      })
+    } catch (error) {
+      console.error("[ProcessEvoWebhookUseCase][handlePresenceUpdate] broadcast failed", error)
     }
   }
 }

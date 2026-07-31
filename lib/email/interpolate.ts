@@ -1,4 +1,5 @@
 import { DEFAULT_TZ, formatIntimezone, formatLocalDateValue, formatLocalTimeValue, nowInTz } from "@/lib/dates"
+import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
 
 export interface EmailTemplateRecipient {
   email: string
@@ -46,6 +47,10 @@ export const BUILTIN_EMAIL_VARIABLES = [
   { key: "nome_do_lead", description: "Nome do destinatário (alias)" },
   { key: "name", description: "Nome do destinatário (alias em inglês)" },
   { key: "email", description: "Endereço de e-mail do destinatário" },
+  {
+    key: EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+    description: "Link de descadastro do destinatário (substituído automaticamente no envio)",
+  },
 ] as const
 
 export const BUILTIN_EMAIL_FUNCTIONS = [
@@ -238,7 +243,8 @@ function resolveCustomFunction(
 function buildResolvedValueMap(
   recipient: EmailTemplateRecipient,
   globalDefaults?: Record<string, string | null | undefined> | null,
-  definitions?: EmailTemplateVariableDefinition[] | null
+  definitions?: EmailTemplateVariableDefinition[] | null,
+  authoritativeDefaults?: Record<string, string | null | undefined> | null,
 ): Record<string, string> {
   const values: Record<string, string> = {}
 
@@ -314,6 +320,15 @@ function buildResolvedValueMap(
     }
   }
 
+  if (authoritativeDefaults) {
+    for (const [key, raw] of Object.entries(authoritativeDefaults)) {
+      if (raw == null) continue
+      const value = String(raw).trim()
+      if (!value) continue
+      values[normalizeKey(key)] = value
+    }
+  }
+
   return values
 }
 
@@ -326,6 +341,7 @@ function buildResolvedValueMap(
  *   3. Team global variables' default values (case-insensitive key match)
  *   4. Template variable fallbacks (when provided)
  *   5. Built-in functions like {{currentYear}} and custom function definitions
+ *   6. Authoritative defaults (always win, e.g. reserved dispatch tokens)
  *
  * Unknown tokens are left as-is.
  */
@@ -333,9 +349,15 @@ export function interpolateEmailTemplate(
   template: string,
   recipient: EmailTemplateRecipient,
   globalDefaults?: Record<string, string | null | undefined> | null,
-  definitions?: EmailTemplateVariableDefinition[] | null
+  definitions?: EmailTemplateVariableDefinition[] | null,
+  authoritativeDefaults?: Record<string, string | null | undefined> | null,
 ): string {
-  const values = buildResolvedValueMap(recipient, globalDefaults, definitions)
+  const values = buildResolvedValueMap(
+    recipient,
+    globalDefaults,
+    definitions,
+    authoritativeDefaults,
+  )
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, rawKey: string) => {
     const resolved = values[normalizeKey(rawKey)]
     return resolved != null ? resolved : match
@@ -363,7 +385,13 @@ export function getBuiltinEmailFunctionDefinition(
   return builtin ? { ...builtin.definition } : null
 }
 
-const BUILTIN_RECIPIENT_KEYS = new Set(["nome", "nome_do_lead", "name", "email"])
+const BUILTIN_RECIPIENT_KEYS = new Set([
+  "nome",
+  "nome_do_lead",
+  "name",
+  "email",
+  EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+])
 
 export function applyMasterTimezoneToTemplateVariables(
   definitions: EmailTemplateVariableDefinition[],
