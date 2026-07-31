@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server"
-import { publicFormSubmissionUseCase } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
+import { NextResponse, after } from "next/server"
+import {
+  publicFormSubmissionUseCase,
+  type PublicFormSubmissionBackgroundJob,
+} from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
 import { Output } from "@/lib/output"
 import { publicFormSubmissionSchema } from "@/lib/public-forms/validation"
 import {
@@ -37,6 +40,23 @@ export async function POST(
       { status: 400 },
     )
   }
-  const output = await publicFormSubmissionUseCase.execute(publicId, parsed.data)
-  return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
+  const output = await publicFormSubmissionUseCase.accept(publicId, parsed.data)
+  if (!output.isValid) {
+    return NextResponse.json(output, { status: 400 })
+  }
+
+  const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)
+    ?.background
+  if (background) {
+    after(() => {
+      void publicFormSubmissionUseCase.processInBackground(background)
+    })
+  }
+
+  return NextResponse.json(
+    new Output(true, ["Respostas recebidas"], [], {
+      submissionId: (output.result as { submissionId?: string } | null)?.submissionId ?? null,
+    }),
+    { status: 201 },
+  )
 }

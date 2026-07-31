@@ -733,26 +733,42 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async persistSubmissionAnswers(
+    submissionId: string,
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>,
+  ) {
+    await prisma.$transaction(async (tx) => {
+      await this.syncSubmissionAnswers(tx, submissionId, answers)
+    })
+  }
+
   async completeSubmission(input: PublicFormCompleteSubmissionInput) {
     await prisma.$transaction(async (tx) => {
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
-          leadId: input.leadId,
+          leadId: input.leadId ?? null,
           status: "completed",
           completionStatus: "complete",
           submittedAt: new Date(),
+          errorMessage: input.processingAlerts?.slice(0, 2000) ?? null,
         },
       })
       await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
-      await tx.leadActivity.create({
-        data: {
-          leadId: input.leadId,
-          type: ActivityType.note,
-          body: input.activityBody,
-          payload: input.activityPayload,
-        },
-      })
+      if (input.leadId && input.activityBody && input.activityPayload) {
+        await tx.leadActivity.create({
+          data: {
+            leadId: input.leadId,
+            type: ActivityType.note,
+            body: input.activityBody,
+            payload: input.activityPayload,
+          },
+        })
+      }
       for (const event of input.metricEvents) {
         await tx.publicFormMetricEvent.upsert({
           where: { eventKey: event.eventKey },
