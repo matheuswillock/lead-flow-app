@@ -48,9 +48,7 @@ export async function POST(
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)
     ?.background
   if (background) {
-    after(() => {
-      void publicFormSubmissionUseCase.processInBackground(background)
-    })
+    after(() => publicFormSubmissionUseCase.processInBackground(background))
   }
 
   return NextResponse.json(

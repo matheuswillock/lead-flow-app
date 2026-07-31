@@ -147,12 +147,14 @@ export class PublicFormSubmissionUseCase {
   async processInBackground(job: PublicFormSubmissionBackgroundJob): Promise<void> {
     const visible = new Set(job.visibleIds)
     const answers = mapAnswersForPersistence(job.snapshot, job.visibleAnswers)
-    const form = await publicFormsRepository.findFormSubmissionContext(job.snapshot.formId)
-    const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
-    const match = await findMatchingLead(form.teamId, extracted)
-    const alerts = [...buildLeadSyncAlerts(extracted, match)]
+    const alerts: string[] = []
 
     try {
+      const form = await publicFormsRepository.findFormSubmissionContext(job.snapshot.formId)
+      const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
+      const match = await findMatchingLead(form.teamId, extracted)
+      alerts.push(...buildLeadSyncAlerts(extracted, match))
+
       const upserted = await upsertLeadFromFormAnswers({
         form,
         snapshot: job.snapshot,
