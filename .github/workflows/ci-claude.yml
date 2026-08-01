@@ -91,7 +91,7 @@ jobs:
           !contains(github.event.head_commit.message, '[skip ci]')
         )
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -153,7 +153,7 @@ jobs:
         )
       }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -166,7 +166,7 @@ jobs:
 
   build:
     name: Build
-    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
+    # Jobs pesados no runner hospedado do GitHub (RAM dedicada por pipeline, paralelo sem OOM na VPS).
     # Pulado em rebases feitos pela UI do GitHub (committer noreply@github.com).
     if: >-
       ${{
@@ -177,7 +177,7 @@ jobs:
         ) &&
         github.event.head_commit.committer.email != 'noreply@github.com'
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-build]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
