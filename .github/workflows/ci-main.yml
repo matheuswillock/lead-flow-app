@@ -23,10 +23,16 @@ env:
   NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
-  lint-and-governance:
-    name: Lint & Governance
+  ci-light:
+    name: CI Light (VPS)
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 5
+    timeout-minutes: 8
+    outputs:
+      governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
+      governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
+      lint: ${{ steps.ci-light-checks.outputs.lint }}
+      passed: ${{ steps.ci-light-checks.outputs.passed }}
+      tests-result: ${{ steps.ci-light-checks.outputs['tests-result'] }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,23 +40,16 @@ jobs:
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
 
-      - name: Governance Check
-        run: bun run governance:check
-
-      - name: Governance Sync Check
-        run: |
-          bun run governance:sync
-          git diff --exit-code
-
-      - name: Governance Allowlist Warnings
-        run: bun run governance:warn-allowlist
-
-      - name: Lint
-        run: bun run lint
+      - name: Run light checks
+        id: ci-light-checks
+        uses: ./.github/actions/ci-vps-light-checks
+        with:
+          run-spellcheck: false
+          strict-governance: true
 
   typecheck:
     name: Typecheck
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -64,44 +63,14 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: bun run typecheck
 
-  tests:
-    name: Tests
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
-
-      - name: Proxy Tests
-        id: proxy-tests
-        continue-on-error: true
-        run: bun run test:proxy
-
-      - name: Unit Tests
-        id: unit-tests
-        continue-on-error: true
-        run: bun run test
-
-      - name: Resolve Tests
-        if: always()
-        run: |
-          if [[ "${{ steps['proxy-tests'].outcome }}" != "success" || "${{ steps['unit-tests'].outcome }}" != "success" ]]; then
-            echo "::error::proxy-tests=${{ steps['proxy-tests'].outcome }} unit-tests=${{ steps['unit-tests'].outcome }}"
-            exit 1
-          fi
-
   migration-status:
     name: Migration Status
     if: github.event_name == 'push'
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
-      - lint-and-governance
+      - ci-light
       - typecheck
-      - tests
       - build
     steps:
       - name: Checkout
@@ -149,8 +118,8 @@ jobs:
 
   build:
     name: Build
-    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
-    runs-on: [self-hosted, linux, x64, lead-flow-build]
+    # Jobs pesados no runner hospedado do GitHub (RAM dedicada por pipeline, paralelo sem OOM na VPS).
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
