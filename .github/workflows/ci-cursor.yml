@@ -11,6 +11,12 @@ concurrency:
   group: ci-cursor-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  deployments: write
+
 jobs:
   ci:
     uses: ./.github/workflows/ci-branch-reusable.yml

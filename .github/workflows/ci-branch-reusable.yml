@@ -36,23 +36,7 @@ on:
         required: false
         type: boolean
         default: true
-    secrets:
-      SUPABASE_URL:
-        required: false
-      SUPABASE_ANON_KEY:
-        required: false
-      RESEND_API_KEY:
-        required: false
-      DATABASE_URL:
-        required: false
-      DIRECT_URL:
-        required: false
-      OPENAI_API_KEY:
-        required: false
-      PR_AUTOMATION_TOKEN:
-        required: false
-      GITHUB_TOKEN:
-        required: true
+    secrets: inherit
 
 permissions:
   actions: read
