@@ -129,7 +129,7 @@ jobs:
     name: Spellcheck PT-BR
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
