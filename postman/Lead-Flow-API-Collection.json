@@ -11634,6 +11634,132 @@
           ]
         },
         {
+          "name": "Backoffice Team Email Limit Grants",
+          "item": [
+            {
+              "name": "GET Team Email Limit Grants",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "team-email-limit-grants"
+                  ]
+                },
+                "description": "Lista grants ativos de limite diário de e-mail por time."
+              }
+            },
+            {
+              "name": "GET Search Teams For Email Limit Grant",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants?q={{teamSearchQuery}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "team-email-limit-grants"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "{{teamSearchQuery}}"
+                    }
+                  ]
+                },
+                "description": "Busca times para conceder limite customizado."
+              }
+            },
+            {
+              "name": "POST Grant Team Email Limit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"maxEmailsPerDay\": 5000,\n  \"notes\": \"Concedido via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "team-email-limit-grants"
+                  ]
+                },
+                "description": "Concede limite diário customizado. Use null em maxEmailsPerDay para ilimitado."
+              }
+            },
+            {
+              "name": "DELETE Revoke Team Email Limit Grant",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants/{{teamEmailLimitGrantId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "team-email-limit-grants",
+                    ":grantId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "grantId",
+                      "value": "{{teamEmailLimitGrantId}}"
+                    }
+                  ]
+                },
+                "description": "Revoga grant de limite customizado por time."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Anatemas",
           "item": [
             {

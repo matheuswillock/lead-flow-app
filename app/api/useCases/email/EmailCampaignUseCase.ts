@@ -47,11 +47,17 @@ import {
 } from "@/lib/email/resolve-campaign-from"
 import { wouldExceedDailyEmailCap } from "@/lib/email/campaign-daily-dispatch-guard"
 import {
+  formatDailyLimitFailureMessage,
+  EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB,
+  isDailyLimitErrorMessage,
+} from "@/lib/email/campaign-limits"
+import { notifyCampaignDispatchFailure } from "@/lib/email/notify-campaign-dispatch-failure"
+import { resolveTeamEmailCampaignLimits } from "@/lib/email/resolve-team-email-campaign-limits"
+import {
   buildSubCampaignScheduledAts,
   chunkContactIdsForSubCampaigns,
   requiresSubCampaignSplit,
 } from "@/lib/email/campaign-sub-campaigns"
-import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
@@ -69,6 +75,7 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
   INTERNAL: "Erro interno durante o disparo",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
+  formatDailyLimit: formatDailyLimitFailureMessage,
 } as const
 
 export interface CreateCampaignInput {
@@ -104,6 +111,38 @@ export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
+
+  private async notifyDispatchFailureIfNeeded(params: {
+    recipientProfileId: string | null | undefined
+    teamId: string
+    campaignId: string
+    campaignName: string
+    dispatchId?: string
+    errorMessage: string | null | undefined
+  }): Promise<void> {
+    if (!params.recipientProfileId || !params.errorMessage) return
+
+    await notifyCampaignDispatchFailure({
+      recipientProfileId: params.recipientProfileId,
+      teamId: params.teamId,
+      campaignId: params.campaignId,
+      campaignName: params.campaignName,
+      dispatchId: params.dispatchId,
+      errorMessage: params.errorMessage,
+    }).catch((error) => {
+      console.error("[EmailCampaignUseCase][notifyDispatchFailureIfNeeded]", error)
+    })
+  }
+
+  private resolveDispatchFailureMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error && isDailyLimitErrorMessage(error.message)) {
+      return error.message
+    }
+    if (typeof error === "string" && isDailyLimitErrorMessage(error)) {
+      return error
+    }
+    return fallback
+  }
 
   private async resolvePublishedTemplate(templateId: string, teamId: string) {
     const ref = await prisma.emailTemplate.findFirst({
@@ -438,18 +477,23 @@ export class EmailCampaignUseCase {
       }
 
       const trimmedName = data.name.trim()
+      const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
+      const maxPerSub = teamLimits.maxRecipientsPerSub
 
       if (data.radarSegmentSlug || !data.contactListId) {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           contactListId: data.contactListId,
           radarSegmentSlug: data.radarSegmentSlug,
         })
-        if (requiresSubCampaignSplit(totalRecipients)) {
+        if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+          const limitLabel =
+            maxPerSub?.toLocaleString("pt-BR") ??
+            EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
           return new Output(
             false,
             [],
             [
-              `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Segmentos Radar com mais de ${limitLabel} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
             ],
             null
           )
@@ -502,7 +546,7 @@ export class EmailCampaignUseCase {
         .filter((contactId): contactId is string => Boolean(contactId))
       const totalRecipients = contactIds.length
 
-      if (!requiresSubCampaignSplit(totalRecipients)) {
+      if (!requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
         const campaign = await prisma.emailCampaign.create({
           data: {
             id: randomUUID(),
@@ -520,11 +564,14 @@ export class EmailCampaignUseCase {
       }
 
       if (!scheduledAt) {
+        const limitLabel =
+          maxPerSub?.toLocaleString("pt-BR") ??
+          EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
         return new Output(
           false,
           [],
           [
-            `Listas com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} contatos exigem agendamento com intervalo em dias`,
+            `Listas com mais de ${limitLabel} contatos exigem agendamento com intervalo em dias`,
           ],
           null
         )
@@ -544,7 +591,7 @@ export class EmailCampaignUseCase {
         )
       }
 
-      const chunks = chunkContactIdsForSubCampaigns(contactIds)
+      const chunks = chunkContactIdsForSubCampaigns(contactIds, maxPerSub)
       const scheduledAts = buildSubCampaignScheduledAts(
         scheduledAt,
         chunks.length,
@@ -634,6 +681,8 @@ export class EmailCampaignUseCase {
       const canChangeSchedule = existing.status === "draft" || existing.status === "scheduled"
       const isParentCampaign =
         (await prisma.emailCampaign.count({ where: { parentCampaignId: id, teamId: ctx.teamId } })) > 0
+      const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
+      const maxPerSub = teamLimits.maxRecipientsPerSub
 
       if (isParentCampaign && data.scheduledAt !== undefined) {
         return new Output(
@@ -673,12 +722,15 @@ export class EmailCampaignUseCase {
           contactListId: nextContactListId,
           radarSegmentSlug: nextSegmentSlug,
         })
-        if (nextSegmentSlug && requiresSubCampaignSplit(totalRecipients)) {
+        if (nextSegmentSlug && requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+          const limitLabel =
+            maxPerSub?.toLocaleString("pt-BR") ??
+            EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
           return new Output(
             false,
             [],
             [
-              `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Segmentos Radar com mais de ${limitLabel} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
             ],
             null
           )
@@ -700,11 +752,14 @@ export class EmailCampaignUseCase {
           totalRecipients: existing.totalRecipients,
         })
         if (siblingConflict) {
+          const limitLabel =
+            maxPerSub?.toLocaleString("pt-BR") ??
+            EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
           return new Output(
             false,
             [],
             [
-              `O agendamento ultrapassa o limite de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} e-mails por dia com outras sub-campanhas`,
+              `O agendamento ultrapassa o limite de ${limitLabel} e-mails por dia com outras sub-campanhas`,
             ],
             null
           )
@@ -1008,13 +1063,11 @@ export class EmailCampaignUseCase {
         now: new Date(),
         additionalRecipients: dispatchInput.recipients.length,
       })
-      if (dailyCap.exceeded) {
+      if (dailyCap.exceeded && dailyCap.limit != null) {
         return new Output(
           false,
           [],
-          [
-            `Limite diário de ${dailyCap.limit} e-mails atingido (${dailyCap.used} já usados). Tente amanhã ou reduza o lote`,
-          ],
+          [EMAIL_CAMPAIGN_FAILURE_MESSAGES.formatDailyLimit(dailyCap.used, dailyCap.limit)],
           null
         )
       }
@@ -1132,7 +1185,12 @@ export class EmailCampaignUseCase {
         })
       }
 
-      await prisma.emailCampaign
+      const failureMessage = this.resolveDispatchFailureMessage(
+        error,
+        EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
+      )
+
+      const failedCampaign = await prisma.emailCampaign
         .update({
           where: { id },
           data: {
@@ -1140,16 +1198,27 @@ export class EmailCampaignUseCase {
               previousStatus && MANUAL_DISPATCH_STATUS_SET.has(previousStatus)
                 ? previousStatus
                 : "failed",
-            errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+            errorMessage: failureMessage,
           },
+          select: { id: true, name: true, status: true },
         })
         .catch(() => null)
+
+      if (failedCampaign?.status === "failed") {
+        await this.notifyDispatchFailureIfNeeded({
+          recipientProfileId: ctx.profileId,
+          teamId: ctx.teamId,
+          campaignId: id,
+          campaignName: failedCampaign.name,
+          errorMessage: failureMessage,
+        })
+      }
 
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         return new Output(false, [], ["Conflito de numeração de disparo. Tente novamente."], null)
       }
 
-      return new Output(false, [], ["Erro ao disparar campanha"], null)
+      return new Output(false, [], [failureMessage === EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL ? "Erro ao disparar campanha" : failureMessage], null)
     }
   }
 
@@ -1269,6 +1338,26 @@ export class EmailCampaignUseCase {
         }
 
         if (terminal.campaignStatus === "failed") {
+          const [campaignMeta, dispatchMeta] = await Promise.all([
+            prisma.emailCampaign.findUnique({
+              where: { id: job.campaignId },
+              select: { name: true },
+            }),
+            prisma.emailCampaignDispatch.findUnique({
+              where: { id: job.dispatchId },
+              select: { triggeredBy: true },
+            }),
+          ])
+
+          await this.notifyDispatchFailureIfNeeded({
+            recipientProfileId: dispatchMeta?.triggeredBy,
+            teamId: job.teamId,
+            campaignId: job.campaignId,
+            campaignName: campaignMeta?.name ?? "Campanha",
+            dispatchId: job.dispatchId,
+            errorMessage: terminal.errorMessage,
+          })
+
           return new Output(
             false,
             [],
@@ -1315,29 +1404,51 @@ export class EmailCampaignUseCase {
         return reconciled
       }
 
+      const failureMessage = this.resolveDispatchFailureMessage(
+        error,
+        EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
+      )
+
       await prisma.emailCampaignDispatch
         .update({
           where: { id: job.dispatchId },
           data: {
             status: "failed",
-            errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+            errorMessage: failureMessage,
           },
         })
         .catch(() => null)
 
-      await prisma.emailCampaign
+      const failedCampaign = await prisma.emailCampaign
         .update({
           where: { id: job.campaignId },
           data: {
             status: "failed",
-            errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+            errorMessage: failureMessage,
           },
+          select: { name: true },
         })
         .catch(() => null)
 
+      const dispatchMeta = await prisma.emailCampaignDispatch
+        .findUnique({
+          where: { id: job.dispatchId },
+          select: { triggeredBy: true },
+        })
+        .catch(() => null)
+
+      await this.notifyDispatchFailureIfNeeded({
+        recipientProfileId: dispatchMeta?.triggeredBy,
+        teamId: job.teamId,
+        campaignId: job.campaignId,
+        campaignName: failedCampaign?.name ?? "Campanha",
+        dispatchId: job.dispatchId,
+        errorMessage: failureMessage,
+      })
+
       await this.refreshParentCampaignStatusForChild(job.campaignId).catch(() => null)
 
-      return new Output(false, [], ["Erro ao disparar campanha"], null)
+      return new Output(false, [], [failureMessage], null)
     }
   }
 
@@ -1724,8 +1835,17 @@ export class EmailCampaignUseCase {
     const updated = await prisma.emailCampaign.update({
       where: { id: campaignId },
       data: { status: "failed", errorMessage },
-      select: { parentCampaignId: true },
+      select: { parentCampaignId: true, name: true, teamId: true, createdBy: true },
     })
+    if (updated.createdBy) {
+      await this.notifyDispatchFailureIfNeeded({
+        recipientProfileId: updated.createdBy,
+        teamId: updated.teamId,
+        campaignId,
+        campaignName: updated.name,
+        errorMessage,
+      })
+    }
     if (updated.parentCampaignId) {
       await this.refreshParentCampaignStatus(updated.parentCampaignId)
     }
@@ -2055,7 +2175,11 @@ export class EmailCampaignUseCase {
         }
       } catch (campaignError) {
         console.error(`[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id}`, campaignError)
-        await this.markScheduledCampaignFailed(campaign.id, EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL)
+        const failureMessage = this.resolveDispatchFailureMessage(
+          campaignError,
+          EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
+        )
+        await this.markScheduledCampaignFailed(campaign.id, failureMessage)
         if (campaign.parentCampaignId) {
           await this.refreshParentCampaignStatus(campaign.parentCampaignId)
         }
@@ -2084,6 +2208,9 @@ export class EmailCampaignUseCase {
     scheduledAt: Date
     totalRecipients: number
   }): Promise<boolean> {
+    const limits = await resolveTeamEmailCampaignLimits(params.teamId)
+    if (limits.maxRecipientsPerSub == null) return false
+
     const team = await prisma.team.findFirst({
       where: { id: params.teamId },
       select: { master: { select: { timezone: true } } },
@@ -2109,7 +2236,7 @@ export class EmailCampaignUseCase {
       dayTotal += sibling.totalRecipients
     }
 
-    return dayTotal > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+    return dayTotal > limits.maxRecipientsPerSub
   }
 
   private async refreshParentCampaignStatus(parentCampaignId: string): Promise<void> {

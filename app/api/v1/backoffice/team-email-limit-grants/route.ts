@@ -1,0 +1,63 @@
+import { NextResponse, type NextRequest } from "next/server"
+import { Output } from "@/lib/output"
+import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
+import { backofficeTeamEmailLimitGrantUseCase } from "@/app/api/useCases/backofficeTeamEmailLimitGrant/BackofficeTeamEmailLimitGrantUseCase"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+
+export async function GET(request: NextRequest) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
+
+    const query = request.nextUrl.searchParams.get("q")?.trim() ?? ""
+    if (query) {
+      const output = await backofficeTeamEmailLimitGrantUseCase.searchTeams(query)
+      return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+    }
+
+    const output = await backofficeTeamEmailLimitGrantUseCase.list()
+    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[BackofficeTeamEmailLimitGrantsRoute][GET]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
+
+    const body = (await request.json()) as {
+      teamId?: string
+      maxEmailsPerDay?: number | null
+      notes?: string | null
+    }
+
+    if (!body.teamId) {
+      return NextResponse.json(new Output(false, [], ["Selecione um time"], null), { status: 400 })
+    }
+
+    const output = await backofficeTeamEmailLimitGrantUseCase.grant(
+      body.teamId,
+      body.maxEmailsPerDay ?? null,
+      result.access.profileId,
+      body.notes
+    )
+    return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[BackofficeTeamEmailLimitGrantsRoute][POST]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}

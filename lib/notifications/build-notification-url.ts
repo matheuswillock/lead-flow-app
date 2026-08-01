@@ -13,6 +13,7 @@ export type NotificationLinkMetadata = {
   leadCount?: number;
   role?: "closer" | "master";
   filter?: string;
+  campaignId?: string;
 };
 
 export type NotificationLinkInput = {
@@ -54,6 +55,10 @@ export function buildNotificationPath(input: NotificationLinkInput): string {
 
   if (input.type === "MEETING_FOLLOW_UP_DIGEST") {
     return `/${input.supabaseId}/board`;
+  }
+
+  if (input.type === "EMAIL_CAMPAIGN_DISPATCH_FAILED") {
+    return `/${input.supabaseId}/email/campanhas`;
   }
 
   if (hasLeadNotificationLink(input.type, metadata) && metadata?.leadCode) {

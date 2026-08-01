@@ -58,6 +58,12 @@ export type CreditStatus = {
   creditsUsed: number
   creditsAvailable: number
   currentPeriodEnd: string | null
+  dailyDispatch?: {
+    limit: number | null
+    used: number
+    remaining: number | null
+    isUnlimited: boolean
+  }
 }
 
 export type Template = {
