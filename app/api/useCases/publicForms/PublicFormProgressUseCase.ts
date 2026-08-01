@@ -54,7 +54,7 @@ export class PublicFormProgressUseCase {
       leadId = upserted?.lead.id ?? null
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao sincronizar lead"
-      return new Output(false, [], [message], null)
+      console.error("[PublicFormProgressUseCase][execute]", message)
     }
 
     const answerPayload = visibleAnswers.map((answer) => {
