@@ -42,6 +42,7 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
+import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 
 function CampaignActionsMenu({
   campaign,
@@ -86,7 +87,7 @@ function CampaignActionsMenu({
       campaign.status === "scheduled" ||
       campaign.status === "sent" ||
       campaign.status === "failed")
-  const canSend = canSendCampaign && canSendByStatus
+  const canSend = canSendCampaign && canSendByStatus && !sendBlockReason
   const sendDisabledReason =
     sendBlockReason ??
     (isParentCampaign
@@ -334,14 +335,11 @@ export function CampaignList({
     !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 
   function getSendBlockReason(campaign: Campaign): string | undefined {
-    if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
-    if (!credits?.hasSubscription) {
-      return "Ative um plano em Assinaturas para disparar campanhas"
-    }
-    if (credits.creditsAvailable < campaign.totalRecipients) {
-      return `Créditos insuficientes para ${campaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
-    }
-    return undefined
+    return getCampaignSendBlockReason({
+      campaign,
+      credits,
+      isCampaignsBetaAccess,
+    })
   }
 
   return (

@@ -56,6 +56,7 @@ import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
+import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 
 type CampaignAnalyticsTarget = {
   id: string
@@ -231,14 +232,11 @@ export function CampaignDetailSheet({
   )
 
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
-    if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
-    if (!credits?.hasSubscription) {
-      return "Ative um plano em Assinaturas para disparar campanhas"
-    }
-    if (credits.creditsAvailable < subCampaign.totalRecipients) {
-      return `Créditos insuficientes para ${subCampaign.totalRecipients.toLocaleString("pt-BR")} destinatários. Saldo: ${credits.creditsAvailable.toLocaleString("pt-BR")}`
-    }
-    return undefined
+    return getCampaignSendBlockReason({
+      campaign: subCampaign,
+      credits,
+      isCampaignsBetaAccess,
+    })
   }
 
   return (
