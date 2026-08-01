@@ -1,10 +1,19 @@
 # Smoke do runner self-hosted (VPS). Não consome minutos hosted.
 #
-# Topologia híbrida:
-#   GitHub-hosted (ubuntu-latest) → typecheck, build (jobs pesados, RAM dedicada)
-#   VPS self-hosted (lead-flow-ci) → lint, tests, spellcheck, deploy, sync
+# Topologia híbrida (CI otimizado):
+#   GitHub-hosted (ubuntu-latest) → typecheck, build (jobs pesados, RAM dedicada por pipeline)
+#   VPS self-hosted (lead-flow-ci)  → ci-light (lint + tests + spellcheck), quality-gate, deploy, sync
 #
-# Runners na VPS: lead-flow-vps-1, lead-flow-vps-2, srv1799450 (label lead-flow-ci)
+# Runners na VPS (manter 3 para paralelismo entre branches):
+#   lead-flow-vps-1, lead-flow-vps-2, srv1799450 — label: lead-flow-ci
+#
+# Labels obsoletas (podem ser removidas no GitHub → Settings → Actions → Runners):
+#   lead-flow-build, lead-flow-ci-1, lead-flow-ci-2
+#
+# Higiene VPS (lead-flow-vps-1 após OOM):
+#   sudo mkdir -p /etc/systemd/system/actions.runner.matheuswillock-lead-flow-app.lead-flow-vps-1.service.d
+#   printf '[Service]\nRestart=always\nRestartSec=30\n' | sudo tee .../override.conf
+#   sudo systemctl daemon-reload && sudo systemctl restart actions.runner...lead-flow-vps-1.service
 name: CI (self-hosted smoke)
 
 on:
