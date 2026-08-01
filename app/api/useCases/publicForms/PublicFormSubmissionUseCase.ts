@@ -24,6 +24,9 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+/** Após este prazo, um `processing` é considerado stale e pode ser reenfileirado. */
+const STALE_PROCESSING_MS = 2 * 60_000
+
 export type PublicFormSubmissionBackgroundJob = {
   submissionId: string
   publicationId: string
@@ -64,6 +67,15 @@ export class PublicFormSubmissionUseCase {
     if (!current) return new Output(false, [], ["Formulário indisponível"], null)
 
     const existing = await publicFormsRepository.findSubmissionByRequestKey(input.requestKey)
+    if (existing && existing.publicationId !== current.publicationId) {
+      return new Output(
+        false,
+        [],
+        ["Chave de requisição já utilizada em outro formulário"],
+        null,
+      )
+    }
+
     if (existing?.status === "completed") {
       return new Output(true, ["Respostas já recebidas"], [], {
         submissionId: existing.id,
@@ -93,8 +105,21 @@ export class PublicFormSubmissionUseCase {
 
     const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
 
-    // Retry de submission incompleta (processing/failed): reenvia o job em background.
+    // Retry: só reenfileira após claim atômico (failed ou processing stale).
     if (existing) {
+      const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS)
+      const claimed = await publicFormsRepository.claimSubmissionForRetry(
+        existing.id,
+        current.publicationId,
+        staleBefore,
+      )
+      if (!claimed) {
+        return new Output(true, ["Respostas já recebidas"], [], {
+          submissionId: existing.id,
+          alreadyProcessed: true,
+        })
+      }
+
       await publicFormsRepository.persistSubmissionAnswers(existing.id, answers)
       const background: PublicFormSubmissionBackgroundJob = {
         submissionId: existing.id,
