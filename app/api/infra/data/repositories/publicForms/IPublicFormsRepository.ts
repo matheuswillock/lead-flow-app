@@ -325,4 +325,13 @@ export interface IPublicFormsRepository {
     }>,
   ): Promise<void>
   markSubmissionFailed(submissionId: string, errorMessage: string): Promise<void>
+  /**
+   * Claim atômico para retry de background: só falhas ou `processing` stale.
+   * Retorna true se este caller ficou com o claim.
+   */
+  claimSubmissionForRetry(
+    submissionId: string,
+    publicationId: string,
+    staleBefore: Date,
+  ): Promise<boolean>
 }

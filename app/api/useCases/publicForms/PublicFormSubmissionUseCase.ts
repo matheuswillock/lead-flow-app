@@ -24,6 +24,9 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+/** Após este prazo, um `processing` é considerado stale e pode ser reenfileirado. */
+const STALE_PROCESSING_MS = 2 * 60_000
+
 export type PublicFormSubmissionBackgroundJob = {
   submissionId: string
   publicationId: string
@@ -64,20 +67,21 @@ export class PublicFormSubmissionUseCase {
     if (!current) return new Output(false, [], ["Formulário indisponível"], null)
 
     const existing = await publicFormsRepository.findSubmissionByRequestKey(input.requestKey)
-    if (existing) {
+    if (existing && existing.publicationId !== current.publicationId) {
+      return new Output(
+        false,
+        [],
+        ["Chave de requisição já utilizada em outro formulário"],
+        null,
+      )
+    }
+
+    if (existing?.status === "completed") {
       return new Output(true, ["Respostas já recebidas"], [], {
         submissionId: existing.id,
         alreadyProcessed: true,
       })
     }
-
-    const progressSubmission =
-      input.visitorSessionId != null
-        ? await publicFormsRepository.findProgressSubmission(
-            current.publicationId,
-            input.visitorSessionId,
-          )
-        : null
 
     const { snapshot } = current
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
@@ -99,6 +103,54 @@ export class PublicFormSubmissionUseCase {
       ? [`Qualificação: ${band.label}${band.summary ? ` — ${band.summary}` : ""}`]
       : undefined
 
+    const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
+
+    // Retry: só reenfileira após claim atômico (failed ou processing stale).
+    if (existing) {
+      const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS)
+      const claimed = await publicFormsRepository.claimSubmissionForRetry(
+        existing.id,
+        current.publicationId,
+        staleBefore,
+      )
+      if (!claimed) {
+        return new Output(true, ["Respostas já recebidas"], [], {
+          submissionId: existing.id,
+          alreadyProcessed: true,
+        })
+      }
+
+      await publicFormsRepository.persistSubmissionAnswers(existing.id, answers)
+      const background: PublicFormSubmissionBackgroundJob = {
+        submissionId: existing.id,
+        publicationId: current.publicationId,
+        snapshot,
+        visibleAnswers,
+        visibleIds: [...visible],
+        score,
+        scoreBandLabel: band?.label ?? null,
+        bandNote,
+        origin: origin as Record<string, unknown>,
+        requestKey: input.requestKey,
+        visitorSessionId: input.visitorSessionId ?? existing.visitorSessionId ?? null,
+        thankYouPageId: input.thankYouPageId ?? null,
+        scheduling: input.scheduling,
+      }
+      return new Output(true, ["Respostas recebidas"], [], {
+        submissionId: existing.id,
+        alreadyProcessed: false,
+        background,
+      })
+    }
+
+    const progressSubmission =
+      input.visitorSessionId != null
+        ? await publicFormsRepository.findProgressSubmission(
+            current.publicationId,
+            input.visitorSessionId,
+          )
+        : null
+
     const submission = progressSubmission
       ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
           requestKey: input.requestKey,
@@ -118,7 +170,6 @@ export class PublicFormSubmissionUseCase {
           completionStatus: "partial",
         })
 
-    const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
     await publicFormsRepository.persistSubmissionAnswers(submission.id, answers)
 
     const background: PublicFormSubmissionBackgroundJob = {
