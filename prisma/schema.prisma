@@ -2962,12 +2962,14 @@ model EmailContactList {
   isSystemDefault           Boolean  @default(false)
   isBlocklist               Boolean  @default(false)
   isArchived                Boolean  @default(false)
+  radarSegmentId            String?  @db.Uuid
   createdAt                 DateTime @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
 
   team                    Team                    @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
   creator                 Profile                 @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   managedByBackofficeUser BackofficeUser?         @relation("EmailContactListManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
+  radarSegment            TeamRadarSegment?       @relation(fields: [radarSegmentId], references: [id], onDelete: SetNull)
   contacts                EmailContact[]
   campaigns               EmailCampaign[]
   campaignDispatches      EmailCampaignDispatch[]
@@ -2977,6 +2979,7 @@ model EmailContactList {
   @@index([teamId, isBlocklist])
   @@index([createdBy])
   @@index([managedByBackofficeUserId])
+  @@index([radarSegmentId])
   @@map("corretor_studio_email_contact_lists")
 }
 
@@ -4442,6 +4445,8 @@ model TeamRadarSegment {
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   creator Profile @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  emailContactLists EmailContactList[]
 
   @@unique([teamId, name])
   @@index([teamId, isActive])

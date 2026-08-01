@@ -16,11 +16,16 @@ import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
+import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 export function ContatosContainer() {
   const { readOnly } = useStudioEmailRuntime()
-  const { selectedListId, lists, handleSelectList } = useContactsContext()
+  const { selectedListId, lists, supabaseId, handleSelectList, handleSetListSegment } = useContactsContext()
+  const { hasAccess } = useFeatureAccess()
+  const hasRadar = hasAccess(FEATURE_SLUGS.RADAR)
 
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null
 
@@ -82,22 +87,37 @@ export function ContatosContainer() {
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-semibold">{selectedList?.name}</h2>
-                {!selectedList?.isBlocklist && !readOnly ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-semibold">{selectedList?.name}</h2>
+                  {!selectedList?.isBlocklist && !readOnly ? (
+                    <div className="flex items-center gap-2">
+                      <ContactAddModal
+                        trigger={
+                          <Button size="sm" variant="outline">+ Adicionar contato</Button>
+                        }
+                      />
+                      <ContactImportButton />
+                    </div>
+                  ) : selectedList?.isBlocklist ? (
+                    <p className="text-sm text-muted-foreground">
+                      Lista somente leitura — contatos entram via descadastro.
+                    </p>
+                  ) : null}
+                </div>
+                {hasRadar && !selectedList?.isBlocklist && selectedListId && (
                   <div className="flex items-center gap-2">
-                    <ContactAddModal
-                      trigger={
-                        <Button size="sm" variant="outline">+ Adicionar contato</Button>
-                      }
+                    <span className="text-xs text-muted-foreground">Segmento do Radar:</span>
+                    <ContactListSegmentPicker
+                      listId={selectedListId}
+                      supabaseId={supabaseId}
+                      selectedSegmentId={selectedList?.radarSegmentId ?? null}
+                      selectedSegmentName={selectedList?.radarSegment?.name ?? null}
+                      onSelect={(id, _name) => void handleSetListSegment(selectedListId, id)}
+                      onClear={() => void handleSetListSegment(selectedListId, null)}
                     />
-                    <ContactImportButton />
                   </div>
-                ) : selectedList?.isBlocklist ? (
-                  <p className="text-sm text-muted-foreground">
-                    Lista somente leitura — contatos entram via descadastro.
-                  </p>
-                ) : null}
+                )}
               </div>
               <ContactsTable />
             </>

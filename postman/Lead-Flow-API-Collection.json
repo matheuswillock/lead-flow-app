@@ -15210,6 +15210,43 @@
                 "description": "Importa contatos via CSV. Coluna email obrigatoria, name opcional."
               },
               "response": []
+            },
+            {
+              "name": "Vincular Segmento do Radar à Lista",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"segmentId\": \"{{radarSegmentId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/contact-lists/{{contactListId}}/radar-segment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "contact-lists",
+                    "{{contactListId}}",
+                    "radar-segment"
+                  ]
+                },
+                "description": "Vincula ou desvincula um segmento do Radar a uma lista de contatos. Envie null em segmentId para desvincular."
+              },
+              "response": []
             }
           ]
         },

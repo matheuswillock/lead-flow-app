@@ -14,6 +14,8 @@ export type ContactList = {
   isSystemDefault: boolean
   isBlocklist: boolean
   isArchived: boolean
+  radarSegmentId: string | null
+  radarSegment: { name: string } | null
   createdAt: string
   updatedAt: string
   creator: {
