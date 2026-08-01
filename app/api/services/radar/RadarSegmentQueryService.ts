@@ -157,6 +157,27 @@ async function translateLeadField(
   return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
 }
 
+async function translateEmailContactList(
+  teamId: string,
+  condition: Extract<RadarSegmentCondition, { kind: "email_contact_list" }>
+): Promise<Prisma.RadarProfileWhereInput> {
+  const contactIds = await radarRepository.findEmailContactIdsByListIds(teamId, condition.listIds)
+  return { identities: { some: { type: "email_contact_id", normalizedValue: { in: contactIds } } } }
+}
+
+async function translateEmailContactField(
+  teamId: string,
+  condition: Extract<RadarSegmentCondition, { kind: "email_contact_field" }>
+): Promise<Prisma.RadarProfileWhereInput> {
+  const contactIds = await radarRepository.findEmailContactIdsByCustomField(
+    teamId,
+    condition.fieldKey,
+    condition.operator,
+    condition.value
+  )
+  return { identities: { some: { type: "email_contact_id", normalizedValue: { in: contactIds } } } }
+}
+
 async function translateCondition(
   teamId: string,
   condition: RadarSegmentCondition
@@ -174,6 +195,10 @@ async function translateCondition(
       return translateLeadStatus(teamId, condition)
     case "lead_field":
       return translateLeadField(teamId, condition)
+    case "email_contact_list":
+      return translateEmailContactList(teamId, condition)
+    case "email_contact_field":
+      return translateEmailContactField(teamId, condition)
   }
 }
 

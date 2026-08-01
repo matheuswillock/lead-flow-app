@@ -167,6 +167,52 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("aceita email_contact_list válido e rejeita listIds vazio ou não-UUID (D6)", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "email_contact_list", listIds: ["11111111-1111-4111-8111-111111111111"] }],
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "email_contact_list", listIds: [] }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "email_contact_list", listIds: ["not-a-uuid"] }],
+      })
+    ).toThrow()
+  })
+
+  it("aceita email_contact_field válido e exige value para eq/neq/contains (D6)", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "email_contact_field", fieldKey: "cargo", operator: "not_empty" }],
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "email_contact_field", fieldKey: "cargo", operator: "eq" }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "email_contact_field", fieldKey: "", operator: "not_empty" }],
+      })
+    ).toThrow()
+  })
+
   it("round-trip all/any com múltiplas condições mistas", () => {
     const rules = parseRadarSegmentRules({
       match: "any",

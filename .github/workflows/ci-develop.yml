@@ -27,16 +27,18 @@ env:
   NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
-  lint-and-governance:
-    name: Lint & Governance
+  ci-light:
+    name: CI Light (VPS)
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 5
+    timeout-minutes: 8
     outputs:
-      governance-sync: ${{ steps.resolve.outputs['governance-sync'] }}
-      governance-check: ${{ steps.resolve.outputs['governance-check'] }}
-      lint: ${{ steps.resolve.outputs.lint }}
-      passed: ${{ steps.resolve.outputs.passed }}
+      governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
+      governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
+      lint: ${{ steps.ci-light-checks.outputs.lint }}
+      passed: ${{ steps.ci-light-checks.outputs.passed }}
+      tests-result: ${{ steps.ci-light-checks.outputs['tests-result'] }}
+      spellcheck-result: ${{ steps.ci-light-checks.outputs['spellcheck-result'] }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,44 +46,14 @@ jobs:
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
 
-      - name: Governance Sync
-        id: governance-sync
-        continue-on-error: true
-        run: |
-          bun run governance:sync
-          git diff --exit-code
-
-      - name: Governance Check
-        id: governance-check
-        continue-on-error: true
-        run: bun run governance:check
-
-      - name: Governance Allowlist Warnings
-        continue-on-error: true
-        run: bun run governance:warn-allowlist
-
-      - name: Lint
-        id: lint
-        continue-on-error: true
-        run: bun run lint
-
-      - name: Resolve Result
-        id: resolve
-        if: always()
-        run: |
-          echo "governance-sync=${{ steps['governance-sync'].outcome }}" >> "$GITHUB_OUTPUT"
-          echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
-          echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" ]]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "passed=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Run light checks
+        id: ci-light-checks
+        uses: ./.github/actions/ci-vps-light-checks
 
   typecheck:
     name: Typecheck
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -95,56 +67,11 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: bun run typecheck
 
-  tests:
-    name: Tests
-    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
-
-      - name: Proxy Tests
-        id: proxy-tests
-        continue-on-error: true
-        run: bun run test:proxy
-
-      - name: Unit Tests
-        id: unit-tests
-        continue-on-error: true
-        run: bun run test
-
-      - name: Resolve Tests
-        if: always()
-        run: |
-          if [[ "${{ steps['proxy-tests'].outcome }}" != "success" || "${{ steps['unit-tests'].outcome }}" != "success" ]]; then
-            echo "::error::proxy-tests=${{ steps['proxy-tests'].outcome }} unit-tests=${{ steps['unit-tests'].outcome }}"
-            exit 1
-          fi
-
-  spellcheck:
-    name: Spellcheck PT-BR
-    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 3
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
-
-      - name: Spellcheck PT-BR
-        run: bun run lint:pt-br
-
   build:
     name: Build
-    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
+    # Jobs pesados no runner hospedado do GitHub (RAM dedicada por pipeline, paralelo sem OOM na VPS).
     if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-build]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -184,31 +111,29 @@ jobs:
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 2
     needs:
-      - lint-and-governance
+      - ci-light
       - typecheck
-      - tests
-      - spellcheck
       - build
     steps:
       - name: Enforce Quality Checks
         run: |
           failed=0
-          if [[ "${{ needs['lint-and-governance'].outputs.passed }}" != "true" ]]; then
+          if [[ "${{ needs.ci-light.outputs.passed }}" != "true" ]]; then
             echo "::error::Lint and/or governance checks failed."
-            echo "governance:sync=${{ needs['lint-and-governance'].outputs['governance-sync'] }}"
-            echo "governance:check=${{ needs['lint-and-governance'].outputs['governance-check'] }}"
-            echo "lint=${{ needs['lint-and-governance'].outputs.lint }}"
+            echo "governance:sync=${{ needs.ci-light.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.ci-light.outputs['governance-check'] }}"
+            echo "lint=${{ needs.ci-light.outputs.lint }}"
             failed=1
           fi
           if [[ "${{ needs.typecheck.result }}" != "success" ]]; then
             echo "::error::Typecheck failed."
             failed=1
           fi
-          if [[ "${{ needs.tests.result }}" != "success" ]]; then
+          if [[ "${{ needs.ci-light.outputs['tests-result'] }}" != "success" ]]; then
             echo "::error::Tests failed."
             failed=1
           fi
-          if [[ "${{ needs.spellcheck.result }}" != "success" ]]; then
+          if [[ "${{ needs.ci-light.outputs['spellcheck-result'] }}" != "success" ]]; then
             echo "::error::Spellcheck PT-BR failed."
             failed=1
           fi
@@ -521,7 +446,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
-      - lint-and-governance
+      - ci-light
       - typecheck
       - quality-gate
       - migration-check
@@ -642,9 +567,9 @@ jobs:
               return 'Um ou mais checks obrigatorios nao passaram.';
             };
             const checks = {
-              governanceSync: '${{ needs['lint-and-governance'].outputs['governance-sync'] }}',
-              governanceCheck: '${{ needs['lint-and-governance'].outputs['governance-check'] }}',
-              lint: '${{ needs['lint-and-governance'].outputs.lint }}',
+              governanceSync: '${{ needs.ci-light.outputs['governance-sync'] }}',
+              governanceCheck: '${{ needs.ci-light.outputs['governance-check'] }}',
+              lint: '${{ needs.ci-light.outputs.lint }}',
               typecheck: '${{ needs.typecheck.result }}',
               migrationCheck: migrationCheckResult,
               migrationsPending: hasPendingMigrations ? 'failure' : 'success',

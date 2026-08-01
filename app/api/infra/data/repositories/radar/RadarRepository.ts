@@ -919,6 +919,7 @@ export class RadarRepository {
         isBounced: true,
         isComplained: true,
         updatedAt: true,
+        customFields: true,
       },
     })
   }
@@ -934,6 +935,7 @@ export class RadarRepository {
         isBounced: true,
         isComplained: true,
         updatedAt: true,
+        customFields: true,
         list: { select: { teamId: true } },
       },
     })
@@ -1018,6 +1020,57 @@ export class RadarRepository {
   async findLeadIdsByWhere(where: Prisma.LeadWhereInput): Promise<string[]> {
     const leads = await prisma.lead.findMany({ where, select: { id: true } })
     return leads.map((lead) => lead.id)
+  }
+
+  async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {
+    const contacts = await prisma.emailContact.findMany({
+      where: { listId: { in: listIds }, list: { teamId } },
+      select: { id: true },
+    })
+    return contacts.map((contact) => contact.id)
+  }
+
+  /**
+   * D6: `customFields` é um Json livre (chaves vêm do cabeçalho do arquivo
+   * importado, sem catálogo fixo) — diferente de `LeadCustomFieldValue`
+   * (linha EAV por definição), não dá pra filtrar via um path Prisma
+   * confiável para "chave ausente" (is_empty/not_empty). Filtra em memória
+   * sobre os contatos do team — aceitável no volume atual (import limitado
+   * a `EMAIL_CONTACT_IMPORT_MAX_ROWS` por vez).
+   */
+  async findEmailContactIdsByCustomField(
+    teamId: string,
+    fieldKey: string,
+    operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty",
+    value: unknown
+  ): Promise<string[]> {
+    const contacts = await prisma.emailContact.findMany({
+      where: { list: { teamId } },
+      select: { id: true, customFields: true },
+    })
+
+    const normalizedValue = value == null ? "" : String(value).toLowerCase()
+
+    const matches = contacts.filter((contact) => {
+      const customFields = (contact.customFields ?? {}) as Record<string, unknown>
+      const raw = customFields[fieldKey]
+      const fieldValue = raw == null ? "" : String(raw)
+
+      switch (operator) {
+        case "is_empty":
+          return fieldValue === ""
+        case "not_empty":
+          return fieldValue !== ""
+        case "eq":
+          return fieldValue.toLowerCase() === normalizedValue
+        case "neq":
+          return fieldValue.toLowerCase() !== normalizedValue
+        case "contains":
+          return fieldValue.toLowerCase().includes(normalizedValue)
+      }
+    })
+
+    return matches.map((contact) => contact.id)
   }
 
   async listProfilesForSegmentationByIds(teamId: string, profileIds: string[]) {

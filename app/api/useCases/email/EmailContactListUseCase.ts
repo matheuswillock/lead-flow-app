@@ -14,6 +14,13 @@ import {
 } from "@/lib/email/resolve-contact-unsubscribe-source"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 import { syncEmailContactToRadarInline } from "@/app/api/useCases/radar/syncEmailContactToRadarInline"
+import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
+import {
+  parseRadarSegmentRules,
+  RADAR_SEGMENT_MAX_CONDITIONS,
+  type RadarSegmentCondition,
+  type RadarSegmentRules,
+} from "@/lib/radar/segment-dsl"
 
 export interface CreateContactListInput {
   name: string
@@ -135,6 +142,8 @@ export class EmailContactListUseCase {
           isSystemDefault: true,
           isBlocklist: true,
           managedByBackofficeUserId: true,
+          radarSegmentId: true,
+          radarSegment: { select: { name: true } },
           createdAt: true,
           updatedAt: true,
           creator: { select: { id: true, fullName: true, email: true } },
@@ -463,6 +472,111 @@ export class EmailContactListUseCase {
     } catch (error) {
       console.error("[EmailContactListUseCase][addContact]", error)
       return new Output(false, [], ["Erro ao adicionar contato"], null)
+    }
+  }
+
+  private async cleanupSegmentListId(listId: string, segmentId: string): Promise<void> {
+    const seg = await prisma.teamRadarSegment.findFirst({
+      where: { id: segmentId },
+      select: { id: true, rulesJson: true },
+    })
+    if (!seg) return
+    const rules = parseRadarSegmentRules(seg.rulesJson)
+    const listCondition = rules.conditions.find(
+      (c): c is Extract<RadarSegmentCondition, { kind: "email_contact_list" }> =>
+        c.kind === "email_contact_list"
+    )
+    if (!listCondition || !listCondition.listIds.includes(listId)) return
+    const nextListIds = listCondition.listIds.filter((id) => id !== listId)
+    const nextConditions =
+      nextListIds.length > 0
+        ? rules.conditions.map((c) =>
+            c === listCondition ? { ...listCondition, listIds: nextListIds } : c
+          )
+        : rules.conditions.filter((c) => c !== listCondition)
+    await prisma.teamRadarSegment.update({
+      where: { id: segmentId },
+      data: { rulesJson: { ...rules, conditions: nextConditions } as unknown as object },
+    })
+  }
+
+  async setRadarSegment(listId: string, segmentId: string | null, ctx: TeamContext): Promise<Output> {
+    try {
+      const existing = await prisma.emailContactList.findFirst({
+        where: { id: listId, teamId: ctx.teamId, isArchived: false },
+      })
+      if (!existing) {
+        return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      if (segmentId === null) {
+        if (existing.radarSegmentId) {
+          await this.cleanupSegmentListId(listId, existing.radarSegmentId)
+        }
+        await prisma.emailContactList.update({
+          where: { id: listId },
+          data: { radarSegmentId: null },
+        })
+        return new Output(true, ["Segmento desvinculado da lista"], [], null)
+      }
+
+      if (existing.radarSegmentId && existing.radarSegmentId !== segmentId) {
+        await this.cleanupSegmentListId(listId, existing.radarSegmentId)
+      }
+
+      const segment = await teamRadarSegmentService.findById(ctx.teamId, segmentId)
+      if (!segment) {
+        return new Output(false, [], ["Segmento não encontrado"], null)
+      }
+
+      const rules = parseRadarSegmentRules(segment.rulesJson)
+      const existingListCondition = rules.conditions.find(
+        (condition): condition is Extract<RadarSegmentCondition, { kind: "email_contact_list" }> =>
+          condition.kind === "email_contact_list"
+      )
+
+      let nextRules: RadarSegmentRules
+      if (existingListCondition) {
+        if (existingListCondition.listIds.includes(listId)) {
+          nextRules = rules
+        } else {
+          nextRules = {
+            ...rules,
+            conditions: rules.conditions.map((condition) =>
+              condition === existingListCondition
+                ? { ...existingListCondition, listIds: [...existingListCondition.listIds, listId] }
+                : condition
+            ),
+          }
+        }
+      } else {
+        if (rules.conditions.length >= RADAR_SEGMENT_MAX_CONDITIONS) {
+          return new Output(
+            false,
+            [],
+            [`Este segmento já tem o máximo de ${RADAR_SEGMENT_MAX_CONDITIONS} condições`],
+            null
+          )
+        }
+        nextRules = {
+          ...rules,
+          conditions: [...rules.conditions, { kind: "email_contact_list", listIds: [listId] }],
+        }
+      }
+
+      if (nextRules !== rules) {
+        await teamRadarSegmentService.update(ctx.teamId, segmentId, { rules: nextRules })
+      }
+
+      await prisma.emailContactList.update({
+        where: { id: listId },
+        data: { radarSegmentId: segmentId },
+      })
+
+      return new Output(true, ["Segmento vinculado à lista"], [], null)
+    } catch (error) {
+      console.error("[EmailContactListUseCase][setRadarSegment]", error)
+      return new Output(false, [], ["Erro ao vincular segmento à lista"], null)
     }
   }
 
