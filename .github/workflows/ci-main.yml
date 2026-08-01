@@ -50,7 +50,7 @@ jobs:
 
   typecheck:
     name: Typecheck
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -149,8 +149,8 @@ jobs:
 
   build:
     name: Build
-    # Só 1 runner tem label lead-flow-build → next build serializado (FIFO real).
-    runs-on: [self-hosted, linux, x64, lead-flow-build]
+    # Jobs pesados no runner hospedado do GitHub (RAM dedicada por pipeline, paralelo sem OOM na VPS).
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout

@@ -1,4 +1,10 @@
 # Smoke do runner self-hosted (VPS). Não consome minutos hosted.
+#
+# Topologia híbrida:
+#   GitHub-hosted (ubuntu-latest) → typecheck, build (jobs pesados, RAM dedicada)
+#   VPS self-hosted (lead-flow-ci) → lint, tests, spellcheck, deploy, sync
+#
+# Runners na VPS: lead-flow-vps-1, lead-flow-vps-2, srv1799450 (label lead-flow-ci)
 name: CI (self-hosted smoke)
 
 on:
