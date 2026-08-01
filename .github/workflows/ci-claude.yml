@@ -26,6 +26,7 @@ jobs:
       automation-marker: ci-claude:automation
       pr-title-prefix: claude
       branch-strip-prefixes: claude/
+      branch-prefixes: claude/
       run-spellcheck: true
       skip-build-on-github-rebase: true
     secrets: inherit

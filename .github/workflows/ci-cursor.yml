@@ -26,6 +26,7 @@ jobs:
       automation-marker: ci-cursor:automation
       pr-title-prefix: cursor
       branch-strip-prefixes: cursor/
+      branch-prefixes: cursor/
       run-spellcheck: true
       skip-build-on-github-rebase: true
     secrets: inherit

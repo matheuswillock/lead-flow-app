@@ -26,6 +26,10 @@ on:
         description: Prefixos removidos do nome da branch no titulo do PR (CSV)
         required: true
         type: string
+      branch-prefixes:
+        description: Prefixos permitidos da branch (CSV). Bloqueia workflow_dispatch em refs invalidas.
+        required: true
+        type: string
       run-spellcheck:
         description: Executar spellcheck PT-BR no job ci-light
         required: false
@@ -49,9 +53,41 @@ env:
   NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
+  validate-branch:
+    name: Validate branch prefix
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Check branch prefix
+        id: check
+        env:
+          BRANCH_PREFIXES: ${{ inputs.branch-prefixes }}
+        run: |
+          set -euo pipefail
+          ref="${GITHUB_REF#refs/heads/}"
+          IFS=',' read -ra prefixes <<< "$BRANCH_PREFIXES"
+          for raw in "${prefixes[@]}"; do
+            prefix="${raw// /}"
+            [[ -n "$prefix" ]] || continue
+            if [[ "$ref" == "${prefix}"* ]]; then
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              echo "Branch '${ref}' matches prefix '${prefix}'."
+              exit 0
+            fi
+          done
+          echo "allowed=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::Branch '${ref}' does not match allowed prefixes (${BRANCH_PREFIXES}). Skipping CI."
+
   ci-light:
     name: CI Light (VPS)
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    needs: validate-branch
+    if: >-
+      ${{
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 8
     outputs:
@@ -76,7 +112,12 @@ jobs:
 
   typecheck:
     name: Typecheck
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    needs: validate-branch
+    if: >-
+      ${{
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -93,8 +134,10 @@ jobs:
 
   build:
     name: Build
+    needs: validate-branch
     if: >-
       ${{
+        needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
         (
           inputs.skip-build-on-github-rebase != true ||
@@ -138,10 +181,16 @@ jobs:
 
   quality-gate:
     name: Quality Gate
-    if: ${{ always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: >-
+      ${{
+        always() &&
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 2
     needs:
+      - validate-branch
       - ci-light
       - typecheck
       - build
@@ -178,10 +227,16 @@ jobs:
 
   auto-pr:
     name: Open PR to develop
-    if: ${{ always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: >-
+      ${{
+        always() &&
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
     needs:
+      - validate-branch
       - ci-light
       - typecheck
       - quality-gate

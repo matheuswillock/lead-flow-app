@@ -28,6 +28,7 @@ jobs:
       automation-marker: ci-feature:automation
       pr-title-prefix: feat
       branch-strip-prefixes: features/,feature/,feat/
+      branch-prefixes: features/,feature/,feat/
       run-spellcheck: true
       skip-build-on-github-rebase: true
     secrets: inherit

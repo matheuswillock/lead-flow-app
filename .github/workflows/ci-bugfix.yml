@@ -27,6 +27,7 @@ jobs:
       automation-marker: ci-bugfix:automation
       pr-title-prefix: fix
       branch-strip-prefixes: bugfix/,fix/
+      branch-prefixes: bugfix/,fix/
       run-spellcheck: true
       skip-build-on-github-rebase: true
     secrets: inherit
