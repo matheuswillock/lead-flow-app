@@ -162,12 +162,134 @@ const leadStatusConditionSchema = z.object({
   statuses: z.array(leadStatusSchema).min(1, "informe ao menos um status"),
 })
 
+export const LEAD_FIELD_CATALOG = {
+  status: { operators: ["eq", "neq"] as const, valueKind: "lead_status_multi" as const },
+  currentHealthPlan: { operators: ["eq", "neq", "contains", "is_empty", "not_empty"] as const, valueKind: "text" as const },
+  currentValue: { operators: ["eq", "neq", "gt", "gte", "lt", "lte"] as const, valueKind: "number" as const },
+  ticket: { operators: ["eq", "neq", "gt", "gte", "lt", "lte"] as const, valueKind: "number" as const },
+  meetingDate: { operators: ["before", "after", "within_days", "is_empty", "not_empty"] as const, valueKind: "date" as const },
+  followUpAt: { operators: ["before", "after", "within_days", "is_empty", "not_empty"] as const, valueKind: "date" as const },
+  contractDueDate: { operators: ["before", "after", "within_days", "is_empty", "not_empty"] as const, valueKind: "date" as const },
+  soldPlan: { operators: ["eq", "neq", "contains", "is_empty", "not_empty"] as const, valueKind: "text" as const },
+  isReferral: { operators: ["eq"] as const, valueKind: "boolean" as const },
+  assignedTo: { operators: ["eq", "neq", "is_empty", "not_empty"] as const, valueKind: "text" as const },
+  closerId: { operators: ["eq", "neq", "is_empty", "not_empty"] as const, valueKind: "text" as const },
+} as const
+
+type LeadFieldKey = keyof typeof LEAD_FIELD_CATALOG
+const LEAD_FIELD_KEYS = Object.keys(LEAD_FIELD_CATALOG) as [LeadFieldKey, ...LeadFieldKey[]]
+const LEAD_FIELD_NO_VALUE_OPERATORS = new Set(["is_empty", "not_empty"])
+
+const leadFieldConditionSchema = z
+  .object({
+    kind: z.literal("lead_field"),
+    fieldKey: z.enum(LEAD_FIELD_KEYS),
+    operator: z.string().min(1, "operator é obrigatório"),
+    value: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const entry = LEAD_FIELD_CATALOG[data.fieldKey]
+    if (!entry.operators.includes(data.operator as never)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Operador inválido para "${data.fieldKey}": use ${entry.operators.join(", ")}`,
+        path: ["operator"],
+      })
+      return
+    }
+    if (LEAD_FIELD_NO_VALUE_OPERATORS.has(data.operator)) return
+    if (data.value === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `O operador "${data.operator}" exige um valor`, path: ["value"] })
+      return
+    }
+    if (entry.valueKind === "lead_status_multi") {
+      if (!Array.isArray(data.value) || (data.value as unknown[]).length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "informe ao menos um status", path: ["value"] })
+        return
+      }
+      const validStatuses = new Set(leadStatusSchema.options as readonly string[])
+      for (const s of data.value as unknown[]) {
+        if (!validStatuses.has(s as string)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Status inválido: "${s}"`,
+            path: ["value"],
+          })
+        }
+      }
+      return
+    }
+    if (entry.valueKind === "number") {
+      const num = typeof data.value === "string" ? (data.value.trim() === "" ? NaN : Number(data.value)) : Number(data.value)
+      if (
+        data.value === null ||
+        data.value === undefined ||
+        typeof data.value === "boolean" ||
+        Array.isArray(data.value) ||
+        !Number.isFinite(num)
+      ) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser um número válido", path: ["value"] })
+      }
+      return
+    }
+    if (entry.valueKind === "date") {
+      if (data.operator === "within_days") {
+        if (!isValidWithinDaysValue(data.value)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser um número de dias positivo", path: ["value"] })
+        }
+        return
+      }
+      if (!isValidIsoDateValue(data.value)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser uma data válida (ISO 8601)", path: ["value"] })
+      }
+      return
+    }
+    if (entry.valueKind === "boolean") {
+      if (data.value !== true && data.value !== false) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser true ou false", path: ["value"] })
+      }
+      return
+    }
+    if (typeof data.value !== "string") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser uma string", path: ["value"] })
+      return
+    }
+    const UUID_FIELDS = new Set(["assignedTo", "closerId"] as const)
+    if (UUID_FIELDS.has(data.fieldKey as never)) {
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!UUID_REGEX.test(data.value)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `"${data.fieldKey}" requer um UUID válido`, path: ["value"] })
+      }
+    }
+  })
+
+const emailContactListConditionSchema = z.object({
+  kind: z.literal("email_contact_list"),
+  listIds: z.array(z.string().uuid("listIds deve conter UUIDs válidos")).min(1, "informe ao menos uma lista"),
+})
+
+const emailContactFieldConditionSchema = z
+  .object({
+    kind: z.literal("email_contact_field"),
+    fieldKey: z.string().min(1, "fieldKey é obrigatório"),
+    operator: leadCustomFieldOperatorSchema,
+    value: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (OPERATORS_REQUIRING_VALUE.has(data.operator) && data.value === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `O operador "${data.operator}" exige um valor`, path: ["value"] })
+    }
+  })
+
 export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
   profileFieldConditionSchema,
   consentConditionSchema,
   eventConditionSchema,
   leadCustomFieldConditionSchema,
   leadStatusConditionSchema,
+  leadFieldConditionSchema,
+  emailContactListConditionSchema,
+  emailContactFieldConditionSchema,
 ])
 
 export const radarSegmentRulesSchema = z.object({

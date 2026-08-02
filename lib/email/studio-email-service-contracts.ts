@@ -149,6 +149,7 @@ export interface StudioEmailContatosService {
   importMapped(listId: string, rows: EmailContactImportRow[]): Promise<StudioEmailContactImportEnqueueResult>
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
+  setListRadarSegment(listId: string, segmentId: string | null): Promise<void>
 }
 
 export type StudioEmailCreateTemplateData = {

@@ -87,4 +87,8 @@ export class BackofficeContatosService implements StudioEmailContatosService {
     })
     await parseStudioEmailOutput<unknown>(response)
   }
+
+  async setListRadarSegment(_listId: string, _segmentId: string | null): Promise<void> {
+    // Backoffice host does not expose radar segment management
+  }
 }

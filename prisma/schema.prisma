@@ -606,6 +606,7 @@ enum NotificationType {
   MEETING_FOLLOW_UP_DIGEST
   BETHANIA_AUTH_CODE
   EMAIL_IMPORT_COMPLETED
+  EMAIL_CAMPAIGN_DISPATCH_FAILED
   AUTOMATION_RULE
   WEBHOOK_AUTO_PAUSED
 
@@ -988,6 +989,8 @@ model Profile {
   operationalAccessGrants        BackofficeOperationalAccessGrant[] @relation("OperationalAccessProfile")
   operationalAccessGrantsGranted BackofficeOperationalAccessGrant[] @relation("OperationalAccessGrantedBy")
   operationalAccessGrantsRevoked BackofficeOperationalAccessGrant[] @relation("OperationalAccessRevokedBy")
+  teamEmailLimitGrantsGranted    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitGrantedBy")
+  teamEmailLimitGrantsRevoked    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitRevokedBy")
   sponsoredAdhesions             BackofficeAdhesion[]               @relation("BackofficeAdhesionSponsorMaster")
 
   auditLogsAsActor AuditLog[] @relation("AuditLogActor")
@@ -1150,6 +1153,8 @@ model BackofficeDatabaseBackup {
   checksumSha256       String?                        @map("checksumSha256") @db.Text
   storageSyncPath      String?                        @map("storageSyncPath") @db.Text
   errorMessage         String?                        @map("errorMessage") @db.Text
+  googleDriveFileId    String?                        @map("googleDriveFileId") @db.Text
+  googleDriveDownloadUrl String?                      @map("googleDriveDownloadUrl") @db.Text
   createdAt            DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
 
   @@index([status, startedAt(sort: Desc)])
@@ -1230,6 +1235,27 @@ model BackofficeOperationalAccessGrant {
 
   @@index([capability, isActive], map: "backoffice_operational_access_grants_capability_active_idx")
   @@map("backoffice_operational_access_grants")
+}
+
+model BackofficeTeamEmailLimitGrant {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @unique @db.Uuid
+  maxEmailsPerDay    Int?
+  isActive           Boolean   @default(true)
+  notes              String?   @db.Text
+  grantedByProfileId String    @db.Uuid
+  grantedAt          DateTime  @default(now()) @db.Timestamptz(6)
+  revokedByProfileId String?   @db.Uuid
+  revokedAt          DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  grantedBy Profile @relation("TeamEmailLimitGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: Restrict)
+  revokedBy Profile? @relation("TeamEmailLimitRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([isActive], map: "backoffice_team_email_limit_grants_is_active_idx")
+  @@map("backoffice_team_email_limit_grants")
 }
 
 model GoogleOAuthConnection {
@@ -2364,6 +2390,8 @@ model Team {
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants     BackofficeOperationalAccessGrant[]
+  teamEmailLimitGrant         BackofficeTeamEmailLimitGrant?
+  emailCampaignLimitGrant     TeamEmailCampaignLimitGrant?
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])
@@ -2840,6 +2868,20 @@ model EmailCreditUsage {
   @@map("corretor_studio_email_credit_usages")
 }
 
+model TeamEmailCampaignLimitGrant {
+  id              String   @id @default(uuid()) @db.Uuid
+  teamId          String   @unique @db.Uuid
+  maxEmailsPerDay Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([isActive], map: "team_email_campaign_limit_grants_is_active_idx")
+  @@map("corretor_studio_team_email_campaign_limit_grants")
+}
+
 model EmailTemplate {
   id                        String    @id @default(uuid()) @db.Uuid
   teamId                    String    @db.Uuid
@@ -2920,12 +2962,14 @@ model EmailContactList {
   isSystemDefault           Boolean  @default(false)
   isBlocklist               Boolean  @default(false)
   isArchived                Boolean  @default(false)
+  radarSegmentId            String?  @db.Uuid
   createdAt                 DateTime @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
 
   team                    Team                    @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
   creator                 Profile                 @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   managedByBackofficeUser BackofficeUser?         @relation("EmailContactListManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
+  radarSegment            TeamRadarSegment?       @relation(fields: [radarSegmentId], references: [id], onDelete: SetNull)
   contacts                EmailContact[]
   campaigns               EmailCampaign[]
   campaignDispatches      EmailCampaignDispatch[]
@@ -2935,6 +2979,7 @@ model EmailContactList {
   @@index([teamId, isBlocklist])
   @@index([createdBy])
   @@index([managedByBackofficeUserId])
+  @@index([radarSegmentId])
   @@map("corretor_studio_email_contact_lists")
 }
 
@@ -4400,6 +4445,8 @@ model TeamRadarSegment {
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   creator Profile @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  emailContactLists EmailContactList[]
 
   @@unique([teamId, name])
   @@index([teamId, isActive])
