@@ -167,6 +167,52 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("aceita email_contact_list válido e rejeita listIds vazio ou não-UUID (D6)", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "email_contact_list", listIds: ["11111111-1111-4111-8111-111111111111"] }],
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "email_contact_list", listIds: [] }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "email_contact_list", listIds: ["not-a-uuid"] }],
+      })
+    ).toThrow()
+  })
+
+  it("aceita email_contact_field válido e exige value para eq/neq/contains (D6)", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "email_contact_field", fieldKey: "cargo", operator: "not_empty" }],
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "email_contact_field", fieldKey: "cargo", operator: "eq" }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "email_contact_field", fieldKey: "", operator: "not_empty" }],
+      })
+    ).toThrow()
+  })
+
   it("round-trip all/any com múltiplas condições mistas", () => {
     const rules = parseRadarSegmentRules({
       match: "any",
@@ -193,5 +239,171 @@ describe("segment-dsl", () => {
     expect(() =>
       parseRadarSegmentRules({ match: "all", conditions: [{ kind: "unknown_kind" }] })
     ).toThrow()
+  })
+
+  describe("lead_field", () => {
+    it("aceita status com eq e array de statuses", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "status", operator: "eq", value: ["scheduled", "no_show"] }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita status com eq e array vazio", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "status", operator: "eq", value: [] }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita campo numérico com operador gt e number", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "currentValue", operator: "gt", value: 5000 }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita operador inválido para o campo", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "currentValue", operator: "contains", value: "x" }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita campo de data com within_days e número positivo", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "meetingDate", operator: "within_days", value: 30 }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita campo de data com within_days e valor inválido", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "followUpAt", operator: "within_days", value: -1 }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita campo de data com before e ISO date válido", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "contractDueDate", operator: "before", value: "2026-12-31" }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita campo de data com after e data inválida", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "meetingDate", operator: "after", value: "invalid" }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita campo booleano com true/false", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "isReferral", operator: "eq", value: true }],
+        })
+      ).not.toThrow()
+
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "isReferral", operator: "eq", value: false }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita campo booleano com value não booleano", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "isReferral", operator: "eq", value: "yes" }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita campo texto com contains e string", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "currentHealthPlan", operator: "contains", value: "Sul" }],
+        })
+      ).not.toThrow()
+    })
+
+    it("aceita is_empty e not_empty sem value em qualquer campo", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "any",
+          conditions: [
+            { kind: "lead_field", fieldKey: "soldPlan", operator: "is_empty" },
+            { kind: "lead_field", fieldKey: "followUpAt", operator: "not_empty" },
+          ],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita fieldKey fora do catálogo", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "inexistente", operator: "eq", value: "x" }],
+        })
+      ).toThrow()
+    })
+
+    it("rejeita status inválido no array de lead_status_multi", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "status", operator: "eq", value: ["scheduled", "not_a_status"] }],
+        })
+      ).toThrow()
+    })
+
+    it("rejeita número inválido (null, boolean, array vazio) para campo numérico", () => {
+      for (const value of [null, false, [], ""]) {
+        expect(() =>
+          parseRadarSegmentRules({
+            match: "all",
+            conditions: [{ kind: "lead_field", fieldKey: "currentValue", operator: "eq", value }],
+          })
+        ).toThrow()
+      }
+    })
+
+    it("aceita assignedTo e closerId com UUID válido e rejeita texto livre", () => {
+      const uuid = "11111111-1111-4111-8111-111111111111"
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "assignedTo", operator: "eq", value: uuid }],
+        })
+      ).not.toThrow()
+
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "lead_field", fieldKey: "closerId", operator: "eq", value: "João Silva" }],
+        })
+      ).toThrow()
+    })
   })
 })

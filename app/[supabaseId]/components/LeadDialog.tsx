@@ -44,6 +44,7 @@ import { EmojiStyle, Theme } from "emoji-picker-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -152,7 +153,56 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
     );
   }
   if (!items.length) return <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Este lead ainda não respondeu formulários públicos.</div>;
-  return <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">{items.map((submission) => <div className="rounded-lg border p-3" key={submission.id}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{submission.form.name}</p><p className="text-xs text-muted-foreground">Versão {submission.publication.version} · {new Date(submission.createdAt).toLocaleString("pt-BR")}</p></div><div className="flex flex-col items-end gap-1">{submission.completionStatus ? <Badge variant="outline">{completionLabel(submission.completionStatus)}</Badge> : null}{submission.scoreBandLabel ? <Badge variant="secondary">{submission.scoreBandLabel} · {submission.score} pts</Badge> : null}</div></div><div className="mt-3 space-y-2">{submission.answers.map((answer: any) => { const snapshot = answer.questionSnapshot as { title?: string }; const value = Array.isArray(answer.value) ? answer.value.join(", ") : typeof answer.value === "object" ? JSON.stringify(answer.value) : String(answer.value ?? "—"); return <div key={answer.id}><p className="text-xs font-medium text-muted-foreground">{snapshot.title ?? "Pergunta"}</p><p className="text-sm break-words">{value}</p></div> })}</div></div>)}</div>;
+  return (
+    <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
+      {items.map((submission) => (
+        <div className="rounded-lg border p-3" key={submission.id}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">{submission.form.name}</p>
+              <p className="text-xs text-muted-foreground">
+                Versão {submission.publication.version} ·{" "}
+                {new Date(submission.createdAt).toLocaleString("pt-BR")}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {submission.completionStatus ? (
+                <Badge variant="outline">{completionLabel(submission.completionStatus)}</Badge>
+              ) : null}
+              {submission.scoreBandLabel ? (
+                <Badge variant="secondary">
+                  {submission.scoreBandLabel} · {submission.score} pts
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+          {submission.errorMessage ? (
+            <Alert variant="destructive" className="mt-3">
+              <AlertDescription>{submission.errorMessage}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="mt-3 space-y-2">
+            {submission.answers.map((answer: any) => {
+              const snapshot = answer.questionSnapshot as { title?: string };
+              const value = Array.isArray(answer.value)
+                ? answer.value.join(", ")
+                : typeof answer.value === "object"
+                  ? JSON.stringify(answer.value)
+                  : String(answer.value ?? "—");
+              return (
+                <div key={answer.id}>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {snapshot.title ?? "Pergunta"}
+                  </p>
+                  <p className="text-sm break-words">{value}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type PendingSalesInfoGate = {

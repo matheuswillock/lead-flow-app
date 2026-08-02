@@ -1,4 +1,4 @@
-import { LeadStatus, Prisma } from "@prisma/client"
+import { LeadStatus, Prisma, type Lead } from "@prisma/client"
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
 import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService"
 import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService"
@@ -12,9 +12,11 @@ import {
   resolveVisibleQuestionIds,
   validateAnswer,
 } from "@/lib/public-forms/engine"
-import type { PublicFormSubmissionInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import { buildLeadSyncAlerts, formatLeadSyncAlerts } from "@/lib/public-forms/lead-sync-alerts"
+import type { PublicFormAnswerInput, PublicFormSnapshot, PublicFormSubmissionInput } from "@/lib/public-forms/types"
 import {
   extractLeadDataFromSnapshot,
+  findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
 
@@ -22,8 +24,42 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+/** Após este prazo, um `processing` é considerado stale e pode ser reenfileirado. */
+const STALE_PROCESSING_MS = 2 * 60_000
+
+export type PublicFormSubmissionBackgroundJob = {
+  submissionId: string
+  publicationId: string
+  snapshot: PublicFormSnapshot
+  visibleAnswers: PublicFormAnswerInput[]
+  visibleIds: string[]
+  score: number
+  scoreBandLabel: string | null
+  bandNote?: string[]
+  origin: Record<string, unknown>
+  requestKey: string
+  visitorSessionId?: string | null
+  thankYouPageId?: string | null
+  scheduling?: PublicFormSubmissionInput["scheduling"]
+}
+
+function mapAnswersForPersistence(
+  snapshot: PublicFormSnapshot,
+  visibleAnswers: PublicFormAnswerInput[],
+) {
+  return visibleAnswers.map((answer) => {
+    const question = snapshot.questions.find((item) => item.id === answer.questionId)
+    if (!question) throw new Error("Snapshot de pergunta não encontrado")
+    return {
+      questionId: answer.questionId,
+      value: answer.value as Prisma.InputJsonValue,
+      questionSnapshot: json(question),
+    }
+  })
+}
+
 export class PublicFormSubmissionUseCase {
-  async execute(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
+  async accept(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
@@ -31,25 +67,21 @@ export class PublicFormSubmissionUseCase {
     if (!current) return new Output(false, [], ["Formulário indisponível"], null)
 
     const existing = await publicFormsRepository.findSubmissionByRequestKey(input.requestKey)
-    if (existing) {
-      if (existing.status === "completed") {
-        return new Output(true, ["Respostas já recebidas"], [], { submissionId: existing.id })
-      }
+    if (existing && existing.publicationId !== current.publicationId) {
       return new Output(
         false,
         [],
-        [existing.errorMessage || "Esta resposta já está sendo processada"],
-        { submissionId: existing.id },
+        ["Chave de requisição já utilizada em outro formulário"],
+        null,
       )
     }
 
-    const progressSubmission =
-      input.visitorSessionId != null
-        ? await publicFormsRepository.findProgressSubmission(
-            current.publicationId,
-            input.visitorSessionId,
-          )
-        : null
+    if (existing?.status === "completed") {
+      return new Output(true, ["Respostas já recebidas"], [], {
+        submissionId: existing.id,
+        alreadyProcessed: true,
+      })
+    }
 
     const { snapshot } = current
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
@@ -67,15 +99,57 @@ export class PublicFormSubmissionUseCase {
       (item) => score >= item.minScore && score <= item.maxScore,
     )
     const origin = sanitizePublicFormOrigin(input.origin)
-
-    const nameCheck = extractLeadDataFromSnapshot(snapshot, visibleAnswers, visible).name
-    if (!nameCheck) {
-      return new Output(false, [], ["O formulário não forneceu o nome obrigatório do lead"], null)
-    }
-
     const bandNote = band
       ? [`Qualificação: ${band.label}${band.summary ? ` — ${band.summary}` : ""}`]
       : undefined
+
+    const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
+
+    // Retry: só reenfileira após claim atômico (failed ou processing stale).
+    if (existing) {
+      const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS)
+      const claimed = await publicFormsRepository.claimSubmissionForRetry(
+        existing.id,
+        current.publicationId,
+        staleBefore,
+      )
+      if (!claimed) {
+        return new Output(true, ["Respostas já recebidas"], [], {
+          submissionId: existing.id,
+          alreadyProcessed: true,
+        })
+      }
+
+      await publicFormsRepository.persistSubmissionAnswers(existing.id, answers)
+      const background: PublicFormSubmissionBackgroundJob = {
+        submissionId: existing.id,
+        publicationId: current.publicationId,
+        snapshot,
+        visibleAnswers,
+        visibleIds: [...visible],
+        score,
+        scoreBandLabel: band?.label ?? null,
+        bandNote,
+        origin: origin as Record<string, unknown>,
+        requestKey: input.requestKey,
+        visitorSessionId: input.visitorSessionId ?? existing.visitorSessionId ?? null,
+        thankYouPageId: input.thankYouPageId ?? null,
+        scheduling: input.scheduling,
+      }
+      return new Output(true, ["Respostas recebidas"], [], {
+        submissionId: existing.id,
+        alreadyProcessed: false,
+        background,
+      })
+    }
+
+    const progressSubmission =
+      input.visitorSessionId != null
+        ? await publicFormsRepository.findProgressSubmission(
+            current.publicationId,
+            input.visitorSessionId,
+          )
+        : null
 
     const submission = progressSubmission
       ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
@@ -96,91 +170,76 @@ export class PublicFormSubmissionUseCase {
           completionStatus: "partial",
         })
 
+    await publicFormsRepository.persistSubmissionAnswers(submission.id, answers)
+
+    const background: PublicFormSubmissionBackgroundJob = {
+      submissionId: submission.id,
+      publicationId: current.publicationId,
+      snapshot,
+      visibleAnswers,
+      visibleIds: [...visible],
+      score,
+      scoreBandLabel: band?.label ?? null,
+      bandNote,
+      origin: origin as Record<string, unknown>,
+      requestKey: input.requestKey,
+      visitorSessionId: input.visitorSessionId ?? null,
+      thankYouPageId: input.thankYouPageId ?? null,
+      scheduling: input.scheduling,
+    }
+
+    return new Output(true, ["Respostas recebidas"], [], {
+      submissionId: submission.id,
+      alreadyProcessed: false,
+      background,
+    })
+  }
+
+  async processInBackground(job: PublicFormSubmissionBackgroundJob): Promise<void> {
+    const visible = new Set(job.visibleIds)
+    const answers = mapAnswersForPersistence(job.snapshot, job.visibleAnswers)
+    const alerts: string[] = []
+
     try {
-      const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
+      const form = await publicFormsRepository.findFormSubmissionContext(job.snapshot.formId)
+      const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
+      const match = await findMatchingLead(form.teamId, extracted)
+      alerts.push(...buildLeadSyncAlerts(extracted, match))
+
       const upserted = await upsertLeadFromFormAnswers({
         form,
-        snapshot,
-        answers: visibleAnswers,
+        snapshot: job.snapshot,
+        answers: job.visibleAnswers,
         visibleIds: visible,
-        score,
-        scoreBandLabel: band?.label ?? null,
-        submissionId: submission.id,
-        publicationId: current.publicationId,
-        origin: origin as Record<string, unknown>,
-        extraNotes: bandNote,
+        score: job.score,
+        scoreBandLabel: job.scoreBandLabel,
+        submissionId: job.submissionId,
+        publicationId: job.publicationId,
+        origin: job.origin,
+        extraNotes: job.bandNote,
       })
-      const lead = upserted?.lead
-      if (!lead) throw new Error("Não foi possível criar ou localizar o lead")
-      const created = upserted.created
+
+      const lead = upserted?.lead ?? null
 
       let scheduled = false
-      if (input.scheduling) {
-        if (!snapshot.schedulingEnabled || snapshot.eligibleCloserIds.length === 0) {
-          throw new Error("Agendamento indisponível para este formulário")
+      if (lead && job.scheduling) {
+        try {
+          scheduled = await this.scheduleMeeting({
+            form,
+            snapshot: job.snapshot,
+            lead,
+            scheduling: job.scheduling,
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Falha ao agendar reunião"
+          console.error("[PublicFormSubmissionUseCase][processInBackground] Agendamento", message)
+          alerts.push(message)
         }
-
-        const timezone = form.team.master.timezone || DEFAULT_TZ
-        const startsAt = new Date(input.scheduling.startsAt)
-        if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() - 60_000) {
-          throw new Error("Horário de agendamento inválido ou já passou")
-        }
-
-        const dateKey = formatLocalDateValue(startsAt, timezone)
-        const timeKey = formatLocalTimeValue(startsAt, timezone)
-        const availableCloserIds: string[] = []
-        for (const closerId of snapshot.eligibleCloserIds) {
-          const availabilityOutput = await publicLeadFormUseCase.getCloserAvailability(
-            form.teamId,
-            closerId,
-            dateKey,
-            undefined,
-            snapshot.meetingDurationMinutes,
-          )
-          if (!availabilityOutput.isValid) continue
-          const availableTimes =
-            (availabilityOutput.result as { availableTimes?: string[] } | null)?.availableTimes ??
-            []
-          if (availableTimes.includes(timeKey)) availableCloserIds.push(closerId)
-        }
-        if (availableCloserIds.length === 0) {
-          throw new Error("O horário selecionado não está mais disponível")
-        }
-
-        const closerId =
-          availableCloserIds[Math.floor(Math.random() * availableCloserIds.length)]!
-
-        const closerProfile = await publicFormsRepository.findCloserGoogleConnection(closerId)
-        const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection)
-        const meetingType = canUseGoogleCalendar ? "online" : "call"
-
-        const scheduleOutput = await leadScheduleService.createSchedule({
-          leadId: lead.id,
-          leadName: lead.name,
-          leadEmail: lead.email,
-          leadStatus: lead.status ?? LeadStatus.new_opportunity,
-          leadManagerId: form.team.master.id,
-          leadAssignedTo: form.assignedSdrId,
-          leadAssigneeEmail: form.assignedSdr?.email ?? null,
-          leadCurrentCloserId: lead.closerId,
-          leadCode: lead.leadCode,
-          closerId,
-          teamId: form.teamId,
-          meetingDate: input.scheduling.startsAt,
-          meetingTitle: `Reunião — ${lead.name}`,
-          meetingNotes: snapshot.schedulingMessage ?? undefined,
-          meetingType,
-          durationMinutes: snapshot.meetingDurationMinutes,
-          createdByProfileId: form.team.master.id,
-          transitionStatusToScheduled: true,
-          authorAsStudio: true,
-        })
-        if (!scheduleOutput.isValid) throw new Error(scheduleOutput.errorMessages.join("; "))
-        scheduled = true
+      } else if (job.scheduling && !lead) {
+        alerts.push("Agendamento não realizado: lead não vinculado")
       }
 
-      const eventType = created ? ("lead_created" as const) : ("lead_attached" as const)
-      const visitorSessionId = (input.visitorSessionId ?? input.requestKey).slice(0, 100)
+      const visitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
       const metricEvents: Array<{
         formId: string
         publicationId: string
@@ -190,71 +249,148 @@ export class PublicFormSubmissionUseCase {
         origin: Prisma.InputJsonValue
       }> = [
         {
-          formId: snapshot.formId,
-          publicationId: current.publicationId,
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
           visitorSessionId,
           eventType: "form_completed",
-          eventKey: `${input.requestKey}:form_completed`,
-          origin: origin as Prisma.InputJsonValue,
-        },
-        {
-          formId: snapshot.formId,
-          publicationId: current.publicationId,
-          visitorSessionId,
-          eventType,
-          eventKey: `${input.requestKey}:${eventType}`,
-          origin: origin as Prisma.InputJsonValue,
+          eventKey: `${job.requestKey}:form_completed`,
+          origin: job.origin as Prisma.InputJsonValue,
         },
       ]
+
+      if (lead) {
+        const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
+        metricEvents.push({
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
+          visitorSessionId,
+          eventType,
+          eventKey: `${job.requestKey}:${eventType}`,
+          origin: job.origin as Prisma.InputJsonValue,
+        })
+      }
+
       if (scheduled) {
         metricEvents.push({
-          formId: snapshot.formId,
-          publicationId: current.publicationId,
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
           visitorSessionId,
           eventType: "meeting_scheduled",
-          eventKey: `${input.requestKey}:meeting_scheduled`,
-          origin: origin as Prisma.InputJsonValue,
+          eventKey: `${job.requestKey}:meeting_scheduled`,
+          origin: job.origin as Prisma.InputJsonValue,
         })
       }
 
       await publicFormsRepository.completeSubmission({
-        submissionId: submission.id,
-        leadId: lead.id,
-        answers: visibleAnswers.map((answer) => {
-          const question = snapshot.questions.find((item) => item.id === answer.questionId)
-          if (!question) throw new Error("Snapshot de pergunta não encontrado")
-          return {
-            questionId: answer.questionId,
-            value: answer.value as Prisma.InputJsonValue,
-            questionSnapshot: json(question),
-          }
-        }),
-        activityBody: "Respostas recebidas por formulário público",
-        activityPayload: json({
-          kind: "public_form_submission",
-          formId: snapshot.formId,
-          formName: form.name,
-          publicationId: current.publicationId,
-          publicationVersion: snapshot.version,
-          submissionId: submission.id,
-          thankYouPageId: input.thankYouPageId ?? null,
-          score,
-          scoreBand: band?.label ?? null,
-          origin,
-        }),
+        submissionId: job.submissionId,
+        leadId: lead?.id ?? null,
+        processingAlerts: formatLeadSyncAlerts(alerts),
+        answers,
+        activityBody: lead ? "Respostas recebidas por formulário público" : undefined,
+        activityPayload: lead
+          ? json({
+              kind: "public_form_submission",
+              formId: job.snapshot.formId,
+              formName: form.name,
+              publicationId: job.publicationId,
+              publicationVersion: job.snapshot.version,
+              submissionId: job.submissionId,
+              thankYouPageId: job.thankYouPageId ?? null,
+              score: job.score,
+              scoreBand: job.scoreBandLabel,
+              origin: job.origin,
+            })
+          : undefined,
         metricEvents,
       })
-      return new Output(
-        true,
-        [scheduled ? "Respostas recebidas e reunião agendada" : "Respostas recebidas"],
-        [],
-        { submissionId: submission.id, scheduled },
-      )
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao processar respostas"
-      await publicFormsRepository.markSubmissionFailed(submission.id, message)
-      return new Output(false, [], [message], { submissionId: submission.id })
+      console.error("[PublicFormSubmissionUseCase][processInBackground]", message)
+      alerts.push(message)
+      await publicFormsRepository.completeSubmission({
+        submissionId: job.submissionId,
+        leadId: null,
+        processingAlerts: formatLeadSyncAlerts(alerts),
+        answers,
+        metricEvents: [
+          {
+            formId: job.snapshot.formId,
+            publicationId: job.publicationId,
+            visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
+            eventType: "form_completed",
+            eventKey: `${job.requestKey}:form_completed`,
+            origin: job.origin as Prisma.InputJsonValue,
+          },
+        ],
+      })
     }
+  }
+
+  private async scheduleMeeting(input: {
+    form: Awaited<ReturnType<typeof publicFormsRepository.findFormSubmissionContext>>
+    snapshot: PublicFormSnapshot
+    lead: Lead
+    scheduling: NonNullable<PublicFormSubmissionInput["scheduling"]>
+  }) {
+    const { form, snapshot, lead, scheduling } = input
+    if (!snapshot.schedulingEnabled || snapshot.eligibleCloserIds.length === 0) {
+      throw new Error("Agendamento indisponível para este formulário")
+    }
+
+    const timezone = form.team.master.timezone || DEFAULT_TZ
+    const startsAt = new Date(scheduling.startsAt)
+    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() - 60_000) {
+      throw new Error("Horário de agendamento inválido ou já passou")
+    }
+
+    const dateKey = formatLocalDateValue(startsAt, timezone)
+    const timeKey = formatLocalTimeValue(startsAt, timezone)
+    const availableCloserIds: string[] = []
+    for (const closerId of snapshot.eligibleCloserIds) {
+      const availabilityOutput = await publicLeadFormUseCase.getCloserAvailability(
+        form.teamId,
+        closerId,
+        dateKey,
+        undefined,
+        snapshot.meetingDurationMinutes,
+      )
+      if (!availabilityOutput.isValid) continue
+      const availableTimes =
+        (availabilityOutput.result as { availableTimes?: string[] } | null)?.availableTimes ?? []
+      if (availableTimes.includes(timeKey)) availableCloserIds.push(closerId)
+    }
+    if (availableCloserIds.length === 0) {
+      throw new Error("O horário selecionado não está mais disponível")
+    }
+
+    const closerId = availableCloserIds[Math.floor(Math.random() * availableCloserIds.length)]!
+    const closerProfile = await publicFormsRepository.findCloserGoogleConnection(closerId)
+    const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection)
+    const meetingType = canUseGoogleCalendar ? "online" : "call"
+
+    const scheduleOutput = await leadScheduleService.createSchedule({
+      leadId: lead.id,
+      leadName: lead.name,
+      leadEmail: lead.email,
+      leadStatus: lead.status ?? LeadStatus.new_opportunity,
+      leadManagerId: form.team.master.id,
+      leadAssignedTo: form.assignedSdrId,
+      leadAssigneeEmail: form.assignedSdr?.email ?? null,
+      leadCurrentCloserId: lead.closerId,
+      leadCode: lead.leadCode,
+      closerId,
+      teamId: form.teamId,
+      meetingDate: scheduling.startsAt,
+      meetingTitle: `Reunião — ${lead.name}`,
+      meetingNotes: snapshot.schedulingMessage ?? undefined,
+      meetingType,
+      durationMinutes: snapshot.meetingDurationMinutes,
+      createdByProfileId: form.team.master.id,
+      transitionStatusToScheduled: true,
+      authorAsStudio: true,
+    })
+    if (!scheduleOutput.isValid) throw new Error(scheduleOutput.errorMessages.join("; "))
+    return true
   }
 }
 

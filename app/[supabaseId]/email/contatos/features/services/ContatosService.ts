@@ -4,6 +4,11 @@ import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContac
 import type { ContactList, Contact } from "../context/ContatosTypes";
 import type { EmailContactImportEnqueueResult } from "./IContatosService";
 
+export type RadarSegmentOption = {
+  id: string
+  name: string
+}
+
 export interface IContatosService {
   getLists(): Promise<ContactList[]>
   createList(data: { name: string; description?: string }): Promise<ContactList>
@@ -30,6 +35,9 @@ export interface IContatosService {
   ): Promise<EmailContactImportEnqueueResult>
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
+  listRadarSegments(supabaseId: string): Promise<RadarSegmentOption[]>
+  createRadarSegmentForList(supabaseId: string, name: string, listId: string): Promise<RadarSegmentOption>
+  setListRadarSegment(listId: string, segmentId: string | null): Promise<void>
 }
 
 export class ContatosService implements IContatosService {
@@ -207,6 +215,68 @@ export class ContatosService implements IContatosService {
       throw new Error(
         data?.errorMessages?.join(", ") || "Erro ao adicionar contato"
       );
+    }
+  }
+
+  async listRadarSegments(supabaseId: string): Promise<RadarSegmentOption[]> {
+    console.info("[ContatosService] listRadarSegments");
+    const response = await fetch("/api/v1/radar/segments/custom", {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+      },
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.isValid) {
+      throw new Error(data?.errorMessages?.join(", ") || "Erro ao carregar segmentos");
+    }
+
+    return (data.result as { id: string; name: string }[]).map((s) => ({
+      id: s.id,
+      name: s.name,
+    }));
+  }
+
+  async createRadarSegmentForList(supabaseId: string, name: string, listId: string): Promise<RadarSegmentOption> {
+    console.info("[ContatosService] createRadarSegmentForList", { name, listId });
+    const response = await fetch("/api/v1/radar/segments/custom", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+      },
+      body: JSON.stringify({
+        name,
+        rules: {
+          match: "any",
+          conditions: [{ kind: "email_contact_list", listIds: [listId] }],
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.isValid) {
+      throw new Error(data?.errorMessages?.join(", ") || "Erro ao criar segmento");
+    }
+
+    const result = data.result as { id: string; name: string };
+    return { id: result.id, name: result.name };
+  }
+
+  async setListRadarSegment(listId: string, segmentId: string | null): Promise<void> {
+    console.info("[ContatosService] setListRadarSegment", { listId, segmentId });
+    const response = await fetch(`${this.baseUrl}/${listId}/radar-segment`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segmentId }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.isValid) {
+      throw new Error(data?.errorMessages?.join(", ") || "Erro ao vincular segmento");
     }
   }
 }

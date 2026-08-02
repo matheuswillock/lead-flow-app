@@ -39,4 +39,11 @@ describe("campaign-sub-campaigns", () => {
     expect(chunkContactIdsForSubCampaigns([])).toEqual([])
     expect(estimateSubCampaignCount(4500)).toBe(3)
   })
+
+  it("does not split when maxPerSub is unlimited", () => {
+    expect(requiresSubCampaignSplit(10000, null)).toBe(false)
+    const ids = Array.from({ length: 10000 }, (_, index) => `id-${index}`)
+    expect(chunkContactIdsForSubCampaigns(ids, null)).toHaveLength(1)
+    expect(chunkContactIdsForSubCampaigns(ids, null)[0]?.size).toBe(10000)
+  })
 })
