@@ -11,6 +11,7 @@ import type {
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { emailCampaignLeadActivityService } from "@/app/api/services/email/EmailCampaignLeadActivityService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
   interpolateEmailTemplate,
   type EmailTemplateVariableDefinition,
@@ -313,7 +314,7 @@ export class EmailCampaignUseCase {
         campaigns: campaigns.map((campaign) => {
           const childSum = aggregatesByParent.get(campaign.id)
           const subCampaignCount = campaign._count.subCampaigns
-          return {
+          return resolveEmailCreator({
             id: campaign.id,
             name: campaign.name,
             status: campaign.status,
@@ -335,7 +336,7 @@ export class EmailCampaignUseCase {
             subCampaignCount,
             isParentCampaign: subCampaignCount > 0,
             managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
-          }
+          })
         }),
         total,
         page: options.page,
@@ -409,7 +410,7 @@ export class EmailCampaignUseCase {
           )
         : null
 
-      return new Output(true, [], [], {
+      return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
         totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
           ? activeRecipientCount
@@ -418,7 +419,7 @@ export class EmailCampaignUseCase {
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
         managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
-      })
+      }))
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar campanha"], null)

@@ -1,12 +1,9 @@
 "use client"
 
-import { createContext, useContext, type ReactNode } from "react"
+import { useContext, type ReactNode } from "react"
+import { TemplateEditorStudioContext } from "@/components/email/template-editor/TemplateEditorStudioContext"
 import { backofficeClientEmailTemplateEditorService } from "../services/BackofficeClientEmailTemplateEditorService"
 import { useBackofficeClientEmailTemplateEditor } from "./BackofficeClientEmailTemplateEditorHook"
-import type { BackofficeClientEmailTemplateEditorContextValue } from "./BackofficeClientEmailTemplateEditorTypes"
-
-const BackofficeClientEmailTemplateEditorContext =
-  createContext<BackofficeClientEmailTemplateEditorContextValue | null>(null)
 
 export function BackofficeClientEmailTemplateEditorProvider({
   masterId,
@@ -25,18 +22,19 @@ export function BackofficeClientEmailTemplateEditorProvider({
     templateId,
     backofficeClientEmailTemplateEditorService
   )
+
   return (
-    <BackofficeClientEmailTemplateEditorContext.Provider value={value}>
+    <TemplateEditorStudioContext.Provider value={value}>
       {children}
-    </BackofficeClientEmailTemplateEditorContext.Provider>
+    </TemplateEditorStudioContext.Provider>
   )
 }
 
 export function useBackofficeClientEmailTemplateEditorContext() {
-  const ctx = useContext(BackofficeClientEmailTemplateEditorContext)
+  const ctx = useContext(TemplateEditorStudioContext)
   if (!ctx) {
     throw new Error(
-      "useBackofficeClientEmailTemplateEditorContext must be used within provider"
+      "useBackofficeClientEmailTemplateEditorContext must be used within BackofficeClientEmailTemplateEditorProvider"
     )
   }
   return ctx
