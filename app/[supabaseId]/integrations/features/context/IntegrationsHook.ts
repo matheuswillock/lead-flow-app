@@ -599,6 +599,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         return;
       }
 
+      const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
       setRadarPixelSaving(true);
 
       try {
@@ -609,7 +610,8 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
         const config = await integrationsService.saveRadarPixelConfig(supabaseId, activeTeamId, { allowedOrigins });
 
-        const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+        if (currentPixelConfigKeyRef.current !== requestKey) return;
+
         radarPixelConfigCacheByKey.set(requestKey, config);
         lastSuccessfulPixelConfigKeyRef.current = requestKey;
 
@@ -620,7 +622,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         console.error("[useIntegrations] Erro ao salvar pixel:", error);
         toast.error(error instanceof Error ? error.message : "Não foi possível salvar a configuração do pixel");
       } finally {
-        setRadarPixelSaving(false);
+        if (currentPixelConfigKeyRef.current === requestKey) {
+          setRadarPixelSaving(false);
+        }
       }
     };
 
@@ -634,12 +638,14 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     const executeDelete = async () => {
       if (!activeTeamId) return;
 
+      const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
       setRadarPixelDeleting(true);
 
       try {
         await integrationsService.deleteRadarPixelConfig(supabaseId, activeTeamId);
 
-        const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+        if (currentPixelConfigKeyRef.current !== requestKey) return;
+
         radarPixelConfigCacheByKey.delete(requestKey);
         lastSuccessfulPixelConfigKeyRef.current = null;
 
@@ -650,7 +656,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         console.error("[useIntegrations] Erro ao remover pixel:", error);
         toast.error(error instanceof Error ? error.message : "Não foi possível remover o pixel");
       } finally {
-        setRadarPixelDeleting(false);
+        if (currentPixelConfigKeyRef.current === requestKey) {
+          setRadarPixelDeleting(false);
+        }
       }
     };
 
