@@ -11,6 +11,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentRules,
 } from "./RadarTypes"
@@ -39,6 +40,8 @@ export function useRadarHookFn() {
   const [detailEventsTotal, setDetailEventsTotal] = useState(0)
   const [detailEventsPage, setDetailEventsPage] = useState(1)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false)
+  const [touchpoints, setTouchpoints] = useState<RadarProfileTouchpoints | null>(null)
+  const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSyncingWhatsapp, setIsSyncingWhatsapp] = useState(false)
@@ -68,6 +71,7 @@ export function useRadarHookFn() {
   const loadKeyRef = useRef("")
   const inFlightRef = useRef(false)
   const autoOpenedProfileIdRef = useRef<string | null>(null)
+  const touchpointsProfileIdRef = useRef<string | null>(null)
 
   const activeTab: RadarTab = searchParams.get("tab") === "segmentos" ? "segmentos" : "perfis"
 
@@ -138,6 +142,7 @@ export function useRadarHookFn() {
       router.replace(buildProfileHref(pathname, searchParams, profileId), { scroll: false })
       setIsDetailLoading(true)
       setDetailEventsPage(1)
+      setTouchpoints(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -158,6 +163,21 @@ export function useRadarHookFn() {
       } finally {
         setIsDetailLoading(false)
       }
+
+      // Carrega touchpoints em segundo plano após o perfil abrir.
+      // Guard de stale: descarta a resposta se o profileId ativo mudou enquanto
+      // a request estava em voo (ex.: sheet fechada e reaberta para outro perfil).
+      touchpointsProfileIdRef.current = profileId
+      setIsLoadingTouchpoints(true)
+      try {
+        const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
+        if (touchpointsProfileIdRef.current !== profileId) return
+        setTouchpoints(result)
+      } catch (tpError) {
+        console.error("[useRadarHookFn][loadTouchpoints]", tpError)
+      } finally {
+        if (touchpointsProfileIdRef.current === profileId) setIsLoadingTouchpoints(false)
+      }
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -167,6 +187,8 @@ export function useRadarHookFn() {
     setDetailEvents([])
     setDetailEventsTotal(0)
     setDetailEventsPage(1)
+    setTouchpoints(null)
+    touchpointsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -532,6 +554,8 @@ export function useRadarHookFn() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    touchpoints,
+    isLoadingTouchpoints,
     reload: loadDashboard,
   }
 }
