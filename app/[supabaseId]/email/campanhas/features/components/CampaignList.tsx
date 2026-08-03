@@ -40,7 +40,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 
@@ -410,14 +410,7 @@ export function CampaignList({
                       </div>
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                      <div className="flex flex-col items-center gap-1">
-                        <span>
-                          {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
-                        </span>
-                        {campaign.managedByCorretorStudio ? (
-                          <ManagedByCorretorStudioBadge />
-                        ) : null}
-                      </div>
+                      {formatEmailCreatorLabel(campaign)}
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
                       <div>{campaign.template?.name ?? "—"}</div>

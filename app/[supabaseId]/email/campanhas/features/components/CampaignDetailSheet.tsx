@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -247,14 +247,9 @@ export function CampaignDetailSheet({
                 <div className="mb-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Criado por</span>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">
-                        {detailCampaign.creator?.fullName || detailCampaign.creator?.email || "—"}
-                      </span>
-                      {detailCampaign.managedByCorretorStudio ? (
-                        <ManagedByCorretorStudioBadge />
-                      ) : null}
-                    </div>
+                    <span className="font-medium">
+                      {formatEmailCreatorLabel(detailCampaign)}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Destinatários</span>
