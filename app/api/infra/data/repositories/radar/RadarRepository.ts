@@ -1346,6 +1346,156 @@ export class RadarRepository {
       },
     })
   }
+
+  async findLeadFinalizedById(finalizedId: string) {
+    return prisma.leadFinalized.findUnique({
+      where: { id: finalizedId },
+      select: {
+        id: true,
+        holder: {
+          select: {
+            name: true,
+            document: true,
+            createdAt: true,
+          },
+        },
+        dependents: {
+          select: {
+            name: true,
+            document: true,
+            createdAt: true,
+          },
+        },
+      },
+    })
+  }
+
+  /**
+   * D14: Cria ou encontra um perfil Radar identificado pelo documento normalizado.
+   * Usado para titulares (`contract_holder`) e dependentes (`contract_dependent`)
+   * de `LeadFinalized`. A chave natural é `(teamId, normalizedPrimaryDocument)`.
+   */
+  async upsertProfileForDocument(input: {
+    teamId: string
+    identityType: string
+    normalizedDocument: string
+    displayName: string
+    lastSeenAt: Date
+  }): Promise<{ profileId: string; created: boolean }> {
+    const existing = await prisma.radarProfile.findFirst({
+      where: { teamId: input.teamId, normalizedPrimaryDocument: input.normalizedDocument },
+      select: { id: true },
+    })
+
+    if (existing) {
+      await prisma.radarProfile.update({
+        where: { id: existing.id },
+        data: {
+          displayName: input.displayName,
+          lastSeenAt: input.lastSeenAt,
+        },
+      })
+      return { profileId: existing.id, created: false }
+    }
+
+    const { randomUUID } = await import("crypto")
+    const profileId = randomUUID()
+    await prisma.radarProfile.create({
+      data: {
+        id: profileId,
+        teamId: input.teamId,
+        displayName: input.displayName,
+        normalizedName: input.normalizedDocument,
+        primaryDocument: input.normalizedDocument,
+        normalizedPrimaryDocument: input.normalizedDocument,
+        lastSeenAt: input.lastSeenAt,
+      },
+    })
+
+    await prisma.radarIdentity.upsert({
+      where: {
+        teamId_type_normalizedValue: {
+          teamId: input.teamId,
+          type: input.identityType as RadarIdentityType,
+          normalizedValue: input.normalizedDocument,
+        },
+      },
+      update: {},
+      create: {
+        id: randomUUID(),
+        profileId,
+        teamId: input.teamId,
+        type: input.identityType as RadarIdentityType,
+        value: input.normalizedDocument,
+        normalizedValue: input.normalizedDocument,
+        source: "contract",
+        isPrimary: true,
+      },
+    })
+
+    return { profileId, created: true }
+  }
+
+  async getProfileNormalizedDocument(
+    teamId: string,
+    profileId: string
+  ): Promise<{ found: false } | { found: true; doc: string | null }> {
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: profileId, teamId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (!profile) return { found: false }
+    return { found: true, doc: profile.normalizedPrimaryDocument }
+  }
+
+  async getHoldersByNormalizedDocument(teamId: string, doc: string) {
+    return prisma.leadFinalizedHolder.findMany({
+      where: { document: doc, leadFinalized: { lead: { teamId } } },
+      select: {
+        id: true,
+        name: true,
+        document: true,
+        birthDate: true,
+        leadFinalized: {
+          select: {
+            id: true,
+            finalizedDateAt: true,
+            amount: true,
+            contractType: true,
+            operadora: true,
+            productName: true,
+            createdAt: true,
+            lead: {
+              select: {
+                id: true,
+                portfolio: {
+                  select: {
+                    id: true,
+                    portfolioStatus: true,
+                    renewalStatus: true,
+                    renewalAmount: true,
+                    source: true,
+                    lastContactAt: true,
+                    createdAt: true,
+                    updatedAt: true,
+                  },
+                },
+              },
+            },
+            dependents: {
+              select: {
+                id: true,
+                name: true,
+                document: true,
+                birthDate: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { leadFinalized: { finalizedDateAt: "desc" } },
+    })
+  }
 }
 
 export const radarRepository = new RadarRepository()

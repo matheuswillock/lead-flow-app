@@ -1,5 +1,24 @@
 # RADAR_AUDIT.md — Auditoria consolidada do módulo Radar (ex-CDP): estado atual, sub-campanhas/teto diário, inventário do rename e riscos
 
+## Status de implementação (pós-D12)
+
+| Estágio | Descrição | Status |
+|---------|-----------|--------|
+| D1 | Lead.originChannel schema | ✅ Concluído |
+| D2 | Unificar entrada de leads | ✅ Concluído |
+| D3 | Sync Portfolio → Radar | ✅ Concluído |
+| D4 | Perfil email-only | ✅ Concluído |
+| D5 | Marcos de LeadStatus | ✅ Concluído |
+| D6 | Condição lead_field no segmento | ✅ Concluído |
+| D7 | Pixel tracking + visitor_session | ✅ Concluído |
+| D8 | Bridging formulário → RadarEvent | ✅ Concluído |
+| D9 | Touchpoints — sub-aba Contatos | ✅ Concluído |
+| D10 | Remover sync manual | ✅ Concluído |
+| D11 | Auditoria impeccable de /radar | ✅ Concluído |
+| D12 | Hardening, docs, Postman, ERD | ✅ Concluído |
+
+---
+
 **Data:** 2026-07-18 (re-verificado contra código e banco remoto nesta data)
 **Documento par:** `RADAR_SPEC.md` (spec executável — rename + completude). Este audit é a **base factual única**: consolida e substitui `CDP_AUDIT.md`, `CDP_RESEARCH.md` e os documentos intermediários do ciclo.
 **Método:** leitura de código, `git log`/branches, migrations e **leitura SELECT-only do banco remoto** via `DIRECT_URL`. Nenhum código foi alterado.

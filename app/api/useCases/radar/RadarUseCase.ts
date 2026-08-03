@@ -344,6 +344,54 @@ export class RadarUseCase {
       return new Output(false, [], ["Erro ao listar perfis do segmento"], null)
     }
   }
+
+  /**
+   * D14: Retorna o contrato atual (carteira ativa) e o histórico de contratos finalizados
+   * associados ao perfil Radar via identidade de documento (contract_holder / contract_dependent).
+   */
+  async getProfileContracts(teamId: string, _ctx: TeamContext, profileId: string): Promise<Output> {
+    try {
+      const profileResult = await radarRepository.getProfileNormalizedDocument(teamId, profileId)
+
+      if (!profileResult.found) {
+        return new Output(false, [], ["Perfil não encontrado"], null)
+      }
+
+      const doc = profileResult.doc
+      if (!doc) {
+        return new Output(true, [], [], { current: null, history: [] })
+      }
+
+      const holders = await radarRepository.getHoldersByNormalizedDocument(teamId, doc)
+
+      const history = holders.map((h) => ({
+        id: h.leadFinalized.id,
+        finalizedDateAt: h.leadFinalized.finalizedDateAt,
+        amount: h.leadFinalized.amount,
+        contractType: h.leadFinalized.contractType,
+        operadora: h.leadFinalized.operadora,
+        productName: h.leadFinalized.productName,
+        createdAt: h.leadFinalized.createdAt,
+        holder: { id: h.id, name: h.name, document: h.document, birthDate: h.birthDate },
+        dependents: h.leadFinalized.dependents.map((d) => ({
+          id: d.id,
+          name: d.name,
+          document: d.document,
+          birthDate: d.birthDate,
+        })),
+      }))
+
+      const activePortfolio =
+        holders
+          .map((h) => h.leadFinalized.lead.portfolio)
+          .find((p) => p && p.portfolioStatus === "active") ?? null
+
+      return new Output(true, [], [], { current: activePortfolio, history })
+    } catch (error) {
+      console.error("[RadarUseCase][getProfileContracts]", error)
+      return new Output(false, [], ["Erro ao buscar contratos do perfil"], null)
+    }
+  }
 }
 
 export const customerDataPlatformUseCase = new RadarUseCase()

@@ -110,4 +110,16 @@ export interface IRadarService {
     teamId: string,
     rules: RadarSegmentRules
   ): Promise<{ count: number }>
+  previewSegmentContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ estimatedCount: number }>
+  materializeSegmentToContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ listId: string; contactCount: number }>
 }

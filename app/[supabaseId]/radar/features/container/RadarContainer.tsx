@@ -2,7 +2,7 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Database, Plus, RefreshCw } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import { useRadarContext } from "../context/RadarContext"
-import type { RadarCustomSegmentListItem } from "../context/RadarTypes"
+import type { RadarCustomSegmentListItem, RadarSegment } from "../context/RadarTypes"
+import type { RadarSegmentProfilesTarget } from "../context/useRadarHook"
 import { RadarEmptyState } from "../components/RadarEmptyState"
 import { RadarProfileFilters } from "../components/RadarProfileFilters"
 import { RadarProfileSheet } from "../components/RadarProfileSheet"
@@ -78,6 +79,8 @@ export function RadarContainer() {
     runWhatsappSync,
     syncLeadProfile,
     deleteCustomSegment,
+    previewSegmentContactList,
+    materializeContactList,
     segmentProfilesTarget,
     segmentProfilesItems,
     segmentProfilesTotal,
@@ -92,6 +95,34 @@ export function RadarContainer() {
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingSegment, setEditingSegment] = useState<RadarCustomSegmentListItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RadarCustomSegmentListItem | null>(null)
+  const [contactListPreviewTarget, setContactListPreviewTarget] = useState<RadarSegmentProfilesTarget | null>(null)
+  const [contactListPreviewCount, setContactListPreviewCount] = useState<number | null>(null)
+  const [isPreviewingContactList, setIsPreviewingContactList] = useState(false)
+  const [isCreatingContactList, setIsCreatingContactList] = useState(false)
+
+  const handleOpenContactListDialog = useCallback(
+    async (target: RadarSegmentProfilesTarget) => {
+      setContactListPreviewTarget(target)
+      setContactListPreviewCount(null)
+      setIsPreviewingContactList(true)
+      const count = await previewSegmentContactList(target.slugOrId, target.kind)
+      setContactListPreviewCount(count)
+      setIsPreviewingContactList(false)
+    },
+    [previewSegmentContactList]
+  )
+
+  const handleConfirmContactList = useCallback(async () => {
+    if (!contactListPreviewTarget) return
+    setIsCreatingContactList(true)
+    try {
+      await materializeContactList(contactListPreviewTarget.slugOrId, contactListPreviewTarget.kind)
+      setContactListPreviewTarget(null)
+      setContactListPreviewCount(null)
+    } finally {
+      setIsCreatingContactList(false)
+    }
+  }, [contactListPreviewTarget, materializeContactList])
 
   const systemSegments = useMemo(() => segments.filter((segment) => segment.isSystem), [segments])
 
@@ -223,7 +254,7 @@ export function RadarContainer() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {isLoading
                   ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
-                  : systemSegments.map((segment) => (
+                  : systemSegments.map((segment: RadarSegment) => (
                       <RadarSegmentCard
                         key={segment.slug}
                         name={segment.name}
@@ -232,6 +263,9 @@ export function RadarContainer() {
                         variant="system"
                         onViewProfiles={() =>
                           openSegmentProfiles({ kind: "system", slugOrId: segment.slug, name: segment.name })
+                        }
+                        onCreateContactList={() =>
+                          void handleOpenContactListDialog({ kind: "system", slugOrId: segment.slug, name: segment.name })
                         }
                       />
                     ))}
@@ -289,6 +323,16 @@ export function RadarContainer() {
                             setBuilderOpen(true)
                           }}
                           onDelete={() => setDeleteTarget(segment)}
+                          onCreateContactList={
+                            segment.isActive
+                              ? () =>
+                                  void handleOpenContactListDialog({
+                                    kind: "custom",
+                                    slugOrId: segment.id,
+                                    name: segment.name,
+                                  })
+                              : undefined
+                          }
                         />
                       ))}
                 </div>
@@ -348,6 +392,41 @@ export function RadarContainer() {
                 }}
               >
                 Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={Boolean(contactListPreviewTarget)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setContactListPreviewTarget(null)
+              setContactListPreviewCount(null)
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Criar lista de contatos?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {isPreviewingContactList
+                  ? "Calculando contagem do segmento…"
+                  : contactListPreviewCount === null
+                    ? "Não foi possível calcular a contagem."
+                    : `Será criada uma lista com ${contactListPreviewCount} contato(s) do segmento "${contactListPreviewTarget?.name}". Esta é uma cópia estática — alterações futuras no segmento não atualizam a lista.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isCreatingContactList}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isPreviewingContactList || isCreatingContactList || contactListPreviewCount === null}
+                onClick={(e) => {
+                  e.preventDefault()
+                  void handleConfirmContactList()
+                }}
+              >
+                {isCreatingContactList ? "Criando…" : "Criar lista"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
