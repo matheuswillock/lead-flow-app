@@ -33,14 +33,17 @@ function resolveCompanyType(office: {
 const MAX_RESULTS_PER_SEARCH = 100
 
 export class BackofficeLeadExtractionService implements IBackofficeLeadExtractionService {
-  private readonly client: Cnpja
+  private _client: Cnpja | null = null
 
-  constructor() {
-    const apiKey = process.env.CNPJA_API_KEY
-    if (!apiKey) {
-      throw new Error("CNPJA_API_KEY não configurada")
+  private get client(): Cnpja {
+    if (!this._client) {
+      const apiKey = process.env.CNPJA_API_KEY
+      if (!apiKey) {
+        throw new Error("CNPJA_API_KEY não configurada")
+      }
+      this._client = new Cnpja({ apiKey })
     }
-    this.client = new Cnpja({ apiKey })
+    return this._client
   }
 
   async search(filters: LeadExtractionFilters, limit = MAX_RESULTS_PER_SEARCH): Promise<LeadExtractionSearchOutput> {
