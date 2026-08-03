@@ -24,6 +24,11 @@ import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/reposit
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
 import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
+import {
+  buildRadarExportRows,
+  RADAR_EXPORT_MAX_ROWS,
+  type RadarExportProfileInput,
+} from "@/lib/radar/exportRadarProfiles"
 
 const SEGMENT_LABELS: Record<string, string> = {
   email_marketable: "Aptos para e-mail",
@@ -45,6 +50,32 @@ export type RadarListProfilesInput = {
   lastSeenTo?: string
   page: number
   pageSize: number
+}
+
+export type RadarExportProfilesInput = Omit<RadarListProfilesInput, "page" | "pageSize">
+
+function mapProfilesToExportInput(
+  items: Array<{
+    displayName: string
+    primaryEmail: string | null
+    displayPhone: string | null
+    primaryDocument: string | null
+    lastSeenAt: Date | null
+    identities: Array<{ type: string; value: string | null; normalizedValue: string }>
+    events: Array<{ eventType: string; occurredAt: Date }>
+  }>
+): RadarExportProfileInput[] {
+  return items.map((item) => ({
+    displayName: item.displayName,
+    primaryEmail: item.primaryEmail,
+    displayPhone: item.displayPhone,
+    primaryDocument: item.primaryDocument,
+    lastSeenAt: item.lastSeenAt,
+    identities: item.identities,
+    lastEvent: item.events[0]
+      ? { eventType: item.events[0].eventType, occurredAt: item.events[0].occurredAt }
+      : null,
+  }))
 }
 
 export class RadarUseCase {
@@ -120,6 +151,101 @@ export class RadarUseCase {
       page: input.page,
       pageSize: input.pageSize,
     })
+  }
+
+  /**
+   * D16: exporta perfis filtrados (até `RADAR_EXPORT_MAX_ROWS`) com colunas
+   * próprias do Radar (perfil, identidades, último evento).
+   */
+  async exportProfiles(input: RadarExportProfilesInput) {
+    const scope = this.scope(input.teamId, input.ctx)
+    const result = await radarRepository.listProfilesForExportWithCtx(scope, {
+      search: input.search,
+      consent: input.consent,
+      sourceType: input.sourceType as never,
+      channel: input.channel,
+      lastSeenFrom: input.lastSeenFrom ? new Date(input.lastSeenFrom) : undefined,
+      lastSeenTo: input.lastSeenTo ? new Date(input.lastSeenTo) : undefined,
+    })
+
+    const rows = buildRadarExportRows(mapProfilesToExportInput(result.items))
+    const truncated = result.total > RADAR_EXPORT_MAX_ROWS
+    const messages = truncated
+      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${result.total} perfis no filtro).`]
+      : []
+
+    return new Output(true, messages, [], {
+      rows,
+      total: result.total,
+      exported: rows.length,
+      truncated,
+      maxRows: RADAR_EXPORT_MAX_ROWS,
+    })
+  }
+
+  /**
+   * D16: exporta membros de um segmento de sistema.
+   */
+  async exportSegmentProfiles(teamId: string, ctx: TeamContext, segment: string) {
+    if (!isRadarSegmentSlug(segment)) {
+      return new Output(false, [], ["Segmento inválido"], null)
+    }
+
+    const scope = this.scope(teamId, ctx)
+    const ids = await this.service.listSegmentProfileIds(scope, segment)
+    const truncated = ids.length > RADAR_EXPORT_MAX_ROWS
+    const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
+    const rows = buildRadarExportRows(mapProfilesToExportInput(items))
+    const messages = truncated
+      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${ids.length} membros no segmento).`]
+      : []
+
+    return new Output(true, messages, [], {
+      rows,
+      total: ids.length,
+      exported: rows.length,
+      truncated,
+      maxRows: RADAR_EXPORT_MAX_ROWS,
+      segment,
+    })
+  }
+
+  /**
+   * D16: exporta membros de um segmento customizado.
+   */
+  async exportCustomSegmentProfiles(teamId: string, ctx: TeamContext, segmentId: string) {
+    try {
+      const scope = this.scope(teamId, ctx)
+      const segment = await this.segmentService.findById(teamId, segmentId)
+      if (!segment || !segment.isActive) {
+        return new Output(false, [], ["Segmento não encontrado"], null)
+      }
+
+      const rules = parseRadarSegmentRules(segment.rulesJson)
+      const total = await this.segmentQueryService.countProfiles(scope, rules)
+      const ids = await this.segmentQueryService.listProfileIds(scope, rules, {
+        skip: 0,
+        take: RADAR_EXPORT_MAX_ROWS,
+      })
+      const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
+      const rows = buildRadarExportRows(mapProfilesToExportInput(items))
+      const truncated = total > RADAR_EXPORT_MAX_ROWS
+      const messages = truncated
+        ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${total} membros no segmento).`]
+        : []
+
+      return new Output(true, messages, [], {
+        rows,
+        total,
+        exported: rows.length,
+        truncated,
+        maxRows: RADAR_EXPORT_MAX_ROWS,
+        segmentId,
+      })
+    } catch (error) {
+      console.error("[RadarUseCase][exportCustomSegmentProfiles]", error)
+      return new Output(false, [], ["Erro ao exportar perfis do segmento"], null)
+    }
   }
 
   async getProfile(teamId: string, ctx: TeamContext, profileId: string) {

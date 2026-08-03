@@ -10,6 +10,7 @@ import type {
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
+import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
 
 export type RadarTeamScope = {
   teamId: string
@@ -815,7 +816,44 @@ export class RadarRepository {
       take: number
     }
   ) {
-    const where: Prisma.RadarProfileWhereInput = {
+    const where = this.buildListProfilesWhere(scope, params)
+
+    const [items, total] = await Promise.all([
+      prisma.radarProfile.findMany({
+        where,
+        select: {
+          ...profileListSelect,
+          consents: {
+            where: { channel: "email" },
+            select: { status: true, reason: true, channel: true },
+          },
+          sourceLinks: {
+            select: { sourceType: true },
+            take: 5,
+          },
+        },
+        orderBy: { lastSeenAt: "desc" },
+        skip: params.skip,
+        take: params.take,
+      }),
+      prisma.radarProfile.count({ where }),
+    ])
+
+    return { items, total }
+  }
+
+  private buildListProfilesWhere(
+    scope: RadarTeamScope,
+    params: {
+      search?: string
+      consent?: RadarConsentStatus
+      sourceType?: RadarSourceType
+      channel?: RadarChannel
+      lastSeenFrom?: Date
+      lastSeenTo?: Date
+    }
+  ): Prisma.RadarProfileWhereInput {
+    return {
       teamId: scope.teamId,
       ...(params.search && {
         OR: [
@@ -846,29 +884,77 @@ export class RadarRepository {
           }
         : {}),
     }
+  }
+
+  private readonly exportProfileSelect = {
+    id: true,
+    displayName: true,
+    displayPhone: true,
+    primaryEmail: true,
+    primaryDocument: true,
+    lastSeenAt: true,
+    identities: {
+      select: {
+        type: true,
+        value: true,
+        normalizedValue: true,
+      },
+      orderBy: { type: "asc" as const },
+    },
+    events: {
+      select: {
+        eventType: true,
+        occurredAt: true,
+      },
+      orderBy: { occurredAt: "desc" as const },
+      take: 1,
+    },
+  }
+
+  /**
+   * D16: lista perfis filtrados para export (até `RADAR_EXPORT_MAX_ROWS`),
+   * com identidades e o evento mais recente.
+   */
+  async listProfilesForExportWithCtx(
+    scope: RadarTeamScope,
+    params: {
+      search?: string
+      consent?: RadarConsentStatus
+      sourceType?: RadarSourceType
+      channel?: RadarChannel
+      lastSeenFrom?: Date
+      lastSeenTo?: Date
+    }
+  ) {
+    const where = this.buildListProfilesWhere(scope, params)
 
     const [items, total] = await Promise.all([
       prisma.radarProfile.findMany({
         where,
-        select: {
-          ...profileListSelect,
-          consents: {
-            where: { channel: "email" },
-            select: { status: true, reason: true, channel: true },
-          },
-          sourceLinks: {
-            select: { sourceType: true },
-            take: 5,
-          },
-        },
+        select: this.exportProfileSelect,
         orderBy: { lastSeenAt: "desc" },
-        skip: params.skip,
-        take: params.take,
+        take: RADAR_EXPORT_MAX_ROWS,
       }),
       prisma.radarProfile.count({ where }),
     ])
 
     return { items, total }
+  }
+
+  /**
+   * D16: carrega perfis por ids (ordem preservada) para export de segmento.
+   */
+  async listProfilesForExportByIdsWithCtx(scope: RadarTeamScope, profileIds: string[]) {
+    if (profileIds.length === 0) return []
+
+    const cappedIds = profileIds.slice(0, RADAR_EXPORT_MAX_ROWS)
+    const items = await prisma.radarProfile.findMany({
+      where: { teamId: scope.teamId, id: { in: cappedIds } },
+      select: this.exportProfileSelect,
+    })
+
+    const byId = new Map(items.map((item) => [item.id, item]))
+    return cappedIds.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item))
   }
 
   async getProfileDetailWithCtx(scope: RadarTeamScope, profileId: string) {

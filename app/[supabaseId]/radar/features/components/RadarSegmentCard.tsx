@@ -1,6 +1,6 @@
 "use client"
 
-import { ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Download, ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import type { RadarExportFormat } from "@/lib/radar/exportRadarProfiles"
 
 type RadarSegmentCardProps = {
   name: string
@@ -20,6 +21,7 @@ type RadarSegmentCardProps = {
   mutationLock?: boolean
   onViewProfiles?: () => void
   onCreateContactList?: () => void
+  onExport?: (format: RadarExportFormat) => void
   onEdit?: () => void
   onDelete?: () => void
 }
@@ -33,6 +35,7 @@ export function RadarSegmentCard({
   mutationLock,
   onViewProfiles,
   onCreateContactList,
+  onExport,
   onEdit,
   onDelete,
 }: RadarSegmentCardProps) {
@@ -78,6 +81,20 @@ export function RadarSegmentCard({
           <Button size="sm" variant="ghost" className="px-0" onClick={onViewProfiles}>
             Ver perfis
           </Button>
+        ) : null}
+        {onExport ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={mutationLock || count === 0}>
+                <Download data-icon="inline-start" />
+                Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => onExport("csv")}>CSV</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExport("excel")}>Excel</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
         {onCreateContactList ? (
           <Button

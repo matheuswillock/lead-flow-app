@@ -36,6 +36,23 @@ export type ListProfilesParams = {
   lastSeenTo?: string
 }
 
+export type ExportProfilesParams = {
+  search?: string
+  consent?: string
+  sourceType?: string
+  channel?: string
+  lastSeenFrom?: string
+  lastSeenTo?: string
+}
+
+export type RadarExportResult = {
+  rows: Array<Record<string, string>>
+  total: number
+  exported: number
+  truncated: boolean
+  maxRows: number
+}
+
 export type RadarFieldOption = {
   key: string
   label: string
@@ -57,6 +74,21 @@ export interface IRadarService {
     page: number
     pageSize: number
   }>
+  exportProfiles(
+    supabaseId: string,
+    teamId: string,
+    params: ExportProfilesParams
+  ): Promise<RadarExportResult>
+  exportSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segment: string
+  ): Promise<RadarExportResult>
+  exportCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarExportResult>
   getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
   listSegments(
     supabaseId: string,

@@ -3,7 +3,7 @@
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { useMemo, useState } from "react"
-import { Database, Plus, RefreshCw } from "lucide-react"
+import { Database, Download, Plus, RefreshCw } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useRadarContext } from "../context/RadarContext"
 import type { RadarCustomSegmentListItem } from "../context/RadarTypes"
@@ -81,6 +87,8 @@ export function RadarContainer() {
     syncLeadProfile,
     deleteCustomSegment,
     materializeContactList,
+    exportFilteredProfiles,
+    exportSegmentMembers,
     segmentProfilesTarget,
     segmentProfilesItems,
     segmentProfilesTotal,
@@ -167,7 +175,23 @@ export function RadarContainer() {
           </TabsList>
 
           <TabsContent value="perfis" className="flex flex-col gap-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={mutationLock || total === 0}>
+                    <Download data-icon="inline-start" />
+                    Exportar
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void exportFilteredProfiles("csv")}>
+                    CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void exportFilteredProfiles("excel")}>
+                    Excel
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <RadarImportButton mutationLock={mutationLock} onImportComplete={() => void reload()} />
             </div>
             <RadarProfileFilters
@@ -246,6 +270,12 @@ export function RadarContainer() {
                         onViewProfiles={() =>
                           openSegmentProfiles({ kind: "system", slugOrId: segment.slug, name: segment.name })
                         }
+                        onExport={(format) =>
+                          void exportSegmentMembers(
+                            { kind: "system", slugOrId: segment.slug, name: segment.name },
+                            format
+                          )
+                        }
                         onCreateContactList={() =>
                           setMaterializeTarget({ slug: segment.slug, name: segment.name, count: segment.count })
                         }
@@ -298,6 +328,15 @@ export function RadarContainer() {
                           onViewProfiles={
                             segment.isActive
                               ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                              : undefined
+                          }
+                          onExport={
+                            segment.isActive
+                              ? (format) =>
+                                  void exportSegmentMembers(
+                                    { kind: "custom", slugOrId: segment.id, name: segment.name },
+                                    format
+                                  )
                               : undefined
                           }
                           onCreateContactList={
