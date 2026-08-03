@@ -155,3 +155,15 @@ export type RadarSyncResult = {
   skipped: number
   errors: string[]
 }
+
+export type RadarTouchpointChannel = {
+  channel: string
+  count: number
+  firstEventAt: string
+  lastEventAt: string
+}
+
+export type RadarProfileTouchpoints = {
+  total: number
+  breakdown: RadarTouchpointChannel[]
+}

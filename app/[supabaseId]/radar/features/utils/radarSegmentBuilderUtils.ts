@@ -121,6 +121,22 @@ export function getEventTypeIcon(eventType: string): LucideIcon {
   return CircleDot
 }
 
+const CHANNEL_LABEL_MAP: Record<string, string> = {
+  email: "E-mail",
+  whatsapp: "WhatsApp",
+  form: "Formulário",
+  pixel: "Pixel",
+  lead: "CRM",
+  portfolio: "CRM",
+  profile: "CRM",
+}
+
+/** D9: mapeia um prefixo de `eventType` para o rótulo de canal exibido na aba Contatos. */
+export function eventTypePrefixToChannel(eventType: string): string {
+  const prefix = eventType.split(".")[0] ?? eventType
+  return CHANNEL_LABEL_MAP[prefix] ?? "Outros"
+}
+
 function toQueryString(params: URLSearchParams): string {
   const value = params.toString()
   return value ? `?${value}` : ""
