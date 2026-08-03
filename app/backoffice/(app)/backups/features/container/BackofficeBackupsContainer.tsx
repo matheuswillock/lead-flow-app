@@ -18,6 +18,7 @@ import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContex
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { useBackofficeBackups } from "../context/BackofficeBackupsContext"
 import type {
+  BackofficeBackupItem,
   BackofficeDatabaseBackupSource,
   BackofficeDatabaseBackupStatus,
 } from "../context/BackofficeBackupsTypes"
@@ -32,6 +33,17 @@ function formatBytes(bytes: number | null): string {
     unitIndex += 1
   }
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function formatDuration(startedAt: string, finishedAt: string | null): string {
+  if (!finishedAt) return "—"
+  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()
+  if (ms < 0) return "—"
+  const totalSeconds = Math.round(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes}m ${seconds}s`
 }
 
 function statusLabel(status: BackofficeDatabaseBackupStatus) {
@@ -90,15 +102,27 @@ function sourceVariant(source: BackofficeDatabaseBackupSource): "secondary" | "o
   }
 }
 
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = fileName
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+function LogCell({ item }: { item: BackofficeBackupItem }) {
+  if (item.status === "pending") {
+    return <span className="text-xs text-muted-foreground">Em andamento...</span>
+  }
+  if (item.status === "failed") {
+    const message = item.errorMessage ?? "—"
+    const truncated = message.length > 80 ? `${message.slice(0, 80)}…` : message
+    return (
+      <span className="text-xs text-destructive" title={message}>
+        {truncated}
+      </span>
+    )
+  }
+  if (item.status === "success") {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {formatDuration(item.startedAt, item.finishedAt)}
+      </span>
+    )
+  }
+  return <span className="text-xs text-muted-foreground">—</span>
 }
 
 export function BackofficeBackupsContainer() {
@@ -108,9 +132,7 @@ export function BackofficeBackupsContainer() {
   const {
     items,
     isLoading,
-    isDownloading,
     isGenerating,
-    downloadingId,
     error,
     refresh,
     createManualBackup,
@@ -120,16 +142,9 @@ export function BackofficeBackupsContainer() {
   const hasPending = items.some((item) => item.status === "pending")
   const generateDisabled = !canManageBackups || isGenerating || isLoading || hasPending
 
-  async function handleDownload(id: string) {
-    if (isDownloading) return
-    try {
-      const result = await download(id)
-      triggerBrowserDownload(result.blob, result.fileName)
-      toast.success("Download iniciado")
-    } catch (err) {
-      console.error("[BackofficeBackupsContainer][handleDownload]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao baixar backup")
-    }
+  function handleDownload(id: string) {
+    download(id)
+    toast.success("Download iniciado")
   }
 
   async function handleGenerate() {
@@ -203,6 +218,7 @@ export function BackofficeBackupsContainer() {
               <TableHead>Data</TableHead>
               <TableHead>Origem</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Log</TableHead>
               <TableHead>Tamanho</TableHead>
               <TableHead>Checksum (SHA-256)</TableHead>
               <TableHead>Arquivo</TableHead>
@@ -213,21 +229,20 @@ export function BackofficeBackupsContainer() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={index}>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
               ))
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   Nenhum backup encontrado.
                 </TableCell>
               </TableRow>
             ) : (
               items.map((item) => {
                 const date = item.finishedAt ?? item.startedAt
-                const isPendingDownload = isDownloading && downloadingId === item.id
 
                 return (
                   <TableRow key={item.id}>
@@ -242,6 +257,9 @@ export function BackofficeBackupsContainer() {
                     <TableCell>
                       <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
                     </TableCell>
+                    <TableCell className="max-w-64">
+                      <LogCell item={item} />
+                    </TableCell>
                     <TableCell>{formatBytes(item.sizeBytes)}</TableCell>
                     <TableCell className="max-w-48 truncate font-mono text-xs">
                       {item.checksumSha256 ?? "—"}
@@ -253,10 +271,10 @@ export function BackofficeBackupsContainer() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={isDownloading || isGenerating}
-                          onClick={() => void handleDownload(item.id)}
+                          disabled={isGenerating}
+                          onClick={() => handleDownload(item.id)}
                         >
-                          {isPendingDownload ? "Baixando…" : "Baixar"}
+                          Baixar
                         </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>

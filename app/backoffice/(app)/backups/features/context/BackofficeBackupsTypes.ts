@@ -20,11 +20,6 @@ export interface BackofficeBackupsListResult {
   items: BackofficeBackupItem[]
 }
 
-export interface BackofficeBackupDownloadResult {
-  blob: Blob
-  fileName: string
-}
-
 export interface BackofficeBackupCreateResult {
   id: string
 }
