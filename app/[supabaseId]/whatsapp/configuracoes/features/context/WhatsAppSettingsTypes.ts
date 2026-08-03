@@ -1,10 +1,11 @@
-export type WhatsAppConnectionStatus = 'PENDING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
+export type WhatsAppConnectionStatus = 'PENDING' | 'INITIALIZING' | 'QR_READY' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'BANNED'
 
 export type WhatsAppHistorySyncStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
 
 export interface WhatsAppConfig {
   teamId: string
   provider: string
+  engine?: string
   status: WhatsAppConnectionStatus
   instanceName: string
   phoneNumber: string | null

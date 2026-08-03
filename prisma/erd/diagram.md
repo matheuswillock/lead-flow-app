@@ -869,8 +869,16 @@ skipped skipped
     
 
 
+        WhatsAppEngine {
+            OPENWA OPENWA
+META META
+        }
+    
+
+
         WhatsAppConnectionStatus {
             PENDING PENDING
+INITIALIZING INITIALIZING
 QR_READY QR_READY
 CONNECTED CONNECTED
 DISCONNECTED DISCONNECTED
@@ -2896,6 +2904,7 @@ meeting_scheduled meeting_scheduled
   "team_whatsapp_configs" {
     String id "🗝️"
     WhatsAppProvider provider 
+    WhatsAppEngine engine 
     String instanceName 
     String instanceId "❓"
     String phoneNumber "❓"
@@ -3971,6 +3980,7 @@ meeting_scheduled meeting_scheduled
     "whatsapp_contact_identities" }o--|o team_whatsapp_configs : "config"
     "whatsapp_contact_identities" }o--|| team_whatsapp_contacts : "contact"
     "team_whatsapp_configs" |o--|| "WhatsAppProvider" : "enum:provider"
+    "team_whatsapp_configs" |o--|| "WhatsAppEngine" : "enum:engine"
     "team_whatsapp_configs" |o--|| "WhatsAppConnectionStatus" : "enum:status"
     "team_whatsapp_configs" |o--|| "WhatsAppHistorySyncStatus" : "enum:historySyncStatus"
     "team_whatsapp_configs" |o--|| corretor_studio_teams : "team"

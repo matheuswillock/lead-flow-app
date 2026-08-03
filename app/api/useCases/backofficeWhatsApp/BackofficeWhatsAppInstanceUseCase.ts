@@ -3,21 +3,20 @@ import { Output } from "@/lib/output"
 import { backofficeWhatsAppInstanceRepository } from "@/app/api/infra/data/repositories/backoffice/whatsapp/BackofficeWhatsAppInstanceRepository"
 import type { BackofficeWhatsAppInstanceRow } from "@/app/api/infra/data/repositories/backoffice/whatsapp/IBackofficeWhatsAppInstanceRepository"
 import { whatsAppService } from "@/app/api/services/whatsapp/WhatsAppService"
-import { evoApiService } from "@/app/api/services/whatsapp/evo/EvoApiService"
 import { toQrCodeImageUrl } from "@/app/api/services/whatsapp/qrCodeUtils"
 import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
+import { WhatsAppProviderCapabilityError } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
+import { WhatsAppEngineFactory } from "@/lib/whatsapp/WhatsAppEngineFactory"
 import type { IBackofficeWhatsAppInstanceUseCase } from "./IBackofficeWhatsAppInstanceUseCase"
 
 function resolveWebhookBaseUrl(): string {
-  const webhookPublic = process.env.EVO_WEBHOOK_PUBLIC_URL?.replace(/\/$/, "")
-  if (webhookPublic) return webhookPublic
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
   if (!appUrl) throw new Error("[BackofficeWhatsAppInstanceUseCase] NEXT_PUBLIC_APP_URL is not set")
   return appUrl.replace(/\/$/, "")
 }
 
 function buildWebhookUrl(webhookSecret: string): string {
-  return `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/evolution/${webhookSecret}`
+  return `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/openwa/${webhookSecret}`
 }
 
 function toListItem(row: BackofficeWhatsAppInstanceRow) {
@@ -25,6 +24,7 @@ function toListItem(row: BackofficeWhatsAppInstanceRow) {
     id: row.id,
     teamId: row.teamId,
     provider: row.provider,
+    engine: row.engine,
     instanceName: row.instanceName,
     instanceId: row.instanceId,
     phoneNumber: row.phoneNumber,
@@ -353,7 +353,8 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
       for (const target of targets) {
         const webhookUrl = buildWebhookUrl(target.webhookSecret)
         try {
-          await evoApiService.setWebhook({
+          const provider = await WhatsAppEngineFactory.forTeam(target.teamId)
+          await provider.setWebhook({
             instanceName: target.instanceName,
             webhookUrl,
           })
@@ -367,6 +368,20 @@ export class BackofficeWhatsAppInstanceUseCase implements IBackofficeWhatsAppIns
             ok: true,
           })
         } catch (error) {
+          // OpenWA configura webhook em startSession — setWebhook é no-op esperado.
+          if (error instanceof WhatsAppProviderCapabilityError) {
+            ok += 1
+            results.push({
+              configId: target.id,
+              teamId: target.teamId,
+              instanceName: target.instanceName,
+              status: target.status,
+              webhookUrl,
+              ok: true,
+            })
+            continue
+          }
+
           failed += 1
           const message = error instanceof Error ? error.message : "Erro desconhecido"
           console.error("[BackofficeWhatsAppInstanceUseCase][resyncWebhooks] falhou", {

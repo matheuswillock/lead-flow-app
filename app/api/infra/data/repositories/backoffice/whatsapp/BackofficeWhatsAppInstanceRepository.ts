@@ -11,6 +11,7 @@ const INSTANCE_SELECT = {
   id: true,
   teamId: true,
   provider: true,
+  engine: true,
   instanceName: true,
   instanceId: true,
   phoneNumber: true,
@@ -131,6 +132,7 @@ class BackofficeWhatsAppInstanceRepository implements IBackofficeWhatsAppInstanc
         instanceName: true,
         webhookSecret: true,
         status: true,
+        engine: true,
       },
       orderBy: { createdAt: "asc" },
     })

@@ -135,6 +135,20 @@ export const envSchema = z.object({
   META_ACCESS_TOKEN: z.string().optional().describe('Meta access token (optional)'),
   META_VERIFY_TOKEN: nonEmptyString.describe('Meta webhook verification token'),
 
+  // OpenWA Gateway (whatsapp-web.js)
+  OPENWA_API_URL: urlSchema.describe(
+    'URL base do OpenWA Gateway na VPS (ex: http://openwa:3333)',
+  ),
+  OPENWA_API_KEY: nonEmptyString.describe(
+    'Chave de autenticação do OpenWA Gateway (header apikey)',
+  ),
+  OPENWA_WEBHOOK_SECRET: z
+    .string()
+    .min(32, { message: 'Must be at least 32 characters' })
+    .describe(
+      'HMAC secret compartilhado com o Gateway para validar inbound webhook',
+    ),
+
   // Google OAuth (Calendar)
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional().describe('Google OAuth client ID (optional)'),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional().describe('Google OAuth client secret (optional)'),

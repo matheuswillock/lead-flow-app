@@ -39,6 +39,7 @@ import type { WhatsAppConnectionStatus, WhatsAppUsage } from '../context/WhatsAp
 
 const STATUS_LABELS: Record<WhatsAppConnectionStatus, string> = {
   PENDING: 'Pendente',
+  INITIALIZING: 'Iniciando',
   QR_READY: 'Aguardando QR',
   CONNECTED: 'Conectado',
   DISCONNECTED: 'Desconectado',
@@ -54,7 +55,7 @@ const USAGE_STATUS_LABELS: Record<WhatsAppUsage['status'], string> = {
 
 function getStatusBadgeVariant(status: WhatsAppConnectionStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'CONNECTED') return 'default'
-  if (status === 'QR_READY' || status === 'DISCONNECTED' || status === 'PENDING') return 'secondary'
+  if (status === 'QR_READY' || status === 'DISCONNECTED' || status === 'PENDING' || status === 'INITIALIZING') return 'secondary'
   return 'destructive'
 }
 
@@ -70,7 +71,7 @@ function StatusIcon({ status }: { status: WhatsAppConnectionStatus }) {
   return <WifiOff className={cn('size-5', 'text-muted-foreground')} />
 }
 
-function formatSyncDate(value: string | null, tz: string): string {
+function formatLastSync(value: string | null | undefined, tz: string) {
   if (!value) return 'Nunca'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Data inválida'
@@ -109,7 +110,7 @@ export function ConnectionCard() {
   const showQrCode =
     Boolean(config?.qrCodeImageUrl) && config?.status !== 'CONNECTED'
   const showReconnectActions =
-    canManageInfrastructure && !isSharedNumber && config?.status !== 'CONNECTED'
+    canManageInfrastructure && !isSharedNumber && config?.status !== 'CONNECTED' && config?.status !== 'INITIALIZING'
   const reconnectButtonVariant = config?.status === 'CONNECTED' ? 'outline' : 'default'
   const phoneLabel =
     config?.phoneNumber ??
@@ -153,6 +154,9 @@ export function ConnectionCard() {
               )}
               {config?.primaryConfigId ? (
                 <Badge variant="outline">Número compartilhado</Badge>
+              ) : null}
+              {config?.status === 'CONNECTED' && config.engine ? (
+                <Badge variant="outline">{config.engine}</Badge>
               ) : null}
               {isRefreshing ? (
                 <RefreshCw className="size-4 animate-spin text-muted-foreground" />
@@ -218,7 +222,7 @@ export function ConnectionCard() {
                   <span className="text-sm font-medium">{phoneLabel}</span>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Última sincronização: {formatSyncDate(config.lastSyncAt, tz)}
+                  Última sincronização: {formatLastSync(config.lastSyncAt, tz)}
                 </span>
               </div>
             </div>
@@ -253,6 +257,22 @@ export function ConnectionCard() {
               </>
             ) : null}
 
+            {config.status === 'INITIALIZING' ? (
+              <>
+                <Separator />
+                <Alert>
+                  <AlertTriangle className="size-4" />
+                  <AlertDescription>
+                    Iniciando a sessão WhatsApp. Isso pode levar até 30 segundos. Aguarde…
+                  </AlertDescription>
+                </Alert>
+                <div className="flex flex-col items-center gap-3 py-2">
+                  <Skeleton className="size-48 rounded-lg" />
+                  <p className="text-sm text-muted-foreground">Aguardando sessão...</p>
+                </div>
+              </>
+            ) : null}
+
             {showQrCode ? (
               <>
                 <Separator />
@@ -271,19 +291,6 @@ export function ConnectionCard() {
                     segundos. Se falhar, clique em Atualizar QR Code e tente de novo.
                   </p>
                 </div>
-              </>
-            ) : null}
-
-            {config.provider === 'EVOLUTION' ? (
-              <>
-                <Separator />
-                <Alert>
-                  <AlertTriangle className="size-4" />
-                  <AlertDescription>
-                    Este módulo usa Evolution API (conexão via QR Code). Podem ocorrer desconexões, reconexões e risco
-                    de bloqueio do número.
-                  </AlertDescription>
-                </Alert>
               </>
             ) : null}
 

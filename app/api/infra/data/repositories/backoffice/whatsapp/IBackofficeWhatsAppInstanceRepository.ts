@@ -17,6 +17,7 @@ export interface BackofficeWhatsAppInstanceRow {
   id: string
   teamId: string
   provider: string
+  engine: string
   instanceName: string
   instanceId: string | null
   phoneNumber: string | null
@@ -51,6 +52,7 @@ export interface BackofficeWhatsAppWebhookResyncTarget {
   instanceName: string
   webhookSecret: string
   status: WhatsAppConnectionStatus
+  engine: string
 }
 
 export interface ListInstancesFilters {
