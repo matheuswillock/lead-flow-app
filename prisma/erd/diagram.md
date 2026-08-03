@@ -1042,6 +1042,7 @@ portfolio portfolio
 email_contact email_contact
 email_campaign email_campaign
 whatsapp_contact whatsapp_contact
+base_import base_import
         }
     
 
@@ -2477,6 +2478,7 @@ meeting_scheduled meeting_scheduled
     String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
     String audienceContactIds 
+    String source_contact_list_ids 
     EmailCampaignStatus status 
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
@@ -3177,6 +3179,39 @@ meeting_scheduled meeting_scheduled
     Json rulesJson 
     Boolean isSystem 
     Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_radar_field_definitions" {
+    String id "🗝️"
+    String key 
+    String label 
+    String valueType 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_radar_import_jobs" {
+    String id "🗝️"
+    String importId 
+    String baseName 
+    String sourceFormat 
+    String storagePath 
+    Json fieldMapping 
+    String status 
+    Int totalRows 
+    Int processedRows 
+    Int createdCount 
+    Int enrichedCount 
+    Int skippedCount 
+    Int deferredCount 
+    Json skippedIssues "❓"
+    Json failedBatches "❓"
+    Int batchSize 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4004,6 +4039,11 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_radar_field_definitions" }o--|o corretor_studio_radar_import_jobs : "importJob"
+    "corretor_studio_radar_import_jobs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
     "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"

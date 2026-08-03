@@ -97,6 +97,7 @@ export type RadarProfileDetail = RadarProfileListItem & {
   normalizedName: string
   normalizedPhone: string | null
   primaryDocument: string | null
+  profileData?: Record<string, unknown> | null
   identities: Array<{
     id: string
     type: string

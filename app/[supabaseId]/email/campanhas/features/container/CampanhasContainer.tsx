@@ -13,7 +13,7 @@ import type { DateRange } from "react-day-picker"
 import { format } from "date-fns"
 import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CampaignList } from "../components/CampaignList"
-import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
+import { CampaignWizardDialog } from "../components/CampaignWizardDialog"
 import type { ComponentType } from "react"
 import { CampaignDetailSheet } from "../components/CampaignDetailSheet"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
@@ -146,7 +146,7 @@ export function CampanhasContainer({
       </LeadsFiltersLayout>
 
       <CampaignList onOpenAnalytics={openCampaignAnalytics} />
-      <CampaignCreateWizard />
+      <CampaignWizardDialog />
       <CampaignDetailSheet onOpenAnalytics={openCampaignAnalytics} />
       <AnalyticsDialogComponent
         open={analyticsOpen}

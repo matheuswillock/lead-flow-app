@@ -810,6 +810,7 @@ export class RadarRepository {
         normalizedName: true,
         normalizedPhone: true,
         normalizedPrimaryDocument: true,
+        profileData: true,
         identities: {
           orderBy: { type: "asc" },
         },

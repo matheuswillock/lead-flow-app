@@ -52,7 +52,7 @@ function CampaignActionsMenu({
   archivingId,
   readOnly,
   openView,
-  openEdit,
+  openEditWizard,
   handleSend,
   handleCancel,
   handleDeleteDraft,
@@ -67,7 +67,7 @@ function CampaignActionsMenu({
   archivingId: string | null
   readOnly: boolean
   openView: (campaign: Campaign) => void
-  openEdit: (campaign: Campaign) => void
+  openEditWizard: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
@@ -150,7 +150,7 @@ function CampaignActionsMenu({
                 <Send className="mr-2 h-4 w-4" />
                 Disparar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+              <DropdownMenuItem onClick={() => void openEditWizard(campaign)} disabled={!canEdit}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
@@ -326,7 +326,7 @@ export function CampaignList({
     handlePageSizeChange,
     openWizard,
     openView,
-    openEdit,
+    openEditWizard,
     credits,
   } = useCampanhasContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
@@ -473,7 +473,7 @@ export function CampaignList({
                             archivingId={archivingId}
                             readOnly={readOnly}
                             openView={openView}
-                            openEdit={openEdit}
+                            openEditWizard={openEditWizard}
                             handleSend={handleSend}
                             handleCancel={handleCancel}
                             handleDeleteDraft={handleDeleteDraft}

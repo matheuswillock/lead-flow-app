@@ -922,6 +922,8 @@ model Profile {
   createdTeamStatusRules                   TeamStatusRule[]                             @relation("TeamStatusRuleCreator")
   createdTeamAutomationRules               TeamAutomationRule[]                         @relation("TeamAutomationRuleCreator")
   createdTeamRadarSegments                 TeamRadarSegment[]                           @relation("TeamRadarSegmentCreator")
+  createdTeamRadarFieldDefinitions         TeamRadarFieldDefinition[]                   @relation("TeamRadarFieldDefinitionCreator")
+  requestedRadarImportJobs                 RadarImportJob[]                             @relation("RadarImportJobRequester")
   createdLeadCustomFieldDefinitions        LeadCustomFieldDefinition[]                  @relation("LeadCustomFieldDefinitionCreator")
   updatedLeadStatusTransitionFieldRules    BackofficeLeadStatusTransitionFieldRule[]    @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
   updatedLeadStatusTransitionGates         BackofficeLeadStatusTransitionGate[]         @relation("BackofficeLeadStatusTransitionGateUpdater")
@@ -2362,6 +2364,8 @@ model Team {
   radarEvents           RadarEvent[]
   radarChannelConsents  RadarChannelConsent[]
   radarSegments         TeamRadarSegment[]
+  radarFieldDefinitions TeamRadarFieldDefinition[]
+  radarImportJobs       RadarImportJob[]
   backofficeBotSessions BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
@@ -3005,6 +3009,7 @@ model EmailCampaign {
   parentCampaignId          String?             @db.Uuid
   subCampaignIndex          Int?
   audienceContactIds        String[]            @default([]) @db.Uuid
+  sourceContactListIds      String[]            @default([]) @db.Uuid @map("source_contact_list_ids")
   status                    EmailCampaignStatus @default(draft)
   scheduledAt               DateTime?           @db.Timestamptz(6)
   sentAt                    DateTime?           @db.Timestamptz(6)
@@ -4243,6 +4248,7 @@ enum RadarSourceType {
   email_contact
   email_campaign
   whatsapp_contact
+  base_import
 
   @@map("radar_source_type")
 }
@@ -4406,6 +4412,58 @@ model TeamRadarSegment {
   @@unique([teamId, name])
   @@index([teamId, isActive])
   @@map("corretor_studio_radar_segments")
+}
+
+model TeamRadarFieldDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  key         String   @db.Text
+  label       String   @db.Text
+  valueType   String   @db.Text
+  createdBy   String   @db.Uuid
+  importJobId String?  @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team      Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator   Profile         @relation("TeamRadarFieldDefinitionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  importJob RadarImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive])
+  @@map("corretor_studio_team_radar_field_definitions")
+}
+
+model RadarImportJob {
+  id            String   @id @default(uuid()) @db.Uuid
+  importId      String   @unique @db.Text
+  teamId        String   @db.Uuid
+  requestedBy   String   @db.Uuid
+  baseName      String   @db.Text
+  sourceFormat  String   @db.Text
+  storagePath   String   @db.Text
+  fieldMapping  Json
+  status        String   @default("pending") @db.Text
+  totalRows     Int      @default(0)
+  processedRows Int      @default(0)
+  createdCount  Int      @default(0)
+  enrichedCount Int      @default(0)
+  skippedCount  Int      @default(0)
+  deferredCount Int      @default(0)
+  skippedIssues Json?
+  failedBatches Json?
+  batchSize     Int      @default(500)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  team              Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  requester         Profile                    @relation("RadarImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  fieldDefinitions  TeamRadarFieldDefinition[]
+
+  @@index([teamId, status])
+  @@index([status, createdAt])
+  @@map("corretor_studio_radar_import_jobs")
 }
 
 // ==============================

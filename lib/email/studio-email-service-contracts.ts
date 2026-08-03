@@ -38,15 +38,21 @@ export type StudioEmailCreateCampaignData = {
   name: string
   templateId: string
   contactListId?: string
+  contactListIds?: string[]
+  listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
   scheduledAt?: string
   scheduleIntervalDays?: number
+  uniformSchedule?: boolean
+  subCampaignSchedules?: Array<{ index: number; scheduledAt: string }>
 }
 
 export type StudioEmailUpdateCampaignData = {
   name?: string
   templateId?: string
   contactListId?: string
+  contactListIds?: string[]
+  listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
   scheduledAt?: string | null
 }
@@ -82,6 +88,11 @@ export interface StudioEmailCampanhasService {
     teamId: string | null | undefined,
     data: StudioEmailCreateCampaignData
   ): Promise<Campaign>
+  previewPlan(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    data: StudioEmailCreateCampaignData
+  ): Promise<import("@/app/[supabaseId]/email/campanhas/features/context/CampanhasTypes").CampaignPreviewPlan>
   getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
   update(
     supabaseId: string,
