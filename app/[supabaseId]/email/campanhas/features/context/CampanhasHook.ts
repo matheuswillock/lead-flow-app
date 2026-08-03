@@ -751,20 +751,36 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         ? new Date(campaign.scheduledAt)
         : subSchedules[0]?.scheduledAt
 
+    const MS_PER_DAY = 24 * 60 * 60 * 1000
     let intervalDays = 1
     let uniform = true
     if (subSchedules.length > 1) {
       const deltas: number[] = []
+      let allExactWholeDayGaps = true
       for (let i = 1; i < subSchedules.length; i++) {
         const diffMs =
           subSchedules[i].scheduledAt.getTime() - subSchedules[i - 1].scheduledAt.getTime()
-        const days = Math.round(diffMs / (24 * 60 * 60 * 1000))
-        if (days >= 1) deltas.push(days)
+        // Only treat as uniform when every gap is an exact identical whole-day interval.
+        // Rounding (e.g. 36h → 2 days) would silently rewrite custom schedules on save.
+        if (diffMs <= 0 || diffMs % MS_PER_DAY !== 0) {
+          allExactWholeDayGaps = false
+          break
+        }
+        const days = diffMs / MS_PER_DAY
+        if (days < 1) {
+          allExactWholeDayGaps = false
+          break
+        }
+        deltas.push(days)
       }
-      if (deltas.length > 0 && deltas.every((day) => day === deltas[0])) {
+      if (
+        allExactWholeDayGaps &&
+        deltas.length > 0 &&
+        deltas.every((day) => day === deltas[0])
+      ) {
         intervalDays = deltas[0]
         uniform = true
-      } else if (deltas.length > 0) {
+      } else {
         uniform = false
       }
     }
