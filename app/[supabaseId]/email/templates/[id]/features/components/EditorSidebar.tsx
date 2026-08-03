@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { extractTemplateVariableKeys } from "@/lib/email/interpolate";
-import { useTemplateEditorStudioContext } from "@/components/email/template-editor/TemplateEditorStudioContext";
+import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import type { TemplateHistoryItem } from "../context/TemplateEditorTypes";
 import { analyzeEmailHtml } from "../utils/analyze-email-html";
 import { EditorFloatingPanel } from "./EditorFloatingPanel";

@@ -144,7 +144,7 @@ interface VariablesPanelProps {
 }
 
 export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
-  const { draft, updateDraft } = useTemplateEditorStudioContext();
+  const { draft, updateDraft } = useTemplateEditorContext();
   const params = useParams<{ supabaseId: string }>();
   const host = useOptionalStudioEmailHost();
   const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
