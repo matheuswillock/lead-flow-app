@@ -76,10 +76,6 @@ function getSupabaseCliEnv(): NodeJS.ProcessEnv {
   };
 }
 
-function runSupabase(args: string[]) {
-  run("supabase", args, { env: getSupabaseCliEnv() });
-}
-
 function normalizeSqlIdentifier(identifier: string) {
   return identifier.trim().replace(/^"|"$/g, "").replace(/""/g, '"');
 }

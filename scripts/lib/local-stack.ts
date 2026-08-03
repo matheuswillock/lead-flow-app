@@ -67,6 +67,7 @@ export type RemoteStackOverrides = {
   SUPABASE_REMOTE_ANON_KEY?: string;
   SUPABASE_REMOTE_SERVICE_ROLE_KEY?: string;
   SUPABASE_REMOTE_JWT_SECRET?: string;
+  SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN?: string;
 };
 
 /** Lê os segredos do projeto remoto de docker/local/.env.local-stack. */
@@ -76,6 +77,11 @@ export function readRemoteStackOverrides(): RemoteStackOverrides {
     SUPABASE_REMOTE_ANON_KEY: readEnvFileValue(STACK_ENV_FILE, "SUPABASE_REMOTE_ANON_KEY"),
     SUPABASE_REMOTE_SERVICE_ROLE_KEY: readEnvFileValue(STACK_ENV_FILE, "SUPABASE_REMOTE_SERVICE_ROLE_KEY"),
     SUPABASE_REMOTE_JWT_SECRET: readEnvFileValue(STACK_ENV_FILE, "SUPABASE_REMOTE_JWT_SECRET"),
+    // Opt-in explícito: sem isso, createSupabaseAdmin() (lib/supabase/server.ts)
+    // recusa criar o client quando NEXT_PUBLIC_SUPABASE_URL aponta para o proxy
+    // local — evita que ações admin (deletar usuário, apagar arquivo) mutem o
+    // projeto remoto de verdade a partir de um `bun dev` local.
+    SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN: readEnvFileValue(STACK_ENV_FILE, "SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN"),
   };
 }
 
