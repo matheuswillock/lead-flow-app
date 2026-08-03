@@ -11,7 +11,7 @@ import { SiteHeader } from "@/components/site-header";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { getFeatureSlugForAppPath, isAssociadosAppPath } from "@/lib/features/feature-route-access"
+import { getFeatureSlugsForAppPath, isAssociadosAppPath } from "@/lib/features/feature-route-access"
 import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext";
 
 interface LayoutContentProps {
@@ -76,13 +76,13 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
   }
 
   const shouldShowNoTeamsMessage = teams.length === 0;
-  const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
+  const requiredFeatureSlugs = getFeatureSlugsForAppPath(pathname);
   const isAssociadosRoute = isAssociadosAppPath(pathname);
   const shouldBlockByFeature =
     !shouldShowNoTeamsMessage &&
     !featureLoading &&
     !operationalAccessLoading &&
-    ((!!requiredFeatureSlug && !hasAccess(requiredFeatureSlug)) ||
+    ((requiredFeatureSlugs.length > 0 && !requiredFeatureSlugs.some((slug) => hasAccess(slug))) ||
       (isAssociadosRoute && !operationalAccess.associadosQueue));
   const canShowWhatsNewModal = !shouldShowNoTeamsMessage && !shouldBlockByFeature;
 

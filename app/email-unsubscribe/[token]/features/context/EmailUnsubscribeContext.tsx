@@ -44,7 +44,12 @@ export function EmailUnsubscribeProvider({
   const [state, setState] = useState<EmailUnsubscribeState>(() => {
     const base = createInitialEmailUnsubscribeState(token)
     if (initialInfo !== undefined) {
-      const completed = !!(initialInfo?.alreadyUnsubscribed || initialInfo?.alreadyBlocked)
+      // initialInfo === null significa que o Server Component tentou carregar
+      // e o token era inválido/expirado — exibir erro imediatamente.
+      if (initialInfo === null) {
+        return { ...base, loading: false, info: null, error: "Link inválido ou expirado" }
+      }
+      const completed = !!(initialInfo.alreadyUnsubscribed || initialInfo.alreadyBlocked)
       return { ...base, loading: false, info: initialInfo, completed }
     }
     return base

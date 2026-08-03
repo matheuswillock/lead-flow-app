@@ -1,0 +1,138 @@
+# =============================================================================
+# docker-compose.local.yml — Stack local híbrido (Postgres + Realtime)
+# =============================================================================
+#
+# Login (Auth) e Storage continuam no Supabase remoto — sem mudança de código,
+# sem containers extras. Este stack sobe só o necessário para o resto:
+#
+#   db        Postgres local (dados via Prisma, RLS, publication supabase_realtime)
+#   realtime  WebSocket local — lê o WAL do Postgres local (por isso não pode
+#             ser o Realtime remoto: ele só enxerga o banco que replica)
+#   proxy     Caddy — unifica tudo sob uma única URL para o supabase-js:
+#               /auth/v1, /storage/v1, /rest/v1  -> Supabase remoto
+#               /realtime/v1                      -> Realtime local
+#
+# Isso substitui o `supabase start` no dia a dia do `bun dev`: não sobe GoTrue,
+# Kong completo, PostgREST, Storage API, Studio nem Inbucket — bem mais leve
+# em RAM/CPU. Para o stack Supabase completo (ex.: debugar upload local),
+# use `bun run dev -- --full-supabase` (continua usando `supabase start`).
+#
+# -----------------------------------------------------------------------------
+# CONFIGURAÇÃO OBRIGATÓRIA
+# -----------------------------------------------------------------------------
+#
+# 1. Copie docker/local/.env.local-stack.example para docker/local/.env.local-stack
+# 2. Preencha SUPABASE_REMOTE_HOST / SUPABASE_REMOTE_JWT_SECRET / chaves
+#    remotas (Dashboard do projeto remoto -> Settings -> API)
+#
+# -----------------------------------------------------------------------------
+# USO
+# -----------------------------------------------------------------------------
+#
+#   bun run local:up      # sobe o stack (equivalente ao comando abaixo)
+#   bun run local:logs
+#   bun run local:down
+#
+#   docker compose -f docker-compose.local.yml --env-file docker/local/.env.local-stack up -d
+#
+# Conexão com o Postgres local:
+#   postgresql://postgres:postgres@127.0.0.1:55322/postgres
+#
+# =============================================================================
+
+services:
+  db:
+    image: supabase/postgres:17.6.1.149
+    container_name: leadflow-local-db
+    restart: unless-stopped
+    ports:
+      # 55322 — mesma porta usada historicamente pelo Supabase CLI local,
+      # para não quebrar scripts existentes (clone, migrations).
+      - "55322:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    command:
+      - postgres
+      # A imagem supabase/postgres define listen_addresses=localhost por padrão,
+      # o que bloqueia tanto o port mapping do host quanto conexões de outros
+      # containers (ex: realtime) — precisa ouvir em todas as interfaces.
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - max_connections=50
+    volumes:
+      - leadflow_local_pgdata:/var/lib/postgresql/data
+      # Só roda no primeiro boot (volume vazio) — cria o schema `_realtime`
+      # que o container "realtime" abaixo precisa para funcionar.
+      - ./docker/local/init-realtime-schema.sql:/docker-entrypoint-initdb.d/init-realtime-schema.sql:ro,Z
+      # Stub do schema `storage` (Storage API é remoto) — necessário para
+      # migrations que fazem INSERT em storage.buckets/CREATE POLICY em
+      # storage.objects durante `db reset --db-url`.
+      # Prefixo "zz-" é proposital: precisa rodar DEPOIS de migrate.sh (a
+      # imagem cria o role "postgres" lá) — nomes de init script rodam em
+      # ordem alfabética e este script faz ALTER ... OWNER TO postgres.
+      - ./docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro,Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  realtime:
+    image: supabase/realtime:v2.76.5
+    container_name: leadflow-local-realtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      # supabase_admin (não "postgres") é o dono do schema _realtime na
+      # imagem supabase/postgres — mesma senha do POSTGRES_PASSWORD.
+      DB_USER: supabase_admin
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      # 16 caracteres — usado só para criptografar campos internos do Realtime
+      # (tenants/extensions), não é um segredo compartilhado com o remoto.
+      DB_ENC_KEY: supabaserealtime
+      # Precisa ser IDÊNTICO ao JWT secret do projeto remoto — é assim que o
+      # Realtime local valida os tokens emitidos pelo Auth remoto.
+      API_JWT_SECRET: ${SUPABASE_REMOTE_JWT_SECRET:?Defina SUPABASE_REMOTE_JWT_SECRET em docker/local/.env.local-stack}
+      # Segredo interno do Phoenix (Elixir) — não sensível fora deste container local.
+      SECRET_KEY_BASE: "local-dev-only-secret-key-base-nao-usar-em-producao-0000000000000000"
+      ERL_AFLAGS: "-proto_dist inet_tcp"
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      # Cria automaticamente um tenant "self-host" usando API_JWT_SECRET como
+      # jwt_secret do tenant — sem isso seria necessário registrar via API.
+      SEED_SELF_HOST: "true"
+      RUN_JANITOR: "true"
+
+  proxy:
+    image: caddy:2-alpine
+    container_name: leadflow-local-proxy
+    restart: unless-stopped
+    ports:
+      - "55321:55321"
+    environment:
+      SUPABASE_REMOTE_HOST: ${SUPABASE_REMOTE_HOST:?Defina SUPABASE_REMOTE_HOST em docker/local/.env.local-stack}
+    volumes:
+      # ":Z" relabela o bind mount para SELinux (Fedora/RHEL + Podman) sem
+      # afetar hosts sem SELinux (Docker Desktop, Ubuntu, macOS ignoram a flag).
+      - ./docker/local/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+    depends_on:
+      - realtime
+
+volumes:
+  leadflow_local_pgdata:

@@ -1,0 +1,44 @@
+# =============================================================================
+# Caddyfile — proxy local do stack híbrido (docker-compose.local.yml)
+# =============================================================================
+#
+# Unifica uma única URL (http://127.0.0.1:55321) para o supabase-js, que deriva
+# Auth/Storage/REST/Realtime sempre da mesma NEXT_PUBLIC_SUPABASE_URL:
+#
+#   /auth/v1/*     -> Supabase remoto (login continua 100% remoto)
+#   /storage/v1/*  -> Supabase remoto (anexos/mídia continuam remotos)
+#   /rest/v1/*     -> Supabase remoto (não usado hoje pelo app, rede de segurança)
+#   /realtime/v1/* -> Realtime local (container "realtime" deste compose,
+#                     que lê o WAL do Postgres local — por isso não pode ir
+#                     para o remoto: ele só enxerga o banco que replica)
+#
+# Variáveis de ambiente (via docker-compose.local.yml, lidas de
+# docker/local/.env.local-stack):
+#   SUPABASE_REMOTE_HOST  Host do projeto remoto, sem "https://" (ex: xxxx.supabase.co)
+#
+# Caddy encaminha upgrades de WebSocket automaticamente em reverse_proxy —
+# nenhuma configuração extra é necessária para /realtime/v1.
+# =============================================================================
+
+{
+	auto_https off
+	admin off
+}
+
+:55321 {
+	@realtime path /realtime/v1/*
+	handle @realtime {
+		reverse_proxy realtime:4000
+	}
+
+	@remote path /auth/v1/* /storage/v1/* /rest/v1/*
+	handle @remote {
+		reverse_proxy https://{$SUPABASE_REMOTE_HOST} {
+			header_up Host {$SUPABASE_REMOTE_HOST}
+		}
+	}
+
+	handle {
+		respond "Lead Flow local proxy: rota não mapeada" 404
+	}
+}

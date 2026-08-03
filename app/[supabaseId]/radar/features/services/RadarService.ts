@@ -11,6 +11,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
@@ -280,6 +281,35 @@ export class RadarFrontendService implements IRadarService {
       body: JSON.stringify({ rules }),
     })
     return parseOutput<{ count: number }>(res)
+  }
+
+  async getProfileTouchpoints(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileTouchpoints> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/touchpoints`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileTouchpoints>(res)
+  }
+
+  async materializeContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    name?: string
+  ): Promise<{ listId: string; totalContacts: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/${encodeURIComponent(segmentSlug)}/materialize-list`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(name ? { name } : {}),
+    })
+    return parseOutput<{ listId: string; totalContacts: number }>(res)
   }
 }
 

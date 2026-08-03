@@ -1,9 +1,23 @@
-import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, CampaignLogDetail } from '../context/CampanhasTypes'
+import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, CampaignLogDetail, CampaignPreviewPlan } from '../context/CampanhasTypes'
 import { API_CLIENT_BASE } from "@/lib/route-map";
+
+export type CampaignWritePayload = {
+  name: string
+  templateId: string
+  contactListId?: string
+  contactListIds?: string[]
+  listStrategy?: "single" | "merge" | "per_list"
+  radarSegmentSlug?: string
+  scheduledAt?: string
+  scheduleIntervalDays?: number
+  uniformSchedule?: boolean
+  subCampaignSchedules?: Array<{ index: number; scheduledAt: string }>
+}
 
 export interface ICampanhasService {
   list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
-  create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; radarSegmentSlug?: string; scheduledAt?: string; scheduleIntervalDays?: number }): Promise<Campaign>
+  create(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload): Promise<Campaign>
+  previewPlan(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload): Promise<CampaignPreviewPlan>
   getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
   send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{
     campaignId: string
@@ -14,7 +28,9 @@ export interface ICampanhasService {
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
-  update(supabaseId: string, teamId: string | null | undefined, id: string, data: { name?: string; templateId?: string; contactListId?: string; scheduledAt?: string | null }): Promise<Campaign>
+  update(supabaseId: string, teamId: string | null | undefined, id: string, data: Partial<CampaignWritePayload> & {
+    subCampaignUpdates?: Array<{ id: string; name?: string; scheduledAt?: string | null }>
+  }): Promise<Campaign>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
@@ -48,7 +64,7 @@ export class CampanhasService implements ICampanhasService {
     return json.result as { campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }
   }
 
-  async create(supabaseId: string, teamId: string | null | undefined, data: { name: string; templateId: string; contactListId?: string; radarSegmentSlug?: string; scheduledAt?: string; scheduleIntervalDays?: number }) {
+  async create(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload) {
     const res = await fetch(`${this.baseUrl}/campaigns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
@@ -58,6 +74,18 @@ export class CampanhasService implements ICampanhasService {
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return json.result as Campaign
+  }
+
+  async previewPlan(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload) {
+    const res = await fetch(`${this.baseUrl}/campaigns/preview-plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    return json.result as CampaignPreviewPlan
   }
 
   async getById(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -98,7 +126,9 @@ export class CampanhasService implements ICampanhasService {
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
   }
 
-  async update(supabaseId: string, teamId: string | null | undefined, id: string, data: { name?: string; templateId?: string; contactListId?: string; scheduledAt?: string | null }) {
+  async update(supabaseId: string, teamId: string | null | undefined, id: string, data: Partial<CampaignWritePayload> & {
+    subCampaignUpdates?: Array<{ id: string; name?: string; scheduledAt?: string | null }>
+  }) {
     const res = await fetch(`${this.baseUrl}/campaigns/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },

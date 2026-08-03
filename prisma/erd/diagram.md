@@ -765,6 +765,7 @@ canceled canceled
 scheduled scheduled
 sending sending
 sent sent
+partially_sent partially_sent
 canceled canceled
 failed failed
 archived archived
@@ -1033,6 +1034,7 @@ lead_id lead_id
 email_contact_id email_contact_id
 portfolio_id portfolio_id
 whatsapp_contact_id whatsapp_contact_id
+visitor_session visitor_session
         }
     
 
@@ -1043,6 +1045,8 @@ portfolio portfolio
 email_contact email_contact
 email_campaign email_campaign
 whatsapp_contact whatsapp_contact
+base_import base_import
+pixel_hit pixel_hit
         }
     
 
@@ -1330,6 +1334,30 @@ form_completed form_completed
 lead_created lead_created
 lead_attached lead_attached
 meeting_scheduled meeting_scheduled
+        }
+    
+
+
+        backoffice_lead_extraction_status {
+            PENDING PENDING
+RUNNING RUNNING
+DONE DONE
+ERROR ERROR
+        }
+    
+
+
+        backoffice_company_type {
+            MEI MEI
+ME ME
+EPP EPP
+EI EI
+EIRELI EIRELI
+SLU SLU
+LTDA LTDA
+SA SA
+SS SS
+OUTROS OUTROS
         }
     
   "corretor_studio_profiles" {
@@ -2237,6 +2265,27 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_team_radar_pixel_configs" {
+    String id "🗝️"
+    String publicToken 
+    String allowedOrigins 
+    DateTime lastUsedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_radar_pixel_hit_logs" {
+    String id "🗝️"
+    String eventType 
+    String visitorSession 
+    String origin "❓"
+    String userAgent "❓"
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_team_webhooks" {
     String id "🗝️"
     TeamWebhookDirection direction 
@@ -2499,6 +2548,7 @@ meeting_scheduled meeting_scheduled
     String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
     String audienceContactIds 
+    String source_contact_list_ids 
     EmailCampaignStatus status 
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
@@ -3204,6 +3254,39 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_team_radar_field_definitions" {
+    String id "🗝️"
+    String key 
+    String label 
+    String valueType 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_radar_import_jobs" {
+    String id "🗝️"
+    String importId 
+    String baseName 
+    String sourceFormat 
+    String storagePath 
+    Json fieldMapping 
+    String status 
+    Int totalRows 
+    Int processedRows 
+    Int createdCount 
+    Int enrichedCount 
+    Int skippedCount 
+    Int deferredCount 
+    Json skippedIssues "❓"
+    Json failedBatches "❓"
+    Int batchSize 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_bot_channels" {
     String id "🗝️"
     String displayName 
@@ -3618,6 +3701,43 @@ meeting_scheduled meeting_scheduled
     DateTime createdAt 
     }
   
+
+  "backoffice_lead_extractions" {
+    String id "🗝️"
+    Json filters 
+    Int totalCount 
+    BackofficeLeadExtractionStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_lead_extraction_results" {
+    String id "🗝️"
+    String taxId 
+    String name 
+    String tradeName "❓"
+    String email "❓"
+    String phone "❓"
+    String city "❓"
+    String state "❓"
+    String cnae "❓"
+    String cnaeName "❓"
+    BackofficeCompanyType type "❓"
+    Json raw "❓"
+    DateTime createdAt 
+    }
+  
+
+  "short_links" {
+    String id "🗝️"
+    String code 
+    String targetUrl 
+    DateTime expiresAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -3801,6 +3921,9 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_team_studio_webhook_configs" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" }o--|| corretor_studio_profiles : "updatedBy"
     "corretor_studio_team_studio_webhook_request_logs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_pixel_configs" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_pixel_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "corretor_studio_team_radar_pixel_hit_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_webhooks" |o--|| "TeamWebhookDirection" : "enum:direction"
     "corretor_studio_team_webhooks" |o--|| "TeamWebhookStatus" : "enum:status"
     "corretor_studio_team_webhooks" |o--|o "TeamWebhookDestinationPreset" : "enum:destinationPreset"
@@ -4031,6 +4154,11 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_radar_field_definitions" }o--|o corretor_studio_radar_import_jobs : "importJob"
+    "corretor_studio_radar_import_jobs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
     "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"
@@ -4108,4 +4236,8 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
+    "backoffice_lead_extractions" |o--|| "BackofficeLeadExtractionStatus" : "enum:status"
+    "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
+    "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
 ```

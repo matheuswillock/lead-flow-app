@@ -581,6 +581,75 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Resolve (ou cria) um perfil anônimo identificado apenas por uma sessão de visitante (D8).
+   * Usa o mesmo padrão de lock advisory que `resolveProfileForEmail` para evitar corridas.
+   */
+  async resolveProfileForVisitorSession(input: {
+    teamId: string
+    visitorSession: string
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':vs:' || ${input.visitorSession}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: "visitor_session",
+            normalizedValue: input.visitorSession,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: { lastSeenAt: input.lastSeenAt ?? new Date() },
+        })
+        return { profile, wasExisting: true }
+      }
+
+      const profile = await tx.radarProfile.create({
+        data: {
+          teamId: input.teamId,
+          displayName: "Visitante Anônimo",
+          normalizedName: "visitante anonimo",
+          normalizedPhone: null,
+          displayPhone: null,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: "visitor_session",
+          value: input.visitorSession,
+          normalizedValue: input.visitorSession,
+          source: "pixel_hit",
+          isPrimary: true,
+        },
+      })
+
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      return { profile, wasExisting: false }
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
@@ -810,6 +879,7 @@ export class RadarRepository {
         normalizedName: true,
         normalizedPhone: true,
         normalizedPrimaryDocument: true,
+        profileData: true,
         identities: {
           orderBy: { type: "asc" },
         },
@@ -846,6 +916,33 @@ export class RadarRepository {
 
   async countProfiles(scope: RadarTeamScope) {
     return prisma.radarProfile.count({ where: { teamId: scope.teamId } })
+  }
+
+  /**
+   * D9: verifica se o perfil existe e pertence ao time (scoped).
+   * Usado antes de agrupar eventos para distinguir "perfil inexistente" de "perfil sem eventos".
+   */
+  async profileExistsInScope(scope: RadarTeamScope, profileId: string): Promise<boolean> {
+    const row = await prisma.radarProfile.findFirst({
+      where: { id: profileId, teamId: scope.teamId },
+      select: { id: true },
+    })
+    return row !== null
+  }
+
+  /**
+   * D9: agrupa todos os eventos do perfil por `eventType` via Prisma groupBy,
+   * retornando contagem, primeiro e último evento por tipo. O agrupamento por
+   * canal (prefixo) é feito na camada de use case.
+   */
+  async groupProfileEventsByType(scope: RadarTeamScope, profileId: string) {
+    return prisma.radarEvent.groupBy({
+      by: ["eventType"],
+      where: { profileId, teamId: scope.teamId },
+      _count: { _all: true },
+      _min: { occurredAt: true },
+      _max: { occurredAt: true },
+    })
   }
 
   async findLeadsForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
@@ -1215,6 +1312,66 @@ export class RadarRepository {
     return prisma.emailTeamVariable.findMany({
       where: { teamId, isActive: true, valueSource: "RADAR", defaultValue: { not: null } },
       select: { key: true, defaultValue: true },
+    })
+  }
+
+  async findPixelConfigByTeamId(teamId: string) {
+    return prisma.teamRadarPixelConfig.findUnique({
+      where: { teamId },
+      select: { publicToken: true, allowedOrigins: true, lastUsedAt: true },
+    })
+  }
+
+  async upsertPixelConfig(teamId: string, profileId: string, data: { publicToken: string; allowedOrigins: string[] }) {
+    return prisma.teamRadarPixelConfig.upsert({
+      where: { teamId },
+      create: { teamId, publicToken: data.publicToken, allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
+      update: { allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
+      select: { publicToken: true, allowedOrigins: true, lastUsedAt: true },
+    })
+  }
+
+  async deletePixelConfig(teamId: string) {
+    await prisma.teamRadarPixelConfig.deleteMany({ where: { teamId } })
+  }
+
+  async findPixelHitLogs(teamId: string, limit: number) {
+    return prisma.teamRadarPixelHitLog.findMany({
+      where: { teamId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { id: true, teamId: true, eventType: true, visitorSession: true, origin: true, userAgent: true, metadata: true, createdAt: true },
+    })
+  }
+
+  async findPixelConfigByPublicToken(publicToken: string): Promise<{ teamId: string; allowedOrigins: string[] } | null> {
+    return prisma.teamRadarPixelConfig.findUnique({
+      where: { publicToken },
+      select: { teamId: true, allowedOrigins: true },
+    })
+  }
+
+  async touchPixelLastUsed(teamId: string) {
+    await prisma.teamRadarPixelConfig.update({ where: { teamId }, data: { lastUsedAt: new Date() } })
+  }
+
+  async logPixelHit(input: {
+    teamId: string
+    eventType: string
+    visitorSession: string
+    origin: string | null
+    userAgent: string | null
+    metadata?: object
+  }) {
+    await prisma.teamRadarPixelHitLog.create({
+      data: {
+        teamId: input.teamId,
+        eventType: input.eventType,
+        visitorSession: input.visitorSession,
+        origin: input.origin,
+        userAgent: input.userAgent,
+        metadata: input.metadata as Prisma.InputJsonValue | undefined,
+      },
     })
   }
 }

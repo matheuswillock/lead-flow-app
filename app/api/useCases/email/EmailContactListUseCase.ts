@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailContactListService } from "@/app/api/services/EmailContactList/EmailContactListService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
   EMAIL_BLOCKLIST_NAME,
   ensureTeamEmailBlocklist,
@@ -249,7 +250,7 @@ export class EmailContactListUseCase {
         .map((list) => {
           const isDefault = list.id === defaultList.id || list.isSystemDefault
           const isBlocklist = list.id === blocklist.id || list.isBlocklist
-          return {
+          return resolveEmailCreator({
             ...list,
             name: isDefault ? DEFAULT_LIST_NAME : isBlocklist ? EMAIL_BLOCKLIST_NAME : list.name,
             description: list.description,
@@ -263,7 +264,7 @@ export class EmailContactListUseCase {
             isBlocklist,
             activeImport: isBlocklist ? null : (activeImportByListId.get(list.id) ?? null),
             managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
-          }
+          })
         })
         .sort((a, b) => {
           if (a.isSystemDefault !== b.isSystemDefault) {
@@ -307,10 +308,10 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista de contatos não encontrada"], null)
       }
 
-      return new Output(true, [], [], {
+      return new Output(true, [], [], resolveEmailCreator({
         ...list,
         managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
-      })
+      }))
     } catch (error) {
       console.error("[EmailContactListUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar lista de contatos"], null)
@@ -478,7 +479,7 @@ export class EmailContactListUseCase {
   private async cleanupSegmentListId(listId: string, segmentId: string): Promise<void> {
     const seg = await prisma.teamRadarSegment.findFirst({
       where: { id: segmentId },
-      select: { id: true, rulesJson: true },
+      select: { id: true, teamId: true, rulesJson: true },
     })
     if (!seg) return
     const rules = parseRadarSegmentRules(seg.rulesJson)
@@ -494,6 +495,13 @@ export class EmailContactListUseCase {
             c === listCondition ? { ...listCondition, listIds: nextListIds } : c
           )
         : rules.conditions.filter((c) => c !== listCondition)
+
+    // rulesJson exige ≥1 condição; sem condições restantes, remove/desativa o segmento.
+    if (nextConditions.length === 0) {
+      await teamRadarSegmentService.remove(seg.teamId, segmentId)
+      return
+    }
+
     await prisma.teamRadarSegment.update({
       where: { id: segmentId },
       data: { rulesJson: { ...rules, conditions: nextConditions } as unknown as object },
@@ -520,10 +528,7 @@ export class EmailContactListUseCase {
         return new Output(true, ["Segmento desvinculado da lista"], [], null)
       }
 
-      if (existing.radarSegmentId && existing.radarSegmentId !== segmentId) {
-        await this.cleanupSegmentListId(listId, existing.radarSegmentId)
-      }
-
+      // Valida o segmento de destino antes de mutar o vínculo/regras antigos.
       const segment = await teamRadarSegmentService.findById(ctx.teamId, segmentId)
       if (!segment) {
         return new Output(false, [], ["Segmento não encontrado"], null)
@@ -564,8 +569,22 @@ export class EmailContactListUseCase {
         }
       }
 
+      const oldSegmentId =
+        existing.radarSegmentId && existing.radarSegmentId !== segmentId
+          ? existing.radarSegmentId
+          : null
+
+      if (oldSegmentId) {
+        await this.cleanupSegmentListId(listId, oldSegmentId)
+      }
+
       if (nextRules !== rules) {
-        await teamRadarSegmentService.update(ctx.teamId, segmentId, { rules: nextRules })
+        const updated = await teamRadarSegmentService.update(ctx.teamId, segmentId, {
+          rules: nextRules,
+        })
+        if (!updated) {
+          return new Output(false, [], ["Segmento não encontrado"], null)
+        }
       }
 
       await prisma.emailContactList.update({

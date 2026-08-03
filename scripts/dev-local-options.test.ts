@@ -84,4 +84,18 @@ describe("parseDevLocalArgs", () => {
       "Cannot request Evolution and pass --skip-evo at the same time.",
     ]);
   });
+
+  test("defaults to the hybrid local stack (fullSupabase false)", () => {
+    const options = parseDevLocalArgs([]);
+
+    expect(options.fullSupabase).toBe(false);
+  });
+
+  test("enables full Supabase stack with --full-supabase", () => {
+    const options = parseDevLocalArgs(["--full-supabase"]);
+
+    expect(options.fullSupabase).toBe(true);
+    expect(options.nextArgs).toEqual([]);
+    expect(options.errors).toEqual([]);
+  });
 });

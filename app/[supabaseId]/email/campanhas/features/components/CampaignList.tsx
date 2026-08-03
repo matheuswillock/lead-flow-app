@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -40,7 +40,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 
@@ -53,7 +53,7 @@ function CampaignActionsMenu({
   archivingId,
   readOnly,
   openView,
-  openEdit,
+  openEditWizard,
   handleSend,
   handleCancel,
   handleDeleteDraft,
@@ -68,12 +68,12 @@ function CampaignActionsMenu({
   archivingId: string | null
   readOnly: boolean
   openView: (campaign: Campaign) => void
-  openEdit: (campaign: Campaign) => void
+  openEditWizard: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
   handleArchive: (id: string) => Promise<void>
-  onOpenAnalytics: (campaign: Campaign) => void
+  onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
@@ -95,10 +95,10 @@ function CampaignActionsMenu({
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
-  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
+  const canEdit = ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
-  const canArchive = ["sent", "failed"].includes(campaign.status)
+  const canArchive = ["sent", "failed", "partially_sent"].includes(campaign.status)
 
   async function handleSendConfirm() {
     setSending(true)
@@ -151,7 +151,7 @@ function CampaignActionsMenu({
                 <Send className="mr-2 h-4 w-4" />
                 Disparar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+              <DropdownMenuItem onClick={() => void openEditWizard(campaign)} disabled={!canEdit}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
@@ -160,6 +160,10 @@ function CampaignActionsMenu({
           <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
             <BarChart3 className="mr-2 h-4 w-4" />
             Métricas
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenAnalytics(campaign, "logs")}>
+            <ScrollText className="mr-2 h-4 w-4" />
+            Ver logs
           </DropdownMenuItem>
           {!readOnly ? (
             <>
@@ -303,7 +307,7 @@ function CampaignActionsMenu({
 export function CampaignList({
   onOpenAnalytics,
 }: {
-  onOpenAnalytics: (campaign: Campaign) => void
+  onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
@@ -327,7 +331,7 @@ export function CampaignList({
     handlePageSizeChange,
     openWizard,
     openView,
-    openEdit,
+    openEditWizard,
     credits,
   } = useCampanhasContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
@@ -406,14 +410,7 @@ export function CampaignList({
                       </div>
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
-                      <div className="flex flex-col items-center gap-1">
-                        <span>
-                          {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
-                        </span>
-                        {campaign.managedByCorretorStudio ? (
-                          <ManagedByCorretorStudioBadge />
-                        ) : null}
-                      </div>
+                      {formatEmailCreatorLabel(campaign)}
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm text-muted-foreground">
                       <div>{campaign.template?.name ?? "—"}</div>
@@ -425,7 +422,7 @@ export function CampaignList({
                           status={isSending ? "sending" : campaign.status}
                           scheduledAt={campaign.scheduledAt}
                         />
-                        {campaign.status === "failed" && campaign.errorMessage ? (
+                        {(campaign.status === "failed" || campaign.status === "partially_sent") && campaign.errorMessage ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Badge
@@ -471,7 +468,7 @@ export function CampaignList({
                             archivingId={archivingId}
                             readOnly={readOnly}
                             openView={openView}
-                            openEdit={openEdit}
+                            openEditWizard={openEditWizard}
                             handleSend={handleSend}
                             handleCancel={handleCancel}
                             handleDeleteDraft={handleDeleteDraft}

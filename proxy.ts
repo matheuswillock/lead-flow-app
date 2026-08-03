@@ -17,9 +17,60 @@ import {
   redirectWithSession,
   updateSession,
 } from "@/lib/supabase/auth-sessions"
+import { API_CLIENT_SLUG } from "@/lib/route-map"
+
+/** Prefixo público das chamadas client-side: /api/q/... */
+const SLUG_PREFIX = `/api/${API_CLIENT_SLUG}/`
+
+/** Prefixo interno reescrito — nunca exposto ao browser. */
+const REAL_API_PREFIX = "/api/v1/"
+
+/**
+ * Rate limiting por IP, restrito às rotas /api/q/** para não penalizar
+ * usuários legítimos em rotas de página. Janela: 60 s, máximo: 120 req.
+ * Para ambientes multi-instância, migrar para Vercel KV.
+ */
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 120
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+function checkApiRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+  entry.count += 1
+  return entry.count <= RATE_LIMIT_MAX
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // URL rewriting: /api/q/** → /api/v1/** + rate limiting somente neste path.
+  if (pathname.startsWith(SLUG_PREFIX)) {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip") ??
+      "unknown"
+
+    if (!checkApiRateLimit(ip)) {
+      return new NextResponse("Too Many Requests", {
+        status: 429,
+        headers: { "Retry-After": "60" },
+      })
+    }
+
+    const rest = pathname.slice(SLUG_PREFIX.length)
+    const rewrittenUrl = request.nextUrl.clone()
+    rewrittenUrl.pathname = REAL_API_PREFIX + rest
+
+    const rewriteResponse = NextResponse.rewrite(rewrittenUrl)
+    rewriteResponse.headers.set("X-Content-Type-Options", "nosniff")
+    rewriteResponse.headers.set("X-Frame-Options", "DENY")
+    return rewriteResponse
+  }
 
   try {
     if (pathname === "/monitoring" || pathname.startsWith("/monitoring/")) {

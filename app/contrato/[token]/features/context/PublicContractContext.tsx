@@ -42,7 +42,7 @@ export function PublicContractProvider({
   const [isDownloading, setIsDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlightKey = useRef<string | null>(null)
-  const lastSuccessKey = useRef<string | null>(token)
+  const lastSuccessKey = useRef<string | null>(initialShare ? `share:${token}` : null)
 
   const loadShare = useCallback(async () => {
     const requestKey = `share:${token}`

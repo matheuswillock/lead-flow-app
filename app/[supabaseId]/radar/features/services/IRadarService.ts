@@ -4,6 +4,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
@@ -110,4 +111,11 @@ export interface IRadarService {
     teamId: string,
     rules: RadarSegmentRules
   ): Promise<{ count: number }>
+  getProfileTouchpoints(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileTouchpoints>
+  materializeContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    name?: string
+  ): Promise<{ listId: string; totalContacts: number }>
 }

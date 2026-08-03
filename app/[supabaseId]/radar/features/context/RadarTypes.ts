@@ -53,12 +53,31 @@ export type RadarLeadStatusCondition = {
   statuses: string[]
 }
 
+export type RadarLeadFieldCondition = {
+  kind: "lead_field"
+  fieldKey:
+    | "status"
+    | "currentHealthPlan"
+    | "currentValue"
+    | "ticket"
+    | "meetingDate"
+    | "followUpAt"
+    | "contractDueDate"
+    | "soldPlan"
+    | "isReferral"
+    | "assignedTo"
+    | "closerId"
+  operator: string
+  value?: unknown
+}
+
 export type RadarSegmentCondition =
   | RadarProfileFieldCondition
   | RadarConsentCondition
   | RadarEventCondition
   | RadarLeadCustomFieldCondition
   | RadarLeadStatusCondition
+  | RadarLeadFieldCondition
 
 export type RadarSegmentRules = {
   match: "all" | "any"
@@ -97,6 +116,7 @@ export type RadarProfileDetail = RadarProfileListItem & {
   normalizedName: string
   normalizedPhone: string | null
   primaryDocument: string | null
+  profileData?: Record<string, unknown> | null
   identities: Array<{
     id: string
     type: string
@@ -134,4 +154,16 @@ export type RadarSyncResult = {
   enriched: number
   skipped: number
   errors: string[]
+}
+
+export type RadarTouchpointChannel = {
+  channel: string
+  count: number
+  firstEventAt: string
+  lastEventAt: string
+}
+
+export type RadarProfileTouchpoints = {
+  total: number
+  breakdown: RadarTouchpointChannel[]
 }

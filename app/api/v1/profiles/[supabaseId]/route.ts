@@ -2,31 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { validateUpdateProfileRequest } from "../DTO/requestToUpdateProfile";
 import { Output } from "@/lib/output";
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseAdmin as createSupabaseAdminClient } from '@/lib/supabase/server';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { assertProfileOwnership } from "@/app/api/v1/profiles/utils/assertProfileOwnership";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const profileUseCase = new RegisterNewUserProfile();
-
-// Helper para criar cliente Supabase admin
-function createSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    console.error('[Supabase Admin] Credenciais não configuradas');
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  });
-}
 
 /**
  * GET /api/v1/profiles/[supabaseId]
