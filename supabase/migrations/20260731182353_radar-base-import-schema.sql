@@ -32,7 +32,7 @@ END $$;
 DO $$ BEGIN
   ALTER TABLE "public"."corretor_studio_team_radar_field_definitions"
     ADD CONSTRAINT "corretor_studio_team_radar_field_definitions_createdBy_fkey"
-    FOREIGN KEY ("createdBy") REFERENCES "public"."profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    FOREIGN KEY ("createdBy") REFERENCES "public"."corretor_studio_profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -79,7 +79,7 @@ END $$;
 DO $$ BEGIN
   ALTER TABLE "public"."corretor_studio_radar_import_jobs"
     ADD CONSTRAINT "corretor_studio_radar_import_jobs_requestedBy_fkey"
-    FOREIGN KEY ("requestedBy") REFERENCES "public"."profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    FOREIGN KEY ("requestedBy") REFERENCES "public"."corretor_studio_profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

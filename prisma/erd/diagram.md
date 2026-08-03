@@ -765,6 +765,7 @@ canceled canceled
 scheduled scheduled
 sending sending
 sent sent
+partially_sent partially_sent
 canceled canceled
 failed failed
 archived archived

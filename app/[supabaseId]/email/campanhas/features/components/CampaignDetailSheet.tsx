@@ -47,6 +47,8 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
+import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 type CampaignAnalyticsTarget = {
   id: string
@@ -209,8 +211,8 @@ export function CampaignDetailSheet({
   )
   const canEdit =
     detailCampaign &&
-    ["draft", "scheduled"].includes(detailCampaign.status)
-
+    !isParentCampaign &&
+    ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(detailCampaign.status)
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
       campaign: subCampaign,
@@ -231,10 +233,16 @@ export function CampaignDetailSheet({
           <SheetTitle className="pr-8">{detailCampaign?.name ?? "Campanha"}</SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-2">
             {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} /> : null}
-            {isParentCampaign ? (
+            {isParentCampaign && detailCampaign?.status === "partially_sent" &&
+             detailCampaign.partiallySentCount != null &&
+             detailCampaign.partiallySentTotal != null ? (
+              <Badge variant="outline" className="border-semantic-warning-border text-semantic-warning">
+                {detailCampaign.partiallySentCount} de {detailCampaign.partiallySentTotal} partes enviadas
+              </Badge>
+            ) : isParentCampaign ? (
               <Badge variant="secondary">
                 {detailCampaign?.subCampaignCount ?? detailCampaign?.subCampaigns?.length ?? 0}{" "}
-                sub-campanhas
+                partes
               </Badge>
             ) : null}
             <span>Campanha atual.</span>
@@ -282,7 +290,14 @@ export function CampaignDetailSheet({
 
                 {isParentCampaign && detailCampaign.subCampaigns && detailCampaign.subCampaigns.length > 0 ? (
                   <div className="mb-4 flex flex-col gap-2">
-                    <p className="text-sm font-medium">Sub-campanhas</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Partes da campanha</p>
+                      {detailCampaign.status === "partially_sent" ? (
+                        <span className="text-xs text-semantic-warning">
+                          {detailCampaign.subCampaigns.filter((sub) => sub.status === "failed").length} parte(s) com falha — use "Reenviar" para retentar
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="overflow-x-auto rounded-md border">
                       <Table className="min-w-[760px]">
                         <TableHeader>
@@ -291,12 +306,13 @@ export function CampaignDetailSheet({
                             <TableHead>Status</TableHead>
                             <TableHead>Agendamento</TableHead>
                             <TableHead className="text-right">Destinatários</TableHead>
+                            <TableHead>Erro</TableHead>
                             <TableHead className="w-12 text-right">Ações</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {detailCampaign.subCampaigns.map((sub) => (
-                            <TableRow key={sub.id}>
+                            <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
                               <TableCell className="font-medium">
                                 {sub.subCampaignIndex ?? "—"}
                               </TableCell>
@@ -310,6 +326,20 @@ export function CampaignDetailSheet({
                               </TableCell>
                               <TableCell className="text-right">
                                 {sub.totalRecipients.toLocaleString("pt-BR")}
+                              </TableCell>
+                              <TableCell className="max-w-[200px]">
+                                {sub.status === "failed" && sub.errorMessage ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="line-clamp-2 cursor-default text-xs text-semantic-danger">
+                                        {sub.errorMessage}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-sm">{sub.errorMessage}</TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-right">
                                 <SubCampaignActionsMenu
