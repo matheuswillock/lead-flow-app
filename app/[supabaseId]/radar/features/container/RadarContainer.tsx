@@ -33,6 +33,8 @@ import { RadarProfilesTable } from "../components/RadarProfilesTable"
 import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDialog"
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
 import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
+import { RadarImportButton } from "../components/radar-import/RadarImportButton"
+import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -78,6 +80,7 @@ export function RadarContainer() {
     runWhatsappSync,
     syncLeadProfile,
     deleteCustomSegment,
+    materializeContactList,
     segmentProfilesTarget,
     segmentProfilesItems,
     segmentProfilesTotal,
@@ -89,11 +92,15 @@ export function RadarContainer() {
     changeSegmentProfilesPage,
     touchpoints,
     isLoadingTouchpoints,
+    reload,
   } = useRadarContext()
 
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingSegment, setEditingSegment] = useState<RadarCustomSegmentListItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RadarCustomSegmentListItem | null>(null)
+  const [materializeTarget, setMaterializeTarget] = useState<{ slug: string; name: string; count: number } | null>(
+    null
+  )
 
   const systemSegments = useMemo(() => segments.filter((segment) => segment.isSystem), [segments])
 
@@ -160,6 +167,9 @@ export function RadarContainer() {
           </TabsList>
 
           <TabsContent value="perfis" className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <RadarImportButton mutationLock={mutationLock} onImportComplete={() => void reload()} />
+            </div>
             <RadarProfileFilters
               search={search}
               onSearchChange={(value) => {
@@ -232,8 +242,12 @@ export function RadarContainer() {
                         description={segment.description}
                         count={segment.count}
                         variant="system"
+                        mutationLock={mutationLock}
                         onViewProfiles={() =>
                           openSegmentProfiles({ kind: "system", slugOrId: segment.slug, name: segment.name })
+                        }
+                        onCreateContactList={() =>
+                          setMaterializeTarget({ slug: segment.slug, name: segment.name, count: segment.count })
                         }
                       />
                     ))}
@@ -286,6 +300,16 @@ export function RadarContainer() {
                               ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
                               : undefined
                           }
+                          onCreateContactList={
+                            segment.isActive
+                              ? () =>
+                                  setMaterializeTarget({
+                                    slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
+                                    name: segment.name,
+                                    count: segment.count,
+                                  })
+                              : undefined
+                          }
                           onEdit={() => {
                             setEditingSegment(segment)
                             setBuilderOpen(true)
@@ -331,6 +355,34 @@ export function RadarContainer() {
             void openProfile(id)
           }}
         />
+
+        <AlertDialog open={Boolean(materializeTarget)} onOpenChange={(open) => !open && setMaterializeTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Criar lista de contatos?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Será criada uma lista de e-mail com até {materializeTarget?.count ?? 0} contato(s) do segmento
+                &quot;{materializeTarget?.name}&quot;. Contatos duplicados serão ignorados automaticamente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={mutationLock}
+                onClick={() => {
+                  if (!materializeTarget) return
+                  void materializeContactList(
+                    materializeTarget.slug,
+                    materializeTarget.name,
+                    `Segmento: ${materializeTarget.name}`
+                  ).then(() => setMaterializeTarget(null))
+                }}
+              >
+                Criar lista
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
           <AlertDialogContent>

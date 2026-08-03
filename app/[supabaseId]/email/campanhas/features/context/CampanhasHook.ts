@@ -10,6 +10,8 @@ import type {
   ContactList,
   RadarSegmentOption,
   CampaignSheetTab,
+  CampaignPreviewPlan,
+  WizardTabId,
 } from "./CampanhasTypes"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
@@ -19,10 +21,57 @@ import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 const DEFAULT_PAGE_SIZE = 10
 const defaultService = new CampanhasService()
 
+import type { CampaignWritePayload } from "../services/CampanhasService"
+
 const EDITABLE_STATUSES = new Set(["draft", "scheduled", "sent", "failed"])
 
 function statusKey(statuses: string[]): string {
   return [...statuses].sort().join(",")
+}
+
+function buildCampaignPayload(params: {
+  name: string
+  templateId: string
+  recipientSource: "contact_list" | "radar_segment"
+  contactListIds: string[]
+  listStrategy: "single" | "merge" | "per_list"
+  radarSegmentSlug: string
+  scheduledAt?: Date
+  uniformSchedule: boolean
+  scheduleIntervalDays: number
+  subCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+}): CampaignWritePayload {
+  const payload: CampaignWritePayload = {
+    name: params.name.trim(),
+    templateId: params.templateId,
+    uniformSchedule: params.uniformSchedule,
+    ...(params.scheduledAt ? { scheduledAt: params.scheduledAt.toISOString() } : {}),
+    ...(params.uniformSchedule && params.scheduleIntervalDays >= 1
+      ? { scheduleIntervalDays: params.scheduleIntervalDays }
+      : {}),
+    ...(!params.uniformSchedule && params.subCampaignSchedules.length > 0
+      ? {
+          subCampaignSchedules: params.subCampaignSchedules.map((entry) => ({
+            index: entry.index,
+            scheduledAt: entry.scheduledAt.toISOString(),
+          })),
+        }
+      : {}),
+  }
+
+  if (params.recipientSource === "radar_segment") {
+    return { ...payload, radarSegmentSlug: params.radarSegmentSlug }
+  }
+
+  if (params.contactListIds.length === 1) {
+    return { ...payload, contactListId: params.contactListIds[0] }
+  }
+
+  return {
+    ...payload,
+    contactListIds: params.contactListIds,
+    listStrategy: params.listStrategy,
+  }
 }
 
 export type CampanhasActions = {
@@ -37,26 +86,27 @@ export type CampanhasActions = {
   handleDateFilter: (from: string, to: string) => void
   clearFilters: () => void
   openWizard: () => void
+  openEditWizard: (campaign: Campaign) => void
   closeWizard: () => void
-  setWizardStep: (step: 1 | 2 | 3) => void
+  setWizardActiveTab: (tab: WizardTabId) => void
   setWizardName: (v: string) => void
   setWizardTemplateId: (v: string) => void
-  setWizardContactListId: (v: string) => void
+  toggleWizardContactListId: (listId: string, selected: boolean) => void
+  setWizardListStrategy: (strategy: "single" | "merge" | "per_list") => void
   setWizardRecipientSource: (v: "contact_list" | "radar_segment") => void
   setWizardRadarSegmentSlug: (v: string) => void
   setWizardScheduledAt: (v: Date | undefined) => void
+  setWizardUniformSchedule: (v: boolean) => void
   setWizardScheduleIntervalDays: (v: number) => void
-  handleCreateCampaign: () => Promise<void>
+  setWizardSubCampaignSchedule: (index: number, date: Date | undefined) => void
+  setWizardSubCampaignListId: (index: number, listId: string | undefined) => void
+  refreshWizardPreviewPlan: () => Promise<void>
+  handleSaveCampaign: () => Promise<void>
+  handleMaterializeRadarSegment: () => Promise<void>
   openView: (campaign: Campaign) => void
-  openEdit: (campaign: Campaign) => void
   openEditById: (id: string) => Promise<void>
   closeDetail: () => void
   setSheetTab: (tab: CampaignSheetTab) => void
-  setEditName: (v: string) => void
-  setEditTemplateId: (v: string) => void
-  setEditContactListId: (v: string) => void
-  setEditScheduledAt: (v: Date | undefined) => void
-  handleUpdateCampaign: () => Promise<void>
 }
 
 export type CampanhasHookReturn = {
@@ -77,25 +127,30 @@ export type CampanhasHookReturn = {
   deletingId: string | null
   archivingId: string | null
   wizardOpen: boolean
-  wizardStep: 1 | 2 | 3
+  wizardMode: "create" | "edit"
+  wizardCampaignId?: string
+  wizardActiveTab: WizardTabId
   wizardName: string
   wizardTemplateId: string
-  wizardContactListId: string
+  wizardContactListIds: string[]
+  wizardListStrategy: "single" | "merge" | "per_list"
   wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
   wizardScheduledAt: Date | undefined
+  wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
-  wizardCreating: boolean
+  wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+  wizardSubCampaignListIds: Record<number, string>
+  wizardPreviewPlan: CampaignPreviewPlan | null
+  wizardPreviewLoading: boolean
+  wizardLinkedForm: { id: string; name: string; publicId: string } | null
+  wizardSaving: boolean
+  materializingSegment: boolean
   templates: Template[]
   contactLists: ContactList[]
   radarSegments: RadarSegmentOption[]
   detailCampaign: Campaign | null
   sheetTab: CampaignSheetTab
-  editName: string
-  editTemplateId: string
-  editContactListId: string
-  editScheduledAt: Date | undefined
-  editSaving: boolean
 } & CampanhasActions
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
@@ -129,26 +184,31 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [archivingId, setArchivingId] = useState<string | null>(null)
 
   const [wizardOpen, setWizardOpen] = useState(false)
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1)
+  const [wizardMode, setWizardMode] = useState<"create" | "edit">("create")
+  const [wizardCampaignId, setWizardCampaignId] = useState<string | undefined>(undefined)
+  const [wizardActiveTab, setWizardActiveTab] = useState<WizardTabId>("geral")
   const [wizardName, setWizardName] = useState("")
   const [wizardTemplateId, setWizardTemplateId] = useState("")
-  const [wizardContactListId, setWizardContactListId] = useState("")
+  const [wizardContactListIds, setWizardContactListIds] = useState<string[]>([])
+  const [wizardListStrategy, setWizardListStrategy] = useState<"single" | "merge" | "per_list">("single")
   const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "radar_segment">("contact_list")
   const [wizardRadarSegmentSlug, setWizardRadarSegmentSlug] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
+  const [wizardUniformSchedule, setWizardUniformSchedule] = useState(true)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
-  const [wizardCreating, setWizardCreating] = useState(false)
+  const [wizardSubCampaignSchedules, setWizardSubCampaignSchedules] = useState<Array<{ index: number; scheduledAt: Date }>>([])
+  const [wizardSubCampaignListIds, setWizardSubCampaignListIds] = useState<Record<number, string>>({})
+  const [wizardPreviewPlan, setWizardPreviewPlan] = useState<CampaignPreviewPlan | null>(null)
+  const [wizardPreviewLoading, setWizardPreviewLoading] = useState(false)
+  const [wizardLinkedForm, setWizardLinkedForm] = useState<{ id: string; name: string; publicId: string } | null>(null)
+  const [wizardSaving, setWizardSaving] = useState(false)
+  const [materializingSegment, setMaterializingSegment] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
   const [radarSegments, setRadarSegments] = useState<RadarSegmentOption[]>([])
 
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null)
   const [sheetTab, setSheetTab] = useState<CampaignSheetTab>("campaign")
-  const [editName, setEditName] = useState("")
-  const [editTemplateId, setEditTemplateId] = useState("")
-  const [editContactListId, setEditContactListId] = useState("")
-  const [editScheduledAt, setEditScheduledAt] = useState<Date | undefined>(undefined)
-  const [editSaving, setEditSaving] = useState(false)
 
   const fetchingRef = useRef(false)
   const lastCampaignsKeyRef = useRef("")
@@ -562,152 +622,318 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
   }, [activeTeamId, detailCampaign?.id, supabaseId])
 
-  const openWizard = useCallback(async () => {
-    setWizardStep(1)
+  const resetWizardState = useCallback(() => {
+    setWizardMode("create")
+    setWizardCampaignId(undefined)
+    setWizardActiveTab("geral")
     setWizardName("")
     setWizardTemplateId("")
-    setWizardContactListId("")
+    setWizardContactListIds([])
+    setWizardListStrategy("single")
     setWizardRecipientSource("contact_list")
     setWizardRadarSegmentSlug("")
     setWizardScheduledAt(undefined)
+    setWizardUniformSchedule(true)
     setWizardScheduleIntervalDays(1)
-    setWizardOpen(true)
+    setWizardSubCampaignSchedules([])
+    setWizardSubCampaignListIds({})
+    setWizardPreviewPlan(null)
+    setWizardLinkedForm(null)
+  }, [])
+
+  const loadWizardOptions = useCallback(async () => {
+    const [tmpl, lists] = await Promise.all([
+      service.getTemplates(supabaseId, activeTeamId),
+      service.getContactLists(supabaseId, activeTeamId),
+    ])
+    setTemplates(tmpl)
+    setContactLists(lists)
     try {
-      const [tmpl, lists] = await Promise.all([
-        service.getTemplates(supabaseId, activeTeamId),
-        service.getContactLists(supabaseId, activeTeamId),
-      ])
-      setTemplates(tmpl)
-      setContactLists(lists)
-      try {
-        if (activeTeamId && !hideRadarSegments) {
-          const segmentsRes = await radarFrontendService.listSegments(supabaseId, activeTeamId)
-          setRadarSegments(segmentsRes.segments as RadarSegmentOption[])
-        } else {
-          setRadarSegments([])
-        }
-      } catch {
+      if (activeTeamId && !hideRadarSegments) {
+        const segmentsRes = await radarFrontendService.listSegments(supabaseId, activeTeamId)
+        setRadarSegments(segmentsRes.segments as RadarSegmentOption[])
+      } else {
         setRadarSegments([])
       }
+    } catch {
+      setRadarSegments([])
+    }
+  }, [activeTeamId, hideRadarSegments, service, supabaseId])
+
+  const hydrateWizardFromCampaign = useCallback((campaign: Campaign) => {
+    const listIds =
+      campaign.sourceContactListIds && campaign.sourceContactListIds.length > 0
+        ? campaign.sourceContactListIds
+        : campaign.contactList?.id
+          ? [campaign.contactList.id]
+          : []
+
+    setWizardMode("edit")
+    setWizardCampaignId(campaign.id)
+    setWizardActiveTab("geral")
+    setWizardName(campaign.name)
+    setWizardTemplateId(campaign.template?.id ?? "")
+    setWizardContactListIds(listIds)
+    setWizardListStrategy(
+      listIds.length > 1
+        ? campaign.sourceContactListIds && campaign.sourceContactListIds.length > 0
+          ? "merge"
+          : "per_list"
+        : "single"
+    )
+    setWizardRecipientSource(campaign.radarSegmentSlug ? "radar_segment" : "contact_list")
+    setWizardRadarSegmentSlug(campaign.radarSegmentSlug ?? "")
+    setWizardScheduledAt(campaign.scheduledAt ? new Date(campaign.scheduledAt) : undefined)
+    setWizardUniformSchedule(true)
+    setWizardScheduleIntervalDays(1)
+    setWizardSubCampaignSchedules(
+      (campaign.subCampaigns ?? [])
+        .filter((sub) => sub.scheduledAt)
+        .map((sub) => ({
+          index: sub.subCampaignIndex ?? 0,
+          scheduledAt: new Date(sub.scheduledAt as string),
+        }))
+    )
+    setWizardSubCampaignListIds({})
+    setWizardLinkedForm(campaign.linkedForm ?? null)
+  }, [])
+
+  const openWizard = useCallback(async () => {
+    resetWizardState()
+    setWizardOpen(true)
+    try {
+      await loadWizardOptions()
     } catch (err) {
       console.error("[useCampanhas] openWizard fetch error", err)
     }
-  }, [activeTeamId, supabaseId])
+  }, [loadWizardOptions, resetWizardState])
 
-  const closeWizard = useCallback(() => {
-    if (wizardCreating) return
-    setWizardOpen(false)
-  }, [wizardCreating])
-
-  const handleCreateCampaign = useCallback(async () => {
-    const hasContactList = wizardRecipientSource === "contact_list" && wizardContactListId
-    const hasRadarSegment = wizardRecipientSource === "radar_segment" && wizardRadarSegmentSlug
-    if (!wizardName.trim() || !wizardTemplateId || (!hasContactList && !hasRadarSegment)) {
-      toast.error("Preencha o nome, template e origem dos destinatários")
-      return
-    }
-    setWizardCreating(true)
-    console.info("[useCampanhas] handleCreateCampaign")
-    try {
-      const created = await service.create(supabaseId, activeTeamId, {
-        name: wizardName.trim(),
-        templateId: wizardTemplateId,
-        ...(hasContactList ? { contactListId: wizardContactListId } : {}),
-        ...(hasRadarSegment ? { radarSegmentSlug: wizardRadarSegmentSlug } : {}),
-        scheduledAt: wizardScheduledAt?.toISOString(),
-        ...(hasContactList && wizardScheduleIntervalDays >= 1
-          ? { scheduleIntervalDays: wizardScheduleIntervalDays }
-          : {}),
-      })
-      const subCount = created.subCampaignCount ?? created.subCampaigns?.length ?? 0
-      toast.success(
-        subCount > 0
-          ? `Campanha criada com ${subCount} sub-campanhas`
-          : "Campanha criada com sucesso"
-      )
-      setWizardOpen(false)
-      lastCampaignsKeyRef.current = ""
-      void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
-    } catch (err) {
-      console.error("[useCampanhas] handleCreateCampaign error", err)
-      const message = err instanceof Error ? err.message : "Erro ao criar campanha"
-      toast.error(message)
-    } finally {
-      setWizardCreating(false)
-    }
-  }, [
-    activeTeamId,
-    wizardName,
-    wizardTemplateId,
-    wizardRecipientSource,
-    wizardContactListId,
-    wizardRadarSegmentSlug,
-    wizardScheduledAt,
-    wizardScheduleIntervalDays,
-    fetchCampaigns,
-    statusFilter,
-    pageSize,
-    nameFilter,
-    dateFrom,
-    dateTo,
-    supabaseId,
-  ])
-
-  const loadEditOptions = useCallback(async () => {
-    try {
-      const [tmpl, lists] = await Promise.all([
-        service.getTemplates(supabaseId, activeTeamId),
-        service.getContactLists(supabaseId, activeTeamId),
-      ])
-      setTemplates(tmpl)
-      setContactLists(lists)
-    } catch (err) {
-      console.error("[useCampanhas] loadEditOptions error", err)
-    }
-  }, [activeTeamId, supabaseId])
-
-  const hydrateEditForm = useCallback((campaign: Campaign) => {
-    setEditName(campaign.name)
-    setEditTemplateId(campaign.template?.id ?? "")
-    setEditContactListId(campaign.contactList?.id ?? "")
-    setEditScheduledAt(campaign.scheduledAt ? new Date(campaign.scheduledAt) : undefined)
-  }, [])
-
-  const openView = useCallback((campaign: Campaign) => {
-    setDetailCampaign(campaign)
-    setSheetTab("campaign")
-    hydrateEditForm(campaign)
-    void loadEditOptions()
-    void service
-      .getById(supabaseId, activeTeamId, campaign.id)
-      .then((detailed) => {
-        setDetailCampaign(detailed)
-        hydrateEditForm(detailed)
-      })
-      .catch((err) => {
-        console.error("[useCampanhas] openView getById error", err)
-      })
-  }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
-
-  const openEdit = useCallback((campaign: Campaign) => {
+  const openEditWizard = useCallback(async (campaign: Campaign) => {
     if (!EDITABLE_STATUSES.has(campaign.status)) {
       toast.error("Campanha não pode ser editada no status atual")
       return
     }
+    resetWizardState()
+    setWizardOpen(true)
+    try {
+      await loadWizardOptions()
+      const detailed = await service.getById(supabaseId, activeTeamId, campaign.id)
+      hydrateWizardFromCampaign(detailed)
+    } catch (err) {
+      console.error("[useCampanhas] openEditWizard error", err)
+      toast.error("Erro ao carregar campanha para edição")
+    }
+  }, [activeTeamId, hydrateWizardFromCampaign, loadWizardOptions, resetWizardState, service, supabaseId])
+
+  const closeWizard = useCallback(() => {
+    if (wizardSaving) return
+    setWizardOpen(false)
+  }, [wizardSaving])
+
+  const toggleWizardContactListId = useCallback((listId: string, selected: boolean) => {
+    setWizardContactListIds((prev) => {
+      if (selected) return Array.from(new Set([...prev, listId]))
+      const next = prev.filter((id) => id !== listId)
+      if (next.length <= 1) setWizardListStrategy("single")
+      return next
+    })
+  }, [])
+
+  const setWizardSubCampaignSchedule = useCallback((index: number, date: Date | undefined) => {
+    setWizardSubCampaignSchedules((prev) => {
+      const without = prev.filter((entry) => entry.index !== index)
+      if (!date) return without
+      return [...without, { index, scheduledAt: date }].sort((a, b) => a.index - b.index)
+    })
+  }, [])
+
+  const setWizardSubCampaignListId = useCallback((index: number, listId: string | undefined) => {
+    setWizardSubCampaignListIds((prev) => {
+      if (!listId) {
+        const { [index]: _removed, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [index]: listId }
+    })
+  }, [])
+
+  const refreshWizardPreviewPlan = useCallback(async () => {
+    if (!wizardName.trim() || !wizardTemplateId) {
+      setWizardPreviewPlan(null)
+      return
+    }
+    const hasAudience =
+      (wizardRecipientSource === "contact_list" && wizardContactListIds.length > 0) ||
+      (wizardRecipientSource === "radar_segment" && Boolean(wizardRadarSegmentSlug))
+    if (!hasAudience) {
+      setWizardPreviewPlan(null)
+      return
+    }
+
+    setWizardPreviewLoading(true)
+    try {
+      const payload = buildCampaignPayload({
+        name: wizardName,
+        templateId: wizardTemplateId,
+        recipientSource: wizardRecipientSource,
+        contactListIds: wizardContactListIds,
+        listStrategy: wizardListStrategy,
+        radarSegmentSlug: wizardRadarSegmentSlug,
+        scheduledAt: wizardScheduledAt,
+        uniformSchedule: wizardUniformSchedule,
+        scheduleIntervalDays: wizardScheduleIntervalDays,
+        subCampaignSchedules: wizardSubCampaignSchedules,
+      })
+      const plan = await service.previewPlan(supabaseId, activeTeamId, payload)
+      setWizardPreviewPlan(plan)
+    } catch (err) {
+      console.error("[useCampanhas] refreshWizardPreviewPlan error", err)
+      setWizardPreviewPlan(null)
+    } finally {
+      setWizardPreviewLoading(false)
+    }
+  }, [
+    activeTeamId,
+    service,
+    supabaseId,
+    wizardContactListIds,
+    wizardListStrategy,
+    wizardName,
+    wizardRadarSegmentSlug,
+    wizardRecipientSource,
+    wizardScheduleIntervalDays,
+    wizardScheduledAt,
+    wizardSubCampaignSchedules,
+    wizardTemplateId,
+    wizardUniformSchedule,
+  ])
+
+  const handleSaveCampaign = useCallback(async () => {
+    setWizardSaving(true)
+    try {
+      const payload = buildCampaignPayload({
+        name: wizardName,
+        templateId: wizardTemplateId,
+        recipientSource: wizardRecipientSource,
+        contactListIds: wizardContactListIds,
+        listStrategy: wizardListStrategy,
+        radarSegmentSlug: wizardRadarSegmentSlug,
+        scheduledAt: wizardScheduledAt,
+        uniformSchedule: wizardUniformSchedule,
+        scheduleIntervalDays: wizardScheduleIntervalDays,
+        subCampaignSchedules: wizardSubCampaignSchedules,
+      })
+
+      if (wizardMode === "edit" && wizardCampaignId) {
+        const detailed = await service.getById(supabaseId, activeTeamId, wizardCampaignId)
+        const subCampaignUpdates =
+          wizardPreviewPlan?.subCampaigns
+            .map((sub) => {
+              const child = detailed.subCampaigns?.find((entry) => entry.subCampaignIndex === sub.index)
+              if (!child) return null
+              const customSchedule = wizardSubCampaignSchedules.find((entry) => entry.index === sub.index)
+              const contactListOverride = wizardSubCampaignListIds[sub.index]
+              return {
+                id: child.id,
+                name: sub.name,
+                scheduledAt: customSchedule
+                  ? customSchedule.scheduledAt.toISOString()
+                  : sub.scheduledAt ?? null,
+                ...(contactListOverride !== undefined && { contactListId: contactListOverride }),
+              }
+            })
+            .filter((entry): entry is { id: string; name: string; scheduledAt: string | null } => Boolean(entry)) ?? []
+
+        await service.update(supabaseId, activeTeamId, wizardCampaignId, {
+          name: payload.name,
+          templateId: payload.templateId,
+          ...(subCampaignUpdates.length > 0 ? { subCampaignUpdates } : {}),
+        })
+        toast.success("Campanha atualizada")
+      } else {
+        const created = await service.create(supabaseId, activeTeamId, payload)
+        const subCount = created.subCampaignCount ?? created.subCampaigns?.length ?? 0
+        toast.success(
+          subCount > 0
+            ? `Campanha criada com ${subCount} sub-campanhas`
+            : "Campanha criada com sucesso"
+        )
+      }
+
+      setWizardOpen(false)
+      lastCampaignsKeyRef.current = ""
+      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
+    } catch (err) {
+      console.error("[useCampanhas] handleSaveCampaign error", err)
+      const message = err instanceof Error ? err.message : "Erro ao salvar campanha"
+      toast.error(message)
+    } finally {
+      setWizardSaving(false)
+    }
+  }, [
+    activeTeamId,
+    dateFrom,
+    dateTo,
+    detailCampaign,
+    dateFrom,
+    dateTo,
+    fetchCampaigns,
+    nameFilter,
+    page,
+    pageSize,
+    service,
+    statusFilter,
+    supabaseId,
+    wizardCampaignId,
+    wizardContactListIds,
+    wizardListStrategy,
+    wizardMode,
+    wizardName,
+    wizardPreviewPlan?.subCampaigns,
+    wizardRadarSegmentSlug,
+    wizardRecipientSource,
+    wizardScheduleIntervalDays,
+    wizardScheduledAt,
+    wizardSubCampaignSchedules,
+    wizardTemplateId,
+    wizardUniformSchedule,
+  ])
+
+  const handleMaterializeRadarSegment = useCallback(async () => {
+    if (!wizardRadarSegmentSlug || !activeTeamId) return
+    setMaterializingSegment(true)
+    try {
+      const result = await radarFrontendService.materializeContactList(
+        supabaseId,
+        activeTeamId,
+        wizardRadarSegmentSlug
+      )
+      toast.success(`Lista criada com ${result.totalContacts.toLocaleString("pt-BR")} contatos`)
+      const lists = await service.getContactLists(supabaseId, activeTeamId)
+      setContactLists(lists)
+      setWizardRecipientSource("contact_list")
+      setWizardRadarSegmentSlug("")
+      setWizardContactListIds([result.listId])
+      setWizardListStrategy("single")
+    } catch (err) {
+      console.error("[useCampanhas] handleMaterializeRadarSegment error", err)
+      const message = err instanceof Error ? err.message : "Erro ao materializar lista"
+      toast.error(message)
+    } finally {
+      setMaterializingSegment(false)
+    }
+  }, [activeTeamId, service, supabaseId, wizardRadarSegmentSlug])
+
+  const openView = useCallback((campaign: Campaign) => {
     setDetailCampaign(campaign)
     setSheetTab("campaign")
-    hydrateEditForm(campaign)
-    void loadEditOptions()
     void service
       .getById(supabaseId, activeTeamId, campaign.id)
-      .then((detailed) => {
-        setDetailCampaign(detailed)
-        hydrateEditForm(detailed)
-      })
+      .then((detailed) => setDetailCampaign(detailed))
       .catch((err) => {
-        console.error("[useCampanhas] openEdit getById error", err)
+        console.error("[useCampanhas] openView getById error", err)
       })
-  }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
+  }, [activeTeamId, supabaseId])
 
   const openEditById = useCallback(async (id: string) => {
     try {
@@ -716,87 +942,17 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         toast.error("Campanha não pode ser editada no status atual")
         return
       }
-      setDetailCampaign(detailed)
-      setSheetTab("campaign")
-      hydrateEditForm(detailed)
-      void loadEditOptions()
+      await openEditWizard(detailed)
     } catch (err) {
       console.error("[useCampanhas] openEditById getById error", err)
       const message = err instanceof Error ? err.message : "Erro ao carregar campanha"
       toast.error(message)
     }
-  }, [activeTeamId, hydrateEditForm, loadEditOptions, supabaseId])
+  }, [activeTeamId, openEditWizard, service, supabaseId])
 
   const closeDetail = useCallback(() => {
-    if (editSaving) return
     setDetailCampaign(null)
-  }, [editSaving])
-
-  const handleUpdateCampaign = useCallback(async () => {
-    if (!detailCampaign || !editName.trim()) {
-      toast.error("Nome da campanha é obrigatório")
-      return
-    }
-    if (!EDITABLE_STATUSES.has(detailCampaign.status)) {
-      toast.error("Campanha não pode ser editada no status atual")
-      return
-    }
-    setEditSaving(true)
-    console.info("[useCampanhas] handleUpdateCampaign", detailCampaign.id)
-    try {
-      const canSchedule = detailCampaign.status === "draft" || detailCampaign.status === "scheduled"
-      const isSubCampaign = Boolean(
-        detailCampaign.parentCampaignId || (detailCampaign.audienceContactIds?.length ?? 0) > 0
-      )
-      const updated = await service.update(supabaseId, activeTeamId, detailCampaign.id, {
-        name: editName.trim(),
-        templateId: editTemplateId || undefined,
-        ...(!isSubCampaign && { contactListId: editContactListId || undefined }),
-        ...(canSchedule ? { scheduledAt: editScheduledAt?.toISOString() ?? null } : {}),
-      })
-      const nextTemplate = templates.find((t) => t.id === (editTemplateId || detailCampaign.template?.id)) ?? detailCampaign.template
-      const nextList = contactLists.find((l) => l.id === (editContactListId || detailCampaign.contactList?.id)) ?? detailCampaign.contactList
-      const merged: Campaign = {
-        ...detailCampaign,
-        ...updated,
-        name: updated.name,
-        totalRecipients: updated.totalRecipients,
-        scheduledAt: updated.scheduledAt,
-        status: updated.status,
-        template: nextTemplate ? { id: nextTemplate.id, name: nextTemplate.name } : detailCampaign.template,
-        contactList: nextList ? { id: nextList.id, name: nextList.name } : detailCampaign.contactList,
-        creator: detailCampaign.creator,
-      }
-      setCampaigns((prev) => prev.map((c) => (c.id === merged.id ? merged : c)))
-      setDetailCampaign(merged)
-      toast.success("Campanha atualizada")
-      setSheetTab("campaign")
-      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
-    } catch (err) {
-      console.error("[useCampanhas] handleUpdateCampaign error", err)
-      const message = err instanceof Error ? err.message : "Erro ao atualizar campanha"
-      toast.error(message)
-    } finally {
-      setEditSaving(false)
-    }
-  }, [
-    activeTeamId,
-    contactLists,
-    dateFrom,
-    dateTo,
-    detailCampaign,
-    editContactListId,
-    editName,
-    editScheduledAt,
-    editTemplateId,
-    fetchCampaigns,
-    nameFilter,
-    page,
-    pageSize,
-    statusFilter,
-    supabaseId,
-    templates,
-  ])
+  }, [])
 
   return {
     campaigns,
@@ -816,25 +972,30 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     deletingId,
     archivingId,
     wizardOpen,
-    wizardStep,
+    wizardMode,
+    wizardCampaignId,
+    wizardActiveTab,
     wizardName,
     wizardTemplateId,
-    wizardContactListId,
+    wizardContactListIds,
+    wizardListStrategy,
     wizardRecipientSource,
     wizardRadarSegmentSlug,
     wizardScheduledAt,
+    wizardUniformSchedule,
     wizardScheduleIntervalDays,
-    wizardCreating,
+    wizardSubCampaignSchedules,
+    wizardSubCampaignListIds,
+    wizardPreviewPlan,
+    wizardPreviewLoading,
+    wizardLinkedForm,
+    wizardSaving,
+    materializingSegment,
     templates,
     contactLists,
     radarSegments,
     detailCampaign,
     sheetTab,
-    editName,
-    editTemplateId,
-    editContactListId,
-    editScheduledAt,
-    editSaving,
     handleSend,
     handleCancel,
     handleDeleteDraft,
@@ -846,25 +1007,26 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     handleDateFilter,
     clearFilters,
     openWizard,
+    openEditWizard,
     closeWizard,
-    setWizardStep,
+    setWizardActiveTab,
     setWizardName,
     setWizardTemplateId,
-    setWizardContactListId,
+    toggleWizardContactListId,
+    setWizardListStrategy,
     setWizardRecipientSource,
     setWizardRadarSegmentSlug,
     setWizardScheduledAt,
+    setWizardUniformSchedule,
     setWizardScheduleIntervalDays,
-    handleCreateCampaign,
+    setWizardSubCampaignSchedule,
+    setWizardSubCampaignListId,
+    refreshWizardPreviewPlan,
+    handleSaveCampaign,
+    handleMaterializeRadarSegment,
     openView,
-    openEdit,
     openEditById,
     closeDetail,
     setSheetTab,
-    setEditName,
-    setEditTemplateId,
-    setEditContactListId,
-    setEditScheduledAt,
-    handleUpdateCampaign,
   }
 }

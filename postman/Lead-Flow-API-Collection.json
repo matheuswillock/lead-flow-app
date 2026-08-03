@@ -11639,132 +11639,6 @@
           ]
         },
         {
-          "name": "Backoffice Team Email Limit Grants",
-          "item": [
-            {
-              "name": "GET Team Email Limit Grants",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "x-supabase-user-id",
-                    "value": "{{backofficeSupabaseId}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "backoffice",
-                    "team-email-limit-grants"
-                  ]
-                },
-                "description": "Lista grants ativos de limite diário de e-mail por time."
-              }
-            },
-            {
-              "name": "GET Search Teams For Email Limit Grant",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "x-supabase-user-id",
-                    "value": "{{backofficeSupabaseId}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants?q={{teamSearchQuery}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "backoffice",
-                    "team-email-limit-grants"
-                  ],
-                  "query": [
-                    {
-                      "key": "q",
-                      "value": "{{teamSearchQuery}}"
-                    }
-                  ]
-                },
-                "description": "Busca times para conceder limite customizado."
-              }
-            },
-            {
-              "name": "POST Grant Team Email Limit",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "x-supabase-user-id",
-                    "value": "{{backofficeSupabaseId}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"teamId\": \"{{teamId}}\",\n  \"maxEmailsPerDay\": 5000,\n  \"notes\": \"Concedido via Postman\"\n}"
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "backoffice",
-                    "team-email-limit-grants"
-                  ]
-                },
-                "description": "Concede limite diário customizado. Use null em maxEmailsPerDay para ilimitado."
-              }
-            },
-            {
-              "name": "DELETE Revoke Team Email Limit Grant",
-              "request": {
-                "method": "DELETE",
-                "header": [
-                  {
-                    "key": "x-supabase-user-id",
-                    "value": "{{backofficeSupabaseId}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-limit-grants/{{teamEmailLimitGrantId}}",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "backoffice",
-                    "team-email-limit-grants",
-                    ":grantId"
-                  ],
-                  "variable": [
-                    {
-                      "key": "grantId",
-                      "value": "{{teamEmailLimitGrantId}}"
-                    }
-                  ]
-                },
-                "description": "Revoga grant de limite customizado por time."
-              }
-            }
-          ]
-        },
-        {
           "name": "Backoffice Anatemas",
           "item": [
             {
@@ -15215,43 +15089,6 @@
                 "description": "Importa contatos via CSV. Coluna email obrigatoria, name opcional."
               },
               "response": []
-            },
-            {
-              "name": "Vincular Segmento do Radar à Lista",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"segmentId\": \"{{radarSegmentId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/api/v1/email/contact-lists/{{contactListId}}/radar-segment",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "api",
-                    "v1",
-                    "email",
-                    "contact-lists",
-                    "{{contactListId}}",
-                    "radar-segment"
-                  ]
-                },
-                "description": "Vincula ou desvincula um segmento do Radar a uma lista de contatos. Envie null em segmentId para desvincular."
-              },
-              "response": []
             }
           ]
         },
@@ -15310,10 +15147,41 @@
                     "campaigns"
                   ]
                 },
-                "description": "scheduledAt opcional (ISO 8601). Se vazio = disparo manual. Para listas com mais de 2000 contatos, scheduledAt e scheduleIntervalDays (>=1) são obrigatórios — cria campanha-pai + sub-campanhas de até 2000 (1/dia no pico).",
+                "description": "scheduledAt opcional (ISO 8601). Suporta contactListIds + listStrategy (merge|per_list), uniformSchedule, subCampaignSchedules. Para listas com mais de 2000 contatos, scheduledAt e scheduleIntervalDays (>=1) são obrigatórios.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListId\": \"{{contactListId}}\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListIds\": [\"{{contactListId}}\"],\n  \"listStrategy\": \"merge\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1,\n  \"uniformSchedule\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Preview Plano de Campanha",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/preview-plan",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "preview-plan"
+                  ]
+                },
+                "description": "Simula sub-campanhas sem persistir. Mesmo payload do POST /campaigns.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListIds\": [\"{{contactListId}}\"],\n  \"listStrategy\": \"merge\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -17869,6 +17737,177 @@
           "response": []
         },
         {
+          "name": "Pixel — GET config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — POST config (salvar/ativar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allowedOrigins\": [\"https://seusite.com\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — DELETE config",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — GET logs de hits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel",
+                "logs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — POST hit público (pageview)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"pixel.pageview\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public-pixel/{{publicToken}}/hit?vs={{visitorSession}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public-pixel",
+                "{{publicToken}}",
+                "hit"
+              ],
+              "query": [
+                {
+                  "key": "vs",
+                  "value": "{{visitorSession}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Campos Radar disponíveis",
           "request": {
             "method": "GET",
@@ -18300,36 +18339,7 @@
           ]
         },
         {
-          "name": "Pixel — GET config",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-supabase-user-id",
-                "value": "{{supabaseUserId}}"
-              },
-              {
-                "key": "x-team-id",
-                "value": "{{teamId}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/radar/pixel",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "radar",
-                "pixel"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Pixel — POST config (salvar/ativar)",
+          "name": "Materializar lista de contatos do segmento",
           "request": {
             "method": "POST",
             "header": [
@@ -18348,15 +18358,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"allowedOrigins\": [\"https://seusite.com\"]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"name\": \"Segmento: Aptos para e-mail\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/materialize-list",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -18364,107 +18369,185 @@
                 "api",
                 "v1",
                 "radar",
-                "pixel"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Pixel — DELETE config",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "x-supabase-user-id",
-                "value": "{{supabaseUserId}}"
-              },
-              {
-                "key": "x-team-id",
-                "value": "{{teamId}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/radar/pixel",
-              "host": [
-                "{{baseUrl}}"
+                "segments",
+                ":segment",
+                "materialize-list"
               ],
-              "path": [
-                "api",
-                "v1",
-                "radar",
-                "pixel"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Pixel — GET logs de hits",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-supabase-user-id",
-                "value": "{{supabaseUserId}}"
-              },
-              {
-                "key": "x-team-id",
-                "value": "{{teamId}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/radar/pixel/logs",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "radar",
-                "pixel",
-                "logs"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Pixel — POST hit público (pageview)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"eventType\": \"pixel.pageview\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/public-pixel/{{publicToken}}/hit?vs={{visitorSession}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "public-pixel",
-                "{{publicToken}}",
-                "hit"
-              ],
-              "query": [
+              "variable": [
                 {
-                  "key": "vs",
-                  "value": "{{visitorSession}}"
+                  "key": "segment",
+                  "value": "email_marketable"
                 }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Importação de base — upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/import/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "import",
+                "upload"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Importação de base — enfileirar mapeamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"importId\": \"{{radarImportId}}\",\n  \"storagePath\": \"radar-imports/{{teamId}}/{{radarImportId}}.json\",\n  \"baseName\": \"Base evento\",\n  \"sourceFormat\": \"csv\",\n  \"totalRows\": 100,\n  \"fieldMapping\": {\n    \"name\": \"Nome\",\n    \"email\": \"E-mail\",\n    \"phone\": \"Telefone\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/import/mapped",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "import",
+                "mapped"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Importação de base — status do job",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/import/jobs/:importId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "import",
+                "jobs",
+                ":importId"
+              ],
+              "variable": [
+                {
+                  "key": "importId",
+                  "value": "{{radarImportId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Importação de base — cron processar jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cronSecret}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/cron/process-import-jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "cron",
+                "process-import-jobs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar definições de campos dinâmicos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/field-definitions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "field-definitions"
               ]
             }
           },
@@ -19232,102 +19315,6 @@
                 "bot",
                 "ai",
                 "export"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST Backoffice Lead Extraction Search",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"mainCnae\": \"6550200\",\n  \"sideCnae\": false,\n  \"state\": \"SP\",\n  \"hasPhone\": true,\n  \"hasEmail\": true,\n  \"limit\": 50\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/backoffice/extracao-leads",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "backoffice",
-                "extracao-leads"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "GET Backoffice Lead Extraction History",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/backoffice/extracao-leads?page=1&pageSize=10",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "backoffice",
-                "extracao-leads"
-              ],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "pageSize",
-                  "value": "10"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "GET Backoffice Lead Extraction Results",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/backoffice/extracao-leads/:id?page=1&pageSize=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "backoffice",
-                "extracao-leads",
-                ":id"
-              ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": ""
-                }
-              ],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "pageSize",
-                  "value": "20"
-                }
               ]
             }
           },

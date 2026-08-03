@@ -1,6 +1,6 @@
 "use client"
 
-import { Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +19,7 @@ type RadarSegmentCardProps = {
   isInactive?: boolean
   mutationLock?: boolean
   onViewProfiles?: () => void
+  onCreateContactList?: () => void
   onEdit?: () => void
   onDelete?: () => void
 }
@@ -31,6 +32,7 @@ export function RadarSegmentCard({
   isInactive,
   mutationLock,
   onViewProfiles,
+  onCreateContactList,
   onEdit,
   onDelete,
 }: RadarSegmentCardProps) {
@@ -71,11 +73,24 @@ export function RadarSegmentCard({
       </div>
       {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
       <p className="font-display text-2xl font-semibold">{count}</p>
-      {onViewProfiles ? (
-        <Button size="sm" variant="ghost" className="self-start px-0" onClick={onViewProfiles}>
-          Ver perfis
-        </Button>
-      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {onViewProfiles ? (
+          <Button size="sm" variant="ghost" className="px-0" onClick={onViewProfiles}>
+            Ver perfis
+          </Button>
+        ) : null}
+        {onCreateContactList ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={mutationLock || count === 0}
+            onClick={onCreateContactList}
+          >
+            <ListPlus data-icon="inline-start" />
+            Criar lista de contatos
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }
