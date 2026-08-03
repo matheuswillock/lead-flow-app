@@ -45,7 +45,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
+import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 
 type CampaignAnalyticsTarget = {
