@@ -512,6 +512,11 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     void loadRadarPixelConfig();
   }, [loadRadarPixelConfig]);
 
+  useEffect(() => {
+    setRadarPixelSaving(false);
+    setRadarPixelDeleting(false);
+  }, [activeTeamId]);
+
   const loadRadarPixelHitLogs = useCallback(
     async (options?: { force?: boolean }) => {
       if (!hasRadarAccess || !activeTeamId) {
@@ -610,9 +615,10 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
         const config = await integrationsService.saveRadarPixelConfig(supabaseId, activeTeamId, { allowedOrigins });
 
+        radarPixelConfigCacheByKey.set(requestKey, config);
+
         if (currentPixelConfigKeyRef.current !== requestKey) return;
 
-        radarPixelConfigCacheByKey.set(requestKey, config);
         lastSuccessfulPixelConfigKeyRef.current = requestKey;
 
         setRadarPixelConfig(config);
@@ -644,9 +650,10 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
       try {
         await integrationsService.deleteRadarPixelConfig(supabaseId, activeTeamId);
 
+        radarPixelConfigCacheByKey.delete(requestKey);
+
         if (currentPixelConfigKeyRef.current !== requestKey) return;
 
-        radarPixelConfigCacheByKey.delete(requestKey);
         lastSuccessfulPixelConfigKeyRef.current = null;
 
         setRadarPixelConfig(null);
