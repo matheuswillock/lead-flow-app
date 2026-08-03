@@ -5,6 +5,7 @@ import type {
   BackofficeProductItem,
 } from "../context/BackofficePricingTypes"
 import { flattenSchedule } from "../context/BackofficePricingTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 function parsePrice(value: string): number | null {
   const n = parseFloat(value.replace(",", "."))
@@ -117,21 +118,21 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
 
 export class BackofficePricingService implements IBackofficePricingService {
   async list(): Promise<BackofficeProductItem[]> {
-    const res = await fetch("/api/v1/backoffice/pricing", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/pricing`, { cache: "no-store" })
     const data = await res.json()
     if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao listar produtos")
     return data.result ?? []
   }
 
   async listFeatureSlugs(): Promise<string[]> {
-    const res = await fetch("/api/v1/backoffice/features/slugs", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/features/slugs`, { cache: "no-store" })
     const data = await res.json()
     if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao listar slugs")
     return data.result ?? []
   }
 
   async create(formData: BackofficeProductFormData): Promise<BackofficeProductItem> {
-    const res = await fetch("/api/v1/backoffice/pricing", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/pricing`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formToPayload(formData)),
@@ -142,7 +143,7 @@ export class BackofficePricingService implements IBackofficePricingService {
   }
 
   async update(id: string, formData: Partial<BackofficeProductFormData>): Promise<BackofficeProductItem> {
-    const res = await fetch(`/api/v1/backoffice/pricing/${id}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/pricing/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formToPayload(formData)),
@@ -153,7 +154,7 @@ export class BackofficePricingService implements IBackofficePricingService {
   }
 
   async delete(id: string): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/pricing/${id}`, { method: "DELETE" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/pricing/${id}`, { method: "DELETE" })
     const data = await res.json()
     if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao excluir produto")
   }

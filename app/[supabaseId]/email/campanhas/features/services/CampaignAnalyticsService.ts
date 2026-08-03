@@ -4,6 +4,7 @@ import type {
   DispatchPreviewData,
 } from "../components/analytics/AnalyticsTypes"
 import { addDaysInTz, addMonthsInTz, startOfDayInTz } from "@/lib/dates"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 function periodToDateRange(period: AnalyticsPeriod, tz: string): { from: string; to: string } {
   const to = new Date()
@@ -21,7 +22,7 @@ export interface ICampaignAnalyticsService {
 }
 
 export class CampaignAnalyticsService implements ICampaignAnalyticsService {
-  private readonly baseUrl = "/api/v1/email"
+  private readonly baseUrl = `${API_CLIENT_BASE}/email`
 
   async getAnalytics(
     period: AnalyticsPeriod,

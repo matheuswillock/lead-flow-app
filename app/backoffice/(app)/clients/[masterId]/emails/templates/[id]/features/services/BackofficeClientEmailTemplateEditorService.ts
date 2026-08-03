@@ -2,6 +2,7 @@ import type {
   IBackofficeClientEmailTemplateEditorService,
 } from "./IBackofficeClientEmailTemplateEditorService"
 import type { StudioEmailTemplateDetail } from "../context/BackofficeClientEmailTemplateEditorTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ApiOutput<T> {
   isValid: boolean
@@ -26,7 +27,7 @@ export class BackofficeClientEmailTemplateEditorService
     templateId: string
   ): Promise<StudioEmailTemplateDetail> {
     const response = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}/email/templates/${templateId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}/email/templates/${templateId}`,
       { cache: "no-store" }
     )
     return parseOutput(response)
@@ -39,7 +40,7 @@ export class BackofficeClientEmailTemplateEditorService
     data: { name: string; subject: string; html: string }
   ): Promise<StudioEmailTemplateDetail> {
     const response = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}/email/templates/${templateId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}/email/templates/${templateId}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

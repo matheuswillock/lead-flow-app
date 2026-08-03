@@ -6,15 +6,17 @@ import type {
   IPublicScheduleShareActions,
   IPublicScheduleShareState,
 } from "./PublicScheduleShareTypes";
+import type { PublicScheduleShareData } from "../services/IPublicScheduleShareService";
 
 export function usePublicScheduleShare(
-  token: string
+  token: string,
+  initialData?: PublicScheduleShareData | null,
 ): IPublicScheduleShareState & IPublicScheduleShareActions {
-  const [state, setState] = useState<IPublicScheduleShareState>({
-    token,
-    status: "loading",
-    data: null,
-    error: null,
+  const [state, setState] = useState<IPublicScheduleShareState>(() => {
+    if (initialData) {
+      return { token, status: "ready", data: initialData, error: null };
+    }
+    return { token, status: "loading", data: null, error: null };
   });
   const retryTimeoutRef = useRef<number | null>(null);
 
@@ -58,11 +60,26 @@ export function usePublicScheduleShare(
   }, [clearRetry, token]);
 
   useEffect(() => {
+    // Se já temos dados pré-carregados pelo Server Component, agenda apenas o retry
+    // para quando o agendamento ainda não estiver disponível (joinAllowed === false).
+    if (initialData) {
+      if (!initialData.joinAllowed) {
+        const availableAtMs = new Date(initialData.availableAt).getTime();
+        const now = Date.now();
+        const retryInMs = Math.max(5_000, Math.min(30_000, availableAtMs - now));
+        retryTimeoutRef.current = window.setTimeout(() => {
+          void refresh();
+        }, retryInMs);
+      }
+      return () => { clearRetry(); };
+    }
     void refresh();
     return () => {
       clearRetry();
     };
-  }, [clearRetry, refresh]);
+  // Correct deps: on mount only. `initialData` comes from the Server Component
+  // (stable), `refresh` and `clearRetry` are stable callbacks.
+  }, [initialData, refresh, clearRetry]);
 
   return {
     ...state,

@@ -1,4 +1,5 @@
 import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, CampaignLogDetail } from '../context/CampanhasTypes'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export interface ICampanhasService {
   list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string): Promise<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>
@@ -22,7 +23,7 @@ export interface ICampanhasService {
 }
 
 export class CampanhasService implements ICampanhasService {
-  private readonly baseUrl = '/api/v1/email'
+  private readonly baseUrl = `${API_CLIENT_BASE}/email`
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {

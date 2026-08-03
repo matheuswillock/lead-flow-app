@@ -11,6 +11,7 @@ import type {
   BackofficeOfferProductOption,
 } from "../context/BackofficeCrmTypes"
 import type { IBackofficeCrmService } from "./IBackofficeCrmService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -30,7 +31,7 @@ async function parseOutput<T>(response: Response): Promise<BackofficeApiOutput<T
 
 export class BackofficeCrmService implements IBackofficeCrmService {
   async list(): Promise<BackofficeLeadItem[]> {
-    const response = await fetch(`/api/v1/backoffice/leads`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads`, {
       method: "GET",
       cache: "no-store",
     })
@@ -39,7 +40,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
   }
 
   async listUsers(): Promise<BackofficeCrmUserOption[]> {
-    const response = await fetch(`/api/v1/backoffice/users`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/users`, {
       method: "GET",
       cache: "no-store",
     })
@@ -71,7 +72,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
   }
 
   async create(data: BackofficeLeadCreateInput): Promise<BackofficeLeadItem> {
-    const response = await fetch(`/api/v1/backoffice/leads`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -81,7 +82,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
   }
 
   async update(id: string, data: BackofficeLeadUpdateInput): Promise<BackofficeLeadItem> {
-    const response = await fetch(`/api/v1/backoffice/leads/${id}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -95,7 +96,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
     status: BackofficeLeadStatusKey,
     schedule?: BackofficeLeadScheduleInput
   ): Promise<BackofficeLeadItem> {
-    const response = await fetch(`/api/v1/backoffice/leads/${id}/status`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${id}/status`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, ...(schedule ?? {}) }),
@@ -105,14 +106,14 @@ export class BackofficeCrmService implements IBackofficeCrmService {
   }
 
   async remove(id: string): Promise<void> {
-    const response = await fetch(`/api/v1/backoffice/leads/${id}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${id}`, {
       method: "DELETE",
     })
     await parseOutput<null>(response)
   }
 
   async listActiveProducts(): Promise<BackofficeOfferProductOption[]> {
-    const response = await fetch(`/api/v1/backoffice/pricing`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/pricing`, {
       method: "GET",
       cache: "no-store",
     })
@@ -121,7 +122,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
   }
 
   async listOffers(leadId: string): Promise<BackofficeLeadOfferListItem[]> {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/offers`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/offers`, {
       method: "GET",
       cache: "no-store",
     })
@@ -133,7 +134,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
     leadId: string,
     data: BackofficeLeadOfferCreateInput
   ): Promise<BackofficeLeadOfferCreateResult> {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/offers`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/offers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -143,7 +144,7 @@ export class BackofficeCrmService implements IBackofficeCrmService {
   }
 
   async revokeOffer(leadId: string, offerId: string): Promise<BackofficeLeadOfferListItem> {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/offers/${offerId}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/offers/${offerId}`, {
       method: "DELETE",
     })
     const out = await parseOutput<BackofficeLeadOfferListItem>(response)

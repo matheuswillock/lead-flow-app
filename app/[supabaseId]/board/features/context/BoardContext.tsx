@@ -45,6 +45,7 @@ import type {
   LeadInfoInitialValues,
   LeadInfoPayload,
 } from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -410,7 +411,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     }
 
     try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/status-rules`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/status-rules`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId,
@@ -1178,7 +1179,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             document: d.document,
           })),
         };
-        const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/finalize`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1287,7 +1288,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       if (!pendingSalesInfoGateDrop) return false;
 
       try {
-        const response = await fetch(`/api/v1/leads/${pendingSalesInfoGateDrop.leadId}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${pendingSalesInfoGateDrop.leadId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -1346,7 +1347,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       if (!pendingCloserGateDrop) return false;
 
       try {
-        const response = await fetch(`/api/v1/leads/${pendingCloserGateDrop.leadId}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${pendingCloserGateDrop.leadId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -1405,7 +1406,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       if (!pendingLeadInfoGateDrop) return false;
 
       try {
-        const response = await fetch(`/api/v1/leads/${pendingLeadInfoGateDrop.leadId}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${pendingLeadInfoGateDrop.leadId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",

@@ -6,9 +6,10 @@ import type {
   BethaniaRequestContext,
   IBethaniaLinkService,
 } from "./IBethaniaLinkService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class BethaniaLinkService implements IBethaniaLinkService {
-  private baseUrl = "/api/v1/bot/link";
+  private baseUrl = `${API_CLIENT_BASE}/bot/link`;
 
   private buildHeaders(context: BethaniaRequestContext): HeadersInit {
     return {

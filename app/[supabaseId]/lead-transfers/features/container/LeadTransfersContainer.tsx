@@ -16,6 +16,7 @@ import { useLeadTransfersContext } from "../context/LeadTransfersContext";
 import type { LeadTransferRow } from "../context/LeadTransfersTypes";
 import { LeadTransfersFiltersBar } from "./LeadTransfersFiltersBar";
 import { LeadTransfersTable } from "./LeadTransfersTable";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export function LeadTransfersContainer() {
   const { user, isLoading: userLoading } = useUserContext();
@@ -35,7 +36,7 @@ export function LeadTransfersContainer() {
     async (leadId: string) => {
       if (!supabaseId || !activeTeamId) return null;
 
-      const res = await fetch(`/api/v1/leads/${leadId}`, {
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId,

@@ -23,6 +23,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface WhatsAppTag {
   id: string
@@ -49,7 +50,7 @@ export function TagManagerCard() {
 
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/whatsapp/tags`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/whatsapp/tags`, {
         headers: {
           "x-supabase-user-id": user.id,
           "x-team-id": activeTeamId,
@@ -106,8 +107,8 @@ export function TagManagerCard() {
     setIsSaving(true)
     try {
       const url = editingTag
-        ? `/api/v1/teams/${activeTeamId}/whatsapp/tags/${editingTag.id}`
-        : `/api/v1/teams/${activeTeamId}/whatsapp/tags`
+        ? `${API_CLIENT_BASE}/teams/${activeTeamId}/whatsapp/tags/${editingTag.id}`
+        : `${API_CLIENT_BASE}/teams/${activeTeamId}/whatsapp/tags`
       const response = await fetch(url, {
         method: editingTag ? "PATCH" : "POST",
         headers: {
@@ -140,7 +141,7 @@ export function TagManagerCard() {
 
     setIsSaving(true)
     try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/whatsapp/tags/${tag.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/whatsapp/tags/${tag.id}`, {
         method: "DELETE",
         headers: {
           "x-supabase-user-id": user.id,

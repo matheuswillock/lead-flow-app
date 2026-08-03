@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CreditCardForm, type CreditCardFormData } from "@/app/[supabaseId]/manager-users/features/container/CreditCardForm";
 import Image from "next/image";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ReactivateSubscriptionDialogProps {
   open: boolean;
@@ -58,7 +59,7 @@ export function ReactivateSubscriptionDialog({
   useEffect(() => {
     if (open && supabaseId) {
       setLoadingProfile(true);
-      fetch(`/api/v1/profiles/${supabaseId}`)
+      fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`)
         .then(res => res.json())
         .then(result => {
           if (result.isValid && result.result) {
@@ -99,7 +100,7 @@ export function ReactivateSubscriptionDialog({
 
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/v1/subscriptions/payment-status/${paymentData.paymentId}`);
+        const response = await fetch(`${API_CLIENT_BASE}/subscriptions/payment-status/${paymentData.paymentId}`);
         const result = await response.json();
 
         if (result.isValid && result.result) {
@@ -167,7 +168,7 @@ export function ReactivateSubscriptionDialog({
         payload.remoteIp = '127.0.0.1';
       }
 
-      const response = await fetch('/api/v1/subscriptions/reactivate', {
+      const response = await fetch(`${API_CLIENT_BASE}/subscriptions/reactivate`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

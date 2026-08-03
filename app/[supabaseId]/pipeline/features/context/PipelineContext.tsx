@@ -23,6 +23,7 @@ import {
 } from "@/lib/teamStatusRules";
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates";
 import type { CustomFieldFilterState } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 // Referência estável — evita recriar `loadLeads` (e a instabilidade em cascata
 // no efeito que o dispara) a cada render quando externalFilters está ausente.
@@ -341,7 +342,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       return;
     }
     try {
-      const response = await fetch(`/api/v1/teams/${activeTeamId}/status-rules`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/status-rules`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId,
@@ -671,7 +672,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         })),
       };
 
-      const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/finalize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

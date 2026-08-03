@@ -48,6 +48,7 @@ import { useUserContext } from "@/app/context/UserContext";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface UserFormDialogProps {
   open: boolean;
@@ -220,7 +221,7 @@ export function UserFormDialog({
 
       if (shouldValidateEmail) {
         const response = await fetch(
-          `/api/v1/manager/${supabaseId}/users?email=${encodeURIComponent(nextEmail)}`,
+          `${API_CLIENT_BASE}/manager/${supabaseId}/users?email=${encodeURIComponent(nextEmail)}`,
           {
             headers: activeTeamId ? { "x-team-id": activeTeamId } : undefined,
           }

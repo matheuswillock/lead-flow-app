@@ -1,4 +1,5 @@
 import type { EmailLog, LogDetail } from '../context/HistoricoTypes'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type ListParams = {
   page: number
@@ -24,7 +25,7 @@ export interface IHistoricoService {
 }
 
 export class HistoricoService implements IHistoricoService {
-  private readonly baseUrl = '/api/v1/email/logs'
+  private readonly baseUrl = `${API_CLIENT_BASE}/email/logs`
 
   async getLogs(params: ListParams): Promise<ListResult> {
     const query = new URLSearchParams({

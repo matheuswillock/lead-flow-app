@@ -7,6 +7,7 @@ import type {
   HostLogsResult,
 } from "../context/BackofficeStudioBotOpsTypes"
 import type { IBackofficeStudioBotOpsService } from "./IBackofficeStudioBotOpsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsService {
   private async parseResponse<T>(res: Response): Promise<ApiOutput<T>> {
@@ -23,7 +24,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async getSettings() {
-    const res = await fetch("/api/v1/backoffice/bot/host/settings", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/settings`, { cache: "no-store" })
     const data = await this.parseResponse<{ id: string } & BackofficeBotHostSettings>(res)
     if (!data.isValid || !data.result) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao carregar settings")
@@ -37,7 +38,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
     n8nEnv?: Record<string, string>
     evolutionEnv?: Record<string, string>
   }) {
-    const res = await fetch("/api/v1/backoffice/bot/host/settings", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/settings`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -50,7 +51,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async exportEnvFile() {
-    const res = await fetch("/api/v1/backoffice/bot/host/settings/env-file", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/settings/env-file`, {
       cache: "no-store",
     })
     return this.parseResponse<{
@@ -64,12 +65,12 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async rotateToken() {
-    const res = await fetch("/api/v1/backoffice/bot/host/rotate-token", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/rotate-token`, { method: "POST" })
     return this.parseResponse<{ agentToken: string; settingsId: string }>(res)
   }
 
   async listJobs() {
-    const res = await fetch("/api/v1/backoffice/bot/host/jobs", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/jobs`, { cache: "no-store" })
     const data = await this.parseResponse<{ jobs: BackofficeBotHostJob[] }>(res)
     if (!data.isValid) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao listar jobs")
@@ -78,7 +79,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async health() {
-    const res = await fetch("/api/v1/backoffice/bot/host/health", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/health`, { method: "POST" })
     return this.parseResponse<{ jobId: string; health: HostHealth }>(res)
   }
 
@@ -87,19 +88,19 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
       service: input.service,
       ...(input.tail != null ? { tail: String(input.tail) } : {}),
     })
-    const res = await fetch(`/api/v1/backoffice/bot/host/logs?${qs.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/logs?${qs.toString()}`, {
       cache: "no-store",
     })
     return this.parseResponse<HostLogsResult>(res)
   }
 
   async applyEnv() {
-    const res = await fetch("/api/v1/backoffice/bot/host/apply", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/apply`, { method: "POST" })
     return this.parseResponse<{ jobId: string }>(res)
   }
 
   async restart(service: "n8n" | "api" | "all") {
-    const res = await fetch("/api/v1/backoffice/bot/host/restart", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/restart`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ service }),
@@ -108,12 +109,12 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async importWorkflows() {
-    const res = await fetch("/api/v1/backoffice/bot/host/workflows/import", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/workflows/import`, { method: "POST" })
     return this.parseResponse<{ jobId: string }>(res)
   }
 
   async previewResyncBethaniaWebhook() {
-    const res = await fetch("/api/v1/backoffice/bot/host/resync-bethania-webhook", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/resync-bethania-webhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: false }),
@@ -122,7 +123,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async confirmResyncBethaniaWebhook() {
-    const res = await fetch("/api/v1/backoffice/bot/host/resync-bethania-webhook", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/resync-bethania-webhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: true }),
@@ -131,7 +132,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
   }
 
   async syncHost(input: { version: string; packBase64: string; packSha256: string }) {
-    const res = await fetch("/api/v1/backoffice/bot/host/sync", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

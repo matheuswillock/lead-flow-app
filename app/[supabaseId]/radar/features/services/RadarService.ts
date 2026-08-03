@@ -16,6 +16,7 @@ import type {
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 async function parseOutput<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -25,7 +26,7 @@ async function parseOutput<T>(res: Response): Promise<T> {
 }
 
 export class RadarFrontendService implements IRadarService {
-  private readonly baseUrl = "/api/v1/radar"
+  private readonly baseUrl = `${API_CLIENT_BASE}/radar`
 
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
     return {

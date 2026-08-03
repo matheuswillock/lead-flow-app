@@ -36,6 +36,7 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { useDashboardContext } from "../context/DashboardContext"
 import type { DashboardTeamScope } from "../context/DashboardTypes"
 import { cn } from "@/lib/utils"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ScheduleData {
   id: string
@@ -87,7 +88,7 @@ async function getSchedulesWithDedupe(
       params.set("teamScope", "all")
     }
 
-    const response = await fetch(`/api/v1/dashboard/schedules?${params.toString()}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/dashboard/schedules?${params.toString()}`, {
       headers: {
         'x-supabase-user-id': supabaseId,
         'x-team-id': teamId,

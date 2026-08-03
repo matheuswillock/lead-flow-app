@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from "react"
 import { useUserContext } from "./UserContext"
 import { useTeamContext } from "./TeamContext"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export interface UserRoleData {
   isMaster: boolean
@@ -104,7 +105,7 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
       }
 
       try {
-        const response = await fetch("/api/v1/features/access", {
+        const response = await fetch(`${API_CLIENT_BASE}/features/access`, {
           headers: activeTeamId ? { "x-team-id": activeTeamId } : undefined,
           cache: "no-store",
         })

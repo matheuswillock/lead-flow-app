@@ -6,6 +6,7 @@ import type {
   StudioEmailLog,
   StudioEmailTemplate,
 } from "./IBackofficeStudioEmailService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -15,7 +16,7 @@ interface BackofficeApiOutput<T> {
 }
 
 function basePath(masterId: string, teamId: string) {
-  return `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}/email`
+  return `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}/email`
 }
 
 async function parseOutput<T>(response: Response): Promise<T> {

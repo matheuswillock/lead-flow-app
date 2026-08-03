@@ -29,17 +29,20 @@ const PublicContractContext = createContext<PublicContractContextValue | null>(n
 export function PublicContractProvider({
   children,
   token,
+  initialShare,
 }: {
   children: ReactNode
   token: string
+  /** Dados pré-carregados pelo Server Component — evita requisição visível no Network. */
+  initialShare?: PublicContractShare | null
 }) {
   const service = useMemo<IPublicContractService>(() => new PublicContractService(), [])
-  const [share, setShare] = useState<PublicContractShare | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [share, setShare] = useState<PublicContractShare | null>(initialShare ?? null)
+  const [isLoading, setIsLoading] = useState(!initialShare)
   const [isDownloading, setIsDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlightKey = useRef<string | null>(null)
-  const lastSuccessKey = useRef<string | null>(null)
+  const lastSuccessKey = useRef<string | null>(token)
 
   const loadShare = useCallback(async () => {
     const requestKey = `share:${token}`

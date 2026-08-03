@@ -2,10 +2,11 @@ import type {
   IPublicScheduleShareService,
   PublicScheduleShareData,
 } from "./IPublicScheduleShareService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class PublicScheduleShareService implements IPublicScheduleShareService {
   async getSchedule(token: string): Promise<PublicScheduleShareData> {
-      const response = await fetch(`/api/v1/backoffice/public-schedules/${token}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/backoffice/public-schedules/${token}`, {
       cache: "no-store",
     });
     const result = await response.json();
