@@ -593,6 +593,10 @@ export class EmailCampaignUseCase {
         totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
           ? activeRecipientCount
           : campaign.totalRecipients,
+        partiallySentCount: isParent
+          ? campaign.subCampaigns.filter((sub) => sub.status === "sent").length
+          : undefined,
+        partiallySentTotal: isParent ? campaign.subCampaigns.length : undefined,
         ...(childTotals ?? {}),
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
@@ -814,7 +818,7 @@ export class EmailCampaignUseCase {
 
   async update(id: string, data: UpdateCampaignInput, ctx: TeamContext): Promise<Output> {
     try {
-      const editableStatuses = ["draft", "scheduled"] as const
+      const editableStatuses = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
       const existing = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: [...editableStatuses] } },
       })
@@ -1016,7 +1020,7 @@ export class EmailCampaignUseCase {
 
       return new Output(true, ["Campanha atualizada com sucesso"], [], {
         ...campaign,
-        totalRecipients: ["draft", "scheduled", "sending", "sent", "failed"].includes(campaign.status)
+        totalRecipients: ["draft", "scheduled", "sending", "sent", "failed", "partially_sent"].includes(campaign.status)
           ? resolvedRecipientCount
           : campaign.totalRecipients,
       })
@@ -1071,15 +1075,17 @@ export class EmailCampaignUseCase {
   private buildDispatchFailureDetail(providerErrors: DispatchProviderError[]): string | null {
     if (providerErrors.length === 0) return null
 
-    const parts = providerErrors.slice(0, 3).map((error) =>
-      formatProviderBatchFailureMessage({
+    const parts = providerErrors.slice(0, 3).map((error) => {
+      const technical = formatProviderBatchFailureMessage({
         message: error.message,
         statusCode: error.statusCode,
         emails: error.emails,
       })
-    )
+      console.error("[EmailCampaignUseCase][buildDispatchFailureDetail] erro técnico:", technical)
+      return technical
+    })
     const remaining = providerErrors.length - parts.length
-    return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} erro(s)` : parts.join(" | ")
+    return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} lote(s) com falha` : parts.join(" | ")
   }
 
   private recordDispatchLeadActivities(params: {
@@ -1477,6 +1483,7 @@ export class EmailCampaignUseCase {
                 html: job.html,
                 campaignId: job.campaignId,
                 teamId: job.teamId,
+                dispatchId: job.dispatchId,
                 dispatchNumber: job.dispatchNumber,
                 globalDefaults: job.globalDefaults,
                 templateVariables: job.templateVariables,
@@ -2294,6 +2301,7 @@ export class EmailCampaignUseCase {
                 html: dispatchInput.html,
                 campaignId: campaign.id,
                 teamId: campaign.teamId,
+                dispatchId: dispatchRecord.id,
                 dispatchNumber,
                 globalDefaults: dispatchInput.globalDefaults,
                 templateVariables: dispatchInput.templateVariables,
@@ -2476,9 +2484,11 @@ export class EmailCampaignUseCase {
       parentStatus = "scheduled"
     } else if ([...statuses].every((status) => status === "canceled")) {
       parentStatus = "canceled"
-    } else if (statuses.has("failed") && !statuses.has("sent")) {
+    } else if (statuses.has("failed") && !statuses.has("sent") && !statuses.has("partially_sent")) {
       parentStatus = "failed"
-    } else if (statuses.has("sent") || statuses.has("failed") || statuses.has("canceled")) {
+    } else if (statuses.has("failed") && (statuses.has("sent") || statuses.has("partially_sent"))) {
+      parentStatus = "partially_sent"
+    } else if (statuses.has("sent") || statuses.has("partially_sent") || statuses.has("canceled")) {
       parentStatus = "sent"
     }
 
@@ -2585,7 +2595,7 @@ export class EmailCampaignUseCase {
   async archive(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed"] } },
+        where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed", "partially_sent"] } },
       })
 
       if (!existing) {
