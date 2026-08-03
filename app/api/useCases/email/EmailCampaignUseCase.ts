@@ -53,7 +53,6 @@ import {
   isDailyLimitErrorMessage,
 } from "@/lib/email/campaign-limits"
 import { notifyCampaignDispatchFailure } from "@/lib/email/notify-campaign-dispatch-failure"
-import { toFriendlyDispatchErrorMessage, isAlreadyFriendlyMessage } from "@/lib/email/campaign-error-messages"
 import { resolveTeamEmailCampaignLimits } from "@/lib/email/resolve-team-email-campaign-limits"
 import {
   requiresSubCampaignSplit,
@@ -1082,15 +1081,8 @@ export class EmailCampaignUseCase {
         statusCode: error.statusCode,
         emails: error.emails,
       })
-      const friendly = isAlreadyFriendlyMessage(error.message)
-        ? error.message
-        : toFriendlyDispatchErrorMessage(
-            typeof error.statusCode === "number"
-              ? `${error.statusCode} ${error.message}`
-              : error.message
-          )
       console.error("[EmailCampaignUseCase][buildDispatchFailureDetail] erro técnico:", technical)
-      return friendly
+      return technical
     })
     const remaining = providerErrors.length - parts.length
     return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} lote(s) com falha` : parts.join(" | ")
