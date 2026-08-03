@@ -39,18 +39,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const filters: LeadExtractionFilters = {
       mainCnae: body.mainCnae,
-      sideCnae: body.sideCnae,
-      state: body.state,
+      states: Array.isArray(body.states) ? body.states : body.state ? [body.state] : undefined,
       municipalityCode: body.municipalityCode ? Number(body.municipalityCode) : undefined,
-      statusId: body.statusId,
-      natureId: body.natureId,
-      sizeId: body.sizeId,
+      statusIds: Array.isArray(body.statusIds) ? body.statusIds : undefined,
+      natureIds: Array.isArray(body.natureIds) ? body.natureIds : undefined,
+      sizeIds: Array.isArray(body.sizeIds) ? body.sizeIds : undefined,
       simplesOptant: body.simplesOptant,
       simeiOptant: body.simeiOptant,
       foundedGte: body.foundedGte,
       foundedLte: body.foundedLte,
       hasPhone: body.hasPhone,
       hasEmail: body.hasEmail,
+      removeContadores: body.removeContadores === true,
     }
 
     const output = await backofficeLeadExtractionUseCase.search(

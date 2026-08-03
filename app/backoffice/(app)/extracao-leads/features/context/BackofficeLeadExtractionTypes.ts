@@ -2,18 +2,18 @@ import type { LeadExtractionFiltersForm, LeadExtractionResultItem } from "../ser
 
 export const EMPTY_FILTERS: LeadExtractionFiltersForm = {
   mainCnae: "",
-  sideCnae: true,
-  state: "",
+  states: [],
   municipalityCode: "",
-  statusId: "",
-  natureId: "",
-  sizeId: "",
+  statusIds: [],
+  natureIds: [],
+  sizeIds: [],
   simplesOptant: "",
   simeiOptant: "",
   foundedGte: "",
   foundedLte: "",
   hasPhone: false,
   hasEmail: false,
+  removeContadores: true,
 }
 
 export interface BackofficeLeadExtractionContextValue {
@@ -24,8 +24,6 @@ export interface BackofficeLeadExtractionContextValue {
   extractionId: string | null
   isSearching: boolean
   hasSearched: boolean
-  removeContadores: boolean
-  setRemoveContadores: (v: boolean) => void
   handleSearch: () => Promise<void>
   clearFilters: () => void
 }

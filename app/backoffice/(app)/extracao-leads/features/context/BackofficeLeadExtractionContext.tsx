@@ -20,7 +20,6 @@ export function BackofficeLeadExtractionProvider({ children, service }: Props) {
   const [extractionId, setExtractionId] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
-  const [removeContadores, setRemoveContadores] = useState(true)
   const inFlightRef = useRef(false)
 
   const handleSearch = useCallback(async () => {
@@ -57,8 +56,6 @@ export function BackofficeLeadExtractionProvider({ children, service }: Props) {
         extractionId,
         isSearching,
         hasSearched,
-        removeContadores,
-        setRemoveContadores,
         handleSearch,
         clearFilters,
       }}
