@@ -19,7 +19,9 @@ export function IntegrationsContainer() {
   const { integrationsBootstrapLoading, supabaseId } = useIntegrationsContext();
   const { hasAccess } = useFeatureAccess();
   const canAccessIntegrations =
-    isTeamAllowedForIntegrations(activeTeam?.id) || hasAccess(FEATURE_SLUGS.CONFIGURATION);
+    isTeamAllowedForIntegrations(activeTeam?.id) ||
+    hasAccess(FEATURE_SLUGS.CONFIGURATION) ||
+    hasAccess(FEATURE_SLUGS.RADAR);
 
   if (isTeamLoading || (canAccessIntegrations && integrationsBootstrapLoading)) {
     return <IntegrationsPageSkeleton />;
