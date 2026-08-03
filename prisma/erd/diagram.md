@@ -1332,6 +1332,15 @@ lead_attached lead_attached
 meeting_scheduled meeting_scheduled
         }
     
+
+
+        backoffice_lead_extraction_status {
+            PENDING PENDING
+RUNNING RUNNING
+DONE DONE
+ERROR ERROR
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -3618,6 +3627,33 @@ meeting_scheduled meeting_scheduled
     DateTime createdAt 
     }
   
+
+  "backoffice_lead_extractions" {
+    String id "🗝️"
+    Json filters 
+    Int totalCount 
+    BackofficeLeadExtractionStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_lead_extraction_results" {
+    String id "🗝️"
+    String taxId 
+    String name 
+    String tradeName "❓"
+    String email "❓"
+    String phone "❓"
+    String city "❓"
+    String state "❓"
+    String cnae "❓"
+    String cnaeName "❓"
+    String type "❓"
+    Json raw "❓"
+    DateTime createdAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -4108,4 +4144,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
+    "backoffice_lead_extractions" |o--|| "BackofficeLeadExtractionStatus" : "enum:status"
+    "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
 ```

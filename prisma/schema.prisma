@@ -1002,6 +1002,7 @@ model Profile {
   backofficeDeletionRequestsRequested BackofficeDeletionRequest[]  @relation("BackofficeDeletionRequestRequester")
   backofficeDeletionApprovals         BackofficeDeletionApproval[] @relation("BackofficeDeletionApprovalApprover")
   backofficeDeletionAuditLogs         BackofficeDeletionAuditLog[] @relation("BackofficeDeletionAuditLogActor")
+  leadExtractions                     BackofficeLeadExtraction[]
 
   @@index([role])
   @@index([managerId])
@@ -5315,3 +5316,49 @@ model PublicFormMetricEvent {
   @@index([visitorSessionId, createdAt])
   @@map("corretor_studio_public_form_metric_events")
 }
+
+enum BackofficeLeadExtractionStatus {
+  PENDING
+  RUNNING
+  DONE
+  ERROR
+
+  @@map("backoffice_lead_extraction_status")
+}
+
+model BackofficeLeadExtraction {
+  id         String                         @id @default(uuid()) @db.Uuid
+  profileId  String                         @db.Uuid
+  filters    Json
+  totalCount Int                            @default(0)
+  status     BackofficeLeadExtractionStatus @default(PENDING)
+  createdAt  DateTime                       @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime                       @updatedAt @db.Timestamptz(6)
+  results    BackofficeLeadExtractionResult[]
+  profile    Profile                        @relation(fields: [profileId], references: [id])
+
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_lead_extractions")
+}
+
+model BackofficeLeadExtractionResult {
+  id           String                   @id @default(uuid()) @db.Uuid
+  extractionId String                   @db.Uuid
+  taxId        String
+  name         String
+  tradeName    String?
+  email        String?
+  phone        String?
+  city         String?
+  state        String?
+  cnae         String?
+  cnaeName     String?
+  type         String?
+  raw          Json?
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
+  extraction   BackofficeLeadExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+
+  @@index([extractionId])
+  @@map("backoffice_lead_extraction_results")
+}
+
