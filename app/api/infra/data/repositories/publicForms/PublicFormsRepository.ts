@@ -792,6 +792,28 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       data: { status: "failed", errorMessage: errorMessage.slice(0, 2000) },
     })
   }
+
+  async claimSubmissionForRetry(
+    submissionId: string,
+    publicationId: string,
+    staleBefore: Date,
+  ) {
+    const result = await prisma.publicFormSubmission.updateMany({
+      where: {
+        id: submissionId,
+        publicationId,
+        OR: [
+          { status: "failed" },
+          { status: "processing", updatedAt: { lt: staleBefore } },
+        ],
+      },
+      data: {
+        status: "processing",
+        errorMessage: null,
+      },
+    })
+    return result.count === 1
+  }
 }
 
 export const publicFormsRepository = new PublicFormsRepository()
