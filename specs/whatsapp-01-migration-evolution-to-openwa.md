@@ -216,7 +216,7 @@ O whatsapp-web.js tem a classe `RemoteAuth` que aceita uma implementação de `S
 // deploy/openwa-gateway/src/sessions/SupabaseRemoteAuth.ts
 // Por que: RemoteAuth sobrevive a restarts do container sem re-scan de QR.
 // Como: salva o diretório .wwebjs_auth/<instanceName> como ZIP no Supabase Storage.
-// Onde: Supabase bucket "openwa-sessions" (privado, service role key)
+// Onde: Supabase bucket "openwa-sessions" (privado, acesso via chave dedicada)
 
 import { createClient } from "@supabase/supabase-js";
 import * as fs from "node:fs";
@@ -224,9 +224,33 @@ import * as path from "node:path";
 import * as archiver from "archiver";
 import * as unzipper from "unzipper";
 
+// SEGURANÇA: NÃO usar SUPABASE_SERVICE_ROLE_KEY aqui.
+// A service-role key tem acesso irrestrito a todo o projeto (banco + storage + auth).
+// Se o Gateway VPS for comprometido, o dano seria total.
+//
+// Solução: criar um Postgres role dedicado "openwa_storage" com acesso apenas ao
+// bucket "openwa-sessions" via RLS em storage.objects, e gerar um JWT assinado para
+// esse role (usando o JWT secret do projeto Supabase). Assim o Gateway só pode
+// ler e escrever nesse bucket — nada mais.
+//
+// Migrations necessárias:
+//   1. bun run db:migrate:new openwa-storage-role
+//      CREATE ROLE openwa_storage NOINHERIT NOLOGIN;
+//      GRANT USAGE ON SCHEMA storage TO openwa_storage;
+//      GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO openwa_storage
+//        WHERE bucket_id = 'openwa-sessions';
+//
+//   2. Gerar o JWT com a claim role = 'openwa_storage' e assinar com o JWT secret
+//      do Supabase (disponível em Settings > API > JWT Settings).
+//      Armazenar como OPENWA_SUPABASE_KEY no .env do Gateway (nunca expor online).
+//
+// Alternativa imediata (menos ideal): usar a anon key + policy de Storage
+//   que permita operações no bucket apenas para requests vindos do CIDR do VPS.
+//   Isso é suficiente para impedir acesso externo, mas não limita permissões internas.
+
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.OPENWA_SUPABASE_KEY!   // JWT scoped ao role openwa_storage, NÃO a service-role key
 );
 
 const BUCKET = "openwa-sessions";
@@ -346,13 +370,26 @@ class SessionManager {
   async deleteSession(instanceName: string): Promise<void> {
     const client = this.clients.get(instanceName);
     if (client) {
-      await client.destroy();
+      try {
+        // destroy() encerra o processo Chromium; não chama logout() porque a sessão
+        // pode já estar desconectada e logout() dispararia um re-auth desnecessário.
+        await client.destroy();
+      } catch {
+        // ignore — client já pode estar destruído
+      }
       this.clients.delete(instanceName);
     }
+    // IMPORTANTE: chamar store.delete() explicitamente.
+    // client.logout() não é suficiente: ele só funciona quando o client está
+    // CONNECTED. Se a sessão estiver DISCONNECTED ou nunca tiver conectado,
+    // o logout() é no-op e o ZIP permanece no Supabase, acumulando sessões órfãs.
+    await this.store.delete({ session: instanceName });
     this.states.delete(instanceName);
     this.webhooks.delete(instanceName);
-    // RemoteAuth limpa o ZIP do Supabase automaticamente via client.logout()
   }
+
+  // store deve ser injetado no construtor e armazenado como campo privado:
+  // constructor(private readonly store: SupabaseRemoteAuthStore) {}
 
   async sendText(instanceName: string, to: string, text: string): Promise<string> {
     const client = this.clients.get(instanceName);
@@ -391,6 +428,14 @@ export const sessionManager = new SessionManager();
 import { createHmac } from "node:crypto";
 import { config } from "../config";
 
+// Por que retry: o Vercel pode retornar 5xx em cold-start ou sobrecarga momentânea.
+// Sem retry, eventos message.received são silenciosamente descartados.
+// A estratégia de outbox durável (persistir em DB antes de enviar) é o ideal de longo prazo;
+// a seguir implementamos retry in-memory com back-off exponencial, suficiente para a Fase A.
+
+const MAX_ATTEMPTS = 4;
+const RETRY_DELAYS_MS = [1_000, 3_000, 9_000]; // 3 retries após a tentativa inicial
+
 export class WebhookDispatcher {
   static async send(
     webhookUrl: string,
@@ -403,8 +448,18 @@ export class WebhookDispatcher {
       .update(body)
       .digest("hex");
 
+    await WebhookDispatcher.sendWithRetry(webhookUrl, body, signature, event, 0);
+  }
+
+  private static async sendWithRetry(
+    webhookUrl: string,
+    body: string,
+    signature: string,
+    event: string,
+    attempt: number
+  ): Promise<void> {
     try {
-      await fetch(webhookUrl, {
+      const res = await fetch(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -412,12 +467,42 @@ export class WebhookDispatcher {
         },
         body,
       });
+
+      if (res.ok) return;
+
+      // Resposta HTTP recebida mas não-2xx (ex: 500, 503)
+      if (attempt < MAX_ATTEMPTS - 1) {
+        console.info(
+          `[WebhookDispatcher] ${event} HTTP ${res.status}, retry ${attempt + 1}/${MAX_ATTEMPTS - 1}`
+        );
+        await WebhookDispatcher.delay(RETRY_DELAYS_MS[attempt]);
+        return WebhookDispatcher.sendWithRetry(webhookUrl, body, signature, event, attempt + 1);
+      }
+      console.error(
+        `[WebhookDispatcher] ${event} falhou após ${MAX_ATTEMPTS} tentativas, HTTP ${res.status}`
+      );
     } catch (err) {
-      // Log mas não lança — falha no webhook não pode derrubar a sessão
-      console.error(`[WebhookDispatcher] failed to send ${event} to ${webhookUrl}`, err);
+      // Erro de rede (timeout, DNS, etc.)
+      if (attempt < MAX_ATTEMPTS - 1) {
+        console.info(`[WebhookDispatcher] ${event} network error, retry ${attempt + 1}/${MAX_ATTEMPTS - 1}`);
+        await WebhookDispatcher.delay(RETRY_DELAYS_MS[attempt]);
+        return WebhookDispatcher.sendWithRetry(webhookUrl, body, signature, event, attempt + 1);
+      }
+      console.error(`[WebhookDispatcher] ${event} falhou após ${MAX_ATTEMPTS} tentativas`, err);
+      // Não lança — falha no webhook não pode derrubar a sessão
     }
   }
+
+  private static delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 }
+
+// ROADMAP — Outbox durável (Fase B):
+// Para eventos críticos (message.received, status.update) considerar persistir
+// o evento em uma tabela outbox no SQLite local antes de enviar.
+// Um worker separado reenvia eventos pendentes com TTL de 24h.
+// Isso garante entrega even se o container reiniciar durante um retry.
 ```
 
 ### 4.7 REST API Routes
@@ -895,10 +980,25 @@ export async function POST(
 import { evolutionWhatsAppProvider } from "../services/whatsapp/provider/EvolutionWhatsAppProvider";
 ```
 
+**Callsites identificados — escopo completo do desacoplamento:**
+
+| Arquivo | Linha | Forma de acoplamento |
+|---------|-------|----------------------|
+| `app/api/useCases/whatsapp/MarkConversationReadUseCase.ts` | ~5 | `import { evolutionWhatsAppProvider }` |
+| `app/api/useCases/whatsapp/ProcessWhatsAppMediaIngestUseCase.ts` | ~5 | `import { evolutionWhatsAppProvider }` |
+| `app/api/useCases/whatsapp/MessageActionUseCase.ts` | ~5 | `import { evolutionWhatsAppProvider }` (múltiplas chamadas) |
+| `app/api/services/whatsapp/WhatsAppService.ts` | 66 | `constructor(private readonly provider: IWhatsAppProvider = evolutionWhatsAppProvider) {}` |
+| `app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts` | 14 | `constructor(private readonly provider = new EvolutionWhatsAppProvider()) {}` |
+
+Todos os 5 arquivos devem ser migrados na mesma PR. Os dois últimos (`WhatsAppService` e
+`SendWhatsAppMessageExecutor`) foram identificados como callsites adicionais não listados
+originalmente — ambos instanciam o provider Evolution diretamente e devem adotar a factory.
+
 **Situação alvo (injeção via factory):**
 ```typescript
-// DEPOIS — padrão aplicado nos 3 UseCases:
-// MarkConversationReadUseCase, ProcessWhatsAppMediaIngestUseCase, MessageActionUseCase
+// DEPOIS — padrão aplicado nos 5 callsites:
+// MarkConversationReadUseCase, ProcessWhatsAppMediaIngestUseCase, MessageActionUseCase,
+// WhatsAppService, SendWhatsAppMessageExecutor
 
 import type { IWhatsAppProvider } from "../services/whatsapp/provider/IWhatsAppProvider";
 import { WhatsAppEngineFactory } from "@/lib/whatsapp/WhatsAppEngineFactory";

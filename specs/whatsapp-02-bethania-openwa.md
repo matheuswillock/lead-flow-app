@@ -328,23 +328,41 @@ export const N8N_HOST_ENV_KEYS = [
       ]
     },
     "sendBody": true,
-    "bodyParameters": {
-      "parameters": [
-        {
-          "name": "to",
-          "value": "={{ $json.normalizedPhone }}"
-        },
-        {
-          "name": "text",
-          "value": "={{ $json.message }}"
-        }
-      ]
-    }
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.request.body) }}"
   }
 }
 ```
 
-**Por que `$json.normalizedPhone` e `$json.message`**: o nó anterior ao "OpenWA API" no workflow é um nó de normalização que já produz esses campos. Não mudar o mapeamento de dados — apenas a URL e autenticação.
+**Por que `$json.request.body` (não `$json.normalizedPhone` / `$json.message`):**
+
+O nó `Route Outbound Event` produz o seguinte objeto:
+```json
+{
+  "action": "sendText",
+  "eventType": "whatsapp_outbound",
+  "request": {
+    "method": "POST",
+    "url": "https://openwa.corretorstudio.com.br/client/sendMessage/<instance>",
+    "headers": { "apikey": "<token>" },
+    "body": { "to": "5511999999999@c.us", "text": "Olá" }
+  },
+  "raw": { ... }
+}
+```
+
+Os campos `$json.normalizedPhone` e `$json.message` **não existem** nesse output —
+causariam envio de body `{ "to": null, "text": null }` para o Gateway.
+
+O padrão correto — igual ao nó "Evolution API" existente — é:
+- **URL**: `{{ $json.request.url }}` (já inclui `/client/sendMessage/<instance>`)
+- **Método**: `{{ $json.request.method }}`
+- **Headers**: apontam para `$json.request.headers` (apikey)
+- **Body**: `{{ JSON.stringify($json.request.body) }}` → `{ "to": "...", "text": "..." }`
+
+O nó `Route Outbound Event` **precisa ser atualizado** para gerar a URL e o body no
+formato do OpenWA Gateway (em vez de Evolution). Nenhuma outra mudança estrutural no
+workflow é necessária — apenas o código desse nó e os parâmetros do HTTP node.
 
 ### 5.2 `bethania-router.json` — verificação de compatibilidade
 
@@ -366,9 +384,68 @@ O OpenWA Gateway (whatsapp-web.js) emite eventos neste formato:
 }
 ```
 
-O Evolution emitia estrutura similar via Baileys. O nó `"Normalize And Sign"` do router extrai `data.from` e `data.body` — campos presentes no payload do whatsapp-web.js. **Compatível. Nenhuma alteração no router.**
+O Evolution emitia payload Baileys com estrutura `data.key.remoteJid` / `data.key.fromMe`.
+O nó `"Normalize And Sign"` do `bethania-router.json` lê exatamente esses campos:
 
-**Confirmação obrigatória antes do go-live**: comparar payload real do OpenWA contra o esperado pelo router em ambiente de staging.
+```javascript
+// Normalize And Sign — trecho atual
+const data = body.data ?? body.data?.[0];
+if (!data?.key) return [{ json: { skip: true } }];   // ← guard explícito em data.key
+const remoteJid = data.key.remoteJid;
+const fromMe    = data.key.fromMe;
+```
+
+O whatsapp-web.js envia payload **flat** sem `data.key`:
+```json
+{
+  "instance": "bethania",
+  "event": "message",
+  "data": {
+    "id": { "_serialized": "true_5511999999999@c.us_XXXX" },
+    "from": "5511999999999@c.us",
+    "to":   "5511988888888@c.us",
+    "body": "Olá",
+    "fromMe": false
+  }
+}
+```
+
+**Resultado atual sem correção**: `data.key` é `undefined` → o guard retorna
+`{ skip: true }` → **100% das mensagens são descartadas pelo router**.
+
+### Solução adotada — serialização Evolution-compatible no Gateway
+
+Em vez de alterar o N8N (que é estado compartilhado com outros workflows), o
+`WebhookDispatcher.ts` do Gateway serializa o evento `message` no envelope
+Evolution-like que o router já conhece:
+
+```typescript
+// deploy/openwa-gateway/src/webhook/WebhookDispatcher.ts
+// Ao despachar evento "message" para a Bethânia, converter para envelope Evolution:
+function toEvolutionEnvelope(instanceName: string, msg: WAWebJS.Message) {
+  return {
+    instance: instanceName,
+    event: "messages.upsert",          // mesmo event name que o router espera
+    data: {
+      key: {
+        remoteJid:  msg.from,
+        fromMe:     msg.fromMe,
+        id:         msg.id._serialized,
+      },
+      message:          { conversation: msg.body },
+      messageTimestamp: msg.timestamp,
+      pushName:         msg.notifyName ?? "",
+    },
+    timestamp: Date.now(),
+  };
+}
+```
+
+Com essa serialização o `"Normalize And Sign"` funciona sem alterações.
+O campo `data.key` existe, `data.key.remoteJid` e `data.key.fromMe` são preenchidos.
+
+**Confirmação obrigatória antes do go-live**: em staging, logar o payload enviado pelo
+Gateway e comparar campo a campo com o esperado pelo router antes de ativar em produção.
 
 ---
 
