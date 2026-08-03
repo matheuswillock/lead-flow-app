@@ -1341,6 +1341,21 @@ DONE DONE
 ERROR ERROR
         }
     
+
+
+        backoffice_company_type {
+            MEI MEI
+ME ME
+EPP EPP
+EI EI
+EIRELI EIRELI
+SLU SLU
+LTDA LTDA
+SA SA
+SS SS
+OUTROS OUTROS
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -3649,7 +3664,7 @@ ERROR ERROR
     String state "❓"
     String cnae "❓"
     String cnaeName "❓"
-    String type "❓"
+    BackofficeCompanyType type "❓"
     Json raw "❓"
     DateTime createdAt 
     }
@@ -4146,5 +4161,6 @@ ERROR ERROR
     "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
     "backoffice_lead_extractions" |o--|| "BackofficeLeadExtractionStatus" : "enum:status"
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
     "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
 ```

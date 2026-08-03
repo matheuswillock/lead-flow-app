@@ -1,3 +1,15 @@
+export type BackofficeCompanyType =
+  | "MEI"
+  | "ME"
+  | "EPP"
+  | "EI"
+  | "EIRELI"
+  | "SLU"
+  | "LTDA"
+  | "SA"
+  | "SS"
+  | "OUTROS"
+
 export interface LeadExtractionFiltersForm {
   mainCnae: string
   sideCnae: boolean
@@ -24,7 +36,7 @@ export interface LeadExtractionResultItem {
   state: string | null
   cnae: string | null
   cnaeName: string | null
-  type: string | null
+  type: BackofficeCompanyType | null
 }
 
 export interface LeadExtractionSearchResult {

@@ -5326,6 +5326,21 @@ enum BackofficeLeadExtractionStatus {
   @@map("backoffice_lead_extraction_status")
 }
 
+enum BackofficeCompanyType {
+  MEI
+  ME
+  EPP
+  EI
+  EIRELI
+  SLU
+  LTDA
+  SA
+  SS
+  OUTROS
+
+  @@map("backoffice_company_type")
+}
+
 model BackofficeLeadExtraction {
   id         String                         @id @default(uuid()) @db.Uuid
   profileId  String                         @db.Uuid
@@ -5353,7 +5368,7 @@ model BackofficeLeadExtractionResult {
   state        String?
   cnae         String?
   cnaeName     String?
-  type         String?
+  type         BackofficeCompanyType?
   raw          Json?
   createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
   extraction   BackofficeLeadExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)

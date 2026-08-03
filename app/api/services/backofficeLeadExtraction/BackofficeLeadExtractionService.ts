@@ -1,9 +1,34 @@
 import { Cnpja } from "@cnpja/sdk"
+import type { BackofficeCompanyType } from "@prisma/client"
 import type { LeadExtractionFilters, LeadExtractionResultData } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadExtraction/IBackofficeLeadExtractionRepository"
 import type {
   IBackofficeLeadExtractionService,
   LeadExtractionSearchOutput,
 } from "./IBackofficeLeadExtractionService"
+
+function resolveCompanyType(office: {
+  simei?: { optant?: boolean } | null
+  company?: {
+    size?: { text?: string | null } | null
+    nature?: { text?: string | null } | null
+  } | null
+}): BackofficeCompanyType {
+  if (office.simei?.optant) return "MEI"
+
+  const size = office.company?.size?.text?.toUpperCase() ?? ""
+  if (size.includes("MICRO") || size === "ME") return "ME"
+  if (size.includes("PEQUENO") || size === "EPP") return "EPP"
+
+  const nature = office.company?.nature?.text?.toUpperCase() ?? ""
+  if (nature.includes("INDIVIDUAL DE RESPONSABILIDADE")) return "EIRELI"
+  if (nature.includes("LIMITADA UNIPESSOAL") || nature.includes("SLU")) return "SLU"
+  if (nature.includes("LIMITADA") || nature.includes("LTDA")) return "LTDA"
+  if (nature.includes("ANÔNIMA") || nature.includes("ANONIMA") || nature.includes("S/A") || nature.includes("S.A")) return "SA"
+  if (nature.includes("SIMPLES") && !nature.includes("OPTANTE")) return "SS"
+  if (nature.includes("EMPRESÁRIO INDIVIDUAL") || nature.includes("EMPRESARIO INDIVIDUAL")) return "EI"
+
+  return "OUTROS"
+}
 
 const MAX_RESULTS_PER_SEARCH = 100
 
@@ -96,7 +121,7 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
           state: office.address?.state ?? null,
           cnae: office.mainActivity?.id != null ? String(office.mainActivity.id) : null,
           cnaeName: office.mainActivity?.text ?? null,
-          type: office.company?.nature?.text ?? null,
+          type: resolveCompanyType(office),
           raw: office as unknown as object,
         })
       }

@@ -1,4 +1,6 @@
-import type { BackofficeLeadExtractionStatus } from "@prisma/client"
+import type { BackofficeCompanyType, BackofficeLeadExtractionStatus } from "@prisma/client"
+
+export type { BackofficeCompanyType }
 
 export interface LeadExtractionFilters {
   mainCnae?: string
@@ -26,7 +28,7 @@ export interface LeadExtractionResultData {
   state?: string | null
   cnae?: string | null
   cnaeName?: string | null
-  type?: string | null
+  type?: BackofficeCompanyType | null
   raw?: object | null
 }
 
