@@ -716,3 +716,36 @@ describe("EMAIL_CAMPAIGN_FAILURE_MESSAGES (contratos)", () => {
     expect(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST).toContain("contato")
   })
 })
+
+describe("EmailCampaignUseCase.previewPlan", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+  })
+
+  it("retorna erro quando nome está vazio", async () => {
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.previewPlan(
+      { name: "", templateId: "00000000-0000-4000-8000-000000000001" },
+      teamCtx
+    )
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("Nome")
+  })
+
+  it("exige estratégia quando há múltiplas listas", async () => {
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.previewPlan(
+      {
+        name: "Multi",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
+      },
+      teamCtx
+    )
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("estratégia")
+  })
+})

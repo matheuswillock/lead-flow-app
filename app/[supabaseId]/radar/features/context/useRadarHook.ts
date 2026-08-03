@@ -359,6 +359,43 @@ export function useRadarHookFn() {
     [activeTeamId, loadDashboard, supabaseId, withMutationLock]
   )
 
+  const materializeContactList = useCallback(
+    async (segmentSlug: string, segmentName: string, listName?: string) => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const materialized = await radarFrontendService.materializeContactList(
+            supabaseId,
+            activeTeamId,
+            segmentSlug,
+            listName
+          )
+          toast.success(
+            `Lista criada com ${materialized.totalContacts} contato(s) a partir de "${segmentName}".`,
+            {
+              action: {
+                label: "Ver contatos",
+                onClick: () => router.push(`/${supabaseId}/email/contatos`),
+              },
+            }
+          )
+          return true
+        } catch (materializeError) {
+          console.error("[useRadarHookFn][materializeContactList]", materializeError)
+          toast.error(
+            materializeError instanceof Error
+              ? materializeError.message
+              : "Não foi possível criar a lista de contatos."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [activeTeamId, router, supabaseId, withMutationLock]
+  )
+
   const previewAudienceCount = useCallback(
     async (rules: RadarSegmentRules): Promise<number | null> => {
       if (isPreviewingAudience || !supabaseId || !activeTeamId) return null
@@ -484,6 +521,7 @@ export function useRadarHookFn() {
     createCustomSegment,
     updateCustomSegment,
     deleteCustomSegment,
+    materializeContactList,
     previewAudienceCount,
     segmentProfilesTarget,
     segmentProfilesItems,

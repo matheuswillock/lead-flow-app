@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
-import { listRadarFieldCatalog } from "@/lib/radar/field-catalog"
 import { getRadarAccess } from "@/app/api/v1/radar/utils/getRadarAccess"
+import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(radarAccess.error, { status: radarAccess.status })
     }
 
-    const output = new Output(true, [], [], { fields: listRadarFieldCatalog() })
-    return NextResponse.json(output, { status: 200 })
+    const result = await customerDataPlatformUseCase.listAvailableFields(radarAccess.access.teamId)
+    return NextResponse.json(result, { status: result.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[RadarAvailableFieldsRoute][GET]", error)

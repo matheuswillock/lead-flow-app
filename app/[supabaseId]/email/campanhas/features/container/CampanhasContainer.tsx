@@ -13,7 +13,7 @@ import type { DateRange } from "react-day-picker"
 import { format } from "date-fns"
 import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CampaignList } from "../components/CampaignList"
-import { CampaignCreateWizard } from "../components/CampaignCreateWizard"
+import { CampaignWizardDialog } from "../components/CampaignWizardDialog"
 import type { ComponentType } from "react"
 import { CampaignDetailSheet } from "../components/CampaignDetailSheet"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
@@ -24,6 +24,7 @@ type AnalyticsDialogProps = {
   campaignId?: string
   campaignName?: string
   campaignErrorMessage?: string | null
+  defaultTab?: "metrics" | "logs"
 }
 
 const DefaultCampaignAnalyticsDialog = dynamic(
@@ -62,6 +63,7 @@ export function CampanhasContainer({
     openWizard,
   } = useCampanhasContext()
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [analyticsDefaultTab, setAnalyticsDefaultTab] = useState<"metrics" | "logs">("metrics")
 
   const dateRange: DateRange | undefined =
     dateFrom || dateTo
@@ -94,8 +96,10 @@ export function CampanhasContainer({
     id: string
     name: string
     errorMessage?: string | null
-  }) {
+    defaultTab?: "metrics" | "logs"
+  }, defaultTab?: "metrics" | "logs") {
     setAnalyticsCampaign(campaign)
+    setAnalyticsDefaultTab(campaign.defaultTab ?? defaultTab ?? "metrics")
     setAnalyticsOpen(true)
   }
 
@@ -146,7 +150,7 @@ export function CampanhasContainer({
       </LeadsFiltersLayout>
 
       <CampaignList onOpenAnalytics={openCampaignAnalytics} />
-      <CampaignCreateWizard />
+      <CampaignWizardDialog />
       <CampaignDetailSheet onOpenAnalytics={openCampaignAnalytics} />
       <AnalyticsDialogComponent
         open={analyticsOpen}
@@ -154,6 +158,7 @@ export function CampanhasContainer({
         campaignId={analyticsCampaign?.id}
         campaignName={analyticsCampaign?.name}
         campaignErrorMessage={analyticsCampaign?.errorMessage}
+        defaultTab={analyticsDefaultTab}
       />
     </div>
   )

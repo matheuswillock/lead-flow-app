@@ -18,7 +18,9 @@ import type {
   TeamRadarSegmentInput,
   TeamRadarSegmentUpdateInput,
 } from "@/app/api/services/radar/ITeamRadarSegmentService"
+import { listRadarFieldCatalog } from "@/lib/radar/field-catalog"
 import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
+import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
 import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
@@ -343,6 +345,29 @@ export class RadarUseCase {
       console.error("[RadarUseCase][listCustomSegmentProfiles]", error)
       return new Output(false, [], ["Erro ao listar perfis do segmento"], null)
     }
+  }
+
+  async listFieldDefinitions(teamId: string) {
+    const definitions = await teamRadarFieldDefinitionRepository.listActiveByTeam(teamId)
+    return new Output(true, [], [], { definitions })
+  }
+
+  async listAvailableFields(teamId: string) {
+    const catalogFields = listRadarFieldCatalog().map((field) => ({
+      key: field.key,
+      label: field.label,
+      sourceType: field.sourceType,
+    }))
+
+    const dynamicFields = await teamRadarFieldDefinitionRepository.listActiveByTeam(teamId)
+    const baseFields = dynamicFields.map((field) => ({
+      key: `base.${field.key}`,
+      label: field.label,
+      sourceType: "BASE",
+      valueType: field.valueType,
+    }))
+
+    return new Output(true, [], [], { fields: [...catalogFields, ...baseFields] })
   }
 }
 
