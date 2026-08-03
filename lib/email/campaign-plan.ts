@@ -95,7 +95,10 @@ function buildChunkPlans(params: {
     scheduledAt: params.scheduledAts[chunkIndex]?.toISOString() ?? null,
     contactListId: params.contactListId ?? null,
     listName: params.listName ?? null,
-    audienceContactIds: params.chunks.length > 1 ? chunk.contactIds : undefined,
+    audienceContactIds:
+      params.chunks.length > 1 || params.contactListId == null
+        ? chunk.contactIds
+        : undefined,
   }))
 }
 
@@ -108,15 +111,17 @@ export function buildCampaignPlan(params: {
   scheduleIntervalDays?: number | null
   uniformSchedule?: boolean
   subCampaignSchedules?: SubCampaignScheduleInput[]
+  maxRecipientsPerSub?: number | null
 }): CampaignPlanResult {
   const trimmedName = params.campaignName.trim()
   const uniformSchedule = params.uniformSchedule !== false
+  const maxPerSub = params.maxRecipientsPerSub
 
   if (params.listStrategy === "single") {
     const slice = params.listAudiences[0]
     const contactIds = slice?.contacts.map((contact) => contact.contactId) ?? []
     const totalRecipients = contactIds.length
-    const needsSplit = requiresSubCampaignSplit(totalRecipients)
+    const needsSplit = requiresSubCampaignSplit(totalRecipients, maxPerSub)
 
     if (!needsSplit) {
       return {
@@ -138,7 +143,7 @@ export function buildCampaignPlan(params: {
       }
     }
 
-    const chunks = chunkContactIdsForSubCampaigns(contactIds)
+    const chunks = chunkContactIdsForSubCampaigns(contactIds, maxPerSub)
     const scheduledAts = resolveScheduledAts({
       subCount: chunks.length,
       scheduledAt: params.scheduledAt,
@@ -167,9 +172,9 @@ export function buildCampaignPlan(params: {
     const mergedContacts = dedupeContactsFromSlices(params.listAudiences)
     const mergedIds = mergedContacts.map((contact) => contact.contactId)
     const totalRecipients = mergedIds.length
-    const needsSplit = requiresSubCampaignSplit(totalRecipients)
+    const needsSplit = requiresSubCampaignSplit(totalRecipients, maxPerSub)
     const chunks = needsSplit
-      ? chunkContactIdsForSubCampaigns(mergedIds)
+      ? chunkContactIdsForSubCampaigns(mergedIds, maxPerSub)
       : [{ contactIds: mergedIds, size: mergedIds.length, index: 1 }]
     const scheduledAts = resolveScheduledAts({
       subCount: chunks.length,
@@ -203,6 +208,7 @@ export function buildCampaignPlan(params: {
     uniformSchedule,
     subCampaignSchedules: params.subCampaignSchedules,
     sourceContactListIds: params.sourceContactListIds,
+    maxRecipientsPerSub: maxPerSub,
   })
 }
 
@@ -214,15 +220,17 @@ function buildPerListPlan(params: {
   uniformSchedule: boolean
   subCampaignSchedules?: SubCampaignScheduleInput[]
   sourceContactListIds: string[]
+  maxRecipientsPerSub?: number | null
 }): CampaignPlanResult {
   const subCampaigns: SubCampaignPlanItem[] = []
   let globalIndex = 0
   let totalRecipients = 0
+  const maxPerSub = params.maxRecipientsPerSub
 
   for (const slice of params.listAudiences) {
     const contactIds = slice.contacts.map((contact) => contact.contactId)
-    const chunks = requiresSubCampaignSplit(contactIds.length)
-      ? chunkContactIdsForSubCampaigns(contactIds)
+    const chunks = requiresSubCampaignSplit(contactIds.length, maxPerSub)
+      ? chunkContactIdsForSubCampaigns(contactIds, maxPerSub)
       : [{ contactIds, size: contactIds.length, index: 1 }]
 
     for (const chunk of chunks) {

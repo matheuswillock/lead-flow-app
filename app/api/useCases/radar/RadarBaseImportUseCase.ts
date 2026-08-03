@@ -261,7 +261,7 @@ export class RadarBaseImportUseCase {
       profileId,
       teamId,
       sourceType: "base_import",
-      sourceId: importJobId,
+      sourceId: `${importJobId}:row:${row.line}`,
       sourceMetadata: { line: row.line },
     })
 
@@ -352,31 +352,37 @@ export class RadarBaseImportUseCase {
       const raw = await downloadRadarImportPayload(input.storagePath)
       const payload = this.parseStoredPayload(raw)
 
-      const provisionalJobId = randomUUID()
-      const resolvedFieldMapping = await this.upsertFieldDefinitions(
-        input.ctx.teamId,
-        input.ctx.profileId,
-        input.fieldMapping,
-        payload.rows,
-        provisionalJobId
-      )
+      const jobId = randomUUID()
 
-      const job = await radarImportJobRepository.create({
-        id: provisionalJobId,
+      // Create the job first so field definitions can reference it via FK
+      await radarImportJobRepository.create({
+        id: jobId,
         importId: input.importId,
         team: { connect: { id: input.ctx.teamId } },
         requester: { connect: { id: input.ctx.profileId } },
         baseName: input.baseName.trim(),
         sourceFormat: input.sourceFormat,
         storagePath: input.storagePath,
-        fieldMapping: resolvedFieldMapping,
+        fieldMapping: input.fieldMapping,
         status: "pending",
         totalRows: input.totalRows,
         batchSize: BATCH_SIZE,
         failedBatches: Prisma.JsonNull,
       })
 
-      return new Output(true, ["Importação enfileirada"], [], { importId: job.importId })
+      const resolvedFieldMapping = await this.upsertFieldDefinitions(
+        input.ctx.teamId,
+        input.ctx.profileId,
+        input.fieldMapping,
+        payload.rows,
+        jobId
+      )
+
+      await radarImportJobRepository.updateJob(jobId, {
+        fieldMapping: resolvedFieldMapping as unknown as Prisma.InputJsonValue,
+      })
+
+      return new Output(true, ["Importação enfileirada"], [], { importId: input.importId })
     } catch (error) {
       console.error("[RadarBaseImportUseCase][enqueueMappedImport]", error)
       return new Output(false, [], ["Erro ao enfileirar importação"], null)
@@ -457,8 +463,17 @@ export class RadarBaseImportUseCase {
         return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
       }
 
-      const raw = await downloadRadarImportPayload(claimed.storagePath)
-      const payload = this.parseStoredPayload(raw)
+      let raw: string
+      let payload: StoredImportPayload
+      try {
+        raw = await downloadRadarImportPayload(claimed.storagePath)
+        payload = this.parseStoredPayload(raw)
+      } catch (setupError) {
+        console.error(`[RadarBaseImport][${claimed.importId}] Falha no setup do job`, setupError)
+        await radarImportJobRepository.updateJob(claimed.id, { status: "failed" })
+        return new Output(false, [], ["Falha ao carregar payload do job"], null)
+      }
+
       const fieldMapping = claimed.fieldMapping as Record<string, string>
 
       let processedRows = claimed.processedRows
@@ -503,6 +518,16 @@ export class RadarBaseImportUseCase {
         const currentAttempts = attemptsByBatch[batchKey] ?? 0
         const batch = payload.rows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
 
+        // Snapshot counters before processing; restore on failure to prevent double-counting
+        const batchCheckpoint = {
+          processedRows,
+          createdCount,
+          enrichedCount,
+          skippedCount,
+          deferredCount,
+          skippedIssuesLength: skippedIssues.length,
+        }
+
         try {
           for (const row of batch) {
             const result = await this.processRow(
@@ -534,6 +559,14 @@ export class RadarBaseImportUseCase {
           )
           batchIndex += 1
         } catch (error) {
+          // Restore to pre-batch state so a retry starts the batch cleanly
+          processedRows = batchCheckpoint.processedRows
+          createdCount = batchCheckpoint.createdCount
+          enrichedCount = batchCheckpoint.enrichedCount
+          skippedCount = batchCheckpoint.skippedCount
+          deferredCount = batchCheckpoint.deferredCount
+          skippedIssues.splice(batchCheckpoint.skippedIssuesLength)
+
           const nextAttempt = currentAttempts + 1
           attemptsByBatch[batchKey] = nextAttempt
           const reason = error instanceof Error ? error.message : "Erro desconhecido"

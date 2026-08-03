@@ -315,11 +315,13 @@ export class EmailCampaignUseCase {
       if (error) return new Output(false, [], [error], null)
 
       const schedule = this.parseScheduleInput(data)
+      const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const plan = buildCampaignPlan({
         campaignName: data.name,
         listStrategy,
         sourceContactListIds: listStrategy === "merge" ? contactListIds : contactListIds,
         listAudiences: slices,
+        maxRecipientsPerSub: teamLimits.maxRecipientsPerSub,
         ...schedule,
       })
 
@@ -720,6 +722,7 @@ export class EmailCampaignUseCase {
         listStrategy,
         sourceContactListIds: listStrategy === "merge" ? contactListIds : contactListIds,
         listAudiences: slices,
+        maxRecipientsPerSub: maxPerSub,
         ...schedule,
       })
 
@@ -737,7 +740,8 @@ export class EmailCampaignUseCase {
             createdBy: ctx.profileId,
             name: trimmedName,
             templateId: data.templateId,
-            contactListId: single?.contactListId ?? contactListIds[0] ?? null,
+            contactListId: single?.contactListId ?? (listStrategy === "single" ? (contactListIds[0] ?? null) : null),
+            audienceContactIds: single?.audienceContactIds ?? [],
             sourceContactListIds: listStrategy === "merge" ? contactListIds : [],
             status: single?.scheduledAt ? "scheduled" : "draft",
             scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
