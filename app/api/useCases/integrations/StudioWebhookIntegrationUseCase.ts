@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService";
 import { Output } from "@/lib/output";
 import {
   buildStudioWebhookTokenPreview,
@@ -106,11 +107,13 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       }
 
       const webhookConfig = await this.service.getWebhookConfigByTeamId(input.teamId);
+      const leadFormFullUrl = buildLeadFormUrl(input.appUrl, input.teamId);
+      const leadFormUrl = await shortLinkService.getOrCreate({ targetUrl: leadFormFullUrl });
       if (!webhookConfig) {
         return new Output(true, [], [], {
           configured: false,
           teamId: input.teamId,
-          leadFormUrl: buildLeadFormUrl(input.appUrl, input.teamId),
+          leadFormUrl,
           tokenMode: "auto",
           tokenPreview: null,
           expiryMode: "indeterminate",
@@ -135,7 +138,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       return new Output(true, [], [], {
         configured: true,
         teamId: input.teamId,
-        leadFormUrl: buildLeadFormUrl(input.appUrl, input.teamId),
+        leadFormUrl,
         tokenMode,
         tokenPreview: webhookConfig.tokenPreview,
         expiryMode: webhookConfig.expiryMode,
