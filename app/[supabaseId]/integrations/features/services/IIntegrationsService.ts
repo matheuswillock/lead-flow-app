@@ -54,6 +54,33 @@ export type GetStudioWebhookLogsResponse = {
   logs: StudioWebhookLogItem[];
 };
 
+export type RadarPixelConfigData = {
+  configured: boolean;
+  publicToken: string | null;
+  allowedOrigins: string[];
+  lastUsedAt: string | null;
+  pixelSnippet: string | null;
+};
+
+export type SaveRadarPixelConfigPayload = {
+  allowedOrigins: string[];
+};
+
+export type RadarPixelHitLogItem = {
+  id: string;
+  teamId: string;
+  eventType: string;
+  visitorSession: string;
+  origin: string | null;
+  userAgent: string | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
+export type GetRadarPixelHitLogsResponse = {
+  logs: RadarPixelHitLogItem[];
+};
+
 export interface IIntegrationsService {
   resolveAppUrl(): string;
   buildLeadFormUrl(params: BuildLeadFormUrlParams): string;
@@ -65,4 +92,12 @@ export interface IIntegrationsService {
     supabaseId: string,
     payload: SaveStudioWebhookConfigPayload
   ): Promise<SaveStudioWebhookConfigResponse>;
+  getRadarPixelConfig(supabaseId: string, teamId: string): Promise<RadarPixelConfigData>;
+  saveRadarPixelConfig(
+    supabaseId: string,
+    teamId: string,
+    payload: SaveRadarPixelConfigPayload
+  ): Promise<RadarPixelConfigData>;
+  deleteRadarPixelConfig(supabaseId: string, teamId: string): Promise<void>;
+  getRadarPixelHitLogs(supabaseId: string, teamId: string): Promise<GetRadarPixelHitLogsResponse>;
 }

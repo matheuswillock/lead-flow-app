@@ -301,14 +301,14 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       }
     })
 
-    it("retorna 400 quando backup success não tem arquivo disponível", async () => {
+    it("retorna 410 para backup legado sem googleDriveFileId", async () => {
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           findById: async () => ({
             ...baseRecord,
             googleDriveFileId: null,
-            filePath: null,
-            fileName: null,
+            filePath: "/old/path/backup.zip",
+            fileName: "backup-old.zip",
           }),
         }),
         createExportMock(),
@@ -318,7 +318,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       const result = await useCase.getDownloadStream("b1")
       expect(result.ok).toBe(false)
       if (!result.ok) {
-        expect(result.status).toBe(400)
+        expect(result.status).toBe(410)
       }
     })
   })
