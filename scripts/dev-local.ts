@@ -534,6 +534,10 @@ function getHybridDatabaseOverrides(): EnvOverrides {
     DATABASE_URL: LOCAL_DB_URL,
     DIRECT_URL: LOCAL_DB_URL,
     NEXT_PUBLIC_SUPABASE_URL: LOCAL_PROXY_URL,
+    // Marcador explícito para createSupabaseAdmin() (lib/supabase/server.ts)
+    // distinguir o proxy híbrido (Auth/Storage remotos) do --full-supabase
+    // (Auth/Storage locais de verdade), já que ambos usam 127.0.0.1.
+    SUPABASE_HYBRID_LOCAL_STACK: "true",
     ...(remote.SUPABASE_REMOTE_ANON_KEY
       ? { NEXT_PUBLIC_SUPABASE_ANON_KEY: remote.SUPABASE_REMOTE_ANON_KEY }
       : {}),
