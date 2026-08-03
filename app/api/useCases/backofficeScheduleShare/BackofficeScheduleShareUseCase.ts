@@ -1,3 +1,4 @@
+import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService"
 import { Output } from "@/lib/output"
 import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import { BackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/BackofficeLeadScheduleRepository"
@@ -16,7 +17,11 @@ export class BackofficeScheduleShareUseCase implements IBackofficeScheduleShareU
   async createPublicShare(leadId: string): Promise<Output> {
     try {
       const result = await this.service.createPublicShare({ leadId })
-      return new Output(true, ["Link público gerado com sucesso"], [], result)
+      const publicUrl = await shortLinkService.getOrCreate({
+        targetUrl: result.publicUrl,
+        expiresAt: new Date(result.expiresAt),
+      })
+      return new Output(true, ["Link público gerado com sucesso"], [], { ...result, publicUrl })
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Erro ao gerar link público do agendamento"

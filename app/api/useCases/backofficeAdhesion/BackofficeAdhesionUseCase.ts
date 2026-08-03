@@ -1,4 +1,5 @@
 import type { BackofficeAdhesionStatus } from "@prisma/client"
+import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService"
 import { Output } from "@/lib/output"
 import {
   backofficeAdhesionService,
@@ -148,7 +149,14 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       }
 
       const result = await this.service.create(input, createdByBackofficeUserId)
-      return new Output(true, ["Nova adesão gerada com sucesso"], [], result)
+      const publicUrl =
+        result.publicUrl && result.expiresAt
+          ? await shortLinkService.getOrCreate({
+              targetUrl: result.publicUrl,
+              expiresAt: new Date(result.expiresAt),
+            })
+          : result.publicUrl
+      return new Output(true, ["Nova adesão gerada com sucesso"], [], { ...result, publicUrl })
     } catch (error) {
       if (!isExpectedCreateError(error)) {
         console.error("[BackofficeAdhesionUseCase][create]", error)
@@ -190,7 +198,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   async resend(id: string): Promise<Output> {
     try {
       const result = await this.service.resend(id)
-      return new Output(true, ["Link de adesão gerado com sucesso"], [], result)
+      const publicUrl = result.publicUrl
+        ? await shortLinkService.getOrCreate({
+            targetUrl: result.publicUrl,
+            expiresAt: new Date(result.expiresAt),
+          })
+        : result.publicUrl
+      return new Output(true, ["Link de adesão gerado com sucesso"], [], { ...result, publicUrl })
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][resend]", error)
       return new Output(
@@ -237,7 +251,11 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   async getPublicUrl(id: string): Promise<Output> {
     try {
       const result = await this.service.getPublicUrl(id)
-      return new Output(true, [], [], result)
+      const publicUrl = await shortLinkService.getOrCreate({
+        targetUrl: result.publicUrl,
+        expiresAt: new Date(result.expiresAt),
+      })
+      return new Output(true, [], [], { ...result, publicUrl })
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][getPublicUrl]", error)
       return new Output(false, [], [getErrorMessage(error, "Erro ao copiar link")], null)

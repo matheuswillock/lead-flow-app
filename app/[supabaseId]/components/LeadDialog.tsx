@@ -285,6 +285,7 @@ export default function LeadDialog({
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [_pendingSubmitData, setPendingSubmitData] = useState<LeadFormWithCustomFields | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [shortShareUrl, setShortShareUrl] = useState("");
   const [scheduleShareDialogOpen, setScheduleShareDialogOpen] = useState(false);
   const [scheduleShareUrl, setScheduleShareUrl] = useState("");
   const [scheduleShareExpiresAt, setScheduleShareExpiresAt] = useState<string | null>(null);
@@ -505,26 +506,52 @@ export default function LeadDialog({
     return url.toString();
   }, [currentLead, origin]);
 
+  useEffect(() => {
+    if (!shareUrl || !supabaseId || !activeTeamId) return;
+    let cancelled = false;
+    fetch("/api/v1/short-links", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId,
+      },
+      body: JSON.stringify({ targetUrl: shareUrl }),
+    })
+      .then((res) => res.json())
+      .then((output) => {
+        if (!cancelled && output?.isValid && output?.result?.shortUrl) {
+          setShortShareUrl(output.result.shortUrl as string);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [shareUrl, supabaseId, activeTeamId]);
+
+  const displayShareUrl = shortShareUrl || shareUrl;
+
   const shareMessage = useMemo(() => {
-    if (!currentLead) return shareUrl;
-    return `Lead: ${currentLead.name}\n${shareUrl}`;
-  }, [currentLead, shareUrl]);
+    if (!currentLead) return displayShareUrl;
+    return `Lead: ${currentLead.name}\n${displayShareUrl}`;
+  }, [currentLead, displayShareUrl]);
 
   const whatsappShare = useMemo(() => {
-    if (!shareUrl) return "#";
+    if (!displayShareUrl) return "#";
     return `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
-  }, [shareMessage, shareUrl]);
+  }, [shareMessage, displayShareUrl]);
 
   const messengerShare = useMemo(() => {
-    if (!shareUrl) return "#";
-    return `https://www.messenger.com/share?link=${encodeURIComponent(shareUrl)}`;
-  }, [shareUrl]);
+    if (!displayShareUrl) return "#";
+    return `https://www.messenger.com/share?link=${encodeURIComponent(displayShareUrl)}`;
+  }, [displayShareUrl]);
 
   const emailShare = useMemo(() => {
-    if (!shareUrl) return "#";
+    if (!displayShareUrl) return "#";
     const subject = encodeURIComponent("Lead compartilhado");
     return `mailto:?subject=${subject}&body=${encodeURIComponent(shareMessage)}`;
-  }, [shareMessage, shareUrl]);
+  }, [shareMessage, displayShareUrl]);
 
   const canFinalizeContract = currentLead && (
     currentLead.status === "invoicePayment" ||
@@ -878,9 +905,9 @@ export default function LeadDialog({
   };
 
   const handleCopyShareLink = async () => {
-    if (!shareUrl) return;
+    if (!displayShareUrl) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(displayShareUrl);
       toast.success("Link de compartilhamento copiado");
     } catch (error) {
       console.error("Erro ao copiar link de compartilhamento:", error);
@@ -3362,7 +3389,7 @@ export default function LeadDialog({
                 asChild
                 variant="ghost"
                 className="h-auto flex-col gap-2 py-3"
-                disabled={!shareUrl}
+                disabled={!displayShareUrl}
               >
                 <a href={whatsappShare} target="_blank" rel="noreferrer">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
@@ -3375,7 +3402,7 @@ export default function LeadDialog({
                 asChild
                 variant="ghost"
                 className="h-auto flex-col gap-2 py-3"
-                disabled={!shareUrl}
+                disabled={!displayShareUrl}
               >
                 <a href={messengerShare} target="_blank" rel="noreferrer">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 text-blue-400">
@@ -3388,7 +3415,7 @@ export default function LeadDialog({
                 asChild
                 variant="ghost"
                 className="h-auto flex-col gap-2 py-3"
-                disabled={!shareUrl}
+                disabled={!displayShareUrl}
               >
                 <a href={emailShare} target="_blank" rel="noreferrer">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -3402,8 +3429,8 @@ export default function LeadDialog({
             <div className="grid gap-2">
               <Label>Link para compartilhar</Label>
               <div className="flex items-center gap-2">
-                <Input value={shareUrl} readOnly />
-                <Button type="button" variant="secondary" onClick={handleCopyShareLink} disabled={!shareUrl}>
+                <Input value={displayShareUrl} readOnly />
+                <Button type="button" variant="secondary" onClick={handleCopyShareLink} disabled={!displayShareUrl}>
                   <CopyIcon size={16} />
                   Copiar
                 </Button>

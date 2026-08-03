@@ -1,4 +1,5 @@
 import { scheduleShareService } from "@/app/api/services/scheduleShare/ScheduleShareService";
+import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService";
 import { Output } from "@/lib/output";
 import type { IScheduleShareUseCase } from "./IScheduleShareUseCase";
 
@@ -6,7 +7,11 @@ export class ScheduleShareUseCase implements IScheduleShareUseCase {
   async createPublicShare(input: { leadId: string; teamId: string }): Promise<Output> {
     try {
       const result = await scheduleShareService.createPublicShare(input);
-      return new Output(true, ["Link público gerado com sucesso."], [], result);
+      const publicUrl = await shortLinkService.getOrCreate({
+        targetUrl: result.publicUrl,
+        expiresAt: new Date(result.expiresAt),
+      });
+      return new Output(true, ["Link público gerado com sucesso."], [], { ...result, publicUrl });
     } catch (error) {
       return new Output(
         false,
