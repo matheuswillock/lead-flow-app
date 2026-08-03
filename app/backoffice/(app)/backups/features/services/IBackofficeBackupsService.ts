@@ -1,10 +1,11 @@
 import type {
   BackofficeBackupCreateResult,
+  BackofficeBackupDownloadResult,
   BackofficeBackupsListResult,
 } from "../context/BackofficeBackupsTypes"
 
 export interface IBackofficeBackupsService {
   list(): Promise<BackofficeBackupsListResult>
   createManualBackup(): Promise<BackofficeBackupCreateResult>
-  getDownloadUrl(id: string): string
+  download(id: string): Promise<BackofficeBackupDownloadResult>
 }

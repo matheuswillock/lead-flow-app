@@ -9,11 +9,13 @@ interface BackofficeBackupsContextValue {
   service: IBackofficeBackupsService
   items: BackofficeBackupItem[]
   isLoading: boolean
+  isDownloading: boolean
   isGenerating: boolean
+  downloadingId: string | null
   error: string | null
   refresh: (options?: { force?: boolean }) => Promise<void>
   createManualBackup: () => Promise<void>
-  download: (id: string) => void
+  download: (id: string) => Promise<{ blob: Blob; fileName: string }>
 }
 
 const BackofficeBackupsContext = createContext<BackofficeBackupsContextValue | null>(null)
@@ -30,7 +32,9 @@ export function BackofficeBackupsProvider({
   useBackofficeBackupsHook({ service })
   const [items, setItems] = useState<BackofficeBackupItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isDownloading, setIsDownloading] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const inFlightRef = useRef(false)
   const lastSuccessRef = useRef(false)
@@ -76,16 +80,20 @@ export function BackofficeBackupsProvider({
   }, [isGenerating, refresh, service])
 
   const download = useCallback(
-    (id: string) => {
-      const url = service.getDownloadUrl(id)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = ""
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+    async (id: string) => {
+      if (isDownloading) {
+        throw new Error("Download já em andamento")
+      }
+      setIsDownloading(true)
+      setDownloadingId(id)
+      try {
+        return await service.download(id)
+      } finally {
+        setIsDownloading(false)
+        setDownloadingId(null)
+      }
     },
-    [service]
+    [isDownloading, service]
   )
 
   const value = useMemo(
@@ -93,7 +101,9 @@ export function BackofficeBackupsProvider({
       service,
       items,
       isLoading,
+      isDownloading,
       isGenerating,
+      downloadingId,
       error,
       refresh,
       createManualBackup,
@@ -103,7 +113,9 @@ export function BackofficeBackupsProvider({
       service,
       items,
       isLoading,
+      isDownloading,
       isGenerating,
+      downloadingId,
       error,
       refresh,
       createManualBackup,

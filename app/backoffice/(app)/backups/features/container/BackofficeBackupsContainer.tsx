@@ -125,6 +125,17 @@ function LogCell({ item }: { item: BackofficeBackupItem }) {
   return <span className="text-xs text-muted-foreground">—</span>
 }
 
+function triggerBrowserDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 export function BackofficeBackupsContainer() {
   const { tz } = useTimezone()
   const { user } = useBackofficeUser()
@@ -132,7 +143,9 @@ export function BackofficeBackupsContainer() {
   const {
     items,
     isLoading,
+    isDownloading,
     isGenerating,
+    downloadingId,
     error,
     refresh,
     createManualBackup,
@@ -142,9 +155,16 @@ export function BackofficeBackupsContainer() {
   const hasPending = items.some((item) => item.status === "pending")
   const generateDisabled = !canManageBackups || isGenerating || isLoading || hasPending
 
-  function handleDownload(id: string) {
-    download(id)
-    toast.success("Download iniciado")
+  async function handleDownload(id: string) {
+    if (isDownloading) return
+    try {
+      const result = await download(id)
+      triggerBrowserDownload(result.blob, result.fileName)
+      toast.success("Download iniciado")
+    } catch (err) {
+      console.error("[BackofficeBackupsContainer][handleDownload]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao baixar backup")
+    }
   }
 
   async function handleGenerate() {
@@ -243,6 +263,7 @@ export function BackofficeBackupsContainer() {
             ) : (
               items.map((item) => {
                 const date = item.finishedAt ?? item.startedAt
+                const isPendingDownload = isDownloading && downloadingId === item.id
 
                 return (
                   <TableRow key={item.id}>
@@ -271,10 +292,10 @@ export function BackofficeBackupsContainer() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={isGenerating}
-                          onClick={() => handleDownload(item.id)}
+                          disabled={isDownloading || isGenerating}
+                          onClick={() => void handleDownload(item.id)}
                         >
-                          Baixar
+                          {isPendingDownload ? "Baixando…" : "Baixar"}
                         </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
