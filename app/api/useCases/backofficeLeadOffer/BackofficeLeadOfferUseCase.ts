@@ -1,4 +1,4 @@
-import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService"
+import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import { getFullUrl } from "@/lib/utils/app-url"
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone"
@@ -62,7 +62,7 @@ async function mapListItem(offer: BackofficeLeadOfferRecord) {
       ? getFullUrl(`/oferta/${offer.tokenPlain}`)
       : null
   const shareUrl = offerTargetUrl
-    ? await shortLinkService.getOrCreate({ targetUrl: offerTargetUrl, expiresAt: offer.shareExpiresAt })
+    ? await backofficeShortLinkService.getOrCreate({ targetUrl: offerTargetUrl, expiresAt: offer.shareExpiresAt })
     : null
 
   return {
@@ -190,7 +190,7 @@ export class BackofficeLeadOfferUseCase {
         shareGeneratedByProfileId: profileId,
       })
 
-      const shareUrl = await shortLinkService.getOrCreate({
+      const shareUrl = await backofficeShortLinkService.getOrCreate({
         targetUrl: getFullUrl(`/oferta/${rawToken}`),
         expiresAt: shareExpiresAt,
       })

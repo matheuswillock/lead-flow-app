@@ -1,4 +1,4 @@
-import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService"
+import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import { BackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/BackofficeLeadScheduleRepository"
@@ -17,7 +17,7 @@ export class BackofficeScheduleShareUseCase implements IBackofficeScheduleShareU
   async createPublicShare(leadId: string): Promise<Output> {
     try {
       const result = await this.service.createPublicShare({ leadId })
-      const publicUrl = await shortLinkService.getOrCreate({
+      const publicUrl = await backofficeShortLinkService.getOrCreate({
         targetUrl: result.publicUrl,
         expiresAt: new Date(result.expiresAt),
       })

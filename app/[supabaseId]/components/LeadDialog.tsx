@@ -507,6 +507,7 @@ export default function LeadDialog({
   }, [currentLead, origin]);
 
   useEffect(() => {
+    setShortShareUrl("");
     if (!shareUrl || !supabaseId || !activeTeamId) return;
     let cancelled = false;
     fetch("/api/v1/short-links", {

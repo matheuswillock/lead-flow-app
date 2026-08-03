@@ -1,5 +1,5 @@
 import type { BackofficeAdhesionStatus } from "@prisma/client"
-import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService"
+import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import {
   backofficeAdhesionService,
@@ -151,7 +151,7 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       const result = await this.service.create(input, createdByBackofficeUserId)
       const publicUrl =
         result.publicUrl && result.expiresAt
-          ? await shortLinkService.getOrCreate({
+          ? await backofficeShortLinkService.getOrCreate({
               targetUrl: result.publicUrl,
               expiresAt: new Date(result.expiresAt),
             })
@@ -199,7 +199,7 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
     try {
       const result = await this.service.resend(id)
       const publicUrl = result.publicUrl
-        ? await shortLinkService.getOrCreate({
+        ? await backofficeShortLinkService.getOrCreate({
             targetUrl: result.publicUrl,
             expiresAt: new Date(result.expiresAt),
           })
@@ -251,7 +251,7 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   async getPublicUrl(id: string): Promise<Output> {
     try {
       const result = await this.service.getPublicUrl(id)
-      const publicUrl = await shortLinkService.getOrCreate({
+      const publicUrl = await backofficeShortLinkService.getOrCreate({
         targetUrl: result.publicUrl,
         expiresAt: new Date(result.expiresAt),
       })

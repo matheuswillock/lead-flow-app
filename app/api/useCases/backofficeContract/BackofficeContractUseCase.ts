@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto"
-import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService"
+import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import { getFullUrl } from "@/lib/utils/app-url"
 import {
@@ -187,7 +187,7 @@ export class BackofficeContractUseCase {
         shareGeneratedAt: new Date(),
       })
 
-      const shareUrl = await shortLinkService.getOrCreate({
+      const shareUrl = await backofficeShortLinkService.getOrCreate({
         targetUrl: getFullUrl(`/contrato/${rawToken}`),
         expiresAt: shareExpiresAt,
       })
