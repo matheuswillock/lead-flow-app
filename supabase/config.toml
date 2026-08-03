@@ -25,10 +25,14 @@ enabled = false
 # key_path = "../certs/my-key.pem"
 
 [db]
-# Port to use for the local database URL.
-port = 55322
+# Port used ONLY by the Supabase CLI's own shadow container (db reset/diff/push
+# internals) — NOT the app's local Postgres, which lives in
+# docker-compose.local.yml on port 55322 (see scripts/lib/local-stack.ts).
+# Must differ from 55322 or `db reset --db-url`/`db diff --db-url` fail with
+# "address already in use" while the hybrid stack is running.
+port = 55340
 # Port used by db diff command to initialize the shadow database.
-shadow_port = 55320
+shadow_port = 55341
 # Maximum amount of time to wait for health check when starting the local database.
 health_timeout = "2m"
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
