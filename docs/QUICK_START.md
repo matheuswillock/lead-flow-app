@@ -91,6 +91,13 @@ bun run prisma:seed
 > JWT secret do projeto remoto. Já está coberto pela regra `.env*` do
 > `.gitignore`.
 >
+> ⚠️ **Auth/Storage não têm sandbox local no stack híbrido**: eles são o
+> projeto Supabase remoto de verdade. Ações admin (deletar usuário,
+> upload/delete de arquivo) ficam **bloqueadas por padrão** — só habilite via
+> `SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN=true` em `docker/local/.env.local-stack`,
+> e prefira sempre um projeto Supabase de **desenvolvimento isolado** como
+> `SUPABASE_REMOTE_HOST`, nunca o projeto de produção.
+>
 > Precisa do stack Supabase completo localmente (Auth/Storage/Studio locais,
 > ex.: debugar upload)? Use `bun run dev -- --full-supabase` (usa
 > `supabase start`, como antes — mais pesado).

@@ -5,29 +5,12 @@ import { Output } from "@/lib/output";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 
 const transferSchema = z.object({
   newMasterId: z.string().uuid(),
   password: z.string().min(1, "Senha é obrigatória"),
 });
-
-function createSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    console.error("[Supabase Admin] Credenciais não configuradas");
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
 
 export async function POST(
   request: NextRequest,
