@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { integrationsService } from "../services/IntegrationsService";
 import type { IntegrationsState, IntegrationsActions } from "./IntegrationsTypes";
-import type { IntegrationsBootstrapResponse, StudioWebhookLogItem } from "../services/IIntegrationsService";
+import type {
+  IntegrationsBootstrapResponse,
+  RadarPixelConfigData,
+  RadarPixelHitLogItem,
+  StudioWebhookLogItem,
+} from "../services/IIntegrationsService";
 
 const STUDIO_WEBHOOK_CONTRACT_JSON = `{
   "name": "Maria Silva",
@@ -31,11 +38,17 @@ const integrationsBootstrapInFlightByKey = new Map<string, Promise<IntegrationsB
 const integrationsBootstrapCacheByKey = new Map<string, IntegrationsBootstrapResponse>();
 const studioWebhookLogsInFlightByKey = new Map<string, Promise<StudioWebhookLogItem[]>>();
 const studioWebhookLogsCacheByKey = new Map<string, StudioWebhookLogItem[]>();
+const radarPixelConfigInFlightByKey = new Map<string, Promise<RadarPixelConfigData>>();
+const radarPixelConfigCacheByKey = new Map<string, RadarPixelConfigData>();
+const radarPixelLogsInFlightByKey = new Map<string, Promise<RadarPixelHitLogItem[]>>();
+const radarPixelLogsCacheByKey = new Map<string, RadarPixelHitLogItem[]>();
 
 const buildBootstrapKey = (supabaseId: string, teamId: string): string => `${supabaseId}:${teamId}`;
 
 export function useIntegrations(supabaseId: string): IntegrationsState & IntegrationsActions {
   const { activeTeamId } = useTeamContext();
+  const { hasAccess } = useFeatureAccess();
+  const hasRadarAccess = hasAccess(FEATURE_SLUGS.RADAR);
   const [leadFormUrl, setLeadFormUrl] = useState("");
   const [studioWebhookConfig, setStudioWebhookConfig] = useState<IntegrationsState["studioWebhookConfig"]>(null);
   const [integrationsBootstrapLoading, setIntegrationsBootstrapLoading] = useState(false);
@@ -48,12 +61,26 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   const [studioWebhookManualToken, setStudioWebhookManualToken] = useState("");
   const [studioWebhookExpiryMode, setStudioWebhookExpiryMode] = useState<"hours_24" | "months_6" | "indeterminate">("months_6");
   const [studioWebhookGeneratedUrl, setStudioWebhookGeneratedUrl] = useState("");
+  const [radarPixelConfig, setRadarPixelConfig] = useState<IntegrationsState["radarPixelConfig"]>(null);
+  const [radarPixelAllowedOriginsInput, setRadarPixelAllowedOriginsInput] = useState("");
+  const [radarPixelLoading, setRadarPixelLoading] = useState(false);
+  const [radarPixelSaving, setRadarPixelSaving] = useState(false);
+  const [radarPixelDeleting, setRadarPixelDeleting] = useState(false);
+  const [radarPixelHitLogs, setRadarPixelHitLogs] = useState<RadarPixelHitLogItem[]>([]);
+  const [radarPixelHitLogsLoading, setRadarPixelHitLogsLoading] = useState(false);
+  const [selectedRadarPixelHitLogId, setSelectedRadarPixelHitLogId] = useState<string | null>(null);
   const inFlightBootstrapKeyRef = useRef<string | null>(null);
   const lastSuccessfulBootstrapKeyRef = useRef<string | null>(null);
   const currentBootstrapKeyRef = useRef<string | null>(null);
   const inFlightLogsKeyRef = useRef<string | null>(null);
   const lastSuccessfulLogsKeyRef = useRef<string | null>(null);
   const currentLogsKeyRef = useRef<string | null>(null);
+  const inFlightPixelConfigKeyRef = useRef<string | null>(null);
+  const lastSuccessfulPixelConfigKeyRef = useRef<string | null>(null);
+  const currentPixelConfigKeyRef = useRef<string | null>(null);
+  const inFlightPixelLogsKeyRef = useRef<string | null>(null);
+  const lastSuccessfulPixelLogsKeyRef = useRef<string | null>(null);
+  const currentPixelLogsKeyRef = useRef<string | null>(null);
 
   const resetBootstrapState = useCallback(() => {
     setLeadFormUrl("");
@@ -411,6 +438,251 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     });
   }, []);
 
+  const loadRadarPixelConfig = useCallback(async () => {
+    if (!hasRadarAccess || !activeTeamId) {
+      currentPixelConfigKeyRef.current = null;
+      inFlightPixelConfigKeyRef.current = null;
+      lastSuccessfulPixelConfigKeyRef.current = null;
+      setRadarPixelConfig(null);
+      setRadarPixelLoading(false);
+      return;
+    }
+
+    const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+    currentPixelConfigKeyRef.current = requestKey;
+
+    if (lastSuccessfulPixelConfigKeyRef.current === requestKey) {
+      setRadarPixelLoading(false);
+      return;
+    }
+
+    if (inFlightPixelConfigKeyRef.current === requestKey) {
+      return;
+    }
+
+    const cached = radarPixelConfigCacheByKey.get(requestKey);
+    if (cached) {
+      setRadarPixelConfig(cached);
+      setRadarPixelAllowedOriginsInput(cached.allowedOrigins.join("\n"));
+      lastSuccessfulPixelConfigKeyRef.current = requestKey;
+      setRadarPixelLoading(false);
+      return;
+    }
+
+    setRadarPixelLoading(true);
+    inFlightPixelConfigKeyRef.current = requestKey;
+
+    const existingRequest = radarPixelConfigInFlightByKey.get(requestKey);
+    const requestPromise =
+      existingRequest ??
+      integrationsService.getRadarPixelConfig(supabaseId, activeTeamId).finally(() => {
+        radarPixelConfigInFlightByKey.delete(requestKey);
+      });
+
+    if (!existingRequest) {
+      radarPixelConfigInFlightByKey.set(requestKey, requestPromise);
+    }
+
+    try {
+      const config = await requestPromise;
+      radarPixelConfigCacheByKey.set(requestKey, config);
+
+      if (currentPixelConfigKeyRef.current !== requestKey) return;
+
+      setRadarPixelConfig(config);
+      setRadarPixelAllowedOriginsInput(config.allowedOrigins.join("\n"));
+      lastSuccessfulPixelConfigKeyRef.current = requestKey;
+    } catch (error) {
+      if (currentPixelConfigKeyRef.current === requestKey) {
+        setRadarPixelConfig(null);
+      }
+      console.error("[useIntegrations] Erro ao carregar configuração do pixel:", error);
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar a configuração do pixel");
+    } finally {
+      if (currentPixelConfigKeyRef.current === requestKey) {
+        setRadarPixelLoading(false);
+      }
+      if (inFlightPixelConfigKeyRef.current === requestKey) {
+        inFlightPixelConfigKeyRef.current = null;
+      }
+    }
+  }, [activeTeamId, hasRadarAccess, supabaseId]);
+
+  useEffect(() => {
+    void loadRadarPixelConfig();
+  }, [loadRadarPixelConfig]);
+
+  const loadRadarPixelHitLogs = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!hasRadarAccess || !activeTeamId) {
+        currentPixelLogsKeyRef.current = null;
+        inFlightPixelLogsKeyRef.current = null;
+        lastSuccessfulPixelLogsKeyRef.current = null;
+        setRadarPixelHitLogs([]);
+        setSelectedRadarPixelHitLogId(null);
+        setRadarPixelHitLogsLoading(false);
+        return;
+      }
+
+      const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+      const forceReload = options?.force === true;
+      currentPixelLogsKeyRef.current = requestKey;
+
+      if (!forceReload && lastSuccessfulPixelLogsKeyRef.current === requestKey) return;
+      if (inFlightPixelLogsKeyRef.current === requestKey) return;
+
+      const cachedLogs = !forceReload ? radarPixelLogsCacheByKey.get(requestKey) : undefined;
+      if (cachedLogs) {
+        setRadarPixelHitLogs(cachedLogs);
+        setSelectedRadarPixelHitLogId((cur) =>
+          cur && cachedLogs.some((l) => l.id === cur) ? cur : (cachedLogs[0]?.id ?? null)
+        );
+        lastSuccessfulPixelLogsKeyRef.current = requestKey;
+        setRadarPixelHitLogsLoading(false);
+        return;
+      }
+
+      setRadarPixelHitLogsLoading(true);
+      inFlightPixelLogsKeyRef.current = requestKey;
+
+      const existingRequest = radarPixelLogsInFlightByKey.get(requestKey);
+      const requestPromise =
+        existingRequest ??
+        integrationsService
+          .getRadarPixelHitLogs(supabaseId, activeTeamId)
+          .then((result) => result.logs)
+          .finally(() => {
+            radarPixelLogsInFlightByKey.delete(requestKey);
+          });
+
+      if (!existingRequest) {
+        radarPixelLogsInFlightByKey.set(requestKey, requestPromise);
+      }
+
+      try {
+        const logs = await requestPromise;
+        radarPixelLogsCacheByKey.set(requestKey, logs);
+
+        if (currentPixelLogsKeyRef.current !== requestKey) return;
+
+        setRadarPixelHitLogs(logs);
+        setSelectedRadarPixelHitLogId((cur) =>
+          cur && logs.some((l) => l.id === cur) ? cur : (logs[0]?.id ?? null)
+        );
+        lastSuccessfulPixelLogsKeyRef.current = requestKey;
+      } catch (error) {
+        if (currentPixelLogsKeyRef.current === requestKey) {
+          setRadarPixelHitLogs([]);
+        }
+        console.error("[useIntegrations] Erro ao carregar logs do pixel:", error);
+        toast.error(error instanceof Error ? error.message : "Não foi possível carregar os logs do pixel");
+      } finally {
+        if (currentPixelLogsKeyRef.current === requestKey) {
+          setRadarPixelHitLogsLoading(false);
+        }
+        if (inFlightPixelLogsKeyRef.current === requestKey) {
+          inFlightPixelLogsKeyRef.current = null;
+        }
+      }
+    },
+    [activeTeamId, hasRadarAccess, supabaseId]
+  );
+
+  useEffect(() => {
+    void loadRadarPixelHitLogs({ force: true });
+  }, [activeTeamId, loadRadarPixelHitLogs]);
+
+  const saveRadarPixelConfig = useCallback(() => {
+    const executeSave = async () => {
+      if (!activeTeamId) {
+        toast.error("Selecione um time para configurar o pixel");
+        return;
+      }
+
+      setRadarPixelSaving(true);
+
+      try {
+        const allowedOrigins = radarPixelAllowedOriginsInput
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        const config = await integrationsService.saveRadarPixelConfig(supabaseId, activeTeamId, { allowedOrigins });
+
+        const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+        radarPixelConfigCacheByKey.set(requestKey, config);
+        lastSuccessfulPixelConfigKeyRef.current = requestKey;
+
+        setRadarPixelConfig(config);
+        setRadarPixelAllowedOriginsInput(config.allowedOrigins.join("\n"));
+        toast.success("Pixel configurado com sucesso");
+      } catch (error) {
+        console.error("[useIntegrations] Erro ao salvar pixel:", error);
+        toast.error(error instanceof Error ? error.message : "Não foi possível salvar a configuração do pixel");
+      } finally {
+        setRadarPixelSaving(false);
+      }
+    };
+
+    executeSave().catch((error) => {
+      console.error("[useIntegrations] Erro inesperado ao salvar pixel:", error);
+      setRadarPixelSaving(false);
+    });
+  }, [activeTeamId, radarPixelAllowedOriginsInput, supabaseId]);
+
+  const deleteRadarPixelConfig = useCallback(() => {
+    const executeDelete = async () => {
+      if (!activeTeamId) return;
+
+      setRadarPixelDeleting(true);
+
+      try {
+        await integrationsService.deleteRadarPixelConfig(supabaseId, activeTeamId);
+
+        const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+        radarPixelConfigCacheByKey.delete(requestKey);
+        lastSuccessfulPixelConfigKeyRef.current = null;
+
+        setRadarPixelConfig(null);
+        setRadarPixelAllowedOriginsInput("");
+        toast.success("Pixel removido com sucesso");
+      } catch (error) {
+        console.error("[useIntegrations] Erro ao remover pixel:", error);
+        toast.error(error instanceof Error ? error.message : "Não foi possível remover o pixel");
+      } finally {
+        setRadarPixelDeleting(false);
+      }
+    };
+
+    executeDelete().catch((error) => {
+      console.error("[useIntegrations] Erro inesperado ao remover pixel:", error);
+      setRadarPixelDeleting(false);
+    });
+  }, [activeTeamId, supabaseId]);
+
+  const copyRadarPixelSnippet = useCallback(() => {
+    const executeCopy = async () => {
+      const snippet = radarPixelConfig?.pixelSnippet;
+      if (!snippet) {
+        toast.error("Configure o pixel para obter o snippet");
+        return;
+      }
+
+      const copied = await integrationsService.copyToClipboard(snippet);
+      if (copied) {
+        toast.success("Snippet copiado!");
+        return;
+      }
+
+      toast.error("Não foi possível copiar o snippet");
+    };
+
+    executeCopy().catch((error) => {
+      console.error("[useIntegrations] Erro ao copiar snippet do pixel:", error);
+      toast.error("Não foi possível copiar o snippet");
+    });
+  }, [radarPixelConfig?.pixelSnippet]);
+
   return {
     supabaseId,
     leadFormUrl,
@@ -427,6 +699,14 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     studioWebhookLogsLoading,
     selectedStudioWebhookLogId,
     studioWebhookContractJson: STUDIO_WEBHOOK_CONTRACT_JSON,
+    radarPixelConfig,
+    radarPixelAllowedOriginsInput,
+    radarPixelLoading,
+    radarPixelSaving,
+    radarPixelDeleting,
+    radarPixelHitLogs,
+    radarPixelHitLogsLoading,
+    selectedRadarPixelHitLogId,
     copyLeadFormUrl,
     loadStudioWebhookConfig,
     loadStudioWebhookLogs,
@@ -437,5 +717,12 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     saveStudioWebhookConfig,
     copyStudioWebhookUrl,
     copyStudioWebhookContract,
+    loadRadarPixelConfig,
+    loadRadarPixelHitLogs,
+    setRadarPixelAllowedOriginsInput,
+    setSelectedRadarPixelHitLogId,
+    saveRadarPixelConfig,
+    deleteRadarPixelConfig,
+    copyRadarPixelSnippet,
   };
 }

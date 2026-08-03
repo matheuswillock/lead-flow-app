@@ -365,6 +365,18 @@
       "type": "default",
       "enabled": true,
       "description": "ID de pergunta do formulário público para testes de progresso"
+    },
+    {
+      "key": "publicToken",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "visitorSession",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment"
