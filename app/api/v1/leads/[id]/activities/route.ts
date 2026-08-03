@@ -16,9 +16,13 @@ const mentionSchema = z.object({
 });
 
 const baseActivitySchema = z.object({
-  type: z.enum(["note", "call", "whatsapp", "email"]),
+  type: z.enum(["note", "call", "whatsapp", "email", "meeting", "visit", "missed"]),
   body: z.string().min(1, "Mensagem é obrigatória"),
   mentions: z.array(mentionSchema).max(30).optional(),
+  outcome: z.string().max(50).optional(),
+  duration: z.number().int().min(0).optional(),
+  contactDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "contactDate deve ser yyyy-mm-dd").optional(),
+  contactTime: z.string().regex(/^\d{2}:\d{2}$/, "contactTime deve ser hh:mm").optional(),
 });
 
 const taskActivitySchema = z.object({
@@ -135,17 +139,30 @@ export async function POST(
         label: mention.label ?? null,
       }));
 
-    const activity = await prisma.leadActivity.create({
+    const baseData = validation.data;
+    const activity = await (prisma.leadActivity as any).create({
       data: {
         leadId,
-        type: validation.data.type as ActivityType,
-        body: validation.data.body.trim(),
+        type: baseData.type as ActivityType,
+        body: baseData.body.trim(),
         ...(mentionPayload.length > 0
           ? {
               payload: {
                 mentions: mentionPayload,
               },
             }
+          : {}),
+        ...("outcome" in baseData && baseData.outcome !== undefined
+          ? { outcome: baseData.outcome }
+          : {}),
+        ...("duration" in baseData && baseData.duration !== undefined
+          ? { duration: baseData.duration }
+          : {}),
+        ...("contactDate" in baseData && baseData.contactDate !== undefined
+          ? { contactDate: new Date(baseData.contactDate) }
+          : {}),
+        ...("contactTime" in baseData && baseData.contactTime !== undefined
+          ? { contactTime: baseData.contactTime }
           : {}),
         createdBy: teamAccess.access.profileId,
       },
@@ -182,7 +199,7 @@ export async function POST(
           leadCode: lead.leadCode ?? null,
           leadName: lead.name,
           activityId: activity.id,
-          body: validation.data.body.trim(),
+          body: baseData.body.trim(),
           recipientProfileIds: validMentionProfileIds,
         });
       } catch (notificationError) {
@@ -204,7 +221,7 @@ export async function POST(
           activity: {
             id: activity.id,
             type: activity.type,
-            body: validation.data.body.trim(),
+            body: baseData.body.trim(),
           },
         },
       })

@@ -237,6 +237,9 @@ email email
 status_change status_change
 task task
 studio_bot studio_bot
+meeting meeting
+visit visit
+missed missed
         }
     
 
@@ -609,6 +612,8 @@ EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
 EMAIL_CAMPAIGN_DISPATCH_FAILED EMAIL_CAMPAIGN_DISPATCH_FAILED
 AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
+LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
+LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
         }
     
 
@@ -1358,6 +1363,14 @@ SS SS
 OUTROS OUTROS
         }
     
+
+
+        lead_document_request_status {
+            pending pending
+partially_filled partially_filled
+completed completed
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -1977,6 +1990,10 @@ OUTROS OUTROS
     String body "❓"
     Json payload "❓"
     DateTime createdAt 
+    String outcome "❓"
+    Int duration "❓"
+    DateTime contactDate "❓"
+    String contactTime "❓"
     }
   
 
@@ -3702,6 +3719,46 @@ OUTROS OUTROS
     DateTime updatedAt 
     }
   
+
+  "corretor_studio_lead_tags" {
+    String id "🗝️"
+    String name 
+    String color 
+    Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_tag_assignments" {
+    String id "🗝️"
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_lead_document_requests" {
+    String id "🗝️"
+    String teamId 
+    String publicToken 
+    String message "❓"
+    LeadDocumentRequestStatus status 
+    DateTime lastEmailSentAt "❓"
+    DateTime completedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_lead_document_request_items" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    Boolean isRequired 
+    DateTime uploadedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -4199,4 +4256,12 @@ OUTROS OUTROS
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
     "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
+    "corretor_studio_lead_tags" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_lead_tag_assignments" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_tag_assignments" }o--|| corretor_studio_lead_tags : "tag"
+    "corretor_studio_lead_document_requests" |o--|| "LeadDocumentRequestStatus" : "enum:status"
+    "corretor_studio_lead_document_requests" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_lead_document_requests" }o--|| corretor_studio_profiles : "createdBy"
+    "corretor_studio_lead_document_request_items" }o--|| corretor_studio_lead_document_requests : "request"
+    "corretor_studio_lead_document_request_items" }o--|o corretor_studio_lead_attachments : "attachment"
 ```

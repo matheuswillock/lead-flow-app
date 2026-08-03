@@ -76,6 +76,11 @@ describe("isPublicPageRoute", () => {
     expect(isPublicPageRoute("/oferta/some-token")).toBe(true)
   })
 
+  it("allows public document request paths", () => {
+    expect(isPublicPageRoute("/documentos")).toBe(true)
+    expect(isPublicPageRoute("/documentos/some-token")).toBe(true)
+  })
+
   it("allows public adhesion share paths", () => {
     expect(isPublicPageRoute("/adesao/some-token")).toBe(true)
   })

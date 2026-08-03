@@ -241,6 +241,9 @@ enum ActivityType {
   status_change
   task
   studio_bot
+  meeting
+  visit
+  missed
 }
 
 enum TaskType {
@@ -609,6 +612,8 @@ enum NotificationType {
   EMAIL_CAMPAIGN_DISPATCH_FAILED
   AUTOMATION_RULE
   WEBHOOK_AUTO_PAUSED
+  LEAD_DOCUMENT_UPLOADED
+  LEAD_DOCUMENT_REQUEST_COMPLETED
 
   @@map("notification_type")
 }
@@ -983,6 +988,7 @@ model Profile {
 
   proposalReviewsReviewed   LeadProposalReview[]   @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
+  leadDocumentRequestsCreated LeadDocumentRequest[] @relation("LeadDocumentRequestCreator")
 
   authorizedSponsorRecord        BackofficeAuthorizedSponsor?       @relation("AuthorizedSponsorProfile")
   authorizedSponsorsGranted      BackofficeAuthorizedSponsor[]      @relation("AuthorizedSponsorGrantedBy")
@@ -1957,6 +1963,10 @@ model Lead {
   whatsappConversations WhatsAppConversation[]
   whatsappMessages      WhatsAppMessage[]
 
+  // Lead Tags
+  tagAssignments    LeadTagAssignment[]
+  documentRequests  LeadDocumentRequest[]
+
   // Unique per tenant
   @@unique([teamId, email])
   @@unique([teamId, cnpj])
@@ -1987,6 +1997,12 @@ model LeadActivity {
   createdBy String?      @db.Uuid
   createdAt DateTime     @default(now()) @db.Timestamptz(6)
 
+  // Contact-specific fields (used when type is call | whatsapp | email | meeting | visit | missed)
+  outcome     String?   @db.Text
+  duration    Int?      // duration in minutes
+  contactDate DateTime? @db.Date
+  contactTime String?   @db.Text // HH:mm format
+
   lead      Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   author    Profile?               @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   reactions LeadActivityReaction[]
@@ -1994,6 +2010,7 @@ model LeadActivity {
 
   @@index([leadId])
   @@index([leadId, createdAt(sort: Desc)])
+  @@index([leadId, type])
   @@index([createdBy])
   @@map("corretor_studio_lead_activities")
 }
@@ -2229,9 +2246,10 @@ model LeadAttachment {
   uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
-  lead                  Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  uploader              Profile                @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  lead                  Lead                        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  uploader              Profile                     @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
   requiredDocumentLinks LeadRequiredDocument[]
+  documentRequestItems  LeadDocumentRequestItem[]   @relation("DocumentRequestItemAttachment")
 
   @@index([leadId])
   @@index([uploadedBy])
@@ -2397,6 +2415,9 @@ model Team {
   teamEmailLimitGrant         BackofficeTeamEmailLimitGrant?
   emailCampaignLimitGrant     TeamEmailCampaignLimitGrant?
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
+
+  // Lead Tags
+  leadTags LeadTag[]
 
   @@index([masterId])
   @@index([deletedAt])
@@ -5426,4 +5447,93 @@ model ShortLink {
 
   @@index([code])
   @@map("short_links")
+}
+
+// ==============================
+// LEAD TAGS
+// ==============================
+
+model LeadTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @db.Uuid
+  name      String   @db.Text
+  color     String   @db.Text
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team        Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignments LeadTagAssignment[]
+
+  @@unique([teamId, name])
+  @@index([teamId, sortOrder])
+  @@map("corretor_studio_lead_tags")
+}
+
+model LeadTagAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  leadId    String   @db.Uuid
+  tagId     String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  lead Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag  LeadTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, tagId])
+  @@index([tagId])
+  @@map("corretor_studio_lead_tag_assignments")
+}
+
+// ==============================
+// LEAD DOCUMENT REQUESTS
+// ==============================
+
+enum LeadDocumentRequestStatus {
+  pending
+  partially_filled
+  completed
+
+  @@map("lead_document_request_status")
+}
+
+model LeadDocumentRequest {
+  id              String                     @id @default(uuid()) @db.Uuid
+  leadId          String                     @db.Uuid
+  teamId          String                     @db.Uuid
+  createdByProfileId String                  @db.Uuid
+  publicToken     String                     @unique @db.Text
+  message         String?                    @db.Text
+  status          LeadDocumentRequestStatus  @default(pending)
+  lastEmailSentAt DateTime?                  @db.Timestamptz(6)
+  completedAt     DateTime?                  @db.Timestamptz(6)
+  createdAt       DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                   @updatedAt @db.Timestamptz(6)
+
+  lead      Lead                        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy Profile                     @relation("LeadDocumentRequestCreator", fields: [createdByProfileId], references: [id], onDelete: Cascade)
+  items     LeadDocumentRequestItem[]
+
+  @@index([leadId])
+  @@index([teamId])
+  @@index([publicToken])
+  @@index([status, lastEmailSentAt])
+  @@map("corretor_studio_lead_document_requests")
+}
+
+model LeadDocumentRequestItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  requestId   String    @db.Uuid
+  name        String    @db.Text
+  description String?   @db.Text
+  isRequired  Boolean   @default(true)
+  attachmentId String?  @db.Uuid
+  uploadedAt  DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  request    LeadDocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  attachment LeadAttachment?     @relation("DocumentRequestItemAttachment", fields: [attachmentId], references: [id], onDelete: SetNull)
+
+  @@index([requestId])
+  @@map("corretor_studio_lead_document_request_items")
 }

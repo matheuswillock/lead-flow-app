@@ -46,13 +46,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { Textarea } from "@/components/ui/textarea";
+import { LeadTagsTab } from "@/app/[supabaseId]/components/lead-tags/LeadTagsTab";
+import { LeadContactsTab } from "@/app/[supabaseId]/components/lead-contacts/LeadContactsTab";
+import { LeadDocumentRequestsTab } from "@/app/[supabaseId]/components/lead-document-requests/LeadDocumentRequestsTab";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -102,6 +105,8 @@ import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDu
 import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
 import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 
+type LeadDialogLeftTab = "dados" | "tags" | "contatos" | "documentos";
+
 interface LeadDialogProps {
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -111,6 +116,7 @@ interface LeadDialogProps {
   refreshLeads: () => Promise<void>;
   patchLead?: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
+  defaultTab?: LeadDialogLeftTab;
 }
 
 type PendingStatusConfirmation = {
@@ -269,6 +275,7 @@ export default function LeadDialog({
   refreshLeads,
   patchLead,
   finalizeContract,
+  defaultTab = "dados",
 }: LeadDialogProps) {
   const { tz: scheduleTimezone } = useTimezone();
   const [localLead, setLocalLead] = useState<Lead | null>(lead);
@@ -292,6 +299,7 @@ export default function LeadDialog({
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email" | "task">("note");
   const [sidePanelTab, setSidePanelTab] = useState<"activities" | "forms">("activities");
+  const [leftPanelTab, setLeftPanelTab] = useState<LeadDialogLeftTab>(defaultTab);
   const [activityBody, setActivityBody] = useState("");
   const [activitySubmitting, setActivitySubmitting] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -328,6 +336,13 @@ export default function LeadDialog({
   useEffect(() => {
     setLocalLead(lead);
   }, [lead?.id, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const nextTab = !currentLeadId && defaultTab !== "dados" ? "dados" : defaultTab;
+    setLeftPanelTab(nextTab);
+  }, [open, defaultTab, currentLeadId]);
+
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
   const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
@@ -2854,68 +2869,113 @@ export default function LeadDialog({
                     <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
                   </div>
                 ) : (
-                    <LeadForm
-                      form={form}
-                      onSubmit={onSubmit}
-                      isLoading={isSubmitting}
-                      customFieldDefinitions={leadCustomFieldDefinitions}
-                    healthPlanOptions={healthPlans}
-                    healthPlanOptionsLoading={healthPlansLoading}
-                    onCancel={() => setOpen(false)}
-                    usersToAssign={usersToAssign}
-                    closersToAssign={availableScheduleClosers}
-                    sdrsToAssign={effectiveSdrsByTeam}
-                      closersLoading={leadDetailsLoading}
-                      closersError={leadDetailsError}
-                    sdrsLoading={currentLead ? leadDetailsLoading : newLeadSdrsLoading}
-                    sdrsError={currentLead ? leadDetailsError : newLeadSdrsError}
-                      leadId={currentLead?.id}
-                      onUploadStateChange={setIsAttachmentUploading}
-                      initialAttachments={leadDetails?.attachments}
-                      scheduleSummary={
-                        currentLead
-                          ? {
-                              status: currentLead.status,
-                              meetingDate: currentLead.meetingDate,
-                              closerName: scheduleCloserName,
-                              meetingTitle: currentLead.meetingTitle,
-                              meetingNotes: currentLead.meetingNotes,
-                              meetingLink: currentLead.meetingLink,
-                              meetingHeald: currentLead.meetingHeald,
-                              meetingPresenceConfirmed: currentLead.meetingPresenceConfirmed === true,
-                              isPreSchedule: currentLead.isTransfer === true,
-                            }
-                          : undefined
-                      }
-                      onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
-                      onResendScheduleInvite={
-                        currentLead?.meetingDate && currentLead.status === "scheduled" && currentLead.isTransfer !== true
-                          ? () => setResendDialogOpen(true)
-                          : undefined
-                      }
-                      onShareSchedule={
-                        currentLead?.meetingDate && currentLead.isTransfer !== true
-                          ? () => void handleShareSchedule()
-                          : undefined
-                      }
-                      canToggleMeetingHeald={canEditMeetingHeald}
-                      meetingHealdSaving={meetingHealdSaving}
-                      onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
-                      canConfirmMeetingPresence={canEditMeetingPresence}
-                      meetingPresenceConfirmSaving={meetingPresenceConfirmSaving}
-                      onMeetingPresenceConfirm={
-                        canEditMeetingPresence ? handleMeetingPresenceConfirm : undefined
-                      }
-                      canMarkNoShow={canMarkNoShow}
-                      onMarkNoShow={handleNoShow}
-                      isEditMode={!!currentLead}
-                      currentProfileId={user.id}
-                      currentUserIsSdr={isOperatorSdr}
-                      currentUserIsCloser={isCloserOperator}
-                      isCloserSelectDisabled={isCloserOperator}
-                      supabaseId={supabaseId}
-                      activeTeamId={activeTeamId ?? undefined}
-                    />
+                  <Tabs
+                    value={leftPanelTab}
+                    onValueChange={(value) => setLeftPanelTab(value as LeadDialogLeftTab)}
+                    className="flex h-full min-h-0 flex-col gap-3"
+                  >
+                    <TabsList className={currentLead ? "grid w-full grid-cols-4" : "grid w-full grid-cols-1"}>
+                      <TabsTrigger value="dados">Dados</TabsTrigger>
+                      {currentLead ? (
+                        <>
+                          <TabsTrigger value="tags">Tags</TabsTrigger>
+                          <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                          <TabsTrigger value="documentos">Documentos</TabsTrigger>
+                        </>
+                      ) : null}
+                    </TabsList>
+
+                    <TabsContent value="dados" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                      <LeadForm
+                        form={form}
+                        onSubmit={onSubmit}
+                        isLoading={isSubmitting}
+                        customFieldDefinitions={leadCustomFieldDefinitions}
+                        healthPlanOptions={healthPlans}
+                        healthPlanOptionsLoading={healthPlansLoading}
+                        onCancel={() => setOpen(false)}
+                        usersToAssign={usersToAssign}
+                        closersToAssign={availableScheduleClosers}
+                        sdrsToAssign={effectiveSdrsByTeam}
+                        closersLoading={leadDetailsLoading}
+                        closersError={leadDetailsError}
+                        sdrsLoading={currentLead ? leadDetailsLoading : newLeadSdrsLoading}
+                        sdrsError={currentLead ? leadDetailsError : newLeadSdrsError}
+                        leadId={currentLead?.id}
+                        onUploadStateChange={setIsAttachmentUploading}
+                        initialAttachments={leadDetails?.attachments}
+                        scheduleSummary={
+                          currentLead
+                            ? {
+                                status: currentLead.status,
+                                meetingDate: currentLead.meetingDate,
+                                closerName: scheduleCloserName,
+                                meetingTitle: currentLead.meetingTitle,
+                                meetingNotes: currentLead.meetingNotes,
+                                meetingLink: currentLead.meetingLink,
+                                meetingHeald: currentLead.meetingHeald,
+                                meetingPresenceConfirmed: currentLead.meetingPresenceConfirmed === true,
+                                isPreSchedule: currentLead.isTransfer === true,
+                              }
+                            : undefined
+                        }
+                        onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
+                        onResendScheduleInvite={
+                          currentLead?.meetingDate && currentLead.status === "scheduled" && currentLead.isTransfer !== true
+                            ? () => setResendDialogOpen(true)
+                            : undefined
+                        }
+                        onShareSchedule={
+                          currentLead?.meetingDate && currentLead.isTransfer !== true
+                            ? () => void handleShareSchedule()
+                            : undefined
+                        }
+                        canToggleMeetingHeald={canEditMeetingHeald}
+                        meetingHealdSaving={meetingHealdSaving}
+                        onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
+                        canConfirmMeetingPresence={canEditMeetingPresence}
+                        meetingPresenceConfirmSaving={meetingPresenceConfirmSaving}
+                        onMeetingPresenceConfirm={
+                          canEditMeetingPresence ? handleMeetingPresenceConfirm : undefined
+                        }
+                        canMarkNoShow={canMarkNoShow}
+                        onMarkNoShow={handleNoShow}
+                        isEditMode={!!currentLead}
+                        currentProfileId={user.id}
+                        currentUserIsSdr={isOperatorSdr}
+                        currentUserIsCloser={isCloserOperator}
+                        isCloserSelectDisabled={isCloserOperator}
+                        supabaseId={supabaseId}
+                        activeTeamId={activeTeamId ?? undefined}
+                      />
+                    </TabsContent>
+
+                    {currentLead && activeTeamId && supabaseId ? (
+                      <>
+                        <TabsContent value="tags" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                          <LeadTagsTab
+                            leadId={currentLead.id}
+                            teamId={activeTeamId}
+                            supabaseId={supabaseId}
+                          />
+                        </TabsContent>
+                        <TabsContent value="contatos" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                          <LeadContactsTab
+                            leadId={currentLead.id}
+                            teamId={activeTeamId}
+                            supabaseId={supabaseId}
+                          />
+                        </TabsContent>
+                        <TabsContent value="documentos" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                          <LeadDocumentRequestsTab
+                            leadId={currentLead.id}
+                            teamId={activeTeamId}
+                            supabaseId={supabaseId}
+                          />
+                        </TabsContent>
+                      </>
+                    ) : null}
+                  </Tabs>
                 )}
               </div>
             </div>
