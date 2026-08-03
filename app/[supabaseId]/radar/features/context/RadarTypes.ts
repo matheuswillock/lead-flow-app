@@ -53,12 +53,31 @@ export type RadarLeadStatusCondition = {
   statuses: string[]
 }
 
+export type RadarLeadFieldCondition = {
+  kind: "lead_field"
+  fieldKey:
+    | "status"
+    | "currentHealthPlan"
+    | "currentValue"
+    | "ticket"
+    | "meetingDate"
+    | "followUpAt"
+    | "contractDueDate"
+    | "soldPlan"
+    | "isReferral"
+    | "assignedTo"
+    | "closerId"
+  operator: string
+  value?: unknown
+}
+
 export type RadarSegmentCondition =
   | RadarProfileFieldCondition
   | RadarConsentCondition
   | RadarEventCondition
   | RadarLeadCustomFieldCondition
   | RadarLeadStatusCondition
+  | RadarLeadFieldCondition
 
 export type RadarSegmentRules = {
   match: "all" | "any"

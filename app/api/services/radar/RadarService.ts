@@ -442,6 +442,7 @@ export class RadarService {
       isBounced: boolean
       isComplained: boolean
       updatedAt: Date
+      customFields: Prisma.JsonValue
     },
     counters: SyncCounters
   ): Promise<void> {
@@ -505,6 +506,7 @@ export class RadarService {
         teamId: scope.teamId,
         sourceType: "email_contact",
         sourceId: contact.id,
+        sourceMetadata: (contact.customFields as Prisma.InputJsonValue | null) ?? undefined,
       })
 
       const consent = consentFromEmailFlags(contact)

@@ -1,0 +1,425 @@
+# Reusable CI para branches de feature (cursor, claude, bugfix, feature).
+# Jobs leves na VPS (1x bun install); typecheck + build no GitHub-hosted.
+name: CI Branch Reusable
+
+on:
+  workflow_call:
+    inputs:
+      pr-base:
+        description: Branch base do PR automatico
+        required: true
+        type: string
+      concurrency-group:
+        description: Prefixo do grupo de concorrencia (informativo; definido no caller)
+        required: false
+        type: string
+        default: ci-branch
+      automation-marker:
+        description: Marcador HTML do bloco de automacao no PR (ex. ci-cursor:automation)
+        required: true
+        type: string
+      pr-title-prefix:
+        description: Prefixo do titulo do PR (ex. cursor, claude, fix, feat)
+        required: true
+        type: string
+      branch-strip-prefixes:
+        description: Prefixos removidos do nome da branch no titulo do PR (CSV)
+        required: true
+        type: string
+      branch-prefixes:
+        description: Prefixos permitidos da branch (CSV). Bloqueia workflow_dispatch em refs invalidas.
+        required: true
+        type: string
+      run-spellcheck:
+        description: Executar spellcheck PT-BR no job ci-light
+        required: false
+        type: boolean
+        default: true
+      skip-build-on-github-rebase:
+        description: Pular build em rebases pela UI do GitHub (noreply@github.com)
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  deployments: write
+
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: 1
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  validate-branch:
+    name: Validate branch prefix
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Check branch prefix
+        id: check
+        env:
+          BRANCH_PREFIXES: ${{ inputs.branch-prefixes }}
+        run: |
+          set -euo pipefail
+          ref="${GITHUB_REF#refs/heads/}"
+          IFS=',' read -ra prefixes <<< "$BRANCH_PREFIXES"
+          for raw in "${prefixes[@]}"; do
+            prefix="${raw// /}"
+            [[ -n "$prefix" ]] || continue
+            if [[ "$ref" == "${prefix}"* ]]; then
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              echo "Branch '${ref}' matches prefix '${prefix}'."
+              exit 0
+            fi
+          done
+          echo "allowed=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::Branch '${ref}' does not match allowed prefixes (${BRANCH_PREFIXES}). Skipping CI."
+
+  ci-light:
+    name: CI Light (VPS)
+    needs: validate-branch
+    if: >-
+      ${{
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 8
+    outputs:
+      governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
+      governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
+      lint: ${{ steps.ci-light-checks.outputs.lint }}
+      passed: ${{ steps.ci-light-checks.outputs.passed }}
+      tests-result: ${{ steps.ci-light-checks.outputs['tests-result'] }}
+      spellcheck-result: ${{ steps.ci-light-checks.outputs['spellcheck-result'] }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Run light checks
+        id: ci-light-checks
+        uses: ./.github/actions/ci-vps-light-checks
+        with:
+          run-spellcheck: ${{ inputs.run-spellcheck }}
+
+  typecheck:
+    name: Typecheck
+    needs: validate-branch
+    if: >-
+      ${{
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Typecheck
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: bun run typecheck
+
+  build:
+    name: Build
+    needs: validate-branch
+    if: >-
+      ${{
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
+        (
+          inputs.skip-build-on-github-rebase != true ||
+          github.event.head_commit == null ||
+          github.event.head_commit.committer.email != 'noreply@github.com'
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
+
+      - name: Generate Prisma Client
+        run: bun run prisma:generate
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: bun run build
+
+  quality-gate:
+    name: Quality Gate
+    if: >-
+      ${{
+        always() &&
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 2
+    needs:
+      - validate-branch
+      - ci-light
+      - typecheck
+      - build
+    steps:
+      - name: Enforce Quality Checks
+        env:
+          RUN_SPELLCHECK: ${{ inputs.run-spellcheck }}
+        run: |
+          failed=0
+          if [[ "${{ needs.ci-light.outputs.passed }}" != "true" ]]; then
+            echo "::error::Lint and/or governance checks failed."
+            echo "governance:sync=${{ needs.ci-light.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.ci-light.outputs['governance-check'] }}"
+            echo "lint=${{ needs.ci-light.outputs.lint }}"
+            failed=1
+          fi
+          if [[ "${{ needs.typecheck.result }}" != "success" ]]; then
+            echo "::error::Typecheck failed."
+            failed=1
+          fi
+          if [[ "${{ needs.ci-light.outputs['tests-result'] }}" != "success" ]]; then
+            echo "::error::Tests failed."
+            failed=1
+          fi
+          if [[ "$RUN_SPELLCHECK" == "true" && "${{ needs.ci-light.outputs['spellcheck-result'] }}" != "success" ]]; then
+            echo "::error::Spellcheck PT-BR failed."
+            failed=1
+          fi
+          if [[ "${{ needs.build.result }}" != "success" && "${{ needs.build.result }}" != "skipped" ]]; then
+            echo "::error::Build failed."
+            failed=1
+          fi
+          exit "$failed"
+
+  auto-pr:
+    name: Open PR to develop
+    if: >-
+      ${{
+        always() &&
+        needs.validate-branch.outputs.allowed == 'true' &&
+        (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
+      }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    timeout-minutes: 10
+    needs:
+      - validate-branch
+      - ci-light
+      - typecheck
+      - quality-gate
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Description (OpenAI)
+        id: generate-pr-description
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: python3 .github/scripts/generate-pr-description.py
+
+      - name: Create or update PR
+        uses: actions/github-script@v7
+        env:
+          PR_DESCRIPTION: ${{ steps['generate-pr-description'].outputs['pr-description'] }}
+          PR_BASE: ${{ inputs.pr-base }}
+          AUTOMATION_MARKER: ${{ inputs.automation-marker }}
+          PR_TITLE_PREFIX: ${{ inputs.pr-title-prefix }}
+          BRANCH_STRIP_PREFIXES: ${{ inputs.branch-strip-prefixes }}
+        with:
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = context.ref.replace('refs/heads/', '');
+            const base = process.env.PR_BASE;
+            const automationMarker = process.env.AUTOMATION_MARKER;
+            const prDescription = process.env.PR_DESCRIPTION || '';
+            const titlePrefix = process.env.PR_TITLE_PREFIX;
+            const stripPrefixes = (process.env.BRANCH_STRIP_PREFIXES || '')
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean);
+
+            let shortHead = head;
+            for (const prefix of stripPrefixes) {
+              const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              shortHead = shortHead.replace(new RegExp(`^${escaped}`), '');
+            }
+
+            const checks = {
+              governanceSync: '${{ needs.ci-light.outputs['governance-sync'] }}',
+              governanceCheck: '${{ needs.ci-light.outputs['governance-check'] }}',
+              lint: '${{ needs.ci-light.outputs.lint }}',
+              typecheck: '${{ needs.typecheck.result }}',
+              build: '${{ needs.build.result }}',
+            };
+
+            const isSuccess = (status) => status === 'success';
+            const checklistLine = (status, label) => `- [${isSuccess(status) ? 'x' : ' '}] ${isSuccess(status) ? '✅' : '❌'} ${label}`;
+            const replaceChecklistLine = (template, currentLabel, status, nextLabel) => {
+              return template
+                .split('\n')
+                .map((line) => {
+                  const normalizedLabel = line
+                    .trim()
+                    .replace(/^- \[[ x]\](?: ✅| ❌)? /, '');
+
+                  return normalizedLabel === currentLabel ? checklistLine(status, nextLabel) : line;
+                })
+                .join('\n');
+            };
+
+            const applyChecklistStatuses = (template) => {
+              let body = template;
+              body = replaceChecklistLine(body, '`bun run governance:sync`', checks.governanceSync, '`bun run governance:sync`');
+              body = replaceChecklistLine(body, '`bun run governance:check`', checks.governanceCheck, '`bun run governance:check`');
+              body = replaceChecklistLine(body, '`bun run typecheck`', checks.typecheck, '`bun run typecheck`');
+              body = replaceChecklistLine(body, '`bun run lint`', checks.lint, '`bun run lint`');
+              body = replaceChecklistLine(body, 'Manteve adapters sincronizados (`bun run governance:sync`)?', checks.governanceSync, 'Manteve adapters sincronizados (`bun run governance:sync`)?');
+              body = replaceChecklistLine(body, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?', checks.governanceSync, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?');
+              return body;
+            };
+
+            const applyGeneratedDescription = (body) => {
+              if (!prDescription.trim()) return body;
+              return body.replace(
+                /^(- Summary of changes:.*\n- Why this change is needed:.*)/m,
+                prDescription.trim()
+              );
+            };
+
+            const shouldApplyGeneratedDescription = (body) =>
+              body.includes('<seus bullet points aqui>') ||
+              body.includes('<sua frase aqui>');
+
+            const startMarker = `<!-- ${automationMarker}:start -->`;
+            const endMarker = `<!-- ${automationMarker}:end -->`;
+
+            const automationSection = (message) => [
+              startMarker,
+              '## CI Automation',
+              '',
+              `**Head:** \`${head}\``,
+              `**Base:** \`${base}\``,
+              '',
+              checklistLine(checks.build, 'Build OK'),
+              '',
+              message,
+              endMarker,
+            ].join('\n');
+
+            const upsertAutomationSection = (body, message) => {
+              const nextSection = automationSection(message);
+              const pattern = new RegExp(
+                `<!-- ${automationMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:start -->[\\s\\S]*?<!-- ${automationMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:end -->`
+              );
+
+              if (pattern.test(body)) {
+                return body.replace(pattern, nextSection);
+              }
+
+              return [body.trimEnd(), '', nextSection].join('\n');
+            };
+
+            if (head === base) {
+              core.info(`Head e base são iguais (${head}). Sem PR.`);
+              return;
+            }
+
+            const prs = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${head}`,
+              base,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (prs.data.length > 0) {
+              core.info(`PR já existe: #${prs.data[0].number} ${prs.data[0].html_url}`);
+              const existingPr = prs.data[0];
+              const fallbackTemplate = fs.readFileSync('.github/pull_request_template.md', 'utf8');
+              let body = applyChecklistStatuses(existingPr.body || fallbackTemplate);
+              if (shouldApplyGeneratedDescription(body)) {
+                body = applyGeneratedDescription(body);
+              }
+              body = upsertAutomationSection(body, '*Atualizado automaticamente pelo GitHub Actions.*');
+
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: existingPr.number,
+                body,
+              });
+
+              core.info(`PR atualizado: #${existingPr.number} ${existingPr.html_url}`);
+              return;
+            }
+
+            const cmp = await github.rest.repos.compareCommits({
+              owner,
+              repo,
+              base,
+              head,
+            });
+
+            if ((cmp.data.ahead_by || 0) === 0) {
+              core.info(`${head} não está à frente de ${base}. Sem PR.`);
+              return;
+            }
+
+            const title = `${titlePrefix}: ${shortHead}`;
+            let body = applyChecklistStatuses(fs.readFileSync('.github/pull_request_template.md', 'utf8'));
+            body = applyGeneratedDescription(body);
+            body = upsertAutomationSection(body, '*Criado automaticamente pelo GitHub Actions.*');
+
+            const res = await github.rest.pulls.create({
+              owner,
+              repo,
+              head,
+              base,
+              title,
+              body,
+              maintainer_can_modify: true,
+            });
+
+            core.info(`PR criado: #${res.data.number} ${res.data.html_url}`);

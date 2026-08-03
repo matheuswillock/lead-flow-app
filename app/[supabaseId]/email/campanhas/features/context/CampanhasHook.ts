@@ -453,14 +453,21 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
 
     if (tracked) {
-      // Já apareceu na lista com status terminal (sent/failed/…)
       const name = tracked.name
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
       sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
-      toast.success(`Disparo de "${name}" concluído. O status foi atualizado automaticamente.`)
+      if (tracked.status === "failed") {
+        toast.error(
+          tracked.errorMessage
+            ? `Disparo de "${name}" falhou: ${tracked.errorMessage}`
+            : `Disparo de "${name}" falhou.`
+        )
+      } else {
+        toast.success(`Disparo de "${name}" concluído. O status foi atualizado automaticamente.`)
+      }
       void fetchCredits()
       return
     }
@@ -497,10 +504,17 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         if (!tracked || tracked.status === "sending") return
 
         sendingSubCampaignParentIdRef.current = null
+        dispatchSeenInListRef.current = false
         setSendingId(null)
-        toast.success(
-          `Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`
-        )
+        if (tracked.status === "failed") {
+          toast.error(
+            tracked.errorMessage
+              ? `Disparo de "${tracked.name}" falhou: ${tracked.errorMessage}`
+              : `Disparo de "${tracked.name}" falhou.`
+          )
+        } else {
+          toast.success(`Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`)
+        }
         void fetchCredits()
         void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
       } catch (err) {

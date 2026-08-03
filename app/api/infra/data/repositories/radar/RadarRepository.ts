@@ -581,6 +581,75 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Resolve (ou cria) um perfil anônimo identificado apenas por uma sessão de visitante (D8).
+   * Usa o mesmo padrão de lock advisory que `resolveProfileForEmail` para evitar corridas.
+   */
+  async resolveProfileForVisitorSession(input: {
+    teamId: string
+    visitorSession: string
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':vs:' || ${input.visitorSession}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: "visitor_session",
+            normalizedValue: input.visitorSession,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: { lastSeenAt: input.lastSeenAt ?? new Date() },
+        })
+        return { profile, wasExisting: true }
+      }
+
+      const profile = await tx.radarProfile.create({
+        data: {
+          teamId: input.teamId,
+          displayName: "Visitante Anônimo",
+          normalizedName: "visitante anonimo",
+          normalizedPhone: null,
+          displayPhone: null,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: "visitor_session",
+          value: input.visitorSession,
+          normalizedValue: input.visitorSession,
+          source: "pixel_hit",
+          isPrimary: true,
+        },
+      })
+
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      return { profile, wasExisting: false }
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
@@ -920,6 +989,7 @@ export class RadarRepository {
         isBounced: true,
         isComplained: true,
         updatedAt: true,
+        customFields: true,
       },
     })
   }
@@ -935,6 +1005,7 @@ export class RadarRepository {
         isBounced: true,
         isComplained: true,
         updatedAt: true,
+        customFields: true,
         list: { select: { teamId: true } },
       },
     })
@@ -1019,6 +1090,57 @@ export class RadarRepository {
   async findLeadIdsByWhere(where: Prisma.LeadWhereInput): Promise<string[]> {
     const leads = await prisma.lead.findMany({ where, select: { id: true } })
     return leads.map((lead) => lead.id)
+  }
+
+  async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {
+    const contacts = await prisma.emailContact.findMany({
+      where: { listId: { in: listIds }, list: { teamId } },
+      select: { id: true },
+    })
+    return contacts.map((contact) => contact.id)
+  }
+
+  /**
+   * D6: `customFields` é um Json livre (chaves vêm do cabeçalho do arquivo
+   * importado, sem catálogo fixo) — diferente de `LeadCustomFieldValue`
+   * (linha EAV por definição), não dá pra filtrar via um path Prisma
+   * confiável para "chave ausente" (is_empty/not_empty). Filtra em memória
+   * sobre os contatos do team — aceitável no volume atual (import limitado
+   * a `EMAIL_CONTACT_IMPORT_MAX_ROWS` por vez).
+   */
+  async findEmailContactIdsByCustomField(
+    teamId: string,
+    fieldKey: string,
+    operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty",
+    value: unknown
+  ): Promise<string[]> {
+    const contacts = await prisma.emailContact.findMany({
+      where: { list: { teamId } },
+      select: { id: true, customFields: true },
+    })
+
+    const normalizedValue = value == null ? "" : String(value).toLowerCase()
+
+    const matches = contacts.filter((contact) => {
+      const customFields = (contact.customFields ?? {}) as Record<string, unknown>
+      const raw = customFields[fieldKey]
+      const fieldValue = raw == null ? "" : String(raw)
+
+      switch (operator) {
+        case "is_empty":
+          return fieldValue === ""
+        case "not_empty":
+          return fieldValue !== ""
+        case "eq":
+          return fieldValue.toLowerCase() === normalizedValue
+        case "neq":
+          return fieldValue.toLowerCase() !== normalizedValue
+        case "contains":
+          return fieldValue.toLowerCase().includes(normalizedValue)
+      }
+    })
+
+    return matches.map((contact) => contact.id)
   }
 
   async listProfilesForSegmentationByIds(teamId: string, profileIds: string[]) {
@@ -1163,6 +1285,66 @@ export class RadarRepository {
     return prisma.emailTeamVariable.findMany({
       where: { teamId, isActive: true, valueSource: "RADAR", defaultValue: { not: null } },
       select: { key: true, defaultValue: true },
+    })
+  }
+
+  async findPixelConfigByTeamId(teamId: string) {
+    return prisma.teamRadarPixelConfig.findUnique({
+      where: { teamId },
+      select: { publicToken: true, allowedOrigins: true, lastUsedAt: true },
+    })
+  }
+
+  async upsertPixelConfig(teamId: string, profileId: string, data: { publicToken: string; allowedOrigins: string[] }) {
+    return prisma.teamRadarPixelConfig.upsert({
+      where: { teamId },
+      create: { teamId, publicToken: data.publicToken, allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
+      update: { allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
+      select: { publicToken: true, allowedOrigins: true, lastUsedAt: true },
+    })
+  }
+
+  async deletePixelConfig(teamId: string) {
+    await prisma.teamRadarPixelConfig.deleteMany({ where: { teamId } })
+  }
+
+  async findPixelHitLogs(teamId: string, limit: number) {
+    return prisma.teamRadarPixelHitLog.findMany({
+      where: { teamId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { id: true, teamId: true, eventType: true, visitorSession: true, origin: true, userAgent: true, metadata: true, createdAt: true },
+    })
+  }
+
+  async findPixelConfigByPublicToken(publicToken: string): Promise<{ teamId: string; allowedOrigins: string[] } | null> {
+    return prisma.teamRadarPixelConfig.findUnique({
+      where: { publicToken },
+      select: { teamId: true, allowedOrigins: true },
+    })
+  }
+
+  async touchPixelLastUsed(teamId: string) {
+    await prisma.teamRadarPixelConfig.update({ where: { teamId }, data: { lastUsedAt: new Date() } })
+  }
+
+  async logPixelHit(input: {
+    teamId: string
+    eventType: string
+    visitorSession: string
+    origin: string | null
+    userAgent: string | null
+    metadata?: object
+  }) {
+    await prisma.teamRadarPixelHitLog.create({
+      data: {
+        teamId: input.teamId,
+        eventType: input.eventType,
+        visitorSession: input.visitorSession,
+        origin: input.origin,
+        userAgent: input.userAgent,
+        metadata: input.metadata as Prisma.InputJsonValue | undefined,
+      },
     })
   }
 }

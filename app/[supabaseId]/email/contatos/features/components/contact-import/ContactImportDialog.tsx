@@ -28,6 +28,9 @@ import {
   type EmailContactImportMapping,
 } from "./autoMapEmailContactColumns";
 import { ContatosService } from "../../services/ContatosService";
+import { ContactListSegmentPicker } from "./ContactListSegmentPicker";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 
 type ContactImportStep = "upload" | "mapping" | "summary";
 
@@ -50,6 +53,7 @@ interface ContactImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   listId: string;
+  supabaseId: string;
   onImportComplete?: () => Promise<void> | void;
 }
 
@@ -57,6 +61,7 @@ export function ContactImportDialog({
   open,
   onOpenChange,
   listId,
+  supabaseId,
   onImportComplete,
 }: ContactImportDialogProps) {
   const [step, setStep] = useState<ContactImportStep>("upload");
@@ -66,6 +71,10 @@ export function ContactImportDialog({
   const [mapping, setMapping] = useState<EmailContactImportMapping>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [segmentId, setSegmentId] = useState<string | null>(null);
+  const [segmentName, setSegmentName] = useState<string | null>(null);
+  const { hasAccess } = useFeatureAccess();
+  const hasRadar = hasAccess(FEATURE_SLUGS.RADAR);
 
   const resetState = () => {
     setStep("upload");
@@ -75,6 +84,8 @@ export function ContactImportDialog({
     setMapping({});
     setIsParsing(false);
     setIsSubmitting(false);
+    setSegmentId(null);
+    setSegmentName(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -146,6 +157,9 @@ export function ContactImportDialog({
 
     setIsSubmitting(true);
     try {
+      if (segmentId) {
+        await service.setListRadarSegment(listId, segmentId);
+      }
       await service.importMapped(listId, mappedRows);
       toast.success("Processando importação em segundo plano");
       if (onImportComplete) {
@@ -208,11 +222,30 @@ export function ContactImportDialog({
             />
           )}
           {step === "summary" && (
-            <ContactImportSummary
-              fileName={fileName}
-              preview={importPreview}
-              mapping={mapping}
-            />
+            <div className="flex flex-col gap-4">
+              <ContactImportSummary
+                fileName={fileName}
+                preview={importPreview}
+                mapping={mapping}
+              />
+              {hasRadar && (
+                <div className="flex flex-col gap-2 rounded-md border p-4">
+                  <p className="text-sm font-medium">Segmento do Radar (opcional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Vincule os contatos importados a um segmento para usá-los em campanhas e filtros.
+                  </p>
+                  <ContactListSegmentPicker
+                    listId={listId}
+                    supabaseId={supabaseId}
+                    selectedSegmentId={segmentId}
+                    selectedSegmentName={segmentName}
+                    onSelect={(id, name) => { setSegmentId(id); setSegmentName(name); }}
+                    onClear={() => { setSegmentId(null); setSegmentName(null); }}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
 

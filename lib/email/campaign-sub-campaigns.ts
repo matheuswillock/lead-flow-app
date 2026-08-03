@@ -10,16 +10,18 @@ export type SubCampaignRecipientChunk = {
   index: number
 }
 
-/** Particiona IDs de contato em lotes de até EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB. */
+/** Particiona IDs de contato em lotes de até maxPerSub (ou um único lote se ilimitado). */
 export function chunkContactIdsForSubCampaigns(
   contactIds: string[],
-  maxPerSub: number = EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+  maxPerSub: number | null = EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 ): SubCampaignRecipientChunk[] {
-  if (contactIds.length === 0 || maxPerSub < 1) return []
+  if (contactIds.length === 0) return []
+  const effectiveMax = maxPerSub ?? contactIds.length
+  if (effectiveMax < 1) return []
 
   const chunks: SubCampaignRecipientChunk[] = []
-  for (let offset = 0; offset < contactIds.length; offset += maxPerSub) {
-    const slice = contactIds.slice(offset, offset + maxPerSub)
+  for (let offset = 0; offset < contactIds.length; offset += effectiveMax) {
+    const slice = contactIds.slice(offset, offset + effectiveMax)
     chunks.push({
       contactIds: slice,
       size: slice.length,
@@ -44,17 +46,19 @@ export function buildSubCampaignScheduledAts(
 
 export function requiresSubCampaignSplit(
   recipientCount: number,
-  maxPerSub: number = EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+  maxPerSub: number | null = EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 ): boolean {
+  if (maxPerSub == null) return false
   return recipientCount > maxPerSub
 }
 
 export function estimateSubCampaignCount(
   recipientCount: number,
-  maxPerSub: number = EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
+  maxPerSub: number | null = EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 ): number {
   if (recipientCount <= 0) return 0
-  return Math.ceil(recipientCount / maxPerSub)
+  const effectiveMax = maxPerSub ?? recipientCount
+  return Math.ceil(recipientCount / effectiveMax)
 }
 
 export { EMAIL_CAMPAIGN_MAX_EMAILS_PER_DAY, EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB }

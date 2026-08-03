@@ -3,15 +3,15 @@
  *
  * Fluxo:
  *   1. Remove migrations vazias com o mesmo sufixo (stale de db:migrate:new)
- *   2. prisma db push no banco local (Supabase CLI)
- *   3. supabase db diff --local -f <nome> captura o delta em supabase/migrations/
+ *   2. prisma db push no banco local (stack híbrido — docker-compose.local.yml)
+ *   3. supabase db diff --db-url <local> -f <nome> captura o delta em supabase/migrations/
  *   4. Deduplica arquivos com o mesmo sufixo (mantém o preenchido)
  *
  * Uso:
  *   bun run db:migrate:from-prisma -- add_my_table
  *   bun run db:migrate:from-prisma -- --dry-run add_my_table
  *
- * Requer Supabase local rodando (porta 55322). Suba com `bun run dev:local` ou `supabase start`.
+ * Requer o stack local rodando (porta 55322). Suba com `bun run local:up` ou `bun run dev:local`.
  */
 
 import { spawnSync } from "node:child_process";
@@ -23,9 +23,7 @@ import {
   isEmptyMigrationContent,
   normalizeMigrationName,
 } from "./db-migrate-utils";
-
-/** Mesma URL usada em scripts/dev-local.ts */
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
+import { LOCAL_DB_URL, probeLocalStack } from "./lib/local-stack";
 
 const rawArgs = process.argv.slice(2);
 const dryRun = rawArgs.includes("--dry-run");
@@ -54,15 +52,10 @@ function run(
   };
 }
 
-function assertLocalSupabaseRunning(): void {
-  const status = run("supabase", ["status"], {
-    SUPABASE_DISABLE_TELEMETRY: "1",
-    DO_NOT_TRACK: "1",
-  });
-
-  if (status.status !== 0) {
+function assertLocalStackRunning(): void {
+  if (!probeLocalStack()) {
     fail(
-      "Supabase local não está rodando. Execute `supabase start` ou `bun run dev:local` antes de gerar a migration.",
+      "Stack local não está rodando. Execute `bun run local:up` ou `bun run dev:local` antes de gerar a migration.",
     );
   }
 }
@@ -90,7 +83,7 @@ const localDbEnv = {
 
 console.info(`\n▶ Gerando migration a partir de prisma/schema.prisma (${dryRun ? "dry-run" : normalizedName})`);
 
-assertLocalSupabaseRunning();
+assertLocalStackRunning();
 
 if (!dryRun) {
   const existingNonEmpty = findNonEmptyMigrationsBySuffix(normalizedName);
@@ -115,8 +108,8 @@ if (push.status !== 0) {
 }
 
 const diffArgs = dryRun
-  ? ["db", "diff", "--local", "--schema", "public"]
-  : ["db", "diff", "--local", "-f", normalizedName, "--schema", "public"];
+  ? ["db", "diff", "--db-url", LOCAL_DB_URL, "--schema", "public"]
+  : ["db", "diff", "--db-url", LOCAL_DB_URL, "-f", normalizedName, "--schema", "public"];
 
 console.info(
   dryRun
@@ -127,6 +120,10 @@ console.info(
 const diff = run("supabase", diffArgs, {
   SUPABASE_DISABLE_TELEMETRY: "1",
   DO_NOT_TRACK: "1",
+  // supabase/config.toml usa [db].port != 55322 (evita conflito com o stack
+  // híbrido) — por não bater com o db-url, o CLI trata como "remoto" e força
+  // SSL, que o Postgres local não tem habilitado.
+  PGSSLMODE: "disable",
 });
 
 const diffOutput = `${diff.stdout}\n${diff.stderr}`.trim();

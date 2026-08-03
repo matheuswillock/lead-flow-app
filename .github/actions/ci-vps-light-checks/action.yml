@@ -1,0 +1,150 @@
+name: CI VPS Light Checks
+description: Lint, governance, tests e spellcheck em um unico setup (1x bun install)
+inputs:
+  run-spellcheck:
+    description: Executar lint:pt-br
+    required: false
+    default: 'true'
+  strict-governance:
+    description: Falhar imediatamente em erros de governance/lint (sem continue-on-error)
+    required: false
+    default: 'false'
+outputs:
+  governance-sync:
+    description: Outcome do governance:sync
+    value: ${{ steps.resolve.outputs['governance-sync'] }}
+  governance-check:
+    description: Outcome do governance:check
+    value: ${{ steps.resolve.outputs['governance-check'] }}
+  lint:
+    description: Outcome do lint
+    value: ${{ steps.resolve.outputs.lint }}
+  passed:
+    description: true quando governance e lint passaram
+    value: ${{ steps.resolve.outputs.passed }}
+  tests-result:
+    description: Outcome agregado dos testes
+    value: ${{ steps.resolve-tests.outputs.result }}
+  spellcheck-result:
+    description: Outcome do spellcheck
+    value: ${{ steps.spellcheck.outcome || steps['spellcheck-skipped'].outcome }}
+runs:
+  using: composite
+  steps:
+    - name: Governance Sync
+      id: governance-sync
+      if: inputs.strict-governance != 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        bun run governance:sync
+        git diff --exit-code
+
+    - name: Governance Sync
+      id: governance-sync-strict
+      if: inputs.strict-governance == 'true'
+      shell: bash
+      run: |
+        bun run governance:sync
+        git diff --exit-code
+
+    - name: Governance Check
+      id: governance-check
+      if: inputs.strict-governance != 'true'
+      continue-on-error: true
+      shell: bash
+      run: bun run governance:check
+
+    - name: Governance Check
+      id: governance-check-strict
+      if: inputs.strict-governance == 'true'
+      shell: bash
+      run: bun run governance:check
+
+    - name: Governance Allowlist Warnings
+      if: inputs.strict-governance != 'true'
+      continue-on-error: true
+      shell: bash
+      run: bun run governance:warn-allowlist
+
+    - name: Governance Allowlist Warnings
+      if: inputs.strict-governance == 'true'
+      shell: bash
+      run: bun run governance:warn-allowlist
+
+    - name: Lint
+      id: lint
+      if: inputs.strict-governance != 'true'
+      continue-on-error: true
+      shell: bash
+      run: bun run lint
+
+    - name: Lint
+      id: lint-strict
+      if: inputs.strict-governance == 'true'
+      shell: bash
+      run: bun run lint
+
+    - name: Resolve governance/lint
+      id: resolve
+      if: always()
+      shell: bash
+      run: |
+        if [[ "${{ inputs.strict-governance }}" == "true" ]]; then
+          sync_outcome="${{ steps['governance-sync-strict'].outcome }}"
+          check_outcome="${{ steps['governance-check-strict'].outcome }}"
+          lint_outcome="${{ steps['lint-strict'].outcome }}"
+        else
+          sync_outcome="${{ steps['governance-sync'].outcome }}"
+          check_outcome="${{ steps['governance-check'].outcome }}"
+          lint_outcome="${{ steps.lint.outcome }}"
+        fi
+
+        echo "governance-sync=${sync_outcome}" >> "$GITHUB_OUTPUT"
+        echo "governance-check=${check_outcome}" >> "$GITHUB_OUTPUT"
+        echo "lint=${lint_outcome}" >> "$GITHUB_OUTPUT"
+
+        if [[ "$sync_outcome" == "success" && "$check_outcome" == "success" && "$lint_outcome" == "success" ]]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Proxy Tests
+      id: proxy-tests
+      continue-on-error: true
+      shell: bash
+      run: bun run test:proxy
+
+    - name: Unit Tests
+      id: unit-tests
+      continue-on-error: true
+      shell: bash
+      run: bun run test
+
+    - name: Resolve Tests
+      id: resolve-tests
+      if: always()
+      shell: bash
+      run: |
+        proxy_outcome="${{ steps['proxy-tests'].outcome }}"
+        unit_outcome="${{ steps['unit-tests'].outcome }}"
+        if [[ "$proxy_outcome" == "success" && "$unit_outcome" == "success" ]]; then
+          echo "result=success" >> "$GITHUB_OUTPUT"
+        else
+          echo "result=failure" >> "$GITHUB_OUTPUT"
+          echo "::error::proxy-tests=${proxy_outcome} unit-tests=${unit_outcome}"
+          exit 1
+        fi
+
+    - name: Spellcheck PT-BR
+      id: spellcheck
+      if: inputs.run-spellcheck == 'true'
+      shell: bash
+      run: bun run lint:pt-br
+
+    - name: Spellcheck skipped
+      id: spellcheck-skipped
+      if: inputs.run-spellcheck != 'true'
+      shell: bash
+      run: echo "Spellcheck skipped"

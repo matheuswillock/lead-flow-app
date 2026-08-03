@@ -6,7 +6,6 @@ import { BackofficeDatabaseBackupExportService } from "@/app/api/services/backof
 import type { IBackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
 import { BackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupGoogleDriveService"
 import type { IBackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupGoogleDriveService"
-import { BackofficeDatabaseBackupVpsService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupVpsService"
 
 function serializeBackup(row: {
   id: string
@@ -163,48 +162,10 @@ export class BackofficeDatabaseBackupUseCase {
       }
     }
 
-    // Fallback legado para registros antigos com filePath (VPS)
-    if (!backup.filePath || !backup.fileName) {
-      return {
-        ok: false,
-        status: 400,
-        message: "Backup sem arquivo de download disponível",
-      }
-    }
-
-    try {
-      const vpsService = new BackofficeDatabaseBackupVpsService()
-      const response = await vpsService.downloadBackup({
-        fileName: backup.fileName,
-        filePath: backup.filePath,
-      })
-
-      if (!response.ok || !response.body) {
-        return {
-          ok: false,
-          status: 502,
-          message: "Não foi possível obter o arquivo na VPS",
-        }
-      }
-
-      return {
-        ok: true,
-        fileName: backup.fileName,
-        body: response.body,
-        contentType:
-          response.headers.get("content-type") || "application/octet-stream",
-      }
-    } catch (error) {
-      console.error(
-        "[BackofficeDatabaseBackupUseCase][getDownloadStream]",
-        error
-      )
-      return {
-        ok: false,
-        status: 500,
-        message:
-          error instanceof Error ? error.message : "Erro ao baixar backup",
-      }
+    return {
+      ok: false,
+      status: 410,
+      message: "Arquivo de backup não disponível. Este backup é anterior à migração para Google Drive e o arquivo original não pode mais ser acessado.",
     }
   }
 }

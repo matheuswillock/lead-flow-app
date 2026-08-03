@@ -10954,7 +10954,9 @@
                     },
                     "url": {
                       "raw": "{{baseUrl}}/api/v1/public-forms/:publicId/progress",
-                      "host": ["{{baseUrl}}"],
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
                       "path": [
                         "api",
                         "v1",
@@ -10963,7 +10965,10 @@
                         "progress"
                       ],
                       "variable": [
-                        { "key": "publicId", "value": "{{publicFormPublicId}}" }
+                        {
+                          "key": "publicId",
+                          "value": "{{publicFormPublicId}}"
+                        }
                       ]
                     },
                     "description": "Salva progresso parcial do formulário público (status inicial/parcial, upsert de lead quando há identidade)."
@@ -17726,6 +17731,177 @@
                 "v1",
                 "cdp",
                 "segments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — GET config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — POST config (salvar/ativar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allowedOrigins\": [\"https://seusite.com\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — DELETE config",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — GET logs de hits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/pixel/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "pixel",
+                "logs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pixel — POST hit público (pageview)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"pixel.pageview\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public-pixel/{{publicToken}}/hit?vs={{visitorSession}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public-pixel",
+                "{{publicToken}}",
+                "hit"
+              ],
+              "query": [
+                {
+                  "key": "vs",
+                  "value": "{{visitorSession}}"
+                }
               ]
             }
           },

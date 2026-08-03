@@ -143,14 +143,15 @@ export type PublicFormSubmissionContext = {
 
 export type PublicFormCompleteSubmissionInput = {
   submissionId: string
-  leadId: string
+  leadId?: string | null
+  processingAlerts?: string | null
   answers: Array<{
     questionId: string
     value: Prisma.InputJsonValue
     questionSnapshot: Prisma.InputJsonValue
   }>
-  activityBody: string
-  activityPayload: Prisma.InputJsonValue
+  activityBody?: string
+  activityPayload?: Prisma.InputJsonValue
   metricEvents: Array<{
     formId: string
     publicationId: string
@@ -315,5 +316,22 @@ export interface IPublicFormsRepository {
     },
   ): Promise<{ id: string }>
   completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>
+  persistSubmissionAnswers(
+    submissionId: string,
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>,
+  ): Promise<void>
   markSubmissionFailed(submissionId: string, errorMessage: string): Promise<void>
+  /**
+   * Claim atômico para retry de background: só falhas ou `processing` stale.
+   * Retorna true se este caller ficou com o claim.
+   */
+  claimSubmissionForRetry(
+    submissionId: string,
+    publicationId: string,
+    staleBefore: Date,
+  ): Promise<boolean>
 }

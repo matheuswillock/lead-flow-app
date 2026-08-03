@@ -5,6 +5,7 @@
     "": {
       "name": "lead-flow-app",
       "dependencies": {
+        "@cnpja/sdk": "^1.8.1",
         "@date-fns/tz": "^1.4.1",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/modifiers": "^7.0.0",
@@ -209,6 +210,8 @@
     "@clack/core": ["@clack/core@0.5.0", "", { "dependencies": { "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-p3y0FIOwaYRUPRcMO7+dlmLh8PSRcrjuTndsiA0WAFbWES0mLZlrjVoBRZ9DzkPFJZG6KGkJmoEAY0ZcVWTkow=="],
 
     "@clack/prompts": ["@clack/prompts@0.11.0", "", { "dependencies": { "@clack/core": "0.5.0", "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-pMN5FcrEw9hUkZA4f+zLlzivQSeQf5dRGJjSUbvVYDLvpKCdQx5OaknvKzgbtXOizhP+SJJJjqEbOe55uKKfAw=="],
+
+    "@cnpja/sdk": ["@cnpja/sdk@1.8.1", "", {}, "sha512-0//CRuj9qmbQSWDa/rv8zIUQzX/ZBGsdaljgdRskKPdO2eHpf3i9aXr3RjEqqWAnGbLcJthZpe9xiarWfr/YFg=="],
 
     "@codemod.com/cli-darwin-arm64": ["@codemod.com/cli-darwin-arm64@1.7.11", "", { "os": "darwin", "cpu": "arm64" }, "sha512-dE/cjW0sT5YKR0jwGH0jr17zV3vtBA53vpWObhgK6mBWRPgBrN5bSdYgldLIcleUHkfQiydRu4n+qZdz9FOtgQ=="],
 

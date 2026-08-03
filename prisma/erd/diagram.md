@@ -606,6 +606,7 @@ LEAD_TRANSFER_SCHEDULE_FAILED LEAD_TRANSFER_SCHEDULE_FAILED
 MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
 EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
+EMAIL_CAMPAIGN_DISPATCH_FAILED EMAIL_CAMPAIGN_DISPATCH_FAILED
 AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
         }
@@ -1032,6 +1033,7 @@ lead_id lead_id
 email_contact_id email_contact_id
 portfolio_id portfolio_id
 whatsapp_contact_id whatsapp_contact_id
+visitor_session visitor_session
         }
     
 
@@ -1043,6 +1045,7 @@ email_contact email_contact
 email_campaign email_campaign
 whatsapp_contact whatsapp_contact
 base_import base_import
+        pixel_hit pixel_hit
         }
     
 
@@ -1332,6 +1335,30 @@ lead_attached lead_attached
 meeting_scheduled meeting_scheduled
         }
     
+
+
+        backoffice_lead_extraction_status {
+            PENDING PENDING
+RUNNING RUNNING
+DONE DONE
+ERROR ERROR
+        }
+    
+
+
+        backoffice_company_type {
+            MEI MEI
+ME ME
+EPP EPP
+EI EI
+EIRELI EIRELI
+SLU SLU
+LTDA LTDA
+SA SA
+SS SS
+OUTROS OUTROS
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -1482,6 +1509,18 @@ meeting_scheduled meeting_scheduled
   "backoffice_operational_access_grants" {
     String id "🗝️"
     BackofficeOperationalCapability capability 
+    Boolean isActive 
+    String notes "❓"
+    DateTime grantedAt 
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_team_email_limit_grants" {
+    String id "🗝️"
+    Int maxEmailsPerDay "❓"
     Boolean isActive 
     String notes "❓"
     DateTime grantedAt 
@@ -2225,6 +2264,27 @@ meeting_scheduled meeting_scheduled
     }
   
 
+  "corretor_studio_team_radar_pixel_configs" {
+    String id "🗝️"
+    String publicToken 
+    String allowedOrigins 
+    DateTime lastUsedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_radar_pixel_hit_logs" {
+    String id "🗝️"
+    String eventType 
+    String visitorSession 
+    String origin "❓"
+    String userAgent "❓"
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_team_webhooks" {
     String id "🗝️"
     TeamWebhookDirection direction 
@@ -2388,6 +2448,15 @@ meeting_scheduled meeting_scheduled
     Int creditsUsed 
     Int overageCount 
     Decimal overageCharged 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_email_campaign_limit_grants" {
+    String id "🗝️"
+    Int maxEmailsPerDay "❓"
+    Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3631,6 +3700,33 @@ meeting_scheduled meeting_scheduled
     DateTime createdAt 
     }
   
+
+  "backoffice_lead_extractions" {
+    String id "🗝️"
+    Json filters 
+    Int totalCount 
+    BackofficeLeadExtractionStatus status 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_lead_extraction_results" {
+    String id "🗝️"
+    String taxId 
+    String name 
+    String tradeName "❓"
+    String email "❓"
+    String phone "❓"
+    String city "❓"
+    String state "❓"
+    String cnae "❓"
+    String cnaeName "❓"
+    BackofficeCompanyType type "❓"
+    Json raw "❓"
+    DateTime createdAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -3668,6 +3764,9 @@ meeting_scheduled meeting_scheduled
     "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "revokedBy"
+    "backoffice_team_email_limit_grants" |o--|| corretor_studio_teams : "team"
+    "backoffice_team_email_limit_grants" }o--|| corretor_studio_profiles : "grantedBy"
+    "backoffice_team_email_limit_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -3811,6 +3910,9 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_team_studio_webhook_configs" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" }o--|| corretor_studio_profiles : "updatedBy"
     "corretor_studio_team_studio_webhook_request_logs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_pixel_configs" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_pixel_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "corretor_studio_team_radar_pixel_hit_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_webhooks" |o--|| "TeamWebhookDirection" : "enum:direction"
     "corretor_studio_team_webhooks" |o--|| "TeamWebhookStatus" : "enum:status"
     "corretor_studio_team_webhooks" |o--|o "TeamWebhookDestinationPreset" : "enum:destinationPreset"
@@ -3856,6 +3958,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
+    "corretor_studio_team_email_campaign_limit_grants" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_templates" }o--|o backoffice_users : "managedByBackofficeUser"
@@ -3868,6 +3971,7 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contact_lists" }o--|o backoffice_users : "managedByBackofficeUser"
+    "corretor_studio_email_contact_lists" }o--|o corretor_studio_radar_segments : "radarSegment"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
@@ -4121,4 +4225,8 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
+    "backoffice_lead_extractions" |o--|| "BackofficeLeadExtractionStatus" : "enum:status"
+    "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
+    "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
 ```

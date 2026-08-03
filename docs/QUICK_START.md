@@ -61,18 +61,46 @@ cp .env.example .env
 
 Edite o `.env` com suas credenciais copiadas nos passos anteriores.
 
-### 6. Configure o Banco de Dados
+### 6. Configure o Banco de Dados (stack local híbrido)
+
+O `bun run dev` sobe um stack **híbrido** e leve: Postgres + Realtime locais
+(Docker) para dados/eventos em tempo real, enquanto **Login (Auth) e Storage
+continuam no seu projeto Supabase remoto** — sem containers extras de
+GoTrue/Kong/PostgREST/Studio.
 
 ```bash
 # Gerar cliente Prisma
 bun run prisma:generate
 
-# Subir Supabase local e aplicar migrations (primeira vez)
-bun run dev:local   # ou: supabase start && bun run db:migrate:reset:local
+# 1x: configure os segredos do stack local (usados pelo Realtime local
+# para validar tokens emitidos pelo Auth remoto)
+cp docker/local/.env.local-stack.example docker/local/.env.local-stack
+# edite docker/local/.env.local-stack com Settings -> API do seu projeto
+# remoto: SUPABASE_REMOTE_HOST, SUPABASE_REMOTE_ANON_KEY,
+# SUPABASE_REMOTE_SERVICE_ROLE_KEY, SUPABASE_REMOTE_JWT_SECRET
+# (JWT Settings -> JWT Secret)
+
+# Subir o stack local e aplicar migrations (primeira vez)
+bun run dev:local   # ou: bun run local:up && bun run db:migrate:reset:local
 
 # (Opcional) Popular com dados de teste
 bun run prisma:seed
 ```
+
+> ⚠️ **`docker/local/.env.local-stack` nunca deve ser commitado** — contém o
+> JWT secret do projeto remoto. Já está coberto pela regra `.env*` do
+> `.gitignore`.
+>
+> ⚠️ **Auth/Storage não têm sandbox local no stack híbrido**: eles são o
+> projeto Supabase remoto de verdade. Ações admin (deletar usuário,
+> upload/delete de arquivo) ficam **bloqueadas por padrão** — só habilite via
+> `SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN=true` em `docker/local/.env.local-stack`,
+> e prefira sempre um projeto Supabase de **desenvolvimento isolado** como
+> `SUPABASE_REMOTE_HOST`, nunca o projeto de produção.
+>
+> Precisa do stack Supabase completo localmente (Auth/Storage/Studio locais,
+> ex.: debugar upload)? Use `bun run dev -- --full-supabase` (usa
+> `supabase start`, como antes — mais pesado).
 
 ### 7. Inicie a Aplicação
 
@@ -149,6 +177,9 @@ bun run build            # Build de produção
 bun run start            # Iniciar produção
 
 # Database
+bun run local:up                   # Sobe Postgres + Realtime + proxy locais
+bun run local:down                 # Derruba o stack local
+bun run local:logs                 # Logs do stack local
 bun run prisma:studio              # Interface visual do banco
 bun run db:migrate:from-prisma -- <name>  # Migration de schema (a partir do schema.prisma)
 bun run db:migrate:new <name>      # Migration manual (RLS, seeds, triggers)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, TriangleAlert, User, X } from "lucide-react"
+import { Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,17 +25,19 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions"
+import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction"
 import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
-import { RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
+import { LEAD_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useParams } from "next/navigation"
 import { useRadarContext } from "../context/RadarContext"
 import type {
   RadarCustomSegmentListItem,
   RadarLeadCustomFieldCondition,
+  RadarLeadFieldCondition,
   RadarSegmentCondition,
   RadarSegmentRules,
 } from "../context/RadarTypes"
@@ -56,6 +58,24 @@ const OPERATOR_LABELS: Record<string, string> = {
   before: "antes de",
   after: "depois de",
   within_days: "nos últimos X dias",
+  gt: "maior que",
+  gte: "maior ou igual a",
+  lt: "menor que",
+  lte: "menor ou igual a",
+}
+
+const LEAD_FIELD_LABELS: Record<keyof typeof LEAD_FIELD_CATALOG, string> = {
+  status: "Status",
+  currentHealthPlan: "Plano atual",
+  currentValue: "Valor atual (R$)",
+  ticket: "Ticket (R$)",
+  meetingDate: "Data de reunião",
+  followUpAt: "Próximo contato",
+  contractDueDate: "Vencimento do contrato",
+  soldPlan: "Plano vendido",
+  isReferral: "É indicação",
+  assignedTo: "SDR responsável",
+  closerId: "Closer responsável",
 }
 
 const KIND_OPTIONS = [
@@ -64,6 +84,7 @@ const KIND_OPTIONS = [
   { value: "consent", label: "Consentimento", icon: ShieldCheck },
   { value: "lead_custom_field", label: "Campo personalizado do lead", icon: ListChecks },
   { value: "lead_status", label: "Status do lead (CRM)", icon: Kanban },
+  { value: "lead_field", label: "Campo nativo do lead (CRM)", icon: SlidersHorizontal },
 ] as const
 
 function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegmentCondition {
@@ -78,6 +99,8 @@ function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegm
       return { kind: "lead_custom_field", definitionId: "", operator: "eq" }
     case "lead_status":
       return { kind: "lead_status", statuses: [] }
+    case "lead_field":
+      return { kind: "lead_field", fieldKey: "status", operator: "eq", value: [] }
   }
 }
 
@@ -171,6 +194,151 @@ function LeadCustomFieldValueInput({
     <Input
       className="w-40"
       type={fieldType === "date" ? "date" : "text"}
+      value={typeof condition.value === "string" ? condition.value : ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+}
+
+function TeamMemberSelect({
+  fieldKey,
+  value,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  fieldKey: "assignedTo" | "closerId"
+  value: unknown
+  onChange: (value: unknown) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const sdrs = useTeamSdrs(supabaseId, teamId)
+  const closers = useTeamClosers(supabaseId, teamId)
+  const { members, loading } = fieldKey === "assignedTo" ? sdrs : closers
+
+  return (
+    <Select
+      value={typeof value === "string" ? value : ""}
+      onValueChange={onChange}
+      disabled={loading}
+    >
+      <SelectTrigger className="w-48">
+        <SelectValue placeholder={loading ? "Carregando…" : "Selecionar membro"} />
+      </SelectTrigger>
+      <SelectContent>
+        {members.map((m) => (
+          <SelectItem key={m.id} value={m.id}>
+            {m.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function LeadFieldValueInput({
+  condition,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  condition: RadarLeadFieldCondition
+  onChange: (value: unknown) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const entry = LEAD_FIELD_CATALOG[condition.fieldKey]
+
+  if (entry.valueKind === "lead_status_multi") {
+    const selected = Array.isArray(condition.value) ? (condition.value as string[]) : []
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {RADAR_SEGMENT_LEAD_STATUSES.map((status) => {
+          const isSelected = selected.includes(status)
+          return (
+            <Badge
+              key={status}
+              variant={isSelected ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() =>
+                onChange(isSelected ? selected.filter((s) => s !== status) : [...selected, status])
+              }
+            >
+              {getLeadStatusLabel(status)}
+            </Badge>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (entry.valueKind === "boolean") {
+    return (
+      <Select
+        value={typeof condition.value === "boolean" ? String(condition.value) : ""}
+        onValueChange={(v) => onChange(v === "true")}
+      >
+        <SelectTrigger className="w-32">
+          <SelectValue placeholder="Valor" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="true">Sim</SelectItem>
+          <SelectItem value="false">Não</SelectItem>
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (entry.valueKind === "number") {
+    return (
+      <Input
+        className="w-40"
+        type="number"
+        value={typeof condition.value === "number" ? condition.value : ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+      />
+    )
+  }
+
+  if (entry.valueKind === "date") {
+    if (condition.operator === "within_days") {
+      return (
+        <Input
+          className="w-36"
+          type="number"
+          placeholder="Dias"
+          value={typeof condition.value === "number" ? condition.value : ""}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+        />
+      )
+    }
+    return (
+      <Input
+        className="w-40"
+        type="date"
+        value={typeof condition.value === "string" ? condition.value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    )
+  }
+
+  if (condition.fieldKey === "assignedTo" || condition.fieldKey === "closerId") {
+    return (
+      <TeamMemberSelect
+        fieldKey={condition.fieldKey}
+        value={condition.value}
+        onChange={onChange}
+        supabaseId={supabaseId}
+        teamId={teamId}
+      />
+    )
+  }
+
+  return (
+    <Input
+      className="w-40"
+      type="text"
       value={typeof condition.value === "string" ? condition.value : ""}
       onChange={(e) => onChange(e.target.value)}
     />
@@ -552,6 +720,64 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                         </Badge>
                       )
                     })}
+                  </div>
+                ) : null}
+
+                {condition.kind === "lead_field" ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Select
+                      value={condition.fieldKey}
+                      onValueChange={(value) => {
+                        const key = value as RadarLeadFieldCondition["fieldKey"]
+                        const entry = LEAD_FIELD_CATALOG[key]
+                        updateCondition(index, {
+                          kind: "lead_field",
+                          fieldKey: key,
+                          operator: entry.operators[0],
+                          value: entry.valueKind === "lead_status_multi" ? [] : undefined,
+                        })
+                      }}
+                    >
+                      <SelectTrigger className="w-56">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(LEAD_FIELD_CATALOG) as (keyof typeof LEAD_FIELD_CATALOG)[]).map((key) => (
+                          <SelectItem key={key} value={key}>
+                            {LEAD_FIELD_LABELS[key]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={condition.operator}
+                      onValueChange={(value) =>
+                        updateCondition(index, {
+                          ...condition,
+                          operator: value,
+                          value: undefined,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LEAD_FIELD_CATALOG[condition.fieldKey].operators.map((op) => (
+                          <SelectItem key={op} value={op}>
+                            {OPERATOR_LABELS[op]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {conditionNeedsValueInput(condition) ? (
+                      <LeadFieldValueInput
+                        condition={condition}
+                        onChange={(value) => updateCondition(index, { ...condition, value })}
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </div>

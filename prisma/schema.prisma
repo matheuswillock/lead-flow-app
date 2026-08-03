@@ -606,6 +606,7 @@ enum NotificationType {
   MEETING_FOLLOW_UP_DIGEST
   BETHANIA_AUTH_CODE
   EMAIL_IMPORT_COMPLETED
+  EMAIL_CAMPAIGN_DISPATCH_FAILED
   AUTOMATION_RULE
   WEBHOOK_AUTO_PAUSED
 
@@ -917,6 +918,7 @@ model Profile {
   webPushSubscriptions                     ProfileWebPushSubscription[]                 @relation("ProfileWebPushSubscriptions")
   webPushConsent                           ProfileWebPushConsent?                       @relation("ProfileWebPushConsents")
   updatedStudioWebhookConfigs              TeamStudioWebhookConfig[]                    @relation("StudioWebhookConfigUpdater")
+  updatedRadarPixelConfigs                 TeamRadarPixelConfig[]                       @relation("RadarPixelConfigUpdater")
   updatedTeamWebhooks                      TeamWebhook[]                                @relation("TeamWebhookUpdater")
   createdTeamFilterPresets                 TeamFilterPreset[]                           @relation("TeamFilterPresetCreator")
   createdTeamStatusRules                   TeamStatusRule[]                             @relation("TeamStatusRuleCreator")
@@ -990,6 +992,8 @@ model Profile {
   operationalAccessGrants        BackofficeOperationalAccessGrant[] @relation("OperationalAccessProfile")
   operationalAccessGrantsGranted BackofficeOperationalAccessGrant[] @relation("OperationalAccessGrantedBy")
   operationalAccessGrantsRevoked BackofficeOperationalAccessGrant[] @relation("OperationalAccessRevokedBy")
+  teamEmailLimitGrantsGranted    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitGrantedBy")
+  teamEmailLimitGrantsRevoked    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitRevokedBy")
   sponsoredAdhesions             BackofficeAdhesion[]               @relation("BackofficeAdhesionSponsorMaster")
 
   auditLogsAsActor AuditLog[] @relation("AuditLogActor")
@@ -1001,6 +1005,7 @@ model Profile {
   backofficeDeletionRequestsRequested BackofficeDeletionRequest[]  @relation("BackofficeDeletionRequestRequester")
   backofficeDeletionApprovals         BackofficeDeletionApproval[] @relation("BackofficeDeletionApprovalApprover")
   backofficeDeletionAuditLogs         BackofficeDeletionAuditLog[] @relation("BackofficeDeletionAuditLogActor")
+  leadExtractions                     BackofficeLeadExtraction[]
 
   @@index([role])
   @@index([managerId])
@@ -1234,6 +1239,27 @@ model BackofficeOperationalAccessGrant {
 
   @@index([capability, isActive], map: "backoffice_operational_access_grants_capability_active_idx")
   @@map("backoffice_operational_access_grants")
+}
+
+model BackofficeTeamEmailLimitGrant {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @unique @db.Uuid
+  maxEmailsPerDay    Int?
+  isActive           Boolean   @default(true)
+  notes              String?   @db.Text
+  grantedByProfileId String    @db.Uuid
+  grantedAt          DateTime  @default(now()) @db.Timestamptz(6)
+  revokedByProfileId String?   @db.Uuid
+  revokedAt          DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  grantedBy Profile @relation("TeamEmailLimitGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: Restrict)
+  revokedBy Profile? @relation("TeamEmailLimitRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([isActive], map: "backoffice_team_email_limit_grants_is_active_idx")
+  @@map("backoffice_team_email_limit_grants")
 }
 
 model GoogleOAuthConnection {
@@ -2308,6 +2334,8 @@ model Team {
   notifications              Notification[]
   studioWebhookConfig        TeamStudioWebhookConfig?
   studioWebhookRequestLogs   TeamStudioWebhookRequestLog[]
+  radarPixelConfig           TeamRadarPixelConfig?
+  radarPixelHitLogs          TeamRadarPixelHitLog[]
   teamWebhooks               TeamWebhook[]
   teamWebhookEventLogs       TeamWebhookEventLog[]
   teamWebhookOutbox          TeamWebhookOutbox[]
@@ -2370,6 +2398,8 @@ model Team {
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants     BackofficeOperationalAccessGrant[]
+  teamEmailLimitGrant         BackofficeTeamEmailLimitGrant?
+  emailCampaignLimitGrant     TeamEmailCampaignLimitGrant?
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]
 
   @@index([masterId])
@@ -2552,6 +2582,40 @@ model TeamStudioWebhookRequestLog {
   @@index([teamId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("corretor_studio_team_studio_webhook_request_logs")
+}
+
+model TeamRadarPixelConfig {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @unique @db.Uuid
+  publicToken        String    @unique @db.Text
+  allowedOrigins     String[]  @db.Text
+  lastUsedAt         DateTime? @db.Timestamptz(6)
+  updatedByProfileId String    @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  updatedBy Profile @relation("RadarPixelConfigUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+
+  @@index([publicToken])
+  @@index([updatedByProfileId])
+  @@map("corretor_studio_team_radar_pixel_configs")
+}
+
+model TeamRadarPixelHitLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  teamId         String   @db.Uuid
+  eventType      String   @db.Text
+  visitorSession String   @db.Text
+  origin         String?  @db.Text
+  userAgent      String?  @db.Text
+  metadata       Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt(sort: Desc)])
+  @@map("corretor_studio_team_radar_pixel_hit_logs")
 }
 
 model TeamWebhook {
@@ -2846,6 +2910,20 @@ model EmailCreditUsage {
   @@map("corretor_studio_email_credit_usages")
 }
 
+model TeamEmailCampaignLimitGrant {
+  id              String   @id @default(uuid()) @db.Uuid
+  teamId          String   @unique @db.Uuid
+  maxEmailsPerDay Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([isActive], map: "team_email_campaign_limit_grants_is_active_idx")
+  @@map("corretor_studio_team_email_campaign_limit_grants")
+}
+
 model EmailTemplate {
   id                        String    @id @default(uuid()) @db.Uuid
   teamId                    String    @db.Uuid
@@ -2926,12 +3004,14 @@ model EmailContactList {
   isSystemDefault           Boolean  @default(false)
   isBlocklist               Boolean  @default(false)
   isArchived                Boolean  @default(false)
+  radarSegmentId            String?  @db.Uuid
   createdAt                 DateTime @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
 
   team                    Team                    @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
   creator                 Profile                 @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   managedByBackofficeUser BackofficeUser?         @relation("EmailContactListManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
+  radarSegment            TeamRadarSegment?       @relation(fields: [radarSegmentId], references: [id], onDelete: SetNull)
   contacts                EmailContact[]
   campaigns               EmailCampaign[]
   campaignDispatches      EmailCampaignDispatch[]
@@ -2941,6 +3021,7 @@ model EmailContactList {
   @@index([teamId, isBlocklist])
   @@index([createdBy])
   @@index([managedByBackofficeUserId])
+  @@index([radarSegmentId])
   @@map("corretor_studio_email_contact_lists")
 }
 
@@ -4238,6 +4319,7 @@ enum RadarIdentityType {
   email_contact_id
   portfolio_id
   whatsapp_contact_id
+  visitor_session
 
   @@map("radar_identity_type")
 }
@@ -4249,6 +4331,7 @@ enum RadarSourceType {
   email_campaign
   whatsapp_contact
   base_import
+  pixel_hit
 
   @@map("radar_source_type")
 }
@@ -4408,6 +4491,8 @@ model TeamRadarSegment {
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   creator Profile @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  emailContactLists EmailContactList[]
 
   @@unique([teamId, name])
   @@index([teamId, isActive])
@@ -5328,3 +5413,64 @@ model PublicFormMetricEvent {
   @@index([visitorSessionId, createdAt])
   @@map("corretor_studio_public_form_metric_events")
 }
+
+enum BackofficeLeadExtractionStatus {
+  PENDING
+  RUNNING
+  DONE
+  ERROR
+
+  @@map("backoffice_lead_extraction_status")
+}
+
+enum BackofficeCompanyType {
+  MEI
+  ME
+  EPP
+  EI
+  EIRELI
+  SLU
+  LTDA
+  SA
+  SS
+  OUTROS
+
+  @@map("backoffice_company_type")
+}
+
+model BackofficeLeadExtraction {
+  id         String                         @id @default(uuid()) @db.Uuid
+  profileId  String                         @db.Uuid
+  filters    Json
+  totalCount Int                            @default(0)
+  status     BackofficeLeadExtractionStatus @default(PENDING)
+  createdAt  DateTime                       @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime                       @updatedAt @db.Timestamptz(6)
+  results    BackofficeLeadExtractionResult[]
+  profile    Profile                        @relation(fields: [profileId], references: [id])
+
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_lead_extractions")
+}
+
+model BackofficeLeadExtractionResult {
+  id           String                   @id @default(uuid()) @db.Uuid
+  extractionId String                   @db.Uuid
+  taxId        String
+  name         String
+  tradeName    String?
+  email        String?
+  phone        String?
+  city         String?
+  state        String?
+  cnae         String?
+  cnaeName     String?
+  type         BackofficeCompanyType?
+  raw          Json?
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
+  extraction   BackofficeLeadExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+
+  @@index([extractionId])
+  @@map("backoffice_lead_extraction_results")
+}
+

@@ -513,7 +513,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
-            {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
+            {(hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR)) && (
               <SidebarGroup>
                 <SidebarGroupLabel>Integrações</SidebarGroupLabel>
                 <SidebarGroupContent>
