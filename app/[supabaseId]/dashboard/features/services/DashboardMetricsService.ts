@@ -5,6 +5,7 @@ import {
   MetricsFilters,
   DashboardTeamScope,
 } from "./IDashboardMetricsService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 // Re-exportar os tipos para facilitar importação
 export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters, DashboardTeamScope };
@@ -222,7 +223,7 @@ export class DashboardMetricsService implements IDashboardMetricsService {
         }
 
         // Fazer requisição para a API
-        const response = await fetch(`/api/v1/dashboard/metrics?${params.toString()}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/dashboard/metrics?${params.toString()}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -293,7 +294,7 @@ export class DashboardMetricsService implements IDashboardMetricsService {
         }
 
         const response = await fetch(
-          `/api/v1/dashboard/metrics/detailed/${supabaseId}?${params.toString()}`,
+          `${API_CLIENT_BASE}/dashboard/metrics/detailed/${supabaseId}?${params.toString()}`,
           {
           method: 'GET',
           headers: {

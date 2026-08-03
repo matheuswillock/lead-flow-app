@@ -27,6 +27,7 @@ import {
 import { CRM_GATE_TYPE_LABELS } from "@/lib/backoffice-crm-lead-status-transition-gates";
 import { BACKOFFICE_CRM_STATUS_LABELS } from "@/app/backoffice/(app)/crm/features/context/BackofficeCrmTypes";
 import { toast } from "sonner";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ALL_CRM_STATUSES = Object.keys(BACKOFFICE_CRM_STATUS_LABELS) as BackofficeLeadStatus[];
 
@@ -67,7 +68,7 @@ export function BackofficeCrmTransitionGatesContainer() {
   const loadGates = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/v1/backoffice/crm-lead-status-transition-gates", {
+      const response = await fetch(`${API_CLIENT_BASE}/backoffice/crm-lead-status-transition-gates`, {
         cache: "no-store",
       });
       const data = await response.json();
@@ -121,7 +122,7 @@ export function BackofficeCrmTransitionGatesContainer() {
     if (!editingGate) return;
     setIsSaving(true);
     try {
-      const response = await fetch("/api/v1/backoffice/crm-lead-status-transition-gates", {
+      const response = await fetch(`${API_CLIENT_BASE}/backoffice/crm-lead-status-transition-gates`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

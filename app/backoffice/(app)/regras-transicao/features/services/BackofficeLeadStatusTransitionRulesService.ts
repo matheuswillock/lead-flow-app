@@ -5,12 +5,13 @@ import type {
   IBackofficeLeadStatusTransitionRulesService,
 } from "./IBackofficeLeadStatusTransitionRulesService";
 import type { Output } from "@/lib/output";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeLeadStatusTransitionRulesService
   implements IBackofficeLeadStatusTransitionRulesService
 {
   async list(): Promise<BackofficeLeadStatusTransitionRulesResult> {
-    const response = await fetch("/api/v1/backoffice/lead-status-transition-rules", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/lead-status-transition-rules`, {
       cache: "no-store",
     });
     const data = await response.json();
@@ -24,7 +25,7 @@ export class BackofficeLeadStatusTransitionRulesService
     targetStatus: LeadStatus,
     fieldKeys: LeadTransitionFieldKey[]
   ): Promise<Output> {
-    const response = await fetch("/api/v1/backoffice/lead-status-transition-rules", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/lead-status-transition-rules`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ targetStatus, fieldKeys }),

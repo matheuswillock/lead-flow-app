@@ -16,3 +16,10 @@ export interface IPublicScheduleShareActions {
 export interface IPublicScheduleShareContext
   extends IPublicScheduleShareState,
     IPublicScheduleShareActions {}
+
+export interface IPublicScheduleShareProviderProps {
+  token: string;
+  children: React.ReactNode;
+  /** Dados pré-carregados pelo Server Component (evita requisição visível no Network). */
+  initialData?: PublicScheduleShareData | null;
+}

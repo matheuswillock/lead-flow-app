@@ -6,8 +6,9 @@ import type {
   UpdateTemplateFormData,
   OperationResult,
 } from "./IBackofficeEmailTemplatesService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
-const BASE = "/api/v1/backoffice/email-templates"
+const BASE = `${API_CLIENT_BASE}/backoffice/email-templates`
 
 export class BackofficeEmailTemplatesService implements IBackofficeEmailTemplatesService {
   async list(): Promise<TemplateListItem[]> {

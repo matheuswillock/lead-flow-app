@@ -4,6 +4,7 @@ import type {
   BackofficeAnathemasFilters,
   BackofficeAnathemasListResult,
 } from "../context/BackofficeAnathemasTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -49,14 +50,14 @@ export class BackofficeAnathemasService implements IBackofficeAnathemasService {
     }
 
     return parseOutput<BackofficeAnathemasListResult>(
-      await fetch(`/api/v1/backoffice/anatemas?${search.toString()}`, { cache: "no-store" }),
+      await fetch(`${API_CLIENT_BASE}/backoffice/anatemas?${search.toString()}`, { cache: "no-store" }),
       "Erro ao carregar anatemas"
     )
   }
 
   async banUser(profileId: string, reason?: string | null): Promise<BackofficeAnathemaItem> {
     return parseOutput<BackofficeAnathemaItem>(
-      await fetch("/api/v1/backoffice/anatemas", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/anatemas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId, reason }),
@@ -67,7 +68,7 @@ export class BackofficeAnathemasService implements IBackofficeAnathemasService {
 
   async liftBan(banId: string, liftReason?: string | null): Promise<BackofficeAnathemaItem> {
     return parseOutput<BackofficeAnathemaItem>(
-      await fetch(`/api/v1/backoffice/anatemas/${encodeURIComponent(banId)}/lift`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/anatemas/${encodeURIComponent(banId)}/lift`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ liftReason }),

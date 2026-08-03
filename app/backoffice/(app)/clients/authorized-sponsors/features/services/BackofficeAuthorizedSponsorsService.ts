@@ -4,6 +4,7 @@ import type {
   AuthorizedSponsorItem,
 } from "../context/BackofficeAuthorizedSponsorsTypes"
 import type { IBackofficeAuthorizedSponsorsService } from "./IBackofficeAuthorizedSponsorsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -22,13 +23,13 @@ async function parseOutput<T>(response: Response): Promise<T> {
 export class BackofficeAuthorizedSponsorsService implements IBackofficeAuthorizedSponsorsService {
   async list(): Promise<AuthorizedSponsorsListResult> {
     return parseOutput<AuthorizedSponsorsListResult>(
-      await fetch("/api/v1/backoffice/authorized-sponsors", { cache: "no-store" })
+      await fetch(`${API_CLIENT_BASE}/backoffice/authorized-sponsors`, { cache: "no-store" })
     )
   }
 
   async grant(profileId: string, notes?: string | null): Promise<AuthorizedSponsorItem> {
     return parseOutput<AuthorizedSponsorItem>(
-      await fetch("/api/v1/backoffice/authorized-sponsors", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/authorized-sponsors`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId, notes: notes ?? null }),
@@ -38,7 +39,7 @@ export class BackofficeAuthorizedSponsorsService implements IBackofficeAuthorize
 
   async revoke(profileId: string): Promise<AuthorizedSponsorItem> {
     return parseOutput<AuthorizedSponsorItem>(
-      await fetch(`/api/v1/backoffice/authorized-sponsors/${profileId}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/authorized-sponsors/${profileId}`, {
         method: "DELETE",
       })
     )

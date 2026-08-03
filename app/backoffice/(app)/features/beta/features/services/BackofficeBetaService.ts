@@ -9,10 +9,11 @@ import type {
   RawBetaGrant,
   UpdateBetaUserPayload,
 } from "../context/BackofficeBetaTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeBetaService implements IBackofficeBetaService {
   async listBetaFeatures(): Promise<BetaFeatureItem[]> {
-    const res = await fetch("/api/v1/backoffice/features", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/features`, { cache: "no-store" })
     const data = await res.json()
     if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao listar funcionalidades")
     const all = (data.result ?? []) as Array<{
@@ -29,7 +30,7 @@ export class BackofficeBetaService implements IBackofficeBetaService {
   }
 
   async listBetaUsers(featureId: string): Promise<BetaGrantItem[]> {
-    const res = await fetch(`/api/v1/backoffice/features/${featureId}/beta-users`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/features/${featureId}/beta-users`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -38,7 +39,7 @@ export class BackofficeBetaService implements IBackofficeBetaService {
   }
 
   async addBetaUser(featureId: string, payload: AddBetaUserPayload): Promise<RawBetaGrant> {
-    const res = await fetch(`/api/v1/backoffice/features/${featureId}/beta-users`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/features/${featureId}/beta-users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -49,7 +50,7 @@ export class BackofficeBetaService implements IBackofficeBetaService {
   }
 
   async updateBetaUser(featureId: string, payload: UpdateBetaUserPayload): Promise<RawBetaGrant> {
-    const res = await fetch(`/api/v1/backoffice/features/${featureId}/beta-users`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/features/${featureId}/beta-users`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -60,7 +61,7 @@ export class BackofficeBetaService implements IBackofficeBetaService {
   }
 
   async removeBetaUser(featureId: string, profileId: string): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/features/${featureId}/beta-users/${profileId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/features/${featureId}/beta-users/${profileId}`, {
       method: "DELETE",
     })
     const data = await res.json()
@@ -74,7 +75,7 @@ export class BackofficeBetaService implements IBackofficeBetaService {
       mastersOnly: "true",
     })
     if (query.trim()) search.set("q", query.trim())
-    const res = await fetch(`/api/v1/backoffice/platform-users?${search.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users?${search.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -100,7 +101,7 @@ export class BackofficeBetaService implements IBackofficeBetaService {
   }
 
   async getMasterTeams(masterId: string): Promise<BetaGrantTeamItem[]> {
-    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/teams`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams`, {
       cache: "no-store",
     })
     const data = await res.json()

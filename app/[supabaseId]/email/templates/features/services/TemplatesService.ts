@@ -1,9 +1,10 @@
 import type { Template } from '../context/TemplatesTypes'
 import type { CreateTemplateData, ITemplatesService } from './ITemplatesService'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class TemplatesService implements ITemplatesService {
-  private readonly baseUrl = '/api/v1/email/templates'
-  private readonly settingsUrl = '/api/v1/email/settings'
+  private readonly baseUrl = `${API_CLIENT_BASE}/email/templates`
+  private readonly settingsUrl = `${API_CLIENT_BASE}/email/settings`
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {

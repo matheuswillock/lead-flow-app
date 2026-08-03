@@ -3,6 +3,7 @@ import type {
   BackofficeOptInCampaignInfo,
 } from "../context/BackofficeLeadQuickEntryTypes"
 import type { IBackofficeLeadQuickEntryService } from "./IBackofficeLeadQuickEntryService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -22,7 +23,7 @@ async function parseOutput<T>(response: Response): Promise<T> {
 
 export class BackofficeLeadQuickEntryService implements IBackofficeLeadQuickEntryService {
   async getOptInCampaign(): Promise<BackofficeOptInCampaignInfo | null> {
-    const response = await fetch("/api/v1/backoffice/lead-form/opt-in-campaign", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/lead-form/opt-in-campaign`, {
       method: "GET",
       cache: "no-store",
     })
@@ -30,7 +31,7 @@ export class BackofficeLeadQuickEntryService implements IBackofficeLeadQuickEntr
   }
 
   async submit(data: BackofficeLeadQuickEntryFormData): Promise<void> {
-    const response = await fetch("/api/v1/backoffice/lead-form", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/lead-form`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

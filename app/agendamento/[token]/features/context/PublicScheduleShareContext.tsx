@@ -1,20 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import { usePublicScheduleShare } from "./PublicScheduleShareHook";
-import type { IPublicScheduleShareContext } from "./PublicScheduleShareTypes";
+import type { IPublicScheduleShareContext, IPublicScheduleShareProviderProps } from "./PublicScheduleShareTypes";
 
 const PublicScheduleShareContext = createContext<IPublicScheduleShareContext | null>(null);
 
 export function PublicScheduleShareContextProvider({
   token,
   children,
-}: {
-  token: string;
-  children: ReactNode;
-}) {
-  const value = usePublicScheduleShare(token);
+  initialData,
+}: IPublicScheduleShareProviderProps) {
+  const value = usePublicScheduleShare(token, initialData);
 
   return (
     <PublicScheduleShareContext.Provider value={value}>

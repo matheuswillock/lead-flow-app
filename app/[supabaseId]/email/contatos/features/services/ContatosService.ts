@@ -3,6 +3,7 @@
 import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContactImportFields";
 import type { ContactList, Contact } from "../context/ContatosTypes";
 import type { EmailContactImportEnqueueResult } from "./IContatosService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type RadarSegmentOption = {
   id: string
@@ -41,7 +42,7 @@ export interface IContatosService {
 }
 
 export class ContatosService implements IContatosService {
-  private readonly baseUrl = "/api/v1/email/contact-lists";
+  private readonly baseUrl = `${API_CLIENT_BASE}/email/contact-lists`;
 
   async getLists(): Promise<ContactList[]> {
     console.info("[ContatosService] getLists");
@@ -220,7 +221,7 @@ export class ContatosService implements IContatosService {
 
   async listRadarSegments(supabaseId: string): Promise<RadarSegmentOption[]> {
     console.info("[ContatosService] listRadarSegments");
-    const response = await fetch("/api/v1/radar/segments/custom", {
+    const response = await fetch(`${API_CLIENT_BASE}/radar/segments/custom`, {
       method: "GET",
       cache: "no-store",
       headers: {
@@ -242,7 +243,7 @@ export class ContatosService implements IContatosService {
 
   async createRadarSegmentForList(supabaseId: string, name: string, listId: string): Promise<RadarSegmentOption> {
     console.info("[ContatosService] createRadarSegmentForList", { name, listId });
-    const response = await fetch("/api/v1/radar/segments/custom", {
+    const response = await fetch(`${API_CLIENT_BASE}/radar/segments/custom`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
