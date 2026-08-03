@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { ArrowDownToLine, ArrowUpFromLine, FormInput, Webhook } from "lucide-react";
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
+import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
+import { RadarPixelIntegration } from "../components/RadarPixelIntegration";
 import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess";
@@ -56,6 +58,10 @@ export function IntegrationsContainer() {
       </div>
 
       <LeadFormIntegration />
+
+      <StudioWebhookIntegration />
+
+      {hasAccess(FEATURE_SLUGS.RADAR) && <RadarPixelIntegration />}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Link href={inboundHref} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

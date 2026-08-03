@@ -1033,6 +1033,7 @@ lead_id lead_id
 email_contact_id email_contact_id
 portfolio_id portfolio_id
 whatsapp_contact_id whatsapp_contact_id
+visitor_session visitor_session
         }
     
 
@@ -1043,6 +1044,7 @@ portfolio portfolio
 email_contact email_contact
 email_campaign email_campaign
 whatsapp_contact whatsapp_contact
+pixel_hit pixel_hit
         }
     
 
@@ -2233,6 +2235,27 @@ meeting_scheduled meeting_scheduled
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_team_radar_pixel_configs" {
+    String id "🗝️"
+    String publicToken 
+    String allowedOrigins 
+    DateTime lastUsedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_radar_pixel_hit_logs" {
+    String id "🗝️"
+    String eventType 
+    String visitorSession 
+    String origin "❓"
+    String userAgent "❓"
+    Json metadata "❓"
     DateTime createdAt 
     }
   
@@ -3801,6 +3824,9 @@ meeting_scheduled meeting_scheduled
     "corretor_studio_team_studio_webhook_configs" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" }o--|| corretor_studio_profiles : "updatedBy"
     "corretor_studio_team_studio_webhook_request_logs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_pixel_configs" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_pixel_configs" }o--|| corretor_studio_profiles : "updatedBy"
+    "corretor_studio_team_radar_pixel_hit_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_webhooks" |o--|| "TeamWebhookDirection" : "enum:direction"
     "corretor_studio_team_webhooks" |o--|| "TeamWebhookStatus" : "enum:status"
     "corretor_studio_team_webhooks" |o--|o "TeamWebhookDestinationPreset" : "enum:destinationPreset"
