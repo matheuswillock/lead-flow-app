@@ -10,6 +10,7 @@ import type {
   BackofficeAllUsersUserType,
   BackofficeSponsorMasterOption,
 } from "../context/BackofficeAllUsersTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -68,7 +69,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
       items?: BackofficeAllUsersListResult["items"]
       pagination?: BackofficeAllUsersListResult["pagination"]
     }>(
-      await fetch(`/api/v1/backoffice/clients/all-users?${search.toString()}`, { cache: "no-store" }),
+      await fetch(`${API_CLIENT_BASE}/backoffice/clients/all-users?${search.toString()}`, { cache: "no-store" }),
       "Erro ao carregar usuários"
     )
 
@@ -89,7 +90,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
 
   async getDetail(profileId: string): Promise<BackofficeAllUsersDetail> {
     return parseOutput<BackofficeAllUsersDetail>(
-      await fetch(`/api/v1/backoffice/clients/all-users/${profileId}`, { cache: "no-store" }),
+      await fetch(`${API_CLIENT_BASE}/backoffice/clients/all-users/${profileId}`, { cache: "no-store" }),
       "Erro ao carregar detalhes do usuário"
     )
   }
@@ -132,7 +133,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
       pagination?: BackofficeAllUsersScheduleListResult["pagination"]
     }>(
       await fetch(
-        `/api/v1/backoffice/clients/all-users/${profileId}/schedules?${search.toString()}`,
+        `${API_CLIENT_BASE}/backoffice/clients/all-users/${profileId}/schedules?${search.toString()}`,
         { cache: "no-store" }
       ),
       "Erro ao carregar agendamentos do usuário"
@@ -191,7 +192,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
       pagination?: BackofficeAllUsersEmailDispatchListResult["pagination"]
     }>(
       await fetch(
-        `/api/v1/backoffice/clients/all-users/${profileId}/email-dispatches?${search.toString()}`,
+        `${API_CLIENT_BASE}/backoffice/clients/all-users/${profileId}/email-dispatches?${search.toString()}`,
         { cache: "no-store" }
       ),
       "Erro ao carregar e-mails disparados do usuário"
@@ -217,7 +218,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     mode: "invite" | "reset_password"
   ): Promise<{ email: string }> {
     return parseOutput<{ email: string }>(
-      await fetch(`/api/v1/backoffice/members/${memberId}/access-email`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode }),
@@ -231,7 +232,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     payload: BackofficeAllUsersUpdateUserTypeInput
   ): Promise<BackofficeAllUsersUserType> {
     const result = await parseOutput<{ userType: BackofficeAllUsersUserType }>(
-      await fetch(`/api/v1/backoffice/clients/all-users/${profileId}/user-type`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/clients/all-users/${profileId}/user-type`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -243,7 +244,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
 
   async listSponsorMasters(): Promise<BackofficeSponsorMasterOption[]> {
     const result = await parseOutput<{ options: BackofficeSponsorMasterOption[] }>(
-      await fetch("/api/v1/backoffice/clients/all-users/sponsor-masters"),
+      await fetch(`${API_CLIENT_BASE}/backoffice/clients/all-users/sponsor-masters`),
       "Erro ao carregar patrocinadores"
     )
     return result.options
@@ -251,7 +252,7 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
 
   async banUser(profileId: string, reason?: string | null): Promise<void> {
     await parseOutput<Record<string, unknown>>(
-      await fetch("/api/v1/backoffice/anatemas", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/anatemas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId, reason }),

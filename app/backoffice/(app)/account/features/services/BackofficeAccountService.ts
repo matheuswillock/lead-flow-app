@@ -4,6 +4,7 @@ import type {
   BackofficeGoogleScopesResult,
 } from "../context/BackofficeAccountTypes"
 import type { IBackofficeAccountService } from "./IBackofficeAccountService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ApiOutput<T> {
   isValid: boolean
@@ -22,13 +23,13 @@ async function parseOutput<T>(response: Response): Promise<ApiOutput<T>> {
 
 export class BackofficeAccountService implements IBackofficeAccountService {
   async getAccount(): Promise<BackofficeAccountData> {
-    const response = await fetch("/api/v1/backoffice/account", { cache: "no-store" })
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account`, { cache: "no-store" })
     const output = await parseOutput<BackofficeAccountData>(response)
     return output.result
   }
 
   async updateAccount(input: BackofficeAccountUpdateInput): Promise<BackofficeAccountData> {
-    const response = await fetch("/api/v1/backoffice/account", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -38,7 +39,7 @@ export class BackofficeAccountService implements IBackofficeAccountService {
   }
 
   async updatePassword(password: string): Promise<void> {
-    const response = await fetch("/api/v1/backoffice/account/password", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account/password`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
@@ -49,7 +50,7 @@ export class BackofficeAccountService implements IBackofficeAccountService {
   async uploadIcon(file: File): Promise<{ iconId: string; publicUrl: string }> {
     const formData = new FormData()
     formData.set("icon", file)
-    const response = await fetch("/api/v1/backoffice/account/icon", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account/icon`, {
       method: "POST",
       body: formData,
     })
@@ -58,12 +59,12 @@ export class BackofficeAccountService implements IBackofficeAccountService {
   }
 
   async removeIcon(): Promise<void> {
-    const response = await fetch("/api/v1/backoffice/account/icon", { method: "DELETE" })
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account/icon`, { method: "DELETE" })
     await parseOutput<null>(response)
   }
 
   async updateTimezone(timezone: string): Promise<string> {
-    const response = await fetch("/api/v1/backoffice/account/timezone", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account/timezone`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ timezone }),
@@ -73,7 +74,7 @@ export class BackofficeAccountService implements IBackofficeAccountService {
   }
 
   async getGoogleScopes(): Promise<BackofficeGoogleScopesResult> {
-    const response = await fetch("/api/v1/backoffice/account/google-scopes", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/account/google-scopes`, {
       cache: "no-store",
     })
     const output = await parseOutput<BackofficeGoogleScopesResult>(response)
@@ -81,7 +82,7 @@ export class BackofficeAccountService implements IBackofficeAccountService {
   }
 
   async disconnectGoogle(): Promise<void> {
-    const response = await fetch("/api/v1/backoffice/google/disconnect", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/google/disconnect`, {
       method: "POST",
     })
     await parseOutput<null>(response)

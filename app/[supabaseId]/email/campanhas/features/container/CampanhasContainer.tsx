@@ -40,6 +40,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: "scheduled", label: "Agendadas" },
   { value: "sending", label: "Enviando" },
   { value: "sent", label: "Enviadas" },
+  { value: "partially_sent", label: "Parcialmente enviadas" },
   { value: "canceled", label: "Canceladas" },
   { value: "failed", label: "Falhou" },
   { value: "archived", label: "Arquivadas" },

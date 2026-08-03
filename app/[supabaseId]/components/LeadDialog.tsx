@@ -101,6 +101,7 @@ import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timelin
 import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDuplicateWarningDialog";
 import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
 import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface LeadDialogProps {
   open: boolean;
@@ -130,7 +131,7 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
   };
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(`/api/v1/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
+    void fetch(`${API_CLIENT_BASE}/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
       headers: { "x-supabase-user-id": supabaseId, "x-team-id": teamId },
       signal: controller.signal,
     }).then(async (response) => {
@@ -969,7 +970,7 @@ export default function LeadDialog({
           label: mention.label,
         }));
 
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/activities`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/activities`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1164,7 +1165,7 @@ export default function LeadDialog({
 
     try {
       const response = await fetch(
-        `/api/v1/leads/${currentLead.id}/activities/${activityId}/reactions`,
+        `${API_CLIENT_BASE}/leads/${currentLead.id}/activities/${activityId}/reactions`,
         {
           method: "POST",
           headers: {
@@ -1523,7 +1524,7 @@ export default function LeadDialog({
     setMeetingHealdSaving(true);
 
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1578,7 +1579,7 @@ export default function LeadDialog({
     setMeetingPresenceConfirmSaving(true);
 
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1651,7 +1652,7 @@ export default function LeadDialog({
               return;
             }
 
-            const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+            const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
               method: "PUT",
               headers: {
                 "Content-Type": "application/json",
@@ -1724,7 +1725,7 @@ export default function LeadDialog({
             return;
           }
 
-          const scheduleResponse = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
+          const scheduleResponse = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/schedule`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -2224,7 +2225,7 @@ export default function LeadDialog({
       form.setValue("closerId", "", { shouldDirty: false });
     }
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2274,7 +2275,7 @@ export default function LeadDialog({
   const handleShareSchedule = async () => {
     if (!currentLead || !supabaseId) return;
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/share`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/schedule/share`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2303,7 +2304,7 @@ export default function LeadDialog({
 
     setSalesInfoSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2350,7 +2351,7 @@ export default function LeadDialog({
 
     setCloserRequirementSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2432,7 +2433,7 @@ export default function LeadDialog({
 
     setLeadInfoSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2613,7 +2614,7 @@ export default function LeadDialog({
         return;
       }
       try {
-        const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/schedule`, {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,

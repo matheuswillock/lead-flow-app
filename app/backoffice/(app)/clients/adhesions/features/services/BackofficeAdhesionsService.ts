@@ -6,6 +6,7 @@ import type {
   BackofficeAdhesionOptions,
 } from "../context/BackofficeAdhesionsTypes"
 import type { IBackofficeAdhesionsService } from "./IBackofficeAdhesionsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -57,7 +58,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     }
 
     return parseOutput<BackofficeAdhesionListResult>(
-      await fetch(`/api/v1/backoffice/adhesions?${search.toString()}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions?${search.toString()}`, {
         cache: "no-store",
       })
     )
@@ -65,7 +66,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
 
   async getOptions(): Promise<BackofficeAdhesionOptions> {
     return parseOutput<BackofficeAdhesionOptions>(
-      await fetch("/api/v1/backoffice/adhesions/options", { cache: "no-store" })
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/options`, { cache: "no-store" })
     )
   }
 
@@ -73,7 +74,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     values: BackofficeAdhesionFormValues & { accessExpiresAt?: string | null }
   ): Promise<BackofficeAdhesionCreationResult> {
     return parseOutput<BackofficeAdhesionCreationResult>(
-      await fetch("/api/v1/backoffice/adhesions", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -86,7 +87,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     values: Partial<Omit<BackofficeAdhesionFormValues, "leadId">>
   ): Promise<void> {
     await parseOutput(
-      await fetch(`/api/v1/backoffice/adhesions/${id}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -96,7 +97,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
 
   async deletePending(id: string): Promise<void> {
     await parseOutput(
-      await fetch(`/api/v1/backoffice/adhesions/${id}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/${id}`, {
         method: "DELETE",
       })
     )
@@ -104,7 +105,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
 
   async resend(id: string): Promise<BackofficeAdhesionCreationResult> {
     return parseOutput<BackofficeAdhesionCreationResult>(
-      await fetch(`/api/v1/backoffice/adhesions/${id}/resend`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/${id}/resend`, {
         method: "POST",
       })
     )
@@ -112,7 +113,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
 
   async getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }> {
     return parseOutput<{ publicUrl: string; expiresAt: string }>(
-      await fetch(`/api/v1/backoffice/adhesions/${id}/public-url`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/${id}/public-url`, {
         cache: "no-store",
       })
     )
@@ -124,7 +125,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     return parseOutput<{
       invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }>
     }>(
-      await fetch(`/api/v1/backoffice/adhesions/${id}/pending-invoice-url`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/${id}/pending-invoice-url`, {
         cache: "no-store",
       })
     )
@@ -132,7 +133,7 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
 
   async resendInvite(id: string): Promise<void> {
     await parseOutput(
-      await fetch(`/api/v1/backoffice/adhesions/${id}/invite`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/adhesions/${id}/invite`, {
         method: "POST",
       })
     )

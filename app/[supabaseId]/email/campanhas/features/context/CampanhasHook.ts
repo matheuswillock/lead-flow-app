@@ -23,7 +23,7 @@ const defaultService = new CampanhasService()
 
 import type { CampaignWritePayload } from "../services/CampanhasService"
 
-const EDITABLE_STATUSES = new Set(["draft", "scheduled"])
+const EDITABLE_STATUSES = new Set(["draft", "scheduled", "sent", "failed", "partially_sent"])
 
 function statusKey(statuses: string[]): string {
   return [...statuses].sort().join(",")

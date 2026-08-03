@@ -1,3 +1,4 @@
+import { API_CLIENT_BASE } from "@/lib/route-map";
 import type { LeadTransitionFieldApiKey } from "@/lib/leadStatusTransitionFields";
 
 export type LeadStatusTransitionBlockerType =
@@ -117,7 +118,7 @@ const callStatusTransition = async (
   mode: TransitionMode,
   request: LeadStatusTransitionRequest
 ): Promise<LeadStatusTransitionResponse> => {
-  const response = await fetch(`/api/v1/leads/${request.leadId}/status-transition`, {
+  const response = await fetch(`${API_CLIENT_BASE}/leads/${request.leadId}/status-transition`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

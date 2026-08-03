@@ -1,5 +1,6 @@
 import type { IWhatsAppInboxService } from './IWhatsAppInboxService'
 import type { LeadSearchResult, SendMessageMediaInput, WhatsAppConfig, WhatsAppConversation, WhatsAppConversationTag, WhatsAppForwardMessageResult, WhatsAppInboxSearchResult, WhatsAppMessage, WhatsAppMessageActionPayload, WhatsAppMessageActionsState, TeamMember, WhatsAppTeamContact } from '../context/WhatsAppInboxTypes'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class WhatsAppApiError extends Error {
   readonly code: string | null
@@ -58,7 +59,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   }
 
   async fetchConfig(teamId: string, supabaseId: string): Promise<WhatsAppConfig | null> {
-    const response = await fetch(`/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/config`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/config`, {
       method: 'GET',
       headers: {
         'x-supabase-user-id': supabaseId,
@@ -79,7 +80,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   }
 
   async syncHistory(teamId: string, supabaseId: string): Promise<void> {
-    const response = await fetch(`/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-history`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/sync-history`, {
       method: 'POST',
       headers: this.authHeaders(teamId, supabaseId),
     })
@@ -103,7 +104,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (params.tagIds && params.tagIds.length > 0) searchParams.set('tagIds', params.tagIds.join(','))
 
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?${searchParams.toString()}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?${searchParams.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -137,7 +138,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
 
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages?${searchParams.toString()}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/messages?${searchParams.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -191,7 +192,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     }
 
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/messages`,
       {
         method: 'POST',
         headers: this.authHeaders(teamId, supabaseId),
@@ -211,7 +212,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     messageId: string
   ): Promise<WhatsAppMessageActionsState> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/actions-state`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/actions-state`,
       {
         method: 'GET',
         headers: {
@@ -233,7 +234,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     action: WhatsAppMessageActionPayload
   ): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/actions`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/actions`,
       {
         method: 'POST',
         headers: this.authHeaders(teamId, supabaseId),
@@ -251,7 +252,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     destinations: Array<{ conversationId: string; clientMessageId: string }>
   ): Promise<WhatsAppForwardMessageResult> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/forward`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/messages/${encodeURIComponent(messageId)}/forward`,
       {
         method: 'POST',
         headers: this.authHeaders(teamId, supabaseId),
@@ -282,7 +283,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   ): Promise<{ messages: WhatsAppMessage[]; total: number }> {
     const searchParams = new URLSearchParams({ q: query })
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages/search?${searchParams.toString()}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages/search?${searchParams.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -311,7 +312,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     if (params?.groupJid) searchParams.set('groupJid', params.groupJid)
 
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/contacts?${searchParams.toString()}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/contacts?${searchParams.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -332,7 +333,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async searchInbox(teamId: string, supabaseId: string, query: string, signal?: AbortSignal): Promise<WhatsAppInboxSearchResult> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/search?q=${encodeURIComponent(query)}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/search?q=${encodeURIComponent(query)}`,
       { headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId }, signal }
     )
     const output = await this.parseJsonResponse(response)
@@ -348,7 +349,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     conversationId?: string
   ): Promise<{ imported: number; updatedConversations: number; totalContacts: number }> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-contacts`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/sync-contacts`,
       {
         method: 'POST',
         headers: {
@@ -380,7 +381,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     conversationId: string
   ): Promise<{ imported: number; totalParticipants: number }> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/sync-group-participants`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/sync-group-participants`,
       {
         method: 'POST',
         headers: {
@@ -409,7 +410,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async markConversationRead(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversation-read`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversation-read`,
       {
         method: 'POST',
         headers: {
@@ -434,7 +435,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     profileId: string
   ): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/assign`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/assign`,
       {
         method: 'POST',
         headers: {
@@ -458,7 +459,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     conversationId: string
   ): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/takeover`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/takeover`,
       {
         method: 'POST',
         headers: {
@@ -482,7 +483,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     mode: 'BOT' | 'HUMAN'
   ): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/handoff`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/handoff`,
       {
         method: 'POST',
         headers: {
@@ -502,7 +503,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async fetchTeamMembers(teamId: string, supabaseId: string): Promise<TeamMember[]> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/members`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/members`,
       {
         method: 'GET',
         headers: {
@@ -533,7 +534,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async linkLead(teamId: string, supabaseId: string, conversationId: string, leadId: string): Promise<WhatsAppConversation | null> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/link-lead`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/link-lead`,
       {
         method: 'POST',
         headers: {
@@ -561,7 +562,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     input: { name: string; phone: string }
   ): Promise<{ leadId: string }> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/create-lead`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/create-lead`,
       {
         method: 'POST',
         headers: {
@@ -588,7 +589,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async archiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/archive`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/archive`,
       {
         method: 'POST',
         headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
@@ -603,7 +604,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async unarchiveConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/unarchive`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/unarchive`,
       {
         method: 'POST',
         headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
@@ -618,7 +619,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
 
   async deleteConversation(teamId: string, supabaseId: string, conversationId: string): Promise<void> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
       {
         method: 'DELETE',
         headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
@@ -638,7 +639,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     contactName: string
   ): Promise<WhatsAppConversation> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}`,
       {
         method: 'PATCH',
         headers: {
@@ -664,7 +665,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     input: { phone?: string; contactName?: string; contactId?: string }
   ): Promise<WhatsAppConversation> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations`,
       {
         method: 'POST',
         headers: {
@@ -691,7 +692,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     role: string
   ): Promise<LeadSearchResult[]> {
     const params = new URLSearchParams({ search: query, teamId, limit: '10', role })
-    const response = await fetch(`/api/v1/leads?${params.toString()}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/leads?${params.toString()}`, {
       method: 'GET',
       headers: {
         'x-supabase-user-id': supabaseId,
@@ -718,7 +719,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
   }
 
   async fetchTags(teamId: string, supabaseId: string): Promise<WhatsAppConversationTag[]> {
-    const response = await fetch(`/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/tags`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/tags`, {
       method: 'GET',
       headers: {
         'x-supabase-user-id': supabaseId,
@@ -742,7 +743,7 @@ class WhatsAppInboxService implements IWhatsAppInboxService {
     tagIds: string[]
   ): Promise<WhatsAppConversationTag[]> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/tags`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations/${encodeURIComponent(conversationId)}/tags`,
       {
         method: 'PUT',
         headers: {

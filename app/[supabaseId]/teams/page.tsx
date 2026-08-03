@@ -30,6 +30,7 @@ import { TeamLeadCustomFieldsSection } from "./features/components/TeamLeadCusto
 import { PendingPaymentEditDialog } from "./features/container/PendingPaymentEditDialog";
 import { ExternalMemberInviteForm } from "./features/components/ExternalMemberInviteForm";
 import type { ManagerTeamTableRow } from "./features/types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type TeamMember = {
   id: string;
@@ -317,7 +318,7 @@ export default function TeamsPage() {
   const handleSetDefaultTeam = async (teamId: string) => {
     setSettingDefaultTeamId(teamId);
     try {
-      const response = await fetch(`/api/v1/teams/${teamId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -349,7 +350,7 @@ export default function TeamsPage() {
 
     setIsCreatingTeam(true);
     try {
-      const response = await fetch("/api/v1/teams/payments/create", {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/payments/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -418,7 +419,7 @@ export default function TeamsPage() {
     setPendingPaymentLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}`);
+      const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}`);
       const result = await response.json();
       if (!response.ok || !result?.isValid || !result?.result) {
         throw new Error(result?.errorMessages?.[0] || "Erro ao carregar pagamento pendente.");
@@ -446,7 +447,7 @@ export default function TeamsPage() {
 
     setCancelingPendingTeamId(team.id);
     try {
-      const response = await fetch(`/api/v1/teams/pending-actions/${pendingActionId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/pending-actions/${pendingActionId}`, {
         method: "DELETE",
         headers: { "x-supabase-user-id": supabaseId },
       });
@@ -470,7 +471,7 @@ export default function TeamsPage() {
 
     setPendingPaymentSubmitting(true);
     try {
-      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/billing-type`, {
+      const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/billing-type`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ billingType: pendingPaymentBillingType }),
@@ -495,7 +496,7 @@ export default function TeamsPage() {
     if (!teamId) return;
     setRulesLoading(true);
     try {
-      const response = await fetch(`/api/v1/teams/${teamId}/status-rules`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/status-rules`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": teamId,
@@ -595,7 +596,7 @@ export default function TeamsPage() {
         }))
         .filter((rule) => rule.targetStatus && rule.requiredStatus);
 
-      const response = await fetch(`/api/v1/teams/${manageTeamId}/status-rules`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}/status-rules`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -691,7 +692,7 @@ export default function TeamsPage() {
     if (!teamId) return;
     setManageLoading(true);
     try {
-      const response = await fetch(`/api/v1/teams/${teamId}/members`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/members`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": teamId,
@@ -755,7 +756,7 @@ export default function TeamsPage() {
 
     setIsRenaming(true);
     try {
-      const response = await fetch(`/api/v1/teams/${manageTeamId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -788,7 +789,7 @@ export default function TeamsPage() {
 
     setSavingTransferTargets(true);
     try {
-      const response = await fetch(`/api/v1/teams/${manageTeamId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -827,7 +828,7 @@ export default function TeamsPage() {
 
     setIsAddingMember(true);
     try {
-      const response = await fetch(`/api/v1/teams/${manageTeamId}/members`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}/members`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -861,7 +862,7 @@ export default function TeamsPage() {
     if (!manageTeamId) return;
     setRemovingMemberId(profileId);
     try {
-      const response = await fetch(`/api/v1/teams/${manageTeamId}/members`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}/members`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -895,7 +896,7 @@ export default function TeamsPage() {
     setConfirming(true);
     try {
       if (confirmAction === "delete") {
-        const response = await fetch(`/api/v1/teams/${manageTeamId}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}`, {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
@@ -918,7 +919,7 @@ export default function TeamsPage() {
           toast.error("Selecione um novo master para transferir.");
           return;
         }
-        const response = await fetch(`/api/v1/teams/${manageTeamId}/transfer`, {
+        const response = await fetch(`${API_CLIENT_BASE}/teams/${manageTeamId}/transfer`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

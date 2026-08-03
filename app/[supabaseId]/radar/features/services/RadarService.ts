@@ -11,11 +11,13 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 async function parseOutput<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -25,7 +27,7 @@ async function parseOutput<T>(res: Response): Promise<T> {
 }
 
 export class RadarFrontendService implements IRadarService {
-  private readonly baseUrl = "/api/v1/radar"
+  private readonly baseUrl = `${API_CLIENT_BASE}/radar`
 
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
     return {
@@ -279,6 +281,18 @@ export class RadarFrontendService implements IRadarService {
       body: JSON.stringify({ rules }),
     })
     return parseOutput<{ count: number }>(res)
+  }
+
+  async getProfileTouchpoints(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileTouchpoints> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/touchpoints`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileTouchpoints>(res)
   }
 
   async materializeContactList(

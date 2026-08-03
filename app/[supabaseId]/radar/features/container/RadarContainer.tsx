@@ -90,6 +90,8 @@ export function RadarContainer() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    touchpoints,
+    isLoadingTouchpoints,
     reload,
   } = useRadarContext()
 
@@ -332,6 +334,8 @@ export function RadarContainer() {
           onLoadMoreEvents={() => void loadMoreProfileEvents()}
           isSyncingLead={isSyncingLead}
           onSyncLead={() => void syncLeadProfile()}
+          touchpoints={touchpoints}
+          isLoadingTouchpoints={isLoadingTouchpoints}
         />
 
         <RadarSegmentBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} segment={editingSegment} />

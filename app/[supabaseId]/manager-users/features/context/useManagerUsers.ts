@@ -14,6 +14,7 @@ import { ManagerUsersService } from "../services/ManagerUsersService";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface UseManagerUsersProps {
   supabaseId: string;
@@ -187,7 +188,7 @@ export function useManagerUsers({
 
       toast.loading("Processando solicitação de usuário...");
 
-      const response = await fetch(`/api/v1/manager/${supabaseId}/users`, {
+      const response = await fetch(`${API_CLIENT_BASE}/manager/${supabaseId}/users`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -510,7 +511,7 @@ export function useManagerUsers({
       
       toast.loading(`${action === 'ativar' ? 'Ativando' : 'Desativando'} assinatura permanente...`);
 
-      const response = await fetch(`/api/v1/profiles/${userId}/permanent-subscription`, {
+      const response = await fetch(`${API_CLIENT_BASE}/profiles/${userId}/permanent-subscription`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hasPermanentSubscription: newValue })

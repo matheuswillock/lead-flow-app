@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import type { RadarProfileDetail } from "../context/RadarTypes"
+import type { RadarProfileDetail, RadarProfileTouchpoints } from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 
@@ -31,6 +31,8 @@ type RadarProfileSheetProps = {
   onLoadMoreEvents: () => void
   isSyncingLead: boolean
   onSyncLead: () => void
+  touchpoints: RadarProfileTouchpoints | null
+  isLoadingTouchpoints: boolean
 }
 
 export function RadarProfileSheet({
@@ -44,6 +46,8 @@ export function RadarProfileSheet({
   onLoadMoreEvents,
   isSyncingLead,
   onSyncLead,
+  touchpoints,
+  isLoadingTouchpoints,
 }: RadarProfileSheetProps) {
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
   const baseDataEntries =
@@ -89,6 +93,7 @@ export function RadarProfileSheet({
               <Tabs defaultValue="resumo">
                 <TabsList>
                   <TabsTrigger value="resumo">Resumo</TabsTrigger>
+                  <TabsTrigger value="contatos">Contatos</TabsTrigger>
                   <TabsTrigger value="identidades">Identidades</TabsTrigger>
                   <TabsTrigger value="consentimentos">Consentimentos</TabsTrigger>
                   <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -133,6 +138,53 @@ export function RadarProfileSheet({
                         </div>
                       )
                     })
+                  )}
+                </TabsContent>
+
+                <TabsContent value="contatos" className="flex flex-col gap-3">
+                  {isLoadingTouchpoints ? (
+                    <div className="flex flex-col gap-2">
+                      <Skeleton className="h-5 w-32" />
+                      <Skeleton className="h-16 w-full" />
+                      <Skeleton className="h-16 w-full" />
+                    </div>
+                  ) : !touchpoints || touchpoints.breakdown.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum ponto de contato registrado.</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Pontos de contato</p>
+                        <Badge variant="secondary">{touchpoints.total} total</Badge>
+                      </div>
+                      <Separator />
+                      <div className="flex flex-col gap-2">
+                        {touchpoints.breakdown
+                          .sort((a, b) => b.count - a.count)
+                          .map((channel) => (
+                            <div
+                              key={channel.channel}
+                              className="flex flex-col gap-1 rounded-md border p-3 text-sm"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">{channel.channel}</span>
+                                <Badge variant="outline">{channel.count}</Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Primeiro:{" "}
+                                {format(new Date(channel.firstEventAt), "dd/MM/yyyy HH:mm", {
+                                  locale: ptBR,
+                                })}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Último:{" "}
+                                {format(new Date(channel.lastEventAt), "dd/MM/yyyy HH:mm", {
+                                  locale: ptBR,
+                                })}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </>
                   )}
                 </TabsContent>
 

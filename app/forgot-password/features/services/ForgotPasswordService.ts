@@ -1,8 +1,9 @@
 import type { IForgotPasswordService } from './IForgotPasswordService';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class ForgotPasswordService implements IForgotPasswordService {
   async requestPasswordReset(email: string): Promise<void> {
-    const response = await fetch('/api/v1/auth/forgot-password', {
+    const response = await fetch(`${API_CLIENT_BASE}/auth/forgot-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

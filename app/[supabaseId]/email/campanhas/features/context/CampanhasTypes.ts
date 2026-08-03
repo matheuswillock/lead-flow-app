@@ -3,6 +3,7 @@ export type CampaignStatus =
   | "scheduled"
   | "sending"
   | "sent"
+  | "partially_sent"
   | "canceled"
   | "failed"
   | "archived"
@@ -53,6 +54,8 @@ export type Campaign = {
   isParentCampaign?: boolean
   subCampaigns?: SubCampaignSummary[]
   managedByCorretorStudio?: boolean
+  partiallySentCount?: number
+  partiallySentTotal?: number
 }
 
 export type CreditStatus = {

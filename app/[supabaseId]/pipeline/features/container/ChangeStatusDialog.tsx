@@ -66,6 +66,7 @@ import {
   fetchProductTransitionGates,
   type ProductLeadStatusTransitionGate,
 } from '@/lib/services/leadStatusTransitionGatesClient';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -399,7 +400,7 @@ export function ChangeStatusDialog({
   const handleFinalizeContract = async (data: FinalizeContractData) => {
     if (!lead) return;
 
-    const response = await fetch(`/api/v1/leads/${lead.id}/finalize`, {
+    const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/finalize`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -431,7 +432,7 @@ export function ChangeStatusDialog({
 
     setSalesInfoSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -473,7 +474,7 @@ export function ChangeStatusDialog({
 
     setCloserRequirementSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -515,7 +516,7 @@ export function ChangeStatusDialog({
 
     setLeadInfoSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { FilterPresetsTriggerButton } from "@/app/[supabaseId]/components/leads-filters/FilterPresetsTriggerButton";
 import type { FilterPresetScope } from "@/lib/team-filter-presets/types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type StoredFilterPreset<T> = {
   id: string;
@@ -79,7 +80,7 @@ export function LeadsFilterPresetsSheet<T>({
   const [lastUsedPresetId, setLastUsedPresetId] = useState<string | null>(null);
   const [importDone, setImportDone] = useState(false);
 
-  const apiBase = teamId ? `/api/v1/teams/${teamId}/${scope}/filter-presets` : null;
+  const apiBase = teamId ? `${API_CLIENT_BASE}/teams/${teamId}/${scope}/filter-presets` : null;
 
   useEffect(() => {
     if (!lastPresetStorageKey || typeof window === "undefined") {

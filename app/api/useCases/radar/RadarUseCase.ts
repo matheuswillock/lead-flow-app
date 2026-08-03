@@ -130,6 +130,72 @@ export class RadarUseCase {
     return new Output(true, [], [], profile)
   }
 
+  /**
+   * D9: agrega eventos do perfil por canal de origem (prefixo do eventType).
+   * Canal = prefixo antes do primeiro ".": email → E-mail, whatsapp → WhatsApp,
+   * form → Formulário, pixel → Pixel, lead/portfolio/profile → CRM, demais → Outros.
+   * Retorna Output inválido (404) quando o perfil não existe ou pertence a outro time.
+   */
+  async getProfileTouchpoints(teamId: string, ctx: TeamContext, profileId: string) {
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const rows = await radarRepository.groupProfileEventsByType(scope, profileId)
+
+    const CHANNEL_MAP: Record<string, string> = {
+      email: "E-mail",
+      whatsapp: "WhatsApp",
+      form: "Formulário",
+      pixel: "Pixel",
+      lead: "CRM",
+      portfolio: "CRM",
+      profile: "CRM",
+    }
+
+    type ChannelBreakdown = {
+      channel: string
+      count: number
+      firstEventAt: string
+      lastEventAt: string
+    }
+
+    const channelMap = new Map<string, { count: number; firstEventAt: Date; lastEventAt: Date }>()
+
+    for (const row of rows) {
+      const prefix = row.eventType.split(".")[0] ?? row.eventType
+      const channel = CHANNEL_MAP[prefix] ?? "Outros"
+      const existing = channelMap.get(channel)
+      const rowMin = row._min.occurredAt
+      const rowMax = row._max.occurredAt
+      if (!rowMin || !rowMax) continue
+      if (existing) {
+        existing.count += row._count._all
+        if (rowMin < existing.firstEventAt) existing.firstEventAt = rowMin
+        if (rowMax > existing.lastEventAt) existing.lastEventAt = rowMax
+      } else {
+        channelMap.set(channel, {
+          count: row._count._all,
+          firstEventAt: rowMin,
+          lastEventAt: rowMax,
+        })
+      }
+    }
+
+    const breakdown: ChannelBreakdown[] = Array.from(channelMap.entries()).map(([channel, data]) => ({
+      channel,
+      count: data.count,
+      firstEventAt: data.firstEventAt.toISOString(),
+      lastEventAt: data.lastEventAt.toISOString(),
+    }))
+
+    const total = breakdown.reduce((sum, b) => sum + b.count, 0)
+
+    return new Output(true, [], [], { total, breakdown })
+  }
+
   async listProfileEvents(
     teamId: string,
     ctx: TeamContext,

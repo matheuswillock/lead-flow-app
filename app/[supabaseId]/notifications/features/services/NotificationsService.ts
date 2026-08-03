@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import type { MarkAllAsReadOptions, NotificationsListResponse } from "../types/notification.types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type RequestContext = {
   supabaseId: string;
@@ -12,7 +13,7 @@ type ListParams = RequestContext & {
 };
 
 export class NotificationsService {
-  private baseUrl = "/api/v1/notifications";
+  private baseUrl = `${API_CLIENT_BASE}/notifications`;
 
   private async parseOutput(response: Response): Promise<Output> {
     const data = await response.json();
