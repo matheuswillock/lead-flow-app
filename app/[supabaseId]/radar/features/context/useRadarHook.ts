@@ -11,6 +11,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentRules,
 } from "./RadarTypes"
@@ -39,6 +40,8 @@ export function useRadarHookFn() {
   const [detailEventsTotal, setDetailEventsTotal] = useState(0)
   const [detailEventsPage, setDetailEventsPage] = useState(1)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false)
+  const [touchpoints, setTouchpoints] = useState<RadarProfileTouchpoints | null>(null)
+  const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSyncingWhatsapp, setIsSyncingWhatsapp] = useState(false)
@@ -138,6 +141,7 @@ export function useRadarHookFn() {
       router.replace(buildProfileHref(pathname, searchParams, profileId), { scroll: false })
       setIsDetailLoading(true)
       setDetailEventsPage(1)
+      setTouchpoints(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -158,6 +162,17 @@ export function useRadarHookFn() {
       } finally {
         setIsDetailLoading(false)
       }
+
+      // Carrega touchpoints em segundo plano após o perfil abrir
+      setIsLoadingTouchpoints(true)
+      try {
+        const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
+        setTouchpoints(result)
+      } catch (tpError) {
+        console.error("[useRadarHookFn][loadTouchpoints]", tpError)
+      } finally {
+        setIsLoadingTouchpoints(false)
+      }
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -167,6 +182,7 @@ export function useRadarHookFn() {
     setDetailEvents([])
     setDetailEventsTotal(0)
     setDetailEventsPage(1)
+    setTouchpoints(null)
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -494,6 +510,8 @@ export function useRadarHookFn() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    touchpoints,
+    isLoadingTouchpoints,
     reload: loadDashboard,
   }
 }
