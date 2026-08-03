@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { integrationsService } from "../services/IntegrationsService";
 import type { IntegrationsState, IntegrationsActions } from "./IntegrationsTypes";
 import type {
@@ -45,6 +47,8 @@ const buildBootstrapKey = (supabaseId: string, teamId: string): string => `${sup
 
 export function useIntegrations(supabaseId: string): IntegrationsState & IntegrationsActions {
   const { activeTeamId } = useTeamContext();
+  const { hasAccess } = useFeatureAccess();
+  const hasRadarAccess = hasAccess(FEATURE_SLUGS.RADAR);
   const [leadFormUrl, setLeadFormUrl] = useState("");
   const [studioWebhookConfig, setStudioWebhookConfig] = useState<IntegrationsState["studioWebhookConfig"]>(null);
   const [integrationsBootstrapLoading, setIntegrationsBootstrapLoading] = useState(false);
@@ -435,7 +439,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   }, []);
 
   const loadRadarPixelConfig = useCallback(async () => {
-    if (!activeTeamId) {
+    if (!hasRadarAccess || !activeTeamId) {
       currentPixelConfigKeyRef.current = null;
       inFlightPixelConfigKeyRef.current = null;
       lastSuccessfulPixelConfigKeyRef.current = null;
@@ -502,7 +506,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         inFlightPixelConfigKeyRef.current = null;
       }
     }
-  }, [activeTeamId, supabaseId]);
+  }, [activeTeamId, hasRadarAccess, supabaseId]);
 
   useEffect(() => {
     void loadRadarPixelConfig();
@@ -510,7 +514,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
   const loadRadarPixelHitLogs = useCallback(
     async (options?: { force?: boolean }) => {
-      if (!activeTeamId) {
+      if (!hasRadarAccess || !activeTeamId) {
         currentPixelLogsKeyRef.current = null;
         inFlightPixelLogsKeyRef.current = null;
         lastSuccessfulPixelLogsKeyRef.current = null;
@@ -581,7 +585,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         }
       }
     },
-    [activeTeamId, supabaseId]
+    [activeTeamId, hasRadarAccess, supabaseId]
   );
 
   useEffect(() => {

@@ -61,7 +61,7 @@ export function IntegrationsContainer() {
 
       <StudioWebhookIntegration />
 
-      <RadarPixelIntegration />
+      {hasAccess(FEATURE_SLUGS.RADAR) && <RadarPixelIntegration />}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Link href={inboundHref} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

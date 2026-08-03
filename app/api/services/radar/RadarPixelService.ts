@@ -12,10 +12,13 @@ const PIXEL_HIT_LOGS_LIMIT = 15
 function buildPixelSnippet(appUrl: string, publicToken: string): string {
   const hitUrl = `${appUrl}/api/v1/public-pixel/${publicToken}/hit`
   return `<script>
-(function(u){
-  var s=document.createElement('script');
-  s.src=u;s.async=true;document.head.appendChild(s);
-}('${hitUrl}?t='+Date.now()+'&e=pixel.pageview'));
+(function(){
+  try{
+    var k='_cs_vs',vs=localStorage.getItem(k);
+    if(!vs){vs=crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);localStorage.setItem(k,vs);}
+    fetch('${hitUrl}?vs='+encodeURIComponent(vs),{method:'POST',mode:'no-cors',keepalive:true});
+  }catch(e){}
+})();
 </script>`
 }
 

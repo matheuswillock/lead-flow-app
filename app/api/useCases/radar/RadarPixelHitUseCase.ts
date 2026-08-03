@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { consumeRadarPixelRateLimit } from "@/lib/radar/pixel-rate-limit"
+import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 
 const PIXEL_RATE_LIMIT = { limit: 60, windowMs: 60_000 }
 const ALLOWED_EVENT_TYPES = new Set(["pixel.pageview", "pixel.click"])
@@ -29,6 +30,7 @@ export type RadarPixelHitInput = {
 export type RadarPixelHitResult =
   | { status: "ok" }
   | { status: "not_found" }
+  | { status: "feature_disabled" }
   | { status: "origin_not_allowed" }
   | { status: "rate_limited"; retryAfterSeconds: number }
 
@@ -40,6 +42,12 @@ class RadarPixelHitUseCase {
     if (!config) {
       const result: RadarPixelHitResult = { status: "not_found" }
       return new Output(false, [], ["Token não encontrado"], result)
+    }
+
+    const hasFeature = await teamHasRadarFeature(config.teamId)
+    if (!hasFeature) {
+      const result: RadarPixelHitResult = { status: "feature_disabled" }
+      return new Output(false, [], ["Recurso não disponível"], result)
     }
 
     if (!isOriginAllowed(input.origin, config.allowedOrigins)) {

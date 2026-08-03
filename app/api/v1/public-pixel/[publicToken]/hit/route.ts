@@ -65,7 +65,7 @@ async function handlePixelHit(
       const result = output.result as { status: string; retryAfterSeconds?: number } | null
       const status = result?.status
 
-      if (status === "not_found") {
+      if (status === "not_found" || status === "feature_disabled") {
         return NextResponse.json({ error: "not_found" }, { status: 404 })
       }
       if (status === "origin_not_allowed") {
