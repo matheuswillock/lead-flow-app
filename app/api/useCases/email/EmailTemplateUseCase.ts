@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isManagerLikeRole } from "@/lib/roles"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import { canCreateEmailTemplate } from "@/lib/email/email-rbac"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
@@ -206,10 +207,12 @@ export class EmailTemplateUseCase {
           true,
           [],
           [],
-          templates.map((template) => ({
-            ...template,
-            managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
-          }))
+          templates.map((template) =>
+            resolveEmailCreator({
+              ...template,
+              managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+            })
+          )
         )
       }
 
@@ -235,10 +238,12 @@ export class EmailTemplateUseCase {
         true,
         [],
         [],
-        Array.from(latestByGroup.values()).map((template) => ({
-          ...template,
-          managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
-        }))
+        Array.from(latestByGroup.values()).map((template) =>
+          resolveEmailCreator({
+            ...template,
+            managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+          })
+        )
       )
     } catch (error) {
       console.error("[EmailTemplateUseCase][list]", error)
@@ -257,10 +262,10 @@ export class EmailTemplateUseCase {
         return new Output(false, [], ["Template não encontrado"], null)
       }
 
-      return new Output(true, [], [], {
+      return new Output(true, [], [], resolveEmailCreator({
         ...template,
         managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
-      })
+      }))
     } catch (error) {
       console.error("[EmailTemplateUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar template de email"], null)
