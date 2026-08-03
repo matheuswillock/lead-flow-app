@@ -16,19 +16,15 @@ import { ImportFileDropzone } from "@/components/import/ImportFileDropzone"
 import type { UseBackofficeContatosReturn } from "../hooks/useBackofficeContatos"
 
 const CONTACT_IMPORT_DROPZONE_CONFIG = {
-  accept: ".csv,.json,text/csv,application/json",
-  unsupportedFormatMessage: "Formato não suportado. Envie um arquivo CSV (.csv) ou JSON (.json)",
-  subtitle: "Arquivo CSV ou JSON, com até 10MB",
+  accept: ".csv,text/csv",
+  unsupportedFormatMessage: "Formato não suportado. Envie um arquivo CSV (.csv)",
+  subtitle: "Arquivo CSV, com até 10MB",
   footerHint:
-    'O arquivo deve conter uma coluna/campo "email" (obrigatório) e, opcionalmente, "name".',
+    'O arquivo deve conter uma coluna "email" (obrigatória) e, opcionalmente, "name".',
   validateFile: (file: File) => {
     const name = file.name.toLowerCase()
-    const valid =
-      name.endsWith(".csv") ||
-      name.endsWith(".json") ||
-      file.type === "text/csv" ||
-      file.type === "application/json"
-    return valid ? null : "Formato não suportado. Envie um arquivo CSV (.csv) ou JSON (.json)"
+    const valid = name.endsWith(".csv") || file.type === "text/csv"
+    return valid ? null : "Formato não suportado. Envie um arquivo CSV (.csv)"
   },
 }
 
@@ -84,7 +80,7 @@ export function BackofficeContactImportButton({
           <div className="flex-1 overflow-y-auto">
             <FieldGroup>
               <Field>
-                <FieldLabel>Arquivo CSV ou JSON</FieldLabel>
+                <FieldLabel>Arquivo CSV</FieldLabel>
                 <ImportFileDropzone
                   config={CONTACT_IMPORT_DROPZONE_CONFIG}
                   selectedFile={file}

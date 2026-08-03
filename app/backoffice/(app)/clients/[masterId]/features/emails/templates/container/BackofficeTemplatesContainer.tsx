@@ -36,7 +36,7 @@ function SkeletonCards() {
 }
 
 export function BackofficeTemplatesContainer() {
-  const { masterId, selectedTeamId, refreshKey } = useBackofficeClientEmailsContext()
+  const { masterId, selectedTeamId, refreshKey, canManage } = useBackofficeClientEmailsContext()
   const [search, setSearch] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const { templates, allTemplates, loading, creating, activeTab, setActiveTab, createTemplate } =
@@ -67,10 +67,12 @@ export function BackofficeTemplatesContainer() {
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Templates</h2>
-        <Button type="button" onClick={() => setCreateOpen(true)} disabled={creating}>
-          {creating ? <Spinner data-icon="inline-start" /> : null}
-          + Criar template
-        </Button>
+        {canManage ? (
+          <Button type="button" onClick={() => setCreateOpen(true)} disabled={creating}>
+            {creating ? <Spinner data-icon="inline-start" /> : null}
+            + Criar template
+          </Button>
+        ) : null}
       </div>
 
       <div className="relative">
@@ -127,12 +129,14 @@ export function BackofficeTemplatesContainer() {
         </div>
       )}
 
-      <CreateBackofficeTemplateDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        creating={creating}
-        onCreate={createTemplate}
-      />
+      {canManage ? (
+        <CreateBackofficeTemplateDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          creating={creating}
+          onCreate={createTemplate}
+        />
+      ) : null}
     </div>
   )
 }

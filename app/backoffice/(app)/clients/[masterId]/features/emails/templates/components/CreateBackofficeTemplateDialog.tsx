@@ -17,7 +17,7 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   creating: boolean
-  onCreate: (name: string, subject: string) => Promise<void>
+  onCreate: (name: string, subject: string) => Promise<boolean>
 }
 
 export function CreateBackofficeTemplateDialog({ open, onOpenChange, creating, onCreate }: Props) {
@@ -25,8 +25,9 @@ export function CreateBackofficeTemplateDialog({ open, onOpenChange, creating, o
   const [subject, setSubject] = useState("")
 
   const handleSubmit = async () => {
-    if (!name.trim() || !subject.trim()) return
-    await onCreate(name.trim(), subject.trim())
+    if (!name.trim() || !subject.trim() || creating) return
+    const created = await onCreate(name.trim(), subject.trim())
+    if (!created) return
     setName("")
     setSubject("")
     onOpenChange(false)

@@ -79,6 +79,9 @@ export function useBackofficeContatos() {
       } catch (error) {
         console.error("[useBackofficeContatos] fetchContacts error", error)
         toast.error("Erro ao carregar contatos")
+        setContacts([])
+        setTotalContacts(0)
+        setTotalPages(1)
       } finally {
         setLoadingContacts(false)
         fetchingContactsRef.current = false
@@ -86,6 +89,17 @@ export function useBackofficeContatos() {
     },
     [masterId, selectedTeamId, refreshKey]
   )
+
+  useEffect(() => {
+    setSelectedListId(null)
+    setContacts([])
+    setTotalContacts(0)
+    setPage(1)
+    setTotalPages(1)
+    setSearch("")
+    lastContactsKeyRef.current = ""
+    fetchingContactsRef.current = false
+  }, [selectedTeamId])
 
   useEffect(() => {
     lastContactsKeyRef.current = ""

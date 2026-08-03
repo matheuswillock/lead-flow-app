@@ -52,8 +52,8 @@ export function useBackofficeTemplates(
   }, [fetchTemplates])
 
   const createTemplate = useCallback(
-    async (name: string, subject: string) => {
-      if (!teamId || creating) return
+    async (name: string, subject: string): Promise<boolean> => {
+      if (!teamId || creating) return false
       setCreating(true)
       try {
         const created = await backofficeStudioEmailService.createTemplate(masterId, teamId, {
@@ -64,8 +64,10 @@ export function useBackofficeTemplates(
         router.push(
           `/backoffice/clients/${masterId}/emails/templates/${created.id}?teamId=${teamId}`
         )
+        return true
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Erro ao criar template")
+        return false
       } finally {
         setCreating(false)
       }
