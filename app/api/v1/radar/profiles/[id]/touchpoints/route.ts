@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       id
     )
 
-    return NextResponse.json(result, { status: result.isValid ? 200 : 400 })
+    return NextResponse.json(result, { status: result.isValid ? 200 : 404 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
     console.error("[RadarProfileTouchpointsRoute][GET]", error)

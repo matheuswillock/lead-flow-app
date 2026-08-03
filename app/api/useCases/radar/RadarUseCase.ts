@@ -132,9 +132,16 @@ export class RadarUseCase {
    * D9: agrega eventos do perfil por canal de origem (prefixo do eventType).
    * Canal = prefixo antes do primeiro ".": email → E-mail, whatsapp → WhatsApp,
    * form → Formulário, pixel → Pixel, lead/portfolio/profile → CRM, demais → Outros.
+   * Retorna Output inválido (404) quando o perfil não existe ou pertence a outro time.
    */
   async getProfileTouchpoints(teamId: string, ctx: TeamContext, profileId: string) {
-    const rows = await radarRepository.groupProfileEventsByType(this.scope(teamId, ctx), profileId)
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const rows = await radarRepository.groupProfileEventsByType(scope, profileId)
 
     const CHANNEL_MAP: Record<string, string> = {
       email: "E-mail",

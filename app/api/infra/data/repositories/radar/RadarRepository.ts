@@ -918,6 +918,18 @@ export class RadarRepository {
   }
 
   /**
+   * D9: verifica se o perfil existe e pertence ao time (scoped).
+   * Usado antes de agrupar eventos para distinguir "perfil inexistente" de "perfil sem eventos".
+   */
+  async profileExistsInScope(scope: RadarTeamScope, profileId: string): Promise<boolean> {
+    const row = await prisma.radarProfile.findFirst({
+      where: { id: profileId, teamId: scope.teamId },
+      select: { id: true },
+    })
+    return row !== null
+  }
+
+  /**
    * D9: agrupa todos os eventos do perfil por `eventType` via Prisma groupBy,
    * retornando contagem, primeiro e último evento por tipo. O agrupamento por
    * canal (prefixo) é feito na camada de use case.

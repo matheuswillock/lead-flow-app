@@ -71,6 +71,7 @@ export function useRadarHookFn() {
   const loadKeyRef = useRef("")
   const inFlightRef = useRef(false)
   const autoOpenedProfileIdRef = useRef<string | null>(null)
+  const touchpointsProfileIdRef = useRef<string | null>(null)
 
   const activeTab: RadarTab = searchParams.get("tab") === "segmentos" ? "segmentos" : "perfis"
 
@@ -163,15 +164,19 @@ export function useRadarHookFn() {
         setIsDetailLoading(false)
       }
 
-      // Carrega touchpoints em segundo plano após o perfil abrir
+      // Carrega touchpoints em segundo plano após o perfil abrir.
+      // Guard de stale: descarta a resposta se o profileId ativo mudou enquanto
+      // a request estava em voo (ex.: sheet fechada e reaberta para outro perfil).
+      touchpointsProfileIdRef.current = profileId
       setIsLoadingTouchpoints(true)
       try {
         const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
+        if (touchpointsProfileIdRef.current !== profileId) return
         setTouchpoints(result)
       } catch (tpError) {
         console.error("[useRadarHookFn][loadTouchpoints]", tpError)
       } finally {
-        setIsLoadingTouchpoints(false)
+        if (touchpointsProfileIdRef.current === profileId) setIsLoadingTouchpoints(false)
       }
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
@@ -183,6 +188,7 @@ export function useRadarHookFn() {
     setDetailEventsTotal(0)
     setDetailEventsPage(1)
     setTouchpoints(null)
+    touchpointsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
