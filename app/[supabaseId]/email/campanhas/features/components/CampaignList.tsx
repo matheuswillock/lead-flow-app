@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -73,7 +73,7 @@ function CampaignActionsMenu({
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
   handleArchive: (id: string) => Promise<void>
-  onOpenAnalytics: (campaign: Campaign) => void
+  onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
@@ -95,7 +95,7 @@ function CampaignActionsMenu({
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
-  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
+  const canEdit = ["draft", "scheduled"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
   const canArchive = ["sent", "failed"].includes(campaign.status)
@@ -160,6 +160,10 @@ function CampaignActionsMenu({
           <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
             <BarChart3 className="mr-2 h-4 w-4" />
             Métricas
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenAnalytics(campaign, "logs")}>
+            <ScrollText className="mr-2 h-4 w-4" />
+            Ver logs
           </DropdownMenuItem>
           {!readOnly ? (
             <>
@@ -303,7 +307,7 @@ function CampaignActionsMenu({
 export function CampaignList({
   onOpenAnalytics,
 }: {
-  onOpenAnalytics: (campaign: Campaign) => void
+  onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()

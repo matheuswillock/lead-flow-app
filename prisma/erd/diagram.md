@@ -1045,7 +1045,7 @@ email_contact email_contact
 email_campaign email_campaign
 whatsapp_contact whatsapp_contact
 base_import base_import
-        pixel_hit pixel_hit
+pixel_hit pixel_hit
         }
     
 

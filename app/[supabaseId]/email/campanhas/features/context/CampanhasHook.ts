@@ -99,6 +99,7 @@ export type CampanhasActions = {
   setWizardUniformSchedule: (v: boolean) => void
   setWizardScheduleIntervalDays: (v: number) => void
   setWizardSubCampaignSchedule: (index: number, date: Date | undefined) => void
+  setWizardSubCampaignListId: (index: number, listId: string | undefined) => void
   refreshWizardPreviewPlan: () => Promise<void>
   handleSaveCampaign: () => Promise<void>
   handleMaterializeRadarSegment: () => Promise<void>
@@ -139,6 +140,7 @@ export type CampanhasHookReturn = {
   wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
   wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+  wizardSubCampaignListIds: Record<number, string>
   wizardPreviewPlan: CampaignPreviewPlan | null
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
@@ -195,6 +197,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardUniformSchedule, setWizardUniformSchedule] = useState(true)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
   const [wizardSubCampaignSchedules, setWizardSubCampaignSchedules] = useState<Array<{ index: number; scheduledAt: Date }>>([])
+  const [wizardSubCampaignListIds, setWizardSubCampaignListIds] = useState<Record<number, string>>({})
   const [wizardPreviewPlan, setWizardPreviewPlan] = useState<CampaignPreviewPlan | null>(null)
   const [wizardPreviewLoading, setWizardPreviewLoading] = useState(false)
   const [wizardLinkedForm, setWizardLinkedForm] = useState<{ id: string; name: string; publicId: string } | null>(null)
@@ -633,6 +636,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardUniformSchedule(true)
     setWizardScheduleIntervalDays(1)
     setWizardSubCampaignSchedules([])
+    setWizardSubCampaignListIds({})
     setWizardPreviewPlan(null)
     setWizardLinkedForm(null)
   }, [])
@@ -690,6 +694,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
           scheduledAt: new Date(sub.scheduledAt as string),
         }))
     )
+    setWizardSubCampaignListIds({})
     setWizardLinkedForm(campaign.linkedForm ?? null)
   }, [])
 
@@ -739,6 +744,16 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       const without = prev.filter((entry) => entry.index !== index)
       if (!date) return without
       return [...without, { index, scheduledAt: date }].sort((a, b) => a.index - b.index)
+    })
+  }, [])
+
+  const setWizardSubCampaignListId = useCallback((index: number, listId: string | undefined) => {
+    setWizardSubCampaignListIds((prev) => {
+      if (!listId) {
+        const { [index]: _removed, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [index]: listId }
     })
   }, [])
 
@@ -817,12 +832,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
               const child = detailed.subCampaigns?.find((entry) => entry.subCampaignIndex === sub.index)
               if (!child) return null
               const customSchedule = wizardSubCampaignSchedules.find((entry) => entry.index === sub.index)
+              const contactListOverride = wizardSubCampaignListIds[sub.index]
               return {
                 id: child.id,
                 name: sub.name,
                 scheduledAt: customSchedule
                   ? customSchedule.scheduledAt.toISOString()
                   : sub.scheduledAt ?? null,
+                ...(contactListOverride !== undefined && { contactListId: contactListOverride }),
               }
             })
             .filter((entry): entry is { id: string; name: string; scheduledAt: string | null } => Boolean(entry)) ?? []
@@ -968,6 +985,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardUniformSchedule,
     wizardScheduleIntervalDays,
     wizardSubCampaignSchedules,
+    wizardSubCampaignListIds,
     wizardPreviewPlan,
     wizardPreviewLoading,
     wizardLinkedForm,
@@ -1002,6 +1020,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardUniformSchedule,
     setWizardScheduleIntervalDays,
     setWizardSubCampaignSchedule,
+    setWizardSubCampaignListId,
     refreshWizardPreviewPlan,
     handleSaveCampaign,
     handleMaterializeRadarSegment,

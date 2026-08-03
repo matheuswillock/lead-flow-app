@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
+import { BarChart3, Loader2, MoreHorizontal, Pencil, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -52,6 +52,7 @@ type CampaignAnalyticsTarget = {
   id: string
   name: string
   errorMessage?: string | null
+  defaultTab?: "metrics" | "logs"
 }
 
 function audienceLabel(campaign: {
@@ -82,7 +83,7 @@ function SubCampaignActionsMenu({
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
-  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(subCampaign.status)
+  const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
   const canRetryByStatus = subCampaign.status === "failed"
   const canRetry =
     canRetryByStatus && canSendCampaign && !sendBlockReason && sendingId !== subCampaign.id
@@ -129,7 +130,20 @@ function SubCampaignActionsMenu({
             }
           >
             <BarChart3 />
-            Métricas e logs
+            Métricas
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() =>
+              onOpenAnalytics({
+                id: subCampaign.id,
+                name: subCampaign.name,
+                errorMessage: subCampaign.errorMessage ?? null,
+                defaultTab: "logs",
+              })
+            }
+          >
+            <ScrollText />
+            Ver logs
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setSendConfirmOpen(true)}
@@ -195,7 +209,7 @@ export function CampaignDetailSheet({
   )
   const canEdit =
     detailCampaign &&
-    ["draft", "scheduled", "sent", "failed"].includes(detailCampaign.status)
+    ["draft", "scheduled"].includes(detailCampaign.status)
 
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
@@ -363,6 +377,20 @@ export function CampaignDetailSheet({
                     Editar
                   </Button>
                 ) : null}
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onOpenAnalytics({
+                      id: detailCampaign.id,
+                      name: detailCampaign.name,
+                      errorMessage: detailCampaign.errorMessage ?? null,
+                      defaultTab: "logs",
+                    })
+                  }
+                >
+                  <ScrollText data-icon="inline-start" />
+                  Logs
+                </Button>
                 <Button
                   variant="secondary"
                   onClick={() =>

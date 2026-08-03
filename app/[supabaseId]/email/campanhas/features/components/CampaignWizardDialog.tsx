@@ -85,6 +85,7 @@ export function CampaignWizardDialog() {
     wizardUniformSchedule,
     wizardScheduleIntervalDays,
     wizardSubCampaignSchedules,
+    wizardSubCampaignListIds,
     wizardPreviewPlan,
     wizardPreviewLoading,
     wizardLinkedForm,
@@ -104,6 +105,7 @@ export function CampaignWizardDialog() {
     setWizardUniformSchedule,
     setWizardScheduleIntervalDays,
     setWizardSubCampaignSchedule,
+    setWizardSubCampaignListId,
     handleSaveCampaign,
     refreshWizardPreviewPlan,
     handleMaterializeRadarSegment,
@@ -511,6 +513,9 @@ export function CampaignWizardDialog() {
                         <TableHead>#</TableHead>
                         <TableHead>Nome</TableHead>
                         <TableHead>Destinatários</TableHead>
+                        {wizardListStrategy === "per_list" ? (
+                          <TableHead>Lista</TableHead>
+                        ) : null}
                         <TableHead>Agendamento</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -520,6 +525,26 @@ export function CampaignWizardDialog() {
                           <TableCell>{sub.index}</TableCell>
                           <TableCell>{sub.name}</TableCell>
                           <TableCell>{sub.totalRecipients.toLocaleString("pt-BR")}</TableCell>
+                          {wizardListStrategy === "per_list" ? (
+                            <TableCell>
+                              <Select
+                                value={wizardSubCampaignListIds[sub.index] ?? sub.contactListId ?? ""}
+                                onValueChange={(v) => setWizardSubCampaignListId(sub.index, v)}
+                                disabled={wizardSaving}
+                              >
+                                <SelectTrigger className="w-44">
+                                  <SelectValue placeholder="Mesma lista..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {contactLists.map((list) => (
+                                    <SelectItem key={list.id} value={list.id}>
+                                      {list.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          ) : null}
                           <TableCell>
                             {!wizardUniformSchedule && wizardPreviewPlan.subCampaigns.length > 1 ? (
                               <DateTimePicker

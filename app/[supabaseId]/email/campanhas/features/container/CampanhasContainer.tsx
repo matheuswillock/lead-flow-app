@@ -24,6 +24,7 @@ type AnalyticsDialogProps = {
   campaignId?: string
   campaignName?: string
   campaignErrorMessage?: string | null
+  defaultTab?: "metrics" | "logs"
 }
 
 const DefaultCampaignAnalyticsDialog = dynamic(
@@ -62,6 +63,7 @@ export function CampanhasContainer({
     openWizard,
   } = useCampanhasContext()
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [analyticsDefaultTab, setAnalyticsDefaultTab] = useState<"metrics" | "logs">("metrics")
 
   const dateRange: DateRange | undefined =
     dateFrom || dateTo
@@ -94,8 +96,10 @@ export function CampanhasContainer({
     id: string
     name: string
     errorMessage?: string | null
-  }) {
+    defaultTab?: "metrics" | "logs"
+  }, defaultTab?: "metrics" | "logs") {
     setAnalyticsCampaign(campaign)
+    setAnalyticsDefaultTab(campaign.defaultTab ?? defaultTab ?? "metrics")
     setAnalyticsOpen(true)
   }
 
@@ -154,6 +158,7 @@ export function CampanhasContainer({
         campaignId={analyticsCampaign?.id}
         campaignName={analyticsCampaign?.name}
         campaignErrorMessage={analyticsCampaign?.errorMessage}
+        defaultTab={analyticsDefaultTab}
       />
     </div>
   )

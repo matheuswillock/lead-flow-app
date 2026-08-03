@@ -103,6 +103,7 @@ export type SubCampaignUpdateInput = {
   id: string
   name?: string
   scheduledAt?: string | null
+  contactListId?: string
 }
 
 export type UpdateCampaignInput = Partial<CreateCampaignInput> & {
@@ -808,7 +809,7 @@ export class EmailCampaignUseCase {
 
   async update(id: string, data: UpdateCampaignInput, ctx: TeamContext): Promise<Output> {
     try {
-      const editableStatuses = ["draft", "scheduled", "sent", "failed"] as const
+      const editableStatuses = ["draft", "scheduled"] as const
       const existing = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: [...editableStatuses] } },
       })
@@ -944,6 +945,10 @@ export class EmailCampaignUseCase {
                 scheduledAt: subUpdate.scheduledAt ? new Date(subUpdate.scheduledAt) : null,
                 status: subUpdate.scheduledAt ? "scheduled" : "draft",
               }),
+              ...(subUpdate.contactListId !== undefined &&
+                child.audienceContactIds.length === 0 && {
+                  contactListId: subUpdate.contactListId,
+                }),
             },
           })
         }

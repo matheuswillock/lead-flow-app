@@ -178,6 +178,7 @@ export type CampanhasState = {
   wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
   wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+  wizardSubCampaignListIds: Record<number, string>
   wizardPreviewPlan: CampaignPreviewPlan | null
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
