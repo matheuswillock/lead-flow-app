@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -84,18 +85,22 @@ export function RadarProfileFilters({
           <SelectItem value="whatsapp">WhatsApp</SelectItem>
         </SelectContent>
       </Select>
-      <Input
-        type="date"
-        value={lastSeenFrom}
-        onChange={(e) => onLastSeenFromChange(e.target.value)}
-        aria-label="Última interação a partir de"
-      />
-      <Input
-        type="date"
-        value={lastSeenTo}
-        onChange={(e) => onLastSeenToChange(e.target.value)}
-        aria-label="Última interação até"
-      />
+      <Field>
+        <FieldLabel>Interação a partir de</FieldLabel>
+        <Input
+          type="date"
+          value={lastSeenFrom}
+          onChange={(e) => onLastSeenFromChange(e.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel>Interação até</FieldLabel>
+        <Input
+          type="date"
+          value={lastSeenTo}
+          onChange={(e) => onLastSeenToChange(e.target.value)}
+        />
+      </Field>
     </>
   )
 

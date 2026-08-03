@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Kanban, ListChecks, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -362,6 +362,8 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
   const [description, setDescription] = useState("")
   const [rules, setRules] = useState<RadarSegmentRules>(defaultRules)
   const [previewCount, setPreviewCount] = useState<number | null>(null)
+  const keyCounterRef = useRef(0)
+  const [conditionKeys, setConditionKeys] = useState<string[]>(() => [`cond-${keyCounterRef.current++}`])
 
   useEffect(() => {
     if (!open) return
@@ -369,10 +371,12 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
       setName(segment.name)
       setDescription(segment.description ?? "")
       setRules(segment.rulesJson)
+      setConditionKeys(segment.rulesJson.conditions.map(() => `cond-${keyCounterRef.current++}`))
     } else {
       setName("")
       setDescription("")
       setRules(defaultRules)
+      setConditionKeys([`cond-${keyCounterRef.current++}`])
     }
     setPreviewCount(null)
   }, [open, segment])
@@ -388,11 +392,13 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
   const addCondition = () => {
     if (rules.conditions.length >= 10) return
     setRules((prev) => ({ ...prev, conditions: [...prev.conditions, defaultConditionForKind("profile_field")] }))
+    setConditionKeys((prev) => [...prev, `cond-${keyCounterRef.current++}`])
     setPreviewCount(null)
   }
 
   const removeCondition = (index: number) => {
     setRules((prev) => ({ ...prev, conditions: prev.conditions.filter((_, i) => i !== index) }))
+    setConditionKeys((prev) => prev.filter((_, i) => i !== index))
     setPreviewCount(null)
   }
 
@@ -456,7 +462,7 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
 
           <div className="flex flex-col gap-3">
             {rules.conditions.map((condition, index) => (
-              <div key={index} className="flex flex-col gap-2 rounded-md border p-3">
+              <div key={conditionKeys[index]} className="flex flex-col gap-2 rounded-md border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <Select
                     value={condition.kind}
@@ -787,9 +793,9 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
           </Button>
 
           {previewCount !== null && previewCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB ? (
-            <Alert variant="destructive">
-              <TriangleAlert className="text-semantic-warning" />
-              <AlertDescription>
+            <Alert className="border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning [&>svg]:text-semantic-warning">
+              <TriangleAlert />
+              <AlertDescription className="text-foreground">
                 Este segmento tem {previewCount} perfis, acima do limite de{" "}
                 {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários por campanha. A campanha será dividida
                 automaticamente em sub-envios ao ser usada.

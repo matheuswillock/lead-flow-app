@@ -20,6 +20,23 @@ import type { RadarProfileDetail } from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 
+const CONSENT_CHANNEL_LABEL: Record<string, string> = {
+  email: "E-mail",
+  whatsapp: "WhatsApp",
+}
+
+const CONSENT_STATUS_LABEL: Record<string, string> = {
+  allowed: "Apto",
+  blocked: "Bloqueado",
+  unknown: "Indefinido",
+}
+
+const CONSENT_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  allowed: "default",
+  blocked: "destructive",
+  unknown: "secondary",
+}
+
 type RadarProfileSheetProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -129,9 +146,11 @@ export function RadarProfileSheet({
 
                 <TabsContent value="consentimentos" className="flex flex-col gap-2">
                   {profile.consents.map((consent) => (
-                    <div key={`${consent.channel}-${consent.status}`} className="rounded-md border p-2 text-sm">
-                      <p className="font-medium">{consent.channel}</p>
-                      <p>{consent.status}</p>
+                    <div key={`${consent.channel}-${consent.status}`} className="flex flex-col gap-1 rounded-md border p-2 text-sm">
+                      <p className="font-medium">{CONSENT_CHANNEL_LABEL[consent.channel] ?? consent.channel}</p>
+                      <Badge variant={CONSENT_STATUS_VARIANT[consent.status] ?? "secondary"}>
+                        {CONSENT_STATUS_LABEL[consent.status] ?? consent.status}
+                      </Badge>
                       {consent.reason ? <p className="text-muted-foreground">{consent.reason}</p> : null}
                     </div>
                   ))}
@@ -155,9 +174,16 @@ export function RadarProfileSheet({
                       </div>
                     )
                   })}
-                  {detailEvents.length < detailEventsTotal ? (
-                    <Button size="sm" variant="outline" disabled={isLoadingMoreEvents} onClick={onLoadMoreEvents}>
-                      {isLoadingMoreEvents ? "Carregando..." : "Carregar mais"}
+                  {isLoadingMoreEvents ? (
+                    <>
+                      <Skeleton className="h-14 w-full" />
+                      <Skeleton className="h-14 w-full" />
+                      <Skeleton className="h-14 w-full" />
+                    </>
+                  ) : null}
+                  {!isLoadingMoreEvents && detailEvents.length < detailEventsTotal ? (
+                    <Button size="sm" variant="outline" onClick={onLoadMoreEvents}>
+                      Carregar mais
                     </Button>
                   ) : null}
                 </TabsContent>
