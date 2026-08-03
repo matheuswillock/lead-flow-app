@@ -19,7 +19,7 @@ import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 const DEFAULT_PAGE_SIZE = 10
 const defaultService = new CampanhasService()
 
-const EDITABLE_STATUSES = new Set(["draft", "scheduled", "sent", "failed"])
+const EDITABLE_STATUSES = new Set(["draft", "scheduled", "sent", "failed", "partially_sent"])
 
 function statusKey(statuses: string[]): string {
   return [...statuses].sort().join(",")

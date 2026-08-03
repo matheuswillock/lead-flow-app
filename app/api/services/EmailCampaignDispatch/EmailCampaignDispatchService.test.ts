@@ -42,6 +42,7 @@ function makeBaseParams(recipients = makeRecipients(3)) {
     html: "<p>Olá</p>",
     campaignId: "camp-1",
     teamId: "team-1",
+    dispatchId: "dispatch-uuid-1",
     dispatchNumber: 1,
     globalDefaults: null,
     templateVariables: null,

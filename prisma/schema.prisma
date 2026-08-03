@@ -765,6 +765,7 @@ enum EmailCampaignStatus {
   scheduled
   sending
   sent
+  partially_sent
   canceled
   failed
   archived

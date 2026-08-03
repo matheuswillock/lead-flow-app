@@ -27,6 +27,7 @@ export interface IEmailCampaignDispatchService {
     html: string
     campaignId: string
     teamId: string
+    dispatchId: string
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null

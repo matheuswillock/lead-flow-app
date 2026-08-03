@@ -6,6 +6,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import {
   AlertCircle,
+  AlertTriangle,
   Archive,
   Ban,
   CheckCircle2,
@@ -40,6 +41,11 @@ const STATUS_CONFIG: Record<
     label: "Enviado",
     className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success",
     icon: CheckCircle2,
+  },
+  partially_sent: {
+    label: "Parcialmente enviado",
+    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
+    icon: AlertTriangle,
   },
   canceled: {
     label: "Cancelado",
