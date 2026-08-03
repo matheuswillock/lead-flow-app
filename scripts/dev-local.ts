@@ -375,9 +375,9 @@ async function ensureLocalStacks(): Promise<void> {
   }
 }
 
-function countAuthUsers(): number {
+function countAuthUsers(dbUrl: string): number {
   const result = run("psql", [
-    LOCAL_DB_URL,
+    dbUrl,
     "-t",
     "-A",
     "-c",
@@ -407,13 +407,14 @@ function cloneRemote() {
 
 async function runPreflight() {
   await ensureLocalStacks();
+  const dbUrl = resolveActiveDbUrl();
 
   step("Checking local auth.users");
-  const users = countAuthUsers();
+  const users = countAuthUsers(dbUrl);
 
   if (users > 0) {
     info(`✓ ${users} users present — DB is populated, skipping clone.`);
-    ensureBackofficeCatalogSynced();
+    ensureBackofficeCatalogSynced(dbUrl);
     return;
   }
 
@@ -422,13 +423,19 @@ async function runPreflight() {
     return;
   }
 
-  cloneRemote();
-  ensureBackofficeCatalogSynced();
+  if (fullSupabase) {
+    // db:clone:remote só sabe popular o Postgres do stack híbrido (LOCAL_DB_URL).
+    info("⚠ 0 users found. `db:clone:remote` só popula o stack híbrido — pulando clone automático em --full-supabase.");
+    info("  Rode `bun run dev` (stack híbrido, sem --full-supabase) uma vez para clonar dados remotos, ou popule via `supabase db seed`.");
+  } else {
+    cloneRemote();
+  }
+  ensureBackofficeCatalogSynced(dbUrl);
 }
 
-function ensureBackofficeCatalogSynced() {
+function ensureBackofficeCatalogSynced(dbUrl: string) {
   try {
-    const synced = ensureBackofficeCatalog(LOCAL_DB_URL);
+    const synced = ensureBackofficeCatalog(dbUrl);
     if (synced) {
       info(
         `✓ Catálogo backoffice sincronizado (${EXPECTED_ACTIVE_BACKOFFICE_FEATURES} features ativas).`,
@@ -438,7 +445,7 @@ function ensureBackofficeCatalogSynced() {
     info(
       `⚠ Falha ao sincronizar catálogo backoffice: ${err instanceof Error ? err.message : String(err)}`,
     );
-    info("  Rode manualmente: DATABASE_URL=<local> bun run db:seed:backoffice-products");
+    info(`  Rode manualmente: DATABASE_URL=${dbUrl} bun run db:seed:backoffice-products`);
   }
 }
 
@@ -462,10 +469,34 @@ function parseSupabaseStatusEnv(stdout: string): Record<string, string> {
   return env;
 }
 
+/** Legado — usado somente com --full-supabase. Cacheia para evitar `supabase status` repetido. */
+let cachedFullSupabaseStatusEnv: Record<string, string> | null = null;
+function getFullSupabaseStatusEnv(): Record<string, string> {
+  if (cachedFullSupabaseStatusEnv) return cachedFullSupabaseStatusEnv;
+  const status = run("supabase", ["status", "-o", "env"], { env: supabaseEnv });
+  cachedFullSupabaseStatusEnv = status.status === 0 ? parseSupabaseStatusEnv(status.stdout) : {};
+  return cachedFullSupabaseStatusEnv;
+}
+
+/**
+ * DB URL do modo ativo — supabase/config.toml usa [db].port != 55322 (evita
+ * conflito com o Postgres do stack híbrido em docker-compose.local.yml), então
+ * em --full-supabase o DB real de `supabase start` NÃO é LOCAL_DB_URL.
+ */
+function resolveActiveDbUrl(): string {
+  if (!fullSupabase) return LOCAL_DB_URL;
+  const parsed = getFullSupabaseStatusEnv();
+  if (!parsed.DB_URL) {
+    info("⚠ Could not read `supabase status -o env` — usando LOCAL_DB_URL como fallback (pode estar incorreto).");
+    return LOCAL_DB_URL;
+  }
+  return parsed.DB_URL;
+}
+
 /** Legado — usado somente com --full-supabase (Auth/Storage/Studio locais). */
 function getFullSupabaseDatabaseOverrides(): EnvOverrides {
-  const status = run("supabase", ["status", "-o", "env"], { env: supabaseEnv });
-  if (status.status !== 0) {
+  const parsed = getFullSupabaseStatusEnv();
+  if (!parsed.DB_URL) {
     info("⚠ Could not read `supabase status -o env` — using default local DB URL.");
     return {
       DATABASE_URL: LOCAL_DB_URL,
@@ -473,8 +504,7 @@ function getFullSupabaseDatabaseOverrides(): EnvOverrides {
     };
   }
 
-  const parsed = parseSupabaseStatusEnv(status.stdout);
-  const dbUrl = parsed.DB_URL ?? LOCAL_DB_URL;
+  const dbUrl = parsed.DB_URL;
 
   return {
     DATABASE_URL: dbUrl,
@@ -504,11 +534,20 @@ function getHybridDatabaseOverrides(): EnvOverrides {
     DATABASE_URL: LOCAL_DB_URL,
     DIRECT_URL: LOCAL_DB_URL,
     NEXT_PUBLIC_SUPABASE_URL: LOCAL_PROXY_URL,
+    // Marcador explícito para createSupabaseAdmin() (lib/supabase/server.ts)
+    // distinguir o proxy híbrido (Auth/Storage remotos) do --full-supabase
+    // (Auth/Storage locais de verdade), já que ambos usam 127.0.0.1.
+    SUPABASE_HYBRID_LOCAL_STACK: "true",
     ...(remote.SUPABASE_REMOTE_ANON_KEY
       ? { NEXT_PUBLIC_SUPABASE_ANON_KEY: remote.SUPABASE_REMOTE_ANON_KEY }
       : {}),
     ...(remote.SUPABASE_REMOTE_SERVICE_ROLE_KEY
       ? { SUPABASE_SERVICE_ROLE_KEY: remote.SUPABASE_REMOTE_SERVICE_ROLE_KEY }
+      : {}),
+    // Repassa o opt-in (default: bloqueado) para createSupabaseAdmin() — ver
+    // docker/local/.env.local-stack.example.
+    ...(remote.SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN
+      ? { SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN: remote.SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN }
       : {}),
   };
 }

@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
+import { createSupabaseAdmin as createGuardedSupabaseAdmin } from "@/lib/supabase/server"
 import { Output } from "@/lib/output"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
@@ -31,14 +31,13 @@ interface UpdateMemberInput {
 }
 
 function createSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !serviceKey) {
-    throw new Error("Supabase admin credentials não configuradas")
+  const client = createGuardedSupabaseAdmin()
+  if (!client) {
+    throw new Error(
+      "Supabase admin indisponível: credenciais ausentes ou bloqueado no stack local híbrido (ver SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN)"
+    )
   }
-  return createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
+  return client
 }
 
 function isValidEmail(value: string): boolean {

@@ -2,7 +2,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
@@ -14,24 +14,6 @@ function getIsProduction() {
     return asaasEnv === 'production';
   }
   return process.env.NODE_ENV === 'production';
-}
-
-// Função para criar cliente Supabase admin
-function createSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    console.error('[Supabase Admin] Credenciais não configuradas');
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  });
 }
 
 export interface CreateCheckoutData {
