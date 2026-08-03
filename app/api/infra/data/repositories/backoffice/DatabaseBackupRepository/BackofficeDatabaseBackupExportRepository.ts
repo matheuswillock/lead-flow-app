@@ -4,6 +4,30 @@ import type { IBackofficeDatabaseBackupExportRepository } from "./IBackofficeDat
 
 const PAGE_SIZE = 10_000
 
+const EXCLUDED_MODELS = new Set([
+  // WhatsApp message history — alto volume, sem valor para DR
+  "WhatsAppMessage", "WhatsAppMessageReaction", "WhatsAppMessageFavorite",
+  "WhatsAppMessagePin", "WhatsAppMessageVisibility", "WhatsAppMessageActionCommand",
+  "WhatsAppOutboundCommand", "WhatsAppWebhookEvent", "WhatsAppSyncJob",
+  "WhatsAppAuditEvent", "WhatsAppUsageEvent", "WhatsAppAutoResponseLog",
+  "WhatsAppSendRateLimitWindow",
+  // Auth / sessões efêmeras
+  "BackofficeBotAuthChallenge", "BackofficeBotSession",
+  // Audit / notification logs
+  "AuditLog", "BackofficeDeletionAuditLog", "Notification", "MeetingFollowUpDigestLog",
+  // Logs de webhook e entrega de e-mail
+  "BackofficeWebhookEvent", "BackofficeWebhookRequestLog",
+  "BackofficeEmailDispatchEvent", "BackofficeEmailLog", "BackofficeEmailEvent", "BackofficeEmailOrphanEvent",
+  "TeamStudioWebhookRequestLog", "TeamWebhookEventLog", "TeamWebhookOutbox",
+  "AsaasWebhookEvent", "EmailLog", "EmailEvent", "EmailOrphanEvent",
+  // Bot / AI run logs
+  "TeamAutomationRunLog", "BackofficeBotEventOutbox", "BackofficeBotOutboundDelivery",
+  "BackofficeBotAiInteraction", "BackofficeBotAiAttempt", "BackofficeBotAiDailyUsage",
+  "BackofficeBotMessage",
+  // Analytics / métricas
+  "RadarEvent", "PublicFormMetricEvent", "EmailCreditUsage",
+])
+
 type FindManyDelegate = {
   findMany: (args: {
     take: number
@@ -35,7 +59,7 @@ export class BackofficeDatabaseBackupExportRepository
       async (tx) => {
         for (const model of models) {
           const hasBytesField = model.fields.some((f) => f.type === "Bytes")
-          if (hasBytesField) continue
+          if (hasBytesField || EXCLUDED_MODELS.has(model.name)) continue
 
           const orderBy = orderByForModel(model)
           if (!orderBy) {
