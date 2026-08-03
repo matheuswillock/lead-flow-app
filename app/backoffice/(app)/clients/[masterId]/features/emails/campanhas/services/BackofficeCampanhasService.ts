@@ -67,6 +67,21 @@ export class BackofficeCampanhasService implements StudioEmailCampanhasService {
     return parseStudioEmailOutput<Campaign>(response)
   }
 
+  async previewPlan(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    data: StudioEmailCreateCampaignData
+  ) {
+    const response = await fetch(`${this.path(supabaseId, teamId)}/preview-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    return parseStudioEmailOutput<import("@/app/[supabaseId]/email/campanhas/features/context/CampanhasTypes").CampaignPreviewPlan>(
+      response
+    )
+  }
+
   async getById(
     supabaseId: string,
     teamId: string | null | undefined,

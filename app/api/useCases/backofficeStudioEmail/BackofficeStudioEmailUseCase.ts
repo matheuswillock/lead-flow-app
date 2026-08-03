@@ -14,6 +14,7 @@ import { emailAnalyticsUseCase } from "@/app/api/useCases/email/EmailAnalyticsUs
 import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
 import { EmailTeamVariablesUseCase } from "@/app/api/useCases/email/EmailTeamVariablesUseCase"
 import { backofficeStudioEmailRepository } from "@/app/api/infra/data/repositories/backoffice/studioEmail/BackofficeStudioEmailRepository"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 
 export type StudioEmailActor = {
   access: BackofficeAccess
@@ -29,13 +30,14 @@ function withManagedFlag<T extends ManagedRow>(row: T): Omit<T, "managedByBackof
   const { managedByBackofficeUserId, managedByCorretorStudio, ...rest } = row as ManagedRow & {
     managedByCorretorStudio?: boolean
   }
-  return {
+  const flagged = {
     ...(rest as Omit<T, "managedByBackofficeUserId">),
     managedByCorretorStudio:
       typeof managedByCorretorStudio === "boolean"
         ? managedByCorretorStudio
         : Boolean(managedByBackofficeUserId),
   }
+  return resolveEmailCreator(flagged)
 }
 
 function mapResultManaged(result: unknown): unknown {

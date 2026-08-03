@@ -46,6 +46,10 @@ export function RadarProfileSheet({
   onSyncLead,
 }: RadarProfileSheetProps) {
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
+  const baseDataEntries =
+    profile?.profileData && typeof profile.profileData === "object" && !Array.isArray(profile.profileData)
+      ? Object.entries(profile.profileData as Record<string, unknown>).filter(([key]) => key.startsWith("base."))
+      : []
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -94,6 +98,20 @@ export function RadarProfileSheet({
                   <div className="flex flex-wrap gap-1">
                     <SourceBadges profile={profile} />
                   </div>
+                  {baseDataEntries.length > 0 ? (
+                    <>
+                      <Separator />
+                      <p className="text-sm font-medium">Dados da base</p>
+                      <div className="flex flex-col gap-2">
+                        {baseDataEntries.map(([key, value]) => (
+                          <div key={key} className="rounded-md border p-2 text-sm">
+                            <p className="font-medium">{key.replace(/^base\./, "")}</p>
+                            <p className="text-muted-foreground">{String(value ?? "—")}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                   <Separator />
                   <p className="text-sm font-medium">Últimos eventos</p>
                   {profile.events.length === 0 ? (

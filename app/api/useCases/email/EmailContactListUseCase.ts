@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailContactListService } from "@/app/api/services/EmailContactList/EmailContactListService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
   EMAIL_BLOCKLIST_NAME,
   ensureTeamEmailBlocklist,
@@ -249,7 +250,7 @@ export class EmailContactListUseCase {
         .map((list) => {
           const isDefault = list.id === defaultList.id || list.isSystemDefault
           const isBlocklist = list.id === blocklist.id || list.isBlocklist
-          return {
+          return resolveEmailCreator({
             ...list,
             name: isDefault ? DEFAULT_LIST_NAME : isBlocklist ? EMAIL_BLOCKLIST_NAME : list.name,
             description: list.description,
@@ -263,7 +264,7 @@ export class EmailContactListUseCase {
             isBlocklist,
             activeImport: isBlocklist ? null : (activeImportByListId.get(list.id) ?? null),
             managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
-          }
+          })
         })
         .sort((a, b) => {
           if (a.isSystemDefault !== b.isSystemDefault) {
@@ -307,10 +308,10 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista de contatos não encontrada"], null)
       }
 
-      return new Output(true, [], [], {
+      return new Output(true, [], [], resolveEmailCreator({
         ...list,
         managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
-      })
+      }))
     } catch (error) {
       console.error("[EmailContactListUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar lista de contatos"], null)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Kanban, ListChecks, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
+import { Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,6 +27,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions"
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction"
 import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
+import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
 import { LEAD_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
@@ -351,8 +352,14 @@ type RadarSegmentBuilderDialogProps = {
 }
 
 export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: RadarSegmentBuilderDialogProps) {
-  const { createCustomSegment, updateCustomSegment, previewAudienceCount, isPreviewingAudience, mutationLock } =
-    useRadarContext()
+  const {
+    createCustomSegment,
+    updateCustomSegment,
+    previewAudienceCount,
+    materializeContactList,
+    isPreviewingAudience,
+    mutationLock,
+  } = useRadarContext()
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const { activeTeamId } = useTeamContext()
@@ -406,6 +413,8 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
     const ok = segment ? await updateCustomSegment(segment.id, input) : await createCustomSegment(input)
     if (ok) onOpenChange(false)
   }
+
+  const materializeSlug = segment ? `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}` : null
 
   const canSave = name.trim().length > 0 && isRulesValidForSave(rules) && !mutationLock
 
@@ -811,6 +820,18 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
               <Badge className="border-semantic-success-border bg-semantic-success-surface text-semantic-success">
                 {previewCount} perfis
               </Badge>
+            ) : null}
+            {materializeSlug && previewCount && previewCount > 0 ? (
+              <Button
+                variant="outline"
+                disabled={mutationLock}
+                onClick={() =>
+                  void materializeContactList(materializeSlug, name.trim(), `Segmento: ${name.trim()}`)
+                }
+              >
+                <ListPlus data-icon="inline-start" />
+                Criar lista de contatos
+              </Button>
             ) : null}
           </div>
           <Button disabled={!canSave} onClick={() => void handleSubmit()}>

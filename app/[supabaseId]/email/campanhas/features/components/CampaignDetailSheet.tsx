@@ -1,16 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
+import { BarChart3, Loader2, MoreHorizontal, Pencil, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -19,11 +11,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,19 +45,16 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
+import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
+import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 type CampaignAnalyticsTarget = {
   id: string
   name: string
   errorMessage?: string | null
-}
-
-function formatContactListLabel(list: ContactList): string {
-  const activeCount = list.activeContacts ?? list.totalContacts
-  return `${list.name} (${activeCount.toLocaleString("pt-BR")} ativos)`
+  defaultTab?: "metrics" | "logs"
 }
 
 function audienceLabel(campaign: {
@@ -98,7 +85,7 @@ function SubCampaignActionsMenu({
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
-  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(subCampaign.status)
+  const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
   const canRetryByStatus = subCampaign.status === "failed"
   const canRetry =
     canRetryByStatus && canSendCampaign && !sendBlockReason && sendingId !== subCampaign.id
@@ -145,7 +132,20 @@ function SubCampaignActionsMenu({
             }
           >
             <BarChart3 />
-            Métricas e logs
+            Métricas
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() =>
+              onOpenAnalytics({
+                id: subCampaign.id,
+                name: subCampaign.name,
+                errorMessage: subCampaign.errorMessage ?? null,
+                defaultTab: "logs",
+              })
+            }
+          >
+            <ScrollText />
+            Ver logs
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setSendConfirmOpen(true)}
@@ -196,20 +196,9 @@ export function CampaignDetailSheet({
   const {
     detailCampaign,
     closeDetail,
-    editName,
-    editTemplateId,
-    editContactListId,
-    editScheduledAt,
-    editSaving,
     sendingId,
     credits,
-    templates,
-    contactLists,
-    setEditName,
-    setEditTemplateId,
-    setEditContactListId,
-    setEditScheduledAt,
-    handleUpdateCampaign,
+    openEditWizard,
     openEditById,
     handleSend,
   } = useCampanhasContext()
@@ -224,14 +213,6 @@ export function CampaignDetailSheet({
     detailCampaign &&
     !isParentCampaign &&
     ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(detailCampaign.status)
-  const canSchedule =
-    detailCampaign &&
-    !isParentCampaign &&
-    (detailCampaign.status === "draft" || detailCampaign.status === "scheduled")
-  const isSubCampaign = Boolean(
-    detailCampaign?.parentCampaignId || (detailCampaign?.audienceContactIds?.length ?? 0) > 0
-  )
-
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
       campaign: subCampaign,
@@ -274,14 +255,9 @@ export function CampaignDetailSheet({
                 <div className="mb-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Criado por</span>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">
-                        {detailCampaign.creator?.fullName || detailCampaign.creator?.email || "—"}
-                      </span>
-                      {detailCampaign.managedByCorretorStudio ? (
-                        <ManagedByCorretorStudioBadge />
-                      ) : null}
-                    </div>
+                    <span className="font-medium">
+                      {formatEmailCreatorLabel(detailCampaign)}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Destinatários</span>
@@ -336,7 +312,7 @@ export function CampaignDetailSheet({
                         </TableHeader>
                         <TableBody>
                           {detailCampaign.subCampaigns.map((sub) => (
-                            <TableRow key={sub.id} className={sub.status === "failed" ? "bg-semantic-danger-surface/30" : undefined}>
+                            <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
                               <TableCell className="font-medium">
                                 {sub.subCampaignIndex ?? "—"}
                               </TableCell>
@@ -386,131 +362,74 @@ export function CampaignDetailSheet({
 
                 <Separator className="mb-4" />
 
-                {canEdit ? (
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="campaign-edit-name">Nome da campanha *</FieldLabel>
-                      <Input
-                        id="campaign-edit-name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        disabled={editSaving}
-                        placeholder="Ex: Newsletter Junho 2026"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Template</FieldLabel>
-                      <Select
-                        value={editTemplateId}
-                        onValueChange={setEditTemplateId}
-                        disabled={editSaving}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um template..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {templates.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    {!isSubCampaign ? (
-                      <Field>
-                        <FieldLabel>Lista de contatos</FieldLabel>
-                        <Select
-                          value={editContactListId}
-                          onValueChange={setEditContactListId}
-                          disabled={editSaving}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione uma lista..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {contactLists.map((l) => (
-                              <SelectItem key={l.id} value={l.id}>
-                                {formatContactListLabel(l)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    ) : (
-                      <Field>
-                        <FieldLabel>Lista / audiência</FieldLabel>
-                        <Input value={audienceLabel(detailCampaign)} disabled />
-                        <p className="text-xs text-muted-foreground">
-                          A audiência da sub-campanha fica bloqueada para preservar o lote
-                          original de destinatários.
-                        </p>
-                      </Field>
-                    )}
-                    {canSchedule ? (
-                      <Field>
-                        <DateTimePicker
-                          date={editScheduledAt}
-                          onDateChange={setEditScheduledAt}
-                          label="Agendar envio (opcional)"
-                          disabled={editSaving}
-                          disablePastDates
-                          tz={tz}
-                        />
-                        {editScheduledAt ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditScheduledAt(undefined)}
-                            className="text-xs text-muted-foreground underline underline-offset-2"
-                          >
-                            Remover agendamento
-                          </button>
-                        ) : null}
-                      </Field>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {isSubCampaign
-                          ? "Alterações de nome e template valem para o próximo disparo. O histórico dos disparos anteriores permanece intacto."
-                          : "Alterações de template e lista valem para o próximo disparo. O histórico dos disparos anteriores permanece intacto."}
-                      </p>
-                    )}
-                  </FieldGroup>
-                ) : (
-                  <div className="grid gap-3 text-sm sm:grid-cols-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Nome</span>
-                      <span className="font-medium">{detailCampaign.name}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Template</span>
-                      <span className="font-medium">{detailCampaign.template?.name ?? "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Lista / audiência</span>
-                      <span className="font-medium">{audienceLabel(detailCampaign)}</span>
-                    </div>
-                    <p className="col-span-full text-sm text-muted-foreground">
-                      {isParentCampaign
-                        ? "Campanha-pai é somente leitura. As sub-campanhas seguem o agendamento criado no dia 0."
-                        : "Esta campanha não pode ser editada no status atual."}
-                    </p>
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Nome</span>
+                    <span className="font-medium">{detailCampaign.name}</span>
                   </div>
-                )}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Template</span>
+                    <span className="font-medium">{detailCampaign.template?.name ?? "—"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Lista / audiência</span>
+                    <span className="font-medium">{audienceLabel(detailCampaign)}</span>
+                  </div>
+                  {detailCampaign.linkedForm ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Formulário vinculado</span>
+                      <span className="font-medium">{detailCampaign.linkedForm.name}</span>
+                    </div>
+                  ) : null}
+                  {!isParentCampaign && detailCampaign.scheduledAt ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Agendamento</span>
+                      <span className="font-medium">
+                        {formatIntimezone(new Date(detailCampaign.scheduledAt), "dd/MM/yyyy HH:mm", tz)}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
-              {canEdit ? (
-                <SheetFooter className="mt-4 border-t pt-4">
-                  <Button variant="outline" onClick={closeDetail} disabled={editSaving}>
-                    Cancelar
+              <SheetFooter className="mt-4 border-t pt-4">
+                <Button variant="outline" onClick={closeDetail}>
+                  Fechar
+                </Button>
+                {canEdit ? (
+                  <Button onClick={() => void openEditWizard(detailCampaign)}>
+                    <Pencil data-icon="inline-start" />
+                    Editar
                   </Button>
-                  <Button
-                    onClick={() => void handleUpdateCampaign()}
-                    disabled={editSaving || !editName.trim()}
-                  >
-                    {editSaving ? "Salvando..." : "Salvar"}
-                  </Button>
-                </SheetFooter>
-              ) : null}
+                ) : null}
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onOpenAnalytics({
+                      id: detailCampaign.id,
+                      name: detailCampaign.name,
+                      errorMessage: detailCampaign.errorMessage ?? null,
+                      defaultTab: "logs",
+                    })
+                  }
+                >
+                  <ScrollText data-icon="inline-start" />
+                  Logs
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onOpenAnalytics({
+                      id: detailCampaign.id,
+                      name: detailCampaign.name,
+                      errorMessage: detailCampaign.errorMessage ?? null,
+                    })
+                  }
+                >
+                  <BarChart3 data-icon="inline-start" />
+                  Analytics
+                </Button>
+              </SheetFooter>
           </div>
         ) : null}
       </SheetContent>

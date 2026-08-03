@@ -280,6 +280,23 @@ export class RadarFrontendService implements IRadarService {
     })
     return parseOutput<{ count: number }>(res)
   }
+
+  async materializeContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    name?: string
+  ): Promise<{ listId: string; totalContacts: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/${encodeURIComponent(segmentSlug)}/materialize-list`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(name ? { name } : {}),
+    })
+    return parseOutput<{ listId: string; totalContacts: number }>(res)
+  }
 }
 
 export const radarFrontendService = new RadarFrontendService()

@@ -1,33 +1,12 @@
 "use client";
 
-import { createContext, ReactNode, useContext } from "react";
-import type {
-  Template,
-  TemplateEditorDraft,
-  TemplateEditorState,
-  TemplateTestRequest,
-  TemplateVersionItem,
-} from "./TemplateEditorTypes";
+import { ReactNode } from "react";
+import {
+  TemplateEditorStudioContext,
+  useTemplateEditorStudioContext,
+  type ITemplateEditorStudioContext,
+} from "@/components/email/template-editor/TemplateEditorStudioContext";
 import { useTemplateEditor } from "./TemplateEditorHook";
-
-interface ITemplateEditorContext extends TemplateEditorState {
-  activeRole: "manager" | "backoffice" | "operator" | null;
-  reloadTemplate: () => Promise<void>;
-  saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
-  publishTemplate: (id?: string) => Promise<Template | null>;
-  unpublishTemplate: () => Promise<Template | null>;
-  submitForApproval: () => Promise<void>;
-  approveTemplate: () => Promise<void>;
-  rejectTemplate: (reviewNote: string) => Promise<void>;
-  sendTestTemplate: (input: TemplateTestRequest) => Promise<void>;
-  restoreTemplateVersion: (versionId: string) => Promise<void>;
-  updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
-  setHtml: (html: string) => void;
-  versions: TemplateVersionItem[];
-  restoringVersionId: string | null;
-}
-
-const TemplateEditorContext = createContext<ITemplateEditorContext | undefined>(undefined);
 
 interface TemplateEditorProviderProps {
   children: ReactNode;
@@ -43,16 +22,12 @@ export function TemplateEditorProvider({
   const value = useTemplateEditor(supabaseId, templateId);
 
   return (
-    <TemplateEditorContext.Provider value={value}>
+    <TemplateEditorStudioContext.Provider value={value}>
       {children}
-    </TemplateEditorContext.Provider>
+    </TemplateEditorStudioContext.Provider>
   );
 }
 
-export function useTemplateEditorContext(): ITemplateEditorContext {
-  const context = useContext(TemplateEditorContext);
-  if (!context) {
-    throw new Error("useTemplateEditorContext must be used within a TemplateEditorProvider");
-  }
-  return context;
+export function useTemplateEditorContext(): ITemplateEditorStudioContext {
+  return useTemplateEditorStudioContext();
 }

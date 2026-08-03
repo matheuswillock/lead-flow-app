@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
+import { LOCAL_DB_URL as STACK_LOCAL_DB_URL } from "./local-stack";
 
-export const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
+/** @deprecated Importe LOCAL_DB_URL de scripts/lib/local-stack.ts diretamente. */
+export const LOCAL_DB_URL = STACK_LOCAL_DB_URL;
 export const EXPECTED_ACTIVE_BACKOFFICE_FEATURES = 22;
 
 export function countActiveBackofficeFeatures(dbUrl = LOCAL_DB_URL): number {

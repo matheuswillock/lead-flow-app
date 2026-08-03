@@ -29,6 +29,8 @@ export type Campaign = {
   name: string
   parentCampaignId?: string | null
   audienceContactIds?: string[]
+  sourceContactListIds?: string[]
+  linkedForm?: { id: string; name: string; publicId: string } | null
   status: CampaignStatus
   scheduledAt: string | null
   sentAt: string | null
@@ -132,6 +134,21 @@ export type CampaignEmailEvent = {
 
 export type CampaignLogDetail = CampaignEmailLog & { events: CampaignEmailEvent[] }
 
+export type CampaignPreviewPlan = {
+  subCampaigns: Array<{
+    index: number
+    name: string
+    totalRecipients: number
+    scheduledAt?: string | null
+    contactListId?: string | null
+    listName?: string | null
+  }>
+  needsSplit: boolean
+  totalRecipients: number
+}
+
+export type WizardTabId = "geral" | "template" | "audiencia" | "agendamento" | "subcampanhas"
+
 export type CampanhasState = {
   campaigns: Campaign[]
   total: number
@@ -151,24 +168,29 @@ export type CampanhasState = {
   archivingId: string | null
   // Wizard state
   wizardOpen: boolean
-  wizardStep: 1 | 2 | 3
+  wizardMode: "create" | "edit"
+  wizardCampaignId?: string
+  wizardActiveTab: WizardTabId
   wizardName: string
   wizardTemplateId: string
-  wizardContactListId: string
+  wizardContactListIds: string[]
+  wizardListStrategy: "single" | "merge" | "per_list"
   wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
   wizardScheduledAt: Date | undefined
+  wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
-  wizardCreating: boolean
+  wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+  wizardSubCampaignListIds: Record<number, string>
+  wizardPreviewPlan: CampaignPreviewPlan | null
+  wizardPreviewLoading: boolean
+  wizardLinkedForm: { id: string; name: string; publicId: string } | null
+  wizardSaving: boolean
+  materializingSegment: boolean
   templates: Template[]
   contactLists: ContactList[]
   radarSegments: RadarSegmentOption[]
   // Detail sheet state
   detailCampaign: Campaign | null
   sheetTab: CampaignSheetTab
-  editName: string
-  editTemplateId: string
-  editContactListId: string
-  editScheduledAt: Date | undefined
-  editSaving: boolean
 }
