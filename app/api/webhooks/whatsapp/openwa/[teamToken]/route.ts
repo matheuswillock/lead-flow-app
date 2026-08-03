@@ -1,13 +1,7 @@
 import * as Sentry from "@sentry/nextjs"
 import { after, NextRequest, NextResponse } from "next/server"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { isValidEvoWebhookPayload } from "@/lib/whatsapp/webhook-signature"
-import {
-  deriveWebhookHeaderSecret,
-  isValidWebhookHeaderSecret,
-  isWebhookHeaderEnforcementEnabled,
-  readWebhookHeaderSecret,
-} from "@/lib/whatsapp/webhook-header-auth"
+import { verifyOpenWaHmac } from "@/lib/whatsapp/openwa-hmac"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import {
   recordWhatsAppWebhookProcessingFailure,
@@ -22,10 +16,14 @@ export const maxDuration = 60
 function describeEvent(rawEvent: unknown): { eventType: string; providerMessageId: string } {
   const ev = rawEvent as Record<string, unknown>
   const data = ev?.["data"] as Record<string, unknown> | undefined
-  const key = data?.["key"] as Record<string, unknown> | undefined
+  const id = data?.["id"]
+  const serialized =
+    typeof id === "object" && id !== null
+      ? (id as Record<string, unknown>)["_serialized"]
+      : id
   return {
     eventType: typeof ev?.["event"] === "string" ? (ev["event"] as string) : "",
-    providerMessageId: typeof key?.["id"] === "string" ? (key["id"] as string) : "",
+    providerMessageId: typeof serialized === "string" ? serialized : "",
   }
 }
 
@@ -39,30 +37,19 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const expectedHeaderSecret = deriveWebhookHeaderSecret(config.webhookSecret)
-  const providedHeaderSecret = readWebhookHeaderSecret(request)
-  const headerValid = isValidWebhookHeaderSecret(providedHeaderSecret, expectedHeaderSecret)
-
-  if (providedHeaderSecret && !headerValid) {
+  const rawBody = Buffer.from(await request.arrayBuffer())
+  const signature = request.headers.get("x-openwa-signature")
+  const secret = process.env.OPENWA_WEBHOOK_SECRET
+  if (!secret || !verifyOpenWaHmac(secret, rawBody, signature)) {
+    console.error(`[OpenWaWebhookRoute][POST] HMAC inválido — teamToken: ${teamToken}`)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
-  if (!headerValid) {
-    if (isWebhookHeaderEnforcementEnabled()) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-    console.warn("[WhatsAppEvoWebhookRoute][POST] Webhook header ausente (legacy rollout)")
   }
 
   let rawEvent: unknown
   try {
-    rawEvent = await request.json()
+    rawEvent = JSON.parse(rawBody.toString("utf8"))
   } catch {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
-  }
-
-  if (!isValidEvoWebhookPayload(rawEvent)) {
-    return NextResponse.json({ processed: false, reason: "invalid_payload" }, { status: 200 })
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
   const { eventType, providerMessageId } = describeEvent(rawEvent)
@@ -73,7 +60,7 @@ export async function POST(
       configId: config.id,
       teamId: config.teamId,
       providerEventId: providerMessageId || `event:${eventType}:${eventId}`,
-      eventType,
+      eventType: eventType || "openwa",
       payload: sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue,
     })
 
@@ -83,7 +70,7 @@ export async function POST(
         if (!output.isValid) {
           const retryable = output.result?.retryable !== false
           if (!retryable) {
-            console.info("[WhatsAppEvoWebhookRoute][after] evento não processável", {
+            console.info("[OpenWaWebhookRoute][after] evento não processável", {
               teamId: config.teamId,
               eventType,
               errors: output.errorMessages,
@@ -96,38 +83,25 @@ export async function POST(
             eventType,
             errors: output.errorMessages,
           })
-          Sentry.captureMessage("[WhatsAppEvoWebhookRoute] processing failed", {
+          Sentry.captureMessage("[OpenWaWebhookRoute] processing failed", {
             level: "error",
-            tags: { route: "WhatsAppEvoWebhookRoute", phase: "after" },
-            extra: { teamId: config.teamId, eventType, providerMessageId, errors: output.errorMessages },
+            extra: { teamId: config.teamId, eventType, errors: output.errorMessages },
           })
           return
         }
         await recordWhatsAppWebhookProcessingSuccess(config.id)
       } catch (error) {
         rethrowIfPrerenderInterrupted(error)
-        await recordWhatsAppWebhookProcessingFailure({
-          configId: config.id,
-          teamId: config.teamId,
-          eventType,
-          cause: error instanceof Error ? error.message : "unknown",
-        }).catch((recordError) => {
-          console.error("[WhatsAppEvoWebhookRoute][after] Falha ao registrar streak de webhook", recordError)
-        })
-        Sentry.captureException(error, {
-          tags: { route: "WhatsAppEvoWebhookRoute", phase: "after" },
-          extra: { teamId: config.teamId, eventType, providerMessageId },
-        })
+        console.error("[OpenWaWebhookRoute][after]", error)
+        Sentry.captureException(error)
       }
     })
 
-    return NextResponse.json({ accepted: true, eventId: persistedEventId }, { status: 200 })
+    return NextResponse.json({ received: true }, { status: 200 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
-    Sentry.captureException(error, {
-      tags: { route: "WhatsAppEvoWebhookRoute", phase: "persist" },
-      extra: { teamId: config.teamId, eventType, providerMessageId },
-    })
-    return NextResponse.json({ error: "Persist failed" }, { status: 500 })
+    console.error("[OpenWaWebhookRoute][POST]", error)
+    Sentry.captureException(error)
+    return NextResponse.json({ error: "Internal error" }, { status: 500 })
   }
 }

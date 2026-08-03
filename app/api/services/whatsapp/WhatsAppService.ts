@@ -2,17 +2,17 @@ import type { IWhatsAppService, ConfigOutput, CreateWhatsAppConfigInput, CreateC
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { whatsAppContactRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppContactRepository"
 import type { IWhatsAppProvider, WhatsAppProviderSendResult } from "./provider/IWhatsAppProvider"
-import { evolutionWhatsAppProvider } from "./provider/EvolutionWhatsAppProvider"
-import { whatsAppAutoResponseRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
 import {
   buildMessagePreview,
-} from "./evo/parseEvoMessageContent"
+} from "./parseMessageContent"
 import { generateWebhookSecret, buildPeriodKey, normalizePhone, normalizeRemoteJid, extractOpaqueId, toWhatsAppJid, resolveNormalizedPhone, isGroupChat } from "./phoneUtils"
-import { resolveConfigStatusFromEvo, toQrCodeImageUrl } from "./qrCodeUtils"
+import { resolveConfigStatusFromProvider, toQrCodeImageUrl } from "./qrCodeUtils"
 import type { Prisma, WhatsAppConnectionStatus } from "@prisma/client"
 import type { WhatsAppConfigSelect, WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import { teamHasWhatsAppFeature } from "@/lib/whatsapp/team-has-whatsapp-feature"
 import { WhatsAppAutoResponseSendError } from "@/lib/whatsapp/whatsappAutoResponseSendError"
+import { WhatsAppEngineFactory } from "@/lib/whatsapp/WhatsAppEngineFactory"
+import { whatsAppAutoResponseRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppAutoResponseRepository"
 import {
   assertNoConflictingPhoneOnSameTeam,
   assertPhoneNumberCanConnect,
@@ -28,8 +28,6 @@ export const WHATSAPP_HISTORY_SYNC_DAYS = 30
 const CONFIG_SYNC_TTL_MS = 45_000
 
 function resolveWebhookBaseUrl(): string {
-  const webhookPublic = process.env.EVO_WEBHOOK_PUBLIC_URL?.replace(/\/$/, "")
-  if (webhookPublic) return webhookPublic
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
   if (!appUrl) throw new Error("[WhatsAppService] NEXT_PUBLIC_APP_URL is not set")
   return appUrl.replace(/\/$/, "")
@@ -39,6 +37,7 @@ function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
   return {
     teamId: config.teamId,
     provider: config.provider,
+    engine: config.engine,
     status: config.status,
     instanceName: config.instanceName,
     phoneNumber: config.phoneNumber,
@@ -63,7 +62,9 @@ function toConfigOutput(config: WhatsAppConfigSelect): ConfigOutput {
 class WhatsAppService implements IWhatsAppService {
   private historySyncInFlightByTeam = new Set<string>()
 
-  constructor(private readonly provider: IWhatsAppProvider = evolutionWhatsAppProvider) {}
+  private providerFor(teamId: string): Promise<IWhatsAppProvider> {
+    return WhatsAppEngineFactory.forTeam(teamId)
+  }
 
   async createConfig(input: CreateWhatsAppConfigInput): Promise<ConfigOutput> {
     const hasFeature = await teamHasWhatsAppFeature(input.teamId)
@@ -85,11 +86,11 @@ class WhatsAppService implements IWhatsAppService {
 
     const instanceName = `team_${input.teamId.replace(/-/g, "").slice(0, 16)}`
     const webhookSecret = generateWebhookSecret()
-    const webhookUrl = `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/evolution/${webhookSecret}`
+    const webhookUrl = `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/openwa/${webhookSecret}`
 
     console.info("[WhatsAppService][createConfig] Creating instance", instanceName)
 
-    // Persist webhook secret before Evolution bootstrap so early webhooks resolve.
+    // Persiste webhook secret antes do bootstrap OpenWA para webhooks antecipados resolverem.
     const pending = await whatsAppRepository.createConfig({
       team: { connect: { id: input.teamId } },
       instanceName,
@@ -101,26 +102,27 @@ class WhatsAppService implements IWhatsAppService {
     })
 
     try {
-      const evoResult = await this.provider.connectInstance({
+      const provider = await this.providerFor(input.teamId)
+      const connectResult = await provider.connectInstance({
         instanceName,
         webhookUrl,
       })
 
-      if (evoResult.adopted) {
+      if (connectResult.adopted) {
         console.info(
-          "[WhatsAppService][createConfig] Adopting existing Evolution instance",
+          "[WhatsAppService][createConfig] Adopting existing OpenWA session",
           instanceName
         )
       }
 
-      let qrCodeText = evoResult.qrCode?.text ?? null
-      let qrCodeImageUrl = evoResult.qrCode?.base64
-        ? toQrCodeImageUrl(evoResult.qrCode.base64)
+      let qrCodeText = connectResult.qrCode?.text ?? null
+      let qrCodeImageUrl = connectResult.qrCode?.base64
+        ? toQrCodeImageUrl(connectResult.qrCode.base64)
         : null
 
-      if (!qrCodeImageUrl && evoResult.status !== "open") {
+      if (!qrCodeImageUrl && connectResult.status !== "open") {
         try {
-          const qr = await this.provider.getQrCode(instanceName)
+          const qr = await provider.getQrCode(instanceName)
           qrCodeText = qr.text
           qrCodeImageUrl = toQrCodeImageUrl(qr.base64)
         } catch (error) {
@@ -128,18 +130,18 @@ class WhatsAppService implements IWhatsAppService {
         }
       }
 
-      const status = resolveConfigStatusFromEvo(evoResult.status, Boolean(qrCodeImageUrl))
+      const status = resolveConfigStatusFromProvider(connectResult.status, Boolean(qrCodeImageUrl))
 
       let config = await whatsAppRepository.updateConfig(pending.id, {
-        instanceId: evoResult.instanceId ?? undefined,
+        instanceId: connectResult.instanceId ?? undefined,
         status,
         qrCodeText,
         qrCodeImageUrl,
         updatedBy: { connect: { id: input.profileId } },
       })
 
-      if (evoResult.status === "open") {
-        config = await this.syncConfigWithEvolution(config)
+      if (connectResult.status === "open") {
+        config = await this.syncConfigWithProvider(config)
       }
 
       await whatsAppAutoResponseRepository.seedDefaultRules(config.id)
@@ -207,23 +209,24 @@ class WhatsAppService implements IWhatsAppService {
       config.status === "PENDING" ||
       (config.status === "DISCONNECTED" && Boolean(config.qrCodeImageUrl))
 
-    // Evita chamada externa à Evolution no caminho quente: só sincroniza se o
+    // Evita chamada externa ao Gateway no caminho quente: só sincroniza se o
     // último sync tiver mais de CONFIG_SYNC_TTL_MS (exceto durante espera de QR).
     const lastSyncMs = config.lastSyncAt?.getTime() ?? 0
     if (!needsLiveSync && Date.now() - lastSyncMs < CONFIG_SYNC_TTL_MS) {
       return toConfigOutput(config)
     }
 
-    const synced = await this.syncConfigWithEvolution(config)
+    const synced = await this.syncConfigWithProvider(config)
     return toConfigOutput(synced)
   }
 
   private async ensureWebhookConfigured(config: WhatsAppConfigSelect): Promise<void> {
     if (!config.webhookSecret || !config.instanceName) return
 
-    const webhookUrl = `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/evolution/${config.webhookSecret}`
+    const webhookUrl = `${resolveWebhookBaseUrl()}/api/webhooks/whatsapp/openwa/${config.webhookSecret}`
     try {
-      await this.provider.setWebhook({
+      const provider = await this.providerFor(config.teamId)
+      await provider.setWebhook({
         instanceName: config.instanceName,
         webhookUrl,
       })
@@ -232,33 +235,35 @@ class WhatsAppService implements IWhatsAppService {
         instanceName: config.instanceName,
       })
     } catch (error) {
-      console.error("[WhatsAppService][ensureWebhookConfigured]", {
+      // OpenWA configura webhook em startSession — setWebhook é capability error esperado.
+      console.info("[WhatsAppService][ensureWebhookConfigured] setWebhook skip/erro", {
         configId: config.id,
         instanceName: config.instanceName,
-        error,
+        error: error instanceof Error ? error.message : error,
       })
     }
   }
 
-  private async syncConfigWithEvolution(
+  private async syncConfigWithProvider(
     config: WhatsAppConfigSelect
   ): Promise<WhatsAppConfigSelect> {
     try {
       await this.ensureWebhookConfigured(config)
 
-      const { state } = await this.provider.getConnectionState(config.instanceName)
+      const provider = await this.providerFor(config.teamId)
+      const { state } = await provider.getConnectionState(config.instanceName)
       const now = new Date()
 
       if (state === "open") {
         let phoneNumber = config.phoneNumber
         if (!phoneNumber) {
           try {
-            const instance = await this.provider.getInstanceInfo(config.instanceName)
+            const instance = await provider.getInstanceInfo(config.instanceName)
             if (instance?.owner) {
               phoneNumber = normalizeRemoteJid(instance.owner)
             }
           } catch (error) {
-            console.error("[WhatsAppService][syncConfigWithEvolution] fetchInstance failed", error)
+            console.error("[WhatsAppService][syncConfigWithProvider] fetchInstance failed", error)
           }
         }
 
@@ -317,7 +322,7 @@ class WhatsAppService implements IWhatsAppService {
 
       return whatsAppRepository.updateConfig(config.id, { lastSyncAt: now })
     } catch (error) {
-      console.error("[WhatsAppService][syncConfigWithEvolution]", error)
+      console.error("[WhatsAppService][syncConfigWithProvider]", error)
       return config
     }
   }
@@ -332,7 +337,8 @@ class WhatsAppService implements IWhatsAppService {
 
     await this.ensureWebhookConfigured(existing)
 
-    const qr = await this.provider.getQrCode(existing.instanceName)
+    const provider = await this.providerFor(teamId)
+    const qr = await provider.getQrCode(existing.instanceName)
 
     const updated = await whatsAppRepository.updateConfig(existing.id, {
       status: "QR_READY",
@@ -380,9 +386,10 @@ class WhatsAppService implements IWhatsAppService {
     }
 
     let needsLogout = existing.status === "CONNECTED"
+    const provider = await this.providerFor(teamId)
     if (!needsLogout) {
       try {
-        const { state } = await this.provider.getConnectionState(existing.instanceName)
+        const { state } = await provider.getConnectionState(existing.instanceName)
         needsLogout = state === "open"
       } catch (error) {
         console.error("[WhatsAppService][disconnect] getConnectionState failed", error)
@@ -391,7 +398,7 @@ class WhatsAppService implements IWhatsAppService {
 
     if (needsLogout) {
       console.info("[WhatsAppService][disconnect] Disconnecting instance", existing.instanceName)
-      await this.provider.disconnect(existing.instanceName)
+      await provider.disconnect(existing.instanceName)
     }
 
     const mirrors = await whatsAppRepository.findMirroredConfigs(existing.id)
@@ -419,7 +426,10 @@ class WhatsAppService implements IWhatsAppService {
     label: string
   ): Promise<ConfigOutput> {
     try {
-      const qr = await this.provider.getQrCode(instanceName)
+      const config = await whatsAppRepository.findConfigById(configId)
+      if (!config) throw new Error("Configuração não encontrada")
+      const provider = await this.providerFor(config.teamId)
+      const qr = await provider.getQrCode(instanceName)
       const updated = await whatsAppRepository.updateConfig(configId, {
         status: "QR_READY",
         qrCodeText: qr.text,
@@ -459,6 +469,7 @@ class WhatsAppService implements IWhatsAppService {
 
     const now = new Date()
     const periodKey = buildPeriodKey(now)
+    const provider = await this.providerFor(input.teamId)
 
     let evoResult: { providerMessageId: string; status: string; messageKey?: Record<string, unknown> }
     let messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO" = "TEXT"
@@ -507,11 +518,11 @@ class WhatsAppService implements IWhatsAppService {
       mediaSha256 = validated.mediaSha256
       mediaSizeBytes = validated.mediaSizeBytes
 
-      // Evolution still requires Base64 today — convert only in memory on the server.
+      // OpenWA aceita Base64 no envio — convertemos só em memória no servidor.
       const base64 = await readMediaAsBase64ForProvider(input.media.storagePath)
 
       try {
-        evoResult = await this.provider.sendMedia({
+        evoResult = await provider.sendMedia({
           instanceName: effectiveConfig.instanceName,
           recipientJid,
           mediatype: input.media.mediatype,
@@ -537,7 +548,7 @@ class WhatsAppService implements IWhatsAppService {
         throw new Error("Mensagem não pode ser vazia")
       }
       preview = text.slice(0, 100)
-      evoResult = await this.provider.sendText({
+      evoResult = await provider.sendText({
         instanceName: effectiveConfig.instanceName,
         recipientJid,
         text,
@@ -677,9 +688,10 @@ class WhatsAppService implements IWhatsAppService {
     const periodKey = buildPeriodKey(now)
     const preview = text.slice(0, 100)
 
-    let evoResult: WhatsAppProviderSendResult
+    let providerResult: WhatsAppProviderSendResult
     try {
-      evoResult = await this.provider.sendText({
+      const provider = await this.providerFor(input.teamId)
+      providerResult = await provider.sendText({
         instanceName: config.instanceName,
         recipientJid,
         text,
@@ -698,7 +710,7 @@ class WhatsAppService implements IWhatsAppService {
         team: { connect: { id: input.teamId } },
         config: { connect: { id: config.id } },
         ...(conversation.leadId ? { lead: { connect: { id: conversation.leadId } } } : {}),
-        providerMessageId: evoResult.providerMessageId,
+        providerMessageId: providerResult.providerMessageId,
         direction: "OUTBOUND",
         messageType: "TEXT",
         status: "SENT",
@@ -718,7 +730,7 @@ class WhatsAppService implements IWhatsAppService {
         eventType: "OUTBOUND_MESSAGE",
         direction: "OUTBOUND",
         countedTowardsQuota: true,
-        providerMessageId: evoResult.providerMessageId,
+        providerMessageId: providerResult.providerMessageId,
       })
 
       await whatsAppRepository.updateConversation(input.conversationId, {
@@ -763,8 +775,9 @@ class WhatsAppService implements IWhatsAppService {
     const externalChatId = toWhatsAppJid(normalizedPhone)
 
     let contactAvatarUrl: string | null = null
+    const provider = await this.providerFor(input.teamId)
     try {
-      contactAvatarUrl = await this.provider.fetchProfilePictureUrl({
+      contactAvatarUrl = await provider.fetchProfilePictureUrl({
         instanceName: effectiveConfig.instanceName,
         remoteJid: externalChatId,
       })
@@ -826,7 +839,8 @@ class WhatsAppService implements IWhatsAppService {
     let messageCount = 0
 
     try {
-      const chats = await this.provider.fetchChats(config.instanceName)
+      const provider = await this.providerFor(teamId)
+      const chats = await provider.fetchChats(config.instanceName)
 
       for (const chat of chats) {
         const phoneRaw = normalizeRemoteJid(chat.remoteJid)
@@ -835,7 +849,7 @@ class WhatsAppService implements IWhatsAppService {
 
         let contactAvatarUrl = chat.profilePicUrl
         if (!contactAvatarUrl && !isGroup) {
-          contactAvatarUrl = await this.provider.fetchProfilePictureUrl({
+          contactAvatarUrl = await provider.fetchProfilePictureUrl({
             instanceName: config.instanceName,
             remoteJid: chat.remoteJid,
           })
@@ -858,7 +872,7 @@ class WhatsAppService implements IWhatsAppService {
 
         chatCount += 1
 
-        const messages = await this.provider.fetchMessagesSince({
+        const messages = await provider.fetchMessagesSince({
           instanceName: config.instanceName,
           remoteJid: chat.remoteJid,
           since,
@@ -976,7 +990,8 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("WhatsApp não está conectado")
     }
 
-    const contacts = await this.provider.fetchContacts(config.instanceName)
+    const provider = await this.providerFor(teamId)
+    const contacts = await provider.fetchContacts(config.instanceName)
     const startedAt = Date.now()
     const batchSize = Math.max(1, options?.batchSize ?? 100)
     const timeBudgetMs = options?.timeBudgetMs ?? 40_000
@@ -1001,7 +1016,7 @@ class WhatsAppService implements IWhatsAppService {
       imported = await whatsAppContactRepository.upsertMany(upsertInputs)
     }
 
-    // Evolution enriches the directory but never becomes its source of truth.
+    // O sync de contatos enriquece o diretório, mas nunca vira fonte de verdade.
     while (offset < eligible.length) {
       if (Date.now() - startedAt > timeBudgetMs) {
         const checkpoint = { offset, imported, done: false }
@@ -1132,12 +1147,13 @@ class WhatsAppService implements IWhatsAppService {
       throw new Error("Conversa não é um grupo")
     }
 
-    const participants = await this.provider.fetchGroupParticipants({
+    const provider = await this.providerFor(teamId)
+    const participants = await provider.fetchGroupParticipants({
       instanceName: config.instanceName,
       groupJid,
     })
 
-    const phoneContacts = await this.provider.fetchContacts(config.instanceName)
+    const phoneContacts = await provider.fetchContacts(config.instanceName)
     const phoneContactByJid = new Map(phoneContacts.map((c) => [c.remoteJid, c]))
 
     const now = new Date()

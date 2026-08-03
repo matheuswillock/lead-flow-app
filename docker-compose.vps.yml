@@ -1,59 +1,23 @@
 # =============================================================================
-# docker-compose.vps.yml — Evolution API + N8N (produção Hostinger)
+# docker-compose.vps.yml — OpenWA Gateway + N8N (produção Hostinger)
 # =============================================================================
 #
-# Stack unificada com rede compartilhada (Evolution → N8N via http://n8n:5678).
-# Banco Evolution: Supabase remoto (.env.evolution).
+# Stack unificada com rede compartilhada (OpenWA → N8N via http://n8n:5678).
 # Banco N8N: Postgres local no container n8n-postgres (.env.n8n).
 #
 # Pré-requisitos na VPS:
-#   - Caddy (ou outro proxy) em 443 → 127.0.0.1:8080 e :5678
+#   - Caddy (ou outro proxy) em 443 → OpenWA e :5678
 #   - deploy/hostinger/Caddyfile instalado em /etc/caddy/Caddyfile
 #
 # Uso:
-#   cp .env.evolution.example .env.evolution   # preencher produção
-#   cp .env.n8n.example .env.n8n               # preencher produção
+#   cp .env.openwa.example .env.openwa   # preencher produção
+#   cp .env.n8n.example .env.n8n           # preencher produção
 #   bun run vps:up
 #   bun run vps:logs
 #
 # =============================================================================
 
 services:
-  api:
-    container_name: evolution_api
-    # Upgrade only after contract fixtures pass; never deploy an implicit latest.
-    image: evoapicloud/evolution-api:v2.3.7
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_started
-    ports:
-      - "127.0.0.1:8080:8080"
-    volumes:
-      - evolution_instances:/evolution/instances
-    networks:
-      - studio-bot-net
-    env_file:
-      - .env.evolution
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 45s
-
-  redis:
-    container_name: evolution_redis
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --port 6379 --appendonly yes
-    volumes:
-      - evolution_redis:/data
-    networks:
-      - studio-bot-net
-    expose:
-      - "6379"
-
   n8n:
     container_name: n8n
     image: docker.io/n8nio/n8n:2.28.5
@@ -136,11 +100,33 @@ services:
       retries: 6
       start_period: 10s
 
+  openwa:
+    build:
+      context: ./deploy/openwa-gateway
+      dockerfile: Dockerfile
+    image: openwa-gateway:latest
+    restart: unless-stopped
+    env_file: .env.openwa
+    volumes:
+      - openwa_sessions_tmp:/app/.wwebjs_tmp
+    networks:
+      - studio-bot-net
+    expose:
+      - "3333"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3333/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
-  evolution_instances:
-  evolution_redis:
   n8n_data:
   n8n_postgres:
+  openwa_sessions_tmp:
 
 networks:
   studio-bot-net:

@@ -23,12 +23,14 @@ import type { WhatsAppConnectionStatus } from "../context/BackofficeWhatsAppInst
 import { useBackofficeWhatsAppInstances } from "../context/BackofficeWhatsAppInstancesHook"
 import { BackofficeWhatsAppInstanceSheet } from "../components/BackofficeWhatsAppInstanceSheet"
 import { BackofficeWhatsAppInstancesTable } from "../components/BackofficeWhatsAppInstancesTable"
+import { BackofficeWhatsAppMigrationContainer } from "./BackofficeWhatsAppMigrationContainer"
 import { BackofficeWhatsAppOpsUpdatesPanel } from "../components/BackofficeWhatsAppOpsUpdatesPanel"
 import { BackofficeWhatsAppProvisionDialog } from "../components/BackofficeWhatsAppProvisionDialog"
 
 const STATUS_OPTIONS: { value: WhatsAppConnectionStatus | "all"; label: string }[] = [
   { value: "all", label: "Todos os status" },
   { value: "CONNECTED", label: "Conectado" },
+  { value: "INITIALIZING", label: "Iniciando" },
   { value: "QR_READY", label: "Aguardando QR" },
   { value: "PENDING", label: "Pendente" },
   { value: "DISCONNECTED", label: "Desconectado" },
@@ -36,11 +38,18 @@ const STATUS_OPTIONS: { value: WhatsAppConnectionStatus | "all"; label: string }
   { value: "BANNED", label: "Bloqueado" },
 ]
 
+const ENGINE_OPTIONS = [
+  { value: "all", label: "Todos os motores" },
+  { value: "OPENWA", label: "OpenWA Gateway" },
+  { value: "META", label: "Meta" },
+]
+
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50]
 
 export function BackofficeWhatsAppInstancesContainer() {
   const {
     filters,
+    instances,
     pagination,
     canManage,
     error,
@@ -51,6 +60,7 @@ export function BackofficeWhatsAppInstancesContainer() {
   } = useBackofficeWhatsAppInstances()
 
   const [searchInput, setSearchInput] = useState(filters.q)
+  const [engineFilter, setEngineFilter] = useState("all")
   const [tab, setTab] = useState("instancias")
 
   useEffect(() => {
@@ -65,6 +75,9 @@ export function BackofficeWhatsAppInstancesContainer() {
     }, 300)
     return () => clearTimeout(timeout)
   }, [filters, searchInput, setFilters])
+
+  const filteredInstances =
+    engineFilter === "all" ? instances : instances.filter((i) => i.engine === engineFilter)
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 p-4">
@@ -86,6 +99,7 @@ export function BackofficeWhatsAppInstancesContainer() {
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
         <TabsList>
           <TabsTrigger value="instancias">Instâncias</TabsTrigger>
+          <TabsTrigger value="migracao">Migração</TabsTrigger>
           <TabsTrigger value="atualizacoes">Atualizações</TabsTrigger>
         </TabsList>
 
@@ -120,6 +134,18 @@ export function BackofficeWhatsAppInstancesContainer() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={engineFilter} onValueChange={setEngineFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ENGINE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {error && (
@@ -128,7 +154,7 @@ export function BackofficeWhatsAppInstancesContainer() {
             </div>
           )}
 
-          <BackofficeWhatsAppInstancesTable />
+          <BackofficeWhatsAppInstancesTable instances={filteredInstances} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -192,6 +218,10 @@ export function BackofficeWhatsAppInstancesContainer() {
               </Button>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="migracao" className="flex min-h-0 flex-1 flex-col gap-4">
+          <BackofficeWhatsAppMigrationContainer />
         </TabsContent>
 
         <TabsContent value="atualizacoes" className="flex min-h-0 flex-1 flex-col gap-4">
