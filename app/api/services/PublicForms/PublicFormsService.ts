@@ -20,6 +20,7 @@ import { normalizeThankYouPages, parseThankYouPages } from "@/lib/public-forms/t
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
+import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import type { IPublicFormsService } from "./IPublicFormsService"
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -366,6 +367,7 @@ export class PublicFormsService implements IPublicFormsService {
     ) {
       return false
     }
+    const origin = sanitizePublicFormOrigin(input.origin ?? {})
     await publicFormsRepository.upsertMetricEvent({
       formId: current.snapshot.formId,
       publicationId: current.publicationId,
@@ -373,8 +375,26 @@ export class PublicFormsService implements IPublicFormsService {
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,
-      origin: json(sanitizePublicFormOrigin(input.origin ?? {})),
+      origin: json(origin),
     })
+
+    // D8: espelha a métrica já persistida no Radar (fire-and-forget).
+    const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(
+      current.snapshot.formId
+    )
+    if (teamCtx?.teamId) {
+      syncPublicFormMetricToRadarInline({
+        teamId: teamCtx.teamId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        visitorSessionId: input.visitorSessionId,
+        formId: current.snapshot.formId,
+        publicationId: current.publicationId,
+        questionId: input.questionId,
+        origin,
+      })
+    }
+
     return true
   }
 

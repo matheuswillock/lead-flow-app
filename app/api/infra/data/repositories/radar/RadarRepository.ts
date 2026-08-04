@@ -853,6 +853,42 @@ export class RadarRepository {
     }
   }
 
+  /**
+   * D8: dedupe por `(sourceType, sourceId, eventType)` ignorando `occurredAt`.
+   * Usado ao espelhar `PublicFormMetricEvent.eventKey` (@unique) como `sourceId`
+   * — retries fire-and-forget não devem gerar `RadarEvent` duplicado só porque
+   * o relógio avançou.
+   */
+  async appendEventIfNewBySourceKey(input: AppendEventInput) {
+    if (
+      input.sourceId &&
+      (await this.hasEventEverOccurredForSource(
+        input.teamId,
+        input.sourceType,
+        input.sourceId,
+        input.eventType
+      ))
+    ) {
+      return null
+    }
+
+    try {
+      return await prisma.radarEvent.create({
+        data: {
+          profileId: input.profileId,
+          teamId: input.teamId,
+          eventType: input.eventType,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId ?? null,
+          occurredAt: input.occurredAt,
+          metadata: input.metadata,
+        },
+      })
+    } catch {
+      return null
+    }
+  }
+
   async upsertConsent(input: UpsertConsentInput) {
     return prisma.radarChannelConsent.upsert({
       where: {

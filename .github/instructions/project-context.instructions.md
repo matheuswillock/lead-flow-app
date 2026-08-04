@@ -426,7 +426,7 @@ O módulo Radar é um add-on (`FEATURE_SLUGS.RADAR = "radar"`) que unifica dados
 
 **Estado atual (unificado D10–D18 — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)):** R1–R5 e C1–C6 concluídos; Fase D com **D1–D7 e D9–D18 no código**. Ingestão **event-driven na UI** (D10 — sem botão de sync manual). `Lead.originChannel`/`originMetadata` registram a origem; sync inline cobre CRM, portfolio, e-mail e WhatsApp; pixel alimenta `RadarEvent`/`RadarIdentity`.
 
-**Pendência D8:** bridge `PublicFormMetricEvent` → `RadarEvent` ainda **ausente** no HEAD commitado. Eventos de formulário público **não** entram na timeline Radar até D8 fechar.
+**D8:** bridge `PublicFormMetricEvent` → `RadarEvent` via `SyncPublicFormMetricToRadarUseCase` (fire-and-forget após persistir a métrica; dedupe por `eventKey`).
 
 **Dívida C5 × DA11:** o alerta do builder de segmento sugere split automático em sub-envios quando a audiência >2.000; o backend **rejeita** campanha por segmento acima do limite (sub-campanhas só para listas).
 
@@ -435,7 +435,7 @@ O módulo Radar é um add-on (`FEATURE_SLUGS.RADAR = "radar"`) que unifica dados
 - `RadarProfile` — perfil unificado por cliente dentro de um time (telefone opcional — perfis email-only)
 - `RadarIdentity` — identidades normalizadas (`lead_id`, `email`, `phone`, `document`, `whatsapp`, **`visitor_session`**, **`contract_holder`**, **`contract_dependent`**)
 - `RadarSourceLink` — vínculos de origem (`crm_lead`, `portfolio`, `email_contact`, `whatsapp_contact`, **`pixel_hit`**)
-- `RadarEvent` — timeline de eventos por canal (email.*, whatsapp.*, marcos de status do Lead, pixel.*, portfolio.*; form.* após D8)
+- `RadarEvent` — timeline de eventos por canal (email.*, whatsapp.*, marcos de status do Lead, pixel.*, portfolio.*; form.*)
 - `RadarChannelConsent` — consentimento por canal (email, whatsapp)
 - `TeamRadarSegment` — segmentos custom (DSL SQL-first: `lead_field`, **`portfolio_field`**, evento, consentimento, custom fields, status)
 - `TeamRadarPixelConfig` / `TeamRadarPixelHitLog` — config + logs do pixel (RLS em `radar-d12-pixel-tables-rls` — SQL no repo)
@@ -445,7 +445,7 @@ Tabelas físicas: `corretor_studio_radar_*`, `corretor_studio_team_radar_pixel_*
 
 ### Pixel, touchpoints, contratos, materialize, export, rankings
 
-- Identidade `visitor_session` une hits do pixel (e, após D8, eventos de formulário) antes do lead nascer.
+- Identidade `visitor_session` une hits do pixel (e eventos de formulário) antes do lead nascer.
 - Pixel autenticado: `GET|POST|DELETE /api/v1/radar/pixel`, logs em `GET /api/v1/radar/pixel/logs`.
 - Hit público: `POST /api/v1/public-pixel/:publicToken/hit?vs=...` (CORS por `allowedOrigins`, rate limit próprio).
 - Touchpoints (D9): `GET /api/v1/radar/profiles/:id/touchpoints` — sub-aba Contatos na Sheet.

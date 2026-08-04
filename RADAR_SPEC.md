@@ -411,6 +411,7 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 
 ## Estágio D8 — Bridging de `PublicFormMetricEvent` → `RadarEvent`
 
+**Status:** ✅ Implementado (2026-08-04) — `SyncPublicFormMetricToRadarUseCase` + `syncPublicFormMetricToRadarInline` nos pontos de persistência (`PublicFormsService.recordMetric`, submission/progress).
 
 **Prompt Codex:**
 

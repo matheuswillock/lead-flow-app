@@ -16,7 +16,7 @@
 | D5 | Marcos de LeadStatus | ✅ Concluído |
 | D6 | Condição lead_field no segmento | ✅ Concluído |
 | D7 | Pixel tracking + visitor_session | ✅ Concluído |
-| D8 | Bridging formulário → RadarEvent | ⏳ **Pendente** no HEAD — `recordMetric` commitado só grava `PublicFormMetricEvent` (WIP local não conta como mergeado) |
+| D8 | Bridging formulário → RadarEvent | ✅ Concluído (2026-08-04 — `SyncPublicFormMetricToRadarUseCase` + hook fire-and-forget) |
 | D9 | Touchpoints — sub-aba Contatos | ✅ Concluído |
 | D10 | Remover sync manual | ✅ Concluído (UI 100% event-driven; rotas `sync/*` legadas/backfill) |
 | D11 | Auditoria impeccable de /radar | ✅ Concluído |
@@ -281,7 +281,7 @@ O model `Lead` não tem nenhuma coluna equivalente a "canal de origem" — toda 
 **Data de verificação:** 2026-08-04  
 **Branch unificada:** `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)
 
-R1–R5 e C1–C6 estão **concluídos**. Na Fase D, **D1–D7 e D9–D18** estão no código do unificado; **D8 permanece pendente no HEAD commitado**. Esta seção atualiza o veredito do audit histórico (§1–§7, baseline pré-rename / pré-Fase D) sem reescrever o inventário datado de 2026-07-18.
+R1–R5 e C1–C6 estão **concluídos**. Na Fase D, **D1–D18** estão no código (D8 via `cursor/radar-d8-form-bridge` → merge no unificado). Esta seção atualiza o veredito do audit histórico (§1–§7, baseline pré-rename / pré-Fase D) sem reescrever o inventário datado de 2026-07-18.
 
 | Estágio | Escopo | Status |
 |---|---|---|
@@ -292,7 +292,7 @@ R1–R5 e C1–C6 estão **concluídos**. Na Fase D, **D1–D7 e D9–D18** est�
 | D5 | Marcos de status do Lead → `RadarEvent` | ✅ Concluído |
 | D6 | Condição de segmento `lead_field` (+ catálogo) | ✅ Concluído |
 | D7 | Identidade `visitor_session` + Corretor Studio Pixel | ✅ Concluído |
-| D8 | Bridge `PublicFormMetricEvent` → `RadarEvent` | ⏳ **Pendente** (não mergeado no HEAD do unificado) |
+| D8 | Bridge `PublicFormMetricEvent` → `RadarEvent` | ✅ Concluído (`SyncPublicFormMetricToRadarUseCase`, dedupe `eventKey`) |
 | D9 | Touchpoints / sub-aba Contatos no perfil | ✅ Concluído |
 | D10 | UI sem sync manual — fluxo 100% event-driven | ✅ Concluído |
 | D11 | Auditoria impeccable de `/radar` | ✅ Concluído |
@@ -317,6 +317,10 @@ O `Alert` em `RadarSegmentBuilderDialog` afirma que audiência > `EMAIL_CAMPAIGN
 - Postman: pasta **Radar** (pixel, touchpoints, profiles, segments, export, materialize)
 - Migrations no repo (existência ≠ push remoto): `*_radar-d12-pixel-tables-rls.sql`, `*_radar-d14-contract-identity-types.sql`
 
-### Pendência restante (D8)
+### D8 — Bridge formulário → RadarEvent
 
-Espelhar `PublicFormMetricEvent` → `RadarEvent` no caminho de persistência da métrica (dedupe via `eventKey` → `sourceId`). Ainda **não** está no HEAD do unificado.
+- UseCase: `app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase.ts`
+- Inline fire-and-forget: `syncPublicFormMetricToRadarInline` (via `after()`)
+- Hooks: `PublicFormsService.recordMetric`, `PublicFormSubmissionUseCase`, `PublicFormProgressUseCase`
+- Dedupe: `RadarRepository.appendEventIfNewBySourceKey` com `sourceId = eventKey`
+- Mapeamento: `lib/radar/map-public-form-metric-to-radar-event.ts`
