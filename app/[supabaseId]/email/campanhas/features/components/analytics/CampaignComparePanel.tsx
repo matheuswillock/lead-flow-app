@@ -39,18 +39,20 @@ function RateCell({
   value,
   delta,
   isRate,
+  inverse,
 }: {
   label: string
   value: string
   delta?: MetricDelta | null
   isRate?: boolean
+  inverse?: boolean
 }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-xs text-muted-foreground">{label}</span>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-sm font-semibold">{value}</span>
-        <MetricTrendIndicator delta={delta} isRate={isRate} />
+        <MetricTrendIndicator delta={delta} isRate={isRate} inverse={inverse} />
       </div>
     </div>
   )
@@ -68,7 +70,7 @@ export function CampaignComparePanel({
   const [data, setData] = useState<CompareCampaignsData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const inFlightRef = useRef(false)
+  const requestSeqRef = useRef(0)
   const lastKeyRef = useRef<string | null>(null)
 
   const selectableCampaigns = useMemo(
@@ -89,38 +91,42 @@ export function CampaignComparePanel({
 
   useEffect(() => {
     if (selectedIds.length === 0) {
+      requestSeqRef.current += 1
       setData(null)
       setError(null)
+      setLoading(false)
+      lastKeyRef.current = null
       return
     }
 
     const requestKey = `${period}|${selectedIds.slice().sort().join(",")}`
-    if (inFlightRef.current) return
     if (lastKeyRef.current === requestKey && data) return
 
-    let cancelled = false
-    inFlightRef.current = true
+    const requestId = ++requestSeqRef.current
     setLoading(true)
     setError(null)
 
     void service
       .compareCampaigns(selectedIds, period, timezone)
       .then((result) => {
-        if (cancelled) return
+        if (requestId !== requestSeqRef.current) return
         setData(result)
         lastKeyRef.current = requestKey
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (requestId !== requestSeqRef.current) return
         setError(err instanceof Error ? err.message : "Erro ao comparar")
       })
       .finally(() => {
-        inFlightRef.current = false
-        if (!cancelled) setLoading(false)
+        if (requestId === requestSeqRef.current) {
+          setLoading(false)
+        }
       })
 
     return () => {
-      cancelled = true
+      if (requestSeqRef.current === requestId) {
+        requestSeqRef.current += 1
+      }
     }
   }, [period, selectedIds, timezone])
 
@@ -225,6 +231,7 @@ export function CampaignComparePanel({
                   value={`${campaign.rates.bounceRate.toFixed(1)}%`}
                   delta={campaign.deltas?.rates.bounceRate}
                   isRate
+                  inverse
                 />
                 <Separator />
                 <RateCell
