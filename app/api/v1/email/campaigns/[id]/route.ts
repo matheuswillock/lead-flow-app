@@ -8,9 +8,31 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  description: z.string().max(500).nullable().optional(),
   templateId: z.string().uuid().optional(),
   contactListId: z.string().uuid().optional(),
+  contactListIds: z.array(z.string().uuid()).optional(),
+  listStrategy: z.enum(["single", "merge", "per_list"]).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
+  uniformSchedule: z.boolean().optional(),
+  scheduleIntervalDays: z.number().int().min(1).optional().nullable(),
+  subCampaignSchedules: z
+    .array(
+      z.object({
+        index: z.number().int().min(1),
+        scheduledAt: z.string().datetime(),
+      })
+    )
+    .optional(),
+  subCampaignUpdates: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).optional(),
+        scheduledAt: z.string().datetime().nullable().optional(),
+      })
+    )
+    .optional(),
 })
 
 function makeUseCase() {

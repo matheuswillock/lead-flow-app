@@ -9,7 +9,9 @@ import type {
 import type {
   AnalyticsData,
   AnalyticsPeriod,
+  CompareCampaignsData,
   DispatchPreviewData,
+  OverviewData,
 } from "@/app/[supabaseId]/email/campanhas/features/components/analytics/AnalyticsTypes"
 import type { ContactList as ContatoList, Contact } from "@/app/[supabaseId]/email/contatos/features/context/ContatosTypes"
 import type {
@@ -36,19 +38,33 @@ import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContac
 
 export type StudioEmailCreateCampaignData = {
   name: string
+  description?: string | null
   templateId: string
   contactListId?: string
+  contactListIds?: string[]
+  listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
   scheduledAt?: string
   scheduleIntervalDays?: number
+  uniformSchedule?: boolean
+  subCampaignSchedules?: Array<{ index: number; scheduledAt: string }>
 }
 
 export type StudioEmailUpdateCampaignData = {
   name?: string
+  description?: string | null
   templateId?: string
   contactListId?: string
+  contactListIds?: string[]
+  listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
   scheduledAt?: string | null
+  subCampaignUpdates?: Array<{
+    id: string
+    name?: string
+    scheduledAt?: string | null
+    contactListId?: string
+  }>
 }
 
 export type StudioEmailListCampaignsResult = {
@@ -63,7 +79,12 @@ export type StudioEmailSendResult = {
   campaignId: string
   dispatchId: string
   totalRecipients: number
+  retryFailedOnly?: boolean
   status: "sending"
+}
+
+export type StudioEmailSendOptions = {
+  retryFailedOnly?: boolean
 }
 
 export interface StudioEmailCampanhasService {
@@ -82,6 +103,11 @@ export interface StudioEmailCampanhasService {
     teamId: string | null | undefined,
     data: StudioEmailCreateCampaignData
   ): Promise<Campaign>
+  previewPlan(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    data: StudioEmailCreateCampaignData
+  ): Promise<import("@/app/[supabaseId]/email/campanhas/features/context/CampanhasTypes").CampaignPreviewPlan>
   getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
   update(
     supabaseId: string,
@@ -89,7 +115,12 @@ export interface StudioEmailCampanhasService {
     id: string,
     data: StudioEmailUpdateCampaignData
   ): Promise<Campaign>
-  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<StudioEmailSendResult>
+  send(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    id: string,
+    options?: StudioEmailSendOptions
+  ): Promise<StudioEmailSendResult>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
@@ -166,6 +197,10 @@ export interface StudioEmailTemplatesService {
     teamId?: string | null
   ): Promise<{ templateApprovalRequired: boolean }>
   list(supabaseId: string, teamId?: string | null): Promise<Template[]>
+  getTopRanking?(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<import("@/app/[supabaseId]/email/templates/features/context/TemplatesTypes").TemplateRankingResult>
   create(supabaseId: string, data: StudioEmailCreateTemplateData, teamId?: string | null): Promise<Template>
   delete(supabaseId: string, id: string, teamId?: string | null): Promise<void>
   submitForApproval(supabaseId: string, id: string, teamId?: string | null): Promise<Template>
@@ -244,7 +279,14 @@ export interface StudioEmailHistoricoService {
 export interface StudioEmailCampaignAnalyticsService {
   getAnalytics(period: AnalyticsPeriod, timezone: string, campaignId?: string): Promise<AnalyticsData>
   getDispatchPreview(campaignId: string, dispatchId: string): Promise<DispatchPreviewData>
+  getOverview?(): Promise<OverviewData>
+  compareCampaigns?(
+    campaignIds: string[],
+    period: AnalyticsPeriod,
+    timezone: string,
+  ): Promise<CompareCampaignsData>
 }
+
 
 export type StudioEmailTemplateAssetUploadResult = {
   fileId: string

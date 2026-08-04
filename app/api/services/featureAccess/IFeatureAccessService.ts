@@ -1,4 +1,7 @@
-import type { UserRoleInfo } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
+import type {
+  EmailBetaAccessContext,
+  UserRoleInfo,
+} from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
 
 /**
  * Contexto já resolvido pelo getTeamAccess. Quando presente, o serviço
@@ -28,5 +31,10 @@ export interface FeatureAccessResult {
 
 export interface IFeatureAccessService {
   resolveAllowedSlugs(data: ResolveFeatureAccessInput): Promise<FeatureAccessResult>
+  /**
+   * D8: isenção de créditos só quando a feature de e-mail está em beta
+   * E o usuário/conta tem entitlement (EMAIL_CAMPAIGNS ou EMAIL).
+   */
+  resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
 }
 

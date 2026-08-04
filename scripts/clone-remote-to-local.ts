@@ -19,13 +19,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { LOCAL_DB_URL, assertLocalStackConfigured, probeLocalStack } from "./lib/local-stack";
 import { resolvePostgresPassword } from "./lib/resolve-postgres-password";
-import {
-  LOCAL_DB_URL as CATALOG_LOCAL_DB_URL,
-  syncBackofficeCatalog,
-} from "./lib/sync-backoffice-catalog";
-
-const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
+import { syncBackofficeCatalog } from "./lib/sync-backoffice-catalog";
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
 const POST_CLONE_MIGRATIONS = [
   resolve(
@@ -78,10 +74,6 @@ function getSupabaseCliEnv(): NodeJS.ProcessEnv {
     // Supabase CLI exige SUPABASE_DB_PASSWORD; mapeamos de POSTGRES_PASSWORD ou connection URL.
     ...(password ? { SUPABASE_DB_PASSWORD: password } : {}),
   };
-}
-
-function runSupabase(args: string[]) {
-  run("supabase", args, { env: getSupabaseCliEnv() });
 }
 
 function normalizeSqlIdentifier(identifier: string) {
@@ -256,8 +248,13 @@ function dumpRemote() {
 }
 
 function resetLocal() {
-  step("Reset local Supabase DB (re-apply migrations)");
-  runSupabase(["db", "reset", "--local", "--no-seed"]);
+  step("Reset local DB (re-apply migrations)");
+  // --yes: sem o shadow port do CLI batendo com o LOCAL_DB_URL, o comando
+  // acha que pode ser um alvo remoto e pede confirmação interativa — e força
+  // SSL (PGSSLMODE=disable evita isso; o Postgres local não tem SSL).
+  run("supabase", ["db", "reset", "--db-url", LOCAL_DB_URL, "--no-seed", "--yes"], {
+    env: { ...getSupabaseCliEnv(), PGSSLMODE: "disable" },
+  });
 }
 
 function preparePublicRestore() {
@@ -402,9 +399,20 @@ function cleanup() {
   rmSync(DUMP_DIR, { recursive: true, force: true });
 }
 
+function assertLocalStackRunning(): void {
+  assertLocalStackConfigured();
+  if (!probeLocalStack()) {
+    console.error(
+      "\n❌ Stack local não está rodando. Execute `bun run local:up` (ou `bun run dev:local`) antes do clone.",
+    );
+    process.exit(1);
+  }
+}
+
 async function main() {
   const started = Date.now();
-  console.info("Cloning remote Supabase → local docker stack");
+  console.info("Cloning remote Supabase → local hybrid stack");
+  assertLocalStackRunning();
   ensureDumpDir();
   dumpRemote();
   resetLocal();

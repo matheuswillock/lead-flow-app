@@ -6,6 +6,7 @@ import {
   EmailCampaignUseCase,
   type CreateCampaignInput,
   type ManualDispatchJob,
+  type ManualDispatchOptions,
 } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
 import { EmailContactImportUseCase } from "@/app/api/useCases/email/EmailContactImportUseCase"
@@ -14,6 +15,7 @@ import { emailAnalyticsUseCase } from "@/app/api/useCases/email/EmailAnalyticsUs
 import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
 import { EmailTeamVariablesUseCase } from "@/app/api/useCases/email/EmailTeamVariablesUseCase"
 import { backofficeStudioEmailRepository } from "@/app/api/infra/data/repositories/backoffice/studioEmail/BackofficeStudioEmailRepository"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 
 export type StudioEmailActor = {
   access: BackofficeAccess
@@ -29,13 +31,14 @@ function withManagedFlag<T extends ManagedRow>(row: T): Omit<T, "managedByBackof
   const { managedByBackofficeUserId, managedByCorretorStudio, ...rest } = row as ManagedRow & {
     managedByCorretorStudio?: boolean
   }
-  return {
+  const flagged = {
     ...(rest as Omit<T, "managedByBackofficeUserId">),
     managedByCorretorStudio:
       typeof managedByCorretorStudio === "boolean"
         ? managedByCorretorStudio
         : Boolean(managedByBackofficeUserId),
   }
+  return resolveEmailCreator(flagged)
 }
 
 function mapResultManaged(result: unknown): unknown {
@@ -164,20 +167,28 @@ export class BackofficeStudioEmailUseCase {
     return decorateOutput(output)
   }
 
-  async sendCampaign(actor: StudioEmailActor, campaignId: string): Promise<Output> {
+  async sendCampaign(
+    actor: StudioEmailActor,
+    campaignId: string,
+    options?: ManualDispatchOptions
+  ): Promise<Output> {
     const resolved = await resolveCtx(actor)
     if (resolved.error) return resolved.error
-    const output = await this.campaigns.send(campaignId, resolved.ctx)
+    const output = await this.campaigns.send(campaignId, resolved.ctx, options)
     if (output.isValid) {
       await stampCampaignTree(campaignId, actor.access.backofficeUserId, resolved.ctx.teamId)
     }
     return decorateOutput(output)
   }
 
-  async startManualDispatch(actor: StudioEmailActor, campaignId: string): Promise<Output> {
+  async startManualDispatch(
+    actor: StudioEmailActor,
+    campaignId: string,
+    options?: ManualDispatchOptions
+  ): Promise<Output> {
     const resolved = await resolveCtx(actor)
     if (resolved.error) return resolved.error
-    const output = await this.campaigns.startManualDispatch(campaignId, resolved.ctx)
+    const output = await this.campaigns.startManualDispatch(campaignId, resolved.ctx, options)
     if (output.isValid) {
       await stampCampaignTree(campaignId, actor.access.backofficeUserId, resolved.ctx.teamId)
     }

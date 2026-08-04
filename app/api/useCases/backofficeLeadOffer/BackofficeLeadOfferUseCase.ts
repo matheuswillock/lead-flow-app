@@ -1,3 +1,4 @@
+import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import { getFullUrl } from "@/lib/utils/app-url"
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone"
@@ -53,13 +54,16 @@ function deriveOfferStatus(
   return "active"
 }
 
-function mapListItem(offer: BackofficeLeadOfferRecord) {
+async function mapListItem(offer: BackofficeLeadOfferRecord) {
   const items = parseItemsJson(offer.itemsJson)
   const status = deriveOfferStatus(offer)
-  const shareUrl =
+  const offerTargetUrl =
     status === "active" && offer.tokenPlain
       ? getFullUrl(`/oferta/${offer.tokenPlain}`)
       : null
+  const shareUrl = offerTargetUrl
+    ? await backofficeShortLinkService.getOrCreate({ targetUrl: offerTargetUrl, expiresAt: offer.shareExpiresAt })
+    : null
 
   return {
     id: offer.id,
@@ -186,9 +190,14 @@ export class BackofficeLeadOfferUseCase {
         shareGeneratedByProfileId: profileId,
       })
 
+      const shareUrl = await backofficeShortLinkService.getOrCreate({
+        targetUrl: getFullUrl(`/oferta/${rawToken}`),
+        expiresAt: shareExpiresAt,
+      })
+
       return new Output(true, ["Oferta gerada com sucesso"], [], {
         offerId: offer.id,
-        shareUrl: getFullUrl(`/oferta/${rawToken}`),
+        shareUrl,
         expiresAt: shareExpiresAt.toISOString(),
         preContractExpiresAt: preContract.date.toISOString(),
       })
@@ -207,7 +216,7 @@ export class BackofficeLeadOfferUseCase {
     try {
       const offers = await this.offerRepository.findByLeadId(leadId)
       return new Output(true, [], [], {
-        offers: offers.map(mapListItem),
+        offers: await Promise.all(offers.map(mapListItem)),
       })
     } catch (error) {
       console.error("[BackofficeLeadOfferUseCase][listOffers] Erro ao listar ofertas:", error)
@@ -222,14 +231,14 @@ export class BackofficeLeadOfferUseCase {
     }
 
     if (offer.revokedAt || isOfferShareExpired(offer.shareExpiresAt)) {
-      return new Output(true, ["Oferta já estava indisponível"], [], mapListItem(offer))
+      return new Output(true, ["Oferta já estava indisponível"], [], await mapListItem(offer))
     }
 
     try {
       const revokedAt = new Date()
       await this.offerRepository.revoke(offerId, revokedAt)
       return new Output(true, ["Link da oferta revogado com sucesso"], [], {
-        ...mapListItem({ ...offer, revokedAt, shareExpiresAt: revokedAt, tokenPlain: null }),
+        ...(await mapListItem({ ...offer, revokedAt, shareExpiresAt: revokedAt, tokenPlain: null })),
       })
     } catch (error) {
       console.error("[BackofficeLeadOfferUseCase][revokeOffer] Erro ao revogar a oferta:", error)

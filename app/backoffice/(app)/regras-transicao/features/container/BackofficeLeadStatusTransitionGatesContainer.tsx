@@ -27,6 +27,7 @@ import {
 import { GATE_TYPE_LABELS } from "@/lib/leadStatusTransitionGates";
 import { leadStatusLabels } from "@/lib/lead-status";
 import { toast } from "sonner";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ALL_STATUSES = Object.keys(leadStatusLabels) as LeadStatus[];
 
@@ -67,7 +68,7 @@ export function BackofficeLeadStatusTransitionGatesContainer() {
   const loadGates = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/v1/backoffice/lead-status-transition-gates", {
+      const response = await fetch(`${API_CLIENT_BASE}/backoffice/lead-status-transition-gates`, {
         cache: "no-store",
       });
       const data = await response.json();
@@ -127,7 +128,7 @@ export function BackofficeLeadStatusTransitionGatesContainer() {
     if (!editingGate) return;
     setIsSaving(true);
     try {
-      const response = await fetch("/api/v1/backoffice/lead-status-transition-gates", {
+      const response = await fetch(`${API_CLIENT_BASE}/backoffice/lead-status-transition-gates`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

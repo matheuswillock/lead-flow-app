@@ -40,7 +40,12 @@ const OPERATORS_REQUIRING_VALUE = new Set(["eq", "neq", "contains", "before", "a
 
 /** false para is_empty/not_empty (e para consent/lead_status, que não têm value livre). */
 export function conditionNeedsValueInput(condition: RadarSegmentCondition): boolean {
-  if (condition.kind === "profile_field" || condition.kind === "lead_custom_field" || condition.kind === "lead_field") {
+  if (
+    condition.kind === "profile_field" ||
+    condition.kind === "lead_custom_field" ||
+    condition.kind === "lead_field" ||
+    condition.kind === "portfolio_field"
+  ) {
     return OPERATORS_REQUIRING_VALUE.has(condition.operator)
   }
   return false
@@ -90,6 +95,16 @@ function isConditionCompleteForSave(condition: RadarSegmentCondition): boolean {
       }
       return typeof condition.value === "string" && condition.value.length > 0
     }
+    case "portfolio_field": {
+      if (!condition.fieldKey) return false
+      if (!conditionNeedsValueInput(condition)) return true
+      if (condition.value === undefined) return false
+      if (condition.operator === "within_days") return isValidPositiveDaysValue(condition.value)
+      if (condition.fieldKey === "renewalAmount" || condition.fieldKey === "amount") {
+        return !Number.isNaN(Number(condition.value))
+      }
+      return typeof condition.value === "string" && condition.value.length > 0
+    }
   }
 }
 
@@ -119,6 +134,22 @@ export function getEventTypeIcon(eventType: string): LucideIcon {
   if (eventType.startsWith("portfolio.")) return RefreshCw
   if (eventType.startsWith("lead.") || eventType.startsWith("crm_lead")) return User
   return CircleDot
+}
+
+const CHANNEL_LABEL_MAP: Record<string, string> = {
+  email: "E-mail",
+  whatsapp: "WhatsApp",
+  form: "Formulário",
+  pixel: "Pixel",
+  lead: "CRM",
+  portfolio: "CRM",
+  profile: "CRM",
+}
+
+/** D9: mapeia um prefixo de `eventType` para o rótulo de canal exibido na aba Contatos. */
+export function eventTypePrefixToChannel(eventType: string): string {
+  const prefix = eventType.split(".")[0] ?? eventType
+  return CHANNEL_LABEL_MAP[prefix] ?? "Outros"
 }
 
 function toQueryString(params: URLSearchParams): string {

@@ -1,5 +1,6 @@
 import type { IPerformanceService, SendPerformanceExportEmailInput } from './IPerformanceService';
 import type { PerformanceData, PerformanceFiltersState } from '../context/PerformanceTypes';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const CACHE_VERSION = 2;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -73,7 +74,7 @@ class PerformanceService implements IPerformanceService {
     params.set('pageSize', String(filters.pageSize));
     if (scopeKey === 'all') params.set('teamScope', 'all');
 
-    const request = fetch(`/api/v1/performance/sales?${params.toString()}`, {
+    const request = fetch(`${API_CLIENT_BASE}/performance/sales?${params.toString()}`, {
       headers: {
         'x-supabase-user-id': supabaseId,
         'x-team-id': teamId,
@@ -110,7 +111,7 @@ class PerformanceService implements IPerformanceService {
     teamId: string,
     input: SendPerformanceExportEmailInput
   ): Promise<void> {
-    const res = await fetch('/api/v1/performance/sales/export/email', {
+    const res = await fetch(`${API_CLIENT_BASE}/performance/sales/export/email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

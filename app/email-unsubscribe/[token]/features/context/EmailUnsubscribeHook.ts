@@ -1,6 +1,7 @@
 import type { IEmailUnsubscribeService } from "../services/IEmailUnsubscribeService"
 import { emailUnsubscribeService } from "../services/EmailUnsubscribeService"
 import type { EmailUnsubscribeScope, EmailUnsubscribeState } from "./EmailUnsubscribeTypes"
+import { confirmUnsubscribeAction } from "../actions/confirmUnsubscribeAction"
 
 export function createInitialEmailUnsubscribeState(token: string): EmailUnsubscribeState {
   return {
@@ -33,15 +34,15 @@ export async function loadEmailUnsubscribeInfo(
 }
 
 export async function confirmEmailUnsubscribe(
-  service: IEmailUnsubscribeService,
+  _service: IEmailUnsubscribeService,
   token: string,
   scope: EmailUnsubscribeScope
 ): Promise<Pick<EmailUnsubscribeState, "completed" | "error">> {
-  const response = await service.unsubscribe(token, scope)
-  if (!response.isValid) {
+  const result = await confirmUnsubscribeAction(token, scope)
+  if (!result.success) {
     return {
       completed: false,
-      error: response.errorMessages[0] ?? "Não foi possível concluir o descadastro",
+      error: result.errorMessage ?? "Não foi possível concluir o descadastro",
     }
   }
   return { completed: true, error: null }

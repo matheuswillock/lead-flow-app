@@ -35,6 +35,7 @@ import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import type { TransferTargetItem } from "@/lib/multiskill/transfer-target-types";
 import { cn } from "@/lib/utils";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface TeamMemberOption {
   id: string;
@@ -184,7 +185,7 @@ export function TransferBetweenTeamsDialog({
       params.set("page", "1");
       params.set("pageSize", "50");
 
-      fetch(`/api/v1/teams/${activeTeamId}/transfer-targets?${params.toString()}`, {
+      fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/transfer-targets?${params.toString()}`, {
         headers: { "x-supabase-user-id": supabaseId },
       })
         .then((res) => res.json())
@@ -232,7 +233,7 @@ export function TransferBetweenTeamsDialog({
     let active = true;
     setMembersLoading(true);
 
-    fetch(`/api/v1/teams/${selectedTarget.teamId}/members`, {
+    fetch(`${API_CLIENT_BASE}/teams/${selectedTarget.teamId}/members`, {
       headers: {
         "x-supabase-user-id": supabaseId,
         "x-team-id": activeTeamId ?? "",
@@ -317,7 +318,7 @@ export function TransferBetweenTeamsDialog({
       body.destinationTeamId = targetTeamId;
     }
 
-    fetch("/api/v1/calendar/availability", {
+    fetch(`${API_CLIENT_BASE}/calendar/availability`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -413,7 +414,7 @@ export function TransferBetweenTeamsDialog({
           throw new Error("Destino MultiSkill inválido");
         }
 
-        const response = await fetch(`/api/v1/leads/${lead.id}/transfer-multiskill`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/transfer-multiskill`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -451,7 +452,7 @@ export function TransferBetweenTeamsDialog({
         return;
       }
 
-      const response = await fetch(`/api/v1/leads/${lead.id}/transfer-teams`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/transfer-teams`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

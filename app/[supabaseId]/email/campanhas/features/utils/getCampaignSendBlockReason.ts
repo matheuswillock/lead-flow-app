@@ -26,14 +26,16 @@ function resolveDailyDispatchBlockReason(
 export function getCampaignSendBlockReason(params: {
   campaign: CampaignRecipientTarget
   credits: CreditStatus | null
-  isCampaignsBetaAccess: boolean
+  /** Runtime host bypass (ex.: backoffice/studio). Never derive from showsBetaLabel. */
+  bypassPlanGate?: boolean
 }): string | undefined {
-  const { campaign, credits, isCampaignsBetaAccess } = params
+  const { campaign, credits, bypassPlanGate = false } = params
 
   const dailyBlockReason = resolveDailyDispatchBlockReason(campaign, credits)
   if (dailyBlockReason) return dailyBlockReason
 
-  if (isCampaignsBetaAccess || credits?.isBetaExempt) return undefined
+  // Plan/credit exemption must match backend resolveEmailBetaAccess via credits.isBetaExempt.
+  if (bypassPlanGate || credits?.isBetaExempt) return undefined
   if (!credits?.hasSubscription) {
     return "Ative um plano em Assinaturas para disparar campanhas"
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type HealthPlanOption = {
   id: string;
@@ -34,7 +35,7 @@ export function useHealthPlans(supabaseId?: string, teamId?: string | null) {
       const requestPromise =
         existingRequest ??
         (async (): Promise<HealthPlanOption[]> => {
-          const response = await fetch("/api/v1/health-plans", {
+          const response = await fetch(`${API_CLIENT_BASE}/health-plans`, {
             method: "GET",
             headers: {
               "x-supabase-user-id": supabaseId,

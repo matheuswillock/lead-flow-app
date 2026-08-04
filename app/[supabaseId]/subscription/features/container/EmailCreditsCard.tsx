@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useTimezone } from '@/app/context/TimezoneContext'
 import { formatIntimezone } from "@/lib/dates"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type CreditPlan = 'starter' | 'plus' | 'pro' | 'business'
 
@@ -53,14 +54,14 @@ const PLANS: Array<{
 ]
 
 async function fetchStatus(): Promise<CreditStatus | null> {
-  const res = await fetch('/api/v1/email/credits/status')
+  const res = await fetch(`${API_CLIENT_BASE}/email/credits/status`)
   if (!res.ok) return null
   const json = await res.json()
   return json.isValid ? (json.result as CreditStatus) : null
 }
 
 async function subscribePlan(plan: CreditPlan): Promise<boolean> {
-  const res = await fetch('/api/v1/email/credits/subscribe', {
+  const res = await fetch(`${API_CLIENT_BASE}/email/credits/subscribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ plan }),
@@ -71,7 +72,7 @@ async function subscribePlan(plan: CreditPlan): Promise<boolean> {
 }
 
 async function cancelPlan(): Promise<boolean> {
-  const res = await fetch('/api/v1/email/credits/cancel', { method: 'POST' })
+  const res = await fetch(`${API_CLIENT_BASE}/email/credits/cancel`, { method: 'POST' })
   const json = await res.json()
   if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
   return true

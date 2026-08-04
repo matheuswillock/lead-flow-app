@@ -263,6 +263,146 @@ const leadFieldConditionSchema = z
     }
   })
 
+
+
+const portfolioStatusSchema = z.enum(["active", "pending", "canceled"])
+const renewalStatusSchema = z.enum(["to_renew", "contacted", "proposal", "renewed", "lost"])
+const portfolioSourceSchema = z.enum(["crm", "manual", "brokerage_transfer"])
+const contractTypeSchema = z.enum(["individual", "corporate", "adhesion"])
+
+/** Fonte única para o frontend popular selects de portfolio_field. */
+export const RADAR_SEGMENT_PORTFOLIO_STATUSES = portfolioStatusSchema.options
+export const RADAR_SEGMENT_RENEWAL_STATUSES = renewalStatusSchema.options
+export const RADAR_SEGMENT_PORTFOLIO_SOURCES = portfolioSourceSchema.options
+export const RADAR_SEGMENT_CONTRACT_TYPES = contractTypeSchema.options
+
+/**
+ * D13: catálogo fechado de colunas de `LeadPortfolio` (contrato atual) e
+ * `LeadFinalized` (histórico). `entity` decide qual repositório consultar.
+ */
+export const PORTFOLIO_FIELD_CATALOG = {
+  portfolioStatus: {
+    entity: "portfolio" as const,
+    operators: ["eq", "neq"] as const,
+    valueKind: "enum" as const,
+    enumValues: RADAR_SEGMENT_PORTFOLIO_STATUSES,
+  },
+  renewalStatus: {
+    entity: "portfolio" as const,
+    operators: ["eq", "neq"] as const,
+    valueKind: "enum" as const,
+    enumValues: RADAR_SEGMENT_RENEWAL_STATUSES,
+  },
+  renewalAmount: {
+    entity: "portfolio" as const,
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "is_empty", "not_empty"] as const,
+    valueKind: "number" as const,
+  },
+  source: {
+    entity: "portfolio" as const,
+    operators: ["eq", "neq"] as const,
+    valueKind: "enum" as const,
+    enumValues: RADAR_SEGMENT_PORTFOLIO_SOURCES,
+  },
+  lastContactAt: {
+    entity: "portfolio" as const,
+    operators: ["before", "after", "within_days", "is_empty", "not_empty"] as const,
+    valueKind: "date" as const,
+  },
+  finalizedDateAt: {
+    entity: "finalized" as const,
+    operators: ["before", "after", "within_days"] as const,
+    valueKind: "date" as const,
+  },
+  amount: {
+    entity: "finalized" as const,
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte"] as const,
+    valueKind: "number" as const,
+  },
+  contractType: {
+    entity: "finalized" as const,
+    operators: ["eq", "neq"] as const,
+    valueKind: "enum" as const,
+    enumValues: RADAR_SEGMENT_CONTRACT_TYPES,
+  },
+  operadora: {
+    entity: "finalized" as const,
+    operators: ["eq", "neq", "contains", "is_empty", "not_empty"] as const,
+    valueKind: "text" as const,
+  },
+  productName: {
+    entity: "finalized" as const,
+    operators: ["eq", "neq", "contains", "is_empty", "not_empty"] as const,
+    valueKind: "text" as const,
+  },
+} as const
+
+type PortfolioFieldKey = keyof typeof PORTFOLIO_FIELD_CATALOG
+const PORTFOLIO_FIELD_KEYS = Object.keys(PORTFOLIO_FIELD_CATALOG) as [PortfolioFieldKey, ...PortfolioFieldKey[]]
+const PORTFOLIO_FIELD_NO_VALUE_OPERATORS = new Set(["is_empty", "not_empty"])
+
+const portfolioFieldConditionSchema = z
+  .object({
+    kind: z.literal("portfolio_field"),
+    fieldKey: z.enum(PORTFOLIO_FIELD_KEYS),
+    operator: z.string().min(1, "operator é obrigatório"),
+    value: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const entry = PORTFOLIO_FIELD_CATALOG[data.fieldKey]
+    if (!entry.operators.includes(data.operator as never)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Operador inválido para "${data.fieldKey}": use ${entry.operators.join(", ")}`,
+        path: ["operator"],
+      })
+      return
+    }
+    if (PORTFOLIO_FIELD_NO_VALUE_OPERATORS.has(data.operator)) return
+    if (data.value === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `O operador "${data.operator}" exige um valor`, path: ["value"] })
+      return
+    }
+    if (entry.valueKind === "enum") {
+      if (typeof data.value !== "string" || !(entry.enumValues as readonly string[]).includes(data.value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `value inválido para "${data.fieldKey}": use ${entry.enumValues.join(", ")}`,
+          path: ["value"],
+        })
+      }
+      return
+    }
+    if (entry.valueKind === "number") {
+      const num = typeof data.value === "string" ? (data.value.trim() === "" ? NaN : Number(data.value)) : Number(data.value)
+      if (
+        data.value === null ||
+        data.value === undefined ||
+        typeof data.value === "boolean" ||
+        Array.isArray(data.value) ||
+        !Number.isFinite(num)
+      ) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser um número válido", path: ["value"] })
+      }
+      return
+    }
+    if (entry.valueKind === "date") {
+      if (data.operator === "within_days") {
+        if (!isValidWithinDaysValue(data.value)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser um número de dias positivo", path: ["value"] })
+        }
+        return
+      }
+      if (!isValidIsoDateValue(data.value)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser uma data válida (ISO 8601)", path: ["value"] })
+      }
+      return
+    }
+    if (typeof data.value !== "string") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "value deve ser uma string", path: ["value"] })
+    }
+  })
+
 const emailContactListConditionSchema = z.object({
   kind: z.literal("email_contact_list"),
   listIds: z.array(z.string().uuid("listIds deve conter UUIDs válidos")).min(1, "informe ao menos uma lista"),
@@ -288,6 +428,7 @@ export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
   leadCustomFieldConditionSchema,
   leadStatusConditionSchema,
   leadFieldConditionSchema,
+  portfolioFieldConditionSchema,
   emailContactListConditionSchema,
   emailContactFieldConditionSchema,
 ])

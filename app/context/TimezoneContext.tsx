@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { toast } from "sonner"
 import { detectBrowserTimezone, getTimezoneDisplayName, resolveTimezone } from "@/lib/dates"
 import { useAuth } from "./AuthContext"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface TimezoneContextType {
   tz: string
@@ -29,7 +30,7 @@ export function TimezoneProvider({ children }: { children: ReactNode }) {
 
     const load = async () => {
       try {
-        const res = await fetch(`/api/v1/profiles/${user.id}/timezone`, { cache: "no-store" })
+        const res = await fetch(`${API_CLIENT_BASE}/profiles/${user.id}/timezone`, { cache: "no-store" })
         if (!res.ok) return
         const data = await res.json()
         const profileTz = resolveTimezone(data.result?.timezone)
@@ -63,7 +64,7 @@ export function TimezoneProvider({ children }: { children: ReactNode }) {
     const previous = tz
     setTzState(newTz)
     try {
-      const res = await fetch(`/api/v1/profiles/${user.id}/timezone`, {
+      const res = await fetch(`${API_CLIENT_BASE}/profiles/${user.id}/timezone`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: newTz }),

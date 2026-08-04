@@ -1,10 +1,12 @@
 'use client'
 
 import { createContext, ReactNode, useContext } from 'react'
-import type { Template, TemplatesState, TemplateTab } from './TemplatesTypes'
+import type { Template, TemplateRankingResult, TemplatesState, TemplateTab } from './TemplatesTypes'
 import { useTemplates } from './TemplatesHook'
 
 interface ITemplatesContext extends TemplatesState {
+  ranking: TemplateRankingResult | null
+  rankingLoading: boolean
   fetchTemplates: () => Promise<void>
   setActiveTab: (tab: TemplateTab) => void
   activeRole: 'manager' | 'backoffice' | 'operator' | null

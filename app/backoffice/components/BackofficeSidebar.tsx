@@ -28,6 +28,7 @@ import {
   FileText,
   Megaphone,
   ChevronRight,
+  SearchCheck,
 } from "lucide-react"
 import {
   Sidebar,
@@ -167,6 +168,7 @@ const navigationItems: NavItem[] = [
       },
     ],
   },
+  { title: "Extração de Leads", url: "/backoffice/extracao-leads", icon: SearchCheck },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
   { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },

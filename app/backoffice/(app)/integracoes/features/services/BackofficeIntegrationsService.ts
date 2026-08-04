@@ -5,6 +5,7 @@ import type {
   BackofficeWebhookTokenExpiryMode,
 } from "../context/BackofficeIntegrationsTypes"
 import type { IBackofficeIntegrationsService } from "./IBackofficeIntegrationsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -24,7 +25,7 @@ async function parseOutput<T>(response: Response): Promise<T> {
 
 export class BackofficeIntegrationsService implements IBackofficeIntegrationsService {
   async getMetaConfig(): Promise<BackofficeMetaIntegrationConfig> {
-    const response = await fetch(`/api/v1/backoffice/integrations/meta`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/integrations/meta`, {
       method: "GET",
       cache: "no-store",
     })
@@ -34,7 +35,7 @@ export class BackofficeIntegrationsService implements IBackofficeIntegrationsSer
   async generateMetaToken(
     expiryMode: BackofficeWebhookTokenExpiryMode
   ): Promise<BackofficeMetaIntegrationConfig> {
-    const response = await fetch(`/api/v1/backoffice/integrations/meta`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/integrations/meta`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expiryMode }),
@@ -44,7 +45,7 @@ export class BackofficeIntegrationsService implements IBackofficeIntegrationsSer
 
   async listMetaTokenHistory(limit = 15): Promise<BackofficeMetaWebhookTokenHistoryItem[]> {
     const response = await fetch(
-      `/api/v1/backoffice/integrations/meta?view=tokens&limit=${limit}`,
+      `${API_CLIENT_BASE}/backoffice/integrations/meta?view=tokens&limit=${limit}`,
       { method: "GET", cache: "no-store" }
     )
     return parseOutput<BackofficeMetaWebhookTokenHistoryItem[]>(response)
@@ -52,7 +53,7 @@ export class BackofficeIntegrationsService implements IBackofficeIntegrationsSer
 
   async listMetaLogs(limit = 15): Promise<BackofficeMetaWebhookRequestLogItem[]> {
     const response = await fetch(
-      `/api/v1/backoffice/integrations/meta?view=logs&limit=${limit}`,
+      `${API_CLIENT_BASE}/backoffice/integrations/meta?view=logs&limit=${limit}`,
       { method: "GET", cache: "no-store" }
     )
     return parseOutput<BackofficeMetaWebhookRequestLogItem[]>(response)

@@ -411,6 +411,8 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 
 ## Estágio D8 — Bridging de `PublicFormMetricEvent` → `RadarEvent`
 
+**Status:** ✅ Implementado (2026-08-04) — `SyncPublicFormMetricToRadarUseCase` + `syncPublicFormMetricToRadarInline` nos pontos de persistência (`PublicFormsService.recordMetric`, submission/progress).
+
 **Prompt Codex:**
 
 > Leia `lib/publicForms/**` (`PublicFormMetricEvent`) e `RADAR_SPEC.md` (D7). Dois caminhos: (1) eventos com `leadId` resolvido (`form_completed`/`lead_created`/`lead_attached`) viram `RadarEvent` via identidade `lead_id`, reusando `eventKey` (já `@unique` em `PublicFormMetricEvent`) como `sourceId` de dedupe (`appendEventIfNew`); (2) eventos pré-lead (`form_viewed`/`form_started`/`question_viewed`/`question_answered`/`question_skipped`, só com `visitorSessionId`) resolvem via a identidade anônima do D7 — criando perfil anônimo se necessário mesmo sem pixel instalado na página do formulário. Hook fire-and-forget no ponto onde `PublicFormMetricEvent` já é persistido (não duplicar a gravação, só espelhar para o Radar). Testes: cada tipo de evento de formulário, dedupe via `eventKey`, criação de perfil anônimo sem pixel prévio. Bateria completa.
@@ -571,3 +573,23 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 - "Sete pontos de contato" visíveis no perfil; export CSV/Excel funcional; lista de e-mail materializável a partir de segmento.
 - Nenhuma fonte de evento nova dispara e-mail fora do fluxo de campanhas existente (invariante DA11 preservada, verificável por diff).
 - `governance:check` verde sem novas entradas de allowlist; nenhuma dependência nova; cobertura de teste em todo serviço/use case novo.
+
+---
+
+## Fase D — status pós-unificado (PR #633)
+
+**Branch:** `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)  
+**Verificado em:** 2026-08-04 (código no HEAD do unificado; migrations D12/D14 presentes no repo — **não** afirmar push remoto sem evidência).
+
+| Estágio | Status |
+|---|---|
+| R1–R5 | ✅ Concluídos |
+| C1–C6 | ✅ Concluídos — C5×DA11: alerta do builder/wizard alinhado (segmento >2.000 rejeitado; materializar lista para sub-campanhas) |
+| D1–D7 | ✅ Concluídos (origem, sync inline, email-only, marcos, `lead_field`, pixel/`visitor_session`) |
+| D8 | ✅ Concluído — `SyncPublicFormMetricToRadarUseCase` + `syncPublicFormMetricToRadarInline` (`recordMetric` / submission / progress) |
+| D9–D12 | ✅ Concluídos (touchpoints, UI event-driven, auditoria impeccable, hardening/Postman/RLS pixel/docs/ERD) |
+| D13–D18 | ✅ Concluídos (`portfolio_field`/Contratos, perfis titular/dependente, materializar lista, export, polimento UI, rankings templates/forms) |
+
+**Critério de sucesso “formulário público alimenta o Radar por evento”:** atendido via bridge D8. UI sem botão de sync manual (D10).
+
+**Invariantes preservados:** audiência de segmento ≤ `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`; teto diário via `wouldExceedDailyEmailCap`; sem CDP externa; sem segundo store de timeline além de `LeadActivity` × `RadarEvent`.

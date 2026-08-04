@@ -32,6 +32,7 @@ import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status";
 import { maskPhone } from "@/lib/masks";
 import { maskEmailForUnsubscribe } from "@/lib/email/unsubscribe-token";
 import { cn } from "@/lib/utils";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface LeadMergeDialogProps {
   open: boolean;
@@ -94,7 +95,7 @@ export function LeadMergeDialog({
         search: search.trim(),
         limit: "10",
       });
-      const response = await fetch(`/api/v1/leads?${params.toString()}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads?${params.toString()}`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": teamId,
@@ -153,7 +154,7 @@ export function LeadMergeDialog({
 
     setMerging(true);
     try {
-      const response = await fetch(`/api/v1/leads/${targetLead.id}/merge`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${targetLead.id}/merge`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
