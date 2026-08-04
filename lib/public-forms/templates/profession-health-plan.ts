@@ -184,22 +184,6 @@ export function createProfessionHealthPlanDraft(): PublicFormDraftInput {
     },
   ]
 
-  const simulationThankYouPage = createDefaultThankYouPage({
-    name: "Resultado da simulação",
-    title: "Simulação de {firstName} está pronta",
-    description:
-      "Veja abaixo a estimativa de economia com base nas suas respostas. Os valores podem variar.",
-    kind: "simulation",
-    isDefault: false,
-    actions: [
-      {
-        id: crypto.randomUUID(),
-        label: "Agendar reunião gratuita",
-        type: "close",
-      },
-    ],
-  })
-
   const defaultThankYouPage = createDefaultThankYouPage({
     name: "Página padrão",
     title: "Respostas enviadas",
@@ -247,7 +231,7 @@ export function createProfessionHealthPlanDraft(): PublicFormDraftInput {
     successTitle: defaultThankYouPage.title,
     successDescription: defaultThankYouPage.description,
     successActions: defaultThankYouPage.actions,
-    thankYouPages: [simulationThankYouPage, defaultThankYouPage],
+    thankYouPages: [defaultThankYouPage],
     defaultThankYouPageId: defaultThankYouPage.id,
     useDefaultTheme: true,
     backgroundColor: "#FFF5F0",
@@ -258,8 +242,8 @@ export function createProfessionHealthPlanDraft(): PublicFormDraftInput {
     inputBackgroundColor: "#FFFFFF",
     schedulingEnabled: false,
     meetingDurationMinutes: 30,
-    schedulingMessage: "Reunião de simulação de redução de plano",
-    formKind: "health_plan_simulator",
+    schedulingMessage: "Reunião de análise de plano de saúde",
+    formKind: "standard",
     questions,
     rules: [
       {

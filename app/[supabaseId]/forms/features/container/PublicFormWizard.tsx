@@ -367,6 +367,16 @@ export function PublicFormWizard({
   const [settings, setSettings] = useState<PublicFormSettings | null>(null)
   const [confirmExit, setConfirmExit] = useState(false)
 
+  // Team id may arrive after client-side TeamProvider bootstrap; apply restricted
+  // template once access is known, without overwriting an already-filled draft.
+  useEffect(() => {
+    if (formId || !isProfessionHealthPlanTemplate || !canUseProfessionHealthPlanTemplate) return
+    setDraft((current) => {
+      if (current.questions.length > 0) return current
+      return createProfessionHealthPlanDraft()
+    })
+  }, [formId, isProfessionHealthPlanTemplate, canUseProfessionHealthPlanTemplate])
+
   useEffect(() => {
     setOverride({ label: formId ? draft.name || "Editar formulário" : "Novo formulário" })
     return () => setOverride(null)
