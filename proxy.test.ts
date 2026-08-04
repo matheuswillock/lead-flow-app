@@ -18,12 +18,36 @@ const USER_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 const USER_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 const BASE_URL = "http://localhost:3000"
 
+// Capturar implementações reais antes do spyOn — mockImplementation(authSessions.fn)
+// após o spy aponta para o próprio spy e gera recursão infinita (bun:test).
+const originalNextWithSession = authSessions.nextWithSession
+const originalRewriteWithSession = authSessions.rewriteWithSession
+
+let apiQIpSeq = 0
+
+/** IP único por request /api/q — o rate-limit do proxy é module-level. */
+function uniqueApiQHeaders(
+  extra?: Record<string, string>,
+): Record<string, string> {
+  apiQIpSeq += 1
+  return {
+    "x-forwarded-for": `198.51.100.${(apiQIpSeq % 250) + 1}`,
+    ...extra,
+  }
+}
+
 function makeRequest(
   pathname: string,
-  options?: { headers?: Record<string, string> },
+  options?: { headers?: Record<string, string>; search?: string },
 ) {
+  const url = new URL(pathname, BASE_URL)
+  if (options?.search) {
+    url.search = options.search.startsWith("?")
+      ? options.search
+      : `?${options.search}`
+  }
   return new NextRequest(
-    new URL(pathname, BASE_URL),
+    url,
     options?.headers ? { headers: options.headers } : undefined,
   )
 }
@@ -57,10 +81,12 @@ describe("proxy", () => {
       "validateBackofficeAdhesionToken",
     )
     nextWithSessionSpy = spyOn(authSessions, "nextWithSession").mockImplementation(
-      authSessions.nextWithSession,
+      ((...args: Parameters<typeof originalNextWithSession>) =>
+        originalNextWithSession(...args)) as typeof originalNextWithSession,
     )
     rewriteWithSessionSpy = spyOn(authSessions, "rewriteWithSession").mockImplementation(
-      authSessions.rewriteWithSession,
+      ((...args: Parameters<typeof originalRewriteWithSession>) =>
+        originalRewriteWithSession(...args)) as typeof originalRewriteWithSession,
     )
 
     updateSessionSpy.mockResolvedValue(makeSession(null))
@@ -169,38 +195,144 @@ describe("proxy", () => {
     expect(init?.request?.headers?.get("x-supabase-user-id")).toBe(USER_A)
   })
 
-  it("rewrites /api/q to /api/v1 after session refresh and injects x-supabase-user-id", async () => {
-    updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+  describe("api/q client slug masking (regression)", () => {
+    function getRewriteUrl(callIndex = 0) {
+      return rewriteWithSessionSpy.mock.calls[callIndex]?.[1] as URL | string
+    }
 
-    await proxy(makeRequest("/api/q/leads"))
+    function getRewriteInit(callIndex = 0) {
+      return rewriteWithSessionSpy.mock.calls[callIndex]?.[2] as
+        | { request?: { headers?: Headers } }
+        | undefined
+    }
 
-    expect(updateSessionSpy).toHaveBeenCalled()
-    expect(rewriteWithSessionSpy).toHaveBeenCalled()
-    expect(nextWithSessionSpy).not.toHaveBeenCalled()
+    it("does not early-rewrite before updateSession (getTeamAccess requires session header)", async () => {
+      // Regression: early NextResponse.rewrite() skipped updateSession and
+      // x-supabase-user-id injection, so getTeamAccess() returned 401.
+      const callOrder: string[] = []
+      updateSessionSpy.mockImplementation(async () => {
+        callOrder.push("updateSession")
+        return makeSession(makeUser(USER_A))
+      })
+      rewriteWithSessionSpy.mockImplementation(
+        ((...args: Parameters<typeof originalRewriteWithSession>) => {
+          callOrder.push("rewriteWithSession")
+          return originalRewriteWithSession(...args)
+        }) as typeof originalRewriteWithSession,
+      )
 
-    const rewriteUrl = rewriteWithSessionSpy.mock.calls[0]?.[1] as URL
-    expect(String(rewriteUrl)).toContain("/api/v1/leads")
-    expect(String(rewriteUrl)).not.toContain("/api/q/")
+      await proxy(makeRequest("/api/q/leads", { headers: uniqueApiQHeaders() }))
 
-    const init = rewriteWithSessionSpy.mock.calls[0]?.[2] as
-      | { request?: { headers?: Headers } }
-      | undefined
-    expect(init?.request?.headers?.get("x-supabase-user-id")).toBe(USER_A)
-  })
+      expect(callOrder).toEqual(["updateSession", "rewriteWithSession"])
+      expect(updateSessionSpy).toHaveBeenCalledTimes(1)
+      expect(rewriteWithSessionSpy).toHaveBeenCalledTimes(1)
+      expect(nextWithSessionSpy).not.toHaveBeenCalled()
+    })
 
-  it("overwrites spoofed x-supabase-user-id on /api/q routes", async () => {
-    updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+    it("rewrites /api/q to /api/v1 and injects x-supabase-user-id from session", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
 
-    await proxy(
-      makeRequest("/api/q/teams/status-rules", {
-        headers: { "x-supabase-user-id": USER_B },
-      }),
-    )
+      await proxy(makeRequest("/api/q/leads", { headers: uniqueApiQHeaders() }))
 
-    const init = rewriteWithSessionSpy.mock.calls[0]?.[2] as
-      | { request?: { headers?: Headers } }
-      | undefined
-    expect(init?.request?.headers?.get("x-supabase-user-id")).toBe(USER_A)
+      expect(String(getRewriteUrl())).toBe(`${BASE_URL}/api/v1/leads`)
+      expect(getRewriteInit()?.request?.headers?.get("x-supabase-user-id")).toBe(
+        USER_A,
+      )
+    })
+
+    it("overwrites spoofed x-supabase-user-id on /api/q routes", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+
+      await proxy(
+        makeRequest("/api/q/teams/status-rules", {
+          headers: uniqueApiQHeaders({ "x-supabase-user-id": USER_B }),
+        }),
+      )
+
+      expect(getRewriteInit()?.request?.headers?.get("x-supabase-user-id")).toBe(
+        USER_A,
+      )
+    })
+
+    it("clears x-supabase-user-id on /api/q when there is no session user", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(null))
+
+      await proxy(
+        makeRequest("/api/q/notifications/unread-count", {
+          headers: uniqueApiQHeaders({ "x-supabase-user-id": USER_B }),
+        }),
+      )
+
+      expect(rewriteWithSessionSpy).toHaveBeenCalledTimes(1)
+      expect(
+        getRewriteInit()?.request?.headers?.get("x-supabase-user-id"),
+      ).toBeNull()
+      expect(String(getRewriteUrl())).toContain(
+        "/api/v1/notifications/unread-count",
+      )
+    })
+
+    it("preserves nested path and query string when rewriting /api/q", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+      const teamId = "28f7b9e8-9516-4a08-864c-9ff3e085ba87"
+
+      await proxy(
+        makeRequest(`/api/q/teams/${teamId}/crm/filter-presets`, {
+          headers: uniqueApiQHeaders(),
+          search: "includeInactive=true",
+        }),
+      )
+
+      const rewritten = new URL(String(getRewriteUrl()))
+      expect(rewritten.pathname).toBe(
+        `/api/v1/teams/${teamId}/crm/filter-presets`,
+      )
+      expect(rewritten.searchParams.get("includeInactive")).toBe("true")
+      expect(rewritten.pathname.startsWith("/api/q")).toBe(false)
+    })
+
+    it("sets security headers on the rewritten /api/q response", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+
+      const response = await proxy(
+        makeRequest("/api/q/health-plans", { headers: uniqueApiQHeaders() }),
+      )
+
+      expect(response.status).not.toBe(429)
+      expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
+      expect(response.headers.get("X-Frame-Options")).toBe("DENY")
+    })
+
+    it("uses rewriteWithSession (not nextWithSession) so session cookies survive the rewrite", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+
+      await proxy(
+        makeRequest("/api/q/dashboard/summary", { headers: uniqueApiQHeaders() }),
+      )
+
+      expect(rewriteWithSessionSpy).toHaveBeenCalledTimes(1)
+      expect(nextWithSessionSpy).not.toHaveBeenCalled()
+    })
+
+    it("rate-limits /api/q before updateSession and returns 429", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+      // IP único por execução — o contador do proxy é module-level.
+      const headers = uniqueApiQHeaders()
+      const sessionCallsBefore = updateSessionSpy.mock.calls.length
+      const rewriteCallsBefore = rewriteWithSessionSpy.mock.calls.length
+
+      let lastStatus = 0
+      for (let i = 0; i < 121; i++) {
+        const response = await proxy(
+          makeRequest("/api/q/leads", { headers }),
+        )
+        lastStatus = response.status
+      }
+
+      expect(lastStatus).toBe(429)
+      expect(updateSessionSpy.mock.calls.length - sessionCallsBefore).toBe(120)
+      expect(rewriteWithSessionSpy.mock.calls.length - rewriteCallsBefore).toBe(120)
+    })
   })
 
   it("redirects unauthenticated backoffice routes to backoffice sign-in", async () => {
