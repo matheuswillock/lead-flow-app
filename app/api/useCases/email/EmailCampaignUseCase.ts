@@ -598,6 +598,7 @@ export class EmailCampaignUseCase {
             templateId: true,
             contactListId: true,
             radarSegmentSlug: true,
+            audienceContactIds: true,
             errorMessage: true,
             _count: { select: { subCampaigns: true } },
           },
@@ -653,12 +654,15 @@ export class EmailCampaignUseCase {
         childAggregates.map((row) => [row.parentCampaignId as string, row._sum])
       )
 
+      // Campanhas com audienceContactIds congelado (ex.: segmento+lista) mantêm totalRecipients
+      // persistido — countActiveRecipients prioriza só o segmento Radar e ignora a união.
       const dynamicRecipientCounts = new Map(
         await Promise.all(
           campaigns
             .filter(
               (campaign) =>
                 campaign._count.subCampaigns === 0 &&
+                campaign.audienceContactIds.length === 0 &&
                 ["draft", "scheduled", "sending"].includes(campaign.status)
             )
             .map(async (campaign) => {
@@ -938,10 +942,10 @@ export class EmailCampaignUseCase {
           ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
           : null
 
-        const createCombined = async () => {
+        const createCombinedInDb = async (db: Prisma.TransactionClient | typeof prisma) => {
           if (!plan.isParentCampaign) {
             const single = plan.subCampaigns[0]
-            return prisma.emailCampaign.create({
+            return db.emailCampaign.create({
               data: {
                 id: randomUUID(),
                 teamId: ctx.teamId,
@@ -967,57 +971,62 @@ export class EmailCampaignUseCase {
             ? "scheduled"
             : "draft"
 
-          return prisma.$transaction(async (tx) => {
-            const parent = await tx.emailCampaign.create({
+          const parent = await db.emailCampaign.create({
+            data: {
+              id: parentId,
+              teamId: ctx.teamId,
+              createdBy: ctx.profileId,
+              name: trimmedName,
+              description: data.description?.trim() ? data.description.trim() : null,
+              templateId: data.templateId,
+              contactListId: contactListIds.length === 1 ? contactListIds[0] ?? null : null,
+              radarSegmentSlug: effectiveRadarSlug ?? null,
+              sourceContactListIds: contactListIds,
+              status: parentStatus,
+              scheduledAt: null,
+              totalRecipients: plan.totalRecipients,
+            },
+          })
+
+          const subCampaigns = []
+          for (const sub of plan.subCampaigns) {
+            const child = await db.emailCampaign.create({
               data: {
-                id: parentId,
+                id: randomUUID(),
                 teamId: ctx.teamId,
                 createdBy: ctx.profileId,
-                name: trimmedName,
+                name: sub.name,
                 description: data.description?.trim() ? data.description.trim() : null,
                 templateId: data.templateId,
-                contactListId: contactListIds.length === 1 ? contactListIds[0] ?? null : null,
-                radarSegmentSlug: effectiveRadarSlug ?? null,
-                sourceContactListIds: contactListIds,
-                status: parentStatus,
-                scheduledAt: null,
-                totalRecipients: plan.totalRecipients,
+                contactListId: sub.contactListId ?? null,
+                parentCampaignId: parentId,
+                subCampaignIndex: sub.index,
+                audienceContactIds: sub.audienceContactIds ?? [],
+                status: sub.scheduledAt ? "scheduled" : "draft",
+                scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
+                totalRecipients: sub.totalRecipients,
+              },
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                subCampaignIndex: true,
+                scheduledAt: true,
+                totalRecipients: true,
+                status: true,
               },
             })
+            subCampaigns.push(child)
+          }
 
-            const subCampaigns = []
-            for (const sub of plan.subCampaigns) {
-              const child = await tx.emailCampaign.create({
-                data: {
-                  id: randomUUID(),
-                  teamId: ctx.teamId,
-                  createdBy: ctx.profileId,
-                  name: sub.name,
-                  description: data.description?.trim() ? data.description.trim() : null,
-                  templateId: data.templateId,
-                  contactListId: sub.contactListId ?? null,
-                  parentCampaignId: parentId,
-                  subCampaignIndex: sub.index,
-                  audienceContactIds: sub.audienceContactIds ?? [],
-                  status: sub.scheduledAt ? "scheduled" : "draft",
-                  scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
-                  totalRecipients: sub.totalRecipients,
-                },
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                  subCampaignIndex: true,
-                  scheduledAt: true,
-                  totalRecipients: true,
-                  status: true,
-                },
-              })
-              subCampaigns.push(child)
-            }
+          return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
+        }
 
-            return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
-          })
+        const createCombined = async () => {
+          if (!plan.isParentCampaign) {
+            return createCombinedInDb(prisma)
+          }
+          return prisma.$transaction(async (tx) => createCombinedInDb(tx))
         }
 
         if (!customSegmentId) {
@@ -1028,20 +1037,19 @@ export class EmailCampaignUseCase {
           return new Output(true, [message], [], result)
         }
 
-        const result = await prisma.$transaction(async (tx) => {
+        // Mantém o advisory lock até a campanha existir (evita remoção concorrente do segmento)
+        const created = await prisma.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
           const stillActive = await tx.teamRadarSegment.findFirst({
             where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
           })
           if (!stillActive) return null
-          // Lock adquirido; createCombined usa prisma root — ok após validação
-          return "ok" as const
+          return createCombinedInDb(tx)
         })
-        if (!result) {
+        if (!created) {
           return new Output(false, [], ["Segmento Radar inválido"], null)
         }
 
-        const created = await createCombined()
         const message = plan.isParentCampaign
           ? "Campanha criada com sub-campanhas"
           : "Campanha criada com sucesso"
