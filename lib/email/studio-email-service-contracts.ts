@@ -9,7 +9,9 @@ import type {
 import type {
   AnalyticsData,
   AnalyticsPeriod,
+  CompareCampaignsData,
   DispatchPreviewData,
+  OverviewData,
 } from "@/app/[supabaseId]/email/campanhas/features/components/analytics/AnalyticsTypes"
 import type { ContactList as ContatoList, Contact } from "@/app/[supabaseId]/email/contatos/features/context/ContatosTypes"
 import type {
@@ -277,7 +279,14 @@ export interface StudioEmailHistoricoService {
 export interface StudioEmailCampaignAnalyticsService {
   getAnalytics(period: AnalyticsPeriod, timezone: string, campaignId?: string): Promise<AnalyticsData>
   getDispatchPreview(campaignId: string, dispatchId: string): Promise<DispatchPreviewData>
+  getOverview?(): Promise<OverviewData>
+  compareCampaigns?(
+    campaignIds: string[],
+    period: AnalyticsPeriod,
+    timezone: string,
+  ): Promise<CompareCampaignsData>
 }
+
 
 export type StudioEmailTemplateAssetUploadResult = {
   fileId: string

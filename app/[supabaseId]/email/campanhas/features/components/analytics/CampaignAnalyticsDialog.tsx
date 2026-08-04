@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
 import { CampaignLogsTab } from "../CampaignLogsTab"
+import { CampaignComparePanel } from "./CampaignComparePanel"
 import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
 import { MetricsSummaryCards } from "./MetricsSummaryCards"
@@ -106,6 +108,8 @@ export function CampaignAnalyticsDialog({
           loading={initialLoading}
         />
       ) : null}
+      <Separator />
+      <CampaignComparePanel period={period} preselectedCampaignId={campaignId} />
     </>
   )
 

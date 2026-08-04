@@ -525,15 +525,30 @@ export class RadarService {
     const displayName = input.name.trim()
     const normalizedName = normalizeRadarName(displayName)
 
-    if (!normalizedDocument || !normalizedName) {
-      return "skipped"
-    }
-
     const existingLink = await radarRepository.findSourceLinkBySource({
       teamId: input.scope.teamId,
       sourceType: "lead_finalized",
       sourceId: input.partyId,
     })
+
+    // Documento/nome limpos no portfólio: remove source link + identidade
+    // obsoleta para o party não permanecer pesquisável/segmentável.
+    if (!normalizedDocument || !normalizedName) {
+      if (existingLink) {
+        await radarRepository.deleteSourceLinkById(existingLink.id)
+        await radarRepository.removeObsoleteContractIdentity({
+          teamId: input.scope.teamId,
+          profileId: existingLink.profileId,
+          identityType: input.identityType,
+          keepNormalizedDocument: null,
+        })
+        await radarRepository.deleteOrphanRadarProfileIfEmpty({
+          teamId: input.scope.teamId,
+          profileId: existingLink.profileId,
+        })
+      }
+      return "skipped"
+    }
 
     const { profile, wasExisting } = await radarRepository.resolveProfileForDocument({
       teamId: input.scope.teamId,

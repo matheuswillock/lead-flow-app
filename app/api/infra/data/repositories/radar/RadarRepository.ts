@@ -858,35 +858,63 @@ export class RadarRepository {
    * Usado ao espelhar `PublicFormMetricEvent.eventKey` (@unique) como `sourceId`
    * — retries fire-and-forget não devem gerar `RadarEvent` duplicado só porque
    * o relógio avançou.
+   *
+   * A unique do banco inclui `occurredAt`, então check-then-insert sem lock
+   * permite corrida: dois retries com `occurredAt` distintos passam o findFirst
+   * e ambos inserem. Serializamos por source key via `pg_advisory_xact_lock`
+   * (mesmo padrão de `resolveProfileForVisitorSession`).
    */
   async appendEventIfNewBySourceKey(input: AppendEventInput) {
-    if (
-      input.sourceId &&
-      (await this.hasEventEverOccurredForSource(
-        input.teamId,
-        input.sourceType,
-        input.sourceId,
-        input.eventType
-      ))
-    ) {
-      return null
+    if (!input.sourceId) {
+      try {
+        return await prisma.radarEvent.create({
+          data: {
+            profileId: input.profileId,
+            teamId: input.teamId,
+            eventType: input.eventType,
+            sourceType: input.sourceType,
+            sourceId: null,
+            occurredAt: input.occurredAt,
+            metadata: input.metadata,
+          },
+        })
+      } catch {
+        return null
+      }
     }
 
-    try {
-      return await prisma.radarEvent.create({
-        data: {
-          profileId: input.profileId,
+    const sourceId = input.sourceId
+    return prisma.$transaction(async (tx) => {
+      const lockKey = `${input.teamId}:evt:${input.sourceType}:${sourceId}:${input.eventType}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarEvent.findFirst({
+        where: {
           teamId: input.teamId,
-          eventType: input.eventType,
           sourceType: input.sourceType,
-          sourceId: input.sourceId ?? null,
-          occurredAt: input.occurredAt,
-          metadata: input.metadata,
+          sourceId,
+          eventType: input.eventType,
         },
+        select: { id: true },
       })
-    } catch {
-      return null
-    }
+      if (existing) return null
+
+      try {
+        return await tx.radarEvent.create({
+          data: {
+            profileId: input.profileId,
+            teamId: input.teamId,
+            eventType: input.eventType,
+            sourceType: input.sourceType,
+            sourceId,
+            occurredAt: input.occurredAt,
+            metadata: input.metadata,
+          },
+        })
+      } catch {
+        return null
+      }
+    })
   }
 
   async upsertConsent(input: UpsertConsentInput) {
@@ -1869,15 +1897,20 @@ export class RadarRepository {
     })
   }
 
+  async deleteSourceLinkById(id: string) {
+    await prisma.radarSourceLink.deleteMany({ where: { id } })
+  }
+
   /**
    * D14: ao corrigir o documento de um titular/dependente, remove a identidade
    * obsoleta do perfil anterior (evita fantasma com documento antigo no Radar).
+   * Quando `keepNormalizedDocument` é `null`, remove todas as identidades do tipo.
    */
   async removeObsoleteContractIdentity(input: {
     teamId: string
     profileId: string
     identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
-    keepNormalizedDocument: string
+    keepNormalizedDocument: string | null
   }) {
     const identities = await prisma.radarIdentity.findMany({
       where: {
@@ -1888,9 +1921,12 @@ export class RadarRepository {
       select: { id: true, normalizedValue: true },
     })
 
-    const obsolete = identities.filter(
-      (identity) => identity.normalizedValue !== input.keepNormalizedDocument
-    )
+    const obsolete =
+      input.keepNormalizedDocument === null
+        ? identities
+        : identities.filter(
+            (identity) => identity.normalizedValue !== input.keepNormalizedDocument
+          )
     if (obsolete.length === 0) return { removed: 0 }
 
     await prisma.radarIdentity.deleteMany({
