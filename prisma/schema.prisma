@@ -3437,6 +3437,39 @@ model BackofficeCrmLeadStatusTransitionGate {
   @@map("backoffice_crm_lead_status_transition_gates")
 }
 
+/// D19: pesos globais de engajamento Radar (somente backoffice).
+model BackofficeRadarEngagementWeight {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType   String   @db.Text
+  weight      Int
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([eventType])
+  @@index([isActive])
+  @@map("backoffice_radar_engagement_weights")
+}
+
+/// D19: config global de decaimento e thresholds de banda (singleton).
+model BackofficeRadarEngagementConfig {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  windowRecentDays  Int      @default(7)
+  windowMidDays     Int      @default(30)
+  windowOldDays     Int      @default(90)
+  recentMultiplier  Float    @default(2.0)
+  oldMultiplier     Float    @default(0.2)
+  hotThreshold      Int      @default(60)
+  warmThreshold     Int      @default(30)
+  lukewarmThreshold Int      @default(10)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("backoffice_radar_engagement_configs")
+}
+
 model BackofficeCrmLeadStatusTransitionFieldRule {
   id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   targetStatus       BackofficeLeadStatus
@@ -4388,6 +4421,8 @@ model RadarProfile {
   normalizedPrimaryDocument String?   @db.Text
   lastSeenAt                DateTime? @db.Timestamptz(6)
   profileData               Json?
+  engagementScore           Int?      @db.SmallInt
+  engagementBand            String?   @db.Text
   createdAt                 DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @db.Timestamptz(6)
 
@@ -4401,6 +4436,8 @@ model RadarProfile {
   @@index([teamId, normalizedPrimaryEmail])
   @@index([teamId, normalizedPrimaryDocument])
   @@index([teamId, lastSeenAt(sort: Desc)])
+  @@index([teamId, engagementBand])
+  @@index([teamId, engagementScore(sort: Desc)])
   @@map("corretor_studio_radar_profiles")
 }
 
