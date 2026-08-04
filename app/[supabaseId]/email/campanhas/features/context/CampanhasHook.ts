@@ -143,6 +143,7 @@ export type CampanhasActions = {
   clearFilters: () => void
   openWizard: () => void
   openEditWizard: (campaign: Campaign) => void
+  openDuplicateWizard: (campaign: Campaign) => void
   closeWizard: () => void
   setWizardActiveTab: (tab: WizardTabId) => void
   setWizardName: (v: string) => void
@@ -801,7 +802,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     })
   }, [])
 
-  const hydrateWizardFromCampaign = useCallback((campaign: Campaign) => {
+  const hydrateWizardFromCampaign = useCallback((
+    campaign: Campaign,
+    options?: { mode?: "create" | "edit"; namePrefix?: string }
+  ) => {
+    const mode = options?.mode ?? "edit"
     const childListIds = Array.from(
       new Set(
         (campaign.subCampaigns ?? [])
@@ -882,10 +887,17 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       }
     }
 
-    setWizardMode("edit")
-    setWizardCampaignId(campaign.id)
+    const baseName = (campaign.name ?? "").trim()
+    const prefixedName =
+      options?.namePrefix && baseName && !baseName.startsWith(options.namePrefix)
+        ? `${options.namePrefix}${baseName}`
+        : baseName
+
+    setWizardMode(mode)
+    // Create/duplicate: never bind an existing id — close without save must not persist.
+    setWizardCampaignId(mode === "edit" ? campaign.id : undefined)
     setWizardActiveTab("geral")
-    setWizardName(campaign.name ?? "")
+    setWizardName(prefixedName)
     setWizardDescriptionState(campaign.description ?? "")
     setWizardTemplateId(templateId)
     setWizardContactListIds(uniqueListIds)
@@ -915,6 +927,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [loadWizardOptions, resetWizardState])
 
   const openEditWizard = useCallback(async (campaign: Campaign) => {
+    // Imutabilidade: apenas draft|scheduled — sent/failed usam disparo (novo dispatch) ou Duplicar.
     if (!EDITABLE_STATUSES.has(campaign.status)) {
       toast.error("Campanha não pode ser editada no status atual")
       return
@@ -922,16 +935,36 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     resetWizardState()
     setWizardHydrating(true)
     // Preenche com o que já temos enquanto carrega o detalhe completo
-    hydrateWizardFromCampaign(campaign)
+    hydrateWizardFromCampaign(campaign, { mode: "edit" })
     setWizardOpen(true)
     setDetailCampaign(null)
     try {
       await loadWizardOptions()
       const detailed = await service.getById(supabaseId, activeTeamId, campaign.id)
-      hydrateWizardFromCampaign(detailed)
+      hydrateWizardFromCampaign(detailed, { mode: "edit" })
     } catch (err) {
       console.error("[useCampanhas] openEditWizard error", err)
       toast.error("Erro ao carregar detalhes da campanha para edição")
+    } finally {
+      setWizardHydrating(false)
+    }
+  }, [activeTeamId, hydrateWizardFromCampaign, loadWizardOptions, resetWizardState, service, supabaseId])
+
+  const openDuplicateWizard = useCallback(async (campaign: Campaign) => {
+    resetWizardState()
+    setWizardHydrating(true)
+    hydrateWizardFromCampaign(campaign, { mode: "create", namePrefix: "Cópia de " })
+    setWizardOpen(true)
+    setDetailCampaign(null)
+    try {
+      await loadWizardOptions()
+      const detailed = await service.getById(supabaseId, activeTeamId, campaign.id)
+      hydrateWizardFromCampaign(detailed, { mode: "create", namePrefix: "Cópia de " })
+    } catch (err) {
+      console.error("[useCampanhas] openDuplicateWizard error", err)
+      toast.error("Erro ao carregar detalhes da campanha para duplicar")
+      setWizardOpen(false)
+      resetWizardState()
     } finally {
       setWizardHydrating(false)
     }
@@ -941,7 +974,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     if (wizardSaving) return
     setWizardOpen(false)
     setWizardHydrating(false)
-  }, [wizardSaving])
+    // Descarta estado de create/duplicar sem persistir rascunho órfão.
+    resetWizardState()
+  }, [resetWizardState, wizardSaving])
 
   const toggleWizardContactListId = useCallback((listId: string, selected: boolean) => {
     setWizardContactListIds((prev) => {
@@ -1142,6 +1177,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       }
 
       setWizardOpen(false)
+      resetWizardState()
       lastCampaignsKeyRef.current = ""
       void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
@@ -1156,12 +1192,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     dateFrom,
     dateTo,
     detailCampaign,
-    dateFrom,
-    dateTo,
     fetchCampaigns,
     nameFilter,
     page,
     pageSize,
+    resetWizardState,
     service,
     statusFilter,
     supabaseId,
@@ -1295,6 +1330,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     clearFilters,
     openWizard,
     openEditWizard,
+    openDuplicateWizard,
     closeWizard,
     setWizardActiveTab,
     setWizardName,
