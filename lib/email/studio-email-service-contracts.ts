@@ -36,6 +36,7 @@ import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContac
 
 export type StudioEmailCreateCampaignData = {
   name: string
+  description?: string
   templateId: string
   contactListId?: string
   contactListIds?: string[]
@@ -49,6 +50,7 @@ export type StudioEmailCreateCampaignData = {
 
 export type StudioEmailUpdateCampaignData = {
   name?: string
+  description?: string
   templateId?: string
   contactListId?: string
   contactListIds?: string[]

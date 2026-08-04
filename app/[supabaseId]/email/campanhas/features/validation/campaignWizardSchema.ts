@@ -1,10 +1,11 @@
 import { z } from "zod"
 import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
 
-export type WizardTabId = "geral" | "template" | "audiencia" | "agendamento" | "subcampanhas"
+export type WizardTabId = "geral" | "audiencia" | "subcampanhas" | "revisao"
 
 export const campaignWizardGeralSchema = z.object({
   name: z.string().trim().min(1, "Nome da campanha é obrigatório"),
+  description: z.string().max(500).optional(),
 })
 
 export const campaignWizardTemplateSchema = z.object({
@@ -77,6 +78,7 @@ export function buildCampaignWizardSubmitSchema(params: {
   return z
     .object({
       name: z.string().trim().min(1, "Nome da campanha é obrigatório"),
+      description: z.string().max(500).optional(),
       templateId: z.string().uuid("Selecione um template válido"),
       recipientSource: z.enum(["contact_list", "radar_segment"]),
       contactListIds: z.array(z.string().uuid()).default([]),

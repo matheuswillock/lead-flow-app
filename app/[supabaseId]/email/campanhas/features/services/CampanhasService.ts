@@ -3,6 +3,7 @@ import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type CampaignWritePayload = {
   name: string
+  description?: string
   templateId: string
   contactListId?: string
   contactListIds?: string[]

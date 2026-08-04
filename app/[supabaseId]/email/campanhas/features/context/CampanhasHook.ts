@@ -31,6 +31,7 @@ function statusKey(statuses: string[]): string {
 
 function buildCampaignPayload(params: {
   name: string
+  description?: string
   templateId: string
   recipientSource: "contact_list" | "radar_segment"
   contactListIds: string[]
@@ -45,6 +46,7 @@ function buildCampaignPayload(params: {
     name: params.name.trim(),
     templateId: params.templateId,
     uniformSchedule: params.uniformSchedule,
+    ...(params.description ? { description: params.description } : {}),
     ...(params.scheduledAt ? { scheduledAt: params.scheduledAt.toISOString() } : {}),
     ...(params.uniformSchedule && params.scheduleIntervalDays >= 1
       ? { scheduleIntervalDays: params.scheduleIntervalDays }
@@ -90,6 +92,7 @@ export type CampanhasActions = {
   closeWizard: () => void
   setWizardActiveTab: (tab: WizardTabId) => void
   setWizardName: (v: string) => void
+  setWizardDescription: (v: string) => void
   setWizardTemplateId: (v: string) => void
   toggleWizardContactListId: (listId: string, selected: boolean) => void
   setWizardListStrategy: (strategy: "single" | "merge" | "per_list") => void
@@ -131,6 +134,7 @@ export type CampanhasHookReturn = {
   wizardCampaignId?: string
   wizardActiveTab: WizardTabId
   wizardName: string
+  wizardDescription: string
   wizardTemplateId: string
   wizardContactListIds: string[]
   wizardListStrategy: "single" | "merge" | "per_list"
@@ -189,6 +193,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardCampaignId, setWizardCampaignId] = useState<string | undefined>(undefined)
   const [wizardActiveTab, setWizardActiveTab] = useState<WizardTabId>("geral")
   const [wizardName, setWizardName] = useState("")
+  const [wizardDescription, setWizardDescriptionState] = useState("")
   const [wizardTemplateId, setWizardTemplateId] = useState("")
   const [wizardContactListIds, setWizardContactListIds] = useState<string[]>([])
   const [wizardListStrategy, setWizardListStrategy] = useState<"single" | "merge" | "per_list">("single")
@@ -624,11 +629,16 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
   }, [activeTeamId, detailCampaign?.id, supabaseId])
 
+  const setWizardDescription = useCallback((v: string) => {
+    setWizardDescriptionState(v)
+  }, [])
+
   const resetWizardState = useCallback(() => {
     setWizardMode("create")
     setWizardCampaignId(undefined)
     setWizardActiveTab("geral")
     setWizardName("")
+    setWizardDescriptionState("")
     setWizardTemplateId("")
     setWizardContactListIds([])
     setWizardListStrategy("single")
@@ -796,6 +806,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardCampaignId(campaign.id)
     setWizardActiveTab("geral")
     setWizardName(campaign.name ?? "")
+    setWizardDescriptionState(campaign.description ?? "")
     setWizardTemplateId(templateId)
     setWizardContactListIds(uniqueListIds)
     setWizardListStrategy(
@@ -895,6 +906,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     try {
       const payload = buildCampaignPayload({
         name: wizardName,
+        description: wizardDescription || undefined,
         templateId: wizardTemplateId,
         recipientSource: wizardRecipientSource,
         contactListIds: wizardContactListIds,
@@ -918,6 +930,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     service,
     supabaseId,
     wizardContactListIds,
+    wizardDescription,
     wizardListStrategy,
     wizardName,
     wizardRadarSegmentSlug,
@@ -934,6 +947,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     try {
       const payload = buildCampaignPayload({
         name: wizardName,
+        description: wizardDescription || undefined,
         templateId: wizardTemplateId,
         recipientSource: wizardRecipientSource,
         contactListIds: wizardContactListIds,
@@ -967,6 +981,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
         await service.update(supabaseId, activeTeamId, wizardCampaignId, {
           name: payload.name,
+          description: payload.description,
           templateId: payload.templateId,
           ...(subCampaignUpdates.length > 0 ? { subCampaignUpdates } : {}),
         })
@@ -1007,6 +1022,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     supabaseId,
     wizardCampaignId,
     wizardContactListIds,
+    wizardDescription,
     wizardListStrategy,
     wizardMode,
     wizardName,
@@ -1016,6 +1032,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardScheduleIntervalDays,
     wizardScheduledAt,
     wizardSubCampaignSchedules,
+    wizardSubCampaignListIds,
     wizardTemplateId,
     wizardUniformSchedule,
   ])
@@ -1097,6 +1114,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardCampaignId,
     wizardActiveTab,
     wizardName,
+    wizardDescription,
     wizardTemplateId,
     wizardContactListIds,
     wizardListStrategy,
@@ -1133,6 +1151,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     closeWizard,
     setWizardActiveTab,
     setWizardName,
+    setWizardDescription,
     setWizardTemplateId,
     toggleWizardContactListId,
     setWizardListStrategy,
