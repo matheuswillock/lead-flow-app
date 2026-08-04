@@ -13,8 +13,6 @@ import type {
   CampaignPreviewPlan,
   WizardTabId,
 } from "./CampanhasTypes"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
@@ -216,7 +214,6 @@ export type CampanhasHookReturn = {
 } & CampanhasActions
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
-  const { showsBetaLabel } = useFeatureAccess()
   const {
     host,
     teamId: activeTeamId,
@@ -226,10 +223,6 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     skipBetaGate,
   } = useStudioEmailRuntime()
   const service = host?.services.campanhas ?? defaultService
-  // D8: feature com Beta habilitada (betaLabel) isenta créditos — não exige grant BETA (isBeta).
-  const isCampaignsBetaAccess = skipBetaGate
-    ? true
-    : showsBetaLabel(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -418,10 +411,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [fetchCampaigns, pageSize])
 
   const handleSend = useCallback(async (id: string, options?: { retryFailedOnly?: boolean }) => {
+    // Plan gate: backend credits.isBetaExempt (resolveEmailBetaAccess) or host skipBetaGate.
+    // Do not use showsBetaLabel — it can disagree when inheritParentSettings is off.
     if (
       !bypassCreditsCheck &&
+      !skipBetaGate &&
       !credits?.hasSubscription &&
-      !isCampaignsBetaAccess &&
       !credits?.isBetaExempt
     ) {
       toast.error("Ative um plano em Assinaturas para disparar campanhas")
@@ -530,7 +525,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         setSendingId(null)
       }
     }
-  }, [activeTeamId, campaigns, credits?.hasSubscription, credits?.isBetaExempt, detailCampaign, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
+  }, [activeTeamId, bypassCreditsCheck, campaigns, credits?.hasSubscription, credits?.isBetaExempt, detailCampaign, fetchCampaigns, fetchCredits, skipBetaGate, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
 
   useEffect(() => {
     const trackedId = sendingId

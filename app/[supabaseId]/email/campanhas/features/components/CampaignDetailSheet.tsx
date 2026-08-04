@@ -43,8 +43,6 @@ import { CampaignStatusBadge } from "./CampaignStatusBadge"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 import { cn } from "@/lib/utils"
@@ -352,8 +350,7 @@ export function CampaignDetailSheet({
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const { tz } = useTimezone()
-  const { showsBetaLabel } = useFeatureAccess()
-  const { readOnly } = useStudioEmailRuntime()
+  const { readOnly, skipBetaGate } = useStudioEmailRuntime()
   const {
     detailCampaign,
     closeDetail,
@@ -366,10 +363,9 @@ export function CampaignDetailSheet({
   } = useCampanhasContext()
   const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
   const [leafSending, setLeafSending] = useState(false)
-  // D8: Beta na feature (label) isenta plano de créditos — não exige grant BETA (isBeta).
-  const isCampaignsBetaAccess = showsBetaLabel(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
-    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
+    !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
 
   const isParentCampaign = Boolean(
     detailCampaign?.isParentCampaign || (detailCampaign?.subCampaignCount ?? 0) > 0
@@ -399,7 +395,7 @@ export function CampaignDetailSheet({
     ? getCampaignSendBlockReason({
         campaign: detailCampaign,
         credits,
-        isCampaignsBetaAccess,
+        bypassPlanGate: skipBetaGate,
       })
     : undefined
   const canSendLeaf =
@@ -414,7 +410,7 @@ export function CampaignDetailSheet({
     return getCampaignSendBlockReason({
       campaign: subCampaign,
       credits,
-      isCampaignsBetaAccess,
+      bypassPlanGate: skipBetaGate,
     })
   }
 

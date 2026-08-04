@@ -26,33 +26,31 @@ describe("getCampaignSendBlockReason", () => {
     const reason = getCampaignSendBlockReason({
       campaign: { totalRecipients: 500 },
       credits: makeCredits({ isBetaExempt: true, hasSubscription: false }),
-      isCampaignsBetaAccess: false,
     })
 
     expect(reason).toContain("Restam 100")
   })
 
-  it("skips subscription and credit checks for beta-exempt teams when daily cap allows send", () => {
+  it("skips subscription and credit checks when credits.isBetaExempt matches backend", () => {
     const reason = getCampaignSendBlockReason({
       campaign: { totalRecipients: 50 },
       credits: makeCredits({ isBetaExempt: true, hasSubscription: false, creditsAvailable: 0 }),
-      isCampaignsBetaAccess: false,
     })
 
     expect(reason).toBeUndefined()
   })
 
-  it("skips subscription check when campaigns feature is in beta (D8)", () => {
+  it("skips subscription check when runtime bypassPlanGate is set", () => {
     const reason = getCampaignSendBlockReason({
       campaign: { totalRecipients: 50 },
       credits: makeCredits({ hasSubscription: false, isBetaExempt: false, creditsAvailable: 0 }),
-      isCampaignsBetaAccess: true,
+      bypassPlanGate: true,
     })
 
     expect(reason).toBeUndefined()
   })
 
-  it("blocks without subscription when not beta and not exempt", () => {
+  it("does not treat display beta label alone — requires isBetaExempt or bypass", () => {
     const reason = getCampaignSendBlockReason({
       campaign: { totalRecipients: 50 },
       credits: makeCredits({
@@ -61,7 +59,21 @@ describe("getCampaignSendBlockReason", () => {
         creditsAvailable: 0,
         dailyDispatch: { limit: null, used: 0, remaining: null, isUnlimited: true },
       }),
-      isCampaignsBetaAccess: false,
+    })
+
+    expect(reason).toBe("Ative um plano em Assinaturas para disparar campanhas")
+  })
+
+  it("blocks without subscription when not beta-exempt and not bypassed", () => {
+    const reason = getCampaignSendBlockReason({
+      campaign: { totalRecipients: 50 },
+      credits: makeCredits({
+        hasSubscription: false,
+        isBetaExempt: false,
+        creditsAvailable: 0,
+        dailyDispatch: { limit: null, used: 0, remaining: null, isUnlimited: true },
+      }),
+      bypassPlanGate: false,
     })
 
     expect(reason).toBe("Ative um plano em Assinaturas para disparar campanhas")

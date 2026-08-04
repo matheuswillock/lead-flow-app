@@ -38,8 +38,6 @@ import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
@@ -373,8 +371,7 @@ export function CampaignList({
   onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const { tz } = useTimezone()
-  const { showsBetaLabel } = useFeatureAccess()
-  const { readOnly } = useStudioEmailRuntime()
+  const { readOnly, skipBetaGate } = useStudioEmailRuntime()
   const {
     campaigns,
     total,
@@ -398,16 +395,15 @@ export function CampaignList({
     openDuplicateWizard,
     credits,
   } = useCampanhasContext()
-  // D8: Beta na feature (label) isenta plano de créditos — não exige grant BETA (isBeta).
-  const isCampaignsBetaAccess = showsBetaLabel(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
-    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
+    !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
 
   function getSendBlockReason(campaign: Campaign): string | undefined {
     return getCampaignSendBlockReason({
       campaign,
       credits,
-      isCampaignsBetaAccess,
+      bypassPlanGate: skipBetaGate,
     })
   }
 
