@@ -88,6 +88,76 @@ export async function PATCH(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string; invoiceId: string }>
+  }
+) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+
+    const denied = requireManagerAccess(result.access)
+    if (denied) return denied
+
+    const { id, invoiceId } = await params
+    const actor = {
+      profileId: result.access.profileId,
+      backofficeUserId: result.access.backofficeUserId,
+      backofficeEmail: result.access.backofficeEmail,
+    }
+
+    console.info("[BackofficePlatformUserInvoiceByIdRoute][DELETE] Solicitação de remoção de fatura", {
+      masterProfileId: id,
+      invoiceId,
+      actorProfileId: actor.profileId,
+      actorBackofficeUserId: actor.backofficeUserId,
+      actorEmail: actor.backofficeEmail,
+    })
+
+    const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())
+    const output = await useCase.deleteMasterUserInvoice(id, invoiceId, actor)
+
+    if (output.isValid) {
+      console.info("[BackofficePlatformUserInvoiceByIdRoute][DELETE] Fatura removida com sucesso", {
+        masterProfileId: id,
+        invoiceId,
+        actorProfileId: actor.profileId,
+        actorBackofficeUserId: actor.backofficeUserId,
+        actorEmail: actor.backofficeEmail,
+        result: output.result,
+      })
+      return NextResponse.json(output, { status: 200 })
+    }
+
+    const notFound = output.errorMessages.some(
+      (message) =>
+        message.toLowerCase().includes("não encontrada") ||
+        message.toLowerCase().includes("não encontrado")
+    )
+
+    console.info("[BackofficePlatformUserInvoiceByIdRoute][DELETE] Remoção de fatura rejeitada", {
+      masterProfileId: id,
+      invoiceId,
+      actorProfileId: actor.profileId,
+      actorBackofficeUserId: actor.backofficeUserId,
+      actorEmail: actor.backofficeEmail,
+      errorMessages: output.errorMessages,
+    })
+
+    return NextResponse.json(output, { status: notFound ? 404 : 400 })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[BackofficePlatformUserInvoiceByIdRoute][DELETE]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}
+
 export async function POST(
   request: NextRequest,
   {

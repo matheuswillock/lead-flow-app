@@ -2,6 +2,7 @@ import type {
   BackofficeClientDetails,
   BackofficeClientInvoiceFilters,
   BackofficeClientInvoicesResult,
+  BackofficeClientPendingActionsResult,
 } from "../context/BackofficeClientDetailsTypes"
 
 export interface BackofficeMutationPendingPayment {
@@ -41,6 +42,13 @@ export interface IBackofficeClientDetailsService {
       timezone?: string
     }
   ): Promise<BackofficeClientInvoicesResult>
+
+  getPendingActionsByMasterId(masterId: string): Promise<BackofficeClientPendingActionsResult>
+
+  cancelPendingAction(
+    masterId: string,
+    pendingActionId: string
+  ): Promise<{ message: string }>
 
   updateClient(
     masterId: string,

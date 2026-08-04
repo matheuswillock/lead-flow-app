@@ -244,3 +244,8 @@ export function useFeatureAccess() {
   }
   return context
 }
+
+/** Safe outside FeatureAccessProvider (e.g. backoffice-hosted product email UI). */
+export function useOptionalFeatureAccess(): FeatureAccessContextValue | null {
+  return useContext(FeatureAccessContext) ?? null
+}

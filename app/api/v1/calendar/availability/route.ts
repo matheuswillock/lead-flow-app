@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
-import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import {
   calendarAvailabilityUseCase,
   CALENDAR_AVAILABILITY_ERROR_MESSAGES,
@@ -15,6 +15,7 @@ const schema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     days: z.number().int().min(1).max(60).optional(),
     excludeLeadId: z.string().uuid().optional(),
+    destinationTeamId: z.string().uuid().optional(),
   })
   .refine((data) => data.closerId || (data.closerIds && data.closerIds.length > 0), {
     message: "Informe um closerId ou closerIds.",
@@ -41,21 +42,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { closerId, closerIds, date, days, excludeLeadId } = validation.data;
+    const { closerId, closerIds, date, days, excludeLeadId, destinationTeamId } = validation.data;
     const requestedCloserIds = Array.from(
       new Set([...(closerIds ?? []), ...(closerId ? [closerId] : [])])
     );
+
     const output = await calendarAvailabilityUseCase.getAvailability({
       teamId: teamAccess.access.teamId,
+      managerId: teamAccess.access.managerId,
       requestedCloserIds,
       date,
       days,
       excludeLeadId,
+      destinationTeamId,
       userTimezone: teamAccess.access.userTimezone,
     });
 
     if (!output.isValid) {
-      if (output.errorMessages.includes(CALENDAR_AVAILABILITY_ERROR_MESSAGES.CLOSERS_NOT_IN_TEAM)) {
+      if (
+        output.errorMessages.includes(CALENDAR_AVAILABILITY_ERROR_MESSAGES.CLOSERS_NOT_IN_TEAM) ||
+        output.errorMessages.includes(
+          CALENDAR_AVAILABILITY_ERROR_MESSAGES.MULTISKILL_DESTINATION_DENIED
+        ) ||
+        output.errorMessages.includes(
+          CALENDAR_AVAILABILITY_ERROR_MESSAGES.MULTISKILL_DESTINATION_INVALID
+        )
+      ) {
         return NextResponse.json(output, { status: 403 });
       }
 

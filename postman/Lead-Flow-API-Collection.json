@@ -10138,6 +10138,115 @@
               }
             },
             {
+              "name": "DELETE Platform User Invoice",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/invoices/:invoiceId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "invoices",
+                    ":invoiceId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    },
+                    {
+                      "key": "invoiceId",
+                      "value": "{{asaasPaymentId}}"
+                    }
+                  ]
+                },
+                "description": "Remove/cancela uma cobrança pendente do usuário master. Aceita IDs Asaas ou pending-action-{uuid}. Sempre cancela a pending action vinculada (add_user/add_member/create_team e add-ons): via ID virtual pending-action-{uuid}, via externalReference pending-action-{uuid} na cobrança Asaas, ou via paymentId da pending action igual ao id Asaas. Soft-cancel: status=canceled e limpa paymentId (sem hard DELETE). Registra em log (Vercel) o ator (email/profileId/backofficeUserId), master, invoiceId, pendingActionId e actionType."
+              }
+            },
+            {
+              "name": "GET Platform User Pending Actions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/pending-actions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "pending-actions"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Lista ações pendentes de cobrança incremental (add_user, add_member, create_team) do master com status pending/applied/failed. Inclui alvo, valor, checkoutUrl e invoiceId virtual."
+              }
+            },
+            {
+              "name": "DELETE Platform User Pending Action",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/pending-actions/:pendingActionId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "pending-actions",
+                    ":pendingActionId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    },
+                    {
+                      "key": "pendingActionId",
+                      "value": "{{pendingActionId}}"
+                    }
+                  ]
+                },
+                "description": "Cancela uma ação pendente (pending/failed ou applied+WAIVED). Reutiliza a lógica de remoção de fatura (cancela Asaas se houver, marca canceled). Requer acesso manager. Registra ator em log."
+              }
+            },
+            {
               "name": "DELETE Platform User Account",
               "request": {
                 "method": "DELETE",

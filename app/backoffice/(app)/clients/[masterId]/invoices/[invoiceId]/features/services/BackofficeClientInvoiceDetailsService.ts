@@ -69,4 +69,23 @@ export class BackofficeClientInvoiceDetailsService
 
     return json.result
   }
+
+  async deleteInvoice(masterId: string, invoiceId: string): Promise<{ message: string }> {
+    const response = await fetch(
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      {
+        method: "DELETE",
+      }
+    )
+
+    const data = await response.json()
+
+    if (!data.isValid) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao remover a cobrança")
+    }
+
+    return {
+      message: data.successMessages?.[0] ?? "Cobrança removida com sucesso",
+    }
+  }
 }

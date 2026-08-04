@@ -3,6 +3,7 @@ import type {
   BackofficeClientDetails,
   BackofficeClientInvoiceFilters,
   BackofficeClientInvoicesResult,
+  BackofficeClientPendingActionsResult,
 } from "../context/BackofficeClientDetailsTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
@@ -145,6 +146,44 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
         status: "all",
         period: "all",
       },
+    }
+  }
+
+  async getPendingActionsByMasterId(
+    masterId: string
+  ): Promise<BackofficeClientPendingActionsResult> {
+    const res = await fetch(
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/pending-actions`,
+      { cache: "no-store" }
+    )
+    const data = await res.json()
+
+    if (!data.isValid || !data.result) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao buscar ações pendentes do usuário")
+    }
+
+    return {
+      items: data.result.items ?? [],
+      totalItems: data.result.totalItems ?? data.result.items?.length ?? 0,
+    }
+  }
+
+  async cancelPendingAction(
+    masterId: string,
+    pendingActionId: string
+  ): Promise<{ message: string }> {
+    const res = await fetch(
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/pending-actions/${pendingActionId}`,
+      { method: "DELETE" }
+    )
+    const data = await res.json()
+
+    if (!data.isValid) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao cancelar ação pendente")
+    }
+
+    return {
+      message: data.successMessages?.[0] ?? "Cobrança removida com sucesso",
     }
   }
 
