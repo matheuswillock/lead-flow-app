@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
       if (output.errorMessages.includes(HEALTH_PLAN_ERROR_MESSAGES.PROFILE_NOT_FOUND)) {
         return NextResponse.json(output, { status: 404 });
       }
-      return NextResponse.json(output, { status: 400 });
+      if (output.errorMessages.includes(HEALTH_PLAN_ERROR_MESSAGES.INTERNAL_LIST_ERROR)) {
+        return NextResponse.json(output, { status: 500 });
+      }
+      return NextResponse.json(output, { status: 500 });
     }
 
     return NextResponse.json(output, { status: 200 });
@@ -62,6 +65,9 @@ export async function POST(request: NextRequest) {
       }
       if (output.errorMessages.includes(HEALTH_PLAN_ERROR_MESSAGES.DUPLICATED_NAME)) {
         return NextResponse.json(output, { status: 409 });
+      }
+      if (output.errorMessages.includes(HEALTH_PLAN_ERROR_MESSAGES.INTERNAL_CREATE_ERROR)) {
+        return NextResponse.json(output, { status: 500 });
       }
       return NextResponse.json(output, { status: 400 });
     }

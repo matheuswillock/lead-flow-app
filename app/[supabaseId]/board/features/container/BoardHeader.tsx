@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Input } from "@/components/ui/input";
@@ -161,6 +161,13 @@ export default function BoardHeader({
     const to = filters.periodEnd ? new Date(filters.periodEnd) : undefined;
     setDateRange({ from, to });
   };
+
+  const handlePresetsChange = useCallback(
+    (items: { queryJson: BoardFiltersState }[]) => {
+      setPresets(items.map((preset) => preset.queryJson));
+    },
+    []
+  );
 
   const totalLeads = Object.values(data).flat().length;
 
@@ -369,7 +376,7 @@ export default function BoardHeader({
             presetDescriptionLabel={boardPresetDescriptionLabel}
             onApplyFilters={applyBoardFilters}
             getCreatorName={(id) => memberNameById.get(id)}
-            onPresetsChange={(items) => setPresets(items.map((p) => p.queryJson))}
+            onPresetsChange={handlePresetsChange}
           />
           {isFiltered && (
             <Button variant="ghost" className="h-8 px-2 lg:px-3" onClick={clearFilters}>

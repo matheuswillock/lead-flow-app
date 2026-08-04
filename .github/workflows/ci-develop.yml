@@ -35,6 +35,7 @@ jobs:
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
+      api-masking-check: ${{ steps.ci-light-checks.outputs['api-masking-check'] }}
       lint: ${{ steps.ci-light-checks.outputs.lint }}
       passed: ${{ steps.ci-light-checks.outputs.passed }}
       tests-result: ${{ steps.ci-light-checks.outputs['tests-result'] }}
@@ -122,6 +123,7 @@ jobs:
             echo "::error::Lint and/or governance checks failed."
             echo "governance:sync=${{ needs.ci-light.outputs['governance-sync'] }}"
             echo "governance:check=${{ needs.ci-light.outputs['governance-check'] }}"
+            echo "governance:check-api-masking=${{ needs.ci-light.outputs['api-masking-check'] }}"
             echo "lint=${{ needs.ci-light.outputs.lint }}"
             failed=1
           fi
@@ -569,6 +571,7 @@ jobs:
             const checks = {
               governanceSync: '${{ needs.ci-light.outputs['governance-sync'] }}',
               governanceCheck: '${{ needs.ci-light.outputs['governance-check'] }}',
+              apiMaskingCheck: '${{ needs.ci-light.outputs['api-masking-check'] }}',
               lint: '${{ needs.ci-light.outputs.lint }}',
               typecheck: '${{ needs.typecheck.result }}',
               migrationCheck: migrationCheckResult,
@@ -595,6 +598,7 @@ jobs:
               let body = template;
               body = replaceChecklistLine(body, '`bun run governance:sync`', checks.governanceSync, '`bun run governance:sync`');
               body = replaceChecklistLine(body, '`bun run governance:check`', checks.governanceCheck, '`bun run governance:check`');
+              body = replaceChecklistLine(body, '`bun run governance:check-api-masking`', checks.apiMaskingCheck, '`bun run governance:check-api-masking`');
               body = replaceChecklistLine(body, '`bun run typecheck`', checks.typecheck, '`bun run typecheck`');
               body = replaceChecklistLine(body, '`bun run lint`', checks.lint, '`bun run lint`');
               body = replaceChecklistLine(body, 'Manteve adapters sincronizados (`bun run governance:sync`)?', checks.governanceSync, 'Manteve adapters sincronizados (`bun run governance:sync`)?');

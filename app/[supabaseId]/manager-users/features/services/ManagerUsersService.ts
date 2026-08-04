@@ -23,7 +23,7 @@ class ManagerUsersService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}/api/v1/manager${endpoint}`;
+    const url = `${this.baseUrl}${API_CLIENT_BASE}/manager${endpoint}`;
     
     const defaultHeaders = {
       "Content-Type": "application/json",

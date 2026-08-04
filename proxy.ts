@@ -15,6 +15,7 @@ import { isBackofficeRole, isManagerLikeRole } from "@/lib/roles"
 import {
   nextWithSession,
   redirectWithSession,
+  rewriteWithSession,
   updateSession,
 } from "@/lib/supabase/auth-sessions"
 import { API_CLIENT_SLUG } from "@/lib/route-map"
@@ -47,9 +48,10 @@ function checkApiRateLimit(ip: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const isClientApiSlug = pathname.startsWith(SLUG_PREFIX)
 
-  // URL rewriting: /api/q/** → /api/v1/** + rate limiting somente neste path.
-  if (pathname.startsWith(SLUG_PREFIX)) {
+  // Rate limit only for the public client slug — before session work.
+  if (isClientApiSlug) {
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       request.headers.get("x-real-ip") ??
@@ -61,15 +63,6 @@ export async function proxy(request: NextRequest) {
         headers: { "Retry-After": "60" },
       })
     }
-
-    const rest = pathname.slice(SLUG_PREFIX.length)
-    const rewrittenUrl = request.nextUrl.clone()
-    rewrittenUrl.pathname = REAL_API_PREFIX + rest
-
-    const rewriteResponse = NextResponse.rewrite(rewrittenUrl)
-    rewriteResponse.headers.set("X-Content-Type-Options", "nosniff")
-    rewriteResponse.headers.set("X-Frame-Options", "DENY")
-    return rewriteResponse
   }
 
   try {
@@ -155,11 +148,29 @@ export async function proxy(request: NextRequest) {
       return response
     }
 
+    // /api/v1/** e /api/q/** (slug client-side). O slug é reescrito para /api/v1
+    // DEPOIS do refresh de sessão e da injeção de x-supabase-user-id — o early
+    // rewrite anterior pulava isso e quebrava getTeamAccess() nas rotas mascaradas.
     if (pathname.startsWith("/api")) {
       const requestHeaders = new Headers(request.headers)
       requestHeaders.delete("x-supabase-user-id")
       if (user) {
         requestHeaders.set("x-supabase-user-id", user.id)
+      }
+
+      if (isClientApiSlug) {
+        const rest = pathname.slice(SLUG_PREFIX.length)
+        const rewrittenUrl = request.nextUrl.clone()
+        rewrittenUrl.pathname = REAL_API_PREFIX + rest
+
+        const rewriteResponse = rewriteWithSession(response, rewrittenUrl, {
+          request: {
+            headers: requestHeaders,
+          },
+        })
+        rewriteResponse.headers.set("X-Content-Type-Options", "nosniff")
+        rewriteResponse.headers.set("X-Frame-Options", "DENY")
+        return rewriteResponse
       }
 
       return nextWithSession(response, {

@@ -3739,6 +3739,16 @@ OUTROS OUTROS
     DateTime updatedAt 
     }
   
+
+  "backoffice_cnaes" {
+    Int id "🗝️"
+    String code 
+    String name 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"

@@ -12,18 +12,18 @@ export type BackofficeCompanyType =
 
 export interface LeadExtractionFiltersForm {
   mainCnae: string
-  sideCnae: boolean
-  state: string
+  states: string[]
   municipalityCode: string
-  statusId: string
-  natureId: string
-  sizeId: string
+  statusIds: string[]
+  natureIds: string[]
+  sizeIds: string[]
   simplesOptant: string
   simeiOptant: string
   foundedGte: string
   foundedLte: string
   hasPhone: boolean
   hasEmail: boolean
+  removeContadores: boolean
 }
 
 export interface LeadExtractionResultItem {
@@ -45,6 +45,12 @@ export interface LeadExtractionSearchResult {
   items: LeadExtractionResultItem[]
 }
 
+export interface CnaeOption {
+  code: string
+  name: string
+}
+
 export interface IBackofficeLeadExtractionFrontendService {
   search(filters: LeadExtractionFiltersForm): Promise<LeadExtractionSearchResult>
+  searchCnaes(q?: string): Promise<CnaeOption[]>
 }

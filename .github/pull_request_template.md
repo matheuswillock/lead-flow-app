@@ -7,6 +7,7 @@
 
 - [ ] `bun run governance:sync`
 - [ ] `bun run governance:check`
+- [ ] `bun run governance:check-api-masking`
 - [ ] `bun run typecheck`
 - [ ] `bun run lint`
 

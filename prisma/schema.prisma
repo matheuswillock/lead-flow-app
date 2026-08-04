@@ -5487,3 +5487,14 @@ model ShortLink {
   @@index([code])
   @@map("short_links")
 }
+
+model BackofficeCnae {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("backoffice_cnaes")
+}
