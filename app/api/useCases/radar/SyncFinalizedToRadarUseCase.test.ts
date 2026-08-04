@@ -14,6 +14,7 @@ const upsertSourceLink = mock(async () => ({}))
 const appendEventIfNew = mock(async () => ({}))
 const findFinalizedForRadarSync = mock(async () => [] as unknown[])
 const findSourceLinkBySource = mock(async (): Promise<{ id: string; profileId: string } | null> => null)
+const deleteSourceLinkById = mock(async () => undefined)
 const removeObsoleteContractIdentity = mock(async () => ({ removed: 0 }))
 const deleteOrphanRadarProfileIfEmpty = mock(async () => ({ deleted: false }))
 
@@ -25,6 +26,7 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     appendEventIfNew,
     findFinalizedForRadarSync,
     findSourceLinkBySource,
+    deleteSourceLinkById,
     removeObsoleteContractIdentity,
     deleteOrphanRadarProfileIfEmpty,
   },
@@ -102,6 +104,7 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     appendEventIfNew.mockReset()
     findFinalizedForRadarSync.mockReset()
     findSourceLinkBySource.mockReset()
+    deleteSourceLinkById.mockReset()
     removeObsoleteContractIdentity.mockReset()
     deleteOrphanRadarProfileIfEmpty.mockReset()
 
@@ -113,6 +116,7 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     upsertSourceLink.mockImplementation(async () => ({}))
     appendEventIfNew.mockImplementation(async () => ({}))
     findSourceLinkBySource.mockImplementation(async () => null)
+    deleteSourceLinkById.mockImplementation(async () => undefined)
     removeObsoleteContractIdentity.mockImplementation(async () => ({ removed: 0 }))
     deleteOrphanRadarProfileIfEmpty.mockImplementation(async () => ({ deleted: false }))
   })
@@ -196,6 +200,36 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     expect(result.skipped).toBe(1)
     expect(result.created).toBe(0)
     expect(resolveProfileForDocument).not.toHaveBeenCalled()
+    expect(deleteSourceLinkById).not.toHaveBeenCalled()
+  })
+
+  it("ao limpar documento, remove source link e identidade/perfil obsoletos", async () => {
+    findFinalizedForRadarSync.mockImplementation(async () => [
+      finalizedFixture({
+        holderDocument: "   ",
+        dependents: [],
+      }),
+    ])
+    findSourceLinkBySource.mockImplementation(async () => ({
+      id: "link-stale",
+      profileId: "stale-profile",
+    }))
+
+    const result = await radarService.syncFromFinalized(scope, { finalizedId: "finalized-1" })
+
+    expect(result.skipped).toBe(1)
+    expect(resolveProfileForDocument).not.toHaveBeenCalled()
+    expect(deleteSourceLinkById).toHaveBeenCalledWith("link-stale")
+    expect(removeObsoleteContractIdentity).toHaveBeenCalledWith({
+      teamId: "team-1",
+      profileId: "stale-profile",
+      identityType: "contract_holder",
+      keepNormalizedDocument: null,
+    })
+    expect(deleteOrphanRadarProfileIfEmpty).toHaveBeenCalledWith({
+      teamId: "team-1",
+      profileId: "stale-profile",
+    })
   })
 
   it("ao mudar documento, remove identidade obsoleta do perfil anterior", async () => {

@@ -1835,15 +1835,20 @@ export class RadarRepository {
     })
   }
 
+  async deleteSourceLinkById(id: string) {
+    await prisma.radarSourceLink.deleteMany({ where: { id } })
+  }
+
   /**
    * D14: ao corrigir o documento de um titular/dependente, remove a identidade
    * obsoleta do perfil anterior (evita fantasma com documento antigo no Radar).
+   * Quando `keepNormalizedDocument` é `null`, remove todas as identidades do tipo.
    */
   async removeObsoleteContractIdentity(input: {
     teamId: string
     profileId: string
     identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
-    keepNormalizedDocument: string
+    keepNormalizedDocument: string | null
   }) {
     const identities = await prisma.radarIdentity.findMany({
       where: {
@@ -1854,9 +1859,12 @@ export class RadarRepository {
       select: { id: true, normalizedValue: true },
     })
 
-    const obsolete = identities.filter(
-      (identity) => identity.normalizedValue !== input.keepNormalizedDocument
-    )
+    const obsolete =
+      input.keepNormalizedDocument === null
+        ? identities
+        : identities.filter(
+            (identity) => identity.normalizedValue !== input.keepNormalizedDocument
+          )
     if (obsolete.length === 0) return { removed: 0 }
 
     await prisma.radarIdentity.deleteMany({
