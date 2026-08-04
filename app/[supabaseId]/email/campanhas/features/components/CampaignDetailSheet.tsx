@@ -286,7 +286,7 @@ export function CampaignDetailSheet({
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const { tz } = useTimezone()
-  const { isBeta } = useFeatureAccess()
+  const { showsBetaLabel } = useFeatureAccess()
   const { readOnly } = useStudioEmailRuntime()
   const {
     detailCampaign,
@@ -300,7 +300,8 @@ export function CampaignDetailSheet({
   } = useCampanhasContext()
   const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
   const [leafSending, setLeafSending] = useState(false)
-  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  // D8: Beta na feature (label) isenta plano de créditos — não exige grant BETA (isBeta).
+  const isCampaignsBetaAccess = showsBetaLabel(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const canSendCampaign =
     !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 

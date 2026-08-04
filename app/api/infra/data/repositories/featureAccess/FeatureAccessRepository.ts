@@ -162,12 +162,10 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     return eligible
   }
 
-  async resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
-    const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
-    if (!grantOwnerId) return false
-
-    // Uma única query traz as features de e-mail e todos os nós ativos;
-    // a subida de ancestrais acontece em memória (antes era 1 query por nível).
+  async resolveEmailBetaAccess(_ctx: EmailBetaAccessContext): Promise<boolean> {
+    // D8 (EMAIL_SPEC): tag Beta habilitada na feature = isenção total de créditos.
+    // Avalia `betaEnabled` em email-campaigns/email com herança via inheritParentSettings.
+    // Não exige grant BETA individual — acesso à feature é gate separado (hasAccess).
     const featureNodes = await prisma.backofficeFeature.findMany({
       where: { isActive: true },
       select: {
@@ -195,47 +193,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       current = parent
     }
 
-    if (!current.betaEnabled) return false
-
-    const emailRoot = findBySlug(FEATURE_SLUGS.EMAIL)
-
-    const candidateFeatureIds = Array.from(
-      new Set([current.id, emailRoot?.id].filter((id): id is string => Boolean(id)))
-    )
-
-    const grants = await prisma.backofficeFeatureGrant.findMany({
-      where: {
-        profileId: grantOwnerId,
-        grantType: "BETA",
-        isActive: true,
-        featureId: { in: candidateFeatureIds },
-      },
-      select: {
-        betaTeamScope: true,
-        teams: {
-          select: { teamId: true },
-        },
-      },
-    })
-
-    if (grants.length === 0) return false
-
-    for (const grant of grants) {
-      if (grant.betaTeamScope === "ALL_TEAMS") {
-        return true
-      }
-
-      if (ctx.isMaster) {
-        return true
-      }
-
-      const scopedTeamIds = grant.teams.map((item) => item.teamId)
-      if (scopedTeamIds.includes(ctx.teamId)) {
-        return true
-      }
-    }
-
-    return false
+    return current.betaEnabled === true
   }
 
   async findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null> {

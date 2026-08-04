@@ -339,7 +339,7 @@ export function CampaignList({
   onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const { tz } = useTimezone()
-  const { isBeta } = useFeatureAccess()
+  const { showsBetaLabel } = useFeatureAccess()
   const { readOnly } = useStudioEmailRuntime()
   const {
     campaigns,
@@ -364,7 +364,8 @@ export function CampaignList({
     openDuplicateWizard,
     credits,
   } = useCampanhasContext()
-  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  // D8: Beta na feature (label) isenta plano de créditos — não exige grant BETA (isBeta).
+  const isCampaignsBetaAccess = showsBetaLabel(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const canSendCampaign =
     !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
 

@@ -216,7 +216,7 @@ export type CampanhasHookReturn = {
 } & CampanhasActions
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
-  const { isBeta } = useFeatureAccess()
+  const { showsBetaLabel } = useFeatureAccess()
   const {
     host,
     teamId: activeTeamId,
@@ -226,7 +226,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     skipBetaGate,
   } = useStudioEmailRuntime()
   const service = host?.services.campanhas ?? defaultService
-  const isCampaignsBetaAccess = skipBetaGate ? true : isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  // D8: feature com Beta habilitada (betaLabel) isenta créditos — não exige grant BETA (isBeta).
+  const isCampaignsBetaAccess = skipBetaGate
+    ? true
+    : showsBetaLabel(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)

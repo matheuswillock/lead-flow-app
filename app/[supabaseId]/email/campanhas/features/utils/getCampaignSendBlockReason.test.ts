@@ -41,4 +41,29 @@ describe("getCampaignSendBlockReason", () => {
 
     expect(reason).toBeUndefined()
   })
+
+  it("skips subscription check when campaigns feature is in beta (D8)", () => {
+    const reason = getCampaignSendBlockReason({
+      campaign: { totalRecipients: 50 },
+      credits: makeCredits({ hasSubscription: false, isBetaExempt: false, creditsAvailable: 0 }),
+      isCampaignsBetaAccess: true,
+    })
+
+    expect(reason).toBeUndefined()
+  })
+
+  it("blocks without subscription when not beta and not exempt", () => {
+    const reason = getCampaignSendBlockReason({
+      campaign: { totalRecipients: 50 },
+      credits: makeCredits({
+        hasSubscription: false,
+        isBetaExempt: false,
+        creditsAvailable: 0,
+        dailyDispatch: { limit: null, used: 0, remaining: null, isUnlimited: true },
+      }),
+      isCampaignsBetaAccess: false,
+    })
+
+    expect(reason).toBe("Ative um plano em Assinaturas para disparar campanhas")
+  })
 })
