@@ -357,4 +357,20 @@ export interface IPublicFormsRepository {
     body: string
     payload: Prisma.InputJsonValue
   }): Promise<void>
+  findCompletedSubmissionsWithAnswersByLeadId(input: {
+    teamId: string
+    leadId: string
+    take?: number
+  }): Promise<
+    Array<{
+      id: string
+      formId: string
+      score: number
+      scoreBandLabel: string | null
+      submittedAt: Date | null
+      createdAt: Date
+      form: { name: string }
+      answers: Array<{ value: Prisma.JsonValue; questionSnapshot: Prisma.JsonValue }>
+    }>
+  >
 }

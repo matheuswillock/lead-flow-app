@@ -41,6 +41,26 @@ export type UpsertBackofficeRadarEngagementConfigInput = {
   lukewarmThreshold: number;
 };
 
+export type BackofficeFormEngagementScoreRuleRow = {
+  id: string;
+  minPercent: number;
+  maxPercent: number;
+  multiplier: number;
+  label: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type UpsertBackofficeFormEngagementScoreRuleInput = {
+  id?: string;
+  minPercent: number;
+  maxPercent: number;
+  multiplier: number;
+  label: string;
+  isActive?: boolean;
+};
+
 export interface IBackofficeRadarEngagementRepository {
   listWeights(): Promise<BackofficeRadarEngagementWeightRow[]>;
   upsertWeights(
@@ -50,4 +70,9 @@ export interface IBackofficeRadarEngagementRepository {
   upsertActiveConfig(
     input: UpsertBackofficeRadarEngagementConfigInput
   ): Promise<BackofficeRadarEngagementConfigRow>;
+  listFormScoreRules(): Promise<BackofficeFormEngagementScoreRuleRow[]>;
+  upsertFormScoreRules(
+    items: UpsertBackofficeFormEngagementScoreRuleInput[]
+  ): Promise<BackofficeFormEngagementScoreRuleRow[]>;
+  deleteFormScoreRule(id: string): Promise<void>;
 }

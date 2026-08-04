@@ -61,6 +61,19 @@ function mapAnswersForPersistence(
   })
 }
 
+/** D19-B-bis: anexa score da submissão ao origin do evento form_completed (Radar metadata). */
+function withFormCompletedScoreOrigin(
+  origin: Record<string, unknown>,
+  score: number,
+  scoreBandLabel: string | null | undefined
+): Record<string, unknown> {
+  return {
+    ...origin,
+    submissionScorePercent: score,
+    ...(scoreBandLabel ? { scoreBandLabel } : {}),
+  }
+}
+
 export class PublicFormSubmissionUseCase {
   async accept(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
     const current = (await publicFormsService.getPublic(publicId)) as {
@@ -267,6 +280,11 @@ export class PublicFormSubmissionUseCase {
 
       const visitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
       const metricOrigin = origin as Prisma.InputJsonValue
+      const formCompletedOrigin = withFormCompletedScoreOrigin(
+        origin,
+        job.score,
+        job.scoreBandLabel
+      ) as Prisma.InputJsonValue
       const metricEvents: Array<{
         formId: string
         publicationId: string
@@ -274,6 +292,7 @@ export class PublicFormSubmissionUseCase {
         eventType: "form_completed" | "lead_created" | "lead_attached" | "meeting_scheduled"
         eventKey: string
         origin: Prisma.InputJsonValue
+        radarOrigin?: Record<string, unknown>
       }> = [
         {
           formId: job.snapshot.formId,
@@ -281,7 +300,8 @@ export class PublicFormSubmissionUseCase {
           visitorSessionId,
           eventType: "form_completed",
           eventKey: `${job.requestKey}:form_completed`,
-          origin: metricOrigin,
+          origin: formCompletedOrigin,
+          radarOrigin: withFormCompletedScoreOrigin(origin, job.score, job.scoreBandLabel),
         },
       ]
 
@@ -347,7 +367,7 @@ export class PublicFormSubmissionUseCase {
           formId: event.formId,
           publicationId: event.publicationId,
           leadId: resolvedLeadId,
-          origin,
+          origin: event.radarOrigin ?? origin,
         })
       }
     } catch (error) {
@@ -355,6 +375,11 @@ export class PublicFormSubmissionUseCase {
       console.error("[PublicFormSubmissionUseCase][processInBackground]", message)
       alerts.push(message)
       const fallbackVisitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
+      const fallbackOrigin = withFormCompletedScoreOrigin(
+        job.origin,
+        job.score,
+        job.scoreBandLabel
+      )
       const fallbackMetricEvents = [
         {
           formId: job.snapshot.formId,
@@ -362,7 +387,7 @@ export class PublicFormSubmissionUseCase {
           visitorSessionId: fallbackVisitorSessionId,
           eventType: "form_completed" as const,
           eventKey: `${job.requestKey}:form_completed`,
-          origin: job.origin as Prisma.InputJsonValue,
+          origin: fallbackOrigin as Prisma.InputJsonValue,
         },
       ]
       await publicFormsRepository.completeSubmission({
@@ -383,7 +408,7 @@ export class PublicFormSubmissionUseCase {
             visitorSessionId: event.visitorSessionId,
             formId: event.formId,
             publicationId: event.publicationId,
-            origin: job.origin,
+            origin: fallbackOrigin,
           })
         }
       }

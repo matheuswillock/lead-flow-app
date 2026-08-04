@@ -926,6 +926,37 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
   }
+
+  async findCompletedSubmissionsWithAnswersByLeadId(input: {
+    teamId: string
+    leadId: string
+    take?: number
+  }) {
+    return prisma.publicFormSubmission.findMany({
+      where: {
+        leadId: input.leadId,
+        form: { teamId: input.teamId },
+        status: "completed",
+      },
+      select: {
+        id: true,
+        formId: true,
+        score: true,
+        scoreBandLabel: true,
+        submittedAt: true,
+        createdAt: true,
+        form: { select: { name: true } },
+        answers: {
+          select: {
+            value: true,
+            questionSnapshot: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: "desc" },
+      take: input.take ?? 20,
+    })
+  }
 }
 
 export const publicFormsRepository = new PublicFormsRepository()

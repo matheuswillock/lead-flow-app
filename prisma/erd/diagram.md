@@ -2787,6 +2787,18 @@ OUTROS OUTROS
     }
   
 
+  "backoffice_form_engagement_score_rules" {
+    String id "🗝️"
+    Int minPercent 
+    Int maxPercent 
+    Float multiplier 
+    String label 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_crm_lead_status_transition_field_rules" {
     String id "🗝️"
     BackofficeLeadStatus targetStatus 

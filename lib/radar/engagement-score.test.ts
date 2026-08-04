@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
+  DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
   computeEngagementScore,
   rankTopEngagementEvents,
+  resolveEventWeight,
   type WeightMap,
 } from "./engagement-score"
 
@@ -113,6 +115,92 @@ describe("computeEngagementScore", () => {
       NOW
     )
     expect(result).toEqual({ score: 0, band: "cold" })
+  })
+})
+
+describe("D19-B-bis form.completed score multiplier", () => {
+  test("score 90% aplica ×2,5 no peso base", () => {
+    const weight = resolveEventWeight(
+      {
+        eventType: "form.completed",
+        occurredAt: daysAgo(1),
+        metadata: { origin: { submissionScorePercent: 90 } },
+      },
+      WEIGHTS,
+      DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+    )
+    expect(weight).toBe(Math.round(25 * 2.5))
+  })
+
+  test("score 50% aplica ×1,0 (peso base)", () => {
+    const weight = resolveEventWeight(
+      {
+        eventType: "form.completed",
+        occurredAt: daysAgo(1),
+        metadata: { origin: { submissionScorePercent: 50 } },
+      },
+      WEIGHTS,
+      DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+    )
+    expect(weight).toBe(25)
+  })
+
+  test("sem submissionScorePercent usa fallback ×1,0", () => {
+    const weight = resolveEventWeight(
+      {
+        eventType: "form.completed",
+        occurredAt: daysAgo(1),
+        metadata: { origin: { utmSource: "email" } },
+      },
+      WEIGHTS,
+      DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+    )
+    expect(weight).toBe(25)
+  })
+
+  test("score fora de regras ativas usa fallback ×1,0", () => {
+    const weight = resolveEventWeight(
+      {
+        eventType: "form.completed",
+        occurredAt: daysAgo(1),
+        metadata: { origin: { submissionScorePercent: 50 } },
+      },
+      WEIGHTS,
+      [{ minPercent: 80, maxPercent: 100, multiplier: 2.5, label: "Alta", isActive: true }]
+    )
+    expect(weight).toBe(25)
+  })
+
+  test("dois form.completed com qualidades diferentes geram scores distintos", () => {
+    const high = computeEngagementScore(
+      [
+        {
+          eventType: "form.completed",
+          occurredAt: daysAgo(10),
+          metadata: { origin: { submissionScorePercent: 90 } },
+        },
+      ],
+      WEIGHTS,
+      DEFAULT_ENGAGEMENT_CONFIG,
+      NOW,
+      DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+    )
+    const low = computeEngagementScore(
+      [
+        {
+          eventType: "form.completed",
+          occurredAt: daysAgo(10),
+          metadata: { origin: { submissionScorePercent: 10 } },
+        },
+      ],
+      WEIGHTS,
+      DEFAULT_ENGAGEMENT_CONFIG,
+      NOW,
+      DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+    )
+    expect(high.score).toBe(Math.round(25 * 2.5))
+    expect(low.score).toBe(Math.round(25 * 0.2))
+    expect(high.score).toBeGreaterThan(low.score)
   })
 })
 

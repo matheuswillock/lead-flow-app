@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { useBackofficeRadarEngagement } from "../context/BackofficeRadarEngagementContext";
 import type {
   RadarEngagementConfigItem,
+  UpsertFormEngagementScoreRulePayload,
   UpsertRadarEngagementConfigPayload,
 } from "../services/IBackofficeRadarEngagementService";
 
@@ -27,6 +29,8 @@ type WeightDraft = {
   description: string | null;
   isActive: boolean;
 };
+
+type FormRuleDraft = UpsertFormEngagementScoreRulePayload & { key: string };
 
 const DEFAULT_CONFIG: UpsertRadarEngagementConfigPayload = {
   windowRecentDays: 7,
@@ -57,18 +61,23 @@ export function BackofficeRadarEngagementContainer() {
   const {
     weights,
     config,
+    formScoreRules,
     isLoading,
     isSavingWeights,
     isSavingConfig,
+    isSavingFormRules,
     error,
     canManage,
     saveWeights,
     saveConfig,
+    saveFormScoreRules,
+    deleteFormScoreRule,
   } = useBackofficeRadarEngagement();
 
   const [weightDrafts, setWeightDrafts] = useState<WeightDraft[]>([]);
   const [configDraft, setConfigDraft] =
     useState<UpsertRadarEngagementConfigPayload>(DEFAULT_CONFIG);
+  const [formRuleDrafts, setFormRuleDrafts] = useState<FormRuleDraft[]>([]);
 
   useEffect(() => {
     setWeightDrafts(
@@ -84,6 +93,20 @@ export function BackofficeRadarEngagementContainer() {
   useEffect(() => {
     setConfigDraft(configToDraft(config));
   }, [config]);
+
+  useEffect(() => {
+    setFormRuleDrafts(
+      formScoreRules.map((item) => ({
+        key: item.id,
+        id: item.id,
+        minPercent: item.minPercent,
+        maxPercent: item.maxPercent,
+        multiplier: item.multiplier,
+        label: item.label,
+        isActive: item.isActive,
+      }))
+    );
+  }, [formScoreRules]);
 
   if (isLoading) {
     return (
@@ -112,6 +135,19 @@ export function BackofficeRadarEngagementContainer() {
 
   const handleSaveConfig = async () => {
     await saveConfig(configDraft);
+  };
+
+  const handleSaveFormRules = async () => {
+    await saveFormScoreRules(
+      formRuleDrafts.map(({ key: _key, ...item }) => ({
+        id: item.id,
+        minPercent: item.minPercent,
+        maxPercent: item.maxPercent,
+        multiplier: item.multiplier,
+        label: item.label,
+        isActive: item.isActive ?? true,
+      }))
+    );
   };
 
   return (
@@ -187,6 +223,185 @@ export function BackofficeRadarEngagementContainer() {
         >
           {isSavingWeights ? "Salvando..." : "Salvar pesos"}
         </Button>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-medium">Score do formulário → temperatura</h2>
+          <p className="text-sm text-muted-foreground">
+            Mapeia o percentual de qualidade da submissão para o multiplicador do evento
+            form.completed.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-28">Mín. %</TableHead>
+                <TableHead className="w-28">Máx. %</TableHead>
+                <TableHead className="w-28">Multiplicador</TableHead>
+                <TableHead>Label</TableHead>
+                <TableHead className="w-24">Ativo</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {formRuleDrafts.map((item, index) => (
+                <TableRow key={item.key}>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={item.minPercent}
+                      disabled={!canManage || isSavingFormRules}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setFormRuleDrafts((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index
+                              ? {
+                                  ...row,
+                                  minPercent: Number.isFinite(next) ? next : row.minPercent,
+                                }
+                              : row
+                          )
+                        );
+                      }}
+                      className="w-20"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={item.maxPercent}
+                      disabled={!canManage || isSavingFormRules}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setFormRuleDrafts((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index
+                              ? {
+                                  ...row,
+                                  maxPercent: Number.isFinite(next) ? next : row.maxPercent,
+                                }
+                              : row
+                          )
+                        );
+                      }}
+                      className="w-20"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min={0}
+                      value={item.multiplier}
+                      disabled={!canManage || isSavingFormRules}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setFormRuleDrafts((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index
+                              ? {
+                                  ...row,
+                                  multiplier: Number.isFinite(next) ? next : row.multiplier,
+                                }
+                              : row
+                          )
+                        );
+                      }}
+                      className="w-24"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      value={item.label}
+                      disabled={!canManage || isSavingFormRules}
+                      onChange={(event) => {
+                        const label = event.target.value;
+                        setFormRuleDrafts((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, label } : row
+                          )
+                        );
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={item.isActive ?? true}
+                      disabled={!canManage || isSavingFormRules}
+                      onCheckedChange={(checked) => {
+                        setFormRuleDrafts((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, isActive: checked } : row
+                          )
+                        );
+                      }}
+                      aria-label={`Ativar regra ${item.label}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled={!canManage || isSavingFormRules}
+                      onClick={() => {
+                        if (item.id) {
+                          void deleteFormScoreRule(item.id);
+                          return;
+                        }
+                        setFormRuleDrafts((prev) => prev.filter((_, i) => i !== index));
+                      }}
+                      aria-label="Remover regra"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!canManage || isSavingFormRules}
+            onClick={() =>
+              setFormRuleDrafts((prev) => [
+                ...prev,
+                {
+                  key: `new-${crypto.randomUUID()}`,
+                  minPercent: 0,
+                  maxPercent: 0,
+                  multiplier: 1,
+                  label: "Nova faixa",
+                  isActive: true,
+                },
+              ])
+            }
+          >
+            <Plus data-icon="inline-start" />
+            Adicionar faixa
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleSaveFormRules()}
+            disabled={!canManage || isSavingFormRules || formRuleDrafts.length === 0}
+          >
+            {isSavingFormRules ? "Salvando..." : "Salvar regras de score"}
+          </Button>
+        </div>
       </section>
 
       <Separator />

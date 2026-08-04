@@ -1,8 +1,10 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import type {
+  BackofficeFormEngagementScoreRuleRow,
   BackofficeRadarEngagementConfigRow,
   BackofficeRadarEngagementWeightRow,
   IBackofficeRadarEngagementRepository,
+  UpsertBackofficeFormEngagementScoreRuleInput,
   UpsertBackofficeRadarEngagementConfigInput,
   UpsertBackofficeRadarEngagementWeightInput,
 } from "./IBackofficeRadarEngagementRepository";
@@ -27,6 +29,17 @@ const configSelect = {
   hotThreshold: true,
   warmThreshold: true,
   lukewarmThreshold: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const formRuleSelect = {
+  id: true,
+  minPercent: true,
+  maxPercent: true,
+  multiplier: true,
+  label: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -113,6 +126,50 @@ export class BackofficeRadarEngagementRepository
       },
       select: configSelect,
     });
+  }
+
+  async listFormScoreRules(): Promise<BackofficeFormEngagementScoreRuleRow[]> {
+    return prisma.backofficeFormEngagementScoreRule.findMany({
+      select: formRuleSelect,
+      orderBy: { minPercent: "asc" },
+    });
+  }
+
+  async upsertFormScoreRules(
+    items: UpsertBackofficeFormEngagementScoreRuleInput[]
+  ): Promise<BackofficeFormEngagementScoreRuleRow[]> {
+    await prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        if (item.id) {
+          await tx.backofficeFormEngagementScoreRule.update({
+            where: { id: item.id },
+            data: {
+              minPercent: item.minPercent,
+              maxPercent: item.maxPercent,
+              multiplier: item.multiplier,
+              label: item.label,
+              isActive: item.isActive ?? true,
+            },
+          });
+        } else {
+          await tx.backofficeFormEngagementScoreRule.create({
+            data: {
+              minPercent: item.minPercent,
+              maxPercent: item.maxPercent,
+              multiplier: item.multiplier,
+              label: item.label,
+              isActive: item.isActive ?? true,
+            },
+          });
+        }
+      }
+    });
+
+    return this.listFormScoreRules();
+  }
+
+  async deleteFormScoreRule(id: string): Promise<void> {
+    await prisma.backofficeFormEngagementScoreRule.delete({ where: { id } });
   }
 }
 

@@ -14,6 +14,27 @@ export type RadarProfileListItem = {
   sourceLinks: Array<{ sourceType: string }>
 }
 
+/** Breakdown de score de formulário no engajamento (D19-C). */
+export type FormSubmissionScoreBreakdown = {
+  submissionId: string
+  formId: string
+  formTitle: string
+  submittedAt: string
+  scorePercent: number
+  scoreBandLabel: string | null
+  answers: Array<{
+    questionLabel: string
+    chosenOptionLabel: string
+    chosenOptionScore: number
+    chosenOptionPolarity: "positive" | "negative"
+    questionWeight: number
+    contribution: number
+  }>
+  temperatureMultiplier: number
+  baseWeight: number
+  finalWeight: number
+}
+
 /** D19-D: resposta de `GET .../profiles/by-lead/:leadId/engagement` (quando encontrado). */
 export type LeadRadarEngagement = {
   notFound?: false
@@ -25,6 +46,7 @@ export type LeadRadarEngagement = {
     occurredAt: string
     contribution: number
   }>
+  formSubmissions?: FormSubmissionScoreBreakdown[]
 }
 
 export type RadarSegment = {

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext";
 import type {
   IBackofficeRadarEngagementService,
+  UpsertFormEngagementScoreRulePayload,
   UpsertRadarEngagementConfigPayload,
   UpsertRadarEngagementWeightPayload,
 } from "../services/IBackofficeRadarEngagementService";
@@ -24,7 +25,7 @@ export function BackofficeRadarEngagementProvider({
 }) {
   const { user } = useBackofficeUser();
   const canManage = !user?.isOperator;
-  const { state, refresh, setSavingWeights, setSavingConfig } =
+  const { state, refresh, setSavingWeights, setSavingConfig, setSavingFormRules } =
     useBackofficeRadarEngagementHook(service);
 
   useEffect(() => {
@@ -85,6 +86,60 @@ export function BackofficeRadarEngagementProvider({
     [canManage, refresh, service, setSavingConfig]
   );
 
+  const saveFormScoreRules = useCallback(
+    async (rules: UpsertFormEngagementScoreRulePayload[]) => {
+      if (!canManage) {
+        toast.error("Apenas masters podem alterar regras de score de formulário.");
+        return false;
+      }
+
+      setSavingFormRules(true);
+      try {
+        const result = await service.saveFormScoreRules(rules);
+        if (!result.isValid) {
+          toast.error(result.errorMessages?.[0] ?? "Erro ao salvar regras");
+          return false;
+        }
+        await refresh();
+        toast.success(result.successMessages?.[0] ?? "Regras salvas com sucesso.");
+        return true;
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao salvar regras");
+        return false;
+      } finally {
+        setSavingFormRules(false);
+      }
+    },
+    [canManage, refresh, service, setSavingFormRules]
+  );
+
+  const deleteFormScoreRule = useCallback(
+    async (id: string) => {
+      if (!canManage) {
+        toast.error("Apenas masters podem remover regras de score de formulário.");
+        return false;
+      }
+
+      setSavingFormRules(true);
+      try {
+        const result = await service.deleteFormScoreRule(id);
+        if (!result.isValid) {
+          toast.error(result.errorMessages?.[0] ?? "Erro ao remover regra");
+          return false;
+        }
+        await refresh();
+        toast.success(result.successMessages?.[0] ?? "Regra removida com sucesso.");
+        return true;
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao remover regra");
+        return false;
+      } finally {
+        setSavingFormRules(false);
+      }
+    },
+    [canManage, refresh, service, setSavingFormRules]
+  );
+
   const value = useMemo<BackofficeRadarEngagementContextValue>(
     () => ({
       ...state,
@@ -92,8 +147,10 @@ export function BackofficeRadarEngagementProvider({
       refresh,
       saveWeights,
       saveConfig,
+      saveFormScoreRules,
+      deleteFormScoreRule,
     }),
-    [canManage, refresh, saveConfig, saveWeights, state]
+    [canManage, deleteFormScoreRule, refresh, saveConfig, saveFormScoreRules, saveWeights, state]
   );
 
   return (

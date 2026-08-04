@@ -5,9 +5,11 @@ import type { BackofficeRadarEngagementState } from "./BackofficeRadarEngagement
 const initialState: BackofficeRadarEngagementState = {
   weights: [],
   config: null,
+  formScoreRules: [],
   isLoading: true,
   isSavingWeights: false,
   isSavingConfig: false,
+  isSavingFormRules: false,
   error: null,
 };
 
@@ -17,11 +19,16 @@ export function useBackofficeRadarEngagementHook(service: IBackofficeRadarEngage
   const refresh = useCallback(async () => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     try {
-      const [weights, config] = await Promise.all([service.listWeights(), service.getConfig()]);
+      const [weights, config, formScoreRules] = await Promise.all([
+        service.listWeights(),
+        service.getConfig(),
+        service.listFormScoreRules(),
+      ]);
       setState((prev) => ({
         ...prev,
         weights,
         config,
+        formScoreRules,
         isLoading: false,
         error: null,
       }));
@@ -42,10 +49,15 @@ export function useBackofficeRadarEngagementHook(service: IBackofficeRadarEngage
     setState((prev) => ({ ...prev, isSavingConfig: value }));
   }, []);
 
+  const setSavingFormRules = useCallback((value: boolean) => {
+    setState((prev) => ({ ...prev, isSavingFormRules: value }));
+  }, []);
+
   return {
     state,
     refresh,
     setSavingWeights,
     setSavingConfig,
+    setSavingFormRules,
   };
 }

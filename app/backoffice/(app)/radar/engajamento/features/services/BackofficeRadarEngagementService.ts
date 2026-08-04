@@ -1,9 +1,11 @@
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import type {
+  FormEngagementScoreRuleItem,
   IBackofficeRadarEngagementService,
   OutputLike,
   RadarEngagementConfigItem,
   RadarEngagementWeightItem,
+  UpsertFormEngagementScoreRulePayload,
   UpsertRadarEngagementConfigPayload,
   UpsertRadarEngagementWeightPayload,
 } from "./IBackofficeRadarEngagementService";
@@ -45,6 +47,35 @@ export class BackofficeRadarEngagementService implements IBackofficeRadarEngagem
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    });
+    return response.json();
+  }
+
+  async listFormScoreRules(): Promise<FormEngagementScoreRuleItem[]> {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/radar/form-engagement-rules`, {
+      cache: "no-store",
+    });
+    const data = await response.json();
+    if (!data.isValid) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao listar regras de score de formulário");
+    }
+    return (data.result?.rules ?? []) as FormEngagementScoreRuleItem[];
+  }
+
+  async saveFormScoreRules(rules: UpsertFormEngagementScoreRulePayload[]): Promise<OutputLike> {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/radar/form-engagement-rules`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rules }),
+    });
+    return response.json();
+  }
+
+  async deleteFormScoreRule(id: string): Promise<OutputLike> {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/radar/form-engagement-rules`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
     });
     return response.json();
   }

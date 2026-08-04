@@ -13,10 +13,12 @@ import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
+  DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
   computeEngagementScore,
   rankTopEngagementEvents,
   type EngagementBand,
   type EngagementConfig,
+  type FormEngagementScoreRule,
   type WeightMap,
 } from "@/lib/radar/engagement-score"
 
@@ -25,6 +27,7 @@ const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 type EngagementWeightsConfigCache = {
   weights: WeightMap
   config: EngagementConfig
+  formRules: FormEngagementScoreRule[]
   expiresAt: number
 }
 
@@ -958,7 +961,7 @@ export class RadarRepository {
    * eventos dentro de `windowOldDays`. Pesos + config backoffice com cache 5 min.
    */
   async updateEngagementScore(profileId: string, teamId: string) {
-    const { weights, config } = await this.loadEngagementWeightsAndConfig()
+    const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
 
     const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
     const events = await prisma.radarEvent.findMany({
@@ -970,10 +973,11 @@ export class RadarRepository {
       select: {
         eventType: true,
         occurredAt: true,
+        metadata: true,
       },
     })
 
-    const { score, band } = computeEngagementScore(events, weights, config)
+    const { score, band } = computeEngagementScore(events, weights, config, new Date(), formRules)
 
     await prisma.radarProfile.updateMany({
       where: { id: profileId, teamId },
@@ -1007,7 +1011,7 @@ export class RadarRepository {
       return { notFound: true as const }
     }
 
-    const { weights, config } = await this.loadEngagementWeightsAndConfig()
+    const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
     const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
     const events = await prisma.radarEvent.findMany({
       where: {
@@ -1018,22 +1022,25 @@ export class RadarRepository {
       select: {
         eventType: true,
         occurredAt: true,
+        metadata: true,
       },
     })
 
     let score = profile.engagementScore
     let band = profile.engagementBand as EngagementBand | null
     if (score == null || band == null) {
-      const computed = computeEngagementScore(events, weights, config)
+      const computed = computeEngagementScore(events, weights, config, new Date(), formRules)
       score = computed.score
       band = computed.band
     }
 
-    const topEvents = rankTopEngagementEvents(events, weights, config, 3).map((item) => ({
-      eventType: item.eventType,
-      occurredAt: item.occurredAt.toISOString(),
-      contribution: Math.round(item.contribution * 100) / 100,
-    }))
+    const topEvents = rankTopEngagementEvents(events, weights, config, 3, new Date(), formRules).map(
+      (item) => ({
+        eventType: item.eventType,
+        occurredAt: item.occurredAt.toISOString(),
+        contribution: Math.round(item.contribution * 100) / 100,
+      })
+    )
 
     return {
       notFound: false as const,
@@ -1063,16 +1070,18 @@ export class RadarRepository {
   private async loadEngagementWeightsAndConfig(): Promise<{
     weights: WeightMap
     config: EngagementConfig
+    formRules: FormEngagementScoreRule[]
   }> {
     const now = Date.now()
     if (engagementWeightsConfigCache && engagementWeightsConfigCache.expiresAt > now) {
       return {
         weights: engagementWeightsConfigCache.weights,
         config: engagementWeightsConfigCache.config,
+        formRules: engagementWeightsConfigCache.formRules,
       }
     }
 
-    const [weightRows, configRow] = await Promise.all([
+    const [weightRows, configRow, formRuleRows] = await Promise.all([
       prisma.backofficeRadarEngagementWeight.findMany({
         where: { isActive: true },
         select: { eventType: true, weight: true },
@@ -1090,6 +1099,17 @@ export class RadarRepository {
           lukewarmThreshold: true,
         },
         orderBy: { updatedAt: "desc" },
+      }),
+      prisma.backofficeFormEngagementScoreRule.findMany({
+        where: { isActive: true },
+        select: {
+          minPercent: true,
+          maxPercent: true,
+          multiplier: true,
+          label: true,
+          isActive: true,
+        },
+        orderBy: { minPercent: "asc" },
       }),
     ])
 
@@ -1111,13 +1131,25 @@ export class RadarRepository {
         }
       : DEFAULT_ENGAGEMENT_CONFIG
 
+    const formRules: FormEngagementScoreRule[] =
+      formRuleRows.length > 0
+        ? formRuleRows.map((row) => ({
+            minPercent: row.minPercent,
+            maxPercent: row.maxPercent,
+            multiplier: row.multiplier,
+            label: row.label,
+            isActive: row.isActive,
+          }))
+        : DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+
     engagementWeightsConfigCache = {
       weights,
       config,
+      formRules,
       expiresAt: now + ENGAGEMENT_CACHE_TTL_MS,
     }
 
-    return { weights, config }
+    return { weights, config, formRules }
   }
 
   async upsertConsent(input: UpsertConsentInput) {

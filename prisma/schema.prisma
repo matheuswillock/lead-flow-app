@@ -3470,6 +3470,22 @@ model BackofficeRadarEngagementConfig {
   @@map("backoffice_radar_engagement_configs")
 }
 
+/// D19-B-bis: mapeia score% da submissão de formulário → multiplicador do peso form.completed.
+model BackofficeFormEngagementScoreRule {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  minPercent Int
+  maxPercent Int
+  multiplier Float
+  label      String   @db.Text
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([minPercent, maxPercent])
+  @@index([isActive])
+  @@map("backoffice_form_engagement_score_rules")
+}
+
 model BackofficeCrmLeadStatusTransitionFieldRule {
   id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   targetStatus       BackofficeLeadStatus

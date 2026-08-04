@@ -1,6 +1,10 @@
 import { Output } from "@/lib/output"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
+import {
+  getFormSubmissionScoreBreakdownUseCase,
+  type FormSubmissionScoreBreakdown,
+} from "@/app/api/useCases/publicForms/GetFormSubmissionScoreBreakdownUseCase"
 
 export type LeadRadarEngagementResult =
   | {
@@ -13,8 +17,9 @@ export type LeadRadarEngagementResult =
         occurredAt: string
         contribution: number
       }>
+      formSubmissions: FormSubmissionScoreBreakdown[]
     }
-  | { notFound: true }
+  | { notFound: true; formSubmissions: FormSubmissionScoreBreakdown[] }
 
 class GetLeadRadarEngagementUseCase {
   async execute(input: {
@@ -27,13 +32,22 @@ class GetLeadRadarEngagementUseCase {
         return new Output(false, [], ["leadId é obrigatório"], null)
       }
 
-      const result = await radarRepository.getLeadRadarEngagementWithCtx(
-        { teamId: input.teamId, ctx: input.ctx },
-        input.leadId
-      )
+      const [result, formSubmissions] = await Promise.all([
+        radarRepository.getLeadRadarEngagementWithCtx(
+          { teamId: input.teamId, ctx: input.ctx },
+          input.leadId
+        ),
+        getFormSubmissionScoreBreakdownUseCase.execute({
+          teamId: input.teamId,
+          leadId: input.leadId,
+        }),
+      ])
 
       if (result.notFound) {
-        return new Output(true, [], [], { notFound: true } satisfies LeadRadarEngagementResult)
+        return new Output(true, [], [], {
+          notFound: true,
+          formSubmissions,
+        } satisfies LeadRadarEngagementResult)
       }
 
       return new Output(true, [], [], {
@@ -42,6 +56,7 @@ class GetLeadRadarEngagementUseCase {
         score: result.score,
         band: result.band,
         topEvents: result.topEvents,
+        formSubmissions,
       } satisfies LeadRadarEngagementResult)
     } catch (error) {
       console.error("[GetLeadRadarEngagementUseCase][execute]", error)
