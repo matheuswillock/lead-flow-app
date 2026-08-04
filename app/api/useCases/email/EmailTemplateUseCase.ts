@@ -19,6 +19,7 @@ import {
 } from "@/lib/email/interpolate"
 import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
 import { getFullUrl } from "@/lib/utils/app-url"
+import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 
 const templateDetailSelect = {
   id: true,
@@ -203,17 +204,20 @@ export class EmailTemplateUseCase {
       })
 
       if (scope === "campaign") {
-        return new Output(
-          true,
-          [],
-          [],
-          templates.map((template) =>
-            resolveEmailCreator({
+        const campaignTemplates = await Promise.all(
+          templates.map(async (template) => {
+            const linkedForm = await detectLinkedFormFromTemplateHtml(
+              ctx.teamId,
+              template.html
+            )
+            return resolveEmailCreator({
               ...template,
+              linkedForm,
               managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
             })
-          )
+          })
         )
+        return new Output(true, [], [], campaignTemplates)
       }
 
       const latestByGroup = new Map<string, (typeof templates)[number]>()

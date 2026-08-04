@@ -169,6 +169,19 @@ export function buildCampaignWizardSubmitSchema(params: {
           message: "Informe uma data para cada sub-campanha",
           path: ["subCampaignSchedules"],
         })
+        return
+      }
+
+      const byIndex = new Set(data.subCampaignSchedules.map((entry) => entry.index))
+      for (let index = 1; index <= params.subCampaignCount; index++) {
+        if (!byIndex.has(index)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Informe uma data para cada sub-campanha",
+            path: ["subCampaignSchedules"],
+          })
+          return
+        }
       }
 
       for (const entry of data.subCampaignSchedules) {
