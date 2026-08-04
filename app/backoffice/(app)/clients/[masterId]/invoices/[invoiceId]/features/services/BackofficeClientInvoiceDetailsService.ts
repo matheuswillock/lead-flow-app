@@ -72,7 +72,7 @@ export class BackofficeClientInvoiceDetailsService
 
   async deleteInvoice(masterId: string, invoiceId: string): Promise<{ message: string }> {
     const response = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
       {
         method: "DELETE",
       }
