@@ -1,10 +1,18 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { FileText, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
+import { Check, ChevronsUpDown, FileText, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import {
   Dialog,
   DialogContent,
@@ -14,6 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -24,6 +33,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { cn } from "@/lib/utils"
 import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions"
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction"
 import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limits"
@@ -42,6 +52,7 @@ import type {
   RadarSegmentCondition,
   RadarSegmentRules,
 } from "../context/RadarTypes"
+import { radarFrontendService } from "../services/RadarService"
 import {
   OPERATORS_BY_CUSTOM_FIELD_TYPE,
   OPERATORS_BY_LAST_SEEN,
@@ -239,6 +250,173 @@ function LeadCustomFieldValueInput({
       value={typeof condition.value === "string" ? condition.value : ""}
       onChange={(e) => onChange(e.target.value)}
     />
+  )
+}
+
+
+/** Catálogo canônico — permite condições (ex.: not_occurred) mesmo sem RadarEvent no time. */
+const CANONICAL_RADAR_EVENT_TYPES = [
+  "email.sent",
+  "email.opened",
+  "email.clicked",
+  "whatsapp.message_received",
+  "whatsapp.message_sent",
+  "portfolio.renewal_due",
+  "portfolio.renewed",
+  "portfolio.brokerage_transfer",
+  "lead.created",
+  "lead.status_changed",
+  "lead.milestone.new_opportunity",
+  "lead.milestone.invoice_payment",
+  "lead.milestone.future_sale",
+  "lead.milestone.contract_finalized",
+  "profile.first_contact",
+  "form.viewed",
+  "form.completed",
+  "pixel.pageview",
+  "pixel.click",
+] as const
+
+function EventTypeSelect({
+  value,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  value: string
+  onChange: (eventType: string) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const [eventTypes, setEventTypes] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const requestKeyRef = useRef<string | null>(null)
+  const lastSuccessKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!supabaseId || !teamId) {
+      setEventTypes([])
+      setError(null)
+      return
+    }
+
+    const requestKey = `${supabaseId}:${teamId}`
+    if (lastSuccessKeyRef.current === requestKey) return
+    if (requestKeyRef.current === requestKey) return
+    requestKeyRef.current = requestKey
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    void radarFrontendService
+      .listAvailableEventTypes(supabaseId, teamId)
+      .then((types) => {
+        if (cancelled) return
+        setEventTypes(types)
+        lastSuccessKeyRef.current = requestKey
+      })
+      .catch((loadError) => {
+        if (cancelled) return
+        console.error("[EventTypeSelect]", loadError)
+        setError("Não foi possível carregar os tipos de evento")
+        requestKeyRef.current = null
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      // Strict Mode (dev): o cleanup do 1º mount não deve bloquear o replay do effect.
+      if (requestKeyRef.current === requestKey) {
+        requestKeyRef.current = null
+      }
+    }
+  }, [supabaseId, teamId])
+
+  const options = Array.from(
+    new Set<string>([
+      ...CANONICAL_RADAR_EVENT_TYPES,
+      ...eventTypes,
+      ...(value ? [value] : []),
+    ])
+  ).sort((a, b) => a.localeCompare(b))
+
+  const trimmed = search.trim()
+  const filtered = trimmed
+    ? options.filter((eventType) => eventType.toLowerCase().includes(trimmed.toLowerCase()))
+    : options
+  const canUseCustom = trimmed.length > 0 && !options.some((eventType) => eventType === trimmed)
+
+  const placeholder = loading
+    ? "Carregando eventos…"
+    : error
+      ? "Erro ao carregar"
+      : "Tipo de evento"
+
+  const selectEventType = (eventType: string) => {
+    onChange(eventType)
+    setOpen(false)
+    setSearch("")
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-56 justify-between font-normal"
+        >
+          <span className={cn("truncate", !value && "text-muted-foreground")}>
+            {value || placeholder}
+          </span>
+          <ChevronsUpDown data-icon="inline-end" className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Buscar ou digitar evento…"
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            {canUseCustom ? (
+              <CommandGroup heading="Valor personalizado">
+                <CommandItem value={`custom:${trimmed}`} onSelect={() => selectEventType(trimmed)}>
+                  Usar &quot;{trimmed}&quot;
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
+            <CommandGroup heading={eventTypes.length > 0 ? "Eventos do time e catálogo" : "Catálogo de eventos"}>
+              {filtered.length === 0 && !canUseCustom ? (
+                <CommandEmpty>
+                  {loading ? "Carregando…" : "Nenhum tipo encontrado — digite para usar um valor customizado"}
+                </CommandEmpty>
+              ) : (
+                filtered.map((eventType) => (
+                  <CommandItem
+                    key={eventType}
+                    value={eventType}
+                    onSelect={() => selectEventType(eventType)}
+                  >
+                    <Check className={cn("opacity-0", value === eventType && "opacity-100")} />
+                    {eventType}
+                  </CommandItem>
+                ))
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -726,11 +904,11 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
 
                 {condition.kind === "event" ? (
                   <div className="flex flex-wrap gap-2">
-                    <Input
-                      className="w-56"
-                      placeholder="Ex.: whatsapp.message_received"
+                    <EventTypeSelect
                       value={condition.eventType}
-                      onChange={(e) => updateCondition(index, { ...condition, eventType: e.target.value })}
+                      onChange={(eventType) => updateCondition(index, { ...condition, eventType })}
+                      supabaseId={supabaseId}
+                      teamId={activeTeamId}
                     />
                     <Select
                       value={condition.occurrence}

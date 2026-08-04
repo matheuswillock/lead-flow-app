@@ -231,6 +231,15 @@ export class RadarFrontendService implements IRadarService {
     return result.fields ?? []
   }
 
+  async listAvailableEventTypes(supabaseId: string, teamId: string): Promise<string[]> {
+    const res = await fetch(`${this.baseUrl}/available-event-types`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const result = await parseOutput<{ eventTypes?: string[] }>(res)
+    return result.eventTypes ?? []
+  }
+
   async previewInterpolation(
     supabaseId: string,
     teamId: string,
