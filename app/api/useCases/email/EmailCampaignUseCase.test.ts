@@ -85,6 +85,14 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     },
     emailTeamSettings: { findUnique: mock(async () => null) },
     emailTemplate: { findFirst: emailTemplateFindFirstMock },
+    emailContactList: {
+      findMany: mock(async () => [
+        { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
+      ]),
+    },
+    emailContact: {
+      findMany: mock(async () => []),
+    },
     emailCampaignDispatch: {
       aggregate: emailCampaignDispatchAggregateMock,
       create: emailCampaignDispatchCreateMock,
