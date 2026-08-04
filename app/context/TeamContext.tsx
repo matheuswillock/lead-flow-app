@@ -60,6 +60,10 @@ interface TeamContextState {
 
 const TeamContext = createContext<TeamContextState | undefined>(undefined);
 
+// Referência estável — evita recriar consumers (ex.: loadLeads do CRM) a cada render
+// quando o time ainda não tem functions.
+const EMPTY_TEAM_FUNCTIONS: ("SDR" | "CLOSER")[] = [];
+
 function getStorageKey(supabaseId: string) {
   return `activeTeamId:${supabaseId}`;
 }
@@ -364,7 +368,7 @@ export const TeamProvider = ({
   }, [teams, activeTeamId]);
 
   const activeRole = activeTeam?.role ?? null;
-  const activeFunctions = activeTeam?.functions ?? [];
+  const activeFunctions = activeTeam?.functions ?? EMPTY_TEAM_FUNCTIONS;
   const isTeamMaster = !!(user && activeTeam && activeTeam.masterId === user.id);
 
   useEffect(() => {

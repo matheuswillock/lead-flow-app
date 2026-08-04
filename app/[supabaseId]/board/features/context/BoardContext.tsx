@@ -268,6 +268,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const lastLeadsLoadKeyRef = useRef<string | null>(null);
   const leadsLoadInFlightKeyRef = useRef<string | null>(null);
   const leadsLoadInFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const statusRulesInFlightKeyRef = useRef<string | null>(null);
+  const lastStatusRulesSettledKeyRef = useRef<string | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -404,12 +406,24 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     }
   }, [leadCardDisplayStorageKey, leadCardDisplay]);
 
-  const loadTeamStatusRules = useCallback(async () => {
+  const loadTeamStatusRules = useCallback(async (options?: { force?: boolean }) => {
     if (!supabaseId || !activeTeamId) {
       setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+      lastStatusRulesSettledKeyRef.current = null;
+      statusRulesInFlightKeyRef.current = null;
       return;
     }
 
+    const requestKey = `${supabaseId}:${activeTeamId}`;
+    if (
+      !options?.force &&
+      (statusRulesInFlightKeyRef.current === requestKey ||
+        lastStatusRulesSettledKeyRef.current === requestKey)
+    ) {
+      return;
+    }
+
+    statusRulesInFlightKeyRef.current = requestKey;
     try {
       const response = await fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/status-rules`, {
         headers: {
@@ -420,15 +434,22 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.isValid || !result?.result) {
         setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+        lastStatusRulesSettledKeyRef.current = requestKey;
         return;
       }
       setTeamStatusRules({
         ...EMPTY_TEAM_STATUS_RULES,
         ...result.result,
       });
+      lastStatusRulesSettledKeyRef.current = requestKey;
     } catch (error) {
       console.error("[BoardContext] Erro ao carregar regras de status:", error);
       setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+      lastStatusRulesSettledKeyRef.current = requestKey;
+    } finally {
+      if (statusRulesInFlightKeyRef.current === requestKey) {
+        statusRulesInFlightKeyRef.current = null;
+      }
     }
   }, [activeTeamId, supabaseId]);
 
@@ -636,10 +657,13 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           }
         } else {
           console.error('Erro ao carregar leads:', result.errorMessages);
+          // Assenta a chave mesmo em erro para evitar retry storm em 5xx.
+          lastLeadsLoadKeyRef.current = loadKey;
           setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
         }
       } catch (error) {
         console.error('Erro ao carregar leads:', error);
+        lastLeadsLoadKeyRef.current = loadKey;
         setErrors({ api: 'Erro ao carregar dados' });
       } finally {
         if (leadsLoadInFlightKeyRef.current === loadKey) {
