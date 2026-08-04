@@ -66,6 +66,21 @@ function getTransferTargetLabel(target: TransferTargetItem): string {
   return target.teamName;
 }
 
+function mapEmbeddedMembers(
+  members: NonNullable<TransferTargetItem["closers"]> | undefined,
+  fn: "CLOSER" | "SDR"
+): TeamMemberOption[] {
+  if (!members) return [];
+  return members.map((member) => ({
+    id: member.profileId,
+    profileId: member.profileId,
+    name: member.fullName ?? member.email,
+    email: member.email,
+    functions: [fn] as ("SDR" | "CLOSER")[],
+    googleCalendarConnected: member.googleCalendarConnected ?? false,
+  }));
+}
+
 export function TransferBetweenTeamsDialog({
   open,
   onOpenChange,
@@ -105,23 +120,21 @@ export function TransferBetweenTeamsDialog({
   const targetTeamId = selectedTarget?.teamId ?? "";
 
   const closers = useMemo(() => {
-    if (isMultiskillDestination && selectedTarget?.closers) {
-      return selectedTarget.closers.map((closer) => ({
-        id: closer.profileId,
-        profileId: closer.profileId,
-        name: closer.fullName ?? closer.email,
-        email: closer.email,
-        functions: ["CLOSER"] as ("SDR" | "CLOSER")[],
-        googleCalendarConnected: false,
-      }));
+    if (isMultiskillDestination) {
+      return mapEmbeddedMembers(selectedTarget?.closers, "CLOSER");
     }
     return teamMembers.filter((member) => member.functions.includes("CLOSER"));
   }, [isMultiskillDestination, selectedTarget?.closers, teamMembers]);
 
-  const sdrs = teamMembers.filter((member) => member.functions.includes("SDR"));
+  const sdrs = useMemo(() => {
+    if (isMultiskillDestination) {
+      return mapEmbeddedMembers(selectedTarget?.sdrs, "SDR");
+    }
+    return teamMembers.filter((member) => member.functions.includes("SDR"));
+  }, [isMultiskillDestination, selectedTarget?.sdrs, teamMembers]);
+
   const selectedCloser = closers.find((member) => member.profileId === closerId) ?? null;
-  const requiresManualMeetingLink =
-    !isMultiskillDestination && !!selectedCloser && !selectedCloser.googleCalendarConnected;
+  const requiresManualMeetingLink = !!selectedCloser && !selectedCloser.googleCalendarConnected;
 
   const meetingLinkValidation = useMemo(
     () =>
@@ -213,7 +226,6 @@ export function TransferBetweenTeamsDialog({
       if (!isMultiskillDestination) {
         setTeamMembers([]);
       }
-      // Clear loading when skipping fetch (e.g. switch internal → MultiSkill mid-request).
       setMembersLoading(false);
       return;
     }
@@ -274,10 +286,7 @@ export function TransferBetweenTeamsDialog({
   useEffect(() => {
     setCloserId("");
     setSdrId("");
-    if (isMultiskillDestination) {
-      setScheduleEnabled(false);
-    }
-  }, [selectedTarget, isMultiskillDestination]);
+  }, [selectedTarget]);
 
   const meetingDateKey = meetingDate
     ? [
@@ -288,7 +297,7 @@ export function TransferBetweenTeamsDialog({
     : null;
 
   useEffect(() => {
-    if (!scheduleEnabled || !closerId || !meetingDateKey || !supabaseId || isMultiskillDestination) {
+    if (!scheduleEnabled || !closerId || !meetingDateKey || !supabaseId || !targetTeamId) {
       setAvailableTimes([]);
       return;
     }
@@ -297,14 +306,26 @@ export function TransferBetweenTeamsDialog({
     setAvailabilityLoading(true);
     setAvailableTimes([]);
 
+    const availabilityTeamHeader = isMultiskillDestination
+      ? (activeTeamId ?? "")
+      : targetTeamId;
+    const body: Record<string, string> = {
+      closerId,
+      date: meetingDateKey,
+      excludeLeadId: lead.id,
+    };
+    if (isMultiskillDestination) {
+      body.destinationTeamId = targetTeamId;
+    }
+
     fetch(`${API_CLIENT_BASE}/calendar/availability`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-supabase-user-id": supabaseId,
-        "x-team-id": targetTeamId,
+        "x-team-id": availabilityTeamHeader,
       },
-      body: JSON.stringify({ closerId, date: meetingDateKey, excludeLeadId: lead.id }),
+      body: JSON.stringify(body),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -330,14 +351,14 @@ export function TransferBetweenTeamsDialog({
     targetTeamId,
     lead.id,
     isMultiskillDestination,
+    activeTeamId,
   ]);
 
   const canSubmit =
     !!selectedTarget &&
     !!closerId &&
     !submitting &&
-    (isMultiskillDestination ||
-      !scheduleEnabled ||
+    (!scheduleEnabled ||
       (!!meetingDate &&
         !availabilityLoading &&
         availableTimes.length > 0 &&
@@ -349,11 +370,45 @@ export function TransferBetweenTeamsDialog({
     setTargetTeamQuery(getTransferTargetLabel(target));
   };
 
+  const buildSchedulePayload = (): Record<string, unknown> | null => {
+    if (!scheduleEnabled || !meetingDate) return null;
+    const normalizedMeetingLink = meetingLinkValidation.isValid
+      ? meetingLinkValidation.normalized
+      : undefined;
+    return {
+      date: meetingDate.toISOString(),
+      meetingTitle: meetingTitle || lead.meetingTitle || undefined,
+      meetingNotes: lead.meetingNotes || undefined,
+      meetingLink: requiresManualMeetingLink ? normalizedMeetingLink : undefined,
+      meetingType: "online",
+      transitionStatusToScheduled: true,
+    };
+  };
+
+  const resolveTransferLeadResult = (
+    result: { lead?: Lead; schedulePending?: boolean } | Lead | null
+  ): { updatedLead: Lead; schedulePending: boolean } => {
+    const updatedLead =
+      result && typeof result === "object" && "lead" in result && result.lead
+        ? result.lead
+        : (result as Lead);
+    const schedulePending =
+      result && typeof result === "object" && "schedulePending" in result
+        ? result.schedulePending === true
+        : false;
+    if (!updatedLead) {
+      throw new Error("Resposta inválida ao transferir lead");
+    }
+    return { updatedLead, schedulePending };
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit || !supabaseId || !selectedTarget) return;
 
     setSubmitting(true);
     try {
+      const schedulePayload = buildSchedulePayload();
+
       if (selectedTarget.mode === "multiskill") {
         if (!selectedTarget.masterId) {
           throw new Error("Destino MultiSkill inválido");
@@ -370,6 +425,7 @@ export function TransferBetweenTeamsDialog({
             targetMasterId: selectedTarget.masterId,
             closerId,
             sdrId: sdrId && sdrId !== "_none" ? sdrId : null,
+            schedule: schedulePayload,
           }),
         });
 
@@ -382,30 +438,18 @@ export function TransferBetweenTeamsDialog({
           throw new Error(message);
         }
 
-        const updatedLead = result.result as Lead | null;
-        if (!updatedLead) {
-          throw new Error("Resposta inválida ao transferir lead");
-        }
+        const { updatedLead, schedulePending } = resolveTransferLeadResult(
+          result.result as { lead?: Lead; schedulePending?: boolean } | Lead | null
+        );
 
-        toast.success("Lead transferido via MultiSkill com sucesso");
+        if (schedulePending) {
+          toast.success("Lead transferido via MultiSkill. O agendamento está sendo processado.");
+        } else {
+          toast.success("Lead transferido via MultiSkill com sucesso");
+        }
         onSuccess(updatedLead);
         onOpenChange(false);
         return;
-      }
-
-      let schedulePayload: Record<string, unknown> | null = null;
-      if (scheduleEnabled && meetingDate) {
-        const normalizedMeetingLink = meetingLinkValidation.isValid
-          ? meetingLinkValidation.normalized
-          : undefined;
-        schedulePayload = {
-          date: meetingDate.toISOString(),
-          meetingTitle: meetingTitle || lead.meetingTitle || undefined,
-          meetingNotes: lead.meetingNotes || undefined,
-          meetingLink: requiresManualMeetingLink ? normalizedMeetingLink : undefined,
-          meetingType: "online",
-          transitionStatusToScheduled: true,
-        };
       }
 
       const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/transfer-teams`, {
@@ -432,17 +476,9 @@ export function TransferBetweenTeamsDialog({
         throw new Error(message);
       }
 
-      const transferResult = result.result as { lead?: Lead; schedulePending?: boolean } | Lead | null;
-      const updatedLead =
-        transferResult && "lead" in transferResult ? transferResult.lead : (transferResult as Lead);
-      const schedulePending =
-        transferResult && typeof transferResult === "object" && "schedulePending" in transferResult
-          ? transferResult.schedulePending === true
-          : false;
-
-      if (!updatedLead) {
-        throw new Error("Resposta inválida ao transferir lead");
-      }
+      const { updatedLead, schedulePending } = resolveTransferLeadResult(
+        result.result as { lead?: Lead; schedulePending?: boolean } | Lead | null
+      );
 
       if (schedulePending) {
         toast.success("Lead transferido. O agendamento está sendo processado.");
@@ -589,127 +625,121 @@ export function TransferBetweenTeamsDialog({
             </Select>
           </div>
 
-          {!isMultiskillDestination ? (
-            <div className="flex flex-col gap-3">
-              <Label htmlFor="sdr">SDR responsável</Label>
-              <Select
-                value={sdrId}
-                onValueChange={setSdrId}
-                disabled={!selectedTarget || membersLoading}
-              >
-                <SelectTrigger id="sdr">
-                  <SelectValue placeholder="Sem SDR" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">Sem SDR</SelectItem>
-                  {sdrs.map((member) => (
-                    <SelectItem key={member.id} value={member.profileId}>
-                      {member.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+          <div className="flex flex-col gap-3">
+            <Label htmlFor="sdr">SDR responsável</Label>
+            <Select
+              value={sdrId}
+              onValueChange={setSdrId}
+              disabled={!selectedTarget || (membersLoading && !isMultiskillDestination)}
+            >
+              <SelectTrigger id="sdr">
+                <SelectValue placeholder="Sem SDR" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">Sem SDR</SelectItem>
+                {sdrs.map((member) => (
+                  <SelectItem key={member.id} value={member.profileId}>
+                    {member.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          {!isMultiskillDestination ? (
-            <>
-              <Separator />
+          <Separator />
 
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="scheduleToggle">Agendar no ato da transferência</Label>
-                <Switch
-                  id="scheduleToggle"
-                  checked={scheduleEnabled}
-                  onCheckedChange={setScheduleEnabled}
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="scheduleToggle">Agendar no ato da transferência</Label>
+            <Switch
+              id="scheduleToggle"
+              checked={scheduleEnabled}
+              onCheckedChange={setScheduleEnabled}
+            />
+          </div>
+
+          {closerId && requiresManualMeetingLink && (
+            <p className="text-xs text-muted-foreground">
+              Este closer não possui Google Calendar conectado. Informe o link da reunião para
+              enviar os convites.
+            </p>
+          )}
+
+          {scheduleEnabled && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>Data e hora da reunião</Label>
+                <DateTimePicker
+                  date={meetingDate}
+                  onDateChange={setMeetingDate}
+                  tz={tz}
+                  label=""
+                  availableTimes={pickerAvailableTimes}
+                  timeLoading={availabilityLoading}
+                  timeLoadingText="Carregando agenda do closer..."
+                />
+                {!closerId && meetingDate && (
+                  <p className="text-xs text-muted-foreground">
+                    Selecione um closer para carregar os horários disponíveis.
+                  </p>
+                )}
+                {closerId && availabilityLoading && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    Carregando horários disponíveis...
+                  </p>
+                )}
+                {closerId && meetingDate && !availabilityLoading && availableTimes.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {lead.isTransfer && lead.meetingDate
+                      ? "O horário do pré-agendamento não está disponível para este closer. Para prosseguir, selecione outro closer, escolha outro horário ou desative o agendamento abaixo."
+                      : "Nenhum horário disponível para este closer neste dia. Selecione outro closer ou outra data."}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="meetingTitle">Título da reunião</Label>
+                <Input
+                  id="meetingTitle"
+                  value={meetingTitle}
+                  onChange={(event) => setMeetingTitle(event.target.value)}
+                  placeholder="Ex: Apresentação de proposta"
                 />
               </div>
 
-              {closerId && requiresManualMeetingLink && (
-                <p className="text-xs text-muted-foreground">
-                  Este closer não possui Google Calendar conectado. Informe o link da reunião para
-                  enviar os convites.
-                </p>
-              )}
-
-              {scheduleEnabled && (
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-2">
-                    <Label>Data e hora da reunião</Label>
-                    <DateTimePicker
-                      date={meetingDate}
-                      onDateChange={setMeetingDate}
-                      tz={tz}
-                      label=""
-                      availableTimes={pickerAvailableTimes}
-                      timeLoading={availabilityLoading}
-                      timeLoadingText="Carregando agenda do closer..."
-                    />
-                    {!closerId && meetingDate && (
-                      <p className="text-xs text-muted-foreground">
-                        Selecione um closer para carregar os horários disponíveis.
-                      </p>
-                    )}
-                    {closerId && availabilityLoading && (
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Loader2 className="size-3 animate-spin" />
-                        Carregando horários disponíveis...
-                      </p>
-                    )}
-                    {closerId && meetingDate && !availabilityLoading && availableTimes.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {lead.isTransfer && lead.meetingDate
-                          ? "O horário do pré-agendamento não está disponível para este closer. Para prosseguir, selecione outro closer, escolha outro horário ou desative o agendamento abaixo."
-                          : "Nenhum horário disponível para este closer neste dia. Selecione outro closer ou outra data."}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="meetingTitle">Título da reunião</Label>
-                    <Input
-                      id="meetingTitle"
-                      value={meetingTitle}
-                      onChange={(event) => setMeetingTitle(event.target.value)}
-                      placeholder="Ex: Apresentação de proposta"
-                    />
-                  </div>
-
-                  {requiresManualMeetingLink && (
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="meetingLink">
-                        Link da reunião (obrigatório para este closer)
-                      </Label>
-                      <Input
-                        id="meetingLink"
-                        value={meetingLink}
-                        onChange={(event) => setMeetingLink(event.target.value)}
-                        placeholder="https://meet.google.com/..."
-                      />
-                      {meetingLink.trim() && !meetingLinkValidation.isValid && (
-                        <p className="text-xs text-destructive">{meetingLinkValidation.error}</p>
-                      )}
-                    </div>
+              {requiresManualMeetingLink && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="meetingLink">
+                    Link da reunião (obrigatório para este closer)
+                  </Label>
+                  <Input
+                    id="meetingLink"
+                    value={meetingLink}
+                    onChange={(event) => setMeetingLink(event.target.value)}
+                    placeholder="https://meet.google.com/..."
+                  />
+                  {meetingLink.trim() && !meetingLinkValidation.isValid && (
+                    <p className="text-xs text-destructive">{meetingLinkValidation.error}</p>
                   )}
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                      <Info className="size-4 shrink-0" />
-                      <span>
-                        {requiresManualMeetingLink
-                          ? "Os convites serão enviados por e-mail com o link informado."
-                          : "O link do Google Meet será gerado automaticamente após a transferência."}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      O lead e os convidados receberão o convite do Meet. O closer receberá o
-                      e-mail do Corretor Studio.
-                    </p>
-                  </div>
                 </div>
               )}
-            </>
-          ) : null}
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  <Info className="size-4 shrink-0" />
+                  <span>
+                    {requiresManualMeetingLink
+                      ? "Os convites serão enviados por e-mail com o link informado."
+                      : "O link do Google Meet será gerado automaticamente após a transferência."}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  O lead e os convidados receberão o convite do Meet. O closer receberá o
+                  e-mail do Corretor Studio.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
