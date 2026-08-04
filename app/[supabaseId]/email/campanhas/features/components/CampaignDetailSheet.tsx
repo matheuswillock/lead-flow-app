@@ -66,6 +66,74 @@ function audienceLabel(campaign: {
   return "—"
 }
 
+function FailedSubCampaignResendButton({
+  subCampaign,
+  sendingId,
+  handleSend,
+}: {
+  subCampaign: SubCampaignSummary
+  sendingId: string | null
+  handleSend: (id: string) => Promise<void>
+}) {
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const isSendingThis = sendingId === subCampaign.id
+
+  async function handleSendConfirm() {
+    setSending(true)
+    try {
+      await handleSend(subCampaign.id)
+    } finally {
+      setSending(false)
+      setSendConfirmOpen(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={isSendingThis || sending}
+        onClick={() => setSendConfirmOpen(true)}
+      >
+        {isSendingThis || sending ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Send data-icon="inline-start" />
+        )}
+        {isSendingThis || sending ? "Reenviando..." : "Reenviar"}
+      </Button>
+
+      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reenviar sub-campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A sub-campanha <strong>"{subCampaign.name}"</strong> será reenviada para{" "}
+              <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+              destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleSendConfirm()
+              }}
+              disabled={sending}
+            >
+              {sending ? "Reenviando..." : "Sim, reenviar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
 function SubCampaignActionsMenu({
   subCampaign,
   canSendCampaign,
@@ -87,8 +155,9 @@ function SubCampaignActionsMenu({
   const [sending, setSending] = useState(false)
   const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
   const canRetryByStatus = subCampaign.status === "failed"
+  const isSendingThis = sendingId === subCampaign.id
   const canRetry =
-    canRetryByStatus && canSendCampaign && !sendBlockReason && sendingId !== subCampaign.id
+    canRetryByStatus && canSendCampaign && !sendBlockReason && !isSendingThis
   const retryDisabledReason =
     sendBlockReason ??
     (!canRetryByStatus
@@ -147,14 +216,27 @@ function SubCampaignActionsMenu({
             <ScrollText />
             Ver logs
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setSendConfirmOpen(true)}
-            disabled={!canRetry}
-            title={!canRetry ? retryDisabledReason : undefined}
-          >
-            {sendingId === subCampaign.id ? <Loader2 className="animate-spin" /> : <Send />}
-            {sendingId === subCampaign.id ? "Reenviando..." : "Reenviar"}
-          </DropdownMenuItem>
+          {canRetryByStatus && retryDisabledReason && !canRetry ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="w-full">
+                  <DropdownMenuItem disabled className="pointer-events-none w-full">
+                    {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
+                    {isSendingThis ? "Reenviando..." : "Reenviar"}
+                  </DropdownMenuItem>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm">{retryDisabledReason}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => setSendConfirmOpen(true)}
+              disabled={!canRetry}
+            >
+              {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
+              {isSendingThis ? "Reenviando..." : "Reenviar"}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -212,7 +294,7 @@ export function CampaignDetailSheet({
   const canEdit =
     detailCampaign &&
     !isParentCampaign &&
-    ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(detailCampaign.status)
+    ["draft", "scheduled"].includes(detailCampaign.status)
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
       campaign: subCampaign,
@@ -290,11 +372,16 @@ export function CampaignDetailSheet({
 
                 {isParentCampaign && detailCampaign.subCampaigns && detailCampaign.subCampaigns.length > 0 ? (
                   <div className="mb-4 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium">Partes da campanha</p>
-                      {detailCampaign.status === "partially_sent" ? (
+                      {detailCampaign.status === "failed" ||
+                      detailCampaign.status === "partially_sent" ? (
                         <span className="text-xs text-semantic-warning">
-                          {detailCampaign.subCampaigns.filter((sub) => sub.status === "failed").length} parte(s) com falha — use "Reenviar" para retentar
+                          {
+                            detailCampaign.subCampaigns.filter((sub) => sub.status === "failed")
+                              .length
+                          }{" "}
+                          parte(s) com falha — use "Reenviar" nas ações de cada parte
                         </span>
                       ) : null}
                     </div>
@@ -311,7 +398,13 @@ export function CampaignDetailSheet({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {detailCampaign.subCampaigns.map((sub) => (
+                          {detailCampaign.subCampaigns.map((sub) => {
+                            const subSendBlockReason = getSendBlockReason(sub)
+                            const canShowResend = sub.status === "failed"
+                            const canResendNow =
+                              canShowResend && canSendCampaign && !subSendBlockReason
+
+                            return (
                             <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
                               <TableCell className="font-medium">
                                 {sub.subCampaignIndex ?? "—"}
@@ -342,18 +435,50 @@ export function CampaignDetailSheet({
                                 )}
                               </TableCell>
                               <TableCell className="text-right">
-                                <SubCampaignActionsMenu
-                                  subCampaign={sub}
-                                  canSendCampaign={canSendCampaign}
-                                  sendBlockReason={getSendBlockReason(sub)}
-                                  sendingId={sendingId}
-                                  openEditById={openEditById}
-                                  handleSend={handleSend}
-                                  onOpenAnalytics={onOpenAnalytics}
-                                />
+                                <div className="flex items-center justify-end gap-1">
+                                  {canShowResend ? (
+                                    canResendNow ? (
+                                      <FailedSubCampaignResendButton
+                                        subCampaign={sub}
+                                        sendingId={sendingId}
+                                        handleSend={handleSend}
+                                      />
+                                    ) : (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              disabled
+                                            >
+                                              <Send data-icon="inline-start" />
+                                              Reenviar
+                                            </Button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-sm">
+                                          {subSendBlockReason ??
+                                            "Ative um plano em Assinaturas para disparar campanhas"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )
+                                  ) : null}
+                                  <SubCampaignActionsMenu
+                                    subCampaign={sub}
+                                    canSendCampaign={canSendCampaign}
+                                    sendBlockReason={subSendBlockReason}
+                                    sendingId={sendingId}
+                                    openEditById={openEditById}
+                                    handleSend={handleSend}
+                                    onOpenAnalytics={onOpenAnalytics}
+                                  />
+                                </div>
                               </TableCell>
                             </TableRow>
-                          ))}
+                            )
+                          })}
                         </TableBody>
                       </Table>
                     </div>
