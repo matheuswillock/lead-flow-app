@@ -571,3 +571,18 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 - "Sete pontos de contato" visíveis no perfil; export CSV/Excel funcional; lista de e-mail materializável a partir de segmento.
 - Nenhuma fonte de evento nova dispara e-mail fora do fluxo de campanhas existente (invariante DA11 preservada, verificável por diff).
 - `governance:check` verde sem novas entradas de allowlist; nenhuma dependência nova; cobertura de teste em todo serviço/use case novo.
+
+---
+
+## Fase D — D1–D12 concluídos
+
+**Fechamento D12 (2026-08-03):** hardening, Postman (pixel + touchpoints), RLS das tabelas pixel, docs (`project-context` + `RADAR_AUDIT` §8), ERD regenerado e bateria completa.
+
+| Estágio | Status |
+|---|---|
+| D1–D11 | ✅ Concluídos (origem, sync inline, email-only, marcos, `lead_field`, pixel/`visitor_session`, form bridge, touchpoints, event-driven, auditoria UI) |
+| D12 | ✅ Concluído (este fechamento) |
+| D13–D18 | Pendentes (contratos, dependentes, materializar lista, export, polimento UI, rankings) |
+
+**Invariantes preservados:** audiência de segmento ≤ `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`; teto diário via `wouldExceedDailyEmailCap`; sem CDP externa; sem segundo store de timeline além de `LeadActivity` × `RadarEvent`.
+

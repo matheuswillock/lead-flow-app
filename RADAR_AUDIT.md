@@ -243,3 +243,40 @@ Não há `portfolioId`/`contactId` — a Fase D (D3) estende esse tipo com `port
 ### 7.5 Nenhuma coluna de origem no Lead hoje
 
 O model `Lead` não tem nenhuma coluna equivalente a "canal de origem" — toda a informação de como o lead entrou (webhook Meta, webhook Studio, formulário público, import CSV, manual) hoje só existe implicitamente no caminho de código que criou o registro, não como um dado consultável. A Fase D (D1/D2) introduz `LeadOriginChannel` + `Lead.originChannel`/`originMetadata` para tornar essa origem uma condição de segmento e um dado exibível no perfil.
+
+---
+
+## 8. Fase D concluída (D1–D12) — estado pós-hardening
+
+**Data de fechamento D12:** 2026-08-03  
+**Branch de hardening:** `cursor/radar-d12-hardening`
+
+Os estágios **D1–D12** da Fase D (`RADAR_SPEC.md`) estão **concluídos** no código de produto. Esta seção atualiza o veredito do audit histórico (§1–§7, baseline pré-rename / pré-Fase D) sem reescrever o inventário datado de 2026-07-18.
+
+| Estágio | Escopo | Status |
+|---|---|---|
+| D1 | Schema `LeadOriginChannel` + `originChannel`/`originMetadata` | ✅ Concluído |
+| D2 | Origem nos webhooks/import/form → sync inline | ✅ Concluído |
+| D3 | Sync portfolio / EmailContact inline (event-driven) | ✅ Concluído |
+| D4 | Perfis email-only (`normalizedPhone` opcional) | ✅ Concluído |
+| D5 | Marcos de status do Lead → `RadarEvent` | ✅ Concluído |
+| D6 | Condição de segmento `lead_field` (+ catálogo) | ✅ Concluído |
+| D7 | Identidade `visitor_session` + Corretor Studio Pixel | ✅ Concluído |
+| D8 | Bridge `PublicFormMetricEvent` → `RadarEvent` | ✅ Concluído |
+| D9 | Touchpoints / sub-aba Contatos no perfil | ✅ Concluído |
+| D10 | UI sem sync manual — fluxo 100% event-driven | ✅ Concluído |
+| D11 | Auditoria impeccable de `/radar` | ✅ Concluído |
+| D12 | Hardening: Postman D7–D9, RLS pixel, docs, ERD, bateria | ✅ Concluído |
+
+### Paths canônicos (pós-D12)
+
+- Frontend: `app/[supabaseId]/radar/**` (não mais `/cdp`)
+- API: `/api/v1/radar/**` + hit público `/api/v1/public-pixel/:publicToken/hit`
+- Lib/service/repo: `lib/radar/**`, `app/api/services/radar/**`, `app/api/infra/data/repositories/radar/**`
+- Feature slug: `FEATURE_SLUGS.RADAR = "radar"`; `getRadarAccess()`
+- Postman: pasta **Radar** (pixel config/logs/hit, touchpoints, profiles, segments) — paths `cdp` no array Postman corrigidos para `radar` em D12
+- RLS pixel: migration `supabase/migrations/*_radar-d12-pixel-tables-rls.sql` (`TeamRadarPixelConfig`, `TeamRadarPixelHitLog`, rate limit server-only)
+
+### Fora deste fechamento (D13+)
+
+Contratos no perfil (`portfolio_field`), perfis de titular/dependente, materializar segmento → lista de e-mail, export CSV/Excel e polimentos de UI restantes seguem em **D13–D18** no `RADAR_SPEC.md`.

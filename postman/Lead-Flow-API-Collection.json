@@ -17580,7 +17580,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "crm"
               ]
@@ -17606,7 +17606,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "portfolio"
               ]
@@ -17632,7 +17632,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "email"
               ]
@@ -17658,7 +17658,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "whatsapp"
               ]
@@ -17684,7 +17684,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "profiles"
               ],
               "query": [
@@ -17729,7 +17729,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "segments"
               ]
             }
@@ -17925,7 +17925,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "available-fields"
               ]
             }
@@ -17958,7 +17958,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "interpolation-preview"
               ]
             }
