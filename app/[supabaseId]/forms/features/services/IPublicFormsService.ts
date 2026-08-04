@@ -3,6 +3,7 @@ import type {
   PublicFormsIds,
   PublicFormsPage,
   PublicFormSettings,
+  RankedForm,
 } from "../context/PublicFormsTypes"
 import type { PublicFormDraftInput } from "@/lib/public-forms/types"
 
@@ -47,4 +48,5 @@ export interface IPublicFormsService {
     formId: string,
     filters?: { from?: string; to?: string; publicationId?: string },
   ): Promise<PublicFormAnalytics>
+  topConverting(ids: PublicFormsIds): Promise<{ items: RankedForm[] }>
 }

@@ -75,6 +75,7 @@ import type {
   PublicFormsIds,
 } from "../context/PublicFormsTypes"
 import { publicFormsClientService } from "../services/PublicFormsService"
+import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
@@ -143,6 +144,8 @@ export function PublicFormsContainer() {
           </div>
         ) : null}
       </div>
+
+      <FormRankingPanel items={forms.ranking} loading={forms.rankingLoading} />
 
       {forms.capabilities.canEdit ? (
         <section className="flex flex-col gap-3 rounded-xl border p-4">

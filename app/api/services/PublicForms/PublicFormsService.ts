@@ -418,6 +418,10 @@ export class PublicFormsService implements IPublicFormsService {
     }
   }
 
+  listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {
+    return publicFormsRepository.listFormConversionTotals(teamId, options)
+  }
+
   listLeadSubmissions(teamId: string, leadId: string) {
     return publicFormsRepository.listLeadSubmissions(teamId, leadId)
   }

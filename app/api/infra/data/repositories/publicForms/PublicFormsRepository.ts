@@ -477,6 +477,44 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {
+    const forms = await prisma.publicForm.findMany({
+      where: { teamId },
+      select: { id: true, name: true },
+    })
+    if (forms.length === 0) return []
+
+    const dateFilter =
+      options?.from || options?.to
+        ? {
+            createdAt: {
+              ...(options.from ? { gte: options.from } : {}),
+              ...(options.to ? { lte: options.to } : {}),
+            },
+          }
+        : {}
+
+    const grouped = await prisma.publicFormMetricEvent.groupBy({
+      by: ["formId", "eventType"],
+      where: {
+        formId: { in: forms.map((form) => form.id) },
+        eventType: { in: ["form_viewed", "form_completed"] },
+        ...dateFilter,
+      },
+      _count: { _all: true },
+    })
+
+    const byForm = new Map(forms.map((form) => [form.id, { formId: form.id, name: form.name, viewed: 0, completed: 0 }]))
+    for (const row of grouped) {
+      const entry = byForm.get(row.formId)
+      if (!entry) continue
+      if (row.eventType === "form_viewed") entry.viewed = row._count._all
+      if (row.eventType === "form_completed") entry.completed = row._count._all
+    }
+
+    return Array.from(byForm.values())
+  }
+
   listLeadSubmissions(teamId: string, leadId: string) {
     return prisma.publicFormSubmission.findMany({
       where: { leadId, form: { teamId } },

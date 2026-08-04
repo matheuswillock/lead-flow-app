@@ -10775,6 +10775,38 @@
                   }
                 },
                 {
+                  "name": "GET Top 3 Formularios (Conversao)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/top-converting?from=&to=",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "public-forms",
+                        "top-converting"
+                      ],
+                      "query": [
+                        {
+                          "key": "from",
+                          "value": ""
+                        },
+                        {
+                          "key": "to",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    "description": "Ranking top 3 formulários por taxa de conversão (form_completed / form_viewed)."
+                  }
+                },
+                {
                   "name": "GET Studio Public Form",
                   "request": {
                     "method": "GET",
@@ -15492,6 +15524,37 @@
               "response": []
             },
             {
+              "name": "Top 3 Templates de Email",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/analytics/top-templates?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "analytics",
+                    "top-templates"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": ""
+                    },
+                    {
+                      "key": "to",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
               "name": "Previa do Disparo de Campanha",
               "request": {
                 "method": "GET",
@@ -17927,6 +17990,35 @@
                 "v1",
                 "cdp",
                 "available-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tipos de evento Radar disponíveis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/available-event-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "available-event-types"
               ]
             }
           },

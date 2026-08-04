@@ -3,27 +3,11 @@ import {
   emailAnalyticsRepository,
   type IEmailAnalyticsRepository,
 } from "@/app/api/infra/data/repositories/emailAnalytics/EmailAnalyticsRepository"
-
-function safeRate(numerator: number, denominator: number): number {
-  return denominator === 0 ? 0 : Math.round((numerator / denominator) * 10000) / 100
-}
-
-function buildRates(totals: {
-  sent: number
-  delivered: number
-  opened: number
-  clicked: number
-  bounced: number
-  complained: number
-}) {
-  return {
-    deliverabilityRate: safeRate(totals.delivered, totals.sent),
-    openRate: safeRate(totals.opened, totals.sent),
-    clickRate: safeRate(totals.clicked, totals.sent),
-    bounceRate: safeRate(totals.bounced, totals.sent),
-    complainRate: safeRate(totals.complained, totals.sent),
-  }
-}
+import { buildRates } from "@/lib/email/analytics-rates"
+import {
+  aggregateTemplateGroups,
+  rankTopTemplates,
+} from "@/lib/email/template-ranking"
 
 export class EmailAnalyticsUseCase {
   constructor(private readonly repository: IEmailAnalyticsRepository = emailAnalyticsRepository) {}
@@ -126,6 +110,25 @@ export class EmailAnalyticsUseCase {
     } catch (error) {
       console.error("[EmailAnalyticsUseCase][getDispatchPreview]", error)
       return new Output(false, [], ["Erro ao carregar prévia do disparo"], null)
+    }
+  }
+
+  async getTopTemplates(options: {
+    teamId: string
+    from: Date
+    to: Date
+  }): Promise<Output> {
+    try {
+      const rows = await this.repository.listTemplateVersionMetrics(options)
+      const ranking = rankTopTemplates(aggregateTemplateGroups(rows))
+
+      return new Output(true, [], [], {
+        period: { from: options.from, to: options.to },
+        ...ranking,
+      })
+    } catch (error) {
+      console.error("[EmailAnalyticsUseCase][getTopTemplates]", error)
+      return new Output(false, [], ["Erro ao carregar ranking de templates"], null)
     }
   }
 }

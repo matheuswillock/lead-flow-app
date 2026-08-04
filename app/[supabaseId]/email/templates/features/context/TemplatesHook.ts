@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import type { Template, TemplatesState, TemplateTab } from './TemplatesTypes'
+import type { Template, TemplateRankingResult, TemplatesState, TemplateTab } from './TemplatesTypes'
 import { createTemplatesService } from '../services/TemplatesService'
 import { useStudioEmailRuntime } from '@/lib/email/use-studio-email-runtime'
 
 const defaultService = createTemplatesService()
 
 interface UseTemplatesReturn extends TemplatesState {
+  ranking: TemplateRankingResult | null
+  rankingLoading: boolean
   fetchTemplates: () => Promise<void>
   setActiveTab: (tab: TemplateTab) => void
   activeRole: 'manager' | 'backoffice' | 'operator' | null
@@ -23,6 +25,8 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
   const { host, teamId: activeTeamId, activeRole, teamLoading } = useStudioEmailRuntime()
   const service = host?.services.templates ?? defaultService
   const [templates, setTemplates] = useState<Template[]>([])
+  const [ranking, setRanking] = useState<TemplateRankingResult | null>(null)
+  const [rankingLoading, setRankingLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -35,6 +39,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
 
   const isFetchingRef = useRef(false)
   const lastFetchKeyRef = useRef("")
+  const rankingFetchKeyRef = useRef("")
 
   const fetchTemplates = useCallback(async () => {
     if (teamLoading) return
@@ -72,6 +77,35 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     } finally {
       setLoading(false)
       isFetchingRef.current = false
+    }
+  }, [activeTeamId, supabaseId, teamLoading])
+
+  const fetchRanking = useCallback(async () => {
+    if (teamLoading) return
+    if (!activeTeamId) {
+      setRanking(null)
+      setRankingLoading(false)
+      return
+    }
+
+    const key = `${supabaseId}|${activeTeamId}|ranking`
+    if (rankingFetchKeyRef.current === key) return
+    rankingFetchKeyRef.current = key
+    setRankingLoading(true)
+
+    try {
+      if (!service.getTopRanking) {
+        setRanking(null)
+        return
+      }
+      const data = await service.getTopRanking(supabaseId, activeTeamId)
+      setRanking(data)
+    } catch (err) {
+      console.error('[useTemplates] Failed to fetch ranking', err)
+      setRanking(null)
+      rankingFetchKeyRef.current = ""
+    } finally {
+      setRankingLoading(false)
     }
   }, [activeTeamId, supabaseId, teamLoading])
 
@@ -192,8 +226,14 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     fetchTemplates()
   }, [fetchTemplates])
 
+  useEffect(() => {
+    void fetchRanking()
+  }, [fetchRanking])
+
   return {
     templates,
+    ranking,
+    rankingLoading,
     loading,
     error,
     deleting,
