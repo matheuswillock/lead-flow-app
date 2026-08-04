@@ -1,6 +1,18 @@
--- Cancela cobrança/pending action indevida de add_member (Nathiele Willock → William Santos Cruz).
+-- Cancela pending action indevida de add_member (Nathiele Willock → William Santos Cruz).
 -- Contexto: pending-action-905a72a0-c219-4640-b5c4-eaedca8ecb11 (R$ 39,80 / PIX).
--- Idempotente: só altera se ainda estiver pending/failed.
+--
+-- Pré-condições validadas no remoto antes desta migration (SELECT one-shot):
+--   - "paymentId" IS NULL
+--   - "checkoutId" IS NULL
+-- Não havia vínculo Asaas no registro; a cobrança PIX no Asaas já havia sido
+-- cancelada manualmente pelo time. Esta migration NÃO chama Asaas (SQL one-shot
+-- de dados). Cancelamento remoto de cobrança com paymentId presente fica no
+-- runtime: BackofficePlatformUsersUseCase.deleteMasterUserInvoice →
+-- cancelOpenAsaasPayment.
+--
+-- Idempotente: só altera se ainda estiver pending/failed E paymentId já for NULL.
+-- Se paymentId estiver preenchido, o UPDATE não aplica (evita apagar linkage
+-- sem cleanup no Asaas).
 
 UPDATE "public"."corretor_studio_pending_actions"
 SET
@@ -14,4 +26,5 @@ WHERE "id" = '905a72a0-c219-4640-b5c4-eaedca8ecb11'::uuid
     'pending'::"pending_action_status",
     'failed'::"pending_action_status"
   )
+  AND "paymentId" IS NULL
   AND COALESCE(payload->>'profileEmail', '') = 'nathielewillock@gmail.com';
