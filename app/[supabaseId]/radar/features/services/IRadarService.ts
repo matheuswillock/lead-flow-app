@@ -120,4 +120,16 @@ export interface IRadarService {
     segmentSlug: string,
     name?: string
   ): Promise<{ listId: string; totalContacts: number }>
+  previewSegmentContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ estimatedCount: number }>
+  materializeSegmentToContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ listId: string; contactCount: number }>
 }

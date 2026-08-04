@@ -1,12 +1,13 @@
 "use client"
 
-import { ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Lock, MailPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
@@ -19,9 +20,9 @@ type RadarSegmentCardProps = {
   isInactive?: boolean
   mutationLock?: boolean
   onViewProfiles?: () => void
-  onCreateContactList?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onCreateContactList?: () => void
 }
 
 export function RadarSegmentCard({
@@ -32,9 +33,9 @@ export function RadarSegmentCard({
   isInactive,
   mutationLock,
   onViewProfiles,
-  onCreateContactList,
   onEdit,
   onDelete,
+  onCreateContactList,
 }: RadarSegmentCardProps) {
   const isSystem = variant === "system"
 
@@ -51,7 +52,20 @@ export function RadarSegmentCard({
           <h3 className="font-medium">{name}</h3>
           {isInactive ? <Badge variant="outline">Inativo</Badge> : null}
         </div>
-        {!isSystem ? (
+        {isSystem ? (
+          onCreateContactList ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              disabled={mutationLock}
+              onClick={onCreateContactList}
+              title="Criar lista de contatos"
+            >
+              <MailPlus />
+            </Button>
+          ) : null
+        ) : (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="size-8" disabled={mutationLock}>
@@ -59,6 +73,15 @@ export function RadarSegmentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {onCreateContactList ? (
+                <>
+                  <DropdownMenuItem onClick={onCreateContactList}>
+                    <MailPlus data-icon="inline-start" />
+                    Criar lista de contatos
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
               <DropdownMenuItem onClick={onEdit}>
                 <Pencil data-icon="inline-start" />
                 Editar
@@ -69,28 +92,15 @@ export function RadarSegmentCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
+        )}
       </div>
       {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
       <p className="font-display text-2xl font-semibold">{count}</p>
-      <div className="flex flex-wrap gap-2">
-        {onViewProfiles ? (
-          <Button size="sm" variant="ghost" className="px-0" onClick={onViewProfiles}>
-            Ver perfis
-          </Button>
-        ) : null}
-        {onCreateContactList ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={mutationLock || count === 0}
-            onClick={onCreateContactList}
-          >
-            <ListPlus data-icon="inline-start" />
-            Criar lista de contatos
-          </Button>
-        ) : null}
-      </div>
+      {onViewProfiles ? (
+        <Button size="sm" variant="ghost" className="self-start px-0" onClick={onViewProfiles}>
+          Ver perfis
+        </Button>
+      ) : null}
     </div>
   )
 }

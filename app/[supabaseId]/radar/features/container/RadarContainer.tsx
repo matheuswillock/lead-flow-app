@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Database, Plus } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
@@ -21,7 +21,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useRadarContext } from "../context/RadarContext"
-import type { RadarCustomSegmentListItem } from "../context/RadarTypes"
+import type { RadarCustomSegmentListItem, RadarSegment } from "../context/RadarTypes"
+import type { RadarSegmentProfilesTarget } from "../context/useRadarHook"
 import { RadarEmptyState } from "../components/RadarEmptyState"
 import { RadarProfileFilters } from "../components/RadarProfileFilters"
 import { RadarProfileSheet } from "../components/RadarProfileSheet"
@@ -30,7 +31,6 @@ import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDial
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
 import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
 import { RadarImportButton } from "../components/radar-import/RadarImportButton"
-import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -69,7 +69,8 @@ export function RadarContainer() {
     closeProfile,
     loadMoreProfileEvents,
     deleteCustomSegment,
-    materializeContactList,
+    previewSegmentContactList,
+    materializeSegmentToContactList,
     segmentProfilesTarget,
     segmentProfilesItems,
     segmentProfilesTotal,
@@ -89,11 +90,36 @@ export function RadarContainer() {
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingSegment, setEditingSegment] = useState<RadarCustomSegmentListItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RadarCustomSegmentListItem | null>(null)
-  const [materializeTarget, setMaterializeTarget] = useState<{ slug: string; name: string; count: number } | null>(
-    null
+  const [contactListPreviewTarget, setContactListPreviewTarget] = useState<RadarSegmentProfilesTarget | null>(null)
+  const [contactListPreviewCount, setContactListPreviewCount] = useState<number | null>(null)
+  const [isPreviewingContactList, setIsPreviewingContactList] = useState(false)
+  const [isCreatingContactList, setIsCreatingContactList] = useState(false)
+
+  const handleOpenContactListDialog = useCallback(
+    async (target: RadarSegmentProfilesTarget) => {
+      setContactListPreviewTarget(target)
+      setContactListPreviewCount(null)
+      setIsPreviewingContactList(true)
+      const count = await previewSegmentContactList(target.slugOrId, target.kind)
+      setContactListPreviewCount(count)
+      setIsPreviewingContactList(false)
+    },
+    [previewSegmentContactList]
   )
 
-  const systemSegments = useMemo(() => segments.filter((segment) => segment.isSystem), [segments])
+  const handleConfirmContactList = useCallback(async () => {
+    if (!contactListPreviewTarget) return
+    setIsCreatingContactList(true)
+    try {
+      await materializeSegmentToContactList(contactListPreviewTarget.slugOrId, contactListPreviewTarget.kind)
+      setContactListPreviewTarget(null)
+      setContactListPreviewCount(null)
+    } finally {
+      setIsCreatingContactList(false)
+    }
+  }, [contactListPreviewTarget, materializeSegmentToContactList])
+
+  const systemSegments = useMemo(() => segments.filter((segment: RadarSegment) => segment.isSystem), [segments])
 
   if (!hasAccess(FEATURE_SLUGS.RADAR)) {
     return (
@@ -221,7 +247,7 @@ export function RadarContainer() {
                           openSegmentProfiles({ kind: "system", slugOrId: segment.slug, name: segment.name })
                         }
                         onCreateContactList={() =>
-                          setMaterializeTarget({ slug: segment.slug, name: segment.name, count: segment.count })
+                          void handleOpenContactListDialog({ kind: "system", slugOrId: segment.slug, name: segment.name })
                         }
                       />
                     ))}
@@ -277,10 +303,10 @@ export function RadarContainer() {
                           onCreateContactList={
                             segment.isActive
                               ? () =>
-                                  setMaterializeTarget({
-                                    slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
+                                  void handleOpenContactListDialog({
+                                    kind: "custom",
+                                    slugOrId: segment.id,
                                     name: segment.name,
-                                    count: segment.count,
                                   })
                               : undefined
                           }
@@ -330,29 +356,36 @@ export function RadarContainer() {
           }}
         />
 
-        <AlertDialog open={Boolean(materializeTarget)} onOpenChange={(open) => !open && setMaterializeTarget(null)}>
+        <AlertDialog
+          open={Boolean(contactListPreviewTarget)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setContactListPreviewTarget(null)
+              setContactListPreviewCount(null)
+            }
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Criar lista de contatos?</AlertDialogTitle>
               <AlertDialogDescription>
-                Será criada uma lista de e-mail com até {materializeTarget?.count ?? 0} contato(s) do segmento
-                &quot;{materializeTarget?.name}&quot;. Contatos duplicados serão ignorados automaticamente.
+                {isPreviewingContactList
+                  ? "Calculando contagem do segmento…"
+                  : contactListPreviewCount === null
+                    ? "Não foi possível calcular a contagem."
+                    : `Será criada uma lista com ${contactListPreviewCount} contato(s) do segmento "${contactListPreviewTarget?.name}". Esta é uma cópia estática — alterações futuras no segmento não atualizam a lista.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel disabled={isCreatingContactList}>Cancelar</AlertDialogCancel>
               <AlertDialogAction
-                disabled={mutationLock}
-                onClick={() => {
-                  if (!materializeTarget) return
-                  void materializeContactList(
-                    materializeTarget.slug,
-                    materializeTarget.name,
-                    `Segmento: ${materializeTarget.name}`
-                  ).then(() => setMaterializeTarget(null))
+                disabled={isPreviewingContactList || isCreatingContactList || contactListPreviewCount === null}
+                onClick={(e) => {
+                  e.preventDefault()
+                  void handleConfirmContactList()
                 }}
               >
-                Criar lista
+                {isCreatingContactList ? "Criando…" : "Criar lista"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

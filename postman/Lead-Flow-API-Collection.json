@@ -18159,6 +18159,80 @@
           "response": []
         },
         {
+          "name": "Preview contagem — segmento sistema → lista de contatos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/materialize-contact-list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "materialize-contact-list"
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Materializar segmento sistema → lista de contatos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/materialize-contact-list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "materialize-contact-list"
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Radar Segments",
           "item": [
             {
@@ -18363,6 +18437,82 @@
                       "key": "pageSize",
                       "value": "20"
                     }
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Preview contagem — segmento custom → lista de contatos",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/materialize-contact-list",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId",
+                    "materialize-contact-list"
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Materializar segmento custom → lista de contatos",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/materialize-contact-list",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId",
+                    "materialize-contact-list"
                   ],
                   "variable": [
                     {

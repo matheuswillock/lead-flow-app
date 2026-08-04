@@ -457,6 +457,55 @@ export function useRadarHookFn() {
     [loadSegmentProfiles, segmentProfilesTarget]
   )
 
+  const previewSegmentContactList = useCallback(
+    async (slugOrId: string, variant: "system" | "custom"): Promise<number | null> => {
+      if (!supabaseId || !activeTeamId) return null
+      try {
+        const result = await radarFrontendService.previewSegmentContactList(
+          supabaseId,
+          activeTeamId,
+          slugOrId,
+          variant
+        )
+        return result.estimatedCount
+      } catch (previewError) {
+        console.error("[useRadarHookFn][previewSegmentContactList]", previewError)
+        toast.error("Não foi possível calcular a contagem do segmento.")
+        return null
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  const materializeSegmentToContactList = useCallback(
+    async (slugOrId: string, variant: "system" | "custom"): Promise<boolean> => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const res = await radarFrontendService.materializeSegmentToContactList(
+            supabaseId,
+            activeTeamId,
+            slugOrId,
+            variant
+          )
+          toast.success(`Lista criada com ${res.contactCount} contato(s).`)
+          return true
+        } catch (materializeError) {
+          console.error("[useRadarHookFn][materializeSegmentToContactList]", materializeError)
+          toast.error(
+            materializeError instanceof Error
+              ? materializeError.message
+              : "Não foi possível criar a lista de contatos."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [activeTeamId, supabaseId, withMutationLock]
+  )
+
   return {
     profiles,
     segments,
@@ -510,6 +559,8 @@ export function useRadarHookFn() {
     isLoadingTouchpoints,
     contracts,
     isLoadingContracts,
+    previewSegmentContactList,
+    materializeSegmentToContactList,
     reload: loadDashboard,
   }
 }
