@@ -95,7 +95,7 @@ function CampaignActionsMenu({
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
-  const canEdit = ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(campaign.status)
+  const canEdit = ["draft", "scheduled"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
   const canArchive = ["sent", "failed", "partially_sent"].includes(campaign.status)

@@ -818,7 +818,7 @@ export class EmailCampaignUseCase {
 
   async update(id: string, data: UpdateCampaignInput, ctx: TeamContext): Promise<Output> {
     try {
-      const editableStatuses = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
+      const editableStatuses = ["draft", "scheduled"] as const
       const existing = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: [...editableStatuses] } },
       })
