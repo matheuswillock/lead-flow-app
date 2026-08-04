@@ -31,6 +31,8 @@ const DEFAULT_USER_ROLE: UserRoleData = {
 // polling por intervalo. O refresh acontece em focus/visibility (dedupado pelo
 // TTL) e via refresh() manual após mutações.
 const ACCESS_CACHE_TTL_MS = 10 * 60_000
+// Após 401 (sessão ausente no proxy), evita storm em focus/visibility/effect.
+const AUTH_FAIL_COOLDOWN_MS = 60_000
 
 interface FeatureAccessContextValue {
   slugs: string[]
@@ -76,10 +78,24 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
   const lastFetchedAtRef = useRef<number>(initialAccess ? Date.now() : 0)
   const hasResolvedAccessRef = useRef(!!initialAccess)
   const inFlightRef = useRef(false)
+  const authBlockedUntilRef = useRef(0)
+
+  const matchesInitialAccess = useCallback(() => {
+    if (!initialAccess || !user?.id) return false
+    return (
+      initialAccess.profileId === user.id &&
+      initialAccess.teamId === (activeTeamId ?? null)
+    )
+  }, [activeTeamId, initialAccess, user?.id])
 
   const fetchAccess = useCallback(
     async (force = false) => {
-      if (!user?.supabaseId) {
+      if (!user?.supabaseId || !user.id) {
+        // Não apaga bootstrap SSR se o user ainda não hidratou — evita refetch em cascata.
+        if (hasResolvedAccessRef.current || matchesInitialAccess()) {
+          setIsLoading(false)
+          return
+        }
         setSlugs([])
         setBetaSlugs([])
         setBetaLabelSlugs([])
@@ -91,10 +107,19 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
         return
       }
 
+      if (!force && Date.now() < authBlockedUntilRef.current) {
+        return
+      }
+
       const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
       const isSameRequest = lastRequestKeyRef.current === requestKey
       const isFresh = Date.now() - lastFetchedAtRef.current < ACCESS_CACHE_TTL_MS
       if (!force && isSameRequest && isFresh) {
+        return
+      }
+
+      // Bootstrap do layout já resolveu o mesmo escopo — não refaz no mount.
+      if (!force && matchesInitialAccess() && isSameRequest && isFresh) {
         return
       }
 
@@ -111,14 +136,29 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
         })
         const output = await response.json()
 
-        if (!output.isValid) {
-          setSlugs([])
-          setBetaSlugs([])
-          setBetaLabelSlugs([])
-          setUserRole(DEFAULT_USER_ROLE)
+        if (response.status === 401) {
+          // Cooldown: focus/visibility/effect não devem martelar 401.
+          authBlockedUntilRef.current = Date.now() + AUTH_FAIL_COOLDOWN_MS
+          lastRequestKeyRef.current = requestKey
+          lastFetchedAtRef.current = Date.now()
+          // Mantém SSR/último resultado válido em vez de zerar a sidebar.
           return
         }
 
+        if (!response.ok || !output.isValid) {
+          // Falha não-auth: marca fetch para não loopar no mesmo tick de focus.
+          lastRequestKeyRef.current = requestKey
+          lastFetchedAtRef.current = Date.now()
+          if (!hasResolvedAccessRef.current) {
+            setSlugs([])
+            setBetaSlugs([])
+            setBetaLabelSlugs([])
+            setUserRole(DEFAULT_USER_ROLE)
+          }
+          return
+        }
+
+        authBlockedUntilRef.current = 0
         lastRequestKeyRef.current = requestKey
         lastFetchedAtRef.current = Date.now()
         setSlugs(Array.isArray(output.result?.slugs) ? output.result.slugs : [])
@@ -128,22 +168,29 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
         setUserRole(rawRole && typeof rawRole === "object" ? (rawRole as UserRoleData) : DEFAULT_USER_ROLE)
       } catch (error) {
         console.error("[FeatureAccessContext] Erro ao carregar acesso:", error)
-        setSlugs([])
-        setBetaSlugs([])
-        setBetaLabelSlugs([])
-        setUserRole(DEFAULT_USER_ROLE)
+        lastRequestKeyRef.current = requestKey
+        lastFetchedAtRef.current = Date.now()
+        if (!hasResolvedAccessRef.current) {
+          setSlugs([])
+          setBetaSlugs([])
+          setBetaLabelSlugs([])
+          setUserRole(DEFAULT_USER_ROLE)
+        }
       } finally {
         hasResolvedAccessRef.current = true
         setIsLoading(false)
         inFlightRef.current = false
       }
     },
-    [activeTeamId, user?.id, user?.supabaseId]
+    [activeTeamId, matchesInitialAccess, user?.id, user?.supabaseId]
   )
 
   useEffect(() => {
+    if (matchesInitialAccess() && hasResolvedAccessRef.current) {
+      return
+    }
     void fetchAccess()
-  }, [fetchAccess])
+  }, [fetchAccess, matchesInitialAccess])
 
   useEffect(() => {
     if (!user?.supabaseId) return
@@ -152,6 +199,7 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
     // fetchAccess deduplica quando os dois eventos disparam juntos.
     const refreshAccess = () => {
       if (document.visibilityState !== "visible") return
+      if (Date.now() < authBlockedUntilRef.current) return
       void fetchAccess()
     }
 
@@ -179,6 +227,7 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
       isBeta,
       showsBetaLabel,
       refresh: async () => {
+        authBlockedUntilRef.current = 0
         await fetchAccess(true)
       },
     }),
