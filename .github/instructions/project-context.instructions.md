@@ -424,9 +424,9 @@ NEXT_PUBLIC_APP_URL=
 
 O módulo Radar é um add-on (`FEATURE_SLUGS.RADAR = "radar"`) que unifica dados de clientes vindos do CRM, carteira, listas de contatos de e-mail, WhatsApp, formulários públicos e o **Corretor Studio Pixel** em perfis team-scoped para campanhas de e-mail e audiências.
 
-**Estado atual (unificado D10–D18 — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)):** R1–R5 e C1–C6 concluídos; Fase D com **D1–D7 e D9–D18 no código**. Ingestão **event-driven na UI** (D10 — sem botão de sync manual). `Lead.originChannel`/`originMetadata` registram a origem; sync inline cobre CRM, portfolio, e-mail e WhatsApp; pixel alimenta `RadarEvent`/`RadarIdentity`.
+**Estado atual (unificado D10–D18 — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)):** R1–R5 e C1–C6 concluídos; Fase D com **D1–D18 no código**. Ingestão **event-driven na UI** (D10 — sem botão de sync manual). `Lead.originChannel`/`originMetadata` registram a origem; sync inline cobre CRM, portfolio, e-mail e WhatsApp; pixel + formulário público alimentam `RadarEvent`/`RadarIdentity`.
 
-**D8:** bridge `PublicFormMetricEvent` → `RadarEvent` via `SyncPublicFormMetricToRadarUseCase` (fire-and-forget após persistir a métrica; dedupe por `eventKey`).
+**D8:** bridge `PublicFormMetricEvent` → `RadarEvent` via `SyncPublicFormMetricToRadarUseCase` / `syncPublicFormMetricToRadarInline` (fire-and-forget em `recordMetric`, submission e progress; dedupe por `eventKey`).
 
 **Dívida C5 × DA11:** o alerta do builder de segmento sugere split automático em sub-envios quando a audiência >2.000; o backend **rejeita** campanha por segmento acima do limite (sub-campanhas só para listas).
 
