@@ -1,6 +1,6 @@
 # RADAR_AUDIT.md — Auditoria consolidada do módulo Radar (ex-CDP): estado atual, sub-campanhas/teto diário, inventário do rename e riscos
 
-## Status de implementação (pós-D18 / PR #633)
+## Status de implementação (pós-D19 / PR #633)
 
 **Fonte de verdade do código:** branch `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633).  
 **Verificado em:** 2026-08-04 (leitura do **HEAD commitado** no unificado; sem afirmar `db:migrate:push` remoto).
@@ -27,6 +27,7 @@
 | D16 | Export CSV/Excel | ✅ Concluído |
 | D17 | Polimento de UI | ✅ Concluído |
 | D18 | Ranking templates/formulários | ✅ Concluído |
+| D19 | Motor de engajamento (score 0–100 + temperatura) | ✅ Concluído — schema/seed `*_radar-d19-engagement-foundation.sql`; pesos no backoffice; score inline; DSL `engagement_band`; cron backfill; UI Lead Dialog/Sheet/tabela |
 
 ---
 
