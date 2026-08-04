@@ -11,6 +11,22 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
+import {
+  DEFAULT_ENGAGEMENT_CONFIG,
+  computeEngagementScore,
+  type EngagementConfig,
+  type WeightMap,
+} from "@/lib/radar/engagement-score"
+
+const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
+
+type EngagementWeightsConfigCache = {
+  weights: WeightMap
+  config: EngagementConfig
+  expiresAt: number
+}
+
+let engagementWeightsConfigCache: EngagementWeightsConfigCache | null = null
 
 export type RadarTeamScope = {
   teamId: string
@@ -837,7 +853,7 @@ export class RadarRepository {
     }
 
     try {
-      return await prisma.radarEvent.create({
+      const created = await prisma.radarEvent.create({
         data: {
           profileId: input.profileId,
           teamId: input.teamId,
@@ -848,6 +864,10 @@ export class RadarRepository {
           metadata: input.metadata,
         },
       })
+      void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
+        console.error("[RadarRepository][updateEngagementScore]", error)
+      })
+      return created
     } catch {
       return null
     }
@@ -867,7 +887,7 @@ export class RadarRepository {
   async appendEventIfNewBySourceKey(input: AppendEventInput) {
     if (!input.sourceId) {
       try {
-        return await prisma.radarEvent.create({
+        const created = await prisma.radarEvent.create({
           data: {
             profileId: input.profileId,
             teamId: input.teamId,
@@ -878,13 +898,17 @@ export class RadarRepository {
             metadata: input.metadata,
           },
         })
+        void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
+          console.error("[RadarRepository][updateEngagementScore]", error)
+        })
+        return created
       } catch {
         return null
       }
     }
 
     const sourceId = input.sourceId
-    return prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       const lockKey = `${input.teamId}:evt:${input.sourceType}:${sourceId}:${input.eventType}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
@@ -915,6 +939,107 @@ export class RadarRepository {
         return null
       }
     })
+
+    // Fora da transação/advisory lock — não participa do dedupe.
+    if (created) {
+      void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
+        console.error("[RadarRepository][updateEngagementScore]", error)
+      })
+    }
+    return created
+  }
+
+  /**
+   * D19: recalcula `engagementScore`/`engagementBand` do perfil a partir dos
+   * eventos dentro de `windowOldDays`. Pesos + config backoffice com cache 5 min.
+   */
+  async updateEngagementScore(profileId: string, teamId: string) {
+    const { weights, config } = await this.loadEngagementWeightsAndConfig()
+
+    const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+    const events = await prisma.radarEvent.findMany({
+      where: {
+        profileId,
+        teamId,
+        occurredAt: { gte: since },
+      },
+      select: {
+        eventType: true,
+        occurredAt: true,
+      },
+    })
+
+    const { score, band } = computeEngagementScore(events, weights, config)
+
+    await prisma.radarProfile.updateMany({
+      where: { id: profileId, teamId },
+      data: {
+        engagementScore: score,
+        engagementBand: band,
+      },
+    })
+
+    return { score, band }
+  }
+
+  private async loadEngagementWeightsAndConfig(): Promise<{
+    weights: WeightMap
+    config: EngagementConfig
+  }> {
+    const now = Date.now()
+    if (engagementWeightsConfigCache && engagementWeightsConfigCache.expiresAt > now) {
+      return {
+        weights: engagementWeightsConfigCache.weights,
+        config: engagementWeightsConfigCache.config,
+      }
+    }
+
+    const [weightRows, configRow] = await Promise.all([
+      prisma.backofficeRadarEngagementWeight.findMany({
+        where: { isActive: true },
+        select: { eventType: true, weight: true },
+      }),
+      prisma.backofficeRadarEngagementConfig.findFirst({
+        where: { isActive: true },
+        select: {
+          windowRecentDays: true,
+          windowMidDays: true,
+          windowOldDays: true,
+          recentMultiplier: true,
+          oldMultiplier: true,
+          hotThreshold: true,
+          warmThreshold: true,
+          lukewarmThreshold: true,
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+    ])
+
+    const weights: WeightMap = {}
+    for (const row of weightRows) {
+      weights[row.eventType] = row.weight
+    }
+
+    const config: EngagementConfig = configRow
+      ? {
+          windowRecentDays: configRow.windowRecentDays,
+          windowMidDays: configRow.windowMidDays,
+          windowOldDays: configRow.windowOldDays,
+          recentMultiplier: configRow.recentMultiplier,
+          oldMultiplier: configRow.oldMultiplier,
+          hotThreshold: configRow.hotThreshold,
+          warmThreshold: configRow.warmThreshold,
+          lukewarmThreshold: configRow.lukewarmThreshold,
+        }
+      : DEFAULT_ENGAGEMENT_CONFIG
+
+    engagementWeightsConfigCache = {
+      weights,
+      config,
+      expiresAt: now + ENGAGEMENT_CACHE_TTL_MS,
+    }
+
+    return { weights, config }
   }
 
   async upsertConsent(input: UpsertConsentInput) {
