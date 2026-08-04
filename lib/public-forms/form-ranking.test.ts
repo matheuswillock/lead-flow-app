@@ -28,18 +28,19 @@ describe("rankTopFormsByConversion", () => {
 
   it("exclui formulário sem visualizações suficientes", () => {
     const ranked = rankTopFormsByConversion([
-      { formId: "ok", name: "Com views", viewed: FORM_RANKING_MIN_VIEWS, completed: 1 },
+      { formId: "ok", name: "Com views", viewed: FORM_RANKING_MIN_VIEWS, completed: 5 },
+      { formId: "tiny", name: "Uma view", viewed: 1, completed: 1 },
       { formId: "empty", name: "Sem views", viewed: 0, completed: 0 },
     ])
 
     expect(ranked).toHaveLength(1)
     expect(ranked[0].formId).toBe("ok")
-    expect(ranked[0].conversionRate).toBe(100)
+    expect(ranked[0].conversionRate).toBe(50)
   })
 
   it("retorna menos de 3 quando há poucos elegíveis", () => {
     const ranked = rankTopFormsByConversion([
-      { formId: "1", name: "Único", viewed: 10, completed: 2 },
+      { formId: "1", name: "Único", viewed: FORM_RANKING_MIN_VIEWS, completed: 2 },
     ])
     expect(ranked).toHaveLength(1)
   })

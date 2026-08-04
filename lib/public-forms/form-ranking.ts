@@ -1,7 +1,7 @@
 import { safeRate } from "@/lib/email/analytics-rates"
 
-/** Visualizações mínimas para entrar no ranking. */
-export const FORM_RANKING_MIN_VIEWS = 1
+/** Visualizações mínimas para entrar no ranking (evita taxa 100% com amostra ínfima). */
+export const FORM_RANKING_MIN_VIEWS = 10
 
 export type FormConversionTotalsInput = {
   formId: string

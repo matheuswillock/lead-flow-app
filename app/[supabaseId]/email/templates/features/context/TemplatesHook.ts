@@ -83,6 +83,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
   const fetchRanking = useCallback(async () => {
     if (teamLoading) return
     if (!activeTeamId) {
+      rankingFetchKeyRef.current = ""
       setRanking(null)
       setRankingLoading(false)
       return
@@ -95,17 +96,22 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
 
     try {
       if (!service.getTopRanking) {
+        if (rankingFetchKeyRef.current !== key) return
         setRanking(null)
         return
       }
       const data = await service.getTopRanking(supabaseId, activeTeamId)
+      if (rankingFetchKeyRef.current !== key) return
       setRanking(data)
     } catch (err) {
+      if (rankingFetchKeyRef.current !== key) return
       console.error('[useTemplates] Failed to fetch ranking', err)
       setRanking(null)
       rankingFetchKeyRef.current = ""
     } finally {
-      setRankingLoading(false)
+      if (rankingFetchKeyRef.current === key || rankingFetchKeyRef.current === "") {
+        setRankingLoading(false)
+      }
     }
   }, [activeTeamId, supabaseId, teamLoading])
 

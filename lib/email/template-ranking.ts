@@ -1,7 +1,7 @@
 import { buildRates, safeRate } from "@/lib/email/analytics-rates"
 
-/** Volume mínimo de envios para entrar no ranking (evita taxa 100% com 1 e-mail). */
-export const TEMPLATE_RANKING_MIN_SENT = 1
+/** Volume mínimo de envios para entrar no ranking (evita taxa 100% com amostra ínfima). */
+export const TEMPLATE_RANKING_MIN_SENT = 10
 
 export type TemplateGroupTotalsInput = {
   versionGroupId: string

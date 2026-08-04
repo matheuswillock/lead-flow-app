@@ -93,8 +93,17 @@ describe("rankTopTemplates", () => {
         templateId: "ok",
         name: "Com envios",
         sent: TEMPLATE_RANKING_MIN_SENT,
-        opened: 1,
+        opened: 5,
         clicked: 0,
+        ...base,
+      },
+      {
+        versionGroupId: "tiny",
+        templateId: "tiny",
+        name: "Um envio",
+        sent: 1,
+        opened: 1,
+        clicked: 1,
         ...base,
       },
       {

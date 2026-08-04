@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
@@ -29,6 +29,7 @@ export function usePublicFormsState() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [capabilities, setCapabilities] = useState({ canEdit: false, canApprove: false })
+  const rankingRequestKeyRef = useRef("")
 
   const refresh = useCallback(async () => {
     if (!ids) return
@@ -58,19 +59,26 @@ export function usePublicFormsState() {
 
   const refreshRanking = useCallback(async () => {
     if (!ids) {
+      rankingRequestKeyRef.current = ""
       setRanking([])
       setRankingLoading(false)
       return
     }
+    const requestKey = `${ids.supabaseId}|${ids.teamId}|ranking`
+    rankingRequestKeyRef.current = requestKey
     setRankingLoading(true)
     try {
       const result = await publicFormsClientService.topConverting(ids)
+      if (rankingRequestKeyRef.current !== requestKey) return
       setRanking(result.items)
     } catch (requestError) {
+      if (rankingRequestKeyRef.current !== requestKey) return
       console.error("[usePublicFormsState] ranking", requestError)
       setRanking([])
     } finally {
-      setRankingLoading(false)
+      if (rankingRequestKeyRef.current === requestKey) {
+        setRankingLoading(false)
+      }
     }
   }, [ids])
 
