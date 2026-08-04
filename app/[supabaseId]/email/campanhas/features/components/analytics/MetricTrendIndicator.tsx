@@ -9,12 +9,19 @@ type MetricTrendIndicatorProps = {
   delta?: MetricDelta | null
   /** Quando true, mostra Δ em pontos percentuais (pp). */
   isRate?: boolean
+  /**
+   * Quando true, inverte a polaridade de severidade: alta é ruim (destructive)
+   * e queda é melhoria (primary). Usar em bounce, reclamação, falha, atraso,
+   * descadastro e supressão.
+   */
+  inverse?: boolean
   className?: string
 }
 
 export function MetricTrendIndicator({
   delta,
   isRate = false,
+  inverse = false,
   className,
 }: MetricTrendIndicatorProps) {
   if (!delta) return null
@@ -22,11 +29,14 @@ export function MetricTrendIndicator({
   const Icon =
     delta.direction === "up" ? TrendingUp : delta.direction === "down" ? TrendingDown : Minus
 
+  const upClass = inverse ? "text-destructive" : "text-primary"
+  const downClass = inverse ? "text-primary" : "text-destructive"
+
   const colorClass =
     delta.direction === "up"
-      ? "text-primary"
+      ? upClass
       : delta.direction === "down"
-        ? "text-destructive"
+        ? downClass
         : "text-muted-foreground"
 
   const absLabel = isRate

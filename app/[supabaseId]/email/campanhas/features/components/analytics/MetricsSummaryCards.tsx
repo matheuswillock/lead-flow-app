@@ -16,6 +16,7 @@ type MetricCardProps = {
   highlight?: boolean
   delta?: MetricDelta | null
   isRate?: boolean
+  inverse?: boolean
 }
 
 function MetricCard({
@@ -26,6 +27,7 @@ function MetricCard({
   highlight,
   delta,
   isRate,
+  inverse,
 }: MetricCardProps) {
   return (
     <Card>
@@ -45,7 +47,12 @@ function MetricCard({
       <CardContent>
         <div className="flex flex-wrap items-end gap-2">
           <p className={cn("text-3xl font-bold", highlight && "text-primary")}>{value}</p>
-          <MetricTrendIndicator delta={delta} isRate={isRate} className="mb-1" />
+          <MetricTrendIndicator
+            delta={delta}
+            isRate={isRate}
+            inverse={inverse}
+            className="mb-1"
+          />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
       </CardContent>
@@ -112,6 +119,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         highlight={rates.bounceRate > 5}
         delta={deltas?.rates.bounceRate}
         isRate
+        inverse
       />
       <MetricCard
         title="Taxa de Reclamação"
@@ -121,6 +129,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         highlight={rates.complainRate > 0.1}
         delta={deltas?.rates.complainRate}
         isRate
+        inverse
       />
       <MetricCard
         title="Falhas de Envio"
@@ -129,6 +138,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         subtitle="e-mails com falha de envio"
         highlight={totals.failed > 0}
         delta={deltas?.totals.failed}
+        inverse
       />
       <MetricCard
         title="Entregas Atrasadas"
@@ -136,6 +146,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         value={totals.deliveryDelayed.toLocaleString("pt-BR")}
         subtitle="e-mails com atraso"
         delta={deltas?.totals.deliveryDelayed}
+        inverse
       />
       <MetricCard
         title="Descadastros"
@@ -143,6 +154,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         value={totals.unsubscribed.toLocaleString("pt-BR")}
         subtitle="descadastros"
         delta={deltas?.totals.unsubscribed}
+        inverse
       />
       <MetricCard
         title="Suprimidos"
@@ -150,6 +162,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         value={totals.suppressed.toLocaleString("pt-BR")}
         subtitle="e-mails suprimidos"
         delta={deltas?.totals.suppressed}
+        inverse
       />
       <MetricCard
         title="Formulário"

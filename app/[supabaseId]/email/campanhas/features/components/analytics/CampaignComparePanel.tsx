@@ -68,7 +68,7 @@ export function CampaignComparePanel({
   const [data, setData] = useState<CompareCampaignsData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const requestSeqRef = useRef(0)
+  const inFlightRef = useRef(false)
   const lastKeyRef = useRef<string | null>(null)
 
   const selectableCampaigns = useMemo(
@@ -89,42 +89,38 @@ export function CampaignComparePanel({
 
   useEffect(() => {
     if (selectedIds.length === 0) {
-      requestSeqRef.current += 1
       setData(null)
       setError(null)
-      setLoading(false)
-      lastKeyRef.current = null
       return
     }
 
     const requestKey = `${period}|${selectedIds.slice().sort().join(",")}`
+    if (inFlightRef.current) return
     if (lastKeyRef.current === requestKey && data) return
 
-    const requestId = ++requestSeqRef.current
+    let cancelled = false
+    inFlightRef.current = true
     setLoading(true)
     setError(null)
 
     void service
       .compareCampaigns(selectedIds, period, timezone)
       .then((result) => {
-        if (requestId !== requestSeqRef.current) return
+        if (cancelled) return
         setData(result)
         lastKeyRef.current = requestKey
       })
       .catch((err: unknown) => {
-        if (requestId !== requestSeqRef.current) return
+        if (cancelled) return
         setError(err instanceof Error ? err.message : "Erro ao comparar")
       })
       .finally(() => {
-        if (requestId === requestSeqRef.current) {
-          setLoading(false)
-        }
+        inFlightRef.current = false
+        if (!cancelled) setLoading(false)
       })
 
     return () => {
-      if (requestSeqRef.current === requestId) {
-        requestSeqRef.current += 1
-      }
+      cancelled = true
     }
   }, [period, selectedIds, timezone])
 
