@@ -8,6 +8,9 @@ import type {
 export interface IMultiskillTransferRepository {
   findMasterIdByEmail(email: string): Promise<string | null>;
   findDefaultTeamForMaster(masterId: string): Promise<{ id: string; name: string } | null>;
+  findDefaultTeamOwnedByMultiskillMaster(
+    teamId: string
+  ): Promise<{ id: string; masterId: string } | null>;
   listTransferTargets(input: {
     originMasterId: string;
     query?: string;
@@ -30,6 +33,7 @@ export interface IMultiskillTransferRepository {
     sdrId: string;
     masterId: string;
   }): Promise<boolean>;
+  findProfileEmail(profileId: string): Promise<string | null>;
   findTransferDelegationMembership(teamId: string, profileId: string): Promise<{
     role: string;
     canTransferAccountLeads: boolean;

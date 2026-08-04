@@ -10,7 +10,22 @@ describe("buildTransferTargetItems", () => {
       masterEmail: "destino@example.com",
       defaultTeamId: "team-dest",
       defaultTeamName: "Time Destino",
-      closers: [{ profileId: "closer-1", fullName: "Closer 1", email: "closer@example.com" }],
+      closers: [
+        {
+          profileId: "closer-1",
+          fullName: "Closer 1",
+          email: "closer@example.com",
+          googleCalendarConnected: true,
+        },
+      ],
+      sdrs: [
+        {
+          profileId: "sdr-1",
+          fullName: "SDR 1",
+          email: "sdr@example.com",
+          googleCalendarConnected: false,
+        },
+      ],
     },
   ];
 
@@ -45,7 +60,8 @@ describe("buildTransferTargetItems", () => {
       teamId: "team-dest",
       mode: "multiskill",
       masterId: "target-master",
-      closers: [{ profileId: "closer-1" }],
+      closers: [{ profileId: "closer-1", googleCalendarConnected: true }],
+      sdrs: [{ profileId: "sdr-1", googleCalendarConnected: false }],
     });
   });
 

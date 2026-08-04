@@ -1,9 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type { TransferToTeamSanitization } from "@/app/api/infra/data/repositories/lead/ILeadRepository";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   ListMultiskillTransferTargetsResult,
   MultiskillTransferTarget,
+  MultiskillTransferTargetMember,
 } from "@/lib/multiskill/types";
 import { isLostStatus } from "@/lib/leadImport/normalizers";
 import type { IMultiskillTransferRepository } from "./IMultiskillTransferRepository";
@@ -13,6 +15,26 @@ function formatLeadConflictLabel(conflict: {
   name: string;
 }): string {
   return conflict.leadCode ?? conflict.name;
+}
+
+function mapDefaultTeamMember(member: {
+  teamId: string;
+  profile: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    googleConnection: { refreshToken: string | null; revokedAt: Date | null } | null;
+  };
+  team: { name: string };
+}): MultiskillTransferTargetMember {
+  return {
+    profileId: member.profile.id,
+    fullName: member.profile.fullName,
+    email: member.profile.email,
+    teamId: member.teamId,
+    teamName: member.team.name,
+    googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
+  };
 }
 
 export class MultiskillTransferRepository implements IMultiskillTransferRepository {
@@ -36,6 +58,49 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true },
     });
+  }
+
+  /**
+   * Validates that the team is the default (or first) team of a MultiSkill-enabled master.
+   * Used by calendar availability when Multiskill origin queries a destination closer.
+   */
+  async findDefaultTeamOwnedByMultiskillMaster(
+    teamId: string
+  ): Promise<{ id: string; masterId: string } | null> {
+    const team = await prisma.team.findFirst({
+      where: {
+        id: teamId,
+        deletedAt: null,
+        master: {
+          isMaster: true,
+          multiskillEnabled: true,
+        },
+      },
+      select: {
+        id: true,
+        masterId: true,
+        isDefault: true,
+        master: {
+          select: {
+            teamsOwned: {
+              where: { deletedAt: null },
+              orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+              take: 1,
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!team) return null;
+
+    const resolvedDefaultId = team.master.teamsOwned[0]?.id ?? null;
+    if (!resolvedDefaultId || resolvedDefaultId !== team.id) {
+      return null;
+    }
+
+    return { id: team.id, masterId: team.masterId };
   }
 
   async listTransferTargets(input: {
@@ -104,14 +169,23 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
               isDefault: true,
               createdAt: true,
               members: {
-                where: { functions: { has: "CLOSER" } },
+                where: {
+                  OR: [{ functions: { has: "CLOSER" } }, { functions: { has: "SDR" } }],
+                },
                 select: {
                   teamId: true,
+                  functions: true,
                   profile: {
                     select: {
                       id: true,
                       fullName: true,
                       email: true,
+                      googleConnection: {
+                        select: {
+                          refreshToken: true,
+                          revokedAt: true,
+                        },
+                      },
                     },
                   },
                   team: {
@@ -134,14 +208,13 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
         master.teamsOwned.find((team) => team.isDefault) ?? master.teamsOwned[0] ?? null;
       if (!defaultTeam) return [];
 
-      // Only default-team closers: transfer validates with findCloserOnDefaultTeam.
-      const defaultTeamClosers = defaultTeam.members.map((member) => ({
-        profileId: member.profile.id,
-        fullName: member.profile.fullName,
-        email: member.profile.email,
-        teamId: member.teamId,
-        teamName: member.team.name,
-      }));
+      // Only default-team members: transfer validates with findCloser/SdrOnDefaultTeam.
+      const defaultTeamClosers = defaultTeam.members
+        .filter((member) => member.functions.includes("CLOSER"))
+        .map(mapDefaultTeamMember);
+      const defaultTeamSdrs = defaultTeam.members
+        .filter((member) => member.functions.includes("SDR"))
+        .map(mapDefaultTeamMember);
 
       return [
         {
@@ -151,6 +224,7 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
           defaultTeamId: defaultTeam.id,
           defaultTeamName: defaultTeam.name,
           closers: defaultTeamClosers,
+          sdrs: defaultTeamSdrs,
         },
       ];
     });
@@ -251,8 +325,15 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
         teamId: true,
         email: true,
         cnpj: true,
+        name: true,
+        leadCode: true,
+        assignedTo: true,
+        closerId: true,
         isTransfer: true,
         meetingDate: true,
+        meetingTitle: true,
+        meetingNotes: true,
+        meetingType: true,
         team: { select: { masterId: true } },
       },
     });
@@ -306,6 +387,14 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
     });
 
     return sdrMember?.team.masterId === input.masterId && sdrMember.functions.includes("SDR");
+  }
+
+  async findProfileEmail(profileId: string): Promise<string | null> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { email: true },
+    });
+    return profile?.email ?? null;
   }
 
   async findTransferDelegationMembership(teamId: string, profileId: string) {
