@@ -108,10 +108,15 @@ export class BackofficeCampanhasService implements StudioEmailCampanhasService {
   async send(
     supabaseId: string,
     teamId: string | null | undefined,
-    id: string
+    id: string,
+    options?: { retryFailedOnly?: boolean }
   ): Promise<StudioEmailSendResult> {
     const response = await fetch(`${this.path(supabaseId, teamId)}/${id}/send`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(options?.retryFailedOnly ? { retryFailedOnly: true } : {}),
+      }),
     })
     return parseStudioEmailOutput<StudioEmailSendResult>(response)
   }
