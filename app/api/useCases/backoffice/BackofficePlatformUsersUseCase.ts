@@ -204,13 +204,50 @@ function mapPendingActionStatus(action: {
   return { status: action.status.toUpperCase(), statusGroup: "other" }
 }
 
-function buildPendingActionDescription(actionType: string, payload: Record<string, unknown>): string {
-  if (actionType === "create_team") {
-    const teamName = (payload.teamName as string | undefined) ?? (payload.name as string | undefined)
-    return teamName ? `Time: ${teamName}` : "Add-on time"
+function readPayloadString(
+  payload: Record<string, unknown>,
+  keys: string[]
+): string | null {
+  for (const key of keys) {
+    const value = payload[key]
+    if (typeof value === "string" && value.trim()) {
+      return value.trim()
+    }
   }
-  const name = (payload.name as string | undefined) ?? ""
-  const email = (payload.email as string | undefined) ?? ""
+  return null
+}
+
+/**
+ * Pending-action creators store target identity under different keys:
+ * - add_member: profileName / profileEmail
+ * - add_user (legacy): operatorName / operatorEmail
+ * - create_team: teamName / name
+ * - some flows also persist plain name / email
+ */
+function resolvePendingActionTarget(payload: Record<string, unknown>): {
+  name: string | null
+  email: string | null
+} {
+  return {
+    name: readPayloadString(payload, [
+      "name",
+      "profileName",
+      "operatorName",
+      "teamName",
+    ]),
+    email: readPayloadString(payload, [
+      "email",
+      "profileEmail",
+      "operatorEmail",
+    ]),
+  }
+}
+
+function buildPendingActionDescription(actionType: string, payload: Record<string, unknown>): string {
+  const { name, email } = resolvePendingActionTarget(payload)
+  if (actionType === "create_team") {
+    return name ? `Time: ${name}` : "Add-on time"
+  }
   if (name && email) return `${name} (${email})`
   if (email) return email
   if (name) return name
@@ -910,13 +947,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             : {}
         const charge = readPayloadCharge(payload)
         const classification = classifyPendingActionInvoice(action.actionType)
-        const targetName =
-          typeof payload.name === "string"
-            ? payload.name
-            : typeof payload.teamName === "string"
-              ? payload.teamName
-              : null
-        const targetEmail = typeof payload.email === "string" ? payload.email : null
+        const { name: targetName, email: targetEmail } = resolvePendingActionTarget(payload)
         const targetRole = typeof payload.role === "string" ? payload.role : null
         const payloadTeamId = typeof payload.teamId === "string" ? payload.teamId : null
         const canCancel =
