@@ -1164,6 +1164,40 @@ export class RadarRepository {
   }
 
   /**
+   * Perfis com ≥1 `RadarEvent` `email.*` cujo `metadata.campaignId` coincide
+   * com a campanha (audiência virtual `campaign:{id}`).
+   */
+  async findProfileIdsByEmailCampaign(teamId: string, campaignId: string): Promise<string[]> {
+    const rows = await prisma.radarEvent.findMany({
+      where: {
+        teamId,
+        eventType: { startsWith: "email." },
+        metadata: { path: ["campaignId"], equals: campaignId },
+      },
+      distinct: ["profileId"],
+      select: { profileId: true },
+    })
+    return rows.map((row) => row.profileId)
+  }
+
+  async findEmailCampaignName(teamId: string, campaignId: string): Promise<string | null> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId, teamId },
+      select: { name: true },
+    })
+    return campaign?.name ?? null
+  }
+
+  /** Campanhas do time para o Select do builder (id + nome). */
+  async listEmailCampaignOptions(teamId: string): Promise<Array<{ id: string; name: string }>> {
+    return prisma.emailCampaign.findMany({
+      where: { teamId },
+      select: { id: true, name: true },
+      orderBy: { updatedAt: "desc" },
+    })
+  }
+
+  /**
    * D17: carrega assignedTo/closerId dos leads associados a um perfil,
    * com nomes resolvidos via Profile (assignee/closer).
    */

@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Copy, Loader2, MoreHorizontal, Pencil, Send, ScrollText } from "lucide-react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
+import { BarChart3, Copy, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -48,6 +50,7 @@ import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
+import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
 
 type CampaignAnalyticsTarget = {
   id: string
@@ -350,7 +353,9 @@ export function CampaignDetailSheet({
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const { tz } = useTimezone()
-  const { readOnly, skipBetaGate } = useStudioEmailRuntime()
+  const { host, readOnly, skipBetaGate } = useStudioEmailRuntime()
+  const params = useParams<{ supabaseId?: string }>()
+  const supabaseId = params.supabaseId
   const {
     detailCampaign,
     closeDetail,
@@ -366,6 +371,11 @@ export function CampaignDetailSheet({
   // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
     !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
+
+  const radarHref =
+    supabaseId && detailCampaign && !host
+      ? `/${supabaseId}/radar?tab=segmentos&segment=${encodeURIComponent(buildCampaignRadarSegmentSlug(detailCampaign.id))}`
+      : null
 
   const isParentCampaign = Boolean(
     detailCampaign?.isParentCampaign || (detailCampaign?.subCampaignCount ?? 0) > 0
@@ -718,6 +728,14 @@ export function CampaignDetailSheet({
                   <BarChart3 data-icon="inline-start" />
                   Analytics
                 </Button>
+                {radarHref ? (
+                  <Button variant="outline" asChild>
+                    <Link href={radarHref}>
+                      <Radar data-icon="inline-start" />
+                      Ver no Radar
+                    </Link>
+                  </Button>
+                ) : null}
               </SheetFooter>
 
               <AlertDialog open={leafSendConfirmOpen} onOpenChange={setLeafSendConfirmOpen}>

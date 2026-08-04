@@ -124,6 +124,54 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("aceita event com campaignId UUID e rejeita campaignId inválido", () => {
+    const campaignId = "11111111-1111-4111-8111-111111111111"
+    const rules = parseRadarSegmentRules({
+      match: "all",
+      conditions: [
+        {
+          kind: "event",
+          eventType: "email.opened",
+          occurrence: "occurred",
+          campaignId,
+          windowDays: 30,
+        },
+      ],
+    })
+    const condition = rules.conditions[0]
+    expect(condition.kind).toBe("event")
+    if (condition.kind === "event") {
+      expect(condition.campaignId).toBe(campaignId)
+    }
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [
+          {
+            kind: "event",
+            eventType: "email.opened",
+            occurrence: "occurred",
+            campaignId: "not-a-uuid",
+          },
+        ],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [
+          {
+            kind: "event",
+            eventType: "email.clicked",
+            occurrence: "occurred",
+          },
+        ],
+      })
+    ).not.toThrow()
+  })
+
   it("aceita lead_custom_field válido e exige value para eq/neq/contains", () => {
     expect(() =>
       parseRadarSegmentRules({

@@ -6,6 +6,10 @@ import { toast } from "sonner"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { radarFrontendService } from "../services/RadarService"
 import { buildProfileHref, buildTabHref } from "../utils/radarSegmentBuilderUtils"
+import {
+  buildCampaignRadarSegmentSlug,
+  parseCampaignRadarSegmentSlug,
+} from "@/lib/radar/segment-audience"
 import type {
   RadarCustomSegmentListItem,
   RadarMetrics,
@@ -74,6 +78,8 @@ export function useRadarHookFn() {
   const autoOpenedProfileIdRef = useRef<string | null>(null)
   const touchpointsProfileIdRef = useRef<string | null>(null)
   const contractsProfileIdRef = useRef<string | null>(null)
+  const deepLinkSegmentRef = useRef<string | null>(null)
+  const [campaignDeepLinkSegment, setCampaignDeepLinkSegment] = useState<RadarSegment | null>(null)
 
   const activeTab: RadarTab = searchParams.get("tab") === "segmentos" ? "segmentos" : "perfis"
 
@@ -555,6 +561,50 @@ export function useRadarHookFn() {
     setSegmentProfilesPage(1)
   }, [])
 
+  // Deep-link: ?tab=segmentos&segment=campaign:{uuid}
+  useEffect(() => {
+    if (!supabaseId || !activeTeamId) return
+
+    const segmentParam = searchParams.get("segment")
+    if (!segmentParam) {
+      deepLinkSegmentRef.current = null
+      setCampaignDeepLinkSegment(null)
+      return
+    }
+
+    const campaignId = parseCampaignRadarSegmentSlug(segmentParam)
+    if (!campaignId) return
+    if (deepLinkSegmentRef.current === segmentParam) return
+    deepLinkSegmentRef.current = segmentParam
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const campaigns = await radarFrontendService.listAvailableCampaigns(supabaseId, activeTeamId)
+        if (cancelled) return
+        const campaign = campaigns.find((item) => item.id === campaignId)
+        const name = campaign ? `Campanha: ${campaign.name}` : `Campanha ${campaignId.slice(0, 8)}…`
+        const slug = buildCampaignRadarSegmentSlug(campaignId)
+        setCampaignDeepLinkSegment({
+          slug,
+          name,
+          description: "Perfis com pelo menos um evento de e-mail desta campanha",
+          count: 0,
+          isSystem: true,
+        })
+        openSegmentProfiles({ kind: "system", slugOrId: slug, name })
+      } catch (deepLinkError) {
+        if (cancelled) return
+        console.error("[useRadarHookFn][campaignDeepLink]", deepLinkError)
+        toast.error("Não foi possível abrir o segmento da campanha.")
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTeamId, openSegmentProfiles, searchParams, supabaseId])
+
   const changeSegmentProfilesPage = useCallback(
     (nextPage: number) => {
       if (!segmentProfilesTarget) return
@@ -664,6 +714,7 @@ export function useRadarHookFn() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    campaignDeepLinkSegment,
     touchpoints,
     isLoadingTouchpoints,
     contracts,

@@ -22,7 +22,10 @@ import { listRadarFieldCatalog } from "@/lib/radar/field-catalog"
 import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
 import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
-import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
+import {
+  CUSTOM_RADAR_SEGMENT_PREFIX,
+  parseCampaignRadarSegmentSlug,
+} from "@/lib/radar/segment-audience"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import {
   buildRadarExportRows,
@@ -37,6 +40,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   clicked_not_closed: "Clicaram e não fecharam",
   portfolio_renewal_due: "Carteira próxima de renovação",
   inactive_recent_campaign: "Sem campanha recente",
+  portfolio_clients: "Carteira",
+  crm_clients: "CRM",
 }
 
 export type RadarListProfilesInput = {
@@ -184,15 +189,15 @@ export class RadarUseCase {
   }
 
   /**
-   * D16: exporta membros de um segmento de sistema.
+   * D16: exporta membros de um segmento de sistema ou audiência `campaign:{id}`.
    */
   async exportSegmentProfiles(teamId: string, ctx: TeamContext, segment: string) {
-    if (!isRadarSegmentSlug(segment)) {
+    const scope = this.scope(teamId, ctx)
+    const ids = await this.resolveSegmentProfileIds(scope, segment)
+    if (ids === null) {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const scope = this.scope(teamId, ctx)
-    const ids = await this.service.listSegmentProfileIds(scope, segment)
     const truncated = ids.length > RADAR_EXPORT_MAX_ROWS
     const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
     const rows = buildRadarExportRows(mapProfilesToExportInput(items))
@@ -466,16 +471,17 @@ export class RadarUseCase {
     page: number,
     pageSize: number
   ) {
-    if (!isRadarSegmentSlug(segment)) {
+    const scope = this.scope(teamId, ctx)
+    const ids = await this.resolveSegmentProfileIds(scope, segment)
+    if (ids === null) {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const ids = await this.service.listSegmentProfileIds(this.scope(teamId, ctx), segment)
     const skip = (page - 1) * pageSize
     const pageIds = ids.slice(skip, skip + pageSize)
 
     const items = await Promise.all(
-      pageIds.map((id) => radarRepository.getProfileDetailWithCtx(this.scope(teamId, ctx), id))
+      pageIds.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
     )
 
     return new Output(true, [], [], {
@@ -660,6 +666,38 @@ export class RadarUseCase {
       console.error("[RadarUseCase][listAvailableEventTypes]", error)
       return new Output(false, [], ["Erro ao listar tipos de evento"], null)
     }
+  }
+
+  /** Campanhas do time para filtrar condições `event` por `campaignId`. */
+  async listAvailableCampaigns(teamId: string, _ctx: TeamContext) {
+    try {
+      const campaigns = await radarRepository.listEmailCampaignOptions(teamId)
+      return new Output(true, [], [], { campaigns })
+    } catch (error) {
+      console.error("[RadarUseCase][listAvailableCampaigns]", error)
+      return new Output(false, [], ["Erro ao listar campanhas"], null)
+    }
+  }
+
+  /**
+   * Resolve IDs de perfil para slug de sistema ou `campaign:{uuid}`.
+   * Retorna `null` quando a audiência é inválida / não pertence ao time.
+   */
+  private async resolveSegmentProfileIds(
+    scope: RadarTeamScope,
+    segment: string
+  ): Promise<string[] | null> {
+    if (isRadarSegmentSlug(segment)) {
+      return this.service.listSegmentProfileIds(scope, segment)
+    }
+
+    const campaignId = parseCampaignRadarSegmentSlug(segment)
+    if (!campaignId) return null
+
+    const campaignName = await radarRepository.findEmailCampaignName(scope.teamId, campaignId)
+    if (!campaignName) return null
+
+    return this.service.listCampaignSegmentProfileIds(scope, campaignId)
   }
 }
 

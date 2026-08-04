@@ -365,7 +365,7 @@ function EventTypeSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -380,14 +380,23 @@ function EventTypeSelect({
           <ChevronsUpDown data-icon="inline-end" className="opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
+      <PopoverContent
+        className="w-72 p-0"
+        align="start"
+        onWheel={(event) => event.stopPropagation()}
+        onTouchMove={(event) => event.stopPropagation()}
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Buscar ou digitar evento…"
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
+          <CommandList
+            className="max-h-[min(300px,50vh)] overflow-y-auto"
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
+          >
             {canUseCustom ? (
               <CommandGroup heading="Valor personalizado">
                 <CommandItem value={`custom:${trimmed}`} onSelect={() => selectEventType(trimmed)}>
@@ -417,6 +426,81 @@ function EventTypeSelect({
         </Command>
       </PopoverContent>
     </Popover>
+  )
+}
+
+function CampaignSelect({
+  value,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  value: string | undefined
+  onChange: (campaignId: string | undefined) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
+  const [loading, setLoading] = useState(false)
+  const requestKeyRef = useRef<string | null>(null)
+  const lastSuccessKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!supabaseId || !teamId) {
+      setCampaigns([])
+      return
+    }
+
+    const requestKey = `${supabaseId}:${teamId}`
+    if (lastSuccessKeyRef.current === requestKey) return
+    if (requestKeyRef.current === requestKey) return
+    requestKeyRef.current = requestKey
+
+    let cancelled = false
+    setLoading(true)
+
+    void radarFrontendService
+      .listAvailableCampaigns(supabaseId, teamId)
+      .then((items) => {
+        if (cancelled) return
+        setCampaigns(items)
+        lastSuccessKeyRef.current = requestKey
+      })
+      .catch((loadError) => {
+        if (cancelled) return
+        console.error("[CampaignSelect]", loadError)
+        requestKeyRef.current = null
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      if (requestKeyRef.current === requestKey) {
+        requestKeyRef.current = null
+      }
+    }
+  }, [supabaseId, teamId])
+
+  return (
+    <Select
+      value={value ?? "__any__"}
+      onValueChange={(next) => onChange(next === "__any__" ? undefined : next)}
+      disabled={loading || campaigns.length === 0}
+    >
+      <SelectTrigger className="w-56">
+        <SelectValue placeholder={loading ? "Carregando campanhas…" : "Qualquer campanha"} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__any__">Qualquer campanha</SelectItem>
+        {campaigns.map((campaign) => (
+          <SelectItem key={campaign.id} value={campaign.id}>
+            {campaign.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -906,7 +990,15 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                   <div className="flex flex-wrap gap-2">
                     <EventTypeSelect
                       value={condition.eventType}
-                      onChange={(eventType) => updateCondition(index, { ...condition, eventType })}
+                      onChange={(eventType) =>
+                        updateCondition(index, {
+                          ...condition,
+                          eventType,
+                          ...(eventType.startsWith("email.")
+                            ? {}
+                            : { campaignId: undefined }),
+                        })
+                      }
                       supabaseId={supabaseId}
                       teamId={activeTeamId}
                     />
@@ -936,6 +1028,16 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                         })
                       }
                     />
+                    {condition.eventType.startsWith("email.") ? (
+                      <CampaignSelect
+                        value={condition.campaignId}
+                        onChange={(campaignId) =>
+                          updateCondition(index, { ...condition, campaignId })
+                        }
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
 

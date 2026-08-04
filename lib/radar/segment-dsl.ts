@@ -142,6 +142,8 @@ const eventConditionSchema = z.object({
   eventType: z.string().min(1, "eventType é obrigatório"),
   occurrence: z.enum(["occurred", "not_occurred"]),
   windowDays: z.number().int().positive().optional(),
+  /** Filtra `RadarEvent.metadata.campaignId` (eventos de e-mail). */
+  campaignId: z.string().uuid("campaignId deve ser um UUID válido").optional(),
 })
 
 const leadCustomFieldConditionSchema = z

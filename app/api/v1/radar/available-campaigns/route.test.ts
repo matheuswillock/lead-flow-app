@@ -10,7 +10,7 @@ mock.module("@/app/api/v1/radar/utils/getRadarAccess", () => ({
 
 mock.module("@/app/api/useCases/radar/RadarUseCase", () => ({
   customerDataPlatformUseCase: {
-    listAvailableEventTypes: mock(async () => ({})),
+    listAvailableCampaigns: mock(async () => ({})),
   },
 }))
 
@@ -29,13 +29,13 @@ const mockAccess = {
 }
 
 function makeRequest(): NextRequest {
-  return new NextRequest("http://localhost/api/v1/radar/available-event-types")
+  return new NextRequest("http://localhost/api/v1/radar/available-campaigns")
 }
 
-describe("GET /api/v1/radar/available-event-types", () => {
+describe("GET /api/v1/radar/available-campaigns", () => {
   beforeEach(() => {
     ;(getRadarAccess as ReturnType<typeof mock>).mockReset()
-    ;(customerDataPlatformUseCase.listAvailableEventTypes as ReturnType<typeof mock>).mockReset()
+    ;(customerDataPlatformUseCase.listAvailableCampaigns as ReturnType<typeof mock>).mockReset()
   })
 
   it("retorna 401 quando sem acesso", async () => {
@@ -48,35 +48,23 @@ describe("GET /api/v1/radar/available-event-types", () => {
     expect(res.status).toBe(401)
   })
 
-  it("retorna 200 com eventTypes distintos do time", async () => {
+  it("retorna 200 com campanhas do time", async () => {
     ;(getRadarAccess as ReturnType<typeof mock>).mockResolvedValueOnce(mockAccess)
-    ;(customerDataPlatformUseCase.listAvailableEventTypes as ReturnType<typeof mock>).mockResolvedValueOnce({
+    ;(customerDataPlatformUseCase.listAvailableCampaigns as ReturnType<typeof mock>).mockResolvedValueOnce({
       isValid: true,
       successMessages: [],
       errorMessages: [],
-      result: { eventTypes: ["email.opened", "lead.created", "whatsapp.message_received"] },
+      result: {
+        campaigns: [
+          { id: "11111111-1111-4111-8111-111111111111", name: "Campanha A" },
+          { id: "22222222-2222-4222-8222-222222222222", name: "Campanha B" },
+        ],
+      },
     })
     const res = await GET(makeRequest())
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { result: { eventTypes: string[] } }
-    expect(body.result.eventTypes).toEqual([
-      "email.opened",
-      "lead.created",
-      "whatsapp.message_received",
-    ])
-  })
-
-  it("retorna 200 com lista vazia quando o time ainda não tem eventos", async () => {
-    ;(getRadarAccess as ReturnType<typeof mock>).mockResolvedValueOnce(mockAccess)
-    ;(customerDataPlatformUseCase.listAvailableEventTypes as ReturnType<typeof mock>).mockResolvedValueOnce({
-      isValid: true,
-      successMessages: [],
-      errorMessages: [],
-      result: { eventTypes: [] },
-    })
-    const res = await GET(makeRequest())
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { result: { eventTypes: string[] } }
-    expect(body.result.eventTypes).toEqual([])
+    const body = (await res.json()) as { result: { campaigns: Array<{ id: string; name: string }> } }
+    expect(body.result.campaigns).toHaveLength(2)
+    expect(body.result.campaigns[0].name).toBe("Campanha A")
   })
 })

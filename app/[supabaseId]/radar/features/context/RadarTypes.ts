@@ -39,6 +39,8 @@ export type RadarEventCondition = {
   eventType: string
   occurrence: "occurred" | "not_occurred"
   windowDays?: number
+  /** Filtra eventos de e-mail por `metadata.campaignId`. */
+  campaignId?: string
 }
 
 export type RadarLeadCustomFieldCondition = {

@@ -111,6 +111,10 @@ export interface IRadarService {
   ): Promise<{ items: RadarProfileDetail["events"]; total: number }>
   listAvailableFields(supabaseId: string, teamId: string): Promise<RadarFieldOption[]>
   listAvailableEventTypes(supabaseId: string, teamId: string): Promise<string[]>
+  listAvailableCampaigns(
+    supabaseId: string,
+    teamId: string
+  ): Promise<Array<{ id: string; name: string }>>
   previewInterpolation(
     supabaseId: string,
     teamId: string,

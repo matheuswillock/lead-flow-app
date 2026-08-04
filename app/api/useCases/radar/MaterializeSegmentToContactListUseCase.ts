@@ -4,8 +4,11 @@ import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import {
   CUSTOM_RADAR_SEGMENT_PREFIX,
   isValidRadarSegmentAudience,
+  parseCampaignRadarSegmentSlug,
 } from "@/lib/radar/segment-audience"
+import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
+import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
 
 export type MaterializeSegmentResult = {
@@ -17,6 +20,17 @@ export type PreviewSegmentResult = {
   estimatedCount: number
 }
 
+const SYSTEM_SEGMENT_LABELS: Record<string, string> = {
+  email_marketable: "Aptos para e-mail",
+  email_blocked: "Bloqueados",
+  opened_not_clicked: "Abriram e não clicaram",
+  clicked_not_closed: "Clicaram e não fecharam",
+  portfolio_renewal_due: "Carteira próxima de renovação",
+  inactive_recent_campaign: "Sem campanha recente",
+  portfolio_clients: "Carteira",
+  crm_clients: "CRM",
+}
+
 class MaterializeSegmentToContactListUseCase {
   private async resolveSegmentName(teamId: string, segmentSlug: string): Promise<string | null> {
     if (segmentSlug.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)) {
@@ -25,6 +39,17 @@ class MaterializeSegmentToContactListUseCase {
       if (!segment?.isActive) return null
       return segment.name
     }
+
+    const campaignId = parseCampaignRadarSegmentSlug(segmentSlug)
+    if (campaignId) {
+      const name = await radarRepository.findEmailCampaignName(teamId, campaignId)
+      return name ? `Campanha: ${name}` : null
+    }
+
+    if (isRadarSegmentSlug(segmentSlug)) {
+      return SYSTEM_SEGMENT_LABELS[segmentSlug] ?? segmentSlug
+    }
+
     return null
   }
 

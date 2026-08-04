@@ -72,17 +72,28 @@ function translateConsent(
   return { consents: { some: { channel: condition.channel, status: condition.status } } }
 }
 
-function translateEvent(
+/** Exposto para testes unitários do filtro opcional `metadata.campaignId`. */
+export function translateEvent(
   condition: Extract<RadarSegmentCondition, { kind: "event" }>
 ): Prisma.RadarProfileWhereInput {
   const occurredAtFilter = condition.windowDays
     ? { occurredAt: { gte: subDays(new Date(), condition.windowDays) } }
     : {}
 
-  if (condition.occurrence === "occurred") {
-    return { events: { some: { eventType: condition.eventType, ...occurredAtFilter } } }
+  const campaignFilter = condition.campaignId
+    ? { metadata: { path: ["campaignId"], equals: condition.campaignId } }
+    : {}
+
+  const eventFilter = {
+    eventType: condition.eventType,
+    ...occurredAtFilter,
+    ...campaignFilter,
   }
-  return { events: { none: { eventType: condition.eventType, ...occurredAtFilter } } }
+
+  if (condition.occurrence === "occurred") {
+    return { events: { some: eventFilter } }
+  }
+  return { events: { none: eventFilter } }
 }
 
 async function translateLeadCustomField(

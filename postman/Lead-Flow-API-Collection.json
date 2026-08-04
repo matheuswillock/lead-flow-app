@@ -18066,6 +18066,36 @@
           "response": []
         },
         {
+          "name": "Campanhas Radar disponíveis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/available-campaigns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "available-campaigns"
+              ]
+            },
+            "description": "Lista { id, name } das EmailCampaign do time para o Select de campaignId no builder. Audiência virtual campaign:{uuid} lista perfis com ≥1 evento email.* com metadata.campaignId."
+          },
+          "response": []
+        },
+        {
           "name": "Preview interpolação Radar",
           "request": {
             "method": "POST",
@@ -18284,7 +18314,8 @@
               "variable": [
                 {
                   "key": "segment",
-                  "value": "email_marketable"
+                  "value": "email_marketable",
+                  "description": "Slug de sistema (ex.: email_marketable, portfolio_clients, crm_clients) ou audiência virtual campaign:{uuid} (URL-encoded)."
                 }
               ]
             }
