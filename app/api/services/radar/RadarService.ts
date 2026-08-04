@@ -363,6 +363,17 @@ export class RadarService {
           source: "portfolio",
         })
 
+        // D13: clientes criados só na carteira não passam pelo sync CRM;
+        // anexar lead_id aqui habilita portfolio_field + aba Contratos.
+        await radarRepository.upsertIdentity({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          type: "lead_id",
+          value: lead.id,
+          normalizedValue: lead.id,
+          source: "portfolio",
+        })
+
         await radarRepository.appendEventIfNew({
           profileId: profile.id,
           teamId: scope.teamId,

@@ -196,6 +196,66 @@ export class RadarUseCase {
     return new Output(true, [], [], { total, breakdown })
   }
 
+
+  /**
+   * D13: contratos atuais (LeadPortfolio) + histórico (LeadFinalized com
+   * holder/dependentes) do perfil, via identidades `lead_id` / `portfolio_id`.
+   */
+  async getProfileContracts(teamId: string, ctx: TeamContext, profileId: string) {
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const raw = await radarRepository.findContractsForProfile(scope, profileId)
+
+    const portfolios = raw.portfolios.map((item) => ({
+      id: item.id,
+      leadId: item.leadId,
+      portfolioStatus: item.portfolioStatus,
+      renewalStatus: item.renewalStatus,
+      renewalAmount: item.renewalAmount != null ? Number(item.renewalAmount) : null,
+      source: item.source,
+      note: item.note,
+      lastContactAt: item.lastContactAt?.toISOString() ?? null,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+    }))
+
+    const finalized = raw.finalized.map((item) => ({
+      id: item.id,
+      leadId: item.leadId,
+      finalizedDateAt: item.finalizedDateAt.toISOString(),
+      startDateAt: item.startDateAt.toISOString(),
+      amount: Number(item.amount),
+      contractType: item.contractType,
+      operadora: item.operadora,
+      productName: item.productName,
+      notes: item.notes,
+      createdAt: item.createdAt.toISOString(),
+      holder: item.holder
+        ? {
+            id: item.holder.id,
+            name: item.holder.name,
+            razaoSocial: item.holder.razaoSocial,
+            birthDate: item.holder.birthDate.toISOString(),
+            document: item.holder.document,
+            cnpj: item.holder.cnpj,
+          }
+        : null,
+      dependents: item.dependents.map((dependent) => ({
+        id: dependent.id,
+        name: dependent.name,
+        birthDate: dependent.birthDate.toISOString(),
+        parentesco: dependent.parentesco,
+        document: dependent.document,
+      })),
+    }))
+
+    return new Output(true, [], [], { portfolios, finalized })
+  }
+
   async listProfileEvents(
     teamId: string,
     ctx: TeamContext,

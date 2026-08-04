@@ -11,6 +11,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileContracts,
   RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
@@ -293,6 +294,18 @@ export class RadarFrontendService implements IRadarService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     return parseOutput<RadarProfileTouchpoints>(res)
+  }
+
+  async getProfileContracts(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileContracts> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/contracts`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileContracts>(res)
   }
 
   async materializeContactList(

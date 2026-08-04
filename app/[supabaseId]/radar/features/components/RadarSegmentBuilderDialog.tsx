@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
+import { FileText, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,7 +30,7 @@ import { EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB } from "@/lib/email/campaign-limi
 import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
-import { LEAD_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
+import { LEAD_FIELD_CATALOG, PORTFOLIO_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useParams } from "next/navigation"
 import { useRadarContext } from "../context/RadarContext"
@@ -38,6 +38,7 @@ import type {
   RadarCustomSegmentListItem,
   RadarLeadCustomFieldCondition,
   RadarLeadFieldCondition,
+  RadarPortfolioFieldCondition,
   RadarSegmentCondition,
   RadarSegmentRules,
 } from "../context/RadarTypes"
@@ -78,6 +79,44 @@ const LEAD_FIELD_LABELS: Record<keyof typeof LEAD_FIELD_CATALOG, string> = {
   closerId: "Closer responsável",
 }
 
+const PORTFOLIO_FIELD_LABELS: Record<keyof typeof PORTFOLIO_FIELD_CATALOG, string> = {
+  portfolioStatus: "Status da carteira",
+  renewalStatus: "Status de renovação",
+  renewalAmount: "Valor de renovação (R$)",
+  source: "Origem da carteira",
+  lastContactAt: "Último contato (carteira)",
+  finalizedDateAt: "Data de fechamento",
+  amount: "Valor do contrato (R$)",
+  contractType: "Tipo de contrato",
+  operadora: "Operadora",
+  productName: "Produto",
+}
+
+const PORTFOLIO_ENUM_LABELS: Record<string, Record<string, string>> = {
+  portfolioStatus: {
+    active: "Ativo",
+    pending: "Pendente",
+    canceled: "Cancelado",
+  },
+  renewalStatus: {
+    to_renew: "A renovar",
+    contacted: "Contatado",
+    proposal: "Proposta enviada",
+    renewed: "Renovado",
+    lost: "Perdido",
+  },
+  source: {
+    crm: "CRM",
+    manual: "Manual",
+    brokerage_transfer: "Transferência de corretagem",
+  },
+  contractType: {
+    individual: "PF",
+    corporate: "Empresarial",
+    adhesion: "Adesão",
+  },
+}
+
 const KIND_OPTIONS = [
   { value: "profile_field", label: "Campo do perfil", icon: User },
   { value: "event", label: "Evento", icon: MousePointerClick },
@@ -85,6 +124,7 @@ const KIND_OPTIONS = [
   { value: "lead_custom_field", label: "Campo personalizado do lead", icon: ListChecks },
   { value: "lead_status", label: "Status do lead (CRM)", icon: Kanban },
   { value: "lead_field", label: "Campo nativo do lead (CRM)", icon: SlidersHorizontal },
+  { value: "portfolio_field", label: "Campo de contrato/carteira", icon: FileText },
 ] as const
 
 function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegmentCondition {
@@ -101,6 +141,8 @@ function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegm
       return { kind: "lead_status", statuses: [] }
     case "lead_field":
       return { kind: "lead_field", fieldKey: "status", operator: "eq", value: [] }
+    case "portfolio_field":
+      return { kind: "portfolio_field", fieldKey: "renewalStatus", operator: "eq", value: "to_renew" }
   }
 }
 
@@ -331,6 +373,77 @@ function LeadFieldValueInput({
         onChange={onChange}
         supabaseId={supabaseId}
         teamId={teamId}
+      />
+    )
+  }
+
+  return (
+    <Input
+      className="w-40"
+      type="text"
+      value={typeof condition.value === "string" ? condition.value : ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+}
+
+
+function PortfolioFieldValueInput({
+  condition,
+  onChange,
+}: {
+  condition: RadarPortfolioFieldCondition
+  onChange: (value: unknown) => void
+}) {
+  const entry = PORTFOLIO_FIELD_CATALOG[condition.fieldKey]
+
+  if (entry.valueKind === "enum") {
+    const labels = PORTFOLIO_ENUM_LABELS[condition.fieldKey] ?? {}
+    return (
+      <Select value={typeof condition.value === "string" ? condition.value : ""} onValueChange={onChange}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Valor" />
+        </SelectTrigger>
+        <SelectContent>
+          {entry.enumValues.map((enumValue) => (
+            <SelectItem key={enumValue} value={enumValue}>
+              {labels[enumValue] ?? enumValue}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (entry.valueKind === "number") {
+    return (
+      <Input
+        className="w-40"
+        type="number"
+        value={typeof condition.value === "number" ? condition.value : ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+      />
+    )
+  }
+
+  if (entry.valueKind === "date") {
+    if (condition.operator === "within_days") {
+      return (
+        <Input
+          className="w-36"
+          type="number"
+          placeholder="Dias"
+          value={typeof condition.value === "number" ? condition.value : ""}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+        />
+      )
+    }
+    return (
+      <Input
+        className="w-40"
+        type="date"
+        value={typeof condition.value === "string" ? condition.value : ""}
+        onChange={(e) => onChange(e.target.value)}
       />
     )
   }
@@ -782,6 +895,64 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                         onChange={(value) => updateCondition(index, { ...condition, value })}
                         supabaseId={supabaseId}
                         teamId={activeTeamId}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {condition.kind === "portfolio_field" ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Select
+                      value={condition.fieldKey}
+                      onValueChange={(value) => {
+                        const key = value as RadarPortfolioFieldCondition["fieldKey"]
+                        const entry = PORTFOLIO_FIELD_CATALOG[key]
+                        updateCondition(index, {
+                          kind: "portfolio_field",
+                          fieldKey: key,
+                          operator: entry.operators[0],
+                          value: undefined,
+                        })
+                      }}
+                    >
+                      <SelectTrigger className="w-56">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(PORTFOLIO_FIELD_CATALOG) as (keyof typeof PORTFOLIO_FIELD_CATALOG)[]).map(
+                          (key) => (
+                            <SelectItem key={key} value={key}>
+                              {PORTFOLIO_FIELD_LABELS[key]}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={condition.operator}
+                      onValueChange={(value) =>
+                        updateCondition(index, {
+                          ...condition,
+                          operator: value,
+                          value: undefined,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PORTFOLIO_FIELD_CATALOG[condition.fieldKey].operators.map((op) => (
+                          <SelectItem key={op} value={op}>
+                            {OPERATOR_LABELS[op]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {conditionNeedsValueInput(condition) ? (
+                      <PortfolioFieldValueInput
+                        condition={condition}
+                        onChange={(value) => updateCondition(index, { ...condition, value })}
                       />
                     ) : null}
                   </div>
