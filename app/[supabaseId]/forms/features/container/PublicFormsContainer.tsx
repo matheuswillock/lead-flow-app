@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { EmailCampaignTrackingBadge } from "@/components/public-forms/EmailCampaignTrackingBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -303,6 +304,9 @@ export function PublicFormsContainer() {
                         item.name
                       )}
                       {item.managedByCorretorStudio ? <ManagedByCorretorStudioBadge /> : null}
+                      {item.emailCampaignTrackingEnabled !== false ? (
+                        <EmailCampaignTrackingBadge />
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell>

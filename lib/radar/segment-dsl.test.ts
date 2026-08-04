@@ -124,6 +124,54 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("aceita event com campaignId UUID e rejeita campaignId inválido", () => {
+    const campaignId = "11111111-1111-4111-8111-111111111111"
+    const rules = parseRadarSegmentRules({
+      match: "all",
+      conditions: [
+        {
+          kind: "event",
+          eventType: "email.opened",
+          occurrence: "occurred",
+          campaignId,
+          windowDays: 30,
+        },
+      ],
+    })
+    const condition = rules.conditions[0]
+    expect(condition.kind).toBe("event")
+    if (condition.kind === "event") {
+      expect(condition.campaignId).toBe(campaignId)
+    }
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [
+          {
+            kind: "event",
+            eventType: "email.opened",
+            occurrence: "occurred",
+            campaignId: "not-a-uuid",
+          },
+        ],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [
+          {
+            kind: "event",
+            eventType: "email.clicked",
+            occurrence: "occurred",
+          },
+        ],
+      })
+    ).not.toThrow()
+  })
+
   it("aceita lead_custom_field válido e exige value para eq/neq/contains", () => {
     expect(() =>
       parseRadarSegmentRules({
@@ -163,6 +211,32 @@ describe("segment-dsl", () => {
       parseRadarSegmentRules({
         match: "any",
         conditions: [{ kind: "lead_status", statuses: ["not_a_status"] }],
+      })
+    ).toThrow()
+  })
+
+  it("aceita engagement_band válido e rejeita banda inválida ou lista vazia", () => {
+    const rules = parseRadarSegmentRules({
+      match: "any",
+      conditions: [{ kind: "engagement_band", bands: ["hot", "warm"] }],
+    })
+    const condition = rules.conditions[0]
+    expect(condition.kind).toBe("engagement_band")
+    if (condition.kind === "engagement_band") {
+      expect(condition.bands).toEqual(["hot", "warm"])
+    }
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "engagement_band", bands: [] }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "engagement_band", bands: ["boiling"] }],
       })
     ).toThrow()
   })

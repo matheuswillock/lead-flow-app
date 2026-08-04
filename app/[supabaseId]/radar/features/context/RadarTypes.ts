@@ -6,10 +6,47 @@ export type RadarProfileListItem = {
   displayPhone: string | null
   primaryEmail: string | null
   lastSeenAt: string | null
+  engagementScore?: number | null
+  engagementBand?: string | null
   primarySegment?: string | null
   primarySegmentName?: string | null
   consents: Array<{ channel: string; status: RadarConsentStatus; reason: string | null }>
   sourceLinks: Array<{ sourceType: string }>
+}
+
+/** Breakdown de score de formulário no engajamento (D19-C). */
+export type FormSubmissionScoreBreakdown = {
+  submissionId: string
+  formId: string
+  formTitle: string
+  submittedAt: string
+  scorePercent: number
+  scoreBandLabel: string | null
+  answers: Array<{
+    questionLabel: string
+    chosenOptionLabel: string
+    chosenOptionScore: number
+    chosenOptionPolarity: "positive" | "negative"
+    questionWeight: number
+    contribution: number
+  }>
+  temperatureMultiplier: number
+  baseWeight: number
+  finalWeight: number
+}
+
+/** D19-D: resposta de `GET .../profiles/by-lead/:leadId/engagement` (quando encontrado). */
+export type LeadRadarEngagement = {
+  notFound?: false
+  profileId: string
+  score: number
+  band: string
+  topEvents: Array<{
+    eventType: string
+    occurredAt: string
+    contribution: number
+  }>
+  formSubmissions?: FormSubmissionScoreBreakdown[]
 }
 
 export type RadarSegment = {
@@ -39,6 +76,8 @@ export type RadarEventCondition = {
   eventType: string
   occurrence: "occurred" | "not_occurred"
   windowDays?: number
+  /** Filtra eventos de e-mail por `metadata.campaignId`. */
+  campaignId?: string
 }
 
 export type RadarLeadCustomFieldCondition = {
@@ -51,6 +90,11 @@ export type RadarLeadCustomFieldCondition = {
 export type RadarLeadStatusCondition = {
   kind: "lead_status"
   statuses: string[]
+}
+
+export type RadarEngagementBandCondition = {
+  kind: "engagement_band"
+  bands: Array<"hot" | "warm" | "lukewarm" | "cold">
 }
 
 export type RadarLeadFieldCondition = {
@@ -95,6 +139,7 @@ export type RadarSegmentCondition =
   | RadarEventCondition
   | RadarLeadCustomFieldCondition
   | RadarLeadStatusCondition
+  | RadarEngagementBandCondition
   | RadarLeadFieldCondition
   | RadarPortfolioFieldCondition
 

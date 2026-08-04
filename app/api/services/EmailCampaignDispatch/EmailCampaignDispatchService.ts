@@ -7,6 +7,7 @@ import {
   EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
   templateIncludesManualUnsubscribeLink,
 } from "@/lib/email/unsubscribe-link-embed"
+import { appendEmailLogIdToFormUrls } from "@/lib/email/append-email-log-to-form-urls"
 import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
@@ -60,11 +61,19 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
+    logIdByEmail?: Map<string, string> | Record<string, string> | null
     onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
   }): Promise<DispatchBatchResult> {
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
     }
+
+    const logIdByEmail =
+      params.logIdByEmail instanceof Map
+        ? params.logIdByEmail
+        : params.logIdByEmail
+          ? new Map(Object.entries(params.logIdByEmail))
+          : null
 
     const result: DispatchBatchResult = {
       sent: 0,
@@ -109,7 +118,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             ? buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId)
             : ""
           const usesManualUnsubscribe = manualUnsubscribeLink && Boolean(unsubscribeUrl)
-          const renderedHtml = interpolateEmailTemplate(
+          let renderedHtml = interpolateEmailTemplate(
             params.html,
             recipient,
             params.globalDefaults,
@@ -118,6 +127,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               ? { [EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]: unsubscribeUrl }
               : null,
           )
+          const emailLogId = logIdByEmail?.get(recipient.email)
+          if (emailLogId) {
+            renderedHtml = appendEmailLogIdToFormUrls(renderedHtml, emailLogId)
+          }
           const renderedSubject = interpolateEmailTemplate(
             params.subject,
             recipient,

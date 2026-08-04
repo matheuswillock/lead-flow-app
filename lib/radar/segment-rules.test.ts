@@ -149,4 +149,36 @@ describe("profileMatchesRadarSegment", () => {
       profileMatchesRadarSegment(profile, "clicked_not_closed", new Map(), NOW, RECENT_MS)
     ).toBe(true)
   })
+
+  it("portfolio_clients entra com sourceLink portfolio", () => {
+    const profile = {
+      ...baseProfile,
+      sourceLinks: [{ sourceType: "portfolio" }],
+    }
+    expect(
+      profileMatchesRadarSegment(profile, "portfolio_clients", new Map(), NOW, RECENT_MS)
+    ).toBe(true)
+  })
+
+  it("portfolio_clients não entra sem vínculo de carteira", () => {
+    expect(
+      profileMatchesRadarSegment(baseProfile, "portfolio_clients", new Map(), NOW, RECENT_MS)
+    ).toBe(false)
+  })
+
+  it("crm_clients entra com identidade lead_id", () => {
+    expect(profileMatchesRadarSegment(baseProfile, "crm_clients", new Map(), NOW, RECENT_MS)).toBe(
+      true
+    )
+  })
+
+  it("crm_clients não entra sem identidade lead_id", () => {
+    const profile = {
+      ...baseProfile,
+      identities: [{ type: "email", normalizedValue: "lead@example.com" }],
+    }
+    expect(profileMatchesRadarSegment(profile, "crm_clients", new Map(), NOW, RECENT_MS)).toBe(
+      false
+    )
+  })
 })

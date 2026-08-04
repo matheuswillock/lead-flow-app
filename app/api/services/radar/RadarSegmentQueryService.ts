@@ -72,17 +72,28 @@ function translateConsent(
   return { consents: { some: { channel: condition.channel, status: condition.status } } }
 }
 
-function translateEvent(
+/** Exposto para testes unitários do filtro opcional `metadata.campaignId`. */
+export function translateEvent(
   condition: Extract<RadarSegmentCondition, { kind: "event" }>
 ): Prisma.RadarProfileWhereInput {
   const occurredAtFilter = condition.windowDays
     ? { occurredAt: { gte: subDays(new Date(), condition.windowDays) } }
     : {}
 
-  if (condition.occurrence === "occurred") {
-    return { events: { some: { eventType: condition.eventType, ...occurredAtFilter } } }
+  const campaignFilter = condition.campaignId
+    ? { metadata: { path: ["campaignId"], equals: condition.campaignId } }
+    : {}
+
+  const eventFilter = {
+    eventType: condition.eventType,
+    ...occurredAtFilter,
+    ...campaignFilter,
   }
-  return { events: { none: { eventType: condition.eventType, ...occurredAtFilter } } }
+
+  if (condition.occurrence === "occurred") {
+    return { events: { some: eventFilter } }
+  }
+  return { events: { none: eventFilter } }
 }
 
 async function translateLeadCustomField(
@@ -262,6 +273,13 @@ async function translateEmailContactField(
   return { identities: { some: { type: "email_contact_id", normalizedValue: { in: contactIds } } } }
 }
 
+/** Exposto para testes — `in` exclui naturalmente `engagementBand` null. */
+export function translateEngagementBand(
+  condition: Extract<RadarSegmentCondition, { kind: "engagement_band" }>
+): Prisma.RadarProfileWhereInput {
+  return { engagementBand: { in: condition.bands } }
+}
+
 async function translateCondition(
   teamId: string,
   condition: RadarSegmentCondition
@@ -285,6 +303,12 @@ async function translateCondition(
       return translateEmailContactList(teamId, condition)
     case "email_contact_field":
       return translateEmailContactField(teamId, condition)
+    case "engagement_band":
+      return translateEngagementBand(condition)
+    default: {
+      const _exhaustive: never = condition
+      throw new Error(`Unhandled radar segment condition: ${JSON.stringify(_exhaustive)}`)
+    }
   }
 }
 

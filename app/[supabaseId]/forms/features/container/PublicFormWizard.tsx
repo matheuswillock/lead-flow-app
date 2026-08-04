@@ -39,6 +39,11 @@ import {
   sumQuestionScoreWeights,
   withEqualOptionScores,
 } from "@/lib/public-forms/scoring"
+import {
+  previewTemperatureForOption,
+} from "@/lib/public-forms/temperature-preview"
+import { useFormEngagementConfig } from "../hooks/useFormEngagementConfig"
+import { TemperaturePreviewPill } from "../components/TemperaturePreviewPill"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   getPageKey,
@@ -69,6 +74,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -1210,6 +1216,18 @@ function Questions({
   const stepErrors = getQuestionStepErrors(d)
   const pages = groupQuestionsByPage(d.questions)
   const scoreTotal = sumQuestionScoreWeights(d.questions)
+  const { config: engagementConfig, isLoading: engagementConfigLoading } =
+    useFormEngagementConfig(true)
+
+  const hasAnyScoreWeight = d.questions.some((q) => Math.max(0, q.scoreWeight ?? 0) > 0)
+  const allOptionsZero =
+    hasAnyScoreWeight &&
+    d.questions.every((q) => {
+      if (Math.max(0, q.scoreWeight ?? 0) <= 0) return true
+      if (!["single_choice", "multiple_choice", "health_plan"].includes(q.type)) return true
+      return q.options.every((o) => Math.max(0, o.score) <= 0)
+    })
+  const showQualificationBanner = scoreTotal === 100 && allOptionsZero
 
   function updateQuestion(id: string, patch: Partial<PublicFormQuestionInput>) {
     if (patch.scoreWeight !== undefined) {
@@ -1573,6 +1591,22 @@ function Questions({
             Obrigatória
           </label>
         </div>
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => Math.max(0, o.score) <= 0) ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Esta pergunta não influencia o score — configure um peso para pelo menos uma opção
+          </Badge>
+        ) : null}
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => (o.scorePolarity ?? "positive") === "negative") ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Nenhuma resposta positiva: o lead sempre será penalizado nesta pergunta
+          </Badge>
+        ) : null}
         {q.type === "scheduling" ? (
           <div className="mt-4">
             <ScheduleInline draft={d} change={change} members={members} />
@@ -1719,6 +1753,19 @@ function Questions({
                       </div>
                     </FieldContent>
                   </Field>
+                  {engagementConfigLoading ? (
+                    <Skeleton className="h-5 w-48" />
+                  ) : engagementConfig && o.id && q.id ? (
+                    (() => {
+                      const band = previewTemperatureForOption(
+                        d,
+                        q.id,
+                        o.id,
+                        engagementConfig,
+                      )
+                      return band ? <TemperaturePreviewPill band={band} /> : null
+                    })()
+                  ) : null}
                 </div>
               )
             })}
@@ -1760,6 +1807,14 @@ function Questions({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Total: {scoreTotal}%</p>
+      {showQualificationBanner ? (
+        <Alert>
+          <AlertDescription>
+            Score de qualificação não configurado — o formulário não influenciará a temperatura do
+            lead
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {stepErrors.length > 0 ? (
         <Alert variant="destructive">
           <AlertDescription>

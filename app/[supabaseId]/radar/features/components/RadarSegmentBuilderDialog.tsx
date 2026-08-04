@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, ChevronsUpDown, FileText, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
+import { Check, ChevronsUpDown, FileText, Flame, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, Snowflake, SlidersHorizontal, Thermometer, ThermometerSun, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -136,7 +136,15 @@ const KIND_OPTIONS = [
   { value: "lead_status", label: "Status do lead (CRM)", icon: Kanban },
   { value: "lead_field", label: "Campo nativo do lead (CRM)", icon: SlidersHorizontal },
   { value: "portfolio_field", label: "Campo de contrato/carteira", icon: FileText },
+  { value: "engagement_band", label: "Temperatura", icon: Thermometer },
 ] as const
+
+const ENGAGEMENT_BAND_OPTIONS = [
+  { value: "hot" as const, label: "Quente", icon: Flame },
+  { value: "warm" as const, label: "Morno", icon: ThermometerSun },
+  { value: "lukewarm" as const, label: "Morno-frio", icon: Thermometer },
+  { value: "cold" as const, label: "Frio", icon: Snowflake },
+]
 
 function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegmentCondition {
   switch (kind) {
@@ -150,6 +158,8 @@ function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegm
       return { kind: "lead_custom_field", definitionId: "", operator: "eq" }
     case "lead_status":
       return { kind: "lead_status", statuses: [] }
+    case "engagement_band":
+      return { kind: "engagement_band", bands: [] }
     case "lead_field":
       return { kind: "lead_field", fieldKey: "status", operator: "eq", value: [] }
     case "portfolio_field":
@@ -365,7 +375,7 @@ function EventTypeSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -380,14 +390,23 @@ function EventTypeSelect({
           <ChevronsUpDown data-icon="inline-end" className="opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
+      <PopoverContent
+        className="w-72 p-0"
+        align="start"
+        onWheel={(event) => event.stopPropagation()}
+        onTouchMove={(event) => event.stopPropagation()}
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Buscar ou digitar evento…"
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
+          <CommandList
+            className="max-h-[min(300px,50vh)] overflow-y-auto"
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
+          >
             {canUseCustom ? (
               <CommandGroup heading="Valor personalizado">
                 <CommandItem value={`custom:${trimmed}`} onSelect={() => selectEventType(trimmed)}>
@@ -417,6 +436,81 @@ function EventTypeSelect({
         </Command>
       </PopoverContent>
     </Popover>
+  )
+}
+
+function CampaignSelect({
+  value,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  value: string | undefined
+  onChange: (campaignId: string | undefined) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
+  const [loading, setLoading] = useState(false)
+  const requestKeyRef = useRef<string | null>(null)
+  const lastSuccessKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!supabaseId || !teamId) {
+      setCampaigns([])
+      return
+    }
+
+    const requestKey = `${supabaseId}:${teamId}`
+    if (lastSuccessKeyRef.current === requestKey) return
+    if (requestKeyRef.current === requestKey) return
+    requestKeyRef.current = requestKey
+
+    let cancelled = false
+    setLoading(true)
+
+    void radarFrontendService
+      .listAvailableCampaigns(supabaseId, teamId)
+      .then((items) => {
+        if (cancelled) return
+        setCampaigns(items)
+        lastSuccessKeyRef.current = requestKey
+      })
+      .catch((loadError) => {
+        if (cancelled) return
+        console.error("[CampaignSelect]", loadError)
+        requestKeyRef.current = null
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      if (requestKeyRef.current === requestKey) {
+        requestKeyRef.current = null
+      }
+    }
+  }, [supabaseId, teamId])
+
+  return (
+    <Select
+      value={value ?? "__any__"}
+      onValueChange={(next) => onChange(next === "__any__" ? undefined : next)}
+      disabled={loading || campaigns.length === 0}
+    >
+      <SelectTrigger className="w-56">
+        <SelectValue placeholder={loading ? "Carregando campanhas…" : "Qualquer campanha"} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__any__">Qualquer campanha</SelectItem>
+        {campaigns.map((campaign) => (
+          <SelectItem key={campaign.id} value={campaign.id}>
+            {campaign.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -906,7 +1000,15 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                   <div className="flex flex-wrap gap-2">
                     <EventTypeSelect
                       value={condition.eventType}
-                      onChange={(eventType) => updateCondition(index, { ...condition, eventType })}
+                      onChange={(eventType) =>
+                        updateCondition(index, {
+                          ...condition,
+                          eventType,
+                          ...(eventType.startsWith("email.")
+                            ? {}
+                            : { campaignId: undefined }),
+                        })
+                      }
                       supabaseId={supabaseId}
                       teamId={activeTeamId}
                     />
@@ -936,6 +1038,16 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                         })
                       }
                     />
+                    {condition.eventType.startsWith("email.") ? (
+                      <CampaignSelect
+                        value={condition.campaignId}
+                        onChange={(campaignId) =>
+                          updateCondition(index, { ...condition, campaignId })
+                        }
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -1014,6 +1126,33 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                           }
                         >
                           {getLeadStatusLabel(status)}
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                ) : null}
+
+                {condition.kind === "engagement_band" ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {ENGAGEMENT_BAND_OPTIONS.map((band) => {
+                      const BandIcon = band.icon
+                      const isSelected = condition.bands.includes(band.value)
+                      return (
+                        <Badge
+                          key={band.value}
+                          variant={isSelected ? "default" : "outline"}
+                          className="cursor-pointer gap-1"
+                          onClick={() =>
+                            updateCondition(index, {
+                              ...condition,
+                              bands: isSelected
+                                ? condition.bands.filter((b) => b !== band.value)
+                                : [...condition.bands, band.value],
+                            })
+                          }
+                        >
+                          <BandIcon className="size-3.5" aria-hidden />
+                          {band.label}
                         </Badge>
                       )
                     })}
