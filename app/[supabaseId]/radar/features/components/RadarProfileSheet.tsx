@@ -26,10 +26,15 @@ import type {
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 import {
+  buildLeadCrmHref,
   filterDisplayableIdentities,
-  getIdentityTypeLabel,
-  resolvePersonLabel,
+  getRadarIdentityDisplayValue,
 } from "../utils/radarIdentityDisplay"
+
+function resolvePersonLabel(person: { id: string; name: string | null } | null | undefined): string | null {
+  if (!person) return null
+  return person.name?.trim() || null
+}
 
 const CONSENT_CHANNEL_LABEL: Record<string, string> = {
   email: "E-mail",
@@ -251,6 +256,20 @@ export function RadarProfileSheet({
                                   {sdrName}
                                 </p>
                               ) : null}
+                              {closerName ? (
+                                <p>
+                                  <span className="text-muted-foreground">Closer: </span>
+                                  {closerName}
+                                </p>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
 
               <Tabs defaultValue="resumo">
                 <TabsList className="flex h-auto flex-wrap gap-1">
