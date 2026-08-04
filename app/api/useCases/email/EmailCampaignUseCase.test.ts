@@ -111,10 +111,10 @@ mock.module("@/app/api/infra/data/prisma", () => ({
   },
 }))
 
-// --- FeatureAccessRepository ---
+// --- FeatureAccessService ---
 const resolveEmailBetaAccessMock = mock(async () => false)
-mock.module("@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository", () => ({
-  featureAccessRepository: { resolveEmailBetaAccess: resolveEmailBetaAccessMock },
+mock.module("@/app/api/services/featureAccess/FeatureAccessService", () => ({
+  featureAccessService: { resolveEmailBetaAccess: resolveEmailBetaAccessMock },
 }))
 
 // --- EmailOrphanEventService ---

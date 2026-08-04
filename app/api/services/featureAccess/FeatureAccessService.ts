@@ -1,7 +1,9 @@
 import type { IFeatureAccessService, ResolveFeatureAccessInput, FeatureAccessResult } from "./IFeatureAccessService"
 import { FEATURE_PRODUCT_SLUG_MAP } from "@/lib/features/feature-product-slug-map"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import type {
   ActiveFeatureRecord,
+  EmailBetaAccessContext,
   IFeatureAccessRepository,
   UserRoleInfo,
 } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
@@ -331,6 +333,24 @@ export class FeatureAccessService implements IFeatureAccessService {
       .map((feature) => feature.slug)
 
     return { slugs: Array.from(allowedSlugs), betaSlugs, betaLabelSlugs, userRole: safeUserRole }
+  }
+
+  /**
+   * D8 (EMAIL_SPEC): tag Beta + entitlement da feature = isenção total de créditos.
+   * Usa `betaLabelSlugs` (betaEnabled com herança ∧ hasAccess) para não isentar
+   * contas sem acesso a EMAIL_CAMPAIGNS / EMAIL só porque o flag global está ligado.
+   */
+  async resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
+    const access = await this.resolveAllowedSlugs({
+      profileId: ctx.profileId,
+      managerId: ctx.managerId,
+      activeTeamId: ctx.teamId,
+    })
+
+    return (
+      access.betaLabelSlugs.includes(FEATURE_SLUGS.EMAIL_CAMPAIGNS) ||
+      access.betaLabelSlugs.includes(FEATURE_SLUGS.EMAIL)
+    )
   }
 }
 
