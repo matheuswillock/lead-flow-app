@@ -424,41 +424,46 @@ NEXT_PUBLIC_APP_URL=
 
 O módulo Radar é um add-on (`FEATURE_SLUGS.RADAR = "radar"`) que unifica dados de clientes vindos do CRM, carteira, listas de contatos de e-mail, WhatsApp, formulários públicos e o **Corretor Studio Pixel** em perfis team-scoped para campanhas de e-mail e audiências.
 
-**Estado pós-D12 (Fase D — D1–D12 concluídos):** ingestão **event-driven** (sem sync manual na UI). `Lead.originChannel`/`originMetadata` registram a origem; sync inline cobre CRM, portfolio, e-mail e WhatsApp; pixel + bridge de formulário público alimentam `RadarEvent`/`RadarIdentity`.
+**Estado atual (unificado D10–D18 — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)):** R1–R5 e C1–C6 concluídos; Fase D com **D1–D7 e D9–D18 no código**. Ingestão **event-driven na UI** (D10 — sem botão de sync manual). `Lead.originChannel`/`originMetadata` registram a origem; sync inline cobre CRM, portfolio, e-mail e WhatsApp; pixel alimenta `RadarEvent`/`RadarIdentity`.
+
+**Pendência D8:** bridge `PublicFormMetricEvent` → `RadarEvent` ainda **ausente** no HEAD commitado. Eventos de formulário público **não** entram na timeline Radar até D8 fechar.
+
+**Dívida C5 × DA11:** o alerta do builder de segmento sugere split automático em sub-envios quando a audiência >2.000; o backend **rejeita** campanha por segmento acima do limite (sub-campanhas só para listas).
 
 ### Modelos Prisma
 
 - `RadarProfile` — perfil unificado por cliente dentro de um time (telefone opcional — perfis email-only)
-- `RadarIdentity` — identidades normalizadas (`lead_id`, `email`, `phone`, `document`, `whatsapp`, **`visitor_session`**)
+- `RadarIdentity` — identidades normalizadas (`lead_id`, `email`, `phone`, `document`, `whatsapp`, **`visitor_session`**, **`contract_holder`**, **`contract_dependent`**)
 - `RadarSourceLink` — vínculos de origem (`crm_lead`, `portfolio`, `email_contact`, `whatsapp_contact`, **`pixel_hit`**)
-- `RadarEvent` — timeline de eventos por canal (email.*, whatsapp.*, marcos de status do Lead, pixel.*, formulário público)
+- `RadarEvent` — timeline de eventos por canal (email.*, whatsapp.*, marcos de status do Lead, pixel.*, portfolio.*; form.* após D8)
 - `RadarChannelConsent` — consentimento por canal (email, whatsapp)
-- `TeamRadarSegment` — segmentos custom (DSL SQL-first)
-- `TeamRadarPixelConfig` / `TeamRadarPixelHitLog` — config + logs do pixel (RLS em `radar-d12-pixel-tables-rls`)
+- `TeamRadarSegment` — segmentos custom (DSL SQL-first: `lead_field`, **`portfolio_field`**, evento, consentimento, custom fields, status)
+- `TeamRadarPixelConfig` / `TeamRadarPixelHitLog` — config + logs do pixel (RLS em `radar-d12-pixel-tables-rls` — SQL no repo)
 - `RadarPixelRateLimit` — rate limit dedicado do hit público
 
 Tabelas físicas: `corretor_studio_radar_*`, `corretor_studio_team_radar_pixel_*`, `corretor_studio_radar_pixel_rate_limits`.
 
-### Identidade anônima, pixel e form bridge
+### Pixel, touchpoints, contratos, materialize, export, rankings
 
-- Identidade `visitor_session` une hits do pixel e eventos de formulário público antes do lead nascer.
+- Identidade `visitor_session` une hits do pixel (e, após D8, eventos de formulário) antes do lead nascer.
 - Pixel autenticado: `GET|POST|DELETE /api/v1/radar/pixel`, logs em `GET /api/v1/radar/pixel/logs`.
 - Hit público: `POST /api/v1/public-pixel/:publicToken/hit?vs=...` (CORS por `allowedOrigins`, rate limit próprio).
-- Bridge: `PublicFormMetricEvent` → `RadarEvent` (D8), sem segundo store de timeline.
-
-### Touchpoints (D9)
-
-- `GET /api/v1/radar/profiles/:id/touchpoints` — “sete pontos de contato” na Sheet do perfil (sub-aba Contatos).
+- Touchpoints (D9): `GET /api/v1/radar/profiles/:id/touchpoints` — sub-aba Contatos na Sheet.
+- Contratos (D13/D14): condição `portfolio_field`; sub-aba Contratos; sync de titular/dependente com documento (`*_radar-d14-contract-identity-types.sql` no repo).
+- Materialize (D15): segmento → lista de contatos (`…/materialize-contact-list`).
+- Export (D16): CSV/Excel de perfis/segmentos (`…/profiles/export`, `…/segments/.../export`).
+- D17: polimento UI (links `lead_id`, Calendar nos filtros, Select de `eventType`, seção Responsáveis).
+- D18: ranking top templates (`/email/analytics/top-templates`) e formulários (`…/public-forms/top-converting`) — páginas de E-mails/Formulários, não `/radar`.
 
 ### Paths canônicos
 
-- API: `app/api/v1/radar/**` (profiles, segments, pixel, touchpoints, available-fields, interpolation-preview, import, field-definitions; rotas `sync/*` legadas/backfill)
+- API: `app/api/v1/radar/**` (profiles, segments, pixel, touchpoints, contracts, export, materialize, available-fields/event-types, interpolation-preview, import, field-definitions; rotas `sync/*` legadas/backfill)
 - Público: `app/api/v1/public-pixel/**`
 - Repositório: `app/api/infra/data/repositories/radar/RadarRepository.ts` (+ pixel/import/segment repos)
-- Service: `app/api/services/radar/RadarService.ts`
-- UseCase: `app/api/useCases/radar/RadarUseCase.ts` (+ sync*Inline / Sync*UseCase)
-- Lib: `lib/radar/**` (normalization, segment-dsl/rules, field-catalog, lead-milestone-map, pixel-rate-limit, list-segment-recipients, etc.)
-- Frontend: `app/[supabaseId]/radar/**` (RadarContainer, abas Perfis/Segmentos, Sheet com Contatos, builder, pixel)
+- Service: `app/api/services/radar/RadarService.ts` (+ `RadarSegmentQueryService`)
+- UseCase: `app/api/useCases/radar/RadarUseCase.ts` (+ sync*Inline / Sync*UseCase / MaterializeSegmentToContactListUseCase)
+- Lib: `lib/radar/**` (normalization, segment-dsl/rules, field-catalog, lead-milestone-map, pixel-rate-limit, list-segment-recipients, exportRadarProfiles, etc.)
+- Frontend: `app/[supabaseId]/radar/**` (RadarContainer, abas Perfis/Segmentos, Sheet Contatos/Contratos, builder, export, materialize)
 
 ### RBAC
 
@@ -469,15 +474,13 @@ Tabelas físicas: `corretor_studio_radar_*`, `corretor_studio_team_radar_pixel_*
 ### Limites de disparo
 
 - **2.000 e-mails/dia** por time (`EMAIL_CAMPAIGN_MAX_EMAILS_PER_DAY`)
-- **≤ 2.000 destinatários por campanha** de segmento Radar (`EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`); audiências maiores usam lista de contatos com sub-campanhas
+- **≤ 2.000 destinatários por campanha** de segmento Radar (`EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`); audiências maiores usam lista de contatos com sub-campanhas (segmento acima do limite é **rejeitado**, não dividido)
 - Constante: `lib/email/campaign-limits.ts`
 
 ### Postman (Radar)
 
-- Pasta **Radar** em `postman/Lead-Flow-API-Collection.json` cobre pixel (config/logs/hit público), touchpoints, profiles, segments, import
+- Pasta **Radar** em `postman/Lead-Flow-API-Collection.json` cobre pixel (config/logs/hit público), touchpoints, profiles, segments, export, materialize, import
 - Vars: `radarProfileId`, `radarCustomSegmentId`, `publicToken`, `visitorSession`
-
----
 
 ## Postman
 

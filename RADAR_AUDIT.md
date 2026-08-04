@@ -1,9 +1,14 @@
 # RADAR_AUDIT.md — Auditoria consolidada do módulo Radar (ex-CDP): estado atual, sub-campanhas/teto diário, inventário do rename e riscos
 
-## Status de implementação (pós-D12)
+## Status de implementação (pós-D18 / PR #633)
+
+**Fonte de verdade do código:** branch `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633).  
+**Verificado em:** 2026-08-04 (leitura do **HEAD commitado** no unificado; sem afirmar `db:migrate:push` remoto).
 
 | Estágio | Descrição | Status |
 |---------|-----------|--------|
+| R1–R5 | Rename CDP → Radar | ✅ Concluído |
+| C1–C6 | Completude funcional (custom fields, sync inline, segmentos, UI, hardening) | ✅ Concluído — **dívida C5:** alerta do builder diz que campanha “será dividida em sub-envios”, o que contradiz DA11 (segmento >2.000 é rejeitado, não faz split) |
 | D1 | Lead.originChannel schema | ✅ Concluído |
 | D2 | Unificar entrada de leads | ✅ Concluído |
 | D3 | Sync Portfolio → Radar | ✅ Concluído |
@@ -11,11 +16,17 @@
 | D5 | Marcos de LeadStatus | ✅ Concluído |
 | D6 | Condição lead_field no segmento | ✅ Concluído |
 | D7 | Pixel tracking + visitor_session | ✅ Concluído |
-| D8 | Bridging formulário → RadarEvent | ✅ Concluído |
+| D8 | Bridging formulário → RadarEvent | ⏳ **Pendente** no HEAD — `recordMetric` commitado só grava `PublicFormMetricEvent` (WIP local não conta como mergeado) |
 | D9 | Touchpoints — sub-aba Contatos | ✅ Concluído |
-| D10 | Remover sync manual | ✅ Concluído |
+| D10 | Remover sync manual | ✅ Concluído (UI 100% event-driven; rotas `sync/*` legadas/backfill) |
 | D11 | Auditoria impeccable de /radar | ✅ Concluído |
-| D12 | Hardening, docs, Postman, ERD | ✅ Concluído |
+| D12 | Hardening, docs, Postman, ERD | ✅ Concluído — migration `*_radar-d12-pixel-tables-rls.sql` no repo |
+| D13 | `portfolio_field` + aba Contratos | ✅ Concluído |
+| D14 | Perfis titular/dependente de contrato | ✅ Concluído — migration `*_radar-d14-contract-identity-types.sql` no repo |
+| D15 | Materializar segmento → lista de e-mail | ✅ Concluído |
+| D16 | Export CSV/Excel | ✅ Concluído |
+| D17 | Polimento de UI | ✅ Concluído |
+| D18 | Ranking templates/formulários | ✅ Concluído |
 
 ---
 
@@ -265,12 +276,12 @@ O model `Lead` não tem nenhuma coluna equivalente a "canal de origem" — toda 
 
 ---
 
-## 8. Fase D concluída (D1–D12) — estado pós-hardening
+## 8. Fase D — estado pós-unificado (D1–D18 / PR #633)
 
-**Data de fechamento D12:** 2026-08-03  
-**Branch de hardening:** `cursor/radar-d12-hardening`
+**Data de verificação:** 2026-08-04  
+**Branch unificada:** `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)
 
-Os estágios **D1–D12** da Fase D (`RADAR_SPEC.md`) estão **concluídos** no código de produto. Esta seção atualiza o veredito do audit histórico (§1–§7, baseline pré-rename / pré-Fase D) sem reescrever o inventário datado de 2026-07-18.
+R1–R5 e C1–C6 estão **concluídos**. Na Fase D, **D1–D7 e D9–D18** estão no código do unificado; **D8 permanece pendente no HEAD commitado**. Esta seção atualiza o veredito do audit histórico (§1–§7, baseline pré-rename / pré-Fase D) sem reescrever o inventário datado de 2026-07-18.
 
 | Estágio | Escopo | Status |
 |---|---|---|
@@ -281,21 +292,31 @@ Os estágios **D1–D12** da Fase D (`RADAR_SPEC.md`) estão **concluídos** no 
 | D5 | Marcos de status do Lead → `RadarEvent` | ✅ Concluído |
 | D6 | Condição de segmento `lead_field` (+ catálogo) | ✅ Concluído |
 | D7 | Identidade `visitor_session` + Corretor Studio Pixel | ✅ Concluído |
-| D8 | Bridge `PublicFormMetricEvent` → `RadarEvent` | ✅ Concluído |
+| D8 | Bridge `PublicFormMetricEvent` → `RadarEvent` | ⏳ **Pendente** (não mergeado no HEAD do unificado) |
 | D9 | Touchpoints / sub-aba Contatos no perfil | ✅ Concluído |
 | D10 | UI sem sync manual — fluxo 100% event-driven | ✅ Concluído |
 | D11 | Auditoria impeccable de `/radar` | ✅ Concluído |
-| D12 | Hardening: Postman D7–D9, RLS pixel, docs, ERD, bateria | ✅ Concluído |
+| D12 | Hardening: Postman, RLS pixel, docs, ERD | ✅ Concluído (SQL no repo; push remoto não afirmado aqui) |
+| D13 | `portfolio_field` + seção Contratos no perfil | ✅ Concluído |
+| D14 | Identidades `contract_holder` / `contract_dependent` | ✅ Concluído (SQL no repo; push remoto não afirmado aqui) |
+| D15 | Materializar segmento → lista de contatos | ✅ Concluído |
+| D16 | Export perfis/segmentos CSV/Excel | ✅ Concluído |
+| D17 | Polimento UI (identidades, Calendar, event Select, responsáveis) | ✅ Concluído |
+| D18 | Ranking top templates / formulários | ✅ Concluído |
 
-### Paths canônicos (pós-D12)
+### Dívida conhecida (C5 × DA11)
+
+O `Alert` em `RadarSegmentBuilderDialog` afirma que audiência > `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` “será dividida automaticamente em sub-envios”. Isso **contradiz DA11**: campanhas por segmento Radar acima do limite são **rejeitadas**; split/sub-campanhas existem só para listas de contatos. Corrigir o copy do alerta (não a regra de backend).
+
+### Paths canônicos (pós-unificado)
 
 - Frontend: `app/[supabaseId]/radar/**` (não mais `/cdp`)
 - API: `/api/v1/radar/**` + hit público `/api/v1/public-pixel/:publicToken/hit`
 - Lib/service/repo: `lib/radar/**`, `app/api/services/radar/**`, `app/api/infra/data/repositories/radar/**`
 - Feature slug: `FEATURE_SLUGS.RADAR = "radar"`; `getRadarAccess()`
-- Postman: pasta **Radar** (pixel config/logs/hit, touchpoints, profiles, segments) — paths `cdp` no array Postman corrigidos para `radar` em D12
-- RLS pixel: migration `supabase/migrations/*_radar-d12-pixel-tables-rls.sql` (`TeamRadarPixelConfig`, `TeamRadarPixelHitLog`, rate limit server-only)
+- Postman: pasta **Radar** (pixel, touchpoints, profiles, segments, export, materialize)
+- Migrations no repo (existência ≠ push remoto): `*_radar-d12-pixel-tables-rls.sql`, `*_radar-d14-contract-identity-types.sql`
 
-### Fora deste fechamento (D13+)
+### Pendência restante (D8)
 
-Contratos no perfil (`portfolio_field`), perfis de titular/dependente, materializar segmento → lista de e-mail, export CSV/Excel e polimentos de UI restantes seguem em **D13–D18** no `RADAR_SPEC.md`.
+Espelhar `PublicFormMetricEvent` → `RadarEvent` no caminho de persistência da métrica (dedupe via `eventKey` → `sourceId`). Ainda **não** está no HEAD do unificado.

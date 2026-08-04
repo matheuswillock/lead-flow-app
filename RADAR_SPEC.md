@@ -411,6 +411,7 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 
 ## Estágio D8 — Bridging de `PublicFormMetricEvent` → `RadarEvent`
 
+
 **Prompt Codex:**
 
 > Leia `lib/publicForms/**` (`PublicFormMetricEvent`) e `RADAR_SPEC.md` (D7). Dois caminhos: (1) eventos com `leadId` resolvido (`form_completed`/`lead_created`/`lead_attached`) viram `RadarEvent` via identidade `lead_id`, reusando `eventKey` (já `@unique` em `PublicFormMetricEvent`) como `sourceId` de dedupe (`appendEventIfNew`); (2) eventos pré-lead (`form_viewed`/`form_started`/`question_viewed`/`question_answered`/`question_skipped`, só com `visitorSessionId`) resolvem via a identidade anônima do D7 — criando perfil anônimo se necessário mesmo sem pixel instalado na página do formulário. Hook fire-and-forget no ponto onde `PublicFormMetricEvent` já é persistido (não duplicar a gravação, só espelhar para o Radar). Testes: cada tipo de evento de formulário, dedupe via `eventKey`, criação de perfil anônimo sem pixel prévio. Bateria completa.
@@ -565,7 +566,7 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 
 ## Critérios de sucesso (Fase D)
 
-- Todo canal de contato (CRM, WhatsApp, e-mail, formulário público, pixel, carteira) alimenta o Radar por evento, sem botão manual de sync na UI.
+- Todo canal de contato (CRM, WhatsApp, e-mail, pixel, carteira) alimenta o Radar por evento, sem botão manual de sync na UI. **Formulário público:** pendente até D8 (bridge `PublicFormMetricEvent` → `RadarEvent`).
 - Perfis existem para titulares, dependentes e contatos email-only, não só leads com telefone.
 - Segmentos cobrem qualquer campo nativo do Lead e de contrato, além dos campos já suportados em C4.
 - "Sete pontos de contato" visíveis no perfil; export CSV/Excel funcional; lista de e-mail materializável a partir de segmento.
@@ -574,15 +575,20 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 
 ---
 
-## Fase D — D1–D12 concluídos
+## Fase D — status pós-unificado (PR #633)
 
-**Fechamento D12 (2026-08-03):** hardening, Postman (pixel + touchpoints), RLS das tabelas pixel, docs (`project-context` + `RADAR_AUDIT` §8), ERD regenerado e bateria completa.
+**Branch:** `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)  
+**Verificado em:** 2026-08-04 (código no HEAD do unificado; migrations D12/D14 presentes no repo — **não** afirmar push remoto sem evidência).
 
 | Estágio | Status |
 |---|---|
-| D1–D11 | ✅ Concluídos (origem, sync inline, email-only, marcos, `lead_field`, pixel/`visitor_session`, form bridge, touchpoints, event-driven, auditoria UI) |
-| D12 | ✅ Concluído (este fechamento) |
-| D13–D18 | Pendentes (contratos, dependentes, materializar lista, export, polimento UI, rankings) |
+| R1–R5 | ✅ Concluídos |
+| C1–C6 | ✅ Concluídos — **dívida C5:** alerta do builder sugere split de campanha por segmento (>2.000), contradizendo DA11 (rejeição, não sub-campanha) |
+| D1–D7 | ✅ Concluídos (origem, sync inline, email-only, marcos, `lead_field`, pixel/`visitor_session`) |
+| D8 | ⏳ **Pendente** — bridge `PublicFormMetricEvent` → `RadarEvent` ausente no HEAD commitado |
+| D9–D12 | ✅ Concluídos (touchpoints, UI event-driven, auditoria impeccable, hardening/Postman/RLS pixel/docs/ERD) |
+| D13–D18 | ✅ Concluídos (`portfolio_field`/Contratos, perfis titular/dependente, materializar lista, export, polimento UI, rankings templates/forms) |
+
+**Critério de sucesso “formulário público alimenta o Radar por evento”:** ainda **não** atendido até D8 fechar. Demais canais (CRM, WhatsApp, e-mail, pixel, carteira) já alimentam por evento; UI sem botão de sync manual (D10).
 
 **Invariantes preservados:** audiência de segmento ≤ `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`; teto diário via `wouldExceedDailyEmailCap`; sem CDP externa; sem segundo store de timeline além de `LeadActivity` × `RadarEvent`.
-
