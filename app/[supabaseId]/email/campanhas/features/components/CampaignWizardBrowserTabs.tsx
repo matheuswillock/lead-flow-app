@@ -11,15 +11,16 @@ type CampaignWizardBrowserTabsProps = {
   activeTab: WizardTabId
   tabStates: Record<WizardTabId, WizardTabState>
   onTabChange: (tab: WizardTabId) => void
+  lockedTabs?: WizardTabId[]
   disabled?: boolean
 }
 
+// Abas do wizard: Geral → Audiência → Sub-campanhas → Revisão
 const TAB_LABELS: Record<WizardTabId, string> = {
   geral: "Geral",
-  template: "Template",
   audiencia: "Audiência",
-  agendamento: "Agendamento",
   subcampanhas: "Sub-campanhas",
+  revisao: "Revisão",
 }
 
 function TabStatusIcon({ state }: { state: WizardTabState }) {
@@ -36,14 +37,19 @@ export function CampaignWizardBrowserTabs({
   activeTab,
   tabStates,
   onTabChange,
+  lockedTabs = [],
   disabled = false,
 }: CampaignWizardBrowserTabsProps) {
+  const lockedSet = new Set(lockedTabs)
+
   return (
     <Tabs
       value={activeTab}
       onValueChange={(value) => {
         if (disabled) return
-        onTabChange(value as WizardTabId)
+        const nextTab = value as WizardTabId
+        if (lockedSet.has(nextTab)) return
+        onTabChange(nextTab)
       }}
     >
       <TabsList
@@ -52,20 +58,25 @@ export function CampaignWizardBrowserTabs({
           disabled && "pointer-events-none opacity-40"
         )}
       >
-        {(Object.keys(TAB_LABELS) as WizardTabId[]).map((tabId) => (
-          <TabsTrigger
-            key={tabId}
-            value={tabId}
-            disabled={disabled}
-            className={cn(
-              "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2 shadow-none",
-              "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-            )}
-          >
-            <TabStatusIcon state={tabStates[tabId]} />
-            {TAB_LABELS[tabId]}
-          </TabsTrigger>
-        ))}
+        {(Object.keys(TAB_LABELS) as WizardTabId[]).map((tabId) => {
+          const isLocked = lockedSet.has(tabId)
+          return (
+            <TabsTrigger
+              key={tabId}
+              value={tabId}
+              disabled={disabled || isLocked}
+              aria-disabled={disabled || isLocked ? true : undefined}
+              className={cn(
+                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2 shadow-none",
+                "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
+                isLocked && "pointer-events-none cursor-not-allowed opacity-40"
+              )}
+            >
+              <TabStatusIcon state={tabStates[tabId]} />
+              {TAB_LABELS[tabId]}
+            </TabsTrigger>
+          )
+        })}
       </TabsList>
     </Tabs>
   )

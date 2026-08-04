@@ -8,6 +8,7 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  description: z.string().max(500).nullable().optional(),
   templateId: z.string().uuid().optional(),
   contactListId: z.string().uuid().optional(),
   contactListIds: z.array(z.string().uuid()).optional(),

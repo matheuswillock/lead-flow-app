@@ -24,18 +24,24 @@ export function CampaignListStrategyDialog({
 }: CampaignListStrategyDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-md overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle>Como deseja usar estas listas?</AlertDialogTitle>
           <AlertDialogDescription>
             Escolha se deseja unificar os contatos ou manter uma sub-campanha por lista.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
-          <AlertDialogAction onClick={() => onSelectStrategy("merge")}>
+        <AlertDialogFooter className="flex flex-col gap-2">
+          <AlertDialogAction
+            className="h-auto whitespace-normal py-3 text-left"
+            onClick={() => onSelectStrategy("merge")}
+          >
             Juntar listas — unifica contatos (dedup) e divide em lotes de até 2.000
           </AlertDialogAction>
-          <AlertDialogAction onClick={() => onSelectStrategy("per_list")}>
+          <AlertDialogAction
+            className="h-auto whitespace-normal py-3 text-left"
+            onClick={() => onSelectStrategy("per_list")}
+          >
             Uma sub-campanha por lista — cada lista vira ao menos uma sub-campanha
           </AlertDialogAction>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>

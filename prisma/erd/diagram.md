@@ -2545,6 +2545,7 @@ OUTROS OUTROS
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
+    String description "❓"
     String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
     String audienceContactIds 

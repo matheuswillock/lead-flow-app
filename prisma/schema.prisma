@@ -3085,6 +3085,7 @@ model EmailCampaign {
   createdBy                 String              @db.Uuid
   managedByBackofficeUserId String?             @db.Uuid
   name                      String              @db.Text
+  description               String?             @db.Text
   templateId                String              @db.Uuid
   contactListId             String?             @db.Uuid
   radarSegmentSlug          String?             @db.Text

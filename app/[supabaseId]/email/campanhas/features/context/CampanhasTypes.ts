@@ -1,3 +1,7 @@
+import type { WizardTabId } from "../validation/campaignWizardSchema"
+
+export type { WizardTabId }
+
 export type CampaignStatus =
   | "draft"
   | "scheduled"
@@ -28,6 +32,7 @@ export type SubCampaignSummary = {
 export type Campaign = {
   id: string
   name: string
+  description?: string | null
   parentCampaignId?: string | null
   templateId?: string
   contactListId?: string | null
@@ -150,8 +155,6 @@ export type CampaignPreviewPlan = {
   totalRecipients: number
 }
 
-export type WizardTabId = "geral" | "template" | "audiencia" | "agendamento" | "subcampanhas"
-
 export type CampanhasState = {
   campaigns: Campaign[]
   total: number
@@ -175,6 +178,7 @@ export type CampanhasState = {
   wizardCampaignId?: string
   wizardActiveTab: WizardTabId
   wizardName: string
+  wizardDescription: string
   wizardTemplateId: string
   wizardContactListIds: string[]
   wizardListStrategy: "single" | "merge" | "per_list"

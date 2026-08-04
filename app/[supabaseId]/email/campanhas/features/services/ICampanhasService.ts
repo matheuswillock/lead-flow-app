@@ -2,6 +2,7 @@ import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, C
 
 export type CreateCampaignData = {
   name: string
+  description?: string
   templateId: string
   contactListId?: string
   radarSegmentSlug?: string
@@ -11,6 +12,7 @@ export type CreateCampaignData = {
 
 export type UpdateCampaignData = {
   name?: string
+  description?: string
   templateId?: string
   contactListId?: string
   radarSegmentSlug?: string
