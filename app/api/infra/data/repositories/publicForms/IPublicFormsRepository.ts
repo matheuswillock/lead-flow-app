@@ -43,6 +43,7 @@ export const publicFormDetailSelect = {
   meetingDurationMinutes: true,
   schedulingMessage: true,
   formKind: true,
+  emailCampaignTrackingEnabled: true,
   reviewComment: true,
   reviewedAt: true,
   createdAt: true,
@@ -116,6 +117,7 @@ export type PublicFormListItemRecord = Prisma.PublicFormGetPayload<{
     approvalStatus: true
     assignedSdrId: true
     managedByBackofficeUserId: true
+    emailCampaignTrackingEnabled: true
     updatedAt: true
     assignedSdr: { select: { id: true; fullName: true } }
     _count: { select: { submissions: true } }
@@ -137,6 +139,7 @@ export type PublicFormSubmissionContext = {
   publicId: string
   teamId: string
   assignedSdrId: string | null
+  emailCampaignTrackingEnabled: boolean
   assignedSdr: { email: string | null } | null
   team: { master: { id: string; supabaseId: string | null; timezone: string | null } }
 }
@@ -338,4 +341,20 @@ export interface IPublicFormsRepository {
     publicationId: string,
     staleBefore: Date,
   ): Promise<boolean>
+  findCampaignContactListIds(teamId: string, campaignId: string): Promise<string[]>
+  findEmailContactCustomFields(
+    email: string,
+    listIds: string[],
+  ): Promise<Prisma.JsonValue | null>
+  findRadarPhoneByEmail(teamId: string, normalizedEmail: string): Promise<string | null>
+  findLeadActivityByEmailLogAttribution(input: {
+    leadId: string
+    body: string
+    emailLogId: string
+  }): Promise<{ id: string } | null>
+  createLeadActivityNote(input: {
+    leadId: string
+    body: string
+    payload: Prisma.InputJsonValue
+  }): Promise<void>
 }

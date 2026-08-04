@@ -5217,6 +5217,8 @@ model PublicForm {
   meetingDurationMinutes    Int                        @default(30)
   schedulingMessage         String?                    @db.Text
   formKind                  String                     @default("standard") @db.VarChar(40)
+  /// Aceita `cs_el` (EmailLog.id) em links de campanha e atribui abertura/preenchimento ao destinatário.
+  emailCampaignTrackingEnabled Boolean                 @default(true)
   reviewComment             String?                    @db.Text
   reviewedAt                DateTime?                  @db.Timestamptz(6)
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(6)

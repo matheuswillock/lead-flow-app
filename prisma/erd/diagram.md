@@ -3597,6 +3597,7 @@ OUTROS OUTROS
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
     String formKind 
+    Boolean emailCampaignTrackingEnabled 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 

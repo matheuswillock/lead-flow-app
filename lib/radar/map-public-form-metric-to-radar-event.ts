@@ -4,10 +4,12 @@ import type { PublicFormMetricType } from "@prisma/client"
 export const PUBLIC_FORM_RADAR_SOURCE_TYPE = "public_form" as const
 
 /**
- * Tipos pós-lead: resolvem perfil via identidade `lead_id` quando `leadId` existe.
- * Demais tipos (pré-lead) usam `visitor_session` (D7).
+ * Tipos que historicamente preferem identidade `lead_id` (pós-conversão).
+ * Com atribuição de campanha, qualquer evento com `leadId` resolve via lead.
  */
 export const PUBLIC_FORM_LEAD_RESOLVED_METRIC_TYPES = new Set<PublicFormMetricType>([
+  "form_viewed",
+  "form_started",
   "form_completed",
   "lead_created",
   "lead_attached",
