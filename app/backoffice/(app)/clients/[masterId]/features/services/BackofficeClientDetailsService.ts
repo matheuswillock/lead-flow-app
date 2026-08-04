@@ -5,6 +5,7 @@ import type {
   BackofficeClientInvoicesResult,
   BackofficeClientPendingActionsResult,
 } from "../context/BackofficeClientDetailsTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 function mapMutationResult(result: unknown): BackofficeMutationResult {
   if (
@@ -41,7 +42,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     memberId: string,
     mode: "invite" | "reset_password"
   ): Promise<{ email: string }> {
-    const res = await fetch(`/api/v1/backoffice/members/${memberId}/access-email`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode }),
@@ -72,7 +73,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       search.set("q", options.query.trim())
     }
 
-    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}?${search.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users/${masterId}?${search.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -115,7 +116,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
 
     const res = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/invoices?${search.toString()}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices?${search.toString()}`,
       { cache: "no-store" }
     )
     const data = await res.json()
@@ -205,7 +206,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       multiskillEnabled?: boolean
     }
   ): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users/${masterId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -223,7 +224,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       accessExpiresAt?: string
     }
   ): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/clients/all-users/${masterId}/user-type`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/clients/all-users/${masterId}/user-type`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -235,7 +236,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   }
 
   async banUser(profileId: string, reason?: string | null): Promise<void> {
-    const res = await fetch("/api/v1/backoffice/anatemas", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/anatemas`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ profileId, reason }),
@@ -247,7 +248,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   }
 
   async deleteClient(masterId: string): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users/${masterId}`, {
       method: "DELETE",
     })
     const json = await res.json()
@@ -272,7 +273,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       accountMasterId?: string
     }
   ): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -284,7 +285,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   }
 
   async deleteMember(memberId: string, password: string): Promise<void> {
-    const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
@@ -297,7 +298,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
 
   async removeMemberFromTeam(memberId: string, teamId: string): Promise<void> {
     const res = await fetch(
-      `/api/v1/backoffice/members/${memberId}/teams/${teamId}`,
+      `${API_CLIENT_BASE}/backoffice/members/${memberId}/teams/${teamId}`,
       { method: "DELETE" }
     )
     const json = await res.json()
@@ -319,7 +320,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   ): Promise<void> {
     const res = await fetch(
-      `/api/v1/backoffice/members/${memberId}/teams/${teamId}`,
+      `${API_CLIENT_BASE}/backoffice/members/${memberId}/teams/${teamId}`,
       {
         method: "POST",
         headers: access ? { "Content-Type": "application/json" } : undefined,
@@ -333,7 +334,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   }
 
   async getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }> {
-    const res = await fetch(`/api/v1/backoffice/members/${memberId}/google-scopes`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/google-scopes`, {
       cache: "no-store",
     })
     const json = await res.json()
@@ -346,7 +347,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   async getMemberExternalTeams(memberId: string, accountMasterId: string) {
     const params = new URLSearchParams({ accountMasterId })
     const res = await fetch(
-      `/api/v1/backoffice/members/${memberId}/external-teams?${params.toString()}`,
+      `${API_CLIENT_BASE}/backoffice/members/${memberId}/external-teams?${params.toString()}`,
       { cache: "no-store" }
     )
     const json = await res.json()
@@ -365,7 +366,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   async getMemberAccountTeams(memberId: string, accountMasterId: string) {
     const params = new URLSearchParams({ accountMasterId })
     const res = await fetch(
-      `/api/v1/backoffice/members/${memberId}/account-teams?${params.toString()}`,
+      `${API_CLIENT_BASE}/backoffice/members/${memberId}/account-teams?${params.toString()}`,
       { cache: "no-store" }
     )
     const json = await res.json()
@@ -401,7 +402,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       generateCharge?: boolean
     }
   ): Promise<BackofficeMutationResult> {
-    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -417,7 +418,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     masterId: string,
     data: { name: string; generateCharge?: boolean }
   ): Promise<BackofficeMutationResult> {
-    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/teams`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -431,7 +432,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
 
   async addMasterToTeam(masterId: string, teamId: string): Promise<void> {
     const res = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}/add-master`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}/add-master`,
       { method: "POST" }
     )
     const json = await res.json()
@@ -446,7 +447,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     data: { name?: string; transferTargetTeamIds?: string[] }
   ): Promise<void> {
     const res = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -461,7 +462,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
 
   async deleteTeam(masterId: string, teamId: string): Promise<void> {
     const res = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}`,
       { method: "DELETE" }
     )
     const json = await res.json()

@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { Output } from "@/lib/output";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type ResendScheduleTarget = "all" | "single" | "new";
 
@@ -93,7 +94,7 @@ export function ResendScheduleInviteDialog({
     const fetchScheduleGuests = async () => {
       setScheduleLoading(true);
       try {
-        const response = await fetch(`/api/v1/leads/${leadId}/schedule`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/schedule`, {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
@@ -206,7 +207,7 @@ export function ResendScheduleInviteDialog({
       email?: string;
       emails?: string[];
     }) => {
-      const response = await fetch(`/api/v1/leads/${leadId}/schedule/resend`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/schedule/resend`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

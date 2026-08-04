@@ -1,3 +1,4 @@
+import { API_CLIENT_BASE } from "@/lib/route-map";
 export async function sha256Hex(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer()
   const digest = await crypto.subtle.digest("SHA-256", buffer)
@@ -28,7 +29,7 @@ export async function createMediaUploadAndPut(input: {
   const sizeBytes = input.file.size
 
   const createResponse = await fetch(
-    `/api/v1/teams/${encodeURIComponent(input.teamId)}/whatsapp/media/uploads`,
+    `${API_CLIENT_BASE}/teams/${encodeURIComponent(input.teamId)}/whatsapp/media/uploads`,
     {
       method: "POST",
       headers: {

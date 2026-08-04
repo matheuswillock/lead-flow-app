@@ -59,6 +59,7 @@ import { useTimezone } from "@/app/context/TimezoneContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { MemberProCountdownBadge } from "./features/components/MemberProCountdownBadge";
 import { BethaniaConnectionCard } from "./features/components/BethaniaConnectionCard";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ALL_GOOGLE_SCOPES = [
   {
@@ -232,7 +233,7 @@ export default function AccountProfilePage() {
     }
     let cancelled = false;
     setIsScopesLoading(true);
-    fetch("/api/v1/google/scopes", { cache: "no-store" })
+    fetch(`${API_CLIENT_BASE}/google/scopes`, { cache: "no-store" })
       .then((r) => r.json())
       .then((json: { isValid?: boolean; result?: { scopes?: string[] } }) => {
         if (!cancelled && json.isValid) setGrantedScopes(json.result?.scopes ?? []);
@@ -585,7 +586,7 @@ export default function AccountProfilePage() {
     if (isDisconnectingGoogle) return;
     setIsDisconnectingGoogle(true);
     try {
-      const response = await fetch("/api/v1/google/disconnect", {
+      const response = await fetch(`${API_CLIENT_BASE}/google/disconnect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -630,7 +631,7 @@ export default function AccountProfilePage() {
     setIsDeletingAccount(true);
 
     try {
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: deletePassword })

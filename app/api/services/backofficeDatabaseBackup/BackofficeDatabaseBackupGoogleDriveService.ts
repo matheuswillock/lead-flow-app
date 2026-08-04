@@ -39,6 +39,7 @@ export class BackofficeDatabaseBackupGoogleDriveService
     const drive = google.drive({ version: "v3", auth: this.getAuth() })
 
     const createResponse = await drive.files.create({
+      supportsAllDrives: true,
       requestBody: {
         name: fileName,
         parents: [folderId],
@@ -63,7 +64,7 @@ export class BackofficeDatabaseBackupGoogleDriveService
     const drive = google.drive({ version: "v3", auth: this.getAuth() })
 
     const response = await drive.files.get(
-      { fileId, alt: "media" },
+      { fileId, alt: "media", supportsAllDrives: true },
       { responseType: "stream" }
     )
 

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CalendarDays, ChevronDown, Copy, Crown, DollarSign, Eye, ExternalLink, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
@@ -62,7 +62,9 @@ import { BackofficeAddMemberDialog } from "../components/BackofficeAddMemberDial
 import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
-import { BackofficeClientStudioEmailsPanel } from "../components/BackofficeClientStudioEmailsPanel"
+import { BackofficeClientEmailsProvider } from "../emails/context/BackofficeClientEmailsContext"
+import { BackofficeClientEmailsShell } from "../emails/container/BackofficeClientEmailsShell"
+import type { EmailSection } from "../emails/context/BackofficeClientEmailsTypes"
 import { BackofficeClientPublicFormsPanel } from "../components/BackofficeClientPublicFormsPanel"
 import type {
   BackofficeClientPendingAction,
@@ -158,6 +160,15 @@ const PENDING_ACTION_STATUS_BADGES: Record<
   },
 }
 
+const EMAIL_SECTIONS: EmailSection[] = [
+  "campaigns",
+  "contacts",
+  "templates",
+  "historico",
+  "configuracoes",
+  "metricas",
+]
+
 type ClientDetailsTab = "teams" | "invoices" | "pending-actions" | "emails" | "forms"
 
 function isClientDetailsTab(value: string | null): value is ClientDetailsTab {
@@ -168,6 +179,13 @@ function isClientDetailsTab(value: string | null): value is ClientDetailsTab {
     value === "emails" ||
     value === "forms"
   )
+}
+
+function parseEmailSection(value: string | null): EmailSection {
+  if (value && EMAIL_SECTIONS.includes(value as EmailSection)) {
+    return value as EmailSection
+  }
+  return "campaigns"
 }
 
 function formatDate(value: string, tz: string) {
@@ -267,6 +285,20 @@ export function BackofficeClientDetailsContainer() {
   const [selectedEmailTeamId, setSelectedEmailTeamId] = useState<string | null>(null)
   const [pendingActionToCancel, setPendingActionToCancel] =
     useState<BackofficeClientPendingAction | null>(null)
+  const emailSection = parseEmailSection(searchParams.get("emailSection"))
+
+  const handleEmailSectionChange = useCallback(
+    (section: EmailSection) => {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set("tab", "emails")
+      params.set("emailSection", section)
+      if (selectedEmailTeamId) params.set("teamId", selectedEmailTeamId)
+      else params.delete("teamId")
+      if (details?.fullName) params.set("name", details.fullName)
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    },
+    [details?.fullName, pathname, router, searchParams, selectedEmailTeamId]
+  )
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -313,16 +345,24 @@ export function BackofficeClientDetailsContainer() {
       params.set("teamId", selectedEmailTeamId)
     }
 
+    if (nextSection === "emails") {
+      params.set("emailSection", searchParams.get("emailSection") ?? "campaigns")
+    }
+
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
   function handleEmailTeamChange(teamId: string | null) {
     setSelectedEmailTeamId(teamId)
     const params = new URLSearchParams(searchParams.toString())
-    params.set("tab", activeSection === "forms" ? "forms" : "emails")
+    const tab = activeSection === "forms" ? "forms" : "emails"
+    params.set("tab", tab)
     if (teamId) params.set("teamId", teamId)
     else params.delete("teamId")
     if (details?.fullName) params.set("name", details.fullName)
+    if (tab === "emails") {
+      params.set("emailSection", searchParams.get("emailSection") ?? "campaigns")
+    }
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
@@ -1439,13 +1479,17 @@ export function BackofficeClientDetailsContainer() {
             </TabsContent>
 
             <TabsContent value="emails" className="mt-4">
-              <BackofficeClientStudioEmailsPanel
+              <BackofficeClientEmailsProvider
                 masterId={masterId}
                 teams={details?.allTeams ?? []}
                 selectedTeamId={selectedEmailTeamId}
                 onSelectedTeamIdChange={handleEmailTeamChange}
                 canManage={canManage}
-              />
+                emailSection={emailSection}
+                setEmailSection={handleEmailSectionChange}
+              >
+                <BackofficeClientEmailsShell />
+              </BackofficeClientEmailsProvider>
             </TabsContent>
 
             <TabsContent value="forms" className="mt-4">

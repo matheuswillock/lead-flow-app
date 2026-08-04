@@ -112,6 +112,7 @@ import {
 } from "../context/BackofficeCrmTypes"
 import { formatDateTime } from "@/lib/dates/formatters"
 import { formatDocumentInput, maskPhone } from "@/lib/masks"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[] = [
   { key: "name", label: "Nome" },
@@ -865,7 +866,7 @@ export function BackofficeCrmTable() {
           leadToSchedule
             ? async () => {
                 const response = await fetch(
-                  `/api/v1/backoffice/leads/${leadToSchedule.id}/schedule/resend`,
+                  `${API_CLIENT_BASE}/backoffice/leads/${leadToSchedule.id}/schedule/resend`,
                   {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

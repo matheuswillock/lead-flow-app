@@ -1,9 +1,10 @@
 import type { AddOnCheckoutData, AddOnCheckoutSubmitInput, PaymentStatus } from "../context/AddOnCheckoutTypes";
 import type { IAddOnCheckoutService } from "./IAddOnCheckoutService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
   async fetchCheckoutData(pendingActionId: string): Promise<AddOnCheckoutData> {
-    const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}`);
+    const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -45,7 +46,7 @@ class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
       };
     }
 
-    const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/pay`, {
+    const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -65,7 +66,7 @@ class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
   }
 
   async checkPaymentStatus(pendingActionId: string): Promise<PaymentStatus> {
-    const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/status`);
+    const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/status`);
 
     if (!response.ok) {
       const error = await response.json();

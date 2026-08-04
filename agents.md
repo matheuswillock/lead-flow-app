@@ -102,6 +102,7 @@ After every edit, automatically run in this order:
 bun run typecheck 2>&1 | head -20
 bun run lint
 bun run governance:check
+bun run governance:check-api-masking
 bun run lint:pt-br
 ```
 
@@ -111,6 +112,7 @@ bun run lint:pt-br
     - Do NOT report the task as done if any command fails.
     - Fix all errors immediately before moving to the next file or task.
     - If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
+    - If `governance:check-api-masking` fails, replace hardcoded `/api/v1/...` client calls with `API_CLIENT_BASE` — do not add to `clientApiPathMaskingAllowlist` unless explicitly instructed.
     - If `lint:pt-br` fails, fix the accentuation in the flagged UI text — only add the word to `IGNORE_WORDS` in `scripts/lint-pt-br.ts` when it is a proper noun/brand/technical term that is correct as written.
 
 ## Visual Implementation (FOR NEW FEATURES)
@@ -281,6 +283,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
 - Create routes/folders/files with ambiguous or generic names that don't describe intent (e.g. `me`, `data`, `misc`, `temp`, `utils2`).
 - Use browser-native dialogs (`window.alert`, `window.confirm`, `window.prompt`, or global equivalents). Use shadcn `AlertDialog`/`Dialog` and `sonner` instead.
+- Hardcode `/api/v1/...` in client-side HTTP calls (`fetch`, axios, URL constants consumed by the browser). Use `API_CLIENT_BASE` from `@/lib/route-map` so the Network tab shows `/api/q/...` (rewritten by `proxy.ts`). Enforced by `governance:check` (`clientApiPathMaskingAllowlist` for LEGACY EXCEPTIONS only).
 - Create `DialogContent` without scroll support when the content may overflow the viewport. Every `DialogContent` with non-trivial content **MUST** use `max-h-[90vh] flex flex-col` on the `DialogContent`, a scrollable inner `div` with `overflow-y-auto flex-1` wrapping the form fields, and a fixed `DialogFooter` outside the scrollable area.
 
 ### MUST
@@ -304,6 +307,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 ### FOR NEW FEATURES
 
 - Implementation code **MUST** be written in TypeScript. JavaScript and Python **MUST NOT** be used.
+- Client-side HTTP calls **MUST** use `API_CLIENT_BASE` from `@/lib/route-map` (never hardcode `/api/v1/...`). Prefer Server Components / Server Actions when the request can leave the browser entirely.
 
 ### SHOULD
 
@@ -332,13 +336,14 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 
 ## LEGACY EXCEPTIONS
 
-Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
+Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`, `clientApiPathMaskingAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
 
 ## Automated Enforcement
 
 CI **MUST** fail when governance checks fail.
 
 - Check: `bun run governance:check`
+- Client API masking (CI step dedicado): `bun run governance:check-api-masking`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
 ## Feature Registration Policy (FOR NEW FEATURES)
@@ -406,6 +411,7 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 - [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
+- [ ] Rodou `bun run governance:check-api-masking`?
 
 ## Environment Essentials
 

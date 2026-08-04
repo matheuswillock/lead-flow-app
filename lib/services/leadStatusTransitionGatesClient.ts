@@ -1,4 +1,5 @@
 import type { LeadStatusTransitionGateRow } from "@/lib/leadStatusTransitionGates";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type ProductLeadStatusTransitionGate = {
   slug: string;
@@ -12,7 +13,7 @@ export async function fetchProductTransitionGates(input: {
   supabaseId?: string;
   teamId?: string | null;
 }): Promise<ProductLeadStatusTransitionGate[]> {
-  const response = await fetch("/api/v1/lead-status-transition-gates", {
+  const response = await fetch(`${API_CLIENT_BASE}/lead-status-transition-gates`, {
     headers: {
       ...(input.supabaseId ? { "x-supabase-user-id": input.supabaseId } : {}),
       ...(input.teamId ? { "x-team-id": input.teamId } : {}),

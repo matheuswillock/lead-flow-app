@@ -2,11 +2,15 @@ import type {
   BuildLeadFormUrlParams,
   BuildStudioWebhookUrlParams,
   GetStudioWebhookLogsResponse,
+  GetRadarPixelHitLogsResponse,
   IntegrationsBootstrapResponse,
   IIntegrationsService,
+  RadarPixelConfigData,
+  SaveRadarPixelConfigPayload,
   SaveStudioWebhookConfigPayload,
   SaveStudioWebhookConfigResponse,
 } from "./IIntegrationsService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class IntegrationsService implements IIntegrationsService {
   resolveAppUrl(): string {
@@ -65,7 +69,7 @@ class IntegrationsService implements IIntegrationsService {
   }
 
   async getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<IntegrationsBootstrapResponse> {
-    const response = await fetch(`/api/v1/integrations/studio-webhook?teamId=${encodeURIComponent(teamId)}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/studio-webhook?teamId=${encodeURIComponent(teamId)}`, {
       method: "GET",
       headers: {
         "x-supabase-user-id": supabaseId,
@@ -82,7 +86,7 @@ class IntegrationsService implements IIntegrationsService {
   }
 
   async getStudioWebhookLogs(supabaseId: string, teamId: string): Promise<GetStudioWebhookLogsResponse> {
-    const response = await fetch(`/api/v1/integrations/studio-webhook/logs?teamId=${encodeURIComponent(teamId)}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/studio-webhook/logs?teamId=${encodeURIComponent(teamId)}`, {
       method: "GET",
       headers: {
         "x-supabase-user-id": supabaseId,
@@ -102,7 +106,7 @@ class IntegrationsService implements IIntegrationsService {
     supabaseId: string,
     payload: SaveStudioWebhookConfigPayload
   ): Promise<SaveStudioWebhookConfigResponse> {
-    const response = await fetch("/api/v1/integrations/studio-webhook", {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/studio-webhook`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -118,6 +122,78 @@ class IntegrationsService implements IIntegrationsService {
     }
 
     return output.result as SaveStudioWebhookConfigResponse;
+  }
+
+  async getRadarPixelConfig(supabaseId: string, teamId: string): Promise<RadarPixelConfigData> {
+    const response = await fetch(`/api/v1/radar/pixel?teamId=${encodeURIComponent(teamId)}`, {
+      method: "GET",
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": teamId,
+      },
+    });
+
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível carregar configuração do pixel"));
+    }
+
+    return output.result as RadarPixelConfigData;
+  }
+
+  async saveRadarPixelConfig(
+    supabaseId: string,
+    teamId: string,
+    payload: SaveRadarPixelConfigPayload
+  ): Promise<RadarPixelConfigData> {
+    const response = await fetch("/api/v1/radar/pixel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": teamId,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível salvar configuração do pixel"));
+    }
+
+    return output.result as RadarPixelConfigData;
+  }
+
+  async deleteRadarPixelConfig(supabaseId: string, teamId: string): Promise<void> {
+    const response = await fetch("/api/v1/radar/pixel", {
+      method: "DELETE",
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": teamId,
+      },
+    });
+
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível remover configuração do pixel"));
+    }
+  }
+
+  async getRadarPixelHitLogs(supabaseId: string, teamId: string): Promise<GetRadarPixelHitLogsResponse> {
+    const response = await fetch(`/api/v1/radar/pixel/logs?teamId=${encodeURIComponent(teamId)}`, {
+      method: "GET",
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": teamId,
+      },
+    });
+
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível carregar os logs do pixel"));
+    }
+
+    return output.result as GetRadarPixelHitLogsResponse;
   }
 }
 

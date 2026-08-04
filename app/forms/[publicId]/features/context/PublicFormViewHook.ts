@@ -3,13 +3,17 @@
 import { useEffect, useRef, useState } from "react"
 import { publicFormViewService } from "../services/PublicFormViewService"
 import type { PublicFormViewState } from "./PublicFormViewTypes"
+import type { PublicFormSnapshot } from "@/lib/public-forms/types"
 
-export function usePublicFormView(publicId: string): PublicFormViewState {
-  const [snapshot, setSnapshot] = useState<PublicFormViewState["snapshot"]>(null)
+export function usePublicFormView(
+  publicId: string,
+  initialSnapshot?: PublicFormSnapshot | null,
+): PublicFormViewState {
+  const [snapshot, setSnapshot] = useState<PublicFormViewState["snapshot"]>(initialSnapshot ?? null)
   const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!initialSnapshot)
   const inFlightKeyRef = useRef<string | null>(null)
-  const lastSuccessKeyRef = useRef<string | null>(null)
+  const lastSuccessKeyRef = useRef<string | null>(initialSnapshot ? publicId : null)
 
   useEffect(() => {
     const requestKey = publicId

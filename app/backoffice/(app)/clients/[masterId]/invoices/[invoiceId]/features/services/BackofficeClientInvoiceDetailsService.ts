@@ -1,12 +1,13 @@
 import type { IBackofficeClientInvoiceDetailsService } from "./IBackofficeClientInvoiceDetailsService"
 import type { BackofficeClientInvoiceDetails } from "../context/BackofficeClientInvoiceDetailsTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeClientInvoiceDetailsService
   implements IBackofficeClientInvoiceDetailsService
 {
   async getById(masterId: string, invoiceId: string): Promise<BackofficeClientInvoiceDetails> {
     const response = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
       {
         cache: "no-store",
       }
@@ -23,7 +24,7 @@ export class BackofficeClientInvoiceDetailsService
 
   async notifyStatusEmail(masterId: string, invoiceId: string): Promise<{ message: string }> {
     const response = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
       {
         method: "POST",
         headers: {
@@ -50,7 +51,7 @@ export class BackofficeClientInvoiceDetailsService
     data: { value: number; dueDate: string }
   ): Promise<BackofficeClientInvoiceDetails> {
     const response = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
       {
         method: "PATCH",
         headers: {

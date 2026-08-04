@@ -11,6 +11,7 @@ import type {
   ApiOutput,
   IBackofficeWhatsAppInstancesService,
 } from "./IBackofficeWhatsAppInstancesService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppInstancesService {
   async list(
@@ -24,7 +25,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
     if (filters.q.trim()) params.set("q", filters.q.trim())
     if (filters.status !== "all") params.set("status", filters.status)
 
-    const res = await fetch(`/api/v1/backoffice/whatsapp/instances?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances?${params.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -35,7 +36,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
   }
 
   async getDetail(configId: string): Promise<BackofficeWhatsAppInstanceDetail> {
-    const res = await fetch(`/api/v1/backoffice/whatsapp/instances/${configId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances/${configId}`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -49,7 +50,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
     configId: string,
     form: UpdateWhatsAppInstanceFormData
   ): Promise<ApiOutput<BackofficeWhatsAppInstanceDetail>> {
-    const res = await fetch(`/api/v1/backoffice/whatsapp/instances/${configId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances/${configId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -63,7 +64,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
   async provision(
     form: ProvisionWhatsAppInstanceFormData
   ): Promise<ApiOutput<BackofficeWhatsAppInstanceDetail>> {
-    const res = await fetch("/api/v1/backoffice/whatsapp/instances", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -75,21 +76,21 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
   }
 
   async reconnect(configId: string): Promise<ApiOutput<BackofficeWhatsAppInstanceDetail>> {
-    const res = await fetch(`/api/v1/backoffice/whatsapp/instances/${configId}/reconnect`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances/${configId}/reconnect`, {
       method: "POST",
     })
     return res.json()
   }
 
   async disconnect(configId: string): Promise<ApiOutput<BackofficeWhatsAppInstanceDetail>> {
-    const res = await fetch(`/api/v1/backoffice/whatsapp/instances/${configId}/disconnect`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances/${configId}/disconnect`, {
       method: "POST",
     })
     return res.json()
   }
 
   async syncHistory(configId: string): Promise<ApiOutput<BackofficeWhatsAppInstanceDetail>> {
-    const res = await fetch(`/api/v1/backoffice/whatsapp/instances/${configId}/sync-history`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/instances/${configId}/sync-history`, {
       method: "POST",
     })
     return res.json()
@@ -100,7 +101,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
     if (q?.trim()) params.set("q", q.trim())
 
     const res = await fetch(
-      `/api/v1/backoffice/whatsapp/teams-without-instance?${params.toString()}`,
+      `${API_CLIENT_BASE}/backoffice/whatsapp/teams-without-instance?${params.toString()}`,
       { cache: "no-store" }
     )
     const data = await res.json()
@@ -111,7 +112,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
   }
 
   async previewResyncWebhooks() {
-    const res = await fetch("/api/v1/backoffice/whatsapp/ops/resync-webhooks", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/ops/resync-webhooks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: false }),
@@ -120,7 +121,7 @@ export class BackofficeWhatsAppInstancesService implements IBackofficeWhatsAppIn
   }
 
   async confirmResyncWebhooks() {
-    const res = await fetch("/api/v1/backoffice/whatsapp/ops/resync-webhooks", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/whatsapp/ops/resync-webhooks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: true }),

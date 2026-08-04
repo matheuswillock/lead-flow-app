@@ -12,6 +12,7 @@ import type {
 } from "@/lib/public-forms/types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "@/lib/public-forms/types"
 import { getPageKey } from "@/lib/public-forms/pages"
+import { rankTopFormsByConversion } from "@/lib/public-forms/form-ranking"
 
 function isManager(access: TeamAccess) {
   return access.isMaster || access.teamMember.role === "manager"
@@ -327,6 +328,22 @@ export class PublicFormsUseCase {
     return result
       ? new Output(true, [], [], result)
       : new Output(false, [], ["Formulário não encontrado"], null)
+  }
+
+  async topConverting(access: TeamAccess, from?: Date, to?: Date) {
+    try {
+      if (!isManager(access) && !(await canApprove(access))) {
+        return new Output(false, [], ["Acesso negado"], null)
+      }
+      const rows = await publicFormsService.listFormConversionTotals(access.teamId, { from, to })
+      return new Output(true, [], [], {
+        period: { from: from ?? null, to: to ?? null },
+        items: rankTopFormsByConversion(rows),
+      })
+    } catch (error) {
+      console.error("[PublicFormsUseCase][topConverting]", error)
+      return new Output(false, [], ["Erro ao carregar ranking de formulários"], null)
+    }
   }
 
   async leadSubmissions(access: TeamAccess, leadId: string) {

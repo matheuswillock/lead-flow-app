@@ -1,5 +1,6 @@
 import type { IMeetingsHeldService } from './IMeetingsHeldService';
 import type { MeetingsHeldData, MeetingsHeldFiltersState } from '../context/MeetingsHeldTypes';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class MeetingsHeldService implements IMeetingsHeldService {
   async getMeetingsHeld(
@@ -18,7 +19,7 @@ class MeetingsHeldService implements IMeetingsHeldService {
     if (filters.closerId) params.set('closerId', filters.closerId);
     if (filters.countMonth) params.set('countMonth', filters.countMonth);
 
-    const res = await fetch(`/api/v1/performance/meetings-held?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/performance/meetings-held?${params.toString()}`, {
       headers: {
         'x-supabase-user-id': supabaseId,
         'x-team-id': teamId,

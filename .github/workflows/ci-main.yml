@@ -30,6 +30,7 @@ jobs:
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
+      api-masking-check: ${{ steps.ci-light-checks.outputs['api-masking-check'] }}
       lint: ${{ steps.ci-light-checks.outputs.lint }}
       passed: ${{ steps.ci-light-checks.outputs.passed }}
       tests-result: ${{ steps.ci-light-checks.outputs['tests-result'] }}

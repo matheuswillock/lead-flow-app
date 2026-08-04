@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle2, Loader2, UserPlus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface PendingOperatorData {
   id: string;
@@ -36,7 +37,7 @@ function OperatorConfirmedContent() {
       try {
         console.info('🔍 [OperatorConfirmed] Buscando dados do operador:', pendingOperatorId);
         
-        const response = await fetch(`/api/v1/operators/pending/${pendingOperatorId}`);
+        const response = await fetch(`${API_CLIENT_BASE}/operators/pending/${pendingOperatorId}`);
         const result = await response.json();
 
         if (result.isValid && result.result) {

@@ -253,6 +253,10 @@ export interface IPublicFormsRepository {
   listFormViewOrigins(
     where: Prisma.PublicFormMetricEventWhereInput,
   ): Promise<Array<{ origin: Prisma.JsonValue | null; visitorSessionId: string }>>
+  listFormConversionTotals(
+    teamId: string,
+    options?: { from?: Date; to?: Date },
+  ): Promise<Array<{ formId: string; name: string; viewed: number; completed: number }>>
   listLeadSubmissions(teamId: string, leadId: string): Promise<unknown[]>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
   findProgressSubmission(

@@ -1,4 +1,4 @@
-import type { StudioWebhookLogItem } from "../services/IIntegrationsService";
+import type { RadarPixelHitLogItem, StudioWebhookLogItem } from "../services/IIntegrationsService";
 
 export interface IntegrationsState {
   supabaseId: string;
@@ -26,6 +26,20 @@ export interface IntegrationsState {
   studioWebhookLogsLoading: boolean;
   selectedStudioWebhookLogId: string | null;
   studioWebhookContractJson: string;
+  radarPixelConfig: {
+    configured: boolean;
+    publicToken: string | null;
+    allowedOrigins: string[];
+    lastUsedAt: string | null;
+    pixelSnippet: string | null;
+  } | null;
+  radarPixelAllowedOriginsInput: string;
+  radarPixelLoading: boolean;
+  radarPixelSaving: boolean;
+  radarPixelDeleting: boolean;
+  radarPixelHitLogs: RadarPixelHitLogItem[];
+  radarPixelHitLogsLoading: boolean;
+  selectedRadarPixelHitLogId: string | null;
 }
 
 export interface IntegrationsActions {
@@ -39,4 +53,11 @@ export interface IntegrationsActions {
   saveStudioWebhookConfig: () => void;
   copyStudioWebhookUrl: () => void;
   copyStudioWebhookContract: () => void;
+  loadRadarPixelConfig: () => Promise<void>;
+  loadRadarPixelHitLogs: (options?: { force?: boolean }) => Promise<void>;
+  setRadarPixelAllowedOriginsInput: (value: string) => void;
+  setSelectedRadarPixelHitLogId: (logId: string | null) => void;
+  saveRadarPixelConfig: () => void;
+  deleteRadarPixelConfig: () => void;
+  copyRadarPixelSnippet: () => void;
 }

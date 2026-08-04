@@ -2,6 +2,7 @@ export type DevLocalOptions = {
   skipClone: boolean;
   noStart: boolean;
   forceTurbo: boolean;
+  fullSupabase: boolean;
   startEvolution: boolean;
   startN8n: boolean;
   nextArgs: string[];
@@ -20,6 +21,7 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
   let skipEvolution = false;
   let skipN8n = false;
   let forceTurbo = false;
+  let fullSupabase = false;
 
   for (const arg of rawArgs) {
     if (arg === "--") continue;
@@ -30,6 +32,10 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
     }
     if (arg === "--no-start") {
       noStart = true;
+      continue;
+    }
+    if (arg === "--full-supabase") {
+      fullSupabase = true;
       continue;
     }
     if (arg === "--skip-evo") {
@@ -80,6 +86,7 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
     skipClone,
     noStart,
     forceTurbo,
+    fullSupabase,
     startEvolution: requestedStacks.has("evolution") && !skipEvolution,
     startN8n: requestedStacks.has("n8n") && !skipN8n,
     nextArgs,

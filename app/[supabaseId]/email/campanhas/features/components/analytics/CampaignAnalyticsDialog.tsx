@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { CampaignLogsTab } from "../CampaignLogsTab"
+import { CampaignComparePanel } from "./CampaignComparePanel"
 import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
 import { MetricsSummaryCards } from "./MetricsSummaryCards"
@@ -26,6 +28,7 @@ type CampaignAnalyticsDialogProps = {
   campaignId?: string
   campaignName?: string
   campaignErrorMessage?: string | null
+  defaultTab?: "metrics" | "logs"
 }
 
 export function CampaignAnalyticsDialog({
@@ -34,6 +37,7 @@ export function CampaignAnalyticsDialog({
   campaignId,
   campaignName,
   campaignErrorMessage,
+  defaultTab,
 }: CampaignAnalyticsDialogProps) {
   const host = useOptionalStudioEmailHost()
   const [activeTab, setActiveTab] = useState<"metrics" | "logs">("metrics")
@@ -41,8 +45,8 @@ export function CampaignAnalyticsDialog({
     useCampaignAnalytics(campaignId, open)
 
   useEffect(() => {
-    if (open) setActiveTab("metrics")
-  }, [campaignId, open])
+    if (open) setActiveTab(defaultTab ?? "metrics")
+  }, [campaignId, open, defaultTab])
 
   const title = campaignName
     ? `Métricas — ${campaignName}`
@@ -84,6 +88,8 @@ export function CampaignAnalyticsDialog({
           loading={initialLoading}
         />
       ) : null}
+      <Separator />
+      <CampaignComparePanel period={period} preselectedCampaignId={campaignId} />
     </>
   )
 
