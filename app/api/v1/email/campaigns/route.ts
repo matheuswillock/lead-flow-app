@@ -10,6 +10,7 @@ const listStrategySchema = z.enum(["single", "merge", "per_list"])
 const createSchema = z
   .object({
     name: z.string().min(1, "Nome é obrigatório"),
+    description: z.string().max(500).nullable().optional(),
     templateId: z.string().uuid("templateId inválido"),
     contactListId: z.string().uuid("contactListId inválido").optional(),
     contactListIds: z.array(z.string().uuid()).optional(),

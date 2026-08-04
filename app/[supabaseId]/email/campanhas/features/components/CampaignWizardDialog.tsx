@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import {
   Dialog,
   DialogContent,
@@ -83,6 +83,7 @@ function HoldToConfirmButton({
 }) {
   const [progress, setProgress] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const holdingKeyRef = useRef<string | null>(null)
 
   function clearHold() {
     if (intervalRef.current) {
@@ -101,6 +102,7 @@ function HoldToConfirmButton({
       setProgress(pct)
       if (pct >= 100) {
         clearHold()
+        holdingKeyRef.current = null
         setProgress(0)
         onConfirm()
       }
@@ -109,7 +111,25 @@ function HoldToConfirmButton({
 
   function cancelHold() {
     clearHold()
+    holdingKeyRef.current = null
     setProgress(0)
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (disabled) return
+    if (event.key !== " " && event.key !== "Enter") return
+    event.preventDefault()
+    if (holdingKeyRef.current) return
+    holdingKeyRef.current = event.key
+    startHold()
+  }
+
+  function handleKeyUp(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== " " && event.key !== "Enter") return
+    event.preventDefault()
+    if (holdingKeyRef.current === event.key) {
+      cancelHold()
+    }
   }
 
   return (
@@ -120,7 +140,12 @@ function HoldToConfirmButton({
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
       onPointerCancel={cancelHold}
+      onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
+      onBlur={cancelHold}
       disabled={disabled}
+      aria-keyshortcuts="Space Enter"
+      aria-description="Mantenha Space ou Enter pressionado por 2 segundos para confirmar"
     >
       <div
         className="absolute inset-y-0 left-0 bg-primary-foreground/20"

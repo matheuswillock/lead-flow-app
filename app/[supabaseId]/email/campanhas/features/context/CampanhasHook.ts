@@ -31,7 +31,7 @@ function statusKey(statuses: string[]): string {
 
 function buildCampaignPayload(params: {
   name: string
-  description?: string
+  description?: string | null
   templateId: string
   recipientSource: "contact_list" | "radar_segment"
   contactListIds: string[]
@@ -46,7 +46,8 @@ function buildCampaignPayload(params: {
     name: params.name.trim(),
     templateId: params.templateId,
     uniformSchedule: params.uniformSchedule,
-    ...(params.description ? { description: params.description } : {}),
+    // Sempre envia description (string ou null) para permitir limpar no update
+    description: params.description?.trim() ? params.description.trim() : null,
     ...(params.scheduledAt ? { scheduledAt: params.scheduledAt.toISOString() } : {}),
     ...(params.uniformSchedule && params.scheduleIntervalDays >= 1
       ? { scheduleIntervalDays: params.scheduleIntervalDays }
@@ -906,7 +907,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     try {
       const payload = buildCampaignPayload({
         name: wizardName,
-        description: wizardDescription || undefined,
+        description: wizardDescription,
         templateId: wizardTemplateId,
         recipientSource: wizardRecipientSource,
         contactListIds: wizardContactListIds,
@@ -947,7 +948,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     try {
       const payload = buildCampaignPayload({
         name: wizardName,
-        description: wizardDescription || undefined,
+        description: wizardDescription,
         templateId: wizardTemplateId,
         recipientSource: wizardRecipientSource,
         contactListIds: wizardContactListIds,

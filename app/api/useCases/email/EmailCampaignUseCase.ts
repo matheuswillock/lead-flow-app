@@ -89,7 +89,7 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
 
 export interface CreateCampaignInput {
   name: string
-  description?: string
+  description?: string | null
   templateId: string
   contactListId?: string
   contactListIds?: string[]
@@ -682,7 +682,7 @@ export class EmailCampaignUseCase {
           teamId: ctx.teamId,
           createdBy: ctx.profileId,
           name: trimmedName,
-          description: data.description ?? null,
+          description: data.description?.trim() ? data.description.trim() : null,
           templateId: data.templateId,
           contactListId: null,
           radarSegmentSlug: data.radarSegmentSlug ?? null,
@@ -747,7 +747,7 @@ export class EmailCampaignUseCase {
             teamId: ctx.teamId,
             createdBy: ctx.profileId,
             name: trimmedName,
-            description: data.description ?? null,
+            description: data.description?.trim() ? data.description.trim() : null,
             templateId: data.templateId,
             contactListId: single?.contactListId ?? (listStrategy === "single" ? (contactListIds[0] ?? null) : null),
             audienceContactIds: single?.audienceContactIds ?? [],
@@ -772,7 +772,7 @@ export class EmailCampaignUseCase {
             teamId: ctx.teamId,
             createdBy: ctx.profileId,
             name: trimmedName,
-            description: data.description ?? null,
+            description: data.description?.trim() ? data.description.trim() : null,
             templateId: data.templateId,
             contactListId: listStrategy === "single" ? contactListIds[0] ?? null : null,
             sourceContactListIds: listStrategy === "merge" ? contactListIds : [],
@@ -790,7 +790,7 @@ export class EmailCampaignUseCase {
               teamId: ctx.teamId,
               createdBy: ctx.profileId,
               name: sub.name,
-              description: data.description ?? null,
+              description: data.description?.trim() ? data.description.trim() : null,
               templateId: data.templateId,
               contactListId: sub.contactListId ?? (listStrategy === "single" ? contactListIds[0] ?? null : null),
               parentCampaignId: parentId,
@@ -1003,7 +1003,9 @@ export class EmailCampaignUseCase {
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
-          description: data.description ?? undefined,
+          ...(data.description !== undefined && {
+            description: data.description?.trim() ? data.description.trim() : null,
+          }),
           ...(data.templateId !== undefined && { templateId: data.templateId }),
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
           ...(data.radarSegmentSlug !== undefined && {
