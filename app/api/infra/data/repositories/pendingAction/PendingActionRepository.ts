@@ -43,6 +43,12 @@ export class PendingActionRepository implements IPendingActionRepository {
     });
   }
 
+  async findByPaymentId(paymentId: string): Promise<PendingAction | null> {
+    return prisma.pendingAction.findFirst({
+      where: { paymentId },
+    });
+  }
+
   async create(data: {
     masterId: string;
     teamId?: string | null;
@@ -104,7 +110,9 @@ export class PendingActionRepository implements IPendingActionRepository {
         actionType: true,
         status: true,
         paymentId: true,
+        teamId: true,
         createdAt: true,
+        updatedAt: true,
         payload: true,
       },
       orderBy: { createdAt: "desc" },
@@ -115,7 +123,9 @@ export class PendingActionRepository implements IPendingActionRepository {
       actionType: row.actionType,
       status: row.status,
       paymentId: row.paymentId,
+      teamId: row.teamId,
       createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       payload: row.payload,
     }));
   }
