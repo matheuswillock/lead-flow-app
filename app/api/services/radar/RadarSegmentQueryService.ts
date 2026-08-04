@@ -1,7 +1,12 @@
 import { subDays } from "date-fns"
 import type { Prisma } from "@prisma/client"
 import { radarRepository, type RadarTeamScope } from "@/app/api/infra/data/repositories/radar/RadarRepository"
-import { LEAD_FIELD_CATALOG, type RadarSegmentCondition, type RadarSegmentRules } from "@/lib/radar/segment-dsl"
+import {
+  LEAD_FIELD_CATALOG,
+  PORTFOLIO_FIELD_CATALOG,
+  type RadarSegmentCondition,
+  type RadarSegmentRules,
+} from "@/lib/radar/segment-dsl"
 import { buildCustomFieldWhereFilter } from "@/lib/leadCustomFields/customFieldQuery"
 import { normalizeRadarDocument, normalizeRadarEmail } from "@/lib/radar/normalization"
 
@@ -157,6 +162,73 @@ async function translateLeadField(
   return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
 }
 
+
+function buildPortfolioFieldWhere(
+  condition: Extract<RadarSegmentCondition, { kind: "portfolio_field" }>
+): Prisma.LeadPortfolioWhereInput | Prisma.LeadFinalizedWhereInput {
+  const { fieldKey, operator, value } = condition
+  const entry = PORTFOLIO_FIELD_CATALOG[fieldKey]
+
+  if (operator === "is_empty") return { [fieldKey]: null }
+  if (operator === "not_empty") return { [fieldKey]: { not: null } }
+
+  if (entry.valueKind === "enum") {
+    const enumValue = String(value)
+    if (operator === "neq") return { [fieldKey]: { not: enumValue } }
+    return { [fieldKey]: enumValue }
+  }
+
+  if (entry.valueKind === "number") {
+    const num = Number(value)
+    if (operator === "gt") return { [fieldKey]: { gt: num } }
+    if (operator === "gte") return { [fieldKey]: { gte: num } }
+    if (operator === "lt") return { [fieldKey]: { lt: num } }
+    if (operator === "lte") return { [fieldKey]: { lte: num } }
+    if (operator === "neq") return { [fieldKey]: { not: num } }
+    return { [fieldKey]: { equals: num } }
+  }
+
+  if (entry.valueKind === "date") {
+    if (operator === "within_days") {
+      const now = new Date()
+      return { [fieldKey]: { gte: subDays(now, Number(value)), lte: now } }
+    }
+    const date = new Date(String(value))
+    if (operator === "before") return { [fieldKey]: { lt: date } }
+    return { [fieldKey]: { gt: date } }
+  }
+
+  const str = String(value ?? "")
+  if (operator === "contains") return { [fieldKey]: { contains: str, mode: "insensitive" } }
+  if (operator === "neq") return { [fieldKey]: { not: str } }
+  return { [fieldKey]: str }
+}
+
+/**
+ * D13: resolve leadIds donos do contrato (portfolio ou finalized) e projeta
+ * nos perfis via identidade `lead_id` — mesmo padrão de `lead_field`.
+ */
+async function translatePortfolioField(
+  teamId: string,
+  condition: Extract<RadarSegmentCondition, { kind: "portfolio_field" }>
+): Promise<Prisma.RadarProfileWhereInput> {
+  const entry = PORTFOLIO_FIELD_CATALOG[condition.fieldKey]
+  const fieldWhere = buildPortfolioFieldWhere(condition)
+
+  const leadIds =
+    entry.entity === "portfolio"
+      ? await radarRepository.findPortfolioProfileIdsByWhere({
+          teamId,
+          ...(fieldWhere as Prisma.LeadPortfolioWhereInput),
+        })
+      : await radarRepository.findFinalizedProfileIdsByWhere({
+          lead: { teamId },
+          ...(fieldWhere as Prisma.LeadFinalizedWhereInput),
+        })
+
+  return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
+}
+
 async function translateEmailContactList(
   teamId: string,
   condition: Extract<RadarSegmentCondition, { kind: "email_contact_list" }>
@@ -195,6 +267,8 @@ async function translateCondition(
       return translateLeadStatus(teamId, condition)
     case "lead_field":
       return translateLeadField(teamId, condition)
+    case "portfolio_field":
+      return translatePortfolioField(teamId, condition)
     case "email_contact_list":
       return translateEmailContactList(teamId, condition)
     case "email_contact_field":

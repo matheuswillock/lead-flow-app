@@ -71,6 +71,24 @@ export type RadarLeadFieldCondition = {
   value?: unknown
 }
 
+/** D13: colunas de LeadPortfolio (contrato atual) e LeadFinalized (histórico). */
+export type RadarPortfolioFieldCondition = {
+  kind: "portfolio_field"
+  fieldKey:
+    | "portfolioStatus"
+    | "renewalStatus"
+    | "renewalAmount"
+    | "source"
+    | "lastContactAt"
+    | "finalizedDateAt"
+    | "amount"
+    | "contractType"
+    | "operadora"
+    | "productName"
+  operator: string
+  value?: unknown
+}
+
 export type RadarSegmentCondition =
   | RadarProfileFieldCondition
   | RadarConsentCondition
@@ -78,6 +96,7 @@ export type RadarSegmentCondition =
   | RadarLeadCustomFieldCondition
   | RadarLeadStatusCondition
   | RadarLeadFieldCondition
+  | RadarPortfolioFieldCondition
 
 export type RadarSegmentRules = {
   match: "all" | "any"
@@ -166,4 +185,55 @@ export type RadarTouchpointChannel = {
 export type RadarProfileTouchpoints = {
   total: number
   breakdown: RadarTouchpointChannel[]
+}
+
+export type RadarContractHolder = {
+  id: string
+  name: string
+  razaoSocial: string | null
+  birthDate: string
+  document: string
+  cnpj: string | null
+}
+
+export type RadarContractDependent = {
+  id: string
+  name: string
+  birthDate: string
+  parentesco: string
+  document: string | null
+}
+
+export type RadarPortfolioContract = {
+  id: string
+  leadId: string
+  portfolioStatus: string
+  renewalStatus: string
+  renewalAmount: number | null
+  source: string
+  note: string | null
+  lastContactAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type RadarFinalizedContract = {
+  id: string
+  leadId: string
+  finalizedDateAt: string
+  startDateAt: string
+  amount: number
+  contractType: string
+  operadora: string | null
+  productName: string | null
+  notes: string | null
+  createdAt: string
+  holder: RadarContractHolder | null
+  dependents: RadarContractDependent[]
+}
+
+/** D13: contrato atual + histórico do perfil via identidades lead_id. */
+export type RadarProfileContracts = {
+  portfolio: RadarPortfolioContract | null
+  finalized: RadarFinalizedContract[]
 }

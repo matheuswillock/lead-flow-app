@@ -1119,6 +1119,97 @@ export class RadarRepository {
     return leads.map((lead) => lead.id)
   }
 
+/**
+   * D13: retorna `leadId`s de `LeadPortfolio` que batem o where —
+   * usados para projetar perfis via identidade `lead_id`.
+   */
+  async findPortfolioProfileIdsByWhere(where: Prisma.LeadPortfolioWhereInput): Promise<string[]> {
+    const rows = await prisma.leadPortfolio.findMany({ where, select: { leadId: true } })
+    return [...new Set(rows.map((row) => row.leadId))]
+  }
+
+  /**
+   * D13: retorna `leadId`s de `LeadFinalized` que batem o where —
+   * usados para projetar perfis via identidade `lead_id`.
+   */
+  async findFinalizedProfileIdsByWhere(where: Prisma.LeadFinalizedWhereInput): Promise<string[]> {
+    const rows = await prisma.leadFinalized.findMany({ where, select: { leadId: true } })
+    return [...new Set(rows.map((row) => row.leadId))]
+  }
+
+  /**
+   * D13: contrato atual (`LeadPortfolio`) + histórico (`LeadFinalized` com
+   * holder/dependentes) do perfil, resolvidos via identidades `lead_id`.
+   */
+  async findContractsForProfile(scope: RadarTeamScope, profileId: string) {
+    const identities = await prisma.radarIdentity.findMany({
+      where: { profileId, teamId: scope.teamId, type: "lead_id" },
+      select: { normalizedValue: true },
+    })
+    const leadIds = identities.map((identity) => identity.normalizedValue)
+    if (leadIds.length === 0) {
+      return { portfolio: null, finalized: [] as const }
+    }
+
+    const [portfolios, finalized] = await Promise.all([
+      prisma.leadPortfolio.findMany({
+        where: { teamId: scope.teamId, leadId: { in: leadIds } },
+        select: {
+          id: true,
+          leadId: true,
+          portfolioStatus: true,
+          renewalStatus: true,
+          renewalAmount: true,
+          source: true,
+          note: true,
+          lastContactAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+      }),
+      prisma.leadFinalized.findMany({
+        where: { leadId: { in: leadIds }, lead: { teamId: scope.teamId } },
+        select: {
+          id: true,
+          leadId: true,
+          finalizedDateAt: true,
+          startDateAt: true,
+          amount: true,
+          contractType: true,
+          operadora: true,
+          productName: true,
+          notes: true,
+          createdAt: true,
+          holder: {
+            select: {
+              id: true,
+              name: true,
+              razaoSocial: true,
+              birthDate: true,
+              document: true,
+              cnpj: true,
+            },
+          },
+          dependents: {
+            select: {
+              id: true,
+              name: true,
+              birthDate: true,
+              parentesco: true,
+              document: true,
+            },
+            orderBy: { name: "asc" },
+          },
+        },
+        orderBy: { finalizedDateAt: "desc" },
+      }),
+    ])
+
+    return { portfolio: portfolios[0] ?? null, finalized }
+  }
+
   async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {
     const contacts = await prisma.emailContact.findMany({
       where: { listId: { in: listIds }, list: { teamId } },

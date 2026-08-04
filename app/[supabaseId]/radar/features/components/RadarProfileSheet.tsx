@@ -2,9 +2,10 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { RefreshCw } from "lucide-react"
+import { ChevronDown, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -16,9 +17,112 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import type { RadarProfileDetail, RadarProfileTouchpoints } from "../context/RadarTypes"
+import type {
+  RadarFinalizedContract,
+  RadarProfileContracts,
+  RadarProfileDetail,
+  RadarProfileTouchpoints,
+} from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+
+const PORTFOLIO_STATUS_LABELS: Record<string, string> = {
+  active: "Ativo",
+  pending: "Pendente",
+  canceled: "Cancelado",
+}
+
+const RENEWAL_STATUS_LABELS: Record<string, string> = {
+  to_renew: "A renovar",
+  contacted: "Contatado",
+  proposal: "Proposta enviada",
+  renewed: "Renovado",
+  lost: "Perdido",
+}
+
+const PORTFOLIO_SOURCE_LABELS: Record<string, string> = {
+  crm: "CRM",
+  manual: "Manual",
+  brokerage_transfer: "Transferência de corretagem",
+}
+
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  individual: "PF",
+  corporate: "Empresarial",
+  adhesion: "Adesão",
+}
+
+function formatCurrency(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—"
+  return currencyFormatter.format(value)
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "—"
+  return format(new Date(value), "dd/MM/yyyy", { locale: ptBR })
+}
+
+function FinalizedContractCard({ item }: { item: RadarFinalizedContract }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{CONTRACT_TYPE_LABELS[item.contractType] ?? item.contractType}</Badge>
+          {item.operadora ? <Badge variant="secondary">{item.operadora}</Badge> : null}
+        </div>
+        <span className="font-medium">{formatCurrency(item.amount)}</span>
+      </div>
+      <p className="text-muted-foreground">
+        Fechado em {formatDate(item.finalizedDateAt)} · Início {formatDate(item.startDateAt)}
+      </p>
+      {item.productName ? <p className="text-muted-foreground">Produto: {item.productName}</p> : null}
+
+      {item.holder ? (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="justify-between px-0">
+              Titular: {item.holder.name}
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-1 rounded-md bg-muted/40 p-2 text-xs">
+            <p>Documento: {item.holder.document}</p>
+            {item.holder.razaoSocial ? <p>Razão social: {item.holder.razaoSocial}</p> : null}
+            {item.holder.cnpj ? <p>CNPJ: {item.holder.cnpj}</p> : null}
+            <p>Nascimento: {formatDate(item.holder.birthDate)}</p>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
+
+      {item.dependents.length > 0 ? (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="justify-between px-0">
+              Dependentes ({item.dependents.length})
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-2">
+            {item.dependents.map((dependent) => (
+              <div key={dependent.id} className="rounded-md bg-muted/40 p-2 text-xs">
+                <p className="font-medium">{dependent.name}</p>
+                <p className="text-muted-foreground">{dependent.parentesco}</p>
+                <p className="text-muted-foreground">Nascimento: {formatDate(dependent.birthDate)}</p>
+                {dependent.document ? (
+                  <p className="text-muted-foreground">Documento: {dependent.document}</p>
+                ) : (
+                  <p className="text-muted-foreground">Sem documento</p>
+                )}
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
+    </div>
+  )
+}
 
 type RadarProfileSheetProps = {
   open: boolean
@@ -33,6 +137,8 @@ type RadarProfileSheetProps = {
   onSyncLead: () => void
   touchpoints: RadarProfileTouchpoints | null
   isLoadingTouchpoints: boolean
+  contracts: RadarProfileContracts | null
+  isLoadingContracts: boolean
 }
 
 export function RadarProfileSheet({
@@ -48,12 +154,17 @@ export function RadarProfileSheet({
   onSyncLead,
   touchpoints,
   isLoadingTouchpoints,
+  contracts,
+  isLoadingContracts,
 }: RadarProfileSheetProps) {
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
   const baseDataEntries =
     profile?.profileData && typeof profile.profileData === "object" && !Array.isArray(profile.profileData)
       ? Object.entries(profile.profileData as Record<string, unknown>).filter(([key]) => key.startsWith("base."))
       : []
+
+  const hasContracts =
+    Boolean(contracts?.portfolio) || (contracts?.finalized != null && contracts.finalized.length > 0)
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -91,9 +202,10 @@ export function RadarProfileSheet({
               </div>
 
               <Tabs defaultValue="resumo">
-                <TabsList>
+                <TabsList className="flex h-auto flex-wrap gap-1">
                   <TabsTrigger value="resumo">Resumo</TabsTrigger>
                   <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                  <TabsTrigger value="contratos">Contratos</TabsTrigger>
                   <TabsTrigger value="identidades">Identidades</TabsTrigger>
                   <TabsTrigger value="consentimentos">Consentimentos</TabsTrigger>
                   <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -184,6 +296,74 @@ export function RadarProfileSheet({
                             </div>
                           ))}
                       </div>
+                    </>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="contratos" className="flex flex-col gap-3">
+                  {isLoadingContracts ? (
+                    <div className="flex flex-col gap-2">
+                      <Skeleton className="h-5 w-40" />
+                      <Skeleton className="h-24 w-full" />
+                      <Skeleton className="h-24 w-full" />
+                    </div>
+                  ) : !hasContracts ? (
+                    <p className="text-sm text-muted-foreground">Nenhum contrato encontrado para este perfil.</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Contrato atual</p>
+                        {contracts?.portfolio ? (
+                          <Badge variant="secondary">
+                            {PORTFOLIO_STATUS_LABELS[contracts.portfolio.portfolioStatus] ??
+                              contracts.portfolio.portfolioStatus}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {contracts?.portfolio ? (
+                        <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline">
+                              {RENEWAL_STATUS_LABELS[contracts.portfolio.renewalStatus] ??
+                                contracts.portfolio.renewalStatus}
+                            </Badge>
+                            <Badge variant="outline">
+                              {PORTFOLIO_SOURCE_LABELS[contracts.portfolio.source] ??
+                                contracts.portfolio.source}
+                            </Badge>
+                          </div>
+                          <p>
+                            Valor de renovação:{" "}
+                            <span className="font-medium">
+                              {formatCurrency(contracts.portfolio.renewalAmount)}
+                            </span>
+                          </p>
+                          <p className="text-muted-foreground">
+                            Último contato: {formatDate(contracts.portfolio.lastContactAt)}
+                          </p>
+                          {contracts.portfolio.note ? (
+                            <p className="text-muted-foreground">{contracts.portfolio.note}</p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Sem contrato atual na carteira.</p>
+                      )}
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Histórico</p>
+                        <Badge variant="secondary">{contracts?.finalized.length ?? 0}</Badge>
+                      </div>
+                      {(contracts?.finalized.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sem contratos finalizados.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {contracts?.finalized.map((item) => (
+                            <FinalizedContractCard key={item.id} item={item} />
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                 </TabsContent>

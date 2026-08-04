@@ -11,6 +11,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileContracts,
   RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentRules,
@@ -42,6 +43,8 @@ export function useRadarHookFn() {
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false)
   const [touchpoints, setTouchpoints] = useState<RadarProfileTouchpoints | null>(null)
   const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
+  const [contracts, setContracts] = useState<RadarProfileContracts | null>(null)
+  const [isLoadingContracts, setIsLoadingContracts] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSyncingWhatsapp, setIsSyncingWhatsapp] = useState(false)
@@ -72,6 +75,7 @@ export function useRadarHookFn() {
   const inFlightRef = useRef(false)
   const autoOpenedProfileIdRef = useRef<string | null>(null)
   const touchpointsProfileIdRef = useRef<string | null>(null)
+  const contractsProfileIdRef = useRef<string | null>(null)
 
   const activeTab: RadarTab = searchParams.get("tab") === "segmentos" ? "segmentos" : "perfis"
 
@@ -143,6 +147,7 @@ export function useRadarHookFn() {
       setIsDetailLoading(true)
       setDetailEventsPage(1)
       setTouchpoints(null)
+      setContracts(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -164,20 +169,35 @@ export function useRadarHookFn() {
         setIsDetailLoading(false)
       }
 
-      // Carrega touchpoints em segundo plano após o perfil abrir.
+      // Carrega touchpoints e contratos em segundo plano após o perfil abrir.
       // Guard de stale: descarta a resposta se o profileId ativo mudou enquanto
       // a request estava em voo (ex.: sheet fechada e reaberta para outro perfil).
       touchpointsProfileIdRef.current = profileId
+      contractsProfileIdRef.current = profileId
       setIsLoadingTouchpoints(true)
-      try {
-        const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
-        if (touchpointsProfileIdRef.current !== profileId) return
-        setTouchpoints(result)
-      } catch (tpError) {
-        console.error("[useRadarHookFn][loadTouchpoints]", tpError)
-      } finally {
-        if (touchpointsProfileIdRef.current === profileId) setIsLoadingTouchpoints(false)
-      }
+      setIsLoadingContracts(true)
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
+          if (touchpointsProfileIdRef.current !== profileId) return
+          setTouchpoints(result)
+        } catch (tpError) {
+          console.error("[useRadarHookFn][loadTouchpoints]", tpError)
+        } finally {
+          if (touchpointsProfileIdRef.current === profileId) setIsLoadingTouchpoints(false)
+        }
+      })()
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileContracts(supabaseId, activeTeamId, profileId)
+          if (contractsProfileIdRef.current !== profileId) return
+          setContracts(result)
+        } catch (contractsError) {
+          console.error("[useRadarHookFn][loadContracts]", contractsError)
+        } finally {
+          if (contractsProfileIdRef.current === profileId) setIsLoadingContracts(false)
+        }
+      })()
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -189,6 +209,8 @@ export function useRadarHookFn() {
     setDetailEventsPage(1)
     setTouchpoints(null)
     touchpointsProfileIdRef.current = null
+    setContracts(null)
+    contractsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -556,6 +578,8 @@ export function useRadarHookFn() {
     changeSegmentProfilesPage,
     touchpoints,
     isLoadingTouchpoints,
+    contracts,
+    isLoadingContracts,
     reload: loadDashboard,
   }
 }
