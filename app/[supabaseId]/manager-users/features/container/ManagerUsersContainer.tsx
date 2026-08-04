@@ -83,7 +83,6 @@ export function ManagerUsersContainer({
     updateUser,
     deleteUser,
     resendInvite,
-    togglePermanentSubscription,
     refreshData,
     
     // Controle de UI
@@ -260,7 +259,6 @@ export function ManagerUsersContainer({
     onViewPendingCheckout: handleViewPendingCheckout,
     onEditPendingPayment: handleOpenEditPendingPayment,
     onResendInvite: resendInvite,
-    onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster: resolvedIsMaster,
     canDelete: canDeleteUser,
     canManagePendingPayments,

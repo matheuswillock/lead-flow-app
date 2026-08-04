@@ -962,6 +962,8 @@ model Profile {
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
+  subscriptionChangeLogs       SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
+  subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
 
   // User type (Comum / Member PRO)
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
@@ -1483,6 +1485,11 @@ model BackofficeAdhesion {
   asaasCustomerId                   String?                        @map("asaasCustomerId") @db.Text
   asaasPaymentId                    String?                        @unique @map("asaasPaymentId") @db.Text
   asaasInstallmentId                String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
+  discountPercent                   Decimal?                       @map("discountPercent") @db.Decimal(5, 2)
+  discountStatus                    String?                        @map("discountStatus") @db.Text
+  discountApprovedByProfileId       String?                        @map("discountApprovedByProfileId") @db.Uuid
+  discountApprovedAt                DateTime?                      @map("discountApprovedAt") @db.Timestamptz(6)
+  negotiatedTotalAmount             Decimal?                       @map("negotiatedTotalAmount") @db.Decimal(12, 2)
   installmentCount                  Int?                           @map("installmentCount")
   billingType                       String?                        @map("billingType") @db.Text
   paymentDueDate                    DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
@@ -3500,6 +3507,25 @@ model ProfileSubscription {
   @@index([productId], map: "profile_subscriptions_product_id_idx")
   @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
   @@map("corretor_studio_profile_subscriptions")
+}
+
+model SubscriptionChangeLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId      String   @db.Uuid
+  source         String   @db.Text
+  actorProfileId String?  @db.Uuid
+  changeType     String   @db.Text
+  before         Json?
+  after          Json?
+  metadata       Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  profile Profile  @relation("SubscriptionChangeLogProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  actor   Profile? @relation("SubscriptionChangeLogActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([profileId], map: "subscription_change_logs_profile_id_idx")
+  @@index([createdAt], map: "subscription_change_logs_created_at_idx")
+  @@map("corretor_studio_subscription_change_logs")
 }
 
 model ProfileSubscriptionCapacity {

@@ -13,12 +13,12 @@
 
 | ID | Severidade | Achado | Status 24/07 |
 |---|---|---|---|
-| C1 | **Crítico** | `POST /api/v1/profiles/permanent-subscription` público, sem auth | **Confirmado** — rota ainda sem autenticação |
-| C1b | **Crítico** | `PUT .../profiles/[supabaseId]/permanent-subscription` autoriza por `isMaster` de produto | **Confirmado** — `UpdatePermanentSubscriptionUseCase` ainda checa `requestingUser.isMaster` |
-| C2 | **Crítico** | Cancelamento local não cancela no Asaas | **Confirmado** — `TODO` comentado em `SubscriptionManagementUseCase.cancelSubscription` |
-| C2b | **Alto** | `updatePaymentMethod` / `retryPayment` retornam sucesso sem chamar Asaas | **Confirmado** — TODOs comentados no mesmo use case |
-| C3 | **Crítico** | Confirmação/vínculo de assinatura grava `subscriptionPlan: 'manager_base'` fixo | **Confirmado** — `PaymentValidationService.ts` (~130, ~337) |
-| C0 | **Crítico** | Webhook trata eventos/status que o Asaas não envia; fallback `?? 'active'` | **Confirmado** — ainda lista `SUBSCRIPTION_ACTIVATED/SUSPENDED/CANCELED`; `mapStatusFromPayload` não reconhece `INACTIVE`/`EXPIRED` |
+| C1 | **Crítico** | `POST /api/v1/profiles/permanent-subscription` público, sem auth | **Mitigado no repo (2026-08-04)** — rota pública removida (Estágio 0) |
+| C1b | **Crítico** | `PUT .../profiles/[supabaseId]/permanent-subscription` autoriza por `isMaster` de produto | **Mitigado no repo (2026-08-04)** — PUT exige `getBackofficeAccess()`; UI produto sem toggle |
+| C2 | **Crítico** | Cancelamento local não cancela no Asaas | **Mitigado no repo (2026-08-04)** — Asaas DELETE antes do local; fail-closed |
+| C2b | **Alto** | `updatePaymentMethod` / `retryPayment` retornam sucesso sem chamar Asaas | **Mitigado no repo (2026-08-04)** — fail-closed / retry via Asaas; rota `invoices/retry` |
+| C3 | **Crítico** | Confirmação/vínculo de assinatura grava `subscriptionPlan: 'manager_base'` fixo | **Mitigado no repo (2026-08-04)** — preserva plano; deriva só se nulo |
+| C0 | **Crítico** | Webhook trata eventos/status que o Asaas não envia; fallback `?? 'active'` | **Mitigado no repo (2026-08-04)** — só eventos reais; INACTIVE/EXPIRED; sem fallback active |
 | C-1 | **Crítico** | RLS ausente em `asaas_webhook_events`, `profile_user_types`, `profile_user_type_assignments` | **Mitigado no repo (2026-08-04)** — migration `fix-billing-tables-rls`; prod ainda sem RLS (push pendente auth owner). Grants `anon`/`authenticated` ausentes em prod |
 | — | **Alto** | `POST /api/v1/backoffice/payments` sem `requireManagerAccess` | **Confirmado** — só `getBackofficeAccess`; pricing usa `requireManagerAccess` |
 | — | **Alto** | Refund/chargeback sem handler | **Confirmado** — sem cases de `PAYMENT_REFUNDED` / `PAYMENT_CHARGEBACK_*` |

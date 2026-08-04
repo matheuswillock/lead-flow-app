@@ -502,43 +502,6 @@ export function useManagerUsers({
     }
   }, [managerUsersService, errorContext]);
 
-  // Alternar assinatura permanente
-  const togglePermanentSubscription = useCallback(async (userId: string, currentValue: boolean) => {
-    try {
-      const newValue = !currentValue;
-      const action = newValue ? 'ativar' : 'desativar';
-      
-      toast.loading(`${action === 'ativar' ? 'Ativando' : 'Desativando'} assinatura permanente...`);
-
-      const response = await fetch(`/api/v1/profiles/${userId}/permanent-subscription`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hasPermanentSubscription: newValue })
-      });
-
-      const result = await response.json();
-
-      if (result.isValid) {
-        toast.success(`Assinatura permanente ${newValue ? 'ativada' : 'desativada'} com sucesso!`);
-        // Recarregar usuários
-        await loadUsers({ force: true });
-      } else {
-        notifyManagerUsersError({
-          operation: "togglePermanentSubscription",
-          errorMessages: result.errorMessages,
-          context: errorContext,
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao alternar assinatura permanente:', error);
-      notifyManagerUsersError({
-        operation: "togglePermanentSubscription",
-        error,
-        context: errorContext,
-      });
-    }
-  }, [loadUsers, errorContext]);
-
   return {
     // Estado
     ...state,
@@ -552,7 +515,6 @@ export function useManagerUsers({
     updateUser,
     deleteUser,
     resendInvite,
-    togglePermanentSubscription,
     operatorCheckout,
     closeOperatorCheckout,
     completeOperatorCheckout,

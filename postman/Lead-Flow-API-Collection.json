@@ -5858,38 +5858,7 @@
                         "permanent-subscription"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/profiles/[supabaseId]/permanent-subscription/route.ts",
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{}"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "POST /api/v1/profiles/permanent-subscription",
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json",
-                        "type": "text"
-                      }
-                    ],
-                    "url": {
-                      "raw": "{{baseUrl}}/api/v1/profiles/permanent-subscription",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "v1",
-                        "profiles",
-                        "permanent-subscription"
-                      ]
-                    },
-                    "description": "Auto-generated from app/api/v1/profiles/permanent-subscription/route.ts",
+                    "description": "Backoffice only (getBackofficeAccess). Estágio 0 / D6 — vitalício exclusivo do Backoffice.",
                     "body": {
                       "mode": "raw",
                       "raw": "{}"
