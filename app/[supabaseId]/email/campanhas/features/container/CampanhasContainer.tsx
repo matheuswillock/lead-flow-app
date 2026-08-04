@@ -16,6 +16,7 @@ import { CampaignList } from "../components/CampaignList"
 import { CampaignWizardDialog } from "../components/CampaignWizardDialog"
 import type { ComponentType } from "react"
 import { CampaignDetailSheet } from "../components/CampaignDetailSheet"
+import { CampaignsOverviewPanel } from "../components/analytics/CampaignsOverviewPanel"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 type AnalyticsDialogProps = {
@@ -123,6 +124,8 @@ export function CampanhasContainer({
       </div>
 
       <CampaignDispatchProgressBanner />
+
+      <CampaignsOverviewPanel />
 
       <LeadsFiltersLayout>
         <Input

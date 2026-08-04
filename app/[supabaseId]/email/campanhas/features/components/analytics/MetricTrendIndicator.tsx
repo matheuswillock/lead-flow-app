@@ -1,0 +1,53 @@
+"use client"
+
+import { Minus, TrendingDown, TrendingUp } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+import type { MetricDelta } from "./AnalyticsTypes"
+
+type MetricTrendIndicatorProps = {
+  delta?: MetricDelta | null
+  /** Quando true, mostra Δ em pontos percentuais (pp). */
+  isRate?: boolean
+  className?: string
+}
+
+export function MetricTrendIndicator({
+  delta,
+  isRate = false,
+  className,
+}: MetricTrendIndicatorProps) {
+  if (!delta) return null
+
+  const Icon =
+    delta.direction === "up" ? TrendingUp : delta.direction === "down" ? TrendingDown : Minus
+
+  const colorClass =
+    delta.direction === "up"
+      ? "text-primary"
+      : delta.direction === "down"
+        ? "text-destructive"
+        : "text-muted-foreground"
+
+  const absLabel = isRate
+    ? `${delta.absolute > 0 ? "+" : ""}${delta.absolute.toFixed(1)} pp`
+    : `${delta.absolute > 0 ? "+" : ""}${delta.absolute.toLocaleString("pt-BR")}`
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex items-center gap-0.5 text-xs font-medium",
+            colorClass,
+            className,
+          )}
+        >
+          <Icon className="size-3.5 shrink-0" aria-hidden />
+          <span>{absLabel}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-xs">vs período anterior</TooltipContent>
+    </Tooltip>
+  )
+}
