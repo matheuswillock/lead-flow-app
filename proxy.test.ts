@@ -46,6 +46,7 @@ describe("proxy", () => {
   let captureExceptionSpy: ReturnType<typeof spyOn>
   let validateAdhesionTokenSpy: ReturnType<typeof spyOn>
   let nextWithSessionSpy: ReturnType<typeof spyOn>
+  let rewriteWithSessionSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
     updateSessionSpy = spyOn(authSessions, "updateSession")
@@ -57,6 +58,9 @@ describe("proxy", () => {
     )
     nextWithSessionSpy = spyOn(authSessions, "nextWithSession").mockImplementation(
       authSessions.nextWithSession,
+    )
+    rewriteWithSessionSpy = spyOn(authSessions, "rewriteWithSession").mockImplementation(
+      authSessions.rewriteWithSession,
     )
 
     updateSessionSpy.mockResolvedValue(makeSession(null))
@@ -75,6 +79,7 @@ describe("proxy", () => {
     captureExceptionSpy.mockRestore()
     validateAdhesionTokenSpy.mockRestore()
     nextWithSessionSpy.mockRestore()
+    rewriteWithSessionSpy.mockRestore()
   })
 
   it("skips updateSession for webhook routes", async () => {
@@ -159,6 +164,40 @@ describe("proxy", () => {
     )
 
     const init = nextWithSessionSpy.mock.calls[0]?.[1] as
+      | { request?: { headers?: Headers } }
+      | undefined
+    expect(init?.request?.headers?.get("x-supabase-user-id")).toBe(USER_A)
+  })
+
+  it("rewrites /api/q to /api/v1 after session refresh and injects x-supabase-user-id", async () => {
+    updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+
+    await proxy(makeRequest("/api/q/leads"))
+
+    expect(updateSessionSpy).toHaveBeenCalled()
+    expect(rewriteWithSessionSpy).toHaveBeenCalled()
+    expect(nextWithSessionSpy).not.toHaveBeenCalled()
+
+    const rewriteUrl = rewriteWithSessionSpy.mock.calls[0]?.[1] as URL
+    expect(String(rewriteUrl)).toContain("/api/v1/leads")
+    expect(String(rewriteUrl)).not.toContain("/api/q/")
+
+    const init = rewriteWithSessionSpy.mock.calls[0]?.[2] as
+      | { request?: { headers?: Headers } }
+      | undefined
+    expect(init?.request?.headers?.get("x-supabase-user-id")).toBe(USER_A)
+  })
+
+  it("overwrites spoofed x-supabase-user-id on /api/q routes", async () => {
+    updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+
+    await proxy(
+      makeRequest("/api/q/teams/status-rules", {
+        headers: { "x-supabase-user-id": USER_B },
+      }),
+    )
+
+    const init = rewriteWithSessionSpy.mock.calls[0]?.[2] as
       | { request?: { headers?: Headers } }
       | undefined
     expect(init?.request?.headers?.get("x-supabase-user-id")).toBe(USER_A)
