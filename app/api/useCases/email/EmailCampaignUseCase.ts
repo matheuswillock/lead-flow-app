@@ -17,7 +17,7 @@ import {
   type EmailTemplateVariableDefinition,
 } from "@/lib/email/interpolate"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
-import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
+import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import {
   CUSTOM_RADAR_SEGMENT_PREFIX,
@@ -1310,7 +1310,7 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-      hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
+      hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
         profileId: ctx.profileId,
         managerId: ctx.managerId,
         isMaster: ctx.isMaster,
@@ -2267,7 +2267,7 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        const hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
+        const hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
           profileId: masterId,
           managerId: masterId,
           isMaster: true,
