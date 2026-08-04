@@ -198,8 +198,8 @@ export class RadarUseCase {
 
 
   /**
-   * D13: contrato atual (LeadPortfolio) + histórico (LeadFinalized com
-   * holder/dependentes) do perfil, via identidades `lead_id`.
+   * D13: contratos atuais (LeadPortfolio) + histórico (LeadFinalized com
+   * holder/dependentes) do perfil, via identidades `lead_id` / `portfolio_id`.
    */
   async getProfileContracts(teamId: string, ctx: TeamContext, profileId: string) {
     const scope = this.scope(teamId, ctx)
@@ -210,20 +210,18 @@ export class RadarUseCase {
 
     const raw = await radarRepository.findContractsForProfile(scope, profileId)
 
-    const portfolio = raw.portfolio
-      ? {
-          id: raw.portfolio.id,
-          leadId: raw.portfolio.leadId,
-          portfolioStatus: raw.portfolio.portfolioStatus,
-          renewalStatus: raw.portfolio.renewalStatus,
-          renewalAmount: raw.portfolio.renewalAmount != null ? Number(raw.portfolio.renewalAmount) : null,
-          source: raw.portfolio.source,
-          note: raw.portfolio.note,
-          lastContactAt: raw.portfolio.lastContactAt?.toISOString() ?? null,
-          createdAt: raw.portfolio.createdAt.toISOString(),
-          updatedAt: raw.portfolio.updatedAt.toISOString(),
-        }
-      : null
+    const portfolios = raw.portfolios.map((item) => ({
+      id: item.id,
+      leadId: item.leadId,
+      portfolioStatus: item.portfolioStatus,
+      renewalStatus: item.renewalStatus,
+      renewalAmount: item.renewalAmount != null ? Number(item.renewalAmount) : null,
+      source: item.source,
+      note: item.note,
+      lastContactAt: item.lastContactAt?.toISOString() ?? null,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+    }))
 
     const finalized = raw.finalized.map((item) => ({
       id: item.id,
@@ -255,7 +253,7 @@ export class RadarUseCase {
       })),
     }))
 
-    return new Output(true, [], [], { portfolio, finalized })
+    return new Output(true, [], [], { portfolios, finalized })
   }
 
   async listProfileEvents(

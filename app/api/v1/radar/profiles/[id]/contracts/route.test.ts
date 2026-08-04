@@ -51,25 +51,27 @@ describe("GET /api/v1/radar/profiles/[id]/contracts", () => {
     expect(res.status).toBe(401)
   })
 
-  it("retorna 200 com portfolio atual e histórico finalized", async () => {
+  it("retorna 200 com portfolios atuais e histórico finalized", async () => {
     ;(getRadarAccess as ReturnType<typeof mock>).mockResolvedValueOnce(mockAccess)
     ;(customerDataPlatformUseCase.getProfileContracts as ReturnType<typeof mock>).mockResolvedValueOnce({
       isValid: true,
       successMessages: [],
       errorMessages: [],
       result: {
-        portfolio: {
-          id: "pf-1",
-          leadId: "lead-1",
-          portfolioStatus: "active",
-          renewalStatus: "to_renew",
-          renewalAmount: 1500,
-          source: "crm",
-          note: null,
-          lastContactAt: "2026-06-01T00:00:00.000Z",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-06-01T00:00:00.000Z",
-        },
+        portfolios: [
+          {
+            id: "pf-1",
+            leadId: "lead-1",
+            portfolioStatus: "active",
+            renewalStatus: "to_renew",
+            renewalAmount: 1500,
+            source: "crm",
+            note: null,
+            lastContactAt: "2026-06-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-06-01T00:00:00.000Z",
+          },
+        ],
         finalized: [
           {
             id: "lf-1",
@@ -107,25 +109,26 @@ describe("GET /api/v1/radar/profiles/[id]/contracts", () => {
     const res = await GET(req, params)
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      result: { portfolio: { renewalStatus: string } | null; finalized: unknown[] }
+      result: { portfolios: { renewalStatus: string }[]; finalized: unknown[] }
     }
-    expect(body.result.portfolio?.renewalStatus).toBe("to_renew")
+    expect(body.result.portfolios).toHaveLength(1)
+    expect(body.result.portfolios[0]?.renewalStatus).toBe("to_renew")
     expect(body.result.finalized).toHaveLength(1)
   })
 
-  it("retorna 200 com portfolio null e finalized vazio", async () => {
+  it("retorna 200 com portfolios e finalized vazios", async () => {
     ;(getRadarAccess as ReturnType<typeof mock>).mockResolvedValueOnce(mockAccess)
     ;(customerDataPlatformUseCase.getProfileContracts as ReturnType<typeof mock>).mockResolvedValueOnce({
       isValid: true,
       successMessages: [],
       errorMessages: [],
-      result: { portfolio: null, finalized: [] },
+      result: { portfolios: [], finalized: [] },
     })
     const [req, params] = makeRequest()
     const res = await GET(req, params)
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { result: { portfolio: null; finalized: unknown[] } }
-    expect(body.result.portfolio).toBeNull()
+    const body = (await res.json()) as { result: { portfolios: unknown[]; finalized: unknown[] } }
+    expect(body.result.portfolios).toHaveLength(0)
     expect(body.result.finalized).toHaveLength(0)
   })
 

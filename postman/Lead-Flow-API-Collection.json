@@ -18111,7 +18111,7 @@
                 }
               ]
             },
-            "description": "D13: contrato atual (LeadPortfolio) + histórico (LeadFinalized com holder/dependentes) do perfil Radar via identidades lead_id."
+            "description": "D13: contratos atuais (LeadPortfolio[]) + histórico (LeadFinalized com holder/dependentes) do perfil Radar via identidades lead_id / portfolio_id."
           },
           "response": []
         },

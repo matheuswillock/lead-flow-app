@@ -1119,13 +1119,18 @@ export class RadarRepository {
     return leads.map((lead) => lead.id)
   }
 
-/**
-   * D13: retorna `leadId`s de `LeadPortfolio` que batem o where —
-   * usados para projetar perfis via identidade `lead_id`.
+  /**
+   * D13: retorna `leadId`s e `portfolioId`s de `LeadPortfolio` que batem o where —
+   * usados para projetar perfis via identidades `lead_id` / `portfolio_id`.
    */
-  async findPortfolioProfileIdsByWhere(where: Prisma.LeadPortfolioWhereInput): Promise<string[]> {
-    const rows = await prisma.leadPortfolio.findMany({ where, select: { leadId: true } })
-    return [...new Set(rows.map((row) => row.leadId))]
+  async findPortfolioProfileIdsByWhere(
+    where: Prisma.LeadPortfolioWhereInput
+  ): Promise<{ leadIds: string[]; portfolioIds: string[] }> {
+    const rows = await prisma.leadPortfolio.findMany({ where, select: { id: true, leadId: true } })
+    return {
+      leadIds: [...new Set(rows.map((row) => row.leadId))],
+      portfolioIds: rows.map((row) => row.id),
+    }
   }
 
   /**
@@ -1138,76 +1143,96 @@ export class RadarRepository {
   }
 
   /**
-   * D13: contrato atual (`LeadPortfolio`) + histórico (`LeadFinalized` com
-   * holder/dependentes) do perfil, resolvidos via identidades `lead_id`.
+   * D13: contratos atuais (`LeadPortfolio`) + histórico (`LeadFinalized` com
+   * holder/dependentes) do perfil. Resolve via `lead_id` e, como fallback,
+   * via `portfolio_id` (sync só-carteira antes do fix de identidade).
    */
   async findContractsForProfile(scope: RadarTeamScope, profileId: string) {
     const identities = await prisma.radarIdentity.findMany({
-      where: { profileId, teamId: scope.teamId, type: "lead_id" },
-      select: { normalizedValue: true },
+      where: {
+        profileId,
+        teamId: scope.teamId,
+        type: { in: ["lead_id", "portfolio_id"] },
+      },
+      select: { type: true, normalizedValue: true },
     })
-    const leadIds = identities.map((identity) => identity.normalizedValue)
-    if (leadIds.length === 0) {
-      return { portfolio: null, finalized: [] as const }
+    const leadIds = identities
+      .filter((identity) => identity.type === "lead_id")
+      .map((identity) => identity.normalizedValue)
+    const portfolioIds = identities
+      .filter((identity) => identity.type === "portfolio_id")
+      .map((identity) => identity.normalizedValue)
+
+    if (leadIds.length === 0 && portfolioIds.length === 0) {
+      return { portfolios: [] as const, finalized: [] as const }
     }
 
-    const [portfolios, finalized] = await Promise.all([
-      prisma.leadPortfolio.findMany({
-        where: { teamId: scope.teamId, leadId: { in: leadIds } },
-        select: {
-          id: true,
-          leadId: true,
-          portfolioStatus: true,
-          renewalStatus: true,
-          renewalAmount: true,
-          source: true,
-          note: true,
-          lastContactAt: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 1,
-      }),
-      prisma.leadFinalized.findMany({
-        where: { leadId: { in: leadIds }, lead: { teamId: scope.teamId } },
-        select: {
-          id: true,
-          leadId: true,
-          finalizedDateAt: true,
-          startDateAt: true,
-          amount: true,
-          contractType: true,
-          operadora: true,
-          productName: true,
-          notes: true,
-          createdAt: true,
-          holder: {
-            select: {
-              id: true,
-              name: true,
-              razaoSocial: true,
-              birthDate: true,
-              document: true,
-              cnpj: true,
-            },
-          },
-          dependents: {
-            select: {
-              id: true,
-              name: true,
-              birthDate: true,
-              parentesco: true,
-              document: true,
-            },
-            orderBy: { name: "asc" },
-          },
-        },
-        orderBy: { finalizedDateAt: "desc" },
-      }),
-    ])
+    const portfolioWhere: Prisma.LeadPortfolioWhereInput =
+      leadIds.length > 0 && portfolioIds.length > 0
+        ? { teamId: scope.teamId, OR: [{ leadId: { in: leadIds } }, { id: { in: portfolioIds } }] }
+        : leadIds.length > 0
+          ? { teamId: scope.teamId, leadId: { in: leadIds } }
+          : { teamId: scope.teamId, id: { in: portfolioIds } }
 
-    return { portfolio: portfolios[0] ?? null, finalized }
+    const portfolios = await prisma.leadPortfolio.findMany({
+      where: portfolioWhere,
+      select: {
+        id: true,
+        leadId: true,
+        portfolioStatus: true,
+        renewalStatus: true,
+        renewalAmount: true,
+        source: true,
+        note: true,
+        lastContactAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    })
+
+    const resolvedLeadIds = [...new Set([...leadIds, ...portfolios.map((row) => row.leadId)])]
+    const finalized =
+      resolvedLeadIds.length === 0
+        ? []
+        : await prisma.leadFinalized.findMany({
+            where: { leadId: { in: resolvedLeadIds }, lead: { teamId: scope.teamId } },
+            select: {
+              id: true,
+              leadId: true,
+              finalizedDateAt: true,
+              startDateAt: true,
+              amount: true,
+              contractType: true,
+              operadora: true,
+              productName: true,
+              notes: true,
+              createdAt: true,
+              holder: {
+                select: {
+                  id: true,
+                  name: true,
+                  razaoSocial: true,
+                  birthDate: true,
+                  document: true,
+                  cnpj: true,
+                },
+              },
+              dependents: {
+                select: {
+                  id: true,
+                  name: true,
+                  birthDate: true,
+                  parentesco: true,
+                  document: true,
+                },
+                orderBy: { name: "asc" },
+              },
+            },
+            orderBy: { finalizedDateAt: "desc" },
+          })
+
+    return { portfolios, finalized }
   }
 
   async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {

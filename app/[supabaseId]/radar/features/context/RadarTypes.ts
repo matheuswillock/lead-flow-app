@@ -232,8 +232,8 @@ export type RadarFinalizedContract = {
   dependents: RadarContractDependent[]
 }
 
-/** D13: contrato atual + histórico do perfil via identidades lead_id. */
+/** D13: contratos atuais + histórico do perfil via identidades lead_id / portfolio_id. */
 export type RadarProfileContracts = {
-  portfolio: RadarPortfolioContract | null
+  portfolios: RadarPortfolioContract[]
   finalized: RadarFinalizedContract[]
 }

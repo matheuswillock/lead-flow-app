@@ -205,8 +205,9 @@ function buildPortfolioFieldWhere(
 }
 
 /**
- * D13: resolve leadIds donos do contrato (portfolio ou finalized) e projeta
- * nos perfis via identidade `lead_id` — mesmo padrão de `lead_field`.
+ * D13: resolve donos do contrato (portfolio ou finalized) e projeta nos
+ * perfis via `lead_id` — e, para carteira, também via `portfolio_id`
+ * (clientes criados só na carteira antes do sync de lead_id).
  */
 async function translatePortfolioField(
   teamId: string,
@@ -215,17 +216,28 @@ async function translatePortfolioField(
   const entry = PORTFOLIO_FIELD_CATALOG[condition.fieldKey]
   const fieldWhere = buildPortfolioFieldWhere(condition)
 
-  const leadIds =
-    entry.entity === "portfolio"
-      ? await radarRepository.findPortfolioProfileIdsByWhere({
-          teamId,
-          ...(fieldWhere as Prisma.LeadPortfolioWhereInput),
-        })
-      : await radarRepository.findFinalizedProfileIdsByWhere({
-          lead: { teamId },
-          ...(fieldWhere as Prisma.LeadFinalizedWhereInput),
-        })
+  if (entry.entity === "portfolio") {
+    const { leadIds, portfolioIds } = await radarRepository.findPortfolioProfileIdsByWhere({
+      teamId,
+      ...(fieldWhere as Prisma.LeadPortfolioWhereInput),
+    })
+    const identityOr: Prisma.RadarIdentityWhereInput[] = []
+    if (leadIds.length > 0) {
+      identityOr.push({ type: "lead_id", normalizedValue: { in: leadIds } })
+    }
+    if (portfolioIds.length > 0) {
+      identityOr.push({ type: "portfolio_id", normalizedValue: { in: portfolioIds } })
+    }
+    if (identityOr.length === 0) {
+      return { id: { in: [] } }
+    }
+    return { identities: { some: { OR: identityOr } } }
+  }
 
+  const leadIds = await radarRepository.findFinalizedProfileIdsByWhere({
+    lead: { teamId },
+    ...(fieldWhere as Prisma.LeadFinalizedWhereInput),
+  })
   return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
 }
 

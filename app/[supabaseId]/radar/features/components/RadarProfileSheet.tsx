@@ -164,7 +164,7 @@ export function RadarProfileSheet({
       : []
 
   const hasContracts =
-    Boolean(contracts?.portfolio) || (contracts?.finalized != null && contracts.finalized.length > 0)
+    (contracts?.portfolios.length ?? 0) > 0 || (contracts?.finalized.length ?? 0) > 0
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -312,41 +312,42 @@ export function RadarProfileSheet({
                   ) : (
                     <>
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium">Contrato atual</p>
-                        {contracts?.portfolio ? (
-                          <Badge variant="secondary">
-                            {PORTFOLIO_STATUS_LABELS[contracts.portfolio.portfolioStatus] ??
-                              contracts.portfolio.portfolioStatus}
-                          </Badge>
-                        ) : null}
+                        <p className="text-sm font-medium">Contratos atuais</p>
+                        <Badge variant="secondary">{contracts?.portfolios.length ?? 0}</Badge>
                       </div>
-                      {contracts?.portfolio ? (
-                        <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline">
-                              {RENEWAL_STATUS_LABELS[contracts.portfolio.renewalStatus] ??
-                                contracts.portfolio.renewalStatus}
-                            </Badge>
-                            <Badge variant="outline">
-                              {PORTFOLIO_SOURCE_LABELS[contracts.portfolio.source] ??
-                                contracts.portfolio.source}
-                            </Badge>
-                          </div>
-                          <p>
-                            Valor de renovação:{" "}
-                            <span className="font-medium">
-                              {formatCurrency(contracts.portfolio.renewalAmount)}
-                            </span>
-                          </p>
-                          <p className="text-muted-foreground">
-                            Último contato: {formatDate(contracts.portfolio.lastContactAt)}
-                          </p>
-                          {contracts.portfolio.note ? (
-                            <p className="text-muted-foreground">{contracts.portfolio.note}</p>
-                          ) : null}
-                        </div>
-                      ) : (
+                      {(contracts?.portfolios.length ?? 0) === 0 ? (
                         <p className="text-sm text-muted-foreground">Sem contrato atual na carteira.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {contracts?.portfolios.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex flex-col gap-2 rounded-md border p-3 text-sm"
+                            >
+                              <div className="flex flex-wrap gap-2">
+                                <Badge variant="secondary">
+                                  {PORTFOLIO_STATUS_LABELS[item.portfolioStatus] ?? item.portfolioStatus}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {RENEWAL_STATUS_LABELS[item.renewalStatus] ?? item.renewalStatus}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {PORTFOLIO_SOURCE_LABELS[item.source] ?? item.source}
+                                </Badge>
+                              </div>
+                              <p>
+                                Valor de renovação:{" "}
+                                <span className="font-medium">{formatCurrency(item.renewalAmount)}</span>
+                              </p>
+                              <p className="text-muted-foreground">
+                                Último contato: {formatDate(item.lastContactAt)}
+                              </p>
+                              {item.note ? (
+                                <p className="text-muted-foreground">{item.note}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       )}
 
                       <Separator />
