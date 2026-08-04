@@ -131,7 +131,7 @@ function buildCampaignPayload(params: {
 }
 
 export type CampanhasActions = {
-  handleSend: (id: string) => Promise<void>
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
   handleArchive: (id: string) => Promise<void>
@@ -417,7 +417,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     void fetchCampaigns(1, [], pageSize, "", "", "")
   }, [fetchCampaigns, pageSize])
 
-  const handleSend = useCallback(async (id: string) => {
+  const handleSend = useCallback(async (id: string, options?: { retryFailedOnly?: boolean }) => {
     if (
       !bypassCreditsCheck &&
       !credits?.hasSubscription &&
@@ -430,6 +430,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
     const campaignToSend = campaigns.find((campaign) => campaign.id === id)
     const isDetailSubCampaign = Boolean(detailCampaign?.subCampaigns?.some((sub) => sub.id === id))
+    const retryFailedOnly = options?.retryFailedOnly === true
     const sendingSnapshot = campaignToSend
       ? { ...campaignToSend, status: "sending" as const }
       : null
@@ -462,9 +463,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       )
     }
 
-    console.info("[useCampanhas] handleSend", id)
+    console.info("[useCampanhas] handleSend", { id, retryFailedOnly })
     try {
-      const result = await service.send(supabaseId, activeTeamId, id)
+      const result = await service.send(supabaseId, activeTeamId, id, {
+        ...(retryFailedOnly ? { retryFailedOnly: true } : {}),
+      })
       if (sendingCampaignSnapshotRef.current) {
         sendingCampaignSnapshotRef.current = {
           ...sendingCampaignSnapshotRef.current,
@@ -490,7 +493,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
           ),
         }
       })
-      toast.success("Disparo iniciado em segundo plano. Você pode sair desta página.")
+      toast.success(
+        result.retryFailedOnly || retryFailedOnly
+          ? `Reenvio das falhas iniciado (${result.totalRecipients.toLocaleString("pt-BR")} destinatário(s)). Quem já recebeu não será reenviado.`
+          : "Disparo iniciado em segundo plano. Você pode sair desta página."
+      )
       if (detailCampaign?.id === id) {
         setDetailCampaign(null)
       }
@@ -503,8 +510,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       void fetchCredits()
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
-      const message = err instanceof Error ? err.message : "Erro ao disparar campanha"
-      toast.error(message || "Erro ao disparar campanha")
+      const rawMessage = err instanceof Error ? err.message : "Erro ao disparar campanha"
+      const message =
+        /409|idempotency|idempotência/i.test(rawMessage)
+          ? retryFailedOnly
+            ? "Não foi possível reenviar as falhas agora. Tente novamente em instantes."
+            : "Não foi possível disparar a campanha agora. Tente novamente em instantes."
+          : rawMessage || "Erro ao disparar campanha"
+      toast.error(message)
       if (!isDetailSubCampaign) {
         sendingIdRef.current = null
         sendingCampaignSnapshotRef.current = null
