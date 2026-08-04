@@ -153,7 +153,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     masterId: string
   ): Promise<BackofficeClientPendingActionsResult> {
     const res = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/pending-actions`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/pending-actions`,
       { cache: "no-store" }
     )
     const data = await res.json()
@@ -173,7 +173,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     pendingActionId: string
   ): Promise<{ message: string }> {
     const res = await fetch(
-      `/api/v1/backoffice/platform-users/${masterId}/pending-actions/${pendingActionId}`,
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/pending-actions/${pendingActionId}`,
       { method: "DELETE" }
     )
     const data = await res.json()
