@@ -1,14 +1,32 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+type AppendArg = {
+  profileId: string
+  eventType: string
+  sourceType: string
+  sourceId: string
+}
+
 const findProfileByIdentity = mock(
-  async (): Promise<{ profileId: string } | null> => null
+  async (_teamId: string, _type: string, _value: string): Promise<{ profileId: string } | null> =>
+    null
 )
-const resolveProfileForVisitorSession = mock(async () => ({
-  profile: { id: "anon-profile-1" },
-  wasExisting: false,
+const resolveProfileForVisitorSession = mock(
+  async (_input: {
+    teamId: string
+    visitorSession: string
+    lastSeenAt?: Date
+  }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
+    profile: { id: "anon-profile-1" },
+    wasExisting: false,
+  })
+)
+const appendEventIfNewBySourceKey = mock(
+  async (_input: AppendArg): Promise<{ id: string } | null> => ({ id: "event-1" })
+)
+const syncLeadExecute = mock(async (_input: { leadId: string; teamId: string }) => ({
+  isValid: true,
 }))
-const appendEventIfNewBySourceKey = mock(async () => ({ id: "event-1" }))
-const syncLeadExecute = mock(async () => ({ isValid: true }))
 
 mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
   radarRepository: {
@@ -41,6 +59,13 @@ const baseInput = {
   formId: "form-1",
   publicationId: "pub-1",
   eventKey: "vs-abc:form_viewed:form",
+}
+
+function lastAppendArg(): AppendArg {
+  const calls = appendEventIfNewBySourceKey.mock.calls as unknown as Array<[AppendArg]>
+  const arg = calls[calls.length - 1]?.[0]
+  if (!arg) throw new Error("appendEventIfNewBySourceKey não foi chamado")
+  return arg
 }
 
 describe("mapPublicFormMetricToRadarEventType", () => {
@@ -91,14 +116,13 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(findProfileByIdentity).not.toHaveBeenCalled()
     expect(appendEventIfNewBySourceKey).toHaveBeenCalledTimes(1)
 
-    const appendArg = appendEventIfNewBySourceKey.mock.calls[0]?.[0] as {
-      profileId: string
-      eventType: string
-      sourceType: string
-      sourceId: string
+    const appendArg = lastAppendArg()
+    const expectedType = mapPublicFormMetricToRadarEventType(eventType)
+    if (expectedType === null) {
+      throw new Error(`mapeamento ausente para ${eventType}`)
     }
     expect(appendArg.profileId).toBe("anon-profile-1")
-    expect(appendArg.eventType).toBe(mapPublicFormMetricToRadarEventType(eventType))
+    expect(appendArg.eventType).toBe(expectedType)
     expect(appendArg.sourceType).toBe(PUBLIC_FORM_RADAR_SOURCE_TYPE)
     expect(appendArg.sourceId).toBe(`vs-abc:${eventType}:form`)
   })
@@ -119,13 +143,13 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
       expect(findProfileByIdentity).toHaveBeenCalledWith("team-1", "lead_id", "lead-1")
       expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
 
-      const appendArg = appendEventIfNewBySourceKey.mock.calls[0]?.[0] as {
-        profileId: string
-        eventType: string
-        sourceId: string
+      const appendArg = lastAppendArg()
+      const expectedType = mapPublicFormMetricToRadarEventType(eventType)
+      if (expectedType === null) {
+        throw new Error(`mapeamento ausente para ${eventType}`)
       }
       expect(appendArg.profileId).toBe("lead-profile-1")
-      expect(appendArg.eventType).toBe(mapPublicFormMetricToRadarEventType(eventType))
+      expect(appendArg.eventType).toBe(expectedType)
       expect(appendArg.sourceId).toBe(`req-1:${eventType}`)
     }
   )
@@ -144,7 +168,7 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
 
     expect(output.isValid).toBe(true)
     expect(syncLeadExecute).toHaveBeenCalledWith({ leadId: "lead-2", teamId: "team-1" })
-    expect(appendEventIfNewBySourceKey.mock.calls[0]?.[0]).toMatchObject({
+    expect(lastAppendArg()).toMatchObject({
       profileId: "lead-profile-2",
       eventType: "form.completed",
     })
@@ -181,8 +205,9 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(first.result).toMatchObject({ created: true })
     expect(second.result).toMatchObject({ created: false })
     expect(appendEventIfNewBySourceKey).toHaveBeenCalledTimes(2)
-    expect(appendEventIfNewBySourceKey.mock.calls[0]?.[0]).toMatchObject({ sourceId: "same-key" })
-    expect(appendEventIfNewBySourceKey.mock.calls[1]?.[0]).toMatchObject({ sourceId: "same-key" })
+    const calls = appendEventIfNewBySourceKey.mock.calls as unknown as Array<[AppendArg]>
+    expect(calls[0]?.[0]).toMatchObject({ sourceId: "same-key" })
+    expect(calls[1]?.[0]).toMatchObject({ sourceId: "same-key" })
   })
 
   it("cria perfil anônimo mesmo sem pixel prévio", async () => {

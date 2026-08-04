@@ -1154,9 +1154,10 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
             <Alert className="border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning [&>svg]:text-semantic-warning">
               <TriangleAlert />
               <AlertDescription className="text-foreground">
-                Este segmento tem {previewCount} perfis, acima do limite de{" "}
-                {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários por campanha. A campanha será dividida
-                automaticamente em sub-envios ao ser usada.
+                Audiência excede o limite de{" "}
+                {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")} destinatários por
+                campanha de segmento ({previewCount.toLocaleString("pt-BR")} perfis). Refine as
+                condições ou materialize em lista de contatos — listas podem usar sub-campanhas.
               </AlertDescription>
             </Alert>
           ) : null}
