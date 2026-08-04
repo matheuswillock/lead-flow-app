@@ -1035,6 +1035,8 @@ email_contact_id email_contact_id
 portfolio_id portfolio_id
 whatsapp_contact_id whatsapp_contact_id
 visitor_session visitor_session
+contract_holder contract_holder
+contract_dependent contract_dependent
         }
     
 
@@ -1047,6 +1049,7 @@ email_campaign email_campaign
 whatsapp_contact whatsapp_contact
 base_import base_import
 pixel_hit pixel_hit
+lead_finalized lead_finalized
         }
     
 

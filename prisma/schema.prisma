@@ -4321,6 +4321,8 @@ enum RadarIdentityType {
   portfolio_id
   whatsapp_contact_id
   visitor_session
+  contract_holder
+  contract_dependent
 
   @@map("radar_identity_type")
 }
@@ -4333,6 +4335,7 @@ enum RadarSourceType {
   whatsapp_contact
   base_import
   pixel_hit
+  lead_finalized
 
   @@map("radar_source_type")
 }

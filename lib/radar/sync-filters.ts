@@ -2,6 +2,7 @@ export type RadarSyncFilters = {
   leadId?: string
   portfolioId?: string
   emailContactId?: string
+  finalizedId?: string
   updatedSince?: Date
   emailLogSince?: Date
 }
@@ -22,6 +23,10 @@ export function parseRadarSyncFilters(body: unknown): RadarSyncFilters {
 
   if (typeof record.emailContactId === "string" && record.emailContactId.trim()) {
     filters.emailContactId = record.emailContactId.trim()
+  }
+
+  if (typeof record.finalizedId === "string" && record.finalizedId.trim()) {
+    filters.finalizedId = record.finalizedId.trim()
   }
 
   if (typeof record.updatedSince === "string" && record.updatedSince.trim()) {

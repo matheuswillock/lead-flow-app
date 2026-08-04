@@ -7,6 +7,7 @@ import {
 } from "@/lib/leadImport/normalizers";
 import { portfolioService } from "@/app/api/services/Portfolio/PortfolioService";
 import type { IPortfolioService } from "@/app/api/services/Portfolio/IPortfolioService";
+import { syncFinalizedToRadarInline } from "@/app/api/useCases/radar/syncFinalizedToRadarInline";
 import type {
   MappedPortfolioImportRequest,
   MappedPortfolioImportRow,
@@ -138,7 +139,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
       const rowContractType = row.contractType ?? 'individual';
 
       try {
-        await this.portfolioService.createPortfolioEntryFromImport(
+        const leadId = await this.portfolioService.createPortfolioEntryFromImport(
           ctx.teamId,
           target.masterId,
           ctx.profileId,
@@ -160,6 +161,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
             holder,
           }
         );
+        syncFinalizedToRadarInline({ teamId: ctx.teamId, leadId });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Não foi possível criar o cliente";

@@ -650,6 +650,91 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Resolve (ou cria) um perfil chaveado por documento (D14) — titulares e
+   * dependentes de `LeadFinalized` não têm telefone/e-mail. Lock advisory em
+   * `(teamId, identityType, normalizedDocument)` evita corrida; a identidade
+   * `contract_holder`/`contract_dependent` é a chave natural.
+   */
+  async resolveProfileForDocument(input: {
+    teamId: string
+    identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
+    normalizedDocument: string
+    documentValue: string
+    displayName: string
+    normalizedName: string
+    documentSource: string
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const lockKey = `${input.teamId}:${input.identityType}:${input.normalizedDocument}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: input.identityType,
+            normalizedValue: input.normalizedDocument,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: {
+            lastSeenAt: input.lastSeenAt ?? new Date(),
+            displayName: input.displayName,
+            normalizedName: input.normalizedName,
+            primaryDocument: input.documentValue,
+            normalizedPrimaryDocument: input.normalizedDocument,
+          },
+        })
+        return { profile, wasExisting: true }
+      }
+
+      const profile = await tx.radarProfile.create({
+        data: {
+          teamId: input.teamId,
+          displayName: input.displayName,
+          normalizedName: input.normalizedName,
+          normalizedPhone: null,
+          displayPhone: null,
+          primaryDocument: input.documentValue,
+          normalizedPrimaryDocument: input.normalizedDocument,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: input.identityType,
+          value: input.documentValue,
+          normalizedValue: input.normalizedDocument,
+          source: input.documentSource,
+          isPrimary: true,
+        },
+      })
+
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      return { profile, wasExisting: false }
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
@@ -993,6 +1078,42 @@ export class RadarRepository {
             contractDueDate: true,
             status: true,
           },
+        },
+      },
+    })
+  }
+
+  async findFinalizedForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
+    return prisma.leadFinalized.findMany({
+      where: {
+        lead: { teamId },
+        ...(filters.finalizedId ? { id: filters.finalizedId } : {}),
+        ...(filters.leadId ? { leadId: filters.leadId } : {}),
+        ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
+      },
+      select: {
+        id: true,
+        leadId: true,
+        finalizedDateAt: true,
+        updatedAt: true,
+        createdAt: true,
+        holder: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+          },
+        },
+        dependents: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+            parentesco: true,
+          },
+          orderBy: { createdAt: "asc" },
         },
       },
     })
