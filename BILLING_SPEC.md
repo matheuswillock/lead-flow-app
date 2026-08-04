@@ -310,6 +310,17 @@ Fonte: [`BILLING_AUDIT.md`](BILLING_AUDIT.md) §3A.2–3.3. **Meta Estágio 6:**
 
 ## Changelog de implementação
 
+### [Estágio -1] RLS billing tables — 2026-08-04
+
+**Branch:** `feat/billing-stage-minus1-rls`
+
+**O que foi feito:**
+- Grants produção documentados no audit §1.3 (sem grants `anon`/`authenticated`; RLS off nas 3 tabelas).
+- Migration [`supabase/migrations/20260804191440_fix-billing-tables-rls.sql`](supabase/migrations/20260804191440_fix-billing-tables-rls.sql): ENABLE RLS em `asaas_webhook_events` (sem policy), `profile_user_types` (SELECT authenticated), `profile_user_type_assignments` (SELECT próprio profile).
+- Sem `db:migrate:push` remoto.
+
+**Estágio -1 encerrado no repo.** Próximo: Estágio 0 (vitalício só Backoffice). Push remoto RLS aguarda auth do owner.
+
 ### [Estágio 4 parcial] Parcelas CUSTOM — 2026-07-27
 
 **Branch:** `claude/blissful-faraday-05e253`  

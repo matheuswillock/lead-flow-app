@@ -19,7 +19,7 @@
 | C2b | **Alto** | `updatePaymentMethod` / `retryPayment` retornam sucesso sem chamar Asaas | **Confirmado** — TODOs comentados no mesmo use case |
 | C3 | **Crítico** | Confirmação/vínculo de assinatura grava `subscriptionPlan: 'manager_base'` fixo | **Confirmado** — `PaymentValidationService.ts` (~130, ~337) |
 | C0 | **Crítico** | Webhook trata eventos/status que o Asaas não envia; fallback `?? 'active'` | **Confirmado** — ainda lista `SUBSCRIPTION_ACTIVATED/SUSPENDED/CANCELED`; `mapStatusFromPayload` não reconhece `INACTIVE`/`EXPIRED` |
-| C-1 | **Crítico** | RLS ausente em `asaas_webhook_events`, `profile_user_types`, `profile_user_type_assignments` | **Confirmado no repo** — migrations criam tabelas sem `ENABLE ROW LEVEL SECURITY`; grants efetivos em produção ainda pendentes |
+| C-1 | **Crítico** | RLS ausente em `asaas_webhook_events`, `profile_user_types`, `profile_user_type_assignments` | **Mitigado no repo (2026-08-04)** — migration `fix-billing-tables-rls`; prod ainda sem RLS (push pendente auth owner). Grants `anon`/`authenticated` ausentes em prod |
 | — | **Alto** | `POST /api/v1/backoffice/payments` sem `requireManagerAccess` | **Confirmado** — só `getBackofficeAccess`; pricing usa `requireManagerAccess` |
 | — | **Alto** | Refund/chargeback sem handler | **Confirmado** — sem cases de `PAYMENT_REFUNDED` / `PAYMENT_CHARGEBACK_*` |
 | — | **Alto** | Preço hardcoded (~15 arquivos) + System A (59,90) vs System B (`BackofficeProduct`) | **Confirmado** — literais ainda em serviços/use cases/UI |
@@ -44,13 +44,13 @@
 
 ### 1.3 C-1 — RLS nas tabelas de billing / tipo de usuário
 
-No repositório:
+**Status 2026-08-04:** migration local [`supabase/migrations/20260804191440_fix-billing-tables-rls.sql`](supabase/migrations/20260804191440_fix-billing-tables-rls.sql) criada (Estágio -1). **Não** aplicada em produção ainda (aguarda auth do owner).
 
-- [`supabase/migrations/20260701134057_asaas-webhook-events.sql`](supabase/migrations/20260701134057_asaas-webhook-events.sql) — cria `asaas_webhook_events` **sem** RLS.
-- [`supabase/migrations/20260607174554_add-profile-user-types.sql`](supabase/migrations/20260607174554_add-profile-user-types.sql) — cria `profile_user_types` / `profile_user_type_assignments` **sem** RLS.
-- Nenhuma migration posterior habilita RLS nessas três tabelas (grep em `supabase/migrations`).
-
-**Pendência:** calibrar se grants de `anon`/`authenticated` em produção permitem SELECT/INSERT/UPDATE (exposição confirmada vs. potencial). Remediação: migration com `ENABLE ROW LEVEL SECURITY` + policies; **não aplicar remoto sem autorização do owner**.
+**Grants produção (`wcnxwdcoambpfwxwubka`, 2026-08-04, só leitura):**
+- `relrowsecurity = false` nas 3 tabelas.
+- Grants explícitos só para `postgres` (SELECT/INSERT/UPDATE/DELETE/…).
+- **Sem** grants de `anon` / `authenticated` / `service_role` nessas tabelas → exposição via PostgREST **não confirmada** por grants; risco residual = RLS off se grants forem ampliados depois.
+- Remediação no repo: ENABLE RLS + policies (webhook sem policy permissiva; `profile_user_types` SELECT authenticated; assignments SELECT próprio profile).
 
 ### 1.4 Backoffice — criação de cobrança sem papel de manager
 
@@ -256,7 +256,7 @@ Cobertura de webhook / `PaymentValidationService` / checkout / cancelamento / In
 
 | # | Tema | Status |
 |---|---|---|
-| 1 | Grants `anon`/`authenticated` nas tabelas C-1 em produção | **Aberto** — investigar no Estágio -1 |
+| 1 | Grants `anon`/`authenticated` nas tabelas C-1 em produção | **Resolvido (2026-08-04):** sem grants anon/authenticated; só `postgres`. RLS ainda off em prod até push autorizado |
 | 2 | Migração System A → modelo único | **Resolvido (owner):** migrar **todos**; sem legado permanente |
 | 2b | Mudança de nível de assinatura | **Resolvido (owner):** entre **quaisquer** níveis suportados; Member PRO é exemplo |
 | 3 | `crm-lifetime` → `hasPermanentSubscription` | **Aberto** — SPEC exige fechar o elo |
