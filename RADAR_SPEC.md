@@ -567,7 +567,7 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 
 ## Critérios de sucesso (Fase D)
 
-- Todo canal de contato (CRM, WhatsApp, e-mail, pixel, carteira) alimenta o Radar por evento, sem botão manual de sync na UI. **Formulário público:** pendente até D8 (bridge `PublicFormMetricEvent` → `RadarEvent`).
+- Todo canal de contato (CRM, WhatsApp, e-mail, formulário público, pixel, carteira) alimenta o Radar por evento, sem botão manual de sync na UI.
 - Perfis existem para titulares, dependentes e contatos email-only, não só leads com telefone.
 - Segmentos cobrem qualquer campo nativo do Lead e de contrato, além dos campos já suportados em C4.
 - "Sete pontos de contato" visíveis no perfil; export CSV/Excel funcional; lista de e-mail materializável a partir de segmento.
@@ -586,10 +586,10 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 | R1–R5 | ✅ Concluídos |
 | C1–C6 | ✅ Concluídos — **dívida C5:** alerta do builder sugere split de campanha por segmento (>2.000), contradizendo DA11 (rejeição, não sub-campanha) |
 | D1–D7 | ✅ Concluídos (origem, sync inline, email-only, marcos, `lead_field`, pixel/`visitor_session`) |
-| D8 | ⏳ **Pendente** — bridge `PublicFormMetricEvent` → `RadarEvent` ausente no HEAD commitado |
+| D8 | ✅ Concluído — `SyncPublicFormMetricToRadarUseCase` + `syncPublicFormMetricToRadarInline` (`recordMetric` / submission / progress) |
 | D9–D12 | ✅ Concluídos (touchpoints, UI event-driven, auditoria impeccable, hardening/Postman/RLS pixel/docs/ERD) |
 | D13–D18 | ✅ Concluídos (`portfolio_field`/Contratos, perfis titular/dependente, materializar lista, export, polimento UI, rankings templates/forms) |
 
-**Critério de sucesso “formulário público alimenta o Radar por evento”:** ainda **não** atendido até D8 fechar. Demais canais (CRM, WhatsApp, e-mail, pixel, carteira) já alimentam por evento; UI sem botão de sync manual (D10).
+**Critério de sucesso “formulário público alimenta o Radar por evento”:** atendido via bridge D8. UI sem botão de sync manual (D10).
 
 **Invariantes preservados:** audiência de segmento ≤ `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`; teto diário via `wouldExceedDailyEmailCap`; sem CDP externa; sem segundo store de timeline além de `LeadActivity` × `RadarEvent`.
