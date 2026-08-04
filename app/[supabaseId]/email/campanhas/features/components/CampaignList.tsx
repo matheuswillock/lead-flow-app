@@ -81,9 +81,9 @@ function CampaignActionsMenu({
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const isParentCampaign = Boolean(campaign.isParentCampaign || (campaign.subCampaignCount ?? 0) > 0)
-  const canRetryFailedSubs =
-    isParentCampaign &&
-    (campaign.status === "failed" || campaign.status === "partially_sent")
+  const isFailedRetryStatus =
+    campaign.status === "failed" || campaign.status === "partially_sent"
+  const canRetryFailedSubs = isParentCampaign && isFailedRetryStatus
   const canSendByStatus =
     !isParentCampaign &&
     (campaign.status === "draft" ||
@@ -91,6 +91,11 @@ function CampaignActionsMenu({
       campaign.status === "sent" ||
       campaign.status === "failed")
   const canSend = canSendCampaign && canSendByStatus && !sendBlockReason
+  const sendActionLabel = canRetryFailedSubs
+    ? "Redisparar falhas"
+    : isFailedRetryStatus && !isParentCampaign
+      ? "Redisparar"
+      : "Disparar"
   const sendDisabledReason =
     sendBlockReason ??
     (isParentCampaign
@@ -151,7 +156,7 @@ function CampaignActionsMenu({
               {canRetryFailedSubs ? (
                 <DropdownMenuItem onClick={() => openView(campaign)}>
                   <Send className="mr-2 h-4 w-4" />
-                  Redisparar falhas
+                  {sendActionLabel}
                 </DropdownMenuItem>
               ) : sendDisabledReason && !canSend ? (
                 <Tooltip>
@@ -159,7 +164,7 @@ function CampaignActionsMenu({
                     <span className="w-full">
                       <DropdownMenuItem disabled className="pointer-events-none w-full">
                         <Send className="mr-2 h-4 w-4" />
-                        Disparar
+                        {sendActionLabel}
                       </DropdownMenuItem>
                     </span>
                   </TooltipTrigger>
@@ -168,7 +173,7 @@ function CampaignActionsMenu({
               ) : (
                 <DropdownMenuItem onClick={() => setSendConfirmOpen(true)} disabled={!canSend}>
                   <Send className="mr-2 h-4 w-4" />
-                  Disparar
+                  {sendActionLabel}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => void openEditWizard(campaign)} disabled={!canEdit}>
@@ -222,7 +227,9 @@ function CampaignActionsMenu({
       <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar disparo?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isFailedRetryStatus ? "Confirmar redisparo?" : "Confirmar disparo?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               A campanha <strong>"{campaign.name}"</strong> será enviada para{" "}
               <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
@@ -239,7 +246,13 @@ function CampaignActionsMenu({
               }}
               disabled={sending}
             >
-              {sending ? "Disparando..." : "Sim, disparar"}
+              {sending
+                ? isFailedRetryStatus
+                  ? "Redisparando..."
+                  : "Disparando..."
+                : isFailedRetryStatus
+                  ? "Sim, redisparar"
+                  : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
