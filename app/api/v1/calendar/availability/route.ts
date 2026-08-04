@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
 
     const output = await calendarAvailabilityUseCase.getAvailability({
       teamId: teamAccess.access.teamId,
+      managerId: teamAccess.access.managerId,
       requestedCloserIds,
       date,
       days,

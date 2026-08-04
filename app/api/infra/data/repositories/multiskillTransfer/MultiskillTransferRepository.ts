@@ -328,6 +328,7 @@ export class MultiskillTransferRepository implements IMultiskillTransferReposito
         name: true,
         leadCode: true,
         assignedTo: true,
+        closerId: true,
         isTransfer: true,
         meetingDate: true,
         meetingTitle: true,

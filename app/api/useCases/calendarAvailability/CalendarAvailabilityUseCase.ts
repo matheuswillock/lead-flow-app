@@ -7,6 +7,10 @@ import {
 } from "@/app/api/services/calendarAvailability/ICalendarAvailabilityService";
 import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
 import { multiskillTransferRepository } from "@/app/api/infra/data/repositories/multiskillTransfer/MultiskillTransferRepository";
+import {
+  isMultiskillOriginMaster,
+  resolveMultiskillOriginMasterId,
+} from "@/lib/multiskill/is-multiskill-origin-master";
 import type {
   GetCalendarAvailabilityUseCaseInput,
   ICalendarAvailabilityUseCase,
@@ -36,8 +40,10 @@ export class CalendarAvailabilityUseCase implements ICalendarAvailabilityUseCase
       let excludeLeadTeamId = input.excludeLeadTeamId ?? input.teamId;
 
       if (input.destinationTeamId && input.destinationTeamId !== input.teamId) {
+        const originMasterId = await resolveMultiskillOriginMasterId();
         const hasMultiskillOrigin =
-          await backofficeOperationalAccessService.hasMultiskillOriginTeam(input.teamId);
+          isMultiskillOriginMaster({ managerId: input.managerId }, originMasterId) &&
+          (await backofficeOperationalAccessService.hasMultiskillOriginTeam(input.teamId));
         if (!hasMultiskillOrigin) {
           return new Output(
             false,

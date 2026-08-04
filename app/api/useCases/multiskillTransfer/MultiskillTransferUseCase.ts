@@ -200,7 +200,7 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
             leadManagerId: transferredLead.managerId,
             leadAssignedTo: transferredLead.assignedTo ?? null,
             leadAssigneeEmail: assigneeEmail,
-            leadCurrentCloserId: null,
+            leadCurrentCloserId: lead.closerId ?? null,
             leadCode: transferredLead.leadCode ?? null,
             closerId: data.closerId,
             teamId: defaultTeam.id,

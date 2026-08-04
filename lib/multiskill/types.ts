@@ -42,6 +42,7 @@ export interface MultiskillTransferLeadRecord {
   name: string;
   leadCode: string | null;
   assignedTo: string | null;
+  closerId: string | null;
   isTransfer: boolean;
   meetingDate: Date | null;
   meetingTitle: string | null;

@@ -2,6 +2,7 @@ import type { Output } from "@/lib/output";
 
 export type GetCalendarAvailabilityUseCaseInput = {
   teamId: string;
+  managerId: string;
   requestedCloserIds: string[];
   date: string;
   days?: number;
