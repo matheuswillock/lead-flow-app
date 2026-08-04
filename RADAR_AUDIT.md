@@ -8,7 +8,7 @@
 | Estágio | Descrição | Status |
 |---------|-----------|--------|
 | R1–R5 | Rename CDP → Radar | ✅ Concluído |
-| C1–C6 | Completude funcional (custom fields, sync inline, segmentos, UI, hardening) | ✅ Concluído — **dívida C5:** alerta do builder diz que campanha “será dividida em sub-envios”, o que contradiz DA11 (segmento >2.000 é rejeitado, não faz split) |
+| C1–C6 | Completude funcional (custom fields, sync inline, segmentos, UI, hardening) | ✅ Concluído — C5×DA11 corrigido (alerta não sugere mais split automático por segmento) |
 | D1 | Lead.originChannel schema | ✅ Concluído |
 | D2 | Unificar entrada de leads | ✅ Concluído |
 | D3 | Sync Portfolio → Radar | ✅ Concluído |
@@ -304,9 +304,9 @@ R1–R5 e C1–C6 estão **concluídos**. Na Fase D, **D1–D18** estão no cód
 | D17 | Polimento UI (identidades, Calendar, event Select, responsáveis) | ✅ Concluído |
 | D18 | Ranking top templates / formulários | ✅ Concluído |
 
-### Dívida conhecida (C5 × DA11)
+### Dívida C5 × DA11 — corrigida
 
-O `Alert` em `RadarSegmentBuilderDialog` afirma que audiência > `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` “será dividida automaticamente em sub-envios”. Isso **contradiz DA11**: campanhas por segmento Radar acima do limite são **rejeitadas**; split/sub-campanhas existem só para listas de contatos. Corrigir o copy do alerta (não a regra de backend).
+O `Alert` em `RadarSegmentBuilderDialog` (e o equivalente no wizard de campanhas) agora deixa claro que audiência de segmento > `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` é **rejeitada**; split/sub-campanhas existem só após materializar o segmento em lista de contatos.
 
 ### Paths canônicos (pós-unificado)
 

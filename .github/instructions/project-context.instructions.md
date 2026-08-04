@@ -428,7 +428,7 @@ O módulo Radar é um add-on (`FEATURE_SLUGS.RADAR = "radar"`) que unifica dados
 
 **D8:** bridge `PublicFormMetricEvent` → `RadarEvent` via `SyncPublicFormMetricToRadarUseCase` (fire-and-forget após persistir a métrica; dedupe por `eventKey`).
 
-**Dívida C5 × DA11:** o alerta do builder de segmento sugere split automático em sub-envios quando a audiência >2.000; o backend **rejeita** campanha por segmento acima do limite (sub-campanhas só para listas).
+**C5 × DA11:** alerta do builder/wizard alinhado — segmento > `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` é **rejeitado**; materialize em lista (D15) para usar sub-campanhas.
 
 ### Modelos Prisma
 

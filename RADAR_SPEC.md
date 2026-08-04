@@ -584,7 +584,7 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 | Estágio | Status |
 |---|---|
 | R1–R5 | ✅ Concluídos |
-| C1–C6 | ✅ Concluídos — **dívida C5:** alerta do builder sugere split de campanha por segmento (>2.000), contradizendo DA11 (rejeição, não sub-campanha) |
+| C1–C6 | ✅ Concluídos — C5×DA11: alerta do builder/wizard alinhado (segmento >2.000 rejeitado; materializar lista para sub-campanhas) |
 | D1–D7 | ✅ Concluídos (origem, sync inline, email-only, marcos, `lead_field`, pixel/`visitor_session`) |
 | D8 | ⏳ **Pendente** — bridge `PublicFormMetricEvent` → `RadarEvent` ausente no HEAD commitado |
 | D9–D12 | ✅ Concluídos (touchpoints, UI event-driven, auditoria impeccable, hardening/Postman/RLS pixel/docs/ERD) |

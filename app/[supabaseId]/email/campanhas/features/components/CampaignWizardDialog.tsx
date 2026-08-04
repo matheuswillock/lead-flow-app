@@ -562,9 +562,10 @@ export function CampaignWizardDialog() {
                             <AlertTitle>Segmento grande</AlertTitle>
                             <AlertDescription className="flex flex-col gap-2">
                               <span>
-                                Este segmento tem mais de{" "}
+                                Audiência excede o limite de{" "}
                                 {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
-                                destinatários. Crie uma lista de contatos para usar sub-campanhas.
+                                destinatários por campanha de segmento. Refine as condições ou
+                                materialize em lista de contatos — listas podem usar sub-campanhas.
                               </span>
                               <Button
                                 type="button"
