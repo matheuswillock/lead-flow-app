@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { translateEvent } from "./RadarSegmentQueryService"
+import { translateEngagementBand, translateEvent } from "./RadarSegmentQueryService"
 
 describe("translateEvent", () => {
   it("sem campaignId não filtra metadata", () => {
@@ -47,5 +47,23 @@ describe("translateEvent", () => {
         },
       },
     })
+  })
+})
+
+describe("translateEngagementBand", () => {
+  it("traduz bands para engagementBand.in", () => {
+    const where = translateEngagementBand({
+      kind: "engagement_band",
+      bands: ["hot", "warm"],
+    })
+    expect(where).toEqual({ engagementBand: { in: ["hot", "warm"] } })
+  })
+
+  it("banda única gera in com um valor", () => {
+    const where = translateEngagementBand({
+      kind: "engagement_band",
+      bands: ["cold"],
+    })
+    expect(where).toEqual({ engagementBand: { in: ["cold"] } })
   })
 })

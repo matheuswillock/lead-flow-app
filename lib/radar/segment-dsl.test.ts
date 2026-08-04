@@ -215,6 +215,32 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("aceita engagement_band válido e rejeita banda inválida ou lista vazia", () => {
+    const rules = parseRadarSegmentRules({
+      match: "any",
+      conditions: [{ kind: "engagement_band", bands: ["hot", "warm"] }],
+    })
+    const condition = rules.conditions[0]
+    expect(condition.kind).toBe("engagement_band")
+    if (condition.kind === "engagement_band") {
+      expect(condition.bands).toEqual(["hot", "warm"])
+    }
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "engagement_band", bands: [] }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "engagement_band", bands: ["boiling"] }],
+      })
+    ).toThrow()
+  })
+
   it("aceita email_contact_list válido e rejeita listIds vazio ou não-UUID (D6)", () => {
     expect(() =>
       parseRadarSegmentRules({

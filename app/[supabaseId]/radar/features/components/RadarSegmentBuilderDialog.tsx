@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, ChevronsUpDown, FileText, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
+import { Check, ChevronsUpDown, FileText, Flame, Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, Snowflake, SlidersHorizontal, Thermometer, ThermometerSun, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -136,7 +136,15 @@ const KIND_OPTIONS = [
   { value: "lead_status", label: "Status do lead (CRM)", icon: Kanban },
   { value: "lead_field", label: "Campo nativo do lead (CRM)", icon: SlidersHorizontal },
   { value: "portfolio_field", label: "Campo de contrato/carteira", icon: FileText },
+  { value: "engagement_band", label: "Temperatura", icon: Thermometer },
 ] as const
+
+const ENGAGEMENT_BAND_OPTIONS = [
+  { value: "hot" as const, label: "Quente", icon: Flame },
+  { value: "warm" as const, label: "Morno", icon: ThermometerSun },
+  { value: "lukewarm" as const, label: "Morno-frio", icon: Thermometer },
+  { value: "cold" as const, label: "Frio", icon: Snowflake },
+]
 
 function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegmentCondition {
   switch (kind) {
@@ -150,6 +158,8 @@ function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegm
       return { kind: "lead_custom_field", definitionId: "", operator: "eq" }
     case "lead_status":
       return { kind: "lead_status", statuses: [] }
+    case "engagement_band":
+      return { kind: "engagement_band", bands: [] }
     case "lead_field":
       return { kind: "lead_field", fieldKey: "status", operator: "eq", value: [] }
     case "portfolio_field":
@@ -1116,6 +1126,33 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                           }
                         >
                           {getLeadStatusLabel(status)}
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                ) : null}
+
+                {condition.kind === "engagement_band" ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {ENGAGEMENT_BAND_OPTIONS.map((band) => {
+                      const BandIcon = band.icon
+                      const isSelected = condition.bands.includes(band.value)
+                      return (
+                        <Badge
+                          key={band.value}
+                          variant={isSelected ? "default" : "outline"}
+                          className="cursor-pointer gap-1"
+                          onClick={() =>
+                            updateCondition(index, {
+                              ...condition,
+                              bands: isSelected
+                                ? condition.bands.filter((b) => b !== band.value)
+                                : [...condition.bands, band.value],
+                            })
+                          }
+                        >
+                          <BandIcon className="size-3.5" aria-hidden />
+                          {band.label}
                         </Badge>
                       )
                     })}

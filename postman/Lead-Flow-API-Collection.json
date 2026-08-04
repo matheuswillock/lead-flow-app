@@ -18610,6 +18610,40 @@
           "name": "Radar Segments",
           "item": [
             {
+              "name": "Criar segmento custom (temperatura / engagement_band)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Temperatura Quente ou Morno\",\n  \"description\": \"Perfis com engagementBand hot ou warm\",\n  \"rules\": {\n    \"match\": \"any\",\n    \"conditions\": [\n      { \"kind\": \"engagement_band\", \"bands\": [\"hot\", \"warm\"] }\n    ]\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
               "name": "Listar segmentos custom",
               "request": {
                 "method": "GET",
@@ -19083,6 +19117,33 @@
                 "process-import-jobs"
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Engajamento — cron backfill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cronSecret}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/cron/engagement-backfill",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "cron",
+                "engagement-backfill"
+              ]
+            },
+            "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Recalcula engagementScore/engagementBand em lotes de 500 (todos os times)."
           },
           "response": []
         },

@@ -164,6 +164,16 @@ const leadStatusConditionSchema = z.object({
   statuses: z.array(leadStatusSchema).min(1, "informe ao menos um status"),
 })
 
+const engagementBandSchema = z.enum(["hot", "warm", "lukewarm", "cold"])
+
+/** Fonte única para o frontend popular o multi-select de engagement_band. */
+export const RADAR_SEGMENT_ENGAGEMENT_BANDS = engagementBandSchema.options
+
+const engagementBandConditionSchema = z.object({
+  kind: z.literal("engagement_band"),
+  bands: z.array(engagementBandSchema).min(1, "informe ao menos uma banda"),
+})
+
 export const LEAD_FIELD_CATALOG = {
   status: { operators: ["eq", "neq"] as const, valueKind: "lead_status_multi" as const },
   currentHealthPlan: { operators: ["eq", "neq", "contains", "is_empty", "not_empty"] as const, valueKind: "text" as const },
@@ -433,6 +443,7 @@ export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
   portfolioFieldConditionSchema,
   emailContactListConditionSchema,
   emailContactFieldConditionSchema,
+  engagementBandConditionSchema,
 ])
 
 export const radarSegmentRulesSchema = z.object({

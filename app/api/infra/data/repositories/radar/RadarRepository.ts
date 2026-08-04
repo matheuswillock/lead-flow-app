@@ -1044,6 +1044,22 @@ export class RadarRepository {
     }
   }
 
+  /**
+   * D19-C: pagina perfis de todos os times para backfill de engajamento.
+   * Cursor por `id` evita skip em tabelas grandes.
+   */
+  async listProfilesForEngagementBackfill(params: {
+    take: number
+    cursorId?: string | null
+  }): Promise<Array<{ id: string; teamId: string }>> {
+    return prisma.radarProfile.findMany({
+      where: params.cursorId ? { id: { gt: params.cursorId } } : undefined,
+      select: { id: true, teamId: true },
+      orderBy: { id: "asc" },
+      take: params.take,
+    })
+  }
+
   private async loadEngagementWeightsAndConfig(): Promise<{
     weights: WeightMap
     config: EngagementConfig
