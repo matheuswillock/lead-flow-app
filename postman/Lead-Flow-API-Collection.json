@@ -18740,6 +18740,140 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Exportar perfis filtrados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/export?search=&consent=&sourceType=&channel=&lastSeenFrom=&lastSeenTo=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "consent",
+                  "value": ""
+                },
+                {
+                  "key": "sourceType",
+                  "value": ""
+                },
+                {
+                  "key": "channel",
+                  "value": ""
+                },
+                {
+                  "key": "lastSeenFrom",
+                  "value": ""
+                },
+                {
+                  "key": "lastSeenTo",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "D16 — exporta perfis filtrados (até LEAD_IMPORT_MAX_ROWS) com colunas Perfil/Identidades/Último evento."
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar membros do segmento do sistema",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "export"
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
+              ]
+            },
+            "description": "D16 — exporta membros de um segmento de sistema."
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar membros do segmento customizado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                "custom",
+                ":segmentId",
+                "export"
+              ],
+              "variable": [
+                {
+                  "key": "segmentId",
+                  "value": "{{radarSegmentId}}"
+                }
+              ]
+            },
+            "description": "D16 — exporta membros de um segmento customizado."
+          },
+          "response": []
         }
       ]
     },

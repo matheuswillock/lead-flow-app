@@ -17,6 +17,8 @@ import type {
   RadarSegmentRules,
 } from "./RadarTypes"
 import type { CustomSegmentInput, CustomSegmentUpdateInput } from "../services/IRadarService"
+import type { RadarExportFormat, RadarExportRow } from "@/lib/radar/exportRadarProfiles"
+import { downloadRadarExportFile } from "../utils/downloadRadarExport"
 
 export type RadarTab = "perfis" | "segmentos"
 
@@ -377,6 +379,111 @@ export function useRadarHookFn() {
     [activeTeamId, router, supabaseId, withMutationLock]
   )
 
+
+  const exportFilteredProfiles = useCallback(
+    async (format: RadarExportFormat) => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const exported = await radarFrontendService.exportProfiles(supabaseId, activeTeamId, {
+            search: search || undefined,
+            consent: consentFilter || undefined,
+            sourceType: sourceFilter || undefined,
+            channel: channelFilter || undefined,
+            lastSeenFrom: lastSeenFrom || undefined,
+            lastSeenTo: lastSeenTo || undefined,
+          })
+          const dateStr = new Date().toISOString().slice(0, 10)
+          await downloadRadarExportFile(
+            exported.rows as RadarExportRow[],
+            format,
+            `radar-perfis-${dateStr}`
+          )
+          if (exported.truncated) {
+            toast.success(
+              `Exportado ${exported.exported} de ${exported.total} perfis (limite de ${exported.maxRows}).`
+            )
+          } else {
+            toast.success(`Exportados ${exported.exported} perfil(is).`)
+          }
+          return true
+        } catch (exportError) {
+          console.error("[useRadarHookFn][exportFilteredProfiles]", exportError)
+          toast.error(
+            exportError instanceof Error ? exportError.message : "Não foi possível exportar os perfis."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [
+      activeTeamId,
+      channelFilter,
+      consentFilter,
+      lastSeenFrom,
+      lastSeenTo,
+      search,
+      sourceFilter,
+      supabaseId,
+      withMutationLock,
+    ]
+  )
+
+  const exportSegmentMembers = useCallback(
+    async (target: RadarSegmentProfilesTarget, format: RadarExportFormat) => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const exported =
+            target.kind === "system"
+              ? await radarFrontendService.exportSegmentProfiles(
+                  supabaseId,
+                  activeTeamId,
+                  target.slugOrId
+                )
+              : await radarFrontendService.exportCustomSegmentProfiles(
+                  supabaseId,
+                  activeTeamId,
+                  target.slugOrId
+                )
+          const slugSafe = target.name
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "")
+          const dateStr = new Date().toISOString().slice(0, 10)
+          await downloadRadarExportFile(
+            exported.rows as RadarExportRow[],
+            format,
+            `radar-segmento-${slugSafe || "export"}-${dateStr}`
+          )
+          if (exported.truncated) {
+            toast.success(
+              `Exportado ${exported.exported} de ${exported.total} membros (limite de ${exported.maxRows}).`
+            )
+          } else {
+            toast.success(`Exportados ${exported.exported} membro(s) de "${target.name}".`)
+          }
+          return true
+        } catch (exportError) {
+          console.error("[useRadarHookFn][exportSegmentMembers]", exportError)
+          toast.error(
+            exportError instanceof Error
+              ? exportError.message
+              : "Não foi possível exportar o segmento."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [activeTeamId, supabaseId, withMutationLock]
+  )
+
   const previewAudienceCount = useCallback(
     async (rules: RadarSegmentRules): Promise<number | null> => {
       if (isPreviewingAudience || !supabaseId || !activeTeamId) return null
@@ -545,6 +652,8 @@ export function useRadarHookFn() {
     updateCustomSegment,
     deleteCustomSegment,
     materializeContactList,
+    exportFilteredProfiles,
+    exportSegmentMembers,
     previewAudienceCount,
     segmentProfilesTarget,
     segmentProfilesItems,

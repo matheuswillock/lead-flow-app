@@ -2,6 +2,8 @@ import type {
   IRadarService,
   RadarFieldOption,
   ListProfilesParams,
+  ExportProfilesParams,
+  RadarExportResult,
   CustomSegmentInput,
   CustomSegmentUpdateInput,
 } from "./IRadarService"
@@ -124,6 +126,51 @@ export class RadarFrontendService implements IRadarService {
       page: number
       pageSize: number
     }>(res)
+  }
+
+  async exportProfiles(
+    supabaseId: string,
+    teamId: string,
+    params: ExportProfilesParams
+  ): Promise<RadarExportResult> {
+    const query = new URLSearchParams()
+    if (params.search) query.set("search", params.search)
+    if (params.consent) query.set("consent", params.consent)
+    if (params.sourceType) query.set("sourceType", params.sourceType)
+    if (params.channel) query.set("channel", params.channel)
+    if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
+    if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
+
+    const qs = query.toString()
+    const res = await fetch(`${this.baseUrl}/profiles/export${qs ? `?${qs}` : ""}`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
+  async exportSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segment: string
+  ): Promise<RadarExportResult> {
+    const res = await fetch(`${this.baseUrl}/segments/${encodeURIComponent(segment)}/export`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
+  async exportCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarExportResult> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/${segmentId}/export`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
   }
 
   async getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail> {
