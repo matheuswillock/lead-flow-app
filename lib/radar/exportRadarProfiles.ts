@@ -89,13 +89,37 @@ export function capRadarExportRows<T>(rows: T[]): { rows: T[]; truncated: boolea
   return { rows: rows.slice(0, RADAR_EXPORT_MAX_ROWS), truncated: true }
 }
 
+/** Prefixa celulas que Excel/LibreOffice interpretariam como formula. */
+export function escapeRadarExportFormulaCell(value: string): string {
+  if (/^[=+\-@\t\r]/.test(value)) {
+    return `'${value}`
+  }
+  return value
+}
+
+function escapeRadarExportRowFormulas(row: RadarExportRow): RadarExportRow {
+  return {
+    Perfil: escapeRadarExportFormulaCell(row.Perfil),
+    "E-mail": escapeRadarExportFormulaCell(row["E-mail"]),
+    Telefone: escapeRadarExportFormulaCell(row.Telefone),
+    Documento: escapeRadarExportFormulaCell(row.Documento),
+    Identidades: escapeRadarExportFormulaCell(row.Identidades),
+    "Último evento": escapeRadarExportFormulaCell(row["Último evento"]),
+    "Data do último evento": escapeRadarExportFormulaCell(row["Data do último evento"]),
+    "Última interação": escapeRadarExportFormulaCell(row["Última interação"]),
+  }
+}
+
 export function buildRadarExportCsv(
   rows: RadarExportRow[],
   fileNameBase = "radar-perfis"
 ): RadarExportFilePayload {
   return {
     fileName: `${fileNameBase}.csv`,
-    content: `\uFEFF${Papa.unparse(rows, { columns: RADAR_EXPORT_COLUMNS })}`,
+    content: `\uFEFF${Papa.unparse(rows, {
+      columns: RADAR_EXPORT_COLUMNS,
+      escapeFormulae: true,
+    })}`,
     contentType: "text/csv;charset=utf-8",
   }
 }
@@ -104,8 +128,9 @@ export function buildRadarExportExcel(
   rows: RadarExportRow[],
   fileNameBase = "radar-perfis"
 ): RadarExportFilePayload {
+  const safeRows = rows.map(escapeRadarExportRowFormulas)
   const workbook = XLSX.utils.book_new()
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: [...RADAR_EXPORT_COLUMNS] })
+  const sheet = XLSX.utils.json_to_sheet(safeRows, { header: [...RADAR_EXPORT_COLUMNS] })
   XLSX.utils.book_append_sheet(workbook, sheet, "Perfis")
   const excelArray = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer
   return {

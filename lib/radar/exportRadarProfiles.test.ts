@@ -107,4 +107,32 @@ describe("exportRadarProfiles", () => {
     expect(small.truncated).toBe(false)
     expect(small.rows).toEqual([1, 2, 3])
   })
+
+  it("escapa formulas de planilha no CSV e no Excel", () => {
+    const rows = buildRadarExportRows([
+      {
+        displayName: "=CMD|'/C calc'!A0",
+        primaryEmail: "+1234",
+        displayPhone: "-11999990000",
+        primaryDocument: "@doc",
+        lastSeenAt: null,
+        identities: [{ type: "email", value: "=evil@x.com", normalizedValue: "evil@x.com" }],
+        lastEvent: { eventType: "=EVENT", occurredAt: "2026-08-01T00:00:00.000Z" },
+      },
+    ])
+
+    const csv = buildRadarExportCsv(rows)
+    const content = csv.content as string
+    expect(content).toContain("'=CMD|'/C calc'!A0")
+    expect(content).toContain("'+1234")
+    expect(content).toContain("'-11999990000")
+    expect(content).toContain("'@doc")
+    expect(content).toContain("'=EVENT")
+    // Identidades: type:value — valor com = no meio nao precisa escape; type email e value =evil...
+    expect(content).toContain("email:=evil@x.com")
+
+    const excel = buildRadarExportExcel(rows)
+    expect(excel.content).toBeInstanceOf(ArrayBuffer)
+    expect((excel.content as ArrayBuffer).byteLength).toBeGreaterThan(0)
+  })
 })

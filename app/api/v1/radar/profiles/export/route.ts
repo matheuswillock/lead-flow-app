@@ -3,6 +3,7 @@ import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/u
 import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { parseRadarProfilesExportQuery } from "@/lib/radar/parseRadarProfilesExportQuery"
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,22 +13,20 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const search = searchParams.get("search") ?? undefined
-    const consent = searchParams.get("consent") as "allowed" | "blocked" | "unknown" | null
-    const sourceType = searchParams.get("sourceType") ?? undefined
-    const channel = searchParams.get("channel") as "email" | "whatsapp" | null
-    const lastSeenFrom = searchParams.get("lastSeenFrom") ?? undefined
-    const lastSeenTo = searchParams.get("lastSeenTo") ?? undefined
+    const parsed = parseRadarProfilesExportQuery(searchParams)
+    if (!parsed.ok) {
+      return NextResponse.json(new Output(false, [], [parsed.error], null), { status: 400 })
+    }
 
     const result = await customerDataPlatformUseCase.exportProfiles({
       teamId: radarAccess.access.teamId,
       ctx: teamContextFromRadarAccess(radarAccess.access),
-      search,
-      consent: consent ?? undefined,
-      sourceType,
-      channel: channel ?? undefined,
-      lastSeenFrom,
-      lastSeenTo,
+      search: parsed.value.search,
+      consent: parsed.value.consent,
+      sourceType: parsed.value.sourceType,
+      channel: parsed.value.channel,
+      lastSeenFrom: parsed.value.lastSeenFrom,
+      lastSeenTo: parsed.value.lastSeenTo,
     })
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 })
