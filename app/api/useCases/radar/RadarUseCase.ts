@@ -127,7 +127,35 @@ export class RadarUseCase {
     if (!profile) {
       return new Output(false, [], ["Perfil não encontrado"], null)
     }
-    return new Output(true, [], [], profile)
+
+    // D17: responsáveis dos leads associados (nomes resolvidos, não só UUID).
+    const leadIds = profile.identities
+      .filter((identity) => identity.type === "lead_id")
+      .map((identity) => identity.normalizedValue || identity.value || "")
+      .filter(Boolean)
+    const leads = await radarRepository.findLeadAssigneesByIds(teamId, leadIds)
+    const assignees = leads.map((lead) => ({
+      leadId: lead.id,
+      leadCode: lead.leadCode,
+      assignedTo: lead.assignee
+        ? {
+            id: lead.assignee.id,
+            name: lead.assignee.fullName?.trim() || lead.assignee.email,
+          }
+        : lead.assignedTo
+          ? { id: lead.assignedTo, name: null }
+          : null,
+      closer: lead.closer
+        ? {
+            id: lead.closer.id,
+            name: lead.closer.fullName?.trim() || lead.closer.email,
+          }
+        : lead.closerId
+          ? { id: lead.closerId, name: null }
+          : null,
+    }))
+
+    return new Output(true, [], [], { ...profile, assignees })
   }
 
   /**
@@ -434,6 +462,17 @@ export class RadarUseCase {
     }))
 
     return new Output(true, [], [], { fields: [...catalogFields, ...baseFields] })
+  }
+
+  /** D17: eventTypes distintos já ocorridos no time (para o Select do builder). */
+  async listAvailableEventTypes(teamId: string, ctx: TeamContext) {
+    try {
+      const eventTypes = await radarRepository.listDistinctEventTypes(this.scope(teamId, ctx))
+      return new Output(true, [], [], { eventTypes })
+    } catch (error) {
+      console.error("[RadarUseCase][listAvailableEventTypes]", error)
+      return new Output(false, [], ["Erro ao listar tipos de evento"], null)
+    }
   }
 }
 

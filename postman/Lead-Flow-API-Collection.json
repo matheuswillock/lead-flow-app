@@ -17933,6 +17933,35 @@
           "response": []
         },
         {
+          "name": "Tipos de evento Radar disponíveis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/available-event-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "available-event-types"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Preview interpolação Radar",
           "request": {
             "method": "POST",

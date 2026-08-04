@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Kanban, ListChecks, ListPlus, MousePointerClick, Plus, ShieldCheck, SlidersHorizontal, TriangleAlert, User, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -41,6 +41,7 @@ import type {
   RadarSegmentCondition,
   RadarSegmentRules,
 } from "../context/RadarTypes"
+import { radarFrontendService } from "../services/RadarService"
 import {
   OPERATORS_BY_CUSTOM_FIELD_TYPE,
   OPERATORS_BY_LAST_SEEN,
@@ -197,6 +198,94 @@ function LeadCustomFieldValueInput({
       value={typeof condition.value === "string" ? condition.value : ""}
       onChange={(e) => onChange(e.target.value)}
     />
+  )
+}
+
+
+function EventTypeSelect({
+  value,
+  onChange,
+  supabaseId,
+  teamId,
+}: {
+  value: string
+  onChange: (eventType: string) => void
+  supabaseId: string
+  teamId: string | null
+}) {
+  const [eventTypes, setEventTypes] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestKeyRef = useRef<string | null>(null)
+  const lastSuccessKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!supabaseId || !teamId) {
+      setEventTypes([])
+      setError(null)
+      return
+    }
+
+    const requestKey = `${supabaseId}:${teamId}`
+    if (lastSuccessKeyRef.current === requestKey) return
+    if (requestKeyRef.current === requestKey) return
+    requestKeyRef.current = requestKey
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    void radarFrontendService
+      .listAvailableEventTypes(supabaseId, teamId)
+      .then((types) => {
+        if (cancelled) return
+        setEventTypes(types)
+        lastSuccessKeyRef.current = requestKey
+      })
+      .catch((loadError) => {
+        if (cancelled) return
+        console.error("[EventTypeSelect]", loadError)
+        setError("Não foi possível carregar os tipos de evento")
+        requestKeyRef.current = null
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [supabaseId, teamId])
+
+  const options = value && !eventTypes.includes(value) ? [value, ...eventTypes] : eventTypes
+
+  return (
+    <Select
+      value={value || undefined}
+      onValueChange={onChange}
+      disabled={loading && options.length === 0}
+    >
+      <SelectTrigger className="w-56">
+        <SelectValue
+          placeholder={
+            loading ? "Carregando eventos…" : error ? "Erro ao carregar" : "Tipo de evento"
+          }
+        />
+      </SelectTrigger>
+      <SelectContent>
+        {options.length === 0 ? (
+          <SelectItem value="__empty" disabled>
+            Nenhum evento registrado no time
+          </SelectItem>
+        ) : (
+          options.map((eventType) => (
+            <SelectItem key={eventType} value={eventType}>
+              {eventType}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -607,11 +696,11 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
 
                 {condition.kind === "event" ? (
                   <div className="flex flex-wrap gap-2">
-                    <Input
-                      className="w-56"
-                      placeholder="Ex.: whatsapp.message_received"
+                    <EventTypeSelect
                       value={condition.eventType}
-                      onChange={(e) => updateCondition(index, { ...condition, eventType: e.target.value })}
+                      onChange={(eventType) => updateCondition(index, { ...condition, eventType })}
+                      supabaseId={supabaseId}
+                      teamId={activeTeamId}
                     />
                     <Select
                       value={condition.occurrence}

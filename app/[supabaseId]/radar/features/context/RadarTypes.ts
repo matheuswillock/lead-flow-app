@@ -112,6 +112,13 @@ export type RadarMetrics = {
   engaged: number
 }
 
+export type RadarProfileAssignee = {
+  leadId: string
+  leadCode: string
+  assignedTo: { id: string; name: string | null } | null
+  closer: { id: string; name: string | null } | null
+}
+
 export type RadarProfileDetail = RadarProfileListItem & {
   normalizedName: string
   normalizedPhone: string | null
@@ -147,6 +154,8 @@ export type RadarProfileDetail = RadarProfileListItem & {
     occurredAt: string
     metadata: unknown
   }>
+  /** D17: SDR/Closer dos leads associados, com nome resolvido. */
+  assignees?: RadarProfileAssignee[]
 }
 
 export type RadarSyncResult = {

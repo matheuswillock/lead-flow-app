@@ -945,6 +945,38 @@ export class RadarRepository {
     })
   }
 
+  /** D17: `SELECT DISTINCT eventType` escopado pelo time, ordenado alfabeticamente. */
+  async listDistinctEventTypes(scope: RadarTeamScope): Promise<string[]> {
+    const rows = await prisma.radarEvent.findMany({
+      where: { teamId: scope.teamId },
+      distinct: ["eventType"],
+      select: { eventType: true },
+      orderBy: { eventType: "asc" },
+    })
+    return rows.map((row) => row.eventType)
+  }
+
+  /**
+   * D17: carrega assignedTo/closerId dos leads associados a um perfil,
+   * com nomes resolvidos via Profile (assignee/closer).
+   */
+  async findLeadAssigneesByIds(teamId: string, leadIds: string[]) {
+    const unique = [...new Set(leadIds.filter(Boolean))]
+    if (unique.length === 0) return []
+
+    return prisma.lead.findMany({
+      where: { teamId, id: { in: unique } },
+      select: {
+        id: true,
+        leadCode: true,
+        assignedTo: true,
+        closerId: true,
+        assignee: { select: { id: true, fullName: true, email: true } },
+        closer: { select: { id: true, fullName: true, email: true } },
+      },
+    })
+  }
+
   async findLeadsForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
     return prisma.lead.findMany({
       where: {

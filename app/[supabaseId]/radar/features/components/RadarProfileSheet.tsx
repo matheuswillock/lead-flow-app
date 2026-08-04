@@ -2,7 +2,9 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { RefreshCw } from "lucide-react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
+import { ExternalLink, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -18,6 +20,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { RadarProfileDetail, RadarProfileTouchpoints } from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
+import {
+  buildLeadCrmHref,
+  filterDisplayableIdentities,
+  getRadarIdentityDisplayValue,
+} from "../utils/radarIdentityDisplay"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 
 type RadarProfileSheetProps = {
@@ -35,6 +42,11 @@ type RadarProfileSheetProps = {
   isLoadingTouchpoints: boolean
 }
 
+function resolvePersonLabel(person: { id: string; name: string | null } | null | undefined): string | null {
+  if (!person) return null
+  return person.name?.trim() || null
+}
+
 export function RadarProfileSheet({
   open,
   onOpenChange,
@@ -49,11 +61,20 @@ export function RadarProfileSheet({
   touchpoints,
   isLoadingTouchpoints,
 }: RadarProfileSheetProps) {
+  const params = useParams()
+  const supabaseId = params.supabaseId as string
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
+  const displayableIdentities = profile ? filterDisplayableIdentities(profile.identities) : []
+  const assignees = profile?.assignees ?? []
+  const leadCodeById = new Map(assignees.map((item) => [item.leadId, item.leadCode]))
   const baseDataEntries =
     profile?.profileData && typeof profile.profileData === "object" && !Array.isArray(profile.profileData)
       ? Object.entries(profile.profileData as Record<string, unknown>).filter(([key]) => key.startsWith("base."))
       : []
+
+  const hasAnyAssignee = assignees.some(
+    (item) => resolvePersonLabel(item.assignedTo) || resolvePersonLabel(item.closer)
+  )
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -89,6 +110,45 @@ export function RadarProfileSheet({
                   </div>
                 </div>
               </div>
+
+              {hasLeadIdentity ? (
+                <>
+                  <Separator />
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">Responsáveis</p>
+                    {!hasAnyAssignee ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum responsável atribuído nos leads associados.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {assignees.map((item) => {
+                          const sdrName = resolvePersonLabel(item.assignedTo)
+                          const closerName = resolvePersonLabel(item.closer)
+                          if (!sdrName && !closerName) return null
+                          return (
+                            <div key={item.leadId} className="rounded-md border p-3 text-sm">
+                              <p className="mb-1 text-xs text-muted-foreground">Lead {item.leadCode}</p>
+                              {sdrName ? (
+                                <p>
+                                  <span className="text-muted-foreground">SDR: </span>
+                                  {sdrName}
+                                </p>
+                              ) : null}
+                              {closerName ? (
+                                <p>
+                                  <span className="text-muted-foreground">Closer: </span>
+                                  {closerName}
+                                </p>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
 
               <Tabs defaultValue="resumo">
                 <TabsList>
@@ -189,12 +249,38 @@ export function RadarProfileSheet({
                 </TabsContent>
 
                 <TabsContent value="identidades" className="flex flex-col gap-2">
-                  {profile.identities.map((identity) => (
-                    <div key={identity.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
-                      <Badge variant="outline">{identity.type}</Badge>
-                      <span className="text-muted-foreground">{identity.value ?? identity.normalizedValue}</span>
-                    </div>
-                  ))}
+                  {displayableIdentities.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma identidade exibível.</p>
+                  ) : (
+                    displayableIdentities.map((identity) => {
+                      const leadId = identity.normalizedValue || identity.value || ""
+                      const leadCode = identity.type === "lead_id" ? leadCodeById.get(leadId) : undefined
+
+                      return (
+                        <div
+                          key={identity.id}
+                          className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm"
+                        >
+                          <Badge variant="outline">{identity.type}</Badge>
+                          {identity.type === "lead_id" && leadCode ? (
+                            <Link
+                              href={buildLeadCrmHref(supabaseId, leadCode)}
+                              className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+                            >
+                              Abrir lead {leadCode}
+                              <ExternalLink className="size-3.5" />
+                            </Link>
+                          ) : identity.type === "lead_id" ? (
+                            <span className="text-muted-foreground">Lead associado</span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {getRadarIdentityDisplayValue(identity)}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
                 </TabsContent>
 
                 <TabsContent value="consentimentos" className="flex flex-col gap-2">
@@ -220,7 +306,8 @@ export function RadarProfileSheet({
                           ) : null}
                         </div>
                         <p className="text-muted-foreground">
-                          {format(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", { locale: ptBR })} — {event.sourceType}
+                          {format(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", { locale: ptBR })} —{" "}
+                          {event.sourceType}
                         </p>
                       </div>
                     )
