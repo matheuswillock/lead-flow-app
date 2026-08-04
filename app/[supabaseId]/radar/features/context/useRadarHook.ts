@@ -43,14 +43,10 @@ export function useRadarHookFn() {
   const [touchpoints, setTouchpoints] = useState<RadarProfileTouchpoints | null>(null)
   const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [isSyncingWhatsapp, setIsSyncingWhatsapp] = useState(false)
-  const [isSyncingLead, setIsSyncingLead] = useState(false)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [isPreviewingAudience, setIsPreviewingAudience] = useState(false)
   const [mutationLock, setMutationLock] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState("")
@@ -114,7 +110,7 @@ export function useRadarHookFn() {
       setCustomSegments(customSegmentsResult)
     } catch (loadError) {
       console.error("[useRadarHookFn][loadDashboard]", loadError)
-      setError("Não foi possível carregar os perfis Radar. Tente sincronizar novamente.")
+      setError("Não foi possível carregar os perfis Radar. Tente novamente.")
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -237,65 +233,6 @@ export function useRadarHookFn() {
     selectedProfile,
     supabaseId,
   ])
-
-  const runSync = useCallback(async () => {
-    if (isSyncing || !supabaseId || !activeTeamId) return
-    setIsSyncing(true)
-    try {
-      const crm = await radarFrontendService.syncCrm(supabaseId, activeTeamId)
-      const portfolio = await radarFrontendService.syncPortfolio(supabaseId, activeTeamId)
-      const email = await radarFrontendService.syncEmail(supabaseId, activeTeamId)
-      setLastSyncAt(new Date())
-      toast.success(
-        `Sincronização concluída. Criados: ${crm.created + portfolio.created + email.created}, enriquecidos: ${crm.enriched + portfolio.enriched + email.enriched}.`
-      )
-      await loadDashboard()
-    } catch (syncError) {
-      console.error("[useRadarHookFn][runSync]", syncError)
-      toast.error("Falha ao sincronizar o Radar.")
-    } finally {
-      setIsSyncing(false)
-    }
-  }, [activeTeamId, isSyncing, loadDashboard, supabaseId])
-
-  const runWhatsappSync = useCallback(async () => {
-    if (isSyncingWhatsapp || !supabaseId || !activeTeamId) return
-    setIsSyncingWhatsapp(true)
-    try {
-      await radarFrontendService.syncWhatsapp(supabaseId, activeTeamId)
-      setLastSyncAt(new Date())
-      toast.success("Sincronização do WhatsApp concluída.")
-      await loadDashboard()
-    } catch (syncError) {
-      console.error("[useRadarHookFn][runWhatsappSync]", syncError)
-      toast.error("Falha ao sincronizar o WhatsApp no Radar.")
-    } finally {
-      setIsSyncingWhatsapp(false)
-    }
-  }, [activeTeamId, isSyncingWhatsapp, loadDashboard, supabaseId])
-
-  const syncLeadProfile = useCallback(async () => {
-    if (!selectedProfile || isSyncingLead || !supabaseId || !activeTeamId) return
-    const leadIdentity = selectedProfile.identities.find((identity) => identity.type === "lead_id")
-    if (!leadIdentity?.normalizedValue) {
-      toast.error("Este perfil não possui vínculo com lead do CRM.")
-      return
-    }
-
-    setIsSyncingLead(true)
-    try {
-      await radarFrontendService.syncCrm(supabaseId, activeTeamId, { leadId: leadIdentity.normalizedValue })
-      setLastSyncAt(new Date())
-      toast.success("Lead sincronizado com sucesso.")
-      await openProfile(selectedProfile.id)
-      await loadDashboard()
-    } catch (syncError) {
-      console.error("[useRadarHookFn][syncLeadProfile]", syncError)
-      toast.error("Falha ao sincronizar o lead.")
-    } finally {
-      setIsSyncingLead(false)
-    }
-  }, [activeTeamId, isSyncingLead, loadDashboard, openProfile, selectedProfile, supabaseId])
 
   const withMutationLock = useCallback(
     async <T,>(action: () => Promise<T>): Promise<T | null> => {
@@ -508,14 +445,10 @@ export function useRadarHookFn() {
     detailEventsTotal,
     isLoadingMoreEvents,
     isLoading,
-    isSyncing,
-    isSyncingWhatsapp,
-    isSyncingLead,
     isDetailLoading,
     isPreviewingAudience,
     mutationLock,
     error,
-    lastSyncAt,
     page,
     total,
     pageSize,
@@ -537,9 +470,6 @@ export function useRadarHookFn() {
     openProfile,
     closeProfile,
     loadMoreProfileEvents,
-    runSync,
-    runWhatsappSync,
-    syncLeadProfile,
     createCustomSegment,
     updateCustomSegment,
     deleteCustomSegment,

@@ -2,20 +2,17 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
 import type { RadarProfileDetail, RadarProfileTouchpoints } from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
@@ -29,8 +26,6 @@ type RadarProfileSheetProps = {
   detailEventsTotal: number
   isLoadingMoreEvents: boolean
   onLoadMoreEvents: () => void
-  isSyncingLead: boolean
-  onSyncLead: () => void
   touchpoints: RadarProfileTouchpoints | null
   isLoadingTouchpoints: boolean
 }
@@ -44,12 +39,9 @@ export function RadarProfileSheet({
   detailEventsTotal,
   isLoadingMoreEvents,
   onLoadMoreEvents,
-  isSyncingLead,
-  onSyncLead,
   touchpoints,
   isLoadingTouchpoints,
 }: RadarProfileSheetProps) {
-  const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
   const baseDataEntries =
     profile?.profileData && typeof profile.profileData === "object" && !Array.isArray(profile.profileData)
       ? Object.entries(profile.profileData as Record<string, unknown>).filter(([key]) => key.startsWith("base."))
@@ -236,14 +228,6 @@ export function RadarProfileSheet({
           )}
         </div>
 
-        {hasLeadIdentity ? (
-          <SheetFooter>
-            <Button size="sm" variant="outline" disabled={isSyncingLead} onClick={onSyncLead}>
-              <RefreshCw className={cn(isSyncingLead && "animate-spin")} data-icon="inline-start" />
-              Sincronizar lead
-            </Button>
-          </SheetFooter>
-        ) : null}
       </SheetContent>
     </Sheet>
   )
