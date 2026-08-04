@@ -50,7 +50,7 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
   constructor(private readonly repository: ICalendarAvailabilityRepository) {}
 
   async getAvailability(input: GetCalendarAvailabilityInput): Promise<CalendarAvailabilityResult> {
-    const { teamId, requestedCloserIds, date, excludeLeadId } = input;
+    const { teamId, requestedCloserIds, date, excludeLeadId, excludeLeadTeamId } = input;
     const timezone = resolveTimezone(input.userTimezone ?? DEFAULT_TZ);
     const rangeDays = Math.min(Math.max(input.days ?? 1, 1), MAX_RANGE_DAYS);
 
@@ -83,7 +83,7 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
     const dayWindowByKey = new Map(dayWindows.map((window) => [window.dateKey, window]));
 
     const excludedLead = excludeLeadId
-      ? await this.repository.findExcludedLead(excludeLeadId, teamId)
+      ? await this.repository.findExcludedLead(excludeLeadId, excludeLeadTeamId ?? teamId)
       : null;
 
     const preservedSlotByCloser = new Map<string, { dateKey: string; slot: string }>();

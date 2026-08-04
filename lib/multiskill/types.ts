@@ -1,10 +1,14 @@
-export interface MultiskillTransferTargetCloser {
+export interface MultiskillTransferTargetMember {
   profileId: string;
   fullName: string | null;
   email: string;
   teamId: string;
   teamName: string;
+  googleCalendarConnected: boolean;
 }
+
+/** @deprecated Prefer MultiskillTransferTargetMember */
+export type MultiskillTransferTargetCloser = MultiskillTransferTargetMember;
 
 export interface MultiskillTransferTarget {
   masterId: string;
@@ -12,7 +16,8 @@ export interface MultiskillTransferTarget {
   masterEmail: string;
   defaultTeamId: string;
   defaultTeamName: string;
-  closers: MultiskillTransferTargetCloser[];
+  closers: MultiskillTransferTargetMember[];
+  sdrs: MultiskillTransferTargetMember[];
 }
 
 export interface ListMultiskillTransferTargetsResult {
@@ -34,7 +39,13 @@ export interface MultiskillTransferLeadRecord {
   teamId: string | null;
   email: string | null;
   cnpj: string | null;
+  name: string;
+  leadCode: string | null;
+  assignedTo: string | null;
   isTransfer: boolean;
   meetingDate: Date | null;
+  meetingTitle: string | null;
+  meetingNotes: string | null;
+  meetingType: string | null;
   team: { masterId: string } | null;
 }

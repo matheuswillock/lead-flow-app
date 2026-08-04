@@ -6,6 +6,8 @@ export type GetCalendarAvailabilityUseCaseInput = {
   date: string;
   days?: number;
   excludeLeadId?: string;
+  excludeLeadTeamId?: string;
+  destinationTeamId?: string;
   userTimezone?: string;
 };
 

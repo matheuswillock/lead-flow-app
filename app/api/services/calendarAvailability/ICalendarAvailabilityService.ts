@@ -11,6 +11,7 @@ export type GetCalendarAvailabilityInput = {
   date: string;
   days?: number;
   excludeLeadId?: string;
+  excludeLeadTeamId?: string;
   userTimezone?: string;
 };
 
