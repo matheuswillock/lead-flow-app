@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -54,6 +54,7 @@ function CampaignActionsMenu({
   readOnly,
   openView,
   openEditWizard,
+  openDuplicateWizard,
   handleSend,
   handleCancel,
   handleDeleteDraft,
@@ -69,6 +70,7 @@ function CampaignActionsMenu({
   readOnly: boolean
   openView: (campaign: Campaign) => void
   openEditWizard: (campaign: Campaign) => void
+  openDuplicateWizard: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
@@ -180,6 +182,10 @@ function CampaignActionsMenu({
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void openDuplicateWizard(campaign)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Duplicar
+              </DropdownMenuItem>
             </>
           ) : null}
           <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
@@ -234,6 +240,9 @@ function CampaignActionsMenu({
               A campanha <strong>"{campaign.name}"</strong> será enviada para{" "}
               <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
               destinatário(s) ativo(s).
+              {campaign.status === "sent" || campaign.status === "failed"
+                ? " Campanhas já enviadas ou com falha geram um novo dispatch sem alterar o histórico anterior."
+                : null}{" "}
               Os créditos correspondentes serão deduzidos.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -365,6 +374,7 @@ export function CampaignList({
     openWizard,
     openView,
     openEditWizard,
+    openDuplicateWizard,
     credits,
   } = useCampanhasContext()
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
@@ -502,6 +512,7 @@ export function CampaignList({
                             readOnly={readOnly}
                             openView={openView}
                             openEditWizard={openEditWizard}
+                            openDuplicateWizard={openDuplicateWizard}
                             handleSend={handleSend}
                             handleCancel={handleCancel}
                             handleDeleteDraft={handleDeleteDraft}

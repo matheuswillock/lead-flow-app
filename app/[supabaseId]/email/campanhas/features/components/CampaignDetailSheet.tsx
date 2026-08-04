@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Loader2, MoreHorizontal, Pencil, Send, ScrollText } from "lucide-react"
+import { BarChart3, Copy, Loader2, MoreHorizontal, Pencil, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -49,6 +49,7 @@ import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 type CampaignAnalyticsTarget = {
   id: string
@@ -66,7 +67,7 @@ function audienceLabel(campaign: {
   return "—"
 }
 
-function FailedSubCampaignResendButton({
+function SubCampaignDispatchButton({
   subCampaign,
   sendingId,
   handleSend,
@@ -78,6 +79,9 @@ function FailedSubCampaignResendButton({
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const isSendingThis = sendingId === subCampaign.id
+  const isFailed = subCampaign.status === "failed"
+  const actionLabel = isFailed ? "Reenviar" : "Disparar"
+  const pendingLabel = isFailed ? "Reenviando..." : "Disparando..."
 
   async function handleSendConfirm() {
     setSending(true)
@@ -103,15 +107,17 @@ function FailedSubCampaignResendButton({
         ) : (
           <Send data-icon="inline-start" />
         )}
-        {isSendingThis || sending ? "Reenviando..." : "Reenviar"}
+        {isSendingThis || sending ? pendingLabel : actionLabel}
       </Button>
 
       <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reenviar sub-campanha?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isFailed ? "Reenviar sub-campanha?" : "Disparar sub-campanha novamente?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A sub-campanha <strong>"{subCampaign.name}"</strong> será reenviada para{" "}
+              A sub-campanha <strong>"{subCampaign.name}"</strong> terá um novo disparo para{" "}
               <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
               destinatário(s). Os créditos correspondentes serão deduzidos novamente.
             </AlertDialogDescription>
@@ -125,7 +131,7 @@ function FailedSubCampaignResendButton({
               }}
               disabled={sending}
             >
-              {sending ? "Reenviando..." : "Sim, reenviar"}
+              {sending ? pendingLabel : isFailed ? "Sim, reenviar" : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -154,14 +160,18 @@ function SubCampaignActionsMenu({
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
-  const canRetryByStatus = subCampaign.status === "failed"
+  const canRetryByStatus =
+    subCampaign.status === "failed" || subCampaign.status === "sent"
+  const isFailed = subCampaign.status === "failed"
+  const actionLabel = isFailed ? "Reenviar" : "Disparar"
+  const pendingLabel = isFailed ? "Reenviando..." : "Disparando..."
   const isSendingThis = sendingId === subCampaign.id
   const canRetry =
     canRetryByStatus && canSendCampaign && !sendBlockReason && !isSendingThis
   const retryDisabledReason =
     sendBlockReason ??
     (!canRetryByStatus
-      ? "Reenvio disponível apenas para sub-campanhas com falha"
+      ? "Disparo disponível apenas para sub-campanhas enviadas ou com falha"
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
@@ -222,7 +232,7 @@ function SubCampaignActionsMenu({
                 <span className="w-full">
                   <DropdownMenuItem disabled className="pointer-events-none w-full">
                     {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
-                    {isSendingThis ? "Reenviando..." : "Reenviar"}
+                    {isSendingThis ? pendingLabel : actionLabel}
                   </DropdownMenuItem>
                 </span>
               </TooltipTrigger>
@@ -234,7 +244,7 @@ function SubCampaignActionsMenu({
               disabled={!canRetry}
             >
               {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
-              {isSendingThis ? "Reenviando..." : "Reenviar"}
+              {isSendingThis ? pendingLabel : actionLabel}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -243,9 +253,11 @@ function SubCampaignActionsMenu({
       <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reenviar sub-campanha?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isFailed ? "Reenviar sub-campanha?" : "Disparar sub-campanha novamente?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A sub-campanha <strong>"{subCampaign.name}"</strong> será reenviada para{" "}
+              A sub-campanha <strong>"{subCampaign.name}"</strong> terá um novo disparo para{" "}
               <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
               destinatário(s). Os créditos correspondentes serão deduzidos novamente.
             </AlertDialogDescription>
@@ -259,7 +271,7 @@ function SubCampaignActionsMenu({
               }}
               disabled={sending}
             >
-              {sending ? "Reenviando..." : "Sim, reenviar"}
+              {sending ? pendingLabel : isFailed ? "Sim, reenviar" : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -275,15 +287,19 @@ export function CampaignDetailSheet({
 }) {
   const { tz } = useTimezone()
   const { isBeta } = useFeatureAccess()
+  const { readOnly } = useStudioEmailRuntime()
   const {
     detailCampaign,
     closeDetail,
     sendingId,
     credits,
     openEditWizard,
+    openDuplicateWizard,
     openEditById,
     handleSend,
   } = useCampanhasContext()
+  const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
+  const [leafSending, setLeafSending] = useState(false)
   const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const canSendCampaign =
     !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
@@ -295,12 +311,40 @@ export function CampaignDetailSheet({
     detailCampaign &&
     !isParentCampaign &&
     ["draft", "scheduled"].includes(detailCampaign.status)
+  const canSendByStatus =
+    !isParentCampaign &&
+    detailCampaign != null &&
+    (detailCampaign.status === "draft" ||
+      detailCampaign.status === "scheduled" ||
+      detailCampaign.status === "sent" ||
+      detailCampaign.status === "failed")
+  const leafSendBlockReason = detailCampaign
+    ? getCampaignSendBlockReason({
+        campaign: detailCampaign,
+        credits,
+        isCampaignsBetaAccess,
+      })
+    : undefined
+  const canSendLeaf =
+    !readOnly && canSendByStatus && canSendCampaign && !leafSendBlockReason && sendingId !== detailCampaign?.id
+
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
       campaign: subCampaign,
       credits,
       isCampaignsBetaAccess,
     })
+  }
+
+  async function handleLeafSendConfirm() {
+    if (!detailCampaign) return
+    setLeafSending(true)
+    try {
+      await handleSend(detailCampaign.id)
+    } finally {
+      setLeafSending(false)
+      setLeafSendConfirmOpen(false)
+    }
   }
 
   return (
@@ -381,7 +425,7 @@ export function CampaignDetailSheet({
                             detailCampaign.subCampaigns.filter((sub) => sub.status === "failed")
                               .length
                           }{" "}
-                          parte(s) com falha — use "Reenviar" nas ações de cada parte
+                          parte(s) com falha — use "Reenviar"/"Disparar" nas ações de cada parte
                         </span>
                       ) : null}
                     </div>
@@ -400,9 +444,10 @@ export function CampaignDetailSheet({
                         <TableBody>
                           {detailCampaign.subCampaigns.map((sub) => {
                             const subSendBlockReason = getSendBlockReason(sub)
-                            const canShowResend = sub.status === "failed"
+                            const canShowResend =
+                              sub.status === "failed" || sub.status === "sent"
                             const canResendNow =
-                              canShowResend && canSendCampaign && !subSendBlockReason
+                              canShowResend && canSendCampaign && !subSendBlockReason && !readOnly
 
                             return (
                             <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
@@ -438,7 +483,7 @@ export function CampaignDetailSheet({
                                 <div className="flex items-center justify-end gap-1">
                                   {canShowResend ? (
                                     canResendNow ? (
-                                      <FailedSubCampaignResendButton
+                                      <SubCampaignDispatchButton
                                         subCampaign={sub}
                                         sendingId={sendingId}
                                         handleSend={handleSend}
@@ -454,7 +499,7 @@ export function CampaignDetailSheet({
                                               disabled
                                             >
                                               <Send data-icon="inline-start" />
-                                              Reenviar
+                                              {sub.status === "failed" ? "Reenviar" : "Disparar"}
                                             </Button>
                                           </span>
                                         </TooltipTrigger>
@@ -521,11 +566,43 @@ export function CampaignDetailSheet({
                 <Button variant="outline" onClick={closeDetail}>
                   Fechar
                 </Button>
-                {canEdit ? (
+                {!readOnly ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void openDuplicateWizard(detailCampaign)}
+                  >
+                    <Copy data-icon="inline-start" />
+                    Duplicar
+                  </Button>
+                ) : null}
+                {canEdit && !readOnly ? (
                   <Button onClick={() => void openEditWizard(detailCampaign)}>
                     <Pencil data-icon="inline-start" />
                     Editar
                   </Button>
+                ) : null}
+                {canSendByStatus && !readOnly ? (
+                  canSendLeaf ? (
+                    <Button onClick={() => setLeafSendConfirmOpen(true)}>
+                      <Send data-icon="inline-start" />
+                      Disparar
+                    </Button>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button disabled>
+                            <Send data-icon="inline-start" />
+                            Disparar
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-sm">
+                        {leafSendBlockReason ??
+                          "Ative um plano em Assinaturas para disparar campanhas"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )
                 ) : null}
                 <Button
                   variant="secondary"
@@ -555,6 +632,33 @@ export function CampaignDetailSheet({
                   Analytics
                 </Button>
               </SheetFooter>
+
+              <AlertDialog open={leafSendConfirmOpen} onOpenChange={setLeafSendConfirmOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Disparar campanha?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      A campanha <strong>"{detailCampaign.name}"</strong> terá um novo disparo para{" "}
+                      <strong>{detailCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                      destinatário(s). Campanhas já enviadas ou com falha geram um novo dispatch
+                      (não alteram o histórico anterior). Os créditos correspondentes serão
+                      deduzidos.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={leafSending}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(event) => {
+                        event.preventDefault()
+                        void handleLeafSendConfirm()
+                      }}
+                      disabled={leafSending}
+                    >
+                      {leafSending ? "Disparando..." : "Sim, disparar"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
           </div>
         ) : null}
       </SheetContent>

@@ -57,6 +57,12 @@ export type StudioEmailUpdateCampaignData = {
   listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
   scheduledAt?: string | null
+  subCampaignUpdates?: Array<{
+    id: string
+    name?: string
+    scheduledAt?: string | null
+    contactListId?: string
+  }>
 }
 
 export type StudioEmailListCampaignsResult = {

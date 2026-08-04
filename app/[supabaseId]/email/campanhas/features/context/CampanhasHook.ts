@@ -25,8 +25,61 @@ import type { CampaignWritePayload } from "../services/CampanhasService"
 
 const EDITABLE_STATUSES = new Set(["draft", "scheduled"])
 
+type WizardSubCampaignSchedule = { index: number; scheduledAt: Date }
+
 function statusKey(statuses: string[]): string {
   return [...statuses].sort().join(",")
+}
+
+function schedulesEqual(
+  a: WizardSubCampaignSchedule[],
+  b: WizardSubCampaignSchedule[]
+): boolean {
+  if (a.length !== b.length) return false
+  return a.every((entry, i) => {
+    const other = b[i]
+    return (
+      entry.index === other.index &&
+      entry.scheduledAt.getTime() === other.scheduledAt.getTime()
+    )
+  })
+}
+
+/** Preserva datas existentes e inicializa índices faltantes a partir do preview/fallback. */
+function syncSubCampaignSchedules(params: {
+  plan: CampaignPreviewPlan
+  prev: WizardSubCampaignSchedule[]
+  fallbackStart?: Date
+  intervalDays?: number
+}): WizardSubCampaignSchedule[] {
+  if (params.plan.subCampaigns.length <= 1) return []
+
+  const byIndex = new Map(params.prev.map((entry) => [entry.index, entry.scheduledAt]))
+  const next: WizardSubCampaignSchedule[] = []
+
+  for (const sub of params.plan.subCampaigns) {
+    const existing = byIndex.get(sub.index)
+    if (existing) {
+      next.push({ index: sub.index, scheduledAt: existing })
+      continue
+    }
+
+    if (sub.scheduledAt) {
+      const parsed = new Date(sub.scheduledAt)
+      if (!Number.isNaN(parsed.getTime())) {
+        next.push({ index: sub.index, scheduledAt: parsed })
+        continue
+      }
+    }
+
+    if (params.fallbackStart && params.intervalDays && params.intervalDays >= 1) {
+      const seeded = new Date(params.fallbackStart)
+      seeded.setDate(seeded.getDate() + (sub.index - 1) * params.intervalDays)
+      next.push({ index: sub.index, scheduledAt: seeded })
+    }
+  }
+
+  return next
 }
 
 function buildCampaignPayload(params: {
@@ -90,6 +143,7 @@ export type CampanhasActions = {
   clearFilters: () => void
   openWizard: () => void
   openEditWizard: (campaign: Campaign) => void
+  openDuplicateWizard: (campaign: Campaign) => void
   closeWizard: () => void
   setWizardActiveTab: (tab: WizardTabId) => void
   setWizardName: (v: string) => void
@@ -104,6 +158,7 @@ export type CampanhasActions = {
   setWizardScheduleIntervalDays: (v: number) => void
   setWizardSubCampaignSchedule: (index: number, date: Date | undefined) => void
   setWizardSubCampaignListId: (index: number, listId: string | undefined) => void
+  setWizardSubCampaignName: (index: number, name: string) => void
   refreshWizardPreviewPlan: () => Promise<void>
   handleSaveCampaign: () => Promise<void>
   handleMaterializeRadarSegment: () => Promise<void>
@@ -146,6 +201,7 @@ export type CampanhasHookReturn = {
   wizardScheduleIntervalDays: number
   wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
   wizardSubCampaignListIds: Record<number, string>
+  wizardSubCampaignNames: Record<number, string>
   wizardPreviewPlan: CampaignPreviewPlan | null
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
@@ -201,11 +257,18 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "radar_segment">("contact_list")
   const [wizardRadarSegmentSlug, setWizardRadarSegmentSlug] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
-  const [wizardUniformSchedule, setWizardUniformSchedule] = useState(true)
+  const [wizardUniformSchedule, setWizardUniformScheduleState] = useState(true)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
-  const [wizardSubCampaignSchedules, setWizardSubCampaignSchedules] = useState<Array<{ index: number; scheduledAt: Date }>>([])
+  const [wizardSubCampaignSchedules, setWizardSubCampaignSchedules] = useState<WizardSubCampaignSchedule[]>([])
   const [wizardSubCampaignListIds, setWizardSubCampaignListIds] = useState<Record<number, string>>({})
+  const [wizardSubCampaignNames, setWizardSubCampaignNames] = useState<Record<number, string>>({})
   const [wizardPreviewPlan, setWizardPreviewPlan] = useState<CampaignPreviewPlan | null>(null)
+  const wizardPreviewPlanRef = useRef<CampaignPreviewPlan | null>(null)
+  const wizardScheduledAtRef = useRef<Date | undefined>(undefined)
+  const wizardScheduleIntervalDaysRef = useRef(1)
+  wizardPreviewPlanRef.current = wizardPreviewPlan
+  wizardScheduledAtRef.current = wizardScheduledAt
+  wizardScheduleIntervalDaysRef.current = wizardScheduleIntervalDays
   const [wizardPreviewLoading, setWizardPreviewLoading] = useState(false)
   const [wizardLinkedForm, setWizardLinkedForm] = useState<{ id: string; name: string; publicId: string } | null>(null)
   const [wizardSaving, setWizardSaving] = useState(false)
@@ -581,6 +644,18 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setSendingId(existingSending.id)
   }, [campaigns, sendingId])
 
+  // Detecta formulário vinculado ao trocar o template no wizard (mesma lógica do getById)
+  useEffect(() => {
+    if (!wizardOpen) return
+    if (!wizardTemplateId) {
+      setWizardLinkedForm(null)
+      return
+    }
+    const selected = templates.find((template) => template.id === wizardTemplateId)
+    if (!selected) return
+    setWizardLinkedForm(selected.linkedForm ?? null)
+  }, [wizardOpen, wizardTemplateId, templates])
+
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)
     console.info("[useCampanhas] handleCancel", id)
@@ -646,10 +721,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource("contact_list")
     setWizardRadarSegmentSlug("")
     setWizardScheduledAt(undefined)
-    setWizardUniformSchedule(true)
+    setWizardUniformScheduleState(true)
     setWizardScheduleIntervalDays(1)
     setWizardSubCampaignSchedules([])
     setWizardSubCampaignListIds({})
+    setWizardSubCampaignNames({})
     setWizardPreviewPlan(null)
     setWizardLinkedForm(null)
     setWizardHydrating(false)
@@ -726,7 +802,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     })
   }, [])
 
-  const hydrateWizardFromCampaign = useCallback((campaign: Campaign) => {
+  const hydrateWizardFromCampaign = useCallback((
+    campaign: Campaign,
+    options?: { mode?: "create" | "edit"; namePrefix?: string }
+  ) => {
+    const mode = options?.mode ?? "edit"
     const childListIds = Array.from(
       new Set(
         (campaign.subCampaigns ?? [])
@@ -797,16 +877,27 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
 
     const subListIds: Record<number, string> = {}
+    const subNames: Record<number, string> = {}
     for (const sub of campaign.subCampaigns ?? []) {
       if (sub.subCampaignIndex && sub.contactListId) {
         subListIds[sub.subCampaignIndex] = sub.contactListId
       }
+      if (sub.subCampaignIndex && sub.name.trim()) {
+        subNames[sub.subCampaignIndex] = sub.name
+      }
     }
 
-    setWizardMode("edit")
-    setWizardCampaignId(campaign.id)
+    const baseName = (campaign.name ?? "").trim()
+    const prefixedName =
+      options?.namePrefix && baseName && !baseName.startsWith(options.namePrefix)
+        ? `${options.namePrefix}${baseName}`
+        : baseName
+
+    setWizardMode(mode)
+    // Create/duplicate: never bind an existing id — close without save must not persist.
+    setWizardCampaignId(mode === "edit" ? campaign.id : undefined)
     setWizardActiveTab("geral")
-    setWizardName(campaign.name ?? "")
+    setWizardName(prefixedName)
     setWizardDescriptionState(campaign.description ?? "")
     setWizardTemplateId(templateId)
     setWizardContactListIds(uniqueListIds)
@@ -816,10 +907,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource(campaign.radarSegmentSlug ? "radar_segment" : "contact_list")
     setWizardRadarSegmentSlug(campaign.radarSegmentSlug ?? "")
     setWizardScheduledAt(firstScheduled)
-    setWizardUniformSchedule(uniform)
+    setWizardUniformScheduleState(uniform)
     setWizardScheduleIntervalDays(intervalDays)
     setWizardSubCampaignSchedules(uniform ? [] : subSchedules)
     setWizardSubCampaignListIds(subListIds)
+    setWizardSubCampaignNames(subNames)
     setWizardLinkedForm(campaign.linkedForm ?? null)
     ensureWizardOptionsFromCampaign(campaign)
   }, [ensureWizardOptionsFromCampaign])
@@ -835,6 +927,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [loadWizardOptions, resetWizardState])
 
   const openEditWizard = useCallback(async (campaign: Campaign) => {
+    // Imutabilidade: apenas draft|scheduled — sent/failed usam disparo (novo dispatch) ou Duplicar.
     if (!EDITABLE_STATUSES.has(campaign.status)) {
       toast.error("Campanha não pode ser editada no status atual")
       return
@@ -842,16 +935,36 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     resetWizardState()
     setWizardHydrating(true)
     // Preenche com o que já temos enquanto carrega o detalhe completo
-    hydrateWizardFromCampaign(campaign)
+    hydrateWizardFromCampaign(campaign, { mode: "edit" })
     setWizardOpen(true)
     setDetailCampaign(null)
     try {
       await loadWizardOptions()
       const detailed = await service.getById(supabaseId, activeTeamId, campaign.id)
-      hydrateWizardFromCampaign(detailed)
+      hydrateWizardFromCampaign(detailed, { mode: "edit" })
     } catch (err) {
       console.error("[useCampanhas] openEditWizard error", err)
       toast.error("Erro ao carregar detalhes da campanha para edição")
+    } finally {
+      setWizardHydrating(false)
+    }
+  }, [activeTeamId, hydrateWizardFromCampaign, loadWizardOptions, resetWizardState, service, supabaseId])
+
+  const openDuplicateWizard = useCallback(async (campaign: Campaign) => {
+    resetWizardState()
+    setWizardHydrating(true)
+    hydrateWizardFromCampaign(campaign, { mode: "create", namePrefix: "Cópia de " })
+    setWizardOpen(true)
+    setDetailCampaign(null)
+    try {
+      await loadWizardOptions()
+      const detailed = await service.getById(supabaseId, activeTeamId, campaign.id)
+      hydrateWizardFromCampaign(detailed, { mode: "create", namePrefix: "Cópia de " })
+    } catch (err) {
+      console.error("[useCampanhas] openDuplicateWizard error", err)
+      toast.error("Erro ao carregar detalhes da campanha para duplicar")
+      setWizardOpen(false)
+      resetWizardState()
     } finally {
       setWizardHydrating(false)
     }
@@ -861,7 +974,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     if (wizardSaving) return
     setWizardOpen(false)
     setWizardHydrating(false)
-  }, [wizardSaving])
+    // Descarta estado de create/duplicar sem persistir rascunho órfão.
+    resetWizardState()
+  }, [resetWizardState, wizardSaving])
 
   const toggleWizardContactListId = useCallback((listId: string, selected: boolean) => {
     setWizardContactListIds((prev) => {
@@ -869,6 +984,27 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       const next = prev.filter((id) => id !== listId)
       if (next.length <= 1) setWizardListStrategy("single")
       return next
+    })
+  }, [])
+
+  const setWizardUniformSchedule = useCallback((uniform: boolean) => {
+    setWizardUniformScheduleState(uniform)
+    if (uniform) {
+      setWizardSubCampaignSchedules([])
+      return
+    }
+
+    const plan = wizardPreviewPlanRef.current
+    if (!plan || plan.subCampaigns.length <= 1) return
+
+    setWizardSubCampaignSchedules((prev) => {
+      const synced = syncSubCampaignSchedules({
+        plan,
+        prev,
+        fallbackStart: wizardScheduledAtRef.current,
+        intervalDays: wizardScheduleIntervalDaysRef.current,
+      })
+      return schedulesEqual(prev, synced) ? prev : synced
     })
   }, [])
 
@@ -888,6 +1024,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       }
       return { ...prev, [index]: listId }
     })
+  }, [])
+
+  const setWizardSubCampaignName = useCallback((index: number, name: string) => {
+    setWizardSubCampaignNames((prev) => ({ ...prev, [index]: name }))
   }, [])
 
   const refreshWizardPreviewPlan = useCallback(async () => {
@@ -920,6 +1060,18 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       })
       const plan = await service.previewPlan(supabaseId, activeTeamId, payload)
       setWizardPreviewPlan(plan)
+
+      if (!wizardUniformSchedule && plan.subCampaigns.length > 1) {
+        setWizardSubCampaignSchedules((prev) => {
+          const synced = syncSubCampaignSchedules({
+            plan,
+            prev,
+            fallbackStart: wizardScheduledAt,
+            intervalDays: wizardScheduleIntervalDays,
+          })
+          return schedulesEqual(prev, synced) ? prev : synced
+        })
+      }
     } catch (err) {
       console.error("[useCampanhas] refreshWizardPreviewPlan error", err)
       setWizardPreviewPlan(null)
@@ -969,9 +1121,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
               if (!child) return null
               const customSchedule = wizardSubCampaignSchedules.find((entry) => entry.index === sub.index)
               const contactListOverride = wizardSubCampaignListIds[sub.index]
+              const overriddenName = wizardSubCampaignNames[sub.index]
+              const resolvedName = (overriddenName ?? sub.name).trim() || sub.name
               return {
                 id: child.id,
-                name: sub.name,
+                name: resolvedName,
                 scheduledAt: customSchedule
                   ? customSchedule.scheduledAt.toISOString()
                   : sub.scheduledAt ?? null,
@@ -989,6 +1143,31 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         toast.success("Campanha atualizada")
       } else {
         const created = await service.create(supabaseId, activeTeamId, payload)
+        const hasNameOverrides = Object.keys(wizardSubCampaignNames).length > 0
+        if (hasNameOverrides) {
+          let children = created.subCampaigns
+          if (!children?.length && (created.subCampaignCount ?? 0) > 0) {
+            const detailed = await service.getById(supabaseId, activeTeamId, created.id)
+            children = detailed.subCampaigns
+          }
+          const nameUpdates =
+            (children ?? [])
+              .map((child) => {
+                const index = child.subCampaignIndex
+                if (index == null) return null
+                const override = wizardSubCampaignNames[index]
+                if (override === undefined) return null
+                const resolvedName = override.trim() || child.name
+                if (resolvedName === child.name) return null
+                return { id: child.id, name: resolvedName }
+              })
+              .filter((entry): entry is { id: string; name: string } => Boolean(entry))
+          if (nameUpdates.length > 0) {
+            await service.update(supabaseId, activeTeamId, created.id, {
+              subCampaignUpdates: nameUpdates,
+            })
+          }
+        }
         const subCount = created.subCampaignCount ?? created.subCampaigns?.length ?? 0
         toast.success(
           subCount > 0
@@ -998,6 +1177,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       }
 
       setWizardOpen(false)
+      resetWizardState()
       lastCampaignsKeyRef.current = ""
       void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
@@ -1012,12 +1192,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     dateFrom,
     dateTo,
     detailCampaign,
-    dateFrom,
-    dateTo,
     fetchCampaigns,
     nameFilter,
     page,
     pageSize,
+    resetWizardState,
     service,
     statusFilter,
     supabaseId,
@@ -1034,6 +1213,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardScheduledAt,
     wizardSubCampaignSchedules,
     wizardSubCampaignListIds,
+    wizardSubCampaignNames,
     wizardTemplateId,
     wizardUniformSchedule,
   ])
@@ -1126,6 +1306,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardScheduleIntervalDays,
     wizardSubCampaignSchedules,
     wizardSubCampaignListIds,
+    wizardSubCampaignNames,
     wizardPreviewPlan,
     wizardPreviewLoading,
     wizardLinkedForm,
@@ -1149,6 +1330,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     clearFilters,
     openWizard,
     openEditWizard,
+    openDuplicateWizard,
     closeWizard,
     setWizardActiveTab,
     setWizardName,
@@ -1163,6 +1345,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardScheduleIntervalDays,
     setWizardSubCampaignSchedule,
     setWizardSubCampaignListId,
+    setWizardSubCampaignName,
     refreshWizardPreviewPlan,
     handleSaveCampaign,
     handleMaterializeRadarSegment,

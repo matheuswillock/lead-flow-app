@@ -85,6 +85,7 @@ export type Template = {
   subject: string
   status?: 'draft' | 'published'
   isCurrentPublished?: boolean
+  linkedForm?: { id: string; name: string; publicId: string } | null
 }
 
 export type ContactList = {
@@ -189,6 +190,7 @@ export type CampanhasState = {
   wizardScheduleIntervalDays: number
   wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
   wizardSubCampaignListIds: Record<number, string>
+  wizardSubCampaignNames: Record<number, string>
   wizardPreviewPlan: CampaignPreviewPlan | null
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
