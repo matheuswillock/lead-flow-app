@@ -14,35 +14,35 @@ export const campaignWizardTemplateSchema = z.object({
 
 export const campaignWizardAudienciaSchema = z
   .object({
-    recipientSource: z.enum(["contact_list", "radar_segment"]),
     contactListIds: z.array(z.string().uuid()).default([]),
     listStrategy: z.enum(["single", "merge", "per_list"]).optional(),
     radarSegmentSlug: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.recipientSource === "contact_list") {
-      if (data.contactListIds.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Selecione ao menos uma lista de contatos",
-          path: ["contactListIds"],
-        })
-      }
-      if (data.contactListIds.length > 1 && !data.listStrategy) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Defina como as listas serão usadas",
-          path: ["listStrategy"],
-        })
-      }
-      return
-    }
+    const hasLists = data.contactListIds.length > 0
+    const hasRadar = Boolean(data.radarSegmentSlug?.trim())
 
-    if (!data.radarSegmentSlug?.trim()) {
+    if (!hasLists && !hasRadar) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Selecione um segmento Radar",
-        path: ["radarSegmentSlug"],
+        message: "Selecione ao menos uma lista de contatos ou um segmento Radar",
+        path: ["contactListIds"],
+      })
+    }
+
+    if (hasLists && data.contactListIds.length > 1 && !data.listStrategy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Defina como as listas serão usadas",
+        path: ["listStrategy"],
+      })
+    }
+
+    if (hasLists && hasRadar && data.listStrategy === "per_list") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Estratégia por lista não é compatível com segmento Radar. Use juntar listas",
+        path: ["listStrategy"],
       })
     }
   })
@@ -66,13 +66,15 @@ export const campaignWizardSubCampaignsSchema = z.object({
 
 export function buildCampaignWizardSubmitSchema(params: {
   recipientCount: number
-  recipientSource: "contact_list" | "radar_segment"
+  hasRadarSegment: boolean
+  hasContactLists: boolean
   needsSplit: boolean
   uniformSchedule: boolean
   subCampaignCount: number
 }) {
-  const radarExceedsLimit =
-    params.recipientSource === "radar_segment" &&
+  const radarOnlyExceedsLimit =
+    params.hasRadarSegment &&
+    !params.hasContactLists &&
     params.recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB
 
   return z
@@ -80,10 +82,11 @@ export function buildCampaignWizardSubmitSchema(params: {
       name: z.string().trim().min(1, "Nome da campanha é obrigatório"),
       description: z.string().max(500).optional(),
       templateId: z.string().uuid("Selecione um template válido"),
-      recipientSource: z.enum(["contact_list", "radar_segment"]),
       contactListIds: z.array(z.string().uuid()).default([]),
       listStrategy: z.enum(["single", "merge", "per_list"]).optional(),
       radarSegmentSlug: z.string().optional(),
+      saveAsRadarSegment: z.boolean().optional(),
+      saveAsRadarSegmentName: z.string().max(120).optional(),
       scheduledAt: z.date().optional(),
       uniformSchedule: z.boolean().default(true),
       scheduleIntervalDays: z.number().int().optional(),
@@ -98,7 +101,6 @@ export function buildCampaignWizardSubmitSchema(params: {
     })
     .superRefine((data, ctx) => {
       const audiencia = campaignWizardAudienciaSchema.safeParse({
-        recipientSource: data.recipientSource,
         contactListIds: data.contactListIds,
         listStrategy: data.listStrategy,
         radarSegmentSlug: data.radarSegmentSlug,
@@ -113,12 +115,31 @@ export function buildCampaignWizardSubmitSchema(params: {
         }
       }
 
-      if (radarExceedsLimit) {
+      if (radarOnlyExceedsLimit) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Crie uma lista de contatos a partir do segmento`,
+          message: `Audiência excede o limite de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos`,
           path: ["radarSegmentSlug"],
         })
+      }
+
+      if (data.saveAsRadarSegment) {
+        const slug = data.radarSegmentSlug?.trim() ?? ""
+        if (!slug.startsWith("custom:")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              "Salvar como segmento só se aplica a segmentos custom com regras DSL (não a listas ou segmentos do sistema)",
+            path: ["saveAsRadarSegment"],
+          })
+        }
+        if (!data.saveAsRadarSegmentName?.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Informe o nome do novo segmento",
+            path: ["saveAsRadarSegmentName"],
+          })
+        }
       }
 
       const needsScheduling = params.needsSplit || params.subCampaignCount > 1

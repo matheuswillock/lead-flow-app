@@ -34,6 +34,22 @@ describe("campaign-plan", () => {
     ])
   })
 
+  it("mergeListAndSegmentContacts une listas e segmento com dedupe", () => {
+    const combined = mergeListAndSegmentContacts({
+      listContacts: [
+        { contactId: "c1", email: "a@test.com" },
+        { contactId: "c2", email: "b@test.com" },
+      ],
+      segmentRecipients: [
+        { email: "A@test.com", name: "A" },
+        { email: "c@test.com", name: "C" },
+      ],
+    })
+    expect(combined).toHaveLength(3)
+    expect(combined.find((row) => row.email === "a@test.com")?.contactId).toBe("c1")
+    expect(combined.find((row) => row.email === "c@test.com")?.contactId).toBeNull()
+  })
+
   it("per_list cria uma sub-campanha por lista", () => {
     const plan = buildCampaignPlan({
       campaignName: "Campanha",
