@@ -1,8 +1,12 @@
-export type TransferTargetCloserRef = {
+export type TransferTargetMemberRef = {
   profileId: string;
   fullName: string | null;
   email: string;
+  googleCalendarConnected?: boolean;
 };
+
+/** @deprecated Prefer TransferTargetMemberRef */
+export type TransferTargetCloserRef = TransferTargetMemberRef;
 
 export type TransferTargetItem = {
   teamId: string;
@@ -11,7 +15,8 @@ export type TransferTargetItem = {
   masterId?: string;
   masterName?: string | null;
   masterEmail?: string;
-  closers?: TransferTargetCloserRef[];
+  closers?: TransferTargetMemberRef[];
+  sdrs?: TransferTargetMemberRef[];
 };
 
 export type ListTransferTargetsResult = {

@@ -44,6 +44,7 @@ import { getChatKind } from "../utils/whatsappDisplay"
 import { shouldShowOutboundOperatorName } from "../utils/shouldShowOutboundOperatorName"
 import { ForwardMessageDialog } from "./ForwardMessageDialog"
 import { WhatsAppAudioPlayer } from "./WhatsAppAudioPlayer"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface MessageBubbleProps {
   message: WhatsAppMessage
@@ -155,7 +156,7 @@ function MessageBubbleInner({ message, previousMessage = null }: MessageBubblePr
     !message.id.startsWith("optimistic-") &&
     !mediaUnavailable &&
     !mediaProcessing
-      ? `/api/v1/teams/${encodeURIComponent(activeTeamId)}/whatsapp/messages/${encodeURIComponent(message.id)}/media`
+      ? `${API_CLIENT_BASE}/teams/${encodeURIComponent(activeTeamId)}/whatsapp/messages/${encodeURIComponent(message.id)}/media`
       : null
 
   const mappedPrevious = previousMessage ? mapWhatsAppMessageToMessaging(previousMessage) : null

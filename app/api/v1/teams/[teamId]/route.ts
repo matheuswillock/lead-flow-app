@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import {
   getTeamAccess,
@@ -28,23 +28,6 @@ const updateTeamSchema = z
 const deleteTeamSchema = z.object({
   password: z.string().min(1, "Senha é obrigatória"),
 });
-
-function createSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    console.error("[Supabase Admin] Credenciais não configuradas");
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
 
 export async function PATCH(
   request: NextRequest,

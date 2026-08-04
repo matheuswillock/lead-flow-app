@@ -17,15 +17,17 @@ import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
 import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { useOptionalFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 export function ContatosContainer() {
-  const { readOnly } = useStudioEmailRuntime()
+  const { readOnly, hideRadarSegments } = useStudioEmailRuntime()
   const { selectedListId, lists, supabaseId, handleSelectList, handleSetListSegment } = useContactsContext()
-  const { hasAccess } = useFeatureAccess()
-  const hasRadar = hasAccess(FEATURE_SLUGS.RADAR)
+  const featureAccess = useOptionalFeatureAccess()
+  const hasRadar = hideRadarSegments
+    ? false
+    : Boolean(featureAccess?.hasAccess(FEATURE_SLUGS.RADAR))
 
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null
 

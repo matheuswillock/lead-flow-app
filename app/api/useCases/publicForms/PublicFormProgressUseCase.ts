@@ -11,6 +11,7 @@ import {
   extractLeadDataFromSnapshot,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
+import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -79,18 +80,31 @@ export class PublicFormProgressUseCase {
     })
 
     for (const answer of visibleAnswers) {
+      const eventKey = `${input.visitorSessionId}:progress:${answer.questionId}`
       await publicFormsRepository.upsertMetricEvent({
         formId: snapshot.formId,
         publicationId: current.publicationId,
         questionId: answer.questionId,
         visitorSessionId: input.visitorSessionId,
         eventType: "question_answered",
-        eventKey: `${input.visitorSessionId}:progress:${answer.questionId}`,
+        eventKey,
         origin: {
           ...(origin as Record<string, unknown>),
           answerValue: answer.value,
         } as Prisma.InputJsonValue,
       })
+      if (form.teamId) {
+        syncPublicFormMetricToRadarInline({
+          teamId: form.teamId,
+          eventType: "question_answered",
+          eventKey,
+          visitorSessionId: input.visitorSessionId,
+          formId: snapshot.formId,
+          publicationId: current.publicationId,
+          questionId: answer.questionId,
+          origin,
+        })
+      }
     }
 
     return new Output(

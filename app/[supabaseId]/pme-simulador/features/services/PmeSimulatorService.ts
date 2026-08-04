@@ -2,10 +2,11 @@ import type { AgeRangeCount } from "@/lib/ageRanges";
 import type { Output } from "@/lib/output";
 import type { PmeSimulationOutput, PmeSimulatorCatalog } from "../context/PmeSimulatorTypes";
 import type { IPmeSimulatorService } from "./IPmeSimulatorService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class PmeSimulatorService implements IPmeSimulatorService {
   async getCatalog(input: { supabaseId: string; teamId: string }): Promise<PmeSimulatorCatalog> {
-    const response = await fetch("/api/v1/pme-plan-simulator", {
+    const response = await fetch(`${API_CLIENT_BASE}/pme-plan-simulator`, {
       method: "GET",
       headers: {
         "x-supabase-user-id": input.supabaseId,
@@ -28,7 +29,7 @@ class PmeSimulatorService implements IPmeSimulatorService {
     ages: number[];
     hospitalId: "nenhum" | "sirio" | "einstein" | "rededor";
   }): Promise<PmeSimulationOutput> {
-    const response = await fetch("/api/v1/pme-plan-simulator", {
+    const response = await fetch(`${API_CLIENT_BASE}/pme-plan-simulator`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -55,7 +56,7 @@ class PmeSimulatorService implements IPmeSimulatorService {
     ageRangeCounts: AgeRangeCount[];
     hospitalId: "nenhum" | "sirio" | "einstein" | "rededor";
   }): Promise<PmeSimulationOutput> {
-    const response = await fetch("/api/v1/pme-plan-simulator", {
+    const response = await fetch(`${API_CLIENT_BASE}/pme-plan-simulator`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

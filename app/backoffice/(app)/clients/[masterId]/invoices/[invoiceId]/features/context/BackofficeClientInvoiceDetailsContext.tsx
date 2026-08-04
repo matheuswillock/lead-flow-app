@@ -17,10 +17,12 @@ interface BackofficeClientInvoiceDetailsContextValue {
   isLoading: boolean
   isSendingNotification: boolean
   isUpdatingInvoice: boolean
+  isDeletingInvoice: boolean
   error: string | null
   reload: () => Promise<void>
   sendStatusNotification: () => Promise<string>
   updateInvoice: (data: { value: number; dueDate: string }) => Promise<void>
+  deleteInvoice: () => Promise<string>
 }
 
 const BackofficeClientInvoiceDetailsContext = createContext<
@@ -44,6 +46,7 @@ export function BackofficeClientInvoiceDetailsProvider({
   const [isLoading, setIsLoading] = useState(true)
   const [isSendingNotification, setIsSendingNotification] = useState(false)
   const [isUpdatingInvoice, setIsUpdatingInvoice] = useState(false)
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
@@ -101,6 +104,20 @@ export function BackofficeClientInvoiceDetailsProvider({
     [invoiceId, isUpdatingInvoice, masterId, service]
   )
 
+  const deleteInvoice = useCallback(async () => {
+    if (isDeletingInvoice) {
+      return "Remoção de cobrança já em andamento"
+    }
+
+    setIsDeletingInvoice(true)
+    try {
+      const result = await service.deleteInvoice(masterId, invoiceId)
+      return result.message
+    } finally {
+      setIsDeletingInvoice(false)
+    }
+  }, [invoiceId, isDeletingInvoice, masterId, service])
+
   return (
     <BackofficeClientInvoiceDetailsContext.Provider
       value={{
@@ -108,10 +125,12 @@ export function BackofficeClientInvoiceDetailsProvider({
         isLoading,
         isSendingNotification,
         isUpdatingInvoice,
+        isDeletingInvoice,
         error,
         reload: loadInvoice,
         sendStatusNotification,
         updateInvoice,
+        deleteInvoice,
       }}
     >
       {children}

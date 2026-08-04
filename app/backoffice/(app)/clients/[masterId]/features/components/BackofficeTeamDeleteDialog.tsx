@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeTeamDeleteDialogProps {
   open: boolean
@@ -40,7 +41,7 @@ export function BackofficeTeamDeleteDialog({
     setIsDeleting(true)
 
     try {
-      const response = await fetch("/api/v1/backoffice/deletion-requests", {
+      const response = await fetch(`${API_CLIENT_BASE}/backoffice/deletion-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

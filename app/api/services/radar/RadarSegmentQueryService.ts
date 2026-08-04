@@ -1,7 +1,12 @@
 import { subDays } from "date-fns"
 import type { Prisma } from "@prisma/client"
 import { radarRepository, type RadarTeamScope } from "@/app/api/infra/data/repositories/radar/RadarRepository"
-import { LEAD_FIELD_CATALOG, type RadarSegmentCondition, type RadarSegmentRules } from "@/lib/radar/segment-dsl"
+import {
+  LEAD_FIELD_CATALOG,
+  PORTFOLIO_FIELD_CATALOG,
+  type RadarSegmentCondition,
+  type RadarSegmentRules,
+} from "@/lib/radar/segment-dsl"
 import { buildCustomFieldWhereFilter } from "@/lib/leadCustomFields/customFieldQuery"
 import { normalizeRadarDocument, normalizeRadarEmail } from "@/lib/radar/normalization"
 
@@ -67,17 +72,28 @@ function translateConsent(
   return { consents: { some: { channel: condition.channel, status: condition.status } } }
 }
 
-function translateEvent(
+/** Exposto para testes unitários do filtro opcional `metadata.campaignId`. */
+export function translateEvent(
   condition: Extract<RadarSegmentCondition, { kind: "event" }>
 ): Prisma.RadarProfileWhereInput {
   const occurredAtFilter = condition.windowDays
     ? { occurredAt: { gte: subDays(new Date(), condition.windowDays) } }
     : {}
 
-  if (condition.occurrence === "occurred") {
-    return { events: { some: { eventType: condition.eventType, ...occurredAtFilter } } }
+  const campaignFilter = condition.campaignId
+    ? { metadata: { path: ["campaignId"], equals: condition.campaignId } }
+    : {}
+
+  const eventFilter = {
+    eventType: condition.eventType,
+    ...occurredAtFilter,
+    ...campaignFilter,
   }
-  return { events: { none: { eventType: condition.eventType, ...occurredAtFilter } } }
+
+  if (condition.occurrence === "occurred") {
+    return { events: { some: eventFilter } }
+  }
+  return { events: { none: eventFilter } }
 }
 
 async function translateLeadCustomField(
@@ -157,6 +173,85 @@ async function translateLeadField(
   return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
 }
 
+
+function buildPortfolioFieldWhere(
+  condition: Extract<RadarSegmentCondition, { kind: "portfolio_field" }>
+): Prisma.LeadPortfolioWhereInput | Prisma.LeadFinalizedWhereInput {
+  const { fieldKey, operator, value } = condition
+  const entry = PORTFOLIO_FIELD_CATALOG[fieldKey]
+
+  if (operator === "is_empty") return { [fieldKey]: null }
+  if (operator === "not_empty") return { [fieldKey]: { not: null } }
+
+  if (entry.valueKind === "enum") {
+    const enumValue = String(value)
+    if (operator === "neq") return { [fieldKey]: { not: enumValue } }
+    return { [fieldKey]: enumValue }
+  }
+
+  if (entry.valueKind === "number") {
+    const num = Number(value)
+    if (operator === "gt") return { [fieldKey]: { gt: num } }
+    if (operator === "gte") return { [fieldKey]: { gte: num } }
+    if (operator === "lt") return { [fieldKey]: { lt: num } }
+    if (operator === "lte") return { [fieldKey]: { lte: num } }
+    if (operator === "neq") return { [fieldKey]: { not: num } }
+    return { [fieldKey]: { equals: num } }
+  }
+
+  if (entry.valueKind === "date") {
+    if (operator === "within_days") {
+      const now = new Date()
+      return { [fieldKey]: { gte: subDays(now, Number(value)), lte: now } }
+    }
+    const date = new Date(String(value))
+    if (operator === "before") return { [fieldKey]: { lt: date } }
+    return { [fieldKey]: { gt: date } }
+  }
+
+  const str = String(value ?? "")
+  if (operator === "contains") return { [fieldKey]: { contains: str, mode: "insensitive" } }
+  if (operator === "neq") return { [fieldKey]: { not: str } }
+  return { [fieldKey]: str }
+}
+
+/**
+ * D13: resolve donos do contrato (portfolio ou finalized) e projeta nos
+ * perfis via `lead_id` — e, para carteira, também via `portfolio_id`
+ * (clientes criados só na carteira antes do sync de lead_id).
+ */
+async function translatePortfolioField(
+  teamId: string,
+  condition: Extract<RadarSegmentCondition, { kind: "portfolio_field" }>
+): Promise<Prisma.RadarProfileWhereInput> {
+  const entry = PORTFOLIO_FIELD_CATALOG[condition.fieldKey]
+  const fieldWhere = buildPortfolioFieldWhere(condition)
+
+  if (entry.entity === "portfolio") {
+    const { leadIds, portfolioIds } = await radarRepository.findPortfolioProfileIdsByWhere({
+      teamId,
+      ...(fieldWhere as Prisma.LeadPortfolioWhereInput),
+    })
+    const identityOr: Prisma.RadarIdentityWhereInput[] = []
+    if (leadIds.length > 0) {
+      identityOr.push({ type: "lead_id", normalizedValue: { in: leadIds } })
+    }
+    if (portfolioIds.length > 0) {
+      identityOr.push({ type: "portfolio_id", normalizedValue: { in: portfolioIds } })
+    }
+    if (identityOr.length === 0) {
+      return { id: { in: [] } }
+    }
+    return { identities: { some: { OR: identityOr } } }
+  }
+
+  const leadIds = await radarRepository.findFinalizedProfileIdsByWhere({
+    lead: { teamId },
+    ...(fieldWhere as Prisma.LeadFinalizedWhereInput),
+  })
+  return { identities: { some: { type: "lead_id", normalizedValue: { in: leadIds } } } }
+}
+
 async function translateEmailContactList(
   teamId: string,
   condition: Extract<RadarSegmentCondition, { kind: "email_contact_list" }>
@@ -178,6 +273,13 @@ async function translateEmailContactField(
   return { identities: { some: { type: "email_contact_id", normalizedValue: { in: contactIds } } } }
 }
 
+/** Exposto para testes — `in` exclui naturalmente `engagementBand` null. */
+export function translateEngagementBand(
+  condition: Extract<RadarSegmentCondition, { kind: "engagement_band" }>
+): Prisma.RadarProfileWhereInput {
+  return { engagementBand: { in: condition.bands } }
+}
+
 async function translateCondition(
   teamId: string,
   condition: RadarSegmentCondition
@@ -195,10 +297,18 @@ async function translateCondition(
       return translateLeadStatus(teamId, condition)
     case "lead_field":
       return translateLeadField(teamId, condition)
+    case "portfolio_field":
+      return translatePortfolioField(teamId, condition)
     case "email_contact_list":
       return translateEmailContactList(teamId, condition)
     case "email_contact_field":
       return translateEmailContactField(teamId, condition)
+    case "engagement_band":
+      return translateEngagementBand(condition)
+    default: {
+      const _exhaustive: never = condition
+      throw new Error(`Unhandled radar segment condition: ${JSON.stringify(_exhaustive)}`)
+    }
   }
 }
 

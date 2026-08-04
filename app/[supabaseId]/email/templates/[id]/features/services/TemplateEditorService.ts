@@ -2,6 +2,7 @@ import type { Template, TemplateEditorDraft, TemplateTestRequest } from "../cont
 import type { ITemplateEditorService, EmailTemplateAssetUploadResult, XPostEmbedResult } from "./ITemplateEditorService";
 import type { EmailTemplateAssetItem } from "@/lib/email/email-template-assets";
 import { ApiRequestError } from "@/lib/http/api-request-error";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type ApiOutput<T> = {
   isValid: boolean;
@@ -11,10 +12,10 @@ type ApiOutput<T> = {
 };
 
 class TemplateEditorService implements ITemplateEditorService {
-  private readonly baseUrl = "/api/v1/email/templates";
-  private readonly assetsUrl = "/api/v1/email/templates/assets";
-  private readonly xPostEmbedUrl = "/api/v1/email/templates/embeds/x-post";
-  private readonly settingsUrl = "/api/v1/email/settings";
+  private readonly baseUrl = `${API_CLIENT_BASE}/email/templates`;
+  private readonly assetsUrl = `${API_CLIENT_BASE}/email/templates/assets`;
+  private readonly xPostEmbedUrl = `${API_CLIENT_BASE}/email/templates/embeds/x-post`;
+  private readonly settingsUrl = `${API_CLIENT_BASE}/email/settings`;
 
   private buildHeaders(supabaseId: string, teamId?: string | null, json = true): HeadersInit {
     return {

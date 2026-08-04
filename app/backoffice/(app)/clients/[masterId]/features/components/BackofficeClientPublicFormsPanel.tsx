@@ -199,7 +199,7 @@ export function BackofficeClientPublicFormsPanel({
         <Field className="min-w-56">
           <FieldLabel>Time</FieldLabel>
           <Select
-            value={selectedTeamId ?? undefined}
+            value={selectedTeamId ?? ""}
             onValueChange={(value) => onSelectedTeamIdChange(value)}
           >
             <SelectTrigger>

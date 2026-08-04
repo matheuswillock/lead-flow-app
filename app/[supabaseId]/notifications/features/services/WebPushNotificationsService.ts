@@ -11,6 +11,7 @@ import type {
   WebPushSubscriptionPayload,
 
 } from "./IWebPushNotificationsService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 
 
@@ -42,7 +43,7 @@ export class WebPushNotificationsService implements IWebPushNotificationsService
 
   async getVapidPublicKey(): Promise<string> {
 
-    const response = await fetch("/api/v1/notifications/push/vapid-public-key", {
+    const response = await fetch(`${API_CLIENT_BASE}/notifications/push/vapid-public-key`, {
 
       method: "GET",
 
@@ -78,7 +79,7 @@ export class WebPushNotificationsService implements IWebPushNotificationsService
 
   async getConsent(context: RequestContext): Promise<WebPushConsentState> {
 
-    const response = await fetch("/api/v1/notifications/push/consent", {
+    const response = await fetch(`${API_CLIENT_BASE}/notifications/push/consent`, {
 
       method: "GET",
 
@@ -114,7 +115,7 @@ export class WebPushNotificationsService implements IWebPushNotificationsService
 
   async recordConsent(context: RequestContext, payload: WebPushConsentPayload): Promise<void> {
 
-    const response = await fetch("/api/v1/notifications/push/consent", {
+    const response = await fetch(`${API_CLIENT_BASE}/notifications/push/consent`, {
 
       method: "POST",
 
@@ -148,7 +149,7 @@ export class WebPushNotificationsService implements IWebPushNotificationsService
 
   async subscribe(context: RequestContext, payload: WebPushSubscriptionPayload): Promise<void> {
 
-    const response = await fetch("/api/v1/notifications/push/subscribe", {
+    const response = await fetch(`${API_CLIENT_BASE}/notifications/push/subscribe`, {
 
       method: "POST",
 
@@ -182,7 +183,7 @@ export class WebPushNotificationsService implements IWebPushNotificationsService
 
   async unsubscribe(context: RequestContext, endpoint: string): Promise<void> {
 
-    const response = await fetch("/api/v1/notifications/push/subscribe", {
+    const response = await fetch(`${API_CLIENT_BASE}/notifications/push/subscribe`, {
 
       method: "DELETE",
 

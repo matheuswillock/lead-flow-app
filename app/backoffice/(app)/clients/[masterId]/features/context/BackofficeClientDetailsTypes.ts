@@ -107,6 +107,33 @@ export interface BackofficeClientInvoiceFilters {
   period: "all" | "7d" | "30d" | "90d" | "this_month"
 }
 
+export interface BackofficeClientPendingAction {
+  id: string
+  actionType: string
+  actionTypeLabel: string
+  status: "pending" | "applied" | "failed" | "canceled" | string
+  paymentId: string | null
+  teamId: string | null
+  value: number
+  createdAt: string
+  updatedAt: string
+  description: string
+  target: {
+    name: string | null
+    email: string | null
+    role: string | null
+    teamId: string | null
+  }
+  checkoutUrl: string | null
+  invoiceId: string
+  canCancel: boolean
+}
+
+export interface BackofficeClientPendingActionsResult {
+  items: BackofficeClientPendingAction[]
+  totalItems: number
+}
+
 export interface BackofficeClientDetailsFilters {
   query: string
 }

@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { EmailCampaignTrackingBadge } from "@/components/public-forms/EmailCampaignTrackingBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -79,6 +80,8 @@ import type {
   PublicFormsIds,
 } from "../context/PublicFormsTypes"
 import { publicFormsClientService } from "../services/PublicFormsService"
+import { FormRankingPanel } from "../components/FormRankingPanel"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -102,7 +105,7 @@ export function PublicFormsContainer() {
 
   useEffect(() => {
     if (!forms.ids) return
-    void fetch(`/api/v1/teams/${forms.ids.teamId}/members?function=SDR`, {
+    void fetch(`${API_CLIENT_BASE}/teams/${forms.ids.teamId}/members?function=SDR`, {
       headers: {
         "x-supabase-user-id": forms.ids.supabaseId,
         "x-team-id": forms.ids.teamId,
@@ -146,6 +149,8 @@ export function PublicFormsContainer() {
           </div>
         ) : null}
       </div>
+
+      <FormRankingPanel items={forms.ranking} loading={forms.rankingLoading} />
 
       {forms.capabilities.canEdit ? (
         <section className="flex flex-col gap-3 rounded-xl border p-4">
@@ -317,6 +322,9 @@ export function PublicFormsContainer() {
                         item.name
                       )}
                       {item.managedByCorretorStudio ? <ManagedByCorretorStudioBadge /> : null}
+                      {item.emailCampaignTrackingEnabled !== false ? (
+                        <EmailCampaignTrackingBadge />
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell>

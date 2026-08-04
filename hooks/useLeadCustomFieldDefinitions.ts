@@ -18,7 +18,8 @@ export function useLeadCustomFieldDefinitions({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlightKeyRef = useRef<string | null>(null);
-  const lastSuccessKeyRef = useRef<string | null>(null);
+  // Assenta em sucesso e erro — evita retry storm quando o efeito re-dispara após 5xx.
+  const lastSettledKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!teamId || !supabaseId) {
@@ -29,7 +30,7 @@ export function useLeadCustomFieldDefinitions({
     }
 
     const requestKey = `${teamId}:${includeInactive ? "all" : "active"}`;
-    if (inFlightKeyRef.current === requestKey || lastSuccessKeyRef.current === requestKey) {
+    if (inFlightKeyRef.current === requestKey || lastSettledKeyRef.current === requestKey) {
       return;
     }
 
@@ -53,35 +54,35 @@ export function useLeadCustomFieldDefinitions({
         }
         if (!cancelled) {
           setDefinitions(Array.isArray(payload.result) ? payload.result : []);
-          lastSuccessKeyRef.current = requestKey;
+          lastSettledKeyRef.current = requestKey;
         }
       })
       .catch((fetchError) => {
         if (!cancelled) {
           setDefinitions([]);
+          lastSettledKeyRef.current = requestKey;
           setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar campos personalizados");
         }
       })
       .finally(() => {
+        if (inFlightKeyRef.current === requestKey) {
+          inFlightKeyRef.current = null;
+        }
         if (!cancelled) {
           setIsLoading(false);
-          inFlightKeyRef.current = null;
         }
       });
 
     return () => {
       cancelled = true;
-      if (inFlightKeyRef.current === requestKey) {
-        inFlightKeyRef.current = null;
-      }
     };
   }, [teamId, supabaseId, includeInactive]);
 
   const refresh = useCallback(() => {
-    lastSuccessKeyRef.current = null;
+    lastSettledKeyRef.current = null;
     if (!teamId || !supabaseId) return;
     const requestKey = `${teamId}:${includeInactive ? "all" : "active"}`;
-    inFlightKeyRef.current = null;
+    inFlightKeyRef.current = requestKey;
     setIsLoading(true);
     setError(null);
     void fetch(`/api/v1/teams/${teamId}/lead-custom-fields${includeInactive ? "?includeInactive=true" : ""}`, {
@@ -96,12 +97,16 @@ export function useLeadCustomFieldDefinitions({
           throw new Error(payload?.errorMessages?.[0] || "Erro ao carregar campos personalizados");
         }
         setDefinitions(Array.isArray(payload.result) ? payload.result : []);
-        lastSuccessKeyRef.current = requestKey;
+        lastSettledKeyRef.current = requestKey;
       })
       .catch((fetchError) => {
+        lastSettledKeyRef.current = requestKey;
         setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar campos personalizados");
       })
       .finally(() => {
+        if (inFlightKeyRef.current === requestKey) {
+          inFlightKeyRef.current = null;
+        }
         setIsLoading(false);
       });
   }, [teamId, supabaseId, includeInactive]);

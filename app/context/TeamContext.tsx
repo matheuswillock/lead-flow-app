@@ -8,6 +8,7 @@ import {
   readTeamsBootstrapCache,
   writeTeamsBootstrapCache,
 } from "@/lib/bootstrap/sessionBootstrapCache";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const teamsInFlightBySupabaseId = new Map<string, Promise<Output>>();
 
@@ -58,6 +59,10 @@ interface TeamContextState {
 }
 
 const TeamContext = createContext<TeamContextState | undefined>(undefined);
+
+// Referência estável — evita recriar consumers (ex.: loadLeads do CRM) a cada render
+// quando o time ainda não tem functions.
+const EMPTY_TEAM_FUNCTIONS: ("SDR" | "CLOSER")[] = [];
 
 function getStorageKey(supabaseId: string) {
   return `activeTeamId:${supabaseId}`;
@@ -151,7 +156,7 @@ export const TeamProvider = ({
       setError(null);
 
       const createTeamsRequest = async (): Promise<Output> => {
-        const response = await fetch("/api/v1/teams", {
+        const response = await fetch(`${API_CLIENT_BASE}/teams`, {
           headers: {
             "x-supabase-user-id": supabaseId
           }
@@ -218,7 +223,7 @@ export const TeamProvider = ({
     }
 
     try {
-      const response = await fetch("/api/v1/teams/active", {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/active`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -363,7 +368,7 @@ export const TeamProvider = ({
   }, [teams, activeTeamId]);
 
   const activeRole = activeTeam?.role ?? null;
-  const activeFunctions = activeTeam?.functions ?? [];
+  const activeFunctions = activeTeam?.functions ?? EMPTY_TEAM_FUNCTIONS;
   const isTeamMaster = !!(user && activeTeam && activeTeam.masterId === user.id);
 
   useEffect(() => {

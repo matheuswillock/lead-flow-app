@@ -187,6 +187,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           approvalStatus: true,
           assignedSdrId: true,
           managedByBackofficeUserId: true,
+          emailCampaignTrackingEnabled: true,
           updatedAt: true,
           assignedSdr: { select: { id: true, fullName: true } },
           _count: { select: { submissions: true } },
@@ -420,6 +421,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       where: { id: formId },
       select: {
         teamId: true,
+        name: true,
+        publicId: true,
+        emailCampaignTrackingEnabled: true,
         team: { select: { master: { select: { timezone: true } } } },
       },
     })
@@ -475,6 +479,44 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       where: { ...where, eventType: "form_viewed" },
       select: { origin: true, visitorSessionId: true },
     })
+  }
+
+  async listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {
+    const forms = await prisma.publicForm.findMany({
+      where: { teamId },
+      select: { id: true, name: true },
+    })
+    if (forms.length === 0) return []
+
+    const dateFilter =
+      options?.from || options?.to
+        ? {
+            createdAt: {
+              ...(options.from ? { gte: options.from } : {}),
+              ...(options.to ? { lte: options.to } : {}),
+            },
+          }
+        : {}
+
+    const grouped = await prisma.publicFormMetricEvent.groupBy({
+      by: ["formId", "eventType"],
+      where: {
+        formId: { in: forms.map((form) => form.id) },
+        eventType: { in: ["form_viewed", "form_completed"] },
+        ...dateFilter,
+      },
+      _count: { _all: true },
+    })
+
+    const byForm = new Map(forms.map((form) => [form.id, { formId: form.id, name: form.name, viewed: 0, completed: 0 }]))
+    for (const row of grouped) {
+      const entry = byForm.get(row.formId)
+      if (!entry) continue
+      if (row.eventType === "form_viewed") entry.viewed = row._count._all
+      if (row.eventType === "form_completed") entry.completed = row._count._all
+    }
+
+    return Array.from(byForm.values())
   }
 
   listLeadSubmissions(teamId: string, leadId: string) {
@@ -612,6 +654,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         publicId: true,
         teamId: true,
         assignedSdrId: true,
+        emailCampaignTrackingEnabled: true,
         assignedSdr: { select: { email: true } },
         team: { select: { master: { select: { id: true, supabaseId: true, timezone: true } } } },
       },
@@ -813,6 +856,106 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     return result.count === 1
+  }
+
+  async findCampaignContactListIds(teamId: string, campaignId: string) {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId, teamId },
+      select: { contactListId: true, sourceContactListIds: true },
+    })
+    if (!campaign) return []
+    return [
+      ...(campaign.contactListId ? [campaign.contactListId] : []),
+      ...campaign.sourceContactListIds,
+    ]
+  }
+
+  async findEmailContactCustomFields(email: string, listIds: string[]) {
+    if (listIds.length === 0) return null
+    const contact = await prisma.emailContact.findFirst({
+      where: { email, listId: { in: listIds } },
+      select: { customFields: true },
+      orderBy: { updatedAt: "desc" },
+    })
+    return contact?.customFields ?? null
+  }
+
+  async findRadarPhoneByEmail(teamId: string, normalizedEmail: string) {
+    const identity = await prisma.radarIdentity.findFirst({
+      where: { teamId, type: "email", normalizedValue: normalizedEmail },
+      select: { profileId: true },
+    })
+    if (!identity) return null
+    const phoneIdentity = await prisma.radarIdentity.findFirst({
+      where: { profileId: identity.profileId, type: "phone" },
+      select: { value: true, normalizedValue: true },
+    })
+    return phoneIdentity?.value ?? phoneIdentity?.normalizedValue ?? null
+  }
+
+  async findLeadActivityByEmailLogAttribution(input: {
+    leadId: string
+    body: string
+    emailLogId: string
+  }) {
+    return prisma.leadActivity.findFirst({
+      where: {
+        leadId: input.leadId,
+        type: ActivityType.note,
+        body: input.body,
+        payload: {
+          path: ["emailLogId"],
+          equals: input.emailLogId,
+        },
+      },
+      select: { id: true },
+    })
+  }
+
+  async createLeadActivityNote(input: {
+    leadId: string
+    body: string
+    payload: Prisma.InputJsonValue
+  }) {
+    await prisma.leadActivity.create({
+      data: {
+        leadId: input.leadId,
+        type: ActivityType.note,
+        body: input.body,
+        payload: input.payload,
+      },
+    })
+  }
+
+  async findCompletedSubmissionsWithAnswersByLeadId(input: {
+    teamId: string
+    leadId: string
+    take?: number
+  }) {
+    return prisma.publicFormSubmission.findMany({
+      where: {
+        leadId: input.leadId,
+        form: { teamId: input.teamId },
+        status: "completed",
+      },
+      select: {
+        id: true,
+        formId: true,
+        score: true,
+        scoreBandLabel: true,
+        submittedAt: true,
+        createdAt: true,
+        form: { select: { name: true } },
+        answers: {
+          select: {
+            value: true,
+            questionSnapshot: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: "desc" },
+      take: input.take ?? 20,
+    })
   }
 }
 

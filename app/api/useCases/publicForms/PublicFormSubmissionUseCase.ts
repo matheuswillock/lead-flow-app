@@ -19,6 +19,9 @@ import {
   findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
+import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
+import { FORM_COMPLETE_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
+import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -56,6 +59,19 @@ function mapAnswersForPersistence(
       questionSnapshot: json(question),
     }
   })
+}
+
+/** D19-B-bis: anexa score da submissão ao origin do evento form_completed (Radar metadata). */
+function withFormCompletedScoreOrigin(
+  origin: Record<string, unknown>,
+  score: number,
+  scoreBandLabel: string | null | undefined
+): Record<string, unknown> {
+  return {
+    ...origin,
+    submissionScorePercent: score,
+    ...(scoreBandLabel ? { scoreBandLabel } : {}),
+  }
 }
 
 export class PublicFormSubmissionUseCase {
@@ -202,6 +218,28 @@ export class PublicFormSubmissionUseCase {
 
     try {
       const form = await publicFormsRepository.findFormSubmissionContext(job.snapshot.formId)
+
+      const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
+        teamId: form.teamId,
+        formId: form.id,
+        formName: form.name,
+        formPublicId: form.publicId,
+        publicationId: job.publicationId,
+        emailCampaignTrackingEnabled: form.emailCampaignTrackingEnabled,
+        eventType: "form_completed",
+        origin: job.origin,
+        visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
+      })
+      const attributionResult = attribution.isValid
+        ? (attribution.result as {
+            leadId: string | null
+            enrichedOrigin: Record<string, unknown>
+          } | null)
+        : null
+      const origin = attributionResult?.enrichedOrigin
+        ? sanitizePublicFormOrigin(attributionResult.enrichedOrigin)
+        : job.origin
+
       const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
       const match = await findMatchingLead(form.teamId, extracted)
       alerts.push(...buildLeadSyncAlerts(extracted, match))
@@ -215,11 +253,12 @@ export class PublicFormSubmissionUseCase {
         scoreBandLabel: job.scoreBandLabel,
         submissionId: job.submissionId,
         publicationId: job.publicationId,
-        origin: job.origin,
+        origin,
         extraNotes: job.bandNote,
       })
 
       const lead = upserted?.lead ?? null
+      const resolvedLeadId = lead?.id ?? attributionResult?.leadId ?? null
 
       let scheduled = false
       if (lead && job.scheduling) {
@@ -240,6 +279,12 @@ export class PublicFormSubmissionUseCase {
       }
 
       const visitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
+      const metricOrigin = origin as Prisma.InputJsonValue
+      const formCompletedOrigin = withFormCompletedScoreOrigin(
+        origin,
+        job.score,
+        job.scoreBandLabel
+      ) as Prisma.InputJsonValue
       const metricEvents: Array<{
         formId: string
         publicationId: string
@@ -247,6 +292,7 @@ export class PublicFormSubmissionUseCase {
         eventType: "form_completed" | "lead_created" | "lead_attached" | "meeting_scheduled"
         eventKey: string
         origin: Prisma.InputJsonValue
+        radarOrigin?: Record<string, unknown>
       }> = [
         {
           formId: job.snapshot.formId,
@@ -254,19 +300,22 @@ export class PublicFormSubmissionUseCase {
           visitorSessionId,
           eventType: "form_completed",
           eventKey: `${job.requestKey}:form_completed`,
-          origin: job.origin as Prisma.InputJsonValue,
+          origin: formCompletedOrigin,
+          radarOrigin: withFormCompletedScoreOrigin(origin, job.score, job.scoreBandLabel),
         },
       ]
 
-      if (lead) {
-        const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
+      if (lead || attributionResult?.leadId) {
+        const eventType = upserted?.created
+          ? ("lead_created" as const)
+          : ("lead_attached" as const)
         metricEvents.push({
           formId: job.snapshot.formId,
           publicationId: job.publicationId,
           visitorSessionId,
           eventType,
           eventKey: `${job.requestKey}:${eventType}`,
-          origin: job.origin as Prisma.InputJsonValue,
+          origin: metricOrigin,
         })
       }
 
@@ -277,52 +326,92 @@ export class PublicFormSubmissionUseCase {
           visitorSessionId,
           eventType: "meeting_scheduled",
           eventKey: `${job.requestKey}:meeting_scheduled`,
-          origin: job.origin as Prisma.InputJsonValue,
+          origin: metricOrigin,
         })
       }
 
       await publicFormsRepository.completeSubmission({
         submissionId: job.submissionId,
-        leadId: lead?.id ?? null,
+        leadId: resolvedLeadId,
         processingAlerts: formatLeadSyncAlerts(alerts),
         answers,
-        activityBody: lead ? "Respostas recebidas por formulário público" : undefined,
-        activityPayload: lead
+        activityBody: resolvedLeadId ? FORM_COMPLETE_ACTIVITY_BODY : undefined,
+        activityPayload: resolvedLeadId
           ? json({
-              kind: "public_form_submission",
+              kind: "public_form_completed",
               formId: job.snapshot.formId,
               formName: form.name,
+              formPublicId: form.publicId,
               publicationId: job.publicationId,
               publicationVersion: job.snapshot.version,
               submissionId: job.submissionId,
               thankYouPageId: job.thankYouPageId ?? null,
               score: job.score,
               scoreBand: job.scoreBandLabel,
-              origin: job.origin,
+              origin,
+              emailLogId:
+                typeof origin.emailLogId === "string" ? origin.emailLogId : null,
+              campaignId:
+                typeof origin.campaignId === "string" ? origin.campaignId : null,
             })
           : undefined,
         metricEvents,
       })
+
+      for (const event of metricEvents) {
+        syncPublicFormMetricToRadarInline({
+          teamId: form.teamId,
+          eventType: event.eventType,
+          eventKey: event.eventKey,
+          visitorSessionId: event.visitorSessionId,
+          formId: event.formId,
+          publicationId: event.publicationId,
+          leadId: resolvedLeadId,
+          origin: event.radarOrigin ?? origin,
+        })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao processar respostas"
       console.error("[PublicFormSubmissionUseCase][processInBackground]", message)
       alerts.push(message)
+      const fallbackVisitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
+      const fallbackOrigin = withFormCompletedScoreOrigin(
+        job.origin,
+        job.score,
+        job.scoreBandLabel
+      )
+      const fallbackMetricEvents = [
+        {
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
+          visitorSessionId: fallbackVisitorSessionId,
+          eventType: "form_completed" as const,
+          eventKey: `${job.requestKey}:form_completed`,
+          origin: fallbackOrigin as Prisma.InputJsonValue,
+        },
+      ]
       await publicFormsRepository.completeSubmission({
         submissionId: job.submissionId,
         leadId: null,
         processingAlerts: formatLeadSyncAlerts(alerts),
         answers,
-        metricEvents: [
-          {
-            formId: job.snapshot.formId,
-            publicationId: job.publicationId,
-            visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
-            eventType: "form_completed",
-            eventKey: `${job.requestKey}:form_completed`,
-            origin: job.origin as Prisma.InputJsonValue,
-          },
-        ],
+        metricEvents: fallbackMetricEvents,
       })
+
+      const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(job.snapshot.formId)
+      if (teamCtx?.teamId) {
+        for (const event of fallbackMetricEvents) {
+          syncPublicFormMetricToRadarInline({
+            teamId: teamCtx.teamId,
+            eventType: event.eventType,
+            eventKey: event.eventKey,
+            visitorSessionId: event.visitorSessionId,
+            formId: event.formId,
+            publicationId: event.publicationId,
+            origin: fallbackOrigin,
+          })
+        }
+      }
     }
   }
 

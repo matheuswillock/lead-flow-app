@@ -36,6 +36,7 @@ import type {
   TemplateFunctionOperator,
   TemplateVariable,
 } from "../context/TemplateEditorTypes";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type GlobalVariable = {
   id: string;
@@ -169,7 +170,7 @@ export function VariablesPanel({ embedded = false }: VariablesPanelProps) {
           }
           return;
         }
-        const res = await fetch("/api/v1/email/settings/variables", { cache: "no-store" });
+        const res = await fetch(`${API_CLIENT_BASE}/email/settings/variables`, { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json();
         if (active && json.isValid) setGlobalVariables(json.result as GlobalVariable[]);

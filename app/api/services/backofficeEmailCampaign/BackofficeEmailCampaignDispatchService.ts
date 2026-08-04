@@ -17,6 +17,14 @@ import type {
 
 const BATCH_SIZE = 50
 
+/** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
+function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
+  if (statusCode === 409 && rawMessage.toLowerCase().includes("idempotency")) {
+    return "Falha no envio da campanha. Entre em contato com o suporte se o problema persistir."
+  }
+  return rawMessage
+}
+
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = []
   for (let i = 0; i < items.length; i += size) {
@@ -74,7 +82,7 @@ export class BackofficeEmailCampaignDispatchService implements IBackofficeEmailC
         const batchResult = await resend.batch.send(payload, {
           idempotencyKey: buildResendBatchIdempotencyKey(
             "backoffice-email-campaign",
-            `${params.campaignId}/${params.dispatchNumber}/${chunkIndex}`
+            `${params.dispatchId}/${chunkIndex}`
           ),
         })
 
@@ -83,9 +91,17 @@ export class BackofficeEmailCampaignDispatchService implements IBackofficeEmailC
             "[BackofficeEmailCampaignDispatchService][dispatchBatch] Erro da API Resend:",
             batchResult.error
           )
+          const errorStatusCode =
+            typeof batchResult.error.statusCode === "number"
+              ? batchResult.error.statusCode
+              : undefined
+          const errorMessage = resolveResendBatchErrorMessage(
+            batchResult.error.message ?? "Erro no envio",
+            errorStatusCode
+          )
           await Promise.all(
             chunk.map((recipient) =>
-              this.logRepository.markFailed(recipient.logId, batchResult.error?.message ?? "Erro no envio")
+              this.logRepository.markFailed(recipient.logId, errorMessage)
             )
           )
           result.failed += chunk.length

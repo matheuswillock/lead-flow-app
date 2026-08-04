@@ -1,5 +1,36 @@
 # RADAR_AUDIT.md — Auditoria consolidada do módulo Radar (ex-CDP): estado atual, sub-campanhas/teto diário, inventário do rename e riscos
 
+## Status de implementação (pós-D19 / PR #633)
+
+**Fonte de verdade do código:** branch `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633).  
+**Verificado em:** 2026-08-04 (leitura do **HEAD commitado** no unificado; sem afirmar `db:migrate:push` remoto).
+
+| Estágio | Descrição | Status |
+|---------|-----------|--------|
+| R1–R5 | Rename CDP → Radar | ✅ Concluído |
+| C1–C6 | Completude funcional (custom fields, sync inline, segmentos, UI, hardening) | ✅ Concluído — C5×DA11 corrigido (alerta não sugere mais split automático por segmento) |
+| D1 | Lead.originChannel schema | ✅ Concluído |
+| D2 | Unificar entrada de leads | ✅ Concluído |
+| D3 | Sync Portfolio → Radar | ✅ Concluído |
+| D4 | Perfil email-only | ✅ Concluído |
+| D5 | Marcos de LeadStatus | ✅ Concluído |
+| D6 | Condição lead_field no segmento | ✅ Concluído |
+| D7 | Pixel tracking + visitor_session | ✅ Concluído |
+| D8 | Bridging formulário → RadarEvent | ✅ Concluído (2026-08-04 — `SyncPublicFormMetricToRadarUseCase` + hook fire-and-forget) |
+| D9 | Touchpoints — sub-aba Contatos | ✅ Concluído |
+| D10 | Remover sync manual | ✅ Concluído (UI 100% event-driven; rotas `sync/*` legadas/backfill) |
+| D11 | Auditoria impeccable de /radar | ✅ Concluído |
+| D12 | Hardening, docs, Postman, ERD | ✅ Concluído — migration `*_radar-d12-pixel-tables-rls.sql` no repo |
+| D13 | `portfolio_field` + aba Contratos | ✅ Concluído |
+| D14 | Perfis titular/dependente de contrato | ✅ Concluído — migration `*_radar-d14-contract-identity-types.sql` no repo |
+| D15 | Materializar segmento → lista de e-mail | ✅ Concluído |
+| D16 | Export CSV/Excel | ✅ Concluído |
+| D17 | Polimento de UI | ✅ Concluído |
+| D18 | Ranking templates/formulários | ✅ Concluído |
+| D19 | Motor de engajamento (score 0–100 + temperatura) | ✅ Concluído — schema/seed `*_radar-d19-engagement-foundation.sql`; pesos no backoffice; score inline; DSL `engagement_band`; cron backfill; UI Lead Dialog/Sheet/tabela |
+
+---
+
 **Data:** 2026-07-18 (re-verificado contra código e banco remoto nesta data)
 **Documento par:** `RADAR_SPEC.md` (spec executável — rename + completude). Este audit é a **base factual única**: consolida e substitui `CDP_AUDIT.md`, `CDP_RESEARCH.md` e os documentos intermediários do ciclo.
 **Método:** leitura de código, `git log`/branches, migrations e **leitura SELECT-only do banco remoto** via `DIRECT_URL`. Nenhum código foi alterado.
@@ -243,3 +274,54 @@ Não há `portfolioId`/`contactId` — a Fase D (D3) estende esse tipo com `port
 ### 7.5 Nenhuma coluna de origem no Lead hoje
 
 O model `Lead` não tem nenhuma coluna equivalente a "canal de origem" — toda a informação de como o lead entrou (webhook Meta, webhook Studio, formulário público, import CSV, manual) hoje só existe implicitamente no caminho de código que criou o registro, não como um dado consultável. A Fase D (D1/D2) introduz `LeadOriginChannel` + `Lead.originChannel`/`originMetadata` para tornar essa origem uma condição de segmento e um dado exibível no perfil.
+
+---
+
+## 8. Fase D — estado pós-unificado (D1–D18 / PR #633)
+
+**Data de verificação:** 2026-08-04  
+**Branch unificada:** `cursor/radar-d10-d18-unified` — [PR #633](https://github.com/matheuswillock/lead-flow-app/pull/633)
+
+R1–R5 e C1–C6 estão **concluídos**. Na Fase D, **D1–D18** estão no código (D8 via `cursor/radar-d8-form-bridge` → merge no unificado). Esta seção atualiza o veredito do audit histórico (§1–§7, baseline pré-rename / pré-Fase D) sem reescrever o inventário datado de 2026-07-18.
+
+| Estágio | Escopo | Status |
+|---|---|---|
+| D1 | Schema `LeadOriginChannel` + `originChannel`/`originMetadata` | ✅ Concluído |
+| D2 | Origem nos webhooks/import/form → sync inline | ✅ Concluído |
+| D3 | Sync portfolio / EmailContact inline (event-driven) | ✅ Concluído |
+| D4 | Perfis email-only (`normalizedPhone` opcional) | ✅ Concluído |
+| D5 | Marcos de status do Lead → `RadarEvent` | ✅ Concluído |
+| D6 | Condição de segmento `lead_field` (+ catálogo) | ✅ Concluído |
+| D7 | Identidade `visitor_session` + Corretor Studio Pixel | ✅ Concluído |
+| D8 | Bridge `PublicFormMetricEvent` → `RadarEvent` | ✅ Concluído (`SyncPublicFormMetricToRadarUseCase`, dedupe `eventKey`) |
+| D9 | Touchpoints / sub-aba Contatos no perfil | ✅ Concluído |
+| D10 | UI sem sync manual — fluxo 100% event-driven | ✅ Concluído |
+| D11 | Auditoria impeccable de `/radar` | ✅ Concluído |
+| D12 | Hardening: Postman, RLS pixel, docs, ERD | ✅ Concluído (SQL no repo; push remoto não afirmado aqui) |
+| D13 | `portfolio_field` + seção Contratos no perfil | ✅ Concluído |
+| D14 | Identidades `contract_holder` / `contract_dependent` | ✅ Concluído (SQL no repo; push remoto não afirmado aqui) |
+| D15 | Materializar segmento → lista de contatos | ✅ Concluído |
+| D16 | Export perfis/segmentos CSV/Excel | ✅ Concluído |
+| D17 | Polimento UI (identidades, Calendar, event Select, responsáveis) | ✅ Concluído |
+| D18 | Ranking top templates / formulários | ✅ Concluído |
+
+### Dívida C5 × DA11 — corrigida
+
+O `Alert` em `RadarSegmentBuilderDialog` (e o equivalente no wizard de campanhas) agora deixa claro que audiência de segmento > `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB` é **rejeitada**; split/sub-campanhas existem só após materializar o segmento em lista de contatos.
+
+### Paths canônicos (pós-unificado)
+
+- Frontend: `app/[supabaseId]/radar/**` (não mais `/cdp`)
+- API: `/api/v1/radar/**` + hit público `/api/v1/public-pixel/:publicToken/hit`
+- Lib/service/repo: `lib/radar/**`, `app/api/services/radar/**`, `app/api/infra/data/repositories/radar/**`
+- Feature slug: `FEATURE_SLUGS.RADAR = "radar"`; `getRadarAccess()`
+- Postman: pasta **Radar** (pixel, touchpoints, profiles, segments, export, materialize)
+- Migrations no repo (existência ≠ push remoto): `*_radar-d12-pixel-tables-rls.sql`, `*_radar-d14-contract-identity-types.sql`
+
+### D8 — Bridge formulário → RadarEvent
+
+- UseCase: `app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase.ts`
+- Inline fire-and-forget: `syncPublicFormMetricToRadarInline` (via `after()`)
+- Hooks: `PublicFormsService.recordMetric`, `PublicFormSubmissionUseCase`, `PublicFormProgressUseCase`
+- Dedupe: `RadarRepository.appendEventIfNewBySourceKey` com `sourceId = eventKey`
+- Mapeamento: `lib/radar/map-public-form-metric-to-radar-event.ts`

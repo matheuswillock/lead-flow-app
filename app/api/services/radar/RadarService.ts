@@ -108,6 +108,14 @@ const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string
     name: "Sem campanha recente",
     description: "Sem envio de campanha nos últimos 60 dias",
   },
+  portfolio_clients: {
+    name: "Carteira",
+    description: "Perfis vinculados à carteira de clientes",
+  },
+  crm_clients: {
+    name: "CRM",
+    description: "Perfis com identidade de lead no CRM",
+  },
 }
 
 function emptyCounters(): SyncCounters {
@@ -363,6 +371,17 @@ export class RadarService {
           source: "portfolio",
         })
 
+        // D13: clientes criados só na carteira não passam pelo sync CRM;
+        // anexar lead_id aqui habilita portfolio_field + aba Contratos.
+        await radarRepository.upsertIdentity({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          type: "lead_id",
+          value: lead.id,
+          normalizedValue: lead.id,
+          source: "portfolio",
+        })
+
         await radarRepository.appendEventIfNew({
           profileId: profile.id,
           teamId: scope.teamId,
@@ -430,6 +449,179 @@ export class RadarService {
     }
 
     return counters
+  }
+
+  async syncFromFinalized(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
+    const counters = emptyCounters()
+    const finalizedRows = await radarRepository.findFinalizedForRadarSync(scope.teamId, filters)
+
+    for (const entry of finalizedRows) {
+      try {
+        if (entry.holder) {
+          // Corporativo: finalize exige CNPJ e permite document (CPF) vazio.
+          const holderDocument = entry.holder.document?.trim() || entry.holder.cnpj?.trim() || null
+          const synced = await this.syncContractPartyToRadar({
+            scope,
+            identityType: "contract_holder",
+            partyId: entry.holder.id,
+            name: entry.holder.name,
+            document: holderDocument,
+            birthDate: entry.holder.birthDate,
+            finalizedId: entry.id,
+            leadId: entry.leadId,
+            lastSeenAt: entry.updatedAt,
+            role: "holder",
+          })
+          if (synced === "skipped") counters.skipped += 1
+          else if (synced === "created") counters.created += 1
+          else counters.enriched += 1
+        }
+
+        for (const dependent of entry.dependents) {
+          const synced = await this.syncContractPartyToRadar({
+            scope,
+            identityType: "contract_dependent",
+            partyId: dependent.id,
+            name: dependent.name,
+            document: dependent.document,
+            birthDate: dependent.birthDate,
+            finalizedId: entry.id,
+            leadId: entry.leadId,
+            lastSeenAt: entry.updatedAt,
+            role: "dependent",
+            parentesco: dependent.parentesco,
+          })
+          if (synced === "skipped") counters.skipped += 1
+          else if (synced === "created") counters.created += 1
+          else counters.enriched += 1
+        }
+      } catch (error) {
+        counters.errors.push(`finalized:${entry.id}`)
+        console.error("[RadarService][syncFromFinalized]", entry.id, error)
+      }
+    }
+
+    return counters
+  }
+
+  /**
+   * D14: perfil Radar para titular/dependente de contrato, chaveado por documento.
+   * Dependente sem `document` não gera perfil (retorna "skipped").
+   */
+  private async syncContractPartyToRadar(input: {
+    scope: RadarTeamScope
+    identityType: "contract_holder" | "contract_dependent"
+    partyId: string
+    name: string
+    document: string | null | undefined
+    birthDate: Date
+    finalizedId: string
+    leadId: string
+    lastSeenAt: Date
+    role: "holder" | "dependent"
+    parentesco?: string
+  }): Promise<"created" | "enriched" | "skipped"> {
+    const normalizedDocument = normalizeRadarDocument(input.document)
+    const displayName = input.name.trim()
+    const normalizedName = normalizeRadarName(displayName)
+
+    const existingLink = await radarRepository.findSourceLinkBySource({
+      teamId: input.scope.teamId,
+      sourceType: "lead_finalized",
+      sourceId: input.partyId,
+    })
+
+    // Documento/nome limpos no portfólio: remove source link + identidade
+    // obsoleta para o party não permanecer pesquisável/segmentável.
+    if (!normalizedDocument || !normalizedName) {
+      if (existingLink) {
+        await radarRepository.deleteSourceLinkById(existingLink.id)
+        await radarRepository.removeObsoleteContractIdentity({
+          teamId: input.scope.teamId,
+          profileId: existingLink.profileId,
+          identityType: input.identityType,
+          keepNormalizedDocument: null,
+        })
+        await radarRepository.deleteOrphanRadarProfileIfEmpty({
+          teamId: input.scope.teamId,
+          profileId: existingLink.profileId,
+        })
+      }
+      return "skipped"
+    }
+
+    const { profile, wasExisting } = await radarRepository.resolveProfileForDocument({
+      teamId: input.scope.teamId,
+      identityType: input.identityType,
+      normalizedDocument,
+      documentValue: input.document!.trim(),
+      displayName,
+      normalizedName,
+      documentSource: "lead_finalized",
+      lastSeenAt: input.lastSeenAt,
+    })
+
+    // Documento corrigido: o source link aponta ao perfil antigo com a identidade
+    // obsoleta — remove-a antes de mover o link para o perfil do novo documento.
+    const obsoleteProfileId =
+      existingLink && existingLink.profileId !== profile.id ? existingLink.profileId : null
+
+    if (obsoleteProfileId) {
+      await radarRepository.removeObsoleteContractIdentity({
+        teamId: input.scope.teamId,
+        profileId: obsoleteProfileId,
+        identityType: input.identityType,
+        keepNormalizedDocument: normalizedDocument,
+      })
+    }
+
+    await radarRepository.upsertIdentity({
+      profileId: profile.id,
+      teamId: input.scope.teamId,
+      type: input.identityType,
+      value: input.document!.trim(),
+      normalizedValue: normalizedDocument,
+      source: "lead_finalized",
+      isPrimary: true,
+    })
+
+    await radarRepository.upsertSourceLink({
+      profileId: profile.id,
+      teamId: input.scope.teamId,
+      sourceType: "lead_finalized",
+      sourceId: input.partyId,
+      sourceMetadata: {
+        role: input.role,
+        finalizedId: input.finalizedId,
+        leadId: input.leadId,
+        birthDate: input.birthDate.toISOString(),
+        ...(input.parentesco ? { parentesco: input.parentesco } : {}),
+      },
+    })
+
+    await radarRepository.appendEventIfNew({
+      profileId: profile.id,
+      teamId: input.scope.teamId,
+      eventType:
+        input.role === "holder" ? "contract.holder_linked" : "contract.dependent_linked",
+      sourceType: "lead_finalized",
+      sourceId: input.partyId,
+      occurredAt: input.lastSeenAt,
+      metadata: {
+        finalizedId: input.finalizedId,
+        leadId: input.leadId,
+      },
+    })
+
+    // Após mover o source link, remove o perfil antigo se ficou sem identidades/links.
+    if (obsoleteProfileId) {
+      await radarRepository.deleteOrphanRadarProfileIfEmpty({
+        teamId: input.scope.teamId,
+        profileId: obsoleteProfileId,
+      })
+    }
+
+    return wasExisting ? "enriched" : "created"
   }
 
   private async processEmailContactForRadar(
@@ -788,6 +980,8 @@ export class RadarService {
       clicked_not_closed: 0,
       portfolio_renewal_due: 0,
       inactive_recent_campaign: 0,
+      portfolio_clients: 0,
+      crm_clients: 0,
     }
 
     const now = Date.now()
@@ -831,6 +1025,10 @@ export class RadarService {
     }
 
     return ids
+  }
+
+  async listCampaignSegmentProfileIds(scope: RadarTeamScope, campaignId: string): Promise<string[]> {
+    return radarRepository.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
   async getMetrics(scope: RadarTeamScope) {

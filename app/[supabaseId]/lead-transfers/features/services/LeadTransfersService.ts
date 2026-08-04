@@ -3,6 +3,7 @@ import type {
   LeadTransfersData,
   LeadTransfersFiltersState,
 } from "../context/LeadTransfersTypes";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 function appendCsv(params: URLSearchParams, key: string, values: string[]) {
   if (values.length > 0) {
@@ -34,7 +35,7 @@ class LeadTransfersService implements ILeadTransfersService {
     params.set("page", String(filters.page));
     params.set("pageSize", String(filters.pageSize));
 
-    const res = await fetch(`/api/v1/lead-transfers?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/lead-transfers?${params.toString()}`, {
       headers: {
         "x-supabase-user-id": supabaseId,
         "x-team-id": teamId,

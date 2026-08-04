@@ -3,10 +3,10 @@ import { FEATURE_SLUGS } from "./feature-slugs"
 
 type RouteMatcher = {
   prefix: string
-  slug: string
+  slugs: string[]
 }
 
-const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
+const PREFIX_TO_FEATURE_SLUGS: Record<string, string | string[]> = {
   "/dashboard": FEATURE_SLUGS.CRM_DASHBOARD,
   "/crm": FEATURE_SLUGS.CRM,
   "/lead-transfers": FEATURE_SLUGS.CRM_LEAD_TRANSFERS,
@@ -17,7 +17,7 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
   "/automations": FEATURE_SLUGS.CRM_AUTOMATIONS,
   "/teams": FEATURE_SLUGS.CRM_TIME_MANAGE_TEAMS,
   "/manager-users": FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
-  "/integrations": FEATURE_SLUGS.CONFIGURATION,
+  "/integrations": [FEATURE_SLUGS.CONFIGURATION, FEATURE_SLUGS.RADAR],
   "/forms": FEATURE_SLUGS.PUBLIC_FORMS,
   "/whatsapp/configuracoes": FEATURE_SLUGS.WHATSAPP_SETTINGS,
   "/whatsapp/auto-respostas": FEATURE_SLUGS.WHATSAPP_AUTO_RESPONSES,
@@ -32,11 +32,11 @@ const PREFIX_TO_FEATURE_SLUG: Record<string, string> = {
 }
 
 const routeMatchers: RouteMatcher[] = [...TENANT_ROUTE_PREFIXES]
-  .filter((prefix) => prefix in PREFIX_TO_FEATURE_SLUG)
-  .map((prefix) => ({
-    prefix,
-    slug: PREFIX_TO_FEATURE_SLUG[prefix],
-  }))
+  .filter((prefix) => prefix in PREFIX_TO_FEATURE_SLUGS)
+  .map((prefix) => {
+    const entry = PREFIX_TO_FEATURE_SLUGS[prefix]
+    return { prefix, slugs: Array.isArray(entry) ? entry : [entry] }
+  })
 
 function resolveTenantRoutePath(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean)
@@ -50,9 +50,9 @@ export function isAssociadosAppPath(pathname: string): boolean {
   return route === "/associados" || route.startsWith("/associados/")
 }
 
-export function getFeatureSlugForAppPath(pathname: string): string | null {
+export function getFeatureSlugsForAppPath(pathname: string): string[] {
   const route = resolveTenantRoutePath(pathname)
-  if (!route) return null
+  if (!route) return []
   const matcher = routeMatchers.find((item) => route.startsWith(item.prefix))
-  return matcher?.slug ?? null
+  return matcher?.slugs ?? []
 }

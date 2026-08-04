@@ -4,10 +4,11 @@ import type {
   BethaniaAiOverview,
 } from "../context/BackofficeStudioBotAiTypes"
 import type { IBackofficeStudioBotAiService } from "./IBackofficeStudioBotAiService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeStudioBotAiService implements IBackofficeStudioBotAiService {
   async getOverview() {
-    const res = await fetch("/api/v1/backoffice/bot/ai/metrics", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/ai/metrics`, { cache: "no-store" })
     const data = (await res.json()) as ApiOutput<BethaniaAiOverview>
     if (!data.isValid || !data.result) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao carregar métricas da IA")
@@ -16,7 +17,7 @@ export class BackofficeStudioBotAiService implements IBackofficeStudioBotAiServi
   }
 
   async getConfiguration() {
-    const res = await fetch("/api/v1/backoffice/bot/ai/configuration", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/ai/configuration`, { cache: "no-store" })
     const data = (await res.json()) as ApiOutput<BethaniaAiConfiguration>
     if (!data.isValid || !data.result) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao carregar configuração da IA")
@@ -25,7 +26,7 @@ export class BackofficeStudioBotAiService implements IBackofficeStudioBotAiServi
   }
 
   async patchConfiguration(body: Partial<BethaniaAiConfiguration>) {
-    const res = await fetch("/api/v1/backoffice/bot/ai/configuration", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/ai/configuration`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -34,7 +35,7 @@ export class BackofficeStudioBotAiService implements IBackofficeStudioBotAiServi
   }
 
   async testProvider() {
-    const res = await fetch("/api/v1/backoffice/bot/ai/provider/test", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/ai/provider/test`, { method: "POST" })
     return res.json() as Promise<ApiOutput<unknown>>
   }
 }

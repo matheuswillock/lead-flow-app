@@ -1,8 +1,9 @@
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { IBoardService, type FetchLeadsOptions, type ResendScheduleInvitePayload } from "./IBoardServices";
 import { Output } from "@/lib/output";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
-const API_BASE_URL = '/api/v1';
+const API_BASE_URL = API_CLIENT_BASE;
 
 export class BoardService implements IBoardService {
     updateLeadStatus(leadId: string, newStatus: string, supabaseId: string, teamId?: string | null): Promise<Output> {

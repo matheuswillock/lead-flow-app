@@ -1,9 +1,12 @@
 import type {
   AnalyticsData,
   AnalyticsPeriod,
+  CompareCampaignsData,
   DispatchPreviewData,
+  OverviewData,
 } from "../components/analytics/AnalyticsTypes"
 import { addDaysInTz, addMonthsInTz, startOfDayInTz } from "@/lib/dates"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 
 function periodToDateRange(period: AnalyticsPeriod, tz: string): { from: string; to: string } {
   const to = new Date()
@@ -15,18 +18,26 @@ function periodToDateRange(period: AnalyticsPeriod, tz: string): { from: string;
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
+export { periodToDateRange }
+
 export interface ICampaignAnalyticsService {
   getAnalytics(period: AnalyticsPeriod, timezone: string, campaignId?: string): Promise<AnalyticsData>
+  getOverview(): Promise<OverviewData>
+  compareCampaigns(
+    campaignIds: string[],
+    period: AnalyticsPeriod,
+    timezone: string,
+  ): Promise<CompareCampaignsData>
   getDispatchPreview(campaignId: string, dispatchId: string): Promise<DispatchPreviewData>
 }
 
 export class CampaignAnalyticsService implements ICampaignAnalyticsService {
-  private readonly baseUrl = "/api/v1/email"
+  private readonly baseUrl = `${API_CLIENT_BASE}/email`
 
   async getAnalytics(
     period: AnalyticsPeriod,
     timezone: string,
-    campaignId?: string
+    campaignId?: string,
   ): Promise<AnalyticsData> {
     const { from, to } = periodToDateRange(period, timezone)
     const params = new URLSearchParams({ from, to })
@@ -38,9 +49,35 @@ export class CampaignAnalyticsService implements ICampaignAnalyticsService {
     return json.result as AnalyticsData
   }
 
+  async getOverview(): Promise<OverviewData> {
+    const res = await fetch(`${this.baseUrl}/analytics/overview`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as OverviewData
+  }
+
+  async compareCampaigns(
+    campaignIds: string[],
+    period: AnalyticsPeriod,
+    timezone: string,
+  ): Promise<CompareCampaignsData> {
+    const { from, to } = periodToDateRange(period, timezone)
+    const params = new URLSearchParams({
+      from,
+      to,
+      campaignIds: campaignIds.join(","),
+    })
+    const res = await fetch(`${this.baseUrl}/analytics/compare?${params}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as CompareCampaignsData
+  }
+
   async getDispatchPreview(campaignId: string, dispatchId: string): Promise<DispatchPreviewData> {
     const res = await fetch(
-      `${this.baseUrl}/campaigns/${campaignId}/dispatches/${dispatchId}/preview`
+      `${this.baseUrl}/campaigns/${campaignId}/dispatches/${dispatchId}/preview`,
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()

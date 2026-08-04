@@ -1,16 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Loader2, MoreHorizontal, Pencil, Send } from "lucide-react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
+import { BarChart3, Copy, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -19,11 +13,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,20 +45,18 @@ import { CampaignStatusBadge } from "./CampaignStatusBadge"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import type { ContactList, SubCampaignSummary } from "../context/CampanhasTypes"
+import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
+import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
+import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
 
 type CampaignAnalyticsTarget = {
   id: string
   name: string
   errorMessage?: string | null
-}
-
-function formatContactListLabel(list: ContactList): string {
-  const activeCount = list.activeContacts ?? list.totalContacts
-  return `${list.name} (${activeCount.toLocaleString("pt-BR")} ativos)`
+  defaultTab?: "metrics" | "logs"
 }
 
 function audienceLabel(campaign: {
@@ -76,6 +66,113 @@ function audienceLabel(campaign: {
   if (campaign.radarSegmentSlug) return `Segmento Radar: ${campaign.radarSegmentSlug}`
   if (campaign.contactList?.name) return campaign.contactList.name
   return "—"
+}
+
+function SubCampaignDispatchButton({
+  subCampaign,
+  sendingId,
+  handleSend,
+}: {
+  subCampaign: SubCampaignSummary
+  sendingId: string | null
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
+}) {
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const isSendingThis = sendingId === subCampaign.id
+  const isFailedRetry =
+    subCampaign.status === "failed" || subCampaign.status === "partially_sent"
+  const failedRetryCount =
+    subCampaign.failedRetryRecipientCount ??
+    Math.max(0, subCampaign.totalRecipients - subCampaign.totalSent)
+  const actionLabel = isFailedRetry
+    ? "Reenviar apenas falhas"
+    : "Disparar"
+  const pendingLabel = isFailedRetry
+    ? "Reenviando falhas..."
+    : "Disparando..."
+
+  async function handleSendConfirm() {
+    setSending(true)
+    try {
+      await handleSend(
+        subCampaign.id,
+        isFailedRetry ? { retryFailedOnly: true } : undefined
+      )
+    } finally {
+      setSending(false)
+      setSendConfirmOpen(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={
+          isSendingThis ||
+          sending ||
+          (isFailedRetry && failedRetryCount <= 0)
+        }
+        onClick={() => setSendConfirmOpen(true)}
+      >
+        {isSendingThis || sending ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Send data-icon="inline-start" />
+        )}
+        {isSendingThis || sending ? pendingLabel : actionLabel}
+      </Button>
+
+      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isFailedRetry
+                ? "Reenviar apenas as falhas?"
+                : "Disparar sub-campanha novamente?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isFailedRetry ? (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> será reenviada
+                  apenas para{" "}
+                  <strong>{failedRetryCount.toLocaleString("pt-BR")}</strong> destinatário(s) que
+                  falharam. Quem já recebeu <strong>não</strong> será reenviado. Os créditos
+                  correspondentes serão deduzidos só desse reenvio.
+                </>
+              ) : (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> terá um novo
+                  disparo para{" "}
+                  <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleSendConfirm()
+              }}
+              disabled={sending || (isFailedRetry && failedRetryCount <= 0)}
+            >
+              {sending
+                ? pendingLabel
+                : isFailedRetry
+                  ? "Sim, reenviar apenas falhas"
+                  : "Sim, disparar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
 }
 
 function SubCampaignActionsMenu({
@@ -92,19 +189,34 @@ function SubCampaignActionsMenu({
   sendBlockReason?: string
   sendingId: string | null
   openEditById: (id: string) => Promise<void>
-  handleSend: (id: string) => Promise<void>
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
-  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(subCampaign.status)
-  const canRetryByStatus = subCampaign.status === "failed"
+  const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
+  const canRetryByStatus =
+    subCampaign.status === "failed" ||
+    subCampaign.status === "partially_sent" ||
+    subCampaign.status === "sent"
+  const isFailedRetry =
+    subCampaign.status === "failed" || subCampaign.status === "partially_sent"
+  const actionLabel = isFailedRetry
+    ? "Reenviar apenas falhas"
+    : "Disparar"
+  const pendingLabel = isFailedRetry
+    ? "Reenviando falhas..."
+    : "Disparando..."
+  const isSendingThis = sendingId === subCampaign.id
   const canRetry =
-    canRetryByStatus && canSendCampaign && !sendBlockReason && sendingId !== subCampaign.id
+    canRetryByStatus && canSendCampaign && !sendBlockReason && !isSendingThis
+  const failedRetryCount =
+    subCampaign.failedRetryRecipientCount ??
+    Math.max(0, subCampaign.totalRecipients - subCampaign.totalSent)
   const retryDisabledReason =
     sendBlockReason ??
     (!canRetryByStatus
-      ? "Reenvio disponível apenas para sub-campanhas com falha"
+      ? "Disparo disponível apenas para sub-campanhas enviadas ou com falha"
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
@@ -112,7 +224,10 @@ function SubCampaignActionsMenu({
   async function handleSendConfirm() {
     setSending(true)
     try {
-      await handleSend(subCampaign.id)
+      await handleSend(
+        subCampaign.id,
+        isFailedRetry ? { retryFailedOnly: true } : undefined
+      )
     } finally {
       setSending(false)
       setSendConfirmOpen(false)
@@ -144,27 +259,70 @@ function SubCampaignActionsMenu({
             }
           >
             <BarChart3 />
-            Métricas e logs
+            Métricas
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => setSendConfirmOpen(true)}
-            disabled={!canRetry}
-            title={!canRetry ? retryDisabledReason : undefined}
+            onClick={() =>
+              onOpenAnalytics({
+                id: subCampaign.id,
+                name: subCampaign.name,
+                errorMessage: subCampaign.errorMessage ?? null,
+                defaultTab: "logs",
+              })
+            }
           >
-            {sendingId === subCampaign.id ? <Loader2 className="animate-spin" /> : <Send />}
-            {sendingId === subCampaign.id ? "Reenviando..." : "Reenviar"}
+            <ScrollText />
+            Ver logs
           </DropdownMenuItem>
+          {canRetryByStatus && retryDisabledReason && !canRetry ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="w-full">
+                  <DropdownMenuItem disabled className="pointer-events-none w-full">
+                    {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
+                    {isSendingThis ? pendingLabel : actionLabel}
+                  </DropdownMenuItem>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm">{retryDisabledReason}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => setSendConfirmOpen(true)}
+              disabled={!canRetry || (isFailedRetry && failedRetryCount <= 0)}
+            >
+              {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
+              {isSendingThis ? pendingLabel : actionLabel}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
       <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reenviar sub-campanha?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isFailedRetry
+                ? "Reenviar apenas as falhas?"
+                : "Disparar sub-campanha novamente?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A sub-campanha <strong>"{subCampaign.name}"</strong> será reenviada para{" "}
-              <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-              destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+              {isFailedRetry ? (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> será reenviada
+                  apenas para{" "}
+                  <strong>{failedRetryCount.toLocaleString("pt-BR")}</strong> destinatário(s) que
+                  falharam. Quem já recebeu <strong>não</strong> será reenviado. Os créditos
+                  correspondentes serão deduzidos só desse reenvio.
+                </>
+              ) : (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> terá um novo
+                  disparo para{" "}
+                  <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -174,9 +332,13 @@ function SubCampaignActionsMenu({
                 event.preventDefault()
                 void handleSendConfirm()
               }}
-              disabled={sending}
+              disabled={sending || (isFailedRetry && failedRetryCount <= 0)}
             >
-              {sending ? "Reenviando..." : "Sim, reenviar"}
+              {sending
+                ? pendingLabel
+                : isFailedRetry
+                  ? "Sim, reenviar apenas falhas"
+                  : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -191,30 +353,29 @@ export function CampaignDetailSheet({
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const { tz } = useTimezone()
-  const { isBeta } = useFeatureAccess()
+  const { host, readOnly, skipBetaGate } = useStudioEmailRuntime()
+  const params = useParams<{ supabaseId?: string }>()
+  const supabaseId = params.supabaseId
   const {
     detailCampaign,
     closeDetail,
-    editName,
-    editTemplateId,
-    editContactListId,
-    editScheduledAt,
-    editSaving,
     sendingId,
     credits,
-    templates,
-    contactLists,
-    setEditName,
-    setEditTemplateId,
-    setEditContactListId,
-    setEditScheduledAt,
-    handleUpdateCampaign,
+    openEditWizard,
+    openDuplicateWizard,
     openEditById,
     handleSend,
   } = useCampanhasContext()
-  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
+  const [leafSending, setLeafSending] = useState(false)
+  // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
-    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
+    !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
+
+  const radarHref =
+    supabaseId && detailCampaign && !host
+      ? `/${supabaseId}/radar?tab=segmentos&segment=${encodeURIComponent(buildCampaignRadarSegmentSlug(detailCampaign.id))}`
+      : null
 
   const isParentCampaign = Boolean(
     detailCampaign?.isParentCampaign || (detailCampaign?.subCampaignCount ?? 0) > 0
@@ -222,21 +383,59 @@ export function CampaignDetailSheet({
   const canEdit =
     detailCampaign &&
     !isParentCampaign &&
-    ["draft", "scheduled", "sent", "failed"].includes(detailCampaign.status)
-  const canSchedule =
-    detailCampaign &&
+    ["draft", "scheduled"].includes(detailCampaign.status)
+  const canSendByStatus =
     !isParentCampaign &&
-    (detailCampaign.status === "draft" || detailCampaign.status === "scheduled")
-  const isSubCampaign = Boolean(
-    detailCampaign?.parentCampaignId || (detailCampaign?.audienceContactIds?.length ?? 0) > 0
-  )
+    detailCampaign != null &&
+    (detailCampaign.status === "draft" ||
+      detailCampaign.status === "scheduled" ||
+      detailCampaign.status === "sent" ||
+      detailCampaign.status === "failed" ||
+      detailCampaign.status === "partially_sent")
+  const isLeafFailedRetry =
+    detailCampaign?.status === "failed" || detailCampaign?.status === "partially_sent"
+  const leafFailedRetryCount =
+    detailCampaign?.failedRetryRecipientCount ??
+    (detailCampaign
+      ? Math.max(0, detailCampaign.totalRecipients - detailCampaign.totalSent)
+      : 0)
+  const leafSendActionLabel = isLeafFailedRetry ? "Redisparar falhas" : "Disparar"
+  const leafSendPendingLabel = isLeafFailedRetry ? "Reenviando falhas..." : "Disparando..."
+  const leafSendBlockReason = detailCampaign
+    ? getCampaignSendBlockReason({
+        campaign: detailCampaign,
+        credits,
+        bypassPlanGate: skipBetaGate,
+      })
+    : undefined
+  const canSendLeaf =
+    !readOnly &&
+    canSendByStatus &&
+    canSendCampaign &&
+    !leafSendBlockReason &&
+    sendingId !== detailCampaign?.id &&
+    !(isLeafFailedRetry && leafFailedRetryCount <= 0)
 
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
       campaign: subCampaign,
       credits,
-      isCampaignsBetaAccess,
+      bypassPlanGate: skipBetaGate,
     })
+  }
+
+  async function handleLeafSendConfirm() {
+    if (!detailCampaign) return
+    setLeafSending(true)
+    try {
+      await handleSend(
+        detailCampaign.id,
+        isLeafFailedRetry ? { retryFailedOnly: true } : undefined
+      )
+    } finally {
+      setLeafSending(false)
+      setLeafSendConfirmOpen(false)
+    }
   }
 
   return (
@@ -251,10 +450,16 @@ export function CampaignDetailSheet({
           <SheetTitle className="pr-8">{detailCampaign?.name ?? "Campanha"}</SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-2">
             {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} /> : null}
-            {isParentCampaign ? (
+            {isParentCampaign && detailCampaign?.status === "partially_sent" &&
+             detailCampaign.partiallySentCount != null &&
+             detailCampaign.partiallySentTotal != null ? (
+              <Badge variant="outline" className="border-semantic-warning-border text-semantic-warning">
+                {detailCampaign.partiallySentCount} de {detailCampaign.partiallySentTotal} partes enviadas
+              </Badge>
+            ) : isParentCampaign ? (
               <Badge variant="secondary">
                 {detailCampaign?.subCampaignCount ?? detailCampaign?.subCampaigns?.length ?? 0}{" "}
-                sub-campanhas
+                partes
               </Badge>
             ) : null}
             <span>Campanha atual.</span>
@@ -267,14 +472,9 @@ export function CampaignDetailSheet({
                 <div className="mb-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Criado por</span>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">
-                        {detailCampaign.creator?.fullName || detailCampaign.creator?.email || "—"}
-                      </span>
-                      {detailCampaign.managedByCorretorStudio ? (
-                        <ManagedByCorretorStudioBadge />
-                      ) : null}
-                    </div>
+                    <span className="font-medium">
+                      {formatEmailCreatorLabel(detailCampaign)}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Destinatários</span>
@@ -307,7 +507,20 @@ export function CampaignDetailSheet({
 
                 {isParentCampaign && detailCampaign.subCampaigns && detailCampaign.subCampaigns.length > 0 ? (
                   <div className="mb-4 flex flex-col gap-2">
-                    <p className="text-sm font-medium">Sub-campanhas</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">Partes da campanha</p>
+                      {detailCampaign.status === "failed" ||
+                      detailCampaign.status === "partially_sent" ? (
+                        <span className="text-xs text-semantic-warning">
+                          {
+                            detailCampaign.subCampaigns.filter((sub) => sub.status === "failed")
+                              .length
+                          }{" "}
+                          parte(s) com falha — use &quot;Reenviar apenas falhas&quot; nas ações de cada
+                          parte (somente quem falhou; quem já recebeu não é reenviado)
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="overflow-x-auto rounded-md border">
                       <Table className="min-w-[760px]">
                         <TableHeader>
@@ -316,12 +529,22 @@ export function CampaignDetailSheet({
                             <TableHead>Status</TableHead>
                             <TableHead>Agendamento</TableHead>
                             <TableHead className="text-right">Destinatários</TableHead>
+                            <TableHead>Erro</TableHead>
                             <TableHead className="w-12 text-right">Ações</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {detailCampaign.subCampaigns.map((sub) => (
-                            <TableRow key={sub.id}>
+                          {detailCampaign.subCampaigns.map((sub) => {
+                            const subSendBlockReason = getSendBlockReason(sub)
+                            const canShowResend =
+                              sub.status === "failed" ||
+                              sub.status === "partially_sent" ||
+                              sub.status === "sent"
+                            const canResendNow =
+                              canShowResend && canSendCampaign && !subSendBlockReason && !readOnly
+
+                            return (
+                            <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
                               <TableCell className="font-medium">
                                 {sub.subCampaignIndex ?? "—"}
                               </TableCell>
@@ -336,19 +559,68 @@ export function CampaignDetailSheet({
                               <TableCell className="text-right">
                                 {sub.totalRecipients.toLocaleString("pt-BR")}
                               </TableCell>
+                              <TableCell className="max-w-[200px]">
+                                {sub.status === "failed" && sub.errorMessage ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="line-clamp-2 cursor-default text-xs text-semantic-danger">
+                                        {sub.errorMessage}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-sm">{sub.errorMessage}</TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-right">
-                                <SubCampaignActionsMenu
-                                  subCampaign={sub}
-                                  canSendCampaign={canSendCampaign}
-                                  sendBlockReason={getSendBlockReason(sub)}
-                                  sendingId={sendingId}
-                                  openEditById={openEditById}
-                                  handleSend={handleSend}
-                                  onOpenAnalytics={onOpenAnalytics}
-                                />
+                                <div className="flex items-center justify-end gap-1">
+                                  {canShowResend ? (
+                                    canResendNow ? (
+                                      <SubCampaignDispatchButton
+                                        subCampaign={sub}
+                                        sendingId={sendingId}
+                                        handleSend={handleSend}
+                                      />
+                                    ) : (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              disabled
+                                            >
+                                              <Send data-icon="inline-start" />
+                                              {sub.status === "failed" ||
+                                              sub.status === "partially_sent"
+                                                ? "Reenviar apenas falhas"
+                                                : "Disparar"}
+                                            </Button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-sm">
+                                          {subSendBlockReason ??
+                                            "Ative um plano em Assinaturas para disparar campanhas"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )
+                                  ) : null}
+                                  <SubCampaignActionsMenu
+                                    subCampaign={sub}
+                                    canSendCampaign={canSendCampaign}
+                                    sendBlockReason={subSendBlockReason}
+                                    sendingId={sendingId}
+                                    openEditById={openEditById}
+                                    handleSend={handleSend}
+                                    onOpenAnalytics={onOpenAnalytics}
+                                  />
+                                </div>
                               </TableCell>
                             </TableRow>
-                          ))}
+                            )
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -357,131 +629,164 @@ export function CampaignDetailSheet({
 
                 <Separator className="mb-4" />
 
-                {canEdit ? (
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="campaign-edit-name">Nome da campanha *</FieldLabel>
-                      <Input
-                        id="campaign-edit-name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        disabled={editSaving}
-                        placeholder="Ex: Newsletter Junho 2026"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Template</FieldLabel>
-                      <Select
-                        value={editTemplateId}
-                        onValueChange={setEditTemplateId}
-                        disabled={editSaving}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um template..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {templates.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    {!isSubCampaign ? (
-                      <Field>
-                        <FieldLabel>Lista de contatos</FieldLabel>
-                        <Select
-                          value={editContactListId}
-                          onValueChange={setEditContactListId}
-                          disabled={editSaving}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione uma lista..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {contactLists.map((l) => (
-                              <SelectItem key={l.id} value={l.id}>
-                                {formatContactListLabel(l)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    ) : (
-                      <Field>
-                        <FieldLabel>Lista / audiência</FieldLabel>
-                        <Input value={audienceLabel(detailCampaign)} disabled />
-                        <p className="text-xs text-muted-foreground">
-                          A audiência da sub-campanha fica bloqueada para preservar o lote
-                          original de destinatários.
-                        </p>
-                      </Field>
-                    )}
-                    {canSchedule ? (
-                      <Field>
-                        <DateTimePicker
-                          date={editScheduledAt}
-                          onDateChange={setEditScheduledAt}
-                          label="Agendar envio (opcional)"
-                          disabled={editSaving}
-                          disablePastDates
-                          tz={tz}
-                        />
-                        {editScheduledAt ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditScheduledAt(undefined)}
-                            className="text-xs text-muted-foreground underline underline-offset-2"
-                          >
-                            Remover agendamento
-                          </button>
-                        ) : null}
-                      </Field>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {isSubCampaign
-                          ? "Alterações de nome e template valem para o próximo disparo. O histórico dos disparos anteriores permanece intacto."
-                          : "Alterações de template e lista valem para o próximo disparo. O histórico dos disparos anteriores permanece intacto."}
-                      </p>
-                    )}
-                  </FieldGroup>
-                ) : (
-                  <div className="grid gap-3 text-sm sm:grid-cols-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Nome</span>
-                      <span className="font-medium">{detailCampaign.name}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Template</span>
-                      <span className="font-medium">{detailCampaign.template?.name ?? "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Lista / audiência</span>
-                      <span className="font-medium">{audienceLabel(detailCampaign)}</span>
-                    </div>
-                    <p className="col-span-full text-sm text-muted-foreground">
-                      {isParentCampaign
-                        ? "Campanha-pai é somente leitura. As sub-campanhas seguem o agendamento criado no dia 0."
-                        : "Esta campanha não pode ser editada no status atual."}
-                    </p>
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Nome</span>
+                    <span className="font-medium">{detailCampaign.name}</span>
                   </div>
-                )}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Template</span>
+                    <span className="font-medium">{detailCampaign.template?.name ?? "—"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-muted-foreground">Lista / audiência</span>
+                    <span className="font-medium">{audienceLabel(detailCampaign)}</span>
+                  </div>
+                  {detailCampaign.linkedForm ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Formulário vinculado</span>
+                      <span className="font-medium">{detailCampaign.linkedForm.name}</span>
+                    </div>
+                  ) : null}
+                  {!isParentCampaign && detailCampaign.scheduledAt ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Agendamento</span>
+                      <span className="font-medium">
+                        {formatIntimezone(new Date(detailCampaign.scheduledAt), "dd/MM/yyyy HH:mm", tz)}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
-              {canEdit ? (
-                <SheetFooter className="mt-4 border-t pt-4">
-                  <Button variant="outline" onClick={closeDetail} disabled={editSaving}>
-                    Cancelar
-                  </Button>
+              <SheetFooter className="mt-4 border-t pt-4">
+                <Button variant="outline" onClick={closeDetail}>
+                  Fechar
+                </Button>
+                {!readOnly ? (
                   <Button
-                    onClick={() => void handleUpdateCampaign()}
-                    disabled={editSaving || !editName.trim()}
+                    variant="secondary"
+                    onClick={() => void openDuplicateWizard(detailCampaign)}
                   >
-                    {editSaving ? "Salvando..." : "Salvar"}
+                    <Copy data-icon="inline-start" />
+                    Duplicar
                   </Button>
-                </SheetFooter>
-              ) : null}
+                ) : null}
+                {canEdit && !readOnly ? (
+                  <Button onClick={() => void openEditWizard(detailCampaign)}>
+                    <Pencil data-icon="inline-start" />
+                    Editar
+                  </Button>
+                ) : null}
+                {canSendByStatus && !readOnly ? (
+                  canSendLeaf ? (
+                    <Button onClick={() => setLeafSendConfirmOpen(true)}>
+                      <Send data-icon="inline-start" />
+                      {leafSendActionLabel}
+                    </Button>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button disabled>
+                            <Send data-icon="inline-start" />
+                            {leafSendActionLabel}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-sm">
+                        {leafSendBlockReason ??
+                          "Ative um plano em Assinaturas para disparar campanhas"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )
+                ) : null}
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onOpenAnalytics({
+                      id: detailCampaign.id,
+                      name: detailCampaign.name,
+                      errorMessage: detailCampaign.errorMessage ?? null,
+                      defaultTab: "logs",
+                    })
+                  }
+                >
+                  <ScrollText data-icon="inline-start" />
+                  Logs
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onOpenAnalytics({
+                      id: detailCampaign.id,
+                      name: detailCampaign.name,
+                      errorMessage: detailCampaign.errorMessage ?? null,
+                    })
+                  }
+                >
+                  <BarChart3 data-icon="inline-start" />
+                  Analytics
+                </Button>
+                {radarHref ? (
+                  <Button variant="outline" asChild>
+                    <Link href={radarHref}>
+                      <Radar data-icon="inline-start" />
+                      Ver no Radar
+                    </Link>
+                  </Button>
+                ) : null}
+              </SheetFooter>
+
+              <AlertDialog open={leafSendConfirmOpen} onOpenChange={setLeafSendConfirmOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {isLeafFailedRetry
+                        ? "Reenviar apenas as falhas?"
+                        : "Disparar campanha?"}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {isLeafFailedRetry ? (
+                        <>
+                          A campanha <strong>&quot;{detailCampaign.name}&quot;</strong> será
+                          reenviada apenas para{" "}
+                          <strong>{leafFailedRetryCount.toLocaleString("pt-BR")}</strong>{" "}
+                          destinatário(s) que falharam. Quem já recebeu <strong>não</strong> será
+                          reenviado. Os créditos correspondentes serão deduzidos só desse reenvio.
+                        </>
+                      ) : (
+                        <>
+                          A campanha <strong>&quot;{detailCampaign.name}&quot;</strong> terá um
+                          novo disparo para{" "}
+                          <strong>
+                            {detailCampaign.totalRecipients.toLocaleString("pt-BR")}
+                          </strong>{" "}
+                          destinatário(s). Campanhas já enviadas geram um novo dispatch (não
+                          alteram o histórico anterior). Os créditos correspondentes serão
+                          deduzidos.
+                        </>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={leafSending}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(event) => {
+                        event.preventDefault()
+                        void handleLeafSendConfirm()
+                      }}
+                      disabled={leafSending || (isLeafFailedRetry && leafFailedRetryCount <= 0)}
+                    >
+                      {leafSending
+                        ? leafSendPendingLabel
+                        : isLeafFailedRetry
+                          ? "Sim, reenviar apenas falhas"
+                          : "Sim, disparar"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
           </div>
         ) : null}
       </SheetContent>

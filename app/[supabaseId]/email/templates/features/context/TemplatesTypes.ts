@@ -38,3 +38,29 @@ export interface TemplatesState {
   activeTab: TemplateTab
   templateApprovalRequired: boolean
 }
+
+export type RankedTemplate = {
+  versionGroupId: string
+  templateId: string
+  name: string
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+  bounced: number
+  complained: number
+  rates: {
+    deliverabilityRate: number
+    openRate: number
+    clickRate: number
+    bounceRate: number
+    complainRate: number
+  }
+  rank: number
+}
+
+export type TemplateRankingResult = {
+  period: { from: string; to: string }
+  byOpenRate: RankedTemplate[]
+  byClickRate: RankedTemplate[]
+}

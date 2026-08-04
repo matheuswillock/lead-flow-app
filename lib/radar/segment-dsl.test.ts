@@ -124,6 +124,54 @@ describe("segment-dsl", () => {
     ).toThrow()
   })
 
+  it("aceita event com campaignId UUID e rejeita campaignId inválido", () => {
+    const campaignId = "11111111-1111-4111-8111-111111111111"
+    const rules = parseRadarSegmentRules({
+      match: "all",
+      conditions: [
+        {
+          kind: "event",
+          eventType: "email.opened",
+          occurrence: "occurred",
+          campaignId,
+          windowDays: 30,
+        },
+      ],
+    })
+    const condition = rules.conditions[0]
+    expect(condition.kind).toBe("event")
+    if (condition.kind === "event") {
+      expect(condition.campaignId).toBe(campaignId)
+    }
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [
+          {
+            kind: "event",
+            eventType: "email.opened",
+            occurrence: "occurred",
+            campaignId: "not-a-uuid",
+          },
+        ],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [
+          {
+            kind: "event",
+            eventType: "email.clicked",
+            occurrence: "occurred",
+          },
+        ],
+      })
+    ).not.toThrow()
+  })
+
   it("aceita lead_custom_field válido e exige value para eq/neq/contains", () => {
     expect(() =>
       parseRadarSegmentRules({
@@ -163,6 +211,32 @@ describe("segment-dsl", () => {
       parseRadarSegmentRules({
         match: "any",
         conditions: [{ kind: "lead_status", statuses: ["not_a_status"] }],
+      })
+    ).toThrow()
+  })
+
+  it("aceita engagement_band válido e rejeita banda inválida ou lista vazia", () => {
+    const rules = parseRadarSegmentRules({
+      match: "any",
+      conditions: [{ kind: "engagement_band", bands: ["hot", "warm"] }],
+    })
+    const condition = rules.conditions[0]
+    expect(condition.kind).toBe("engagement_band")
+    if (condition.kind === "engagement_band") {
+      expect(condition.bands).toEqual(["hot", "warm"])
+    }
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "engagement_band", bands: [] }],
+      })
+    ).toThrow()
+
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "any",
+        conditions: [{ kind: "engagement_band", bands: ["boiling"] }],
       })
     ).toThrow()
   })
@@ -404,6 +478,134 @@ describe("segment-dsl", () => {
           conditions: [{ kind: "lead_field", fieldKey: "closerId", operator: "eq", value: "João Silva" }],
         })
       ).toThrow()
+    })
+  })
+
+  describe("portfolio_field", () => {
+    it("aceita renewalStatus eq com enum válido", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "renewalStatus", operator: "eq", value: "to_renew" }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita renewalStatus com valor fora do enum", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "renewalStatus", operator: "eq", value: "expired" }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita renewalAmount gt com número", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "renewalAmount", operator: "gt", value: 1000 }],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita operador inválido para renewalAmount", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "renewalAmount", operator: "contains", value: "x" }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita lastContactAt within_days positivo e rejeita negativo", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "lastContactAt", operator: "within_days", value: 30 }],
+        })
+      ).not.toThrow()
+
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "lastContactAt", operator: "within_days", value: -1 }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita source e portfolioStatus como enum", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "any",
+          conditions: [
+            { kind: "portfolio_field", fieldKey: "source", operator: "eq", value: "brokerage_transfer" },
+            { kind: "portfolio_field", fieldKey: "portfolioStatus", operator: "neq", value: "canceled" },
+          ],
+        })
+      ).not.toThrow()
+    })
+
+    it("aceita amount e finalizedDateAt do histórico", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [
+            { kind: "portfolio_field", fieldKey: "amount", operator: "gte", value: 500 },
+            { kind: "portfolio_field", fieldKey: "finalizedDateAt", operator: "before", value: "2026-12-31" },
+          ],
+        })
+      ).not.toThrow()
+    })
+
+    it("aceita contractType enum e rejeita inválido", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "contractType", operator: "eq", value: "individual" }],
+        })
+      ).not.toThrow()
+
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "contractType", operator: "eq", value: "group" }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita operadora/productName texto e is_empty", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "any",
+          conditions: [
+            { kind: "portfolio_field", fieldKey: "operadora", operator: "contains", value: "Unimed" },
+            { kind: "portfolio_field", fieldKey: "productName", operator: "is_empty" },
+            { kind: "portfolio_field", fieldKey: "renewalAmount", operator: "not_empty" },
+          ],
+        })
+      ).not.toThrow()
+    })
+
+    it("rejeita fieldKey fora do catálogo", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [{ kind: "portfolio_field", fieldKey: "ticket", operator: "eq", value: 1 }],
+        })
+      ).toThrow()
+    })
+
+    it("aceita combinação carteira com renovação e valor (aceitação D13)", () => {
+      expect(() =>
+        parseRadarSegmentRules({
+          match: "all",
+          conditions: [
+            { kind: "portfolio_field", fieldKey: "renewalStatus", operator: "eq", value: "to_renew" },
+            { kind: "portfolio_field", fieldKey: "renewalAmount", operator: "gt", value: 1000 },
+          ],
+        })
+      ).not.toThrow()
     })
   })
 })

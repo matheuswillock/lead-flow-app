@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BarChart3, RefreshCw, AlertTriangle } from "lucide-react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
+import { BarChart3, Radar, RefreshCw, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -11,8 +13,11 @@ import {
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
 import { CampaignLogsTab } from "../CampaignLogsTab"
+import { CampaignComparePanel } from "./CampaignComparePanel"
 import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
 import { MetricsSummaryCards } from "./MetricsSummaryCards"
@@ -26,6 +31,7 @@ type CampaignAnalyticsDialogProps = {
   campaignId?: string
   campaignName?: string
   campaignErrorMessage?: string | null
+  defaultTab?: "metrics" | "logs"
 }
 
 export function CampaignAnalyticsDialog({
@@ -34,19 +40,27 @@ export function CampaignAnalyticsDialog({
   campaignId,
   campaignName,
   campaignErrorMessage,
+  defaultTab,
 }: CampaignAnalyticsDialogProps) {
   const host = useOptionalStudioEmailHost()
+  const params = useParams<{ supabaseId?: string }>()
+  const supabaseId = params.supabaseId
   const [activeTab, setActiveTab] = useState<"metrics" | "logs">("metrics")
   const { data, initialLoading, refreshing, period, handlePeriodChange, handleRefresh } =
     useCampaignAnalytics(campaignId, open)
 
   useEffect(() => {
-    if (open) setActiveTab("metrics")
-  }, [campaignId, open])
+    if (open) setActiveTab(defaultTab ?? "metrics")
+  }, [campaignId, open, defaultTab])
 
   const title = campaignName
     ? `Métricas — ${campaignName}`
     : "Métricas de E-mail"
+
+  const radarHref =
+    supabaseId && campaignId && !host
+      ? `/${supabaseId}/radar?tab=segmentos&segment=${encodeURIComponent(buildCampaignRadarSegmentSlug(campaignId))}`
+      : null
 
   const metricsContent = (
     <>
@@ -64,16 +78,26 @@ export function CampaignAnalyticsDialog({
             Entrega e engajamento atualizam automaticamente a cada 30s via eventos do Resend.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
-          Atualizar
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {radarHref ? (
+            <Button type="button" variant="outline" size="sm" asChild>
+              <Link href={radarHref}>
+                <Radar data-icon="inline-start" />
+                Ver no Radar
+              </Link>
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
+            Atualizar
+          </Button>
+        </div>
       </div>
       <MetricsSummaryCards data={data} loading={initialLoading} />
       <DeliverabilityChart data={data} loading={initialLoading} />
@@ -84,6 +108,8 @@ export function CampaignAnalyticsDialog({
           loading={initialLoading}
         />
       ) : null}
+      <Separator />
+      <CampaignComparePanel period={period} preselectedCampaignId={campaignId} />
     </>
   )
 
