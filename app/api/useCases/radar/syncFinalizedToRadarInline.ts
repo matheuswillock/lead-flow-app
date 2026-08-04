@@ -25,3 +25,27 @@ export function syncFinalizedToRadarInline(input: {
     }
   })
 }
+
+/**
+ * Um único `after()` para importações em lote — evita N callbacks
+ * (até PORTFOLIO_IMPORT_MAX_ROWS) cada um repetindo feature-check + queries.
+ */
+export function syncFinalizedToRadarInlineBatch(input: {
+  teamId: string | null | undefined
+  leadIds: string[]
+}): void {
+  const teamId = input.teamId
+  if (!teamId) return
+  const leadIds = [...new Set(input.leadIds.filter((id) => Boolean(id)))]
+  if (leadIds.length === 0) return
+
+  after(async () => {
+    try {
+      const hasFeature = await teamHasRadarFeature(teamId)
+      if (!hasFeature) return
+      await syncFinalizedToRadarUseCase.execute({ teamId, leadIds })
+    } catch (error) {
+      console.error("[syncFinalizedToRadarInlineBatch]", error)
+    }
+  })
+}

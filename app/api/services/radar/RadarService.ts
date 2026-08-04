@@ -508,6 +508,12 @@ export class RadarService {
       return "skipped"
     }
 
+    const existingLink = await radarRepository.findSourceLinkBySource({
+      teamId: input.scope.teamId,
+      sourceType: "lead_finalized",
+      sourceId: input.partyId,
+    })
+
     const { profile, wasExisting } = await radarRepository.resolveProfileForDocument({
       teamId: input.scope.teamId,
       identityType: input.identityType,
@@ -518,6 +524,17 @@ export class RadarService {
       documentSource: "lead_finalized",
       lastSeenAt: input.lastSeenAt,
     })
+
+    // Documento corrigido: o source link aponta ao perfil antigo com a identidade
+    // obsoleta — remove-a antes de mover o link para o perfil do novo documento.
+    if (existingLink && existingLink.profileId !== profile.id) {
+      await radarRepository.removeObsoleteContractIdentity({
+        teamId: input.scope.teamId,
+        profileId: existingLink.profileId,
+        identityType: input.identityType,
+        keepNormalizedDocument: normalizedDocument,
+      })
+    }
 
     await radarRepository.upsertIdentity({
       profileId: profile.id,

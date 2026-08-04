@@ -13,6 +13,8 @@ const upsertIdentity = mock(async () => ({}))
 const upsertSourceLink = mock(async () => ({}))
 const appendEventIfNew = mock(async () => ({}))
 const findFinalizedForRadarSync = mock(async () => [] as unknown[])
+const findSourceLinkBySource = mock(async (): Promise<{ id: string; profileId: string } | null> => null)
+const removeObsoleteContractIdentity = mock(async () => ({ removed: 0 }))
 
 mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
   radarRepository: {
@@ -21,6 +23,8 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     upsertSourceLink,
     appendEventIfNew,
     findFinalizedForRadarSync,
+    findSourceLinkBySource,
+    removeObsoleteContractIdentity,
   },
 }))
 
@@ -93,6 +97,8 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     upsertSourceLink.mockReset()
     appendEventIfNew.mockReset()
     findFinalizedForRadarSync.mockReset()
+    findSourceLinkBySource.mockReset()
+    removeObsoleteContractIdentity.mockReset()
 
     resolveProfileForDocument.mockImplementation(async () => ({
       profile: { id: `profile-${Math.random().toString(36).slice(2, 8)}` },
@@ -101,6 +107,8 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     upsertIdentity.mockImplementation(async () => ({}))
     upsertSourceLink.mockImplementation(async () => ({}))
     appendEventIfNew.mockImplementation(async () => ({}))
+    findSourceLinkBySource.mockImplementation(async () => null)
+    removeObsoleteContractIdentity.mockImplementation(async () => ({ removed: 0 }))
   })
 
   it("cria perfil para titular e dependente com documento; pula dependente sem documento", async () => {
@@ -167,7 +175,7 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
 
     const bad = await syncFinalizedToRadarUseCase.execute({ teamId: "team-1" })
     expect(bad.isValid).toBe(false)
-    expect(bad.errorMessages[0]).toContain("finalizedId ou leadId")
+    expect(bad.errorMessages[0]).toContain("finalizedId, leadId ou leadIds")
   })
 
   it("titular sem documento não gera perfil", async () => {
@@ -182,5 +190,31 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     expect(result.skipped).toBe(1)
     expect(result.created).toBe(0)
     expect(resolveProfileForDocument).not.toHaveBeenCalled()
+  })
+
+  it("ao mudar documento, remove identidade obsoleta do perfil anterior", async () => {
+    findFinalizedForRadarSync.mockImplementation(async () => [
+      finalizedFixture({
+        holderDocument: "111.222.333-44",
+        dependents: [],
+      }),
+    ])
+    findSourceLinkBySource.mockImplementation(async () => ({
+      id: "link-1",
+      profileId: "old-profile",
+    }))
+    resolveProfileForDocument.mockImplementation(async () => ({
+      profile: { id: "new-profile" },
+      wasExisting: false,
+    }))
+
+    await radarService.syncFromFinalized(scope, { finalizedId: "finalized-1" })
+
+    expect(removeObsoleteContractIdentity).toHaveBeenCalledWith({
+      teamId: "team-1",
+      profileId: "old-profile",
+      identityType: "contract_holder",
+      keepNormalizedDocument: "11122233344",
+    })
   })
 })

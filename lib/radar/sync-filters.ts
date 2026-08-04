@@ -1,5 +1,6 @@
 export type RadarSyncFilters = {
   leadId?: string
+  leadIds?: string[]
   portfolioId?: string
   emailContactId?: string
   finalizedId?: string
@@ -15,6 +16,13 @@ export function parseRadarSyncFilters(body: unknown): RadarSyncFilters {
 
   if (typeof record.leadId === "string" && record.leadId.trim()) {
     filters.leadId = record.leadId.trim()
+  }
+
+  if (Array.isArray(record.leadIds)) {
+    const leadIds = record.leadIds
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim())
+    if (leadIds.length > 0) filters.leadIds = [...new Set(leadIds)]
   }
 
   if (typeof record.portfolioId === "string" && record.portfolioId.trim()) {

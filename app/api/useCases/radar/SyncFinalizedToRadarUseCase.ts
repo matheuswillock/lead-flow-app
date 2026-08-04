@@ -6,13 +6,15 @@ interface SyncFinalizedToRadarInput {
   teamId: string
   finalizedId?: string
   leadId?: string
+  leadIds?: string[]
 }
 
 class SyncFinalizedToRadarUseCase {
   async execute(input: SyncFinalizedToRadarInput): Promise<Output> {
     try {
-      if (!input.finalizedId && !input.leadId) {
-        return new Output(false, [], ["finalizedId ou leadId é obrigatório"], null)
+      const leadIds = input.leadIds?.filter((id) => Boolean(id)) ?? []
+      if (!input.finalizedId && !input.leadId && leadIds.length === 0) {
+        return new Output(false, [], ["finalizedId, leadId ou leadIds é obrigatório"], null)
       }
 
       const scope: RadarTeamScope = {
@@ -24,6 +26,7 @@ class SyncFinalizedToRadarUseCase {
       const result = await radarService.syncFromFinalized(scope, {
         ...(input.finalizedId ? { finalizedId: input.finalizedId } : {}),
         ...(input.leadId ? { leadId: input.leadId } : {}),
+        ...(leadIds.length > 0 ? { leadIds } : {}),
       })
       return new Output(true, [], [], result)
     } catch (error) {

@@ -1088,7 +1088,11 @@ export class RadarRepository {
       where: {
         lead: { teamId },
         ...(filters.finalizedId ? { id: filters.finalizedId } : {}),
-        ...(filters.leadId ? { leadId: filters.leadId } : {}),
+        ...(filters.leadIds && filters.leadIds.length > 0
+          ? { leadId: { in: filters.leadIds } }
+          : filters.leadId
+            ? { leadId: filters.leadId }
+            : {}),
         ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
       },
       select: {
@@ -1493,6 +1497,142 @@ export class RadarRepository {
         userAgent: input.userAgent,
         metadata: input.metadata as Prisma.InputJsonValue | undefined,
       },
+    })
+  }
+
+  async findSourceLinkBySource(input: {
+    teamId: string
+    sourceType: RadarSourceType
+    sourceId: string
+  }) {
+    return prisma.radarSourceLink.findUnique({
+      where: {
+        teamId_sourceType_sourceId: {
+          teamId: input.teamId,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+        },
+      },
+      select: { id: true, profileId: true },
+    })
+  }
+
+  /**
+   * D14: ao corrigir o documento de um titular/dependente, remove a identidade
+   * obsoleta do perfil anterior (evita fantasma com documento antigo no Radar).
+   */
+  async removeObsoleteContractIdentity(input: {
+    teamId: string
+    profileId: string
+    identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
+    keepNormalizedDocument: string
+  }) {
+    const identities = await prisma.radarIdentity.findMany({
+      where: {
+        teamId: input.teamId,
+        profileId: input.profileId,
+        type: input.identityType,
+      },
+      select: { id: true, normalizedValue: true },
+    })
+
+    const obsolete = identities.filter(
+      (identity) => identity.normalizedValue !== input.keepNormalizedDocument
+    )
+    if (obsolete.length === 0) return { removed: 0 }
+
+    await prisma.radarIdentity.deleteMany({
+      where: { id: { in: obsolete.map((identity) => identity.id) } },
+    })
+
+    const profile = await prisma.radarProfile.findUnique({
+      where: { id: input.profileId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (
+      profile?.normalizedPrimaryDocument &&
+      obsolete.some((identity) => identity.normalizedValue === profile.normalizedPrimaryDocument)
+    ) {
+      await prisma.radarProfile.update({
+        where: { id: input.profileId },
+        data: { primaryDocument: null, normalizedPrimaryDocument: null },
+      })
+    }
+
+    return { removed: obsolete.length }
+  }
+
+  async getProfileNormalizedDocument(
+    teamId: string,
+    profileId: string
+  ): Promise<{ found: false } | { found: true; doc: string | null }> {
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: profileId, teamId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (!profile) return { found: false }
+    return { found: true, doc: profile.normalizedPrimaryDocument }
+  }
+
+  /**
+   * D14: histórico de contratos por documento — titular OU dependente.
+   * Perfis `contract_dependent` têm o doc em LeadFinalizedDependent, não no holder.
+   */
+  async findFinalizedContractsByNormalizedDocument(teamId: string, doc: string) {
+    return prisma.leadFinalized.findMany({
+      where: {
+        lead: { teamId },
+        OR: [
+          { holder: { document: doc } },
+          { dependents: { some: { document: doc } } },
+        ],
+      },
+      select: {
+        id: true,
+        leadId: true,
+        finalizedDateAt: true,
+        amount: true,
+        contractType: true,
+        operadora: true,
+        productName: true,
+        createdAt: true,
+        holder: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+          },
+        },
+        dependents: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+            parentesco: true,
+          },
+          orderBy: { name: "asc" },
+        },
+        lead: {
+          select: {
+            id: true,
+            portfolio: {
+              select: {
+                id: true,
+                portfolioStatus: true,
+                renewalStatus: true,
+                renewalAmount: true,
+                source: true,
+                lastContactAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { finalizedDateAt: "desc" },
     })
   }
 }
