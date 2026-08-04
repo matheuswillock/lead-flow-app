@@ -344,7 +344,8 @@ export function PublicFormWizard({
     return emptyDraft
   })
   const [step, setStep] = useState(0)
-  const [maxReachedStep, setMaxReachedStep] = useState(0)
+  /** Highest step index successfully advanced past via "Próxima etapa" (validated). */
+  const [completedThroughStep, setCompletedThroughStep] = useState(0)
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(Boolean(formId))
   const [saving, setSaving] = useState(false)
@@ -355,10 +356,6 @@ export function PublicFormWizard({
   const [healthPlans, setHealthPlans] = useState<Array<{ id: string; name: string }>>([])
   const [settings, setSettings] = useState<PublicFormSettings | null>(null)
   const [confirmExit, setConfirmExit] = useState(false)
-
-  useEffect(() => {
-    setMaxReachedStep((prev) => Math.max(prev, step))
-  }, [step])
 
   useEffect(() => {
     setOverride({ label: formId ? draft.name || "Editar formulário" : "Novo formulário" })
@@ -642,7 +639,7 @@ export function PublicFormWizard({
           <nav className="flex flex-col gap-1">
             {steps.map((s, i) => {
               const isActive = step === i
-              const isCompleted = i < maxReachedStep
+              const isCompleted = i < completedThroughStep
               return (
               <button
                 key={s}
@@ -725,7 +722,9 @@ export function PublicFormWizard({
                         return
                       }
                     }
-                    setStep(step + 1)
+                    const nextStep = step + 1
+                    setCompletedThroughStep((prev) => Math.max(prev, nextStep))
+                    setStep(nextStep)
                   }}
                 >
                   Próxima etapa
