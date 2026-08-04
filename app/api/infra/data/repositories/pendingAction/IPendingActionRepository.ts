@@ -5,13 +5,16 @@ export type BillingPendingActionRecord = {
   actionType: string;
   status: string;
   paymentId: string | null;
+  teamId: string | null;
   createdAt: Date;
+  updatedAt: Date;
   payload: unknown;
 };
 
 export interface IPendingActionRepository {
   findById(id: string): Promise<(PendingAction & { master: any }) | null>;
   findByIdSimple(id: string): Promise<PendingAction | null>;
+  findByPaymentId(paymentId: string): Promise<PendingAction | null>;
   create(data: {
     masterId: string;
     teamId?: string | null;

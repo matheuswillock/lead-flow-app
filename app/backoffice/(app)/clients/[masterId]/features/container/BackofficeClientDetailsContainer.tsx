@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CalendarDays, ChevronDown, Crown, DollarSign, Eye, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
+import { CalendarDays, ChevronDown, Copy, Crown, DollarSign, Eye, ExternalLink, KeyRound, Mail, MoreHorizontal, Pencil, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
@@ -64,7 +64,11 @@ import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
 import { BackofficeClientStudioEmailsPanel } from "../components/BackofficeClientStudioEmailsPanel"
 import { BackofficeClientPublicFormsPanel } from "../components/BackofficeClientPublicFormsPanel"
-import type { BackofficeClientTeam, BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
+import type {
+  BackofficeClientPendingAction,
+  BackofficeClientTeam,
+  BackofficeClientTeamMember,
+} from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
@@ -117,6 +121,55 @@ const INVOICE_PERIOD_OPTIONS = [
   { value: "this_month", label: "Mês atual" },
 ] as const
 
+const PENDING_ACTION_TYPE_LABELS: Record<string, string> = {
+  add_user: "Adicionar usuário",
+  add_member: "Adicionar membro",
+  create_team: "Criar time",
+  transfer_team: "Transferir time",
+  update_subscription_credits: "Atualizar créditos",
+}
+
+const PENDING_ACTION_STATUS_BADGES: Record<
+  string,
+  {
+    label: string
+    variant: "default" | "secondary" | "destructive" | "outline"
+    className?: string
+  }
+> = {
+  pending: {
+    label: "Pendente",
+    variant: "outline",
+    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
+  },
+  applied: {
+    label: "Aplicada",
+    variant: "outline",
+    className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success",
+  },
+  failed: {
+    label: "Falhou",
+    variant: "outline",
+    className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
+  },
+  canceled: {
+    label: "Cancelada",
+    variant: "secondary",
+  },
+}
+
+type ClientDetailsTab = "teams" | "invoices" | "pending-actions" | "emails" | "forms"
+
+function isClientDetailsTab(value: string | null): value is ClientDetailsTab {
+  return (
+    value === "teams" ||
+    value === "invoices" ||
+    value === "pending-actions" ||
+    value === "emails" ||
+    value === "forms"
+  )
+}
+
 function formatDate(value: string, tz: string) {
   return formatIntimezone(new Date(value), "dd/MM/yyyy", tz)
 }
@@ -158,12 +211,16 @@ export function BackofficeClientDetailsContainer() {
     invoicesPagination,
     invoiceFilters,
     invoicesSummary,
+    pendingActions,
     isLoading,
     isTeamsLoading,
     isInvoicesLoading,
+    isPendingActionsLoading,
+    isCancelingPendingAction,
     error,
     teamsError,
     invoicesError,
+    pendingActionsError,
     activeSection,
     setActiveSection,
     filters,
@@ -172,6 +229,7 @@ export function BackofficeClientDetailsContainer() {
     setTeamsPageSize,
     setInvoicesFilters,
     setInvoicesPage,
+    cancelPendingAction,
     reload,
     clearFilters,
   } = useBackofficeClientDetails()
@@ -207,6 +265,8 @@ export function BackofficeClientDetailsContainer() {
   const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
   const [addingMasterTeamId, setAddingMasterTeamId] = useState<string | null>(null)
   const [selectedEmailTeamId, setSelectedEmailTeamId] = useState<string | null>(null)
+  const [pendingActionToCancel, setPendingActionToCancel] =
+    useState<BackofficeClientPendingAction | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -214,7 +274,7 @@ export function BackofficeClientDetailsContainer() {
 
   useEffect(() => {
     const tab = searchParams.get("tab")
-    if (tab === "invoices" || tab === "teams" || tab === "emails" || tab === "forms") {
+    if (isClientDetailsTab(tab)) {
       setActiveSection(tab)
     }
     const teamId = searchParams.get("teamId")
@@ -226,32 +286,21 @@ export function BackofficeClientDetailsContainer() {
 
     const currentName = searchParams.get("name")
     const currentTab = searchParams.get("tab")
-    if (
-      currentName === details.fullName &&
-      (currentTab === "teams" ||
-        currentTab === "invoices" ||
-        currentTab === "emails" ||
-        currentTab === "forms")
-    ) {
+    if (currentName === details.fullName && isClientDetailsTab(currentTab)) {
       return
     }
 
     const params = new URLSearchParams(searchParams.toString())
     params.set("name", details.fullName)
 
-    if (
-      currentTab !== "teams" &&
-      currentTab !== "invoices" &&
-      currentTab !== "emails" &&
-      currentTab !== "forms"
-    ) {
+    if (!isClientDetailsTab(currentTab)) {
       params.set("tab", activeSection)
     }
 
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }, [activeSection, details?.fullName, pathname, router, searchParams])
 
-  function handleTabChange(nextSection: "teams" | "invoices" | "emails" | "forms") {
+  function handleTabChange(nextSection: ClientDetailsTab) {
     setActiveSection(nextSection)
     const params = new URLSearchParams(searchParams.toString())
     params.set("tab", nextSection)
@@ -659,13 +708,16 @@ export function BackofficeClientDetailsContainer() {
 
           <Tabs
             value={activeSection}
-            onValueChange={(value) =>
-              handleTabChange(value as "teams" | "invoices" | "emails" | "forms")
-            }
+            onValueChange={(value) => {
+              if (isClientDetailsTab(value)) {
+                handleTabChange(value)
+              }
+            }}
           >
             <TabsList>
               <TabsTrigger value="teams">Times</TabsTrigger>
               <TabsTrigger value="invoices">Faturas</TabsTrigger>
+              <TabsTrigger value="pending-actions">Ações pendentes</TabsTrigger>
               <TabsTrigger value="emails">E-mails</TabsTrigger>
               <TabsTrigger value="forms">Formulários</TabsTrigger>
             </TabsList>
@@ -1224,6 +1276,168 @@ export function BackofficeClientDetailsContainer() {
               </Card>
             </TabsContent>
 
+            <TabsContent value="pending-actions" className="mt-4">
+              <Card>
+                <CardHeader className="gap-1">
+                  <h2 className="text-base font-semibold">Ações pendentes</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Cobranças de add-on (usuário/time) aguardando pagamento, aplicadas ou com
+                    falha.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {pendingActionsError ? (
+                    <p className="text-sm text-destructive">{pendingActionsError}</p>
+                  ) : isPendingActionsLoading ? (
+                    <div className="flex flex-col gap-2">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  ) : pendingActions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhuma ação pendente encontrada para este cliente.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="px-4">Tipo</TableHead>
+                            <TableHead className="px-4">Alvo</TableHead>
+                            <TableHead className="px-4">Status</TableHead>
+                            <TableHead className="px-4 text-right">Valor</TableHead>
+                            <TableHead className="px-4">Criada em</TableHead>
+                            <TableHead className="px-4">Payment ID</TableHead>
+                            <TableHead className="px-4 text-center">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pendingActions.map((action) => {
+                            const statusInfo =
+                              PENDING_ACTION_STATUS_BADGES[action.status] ??
+                              PENDING_ACTION_STATUS_BADGES.canceled
+                            const typeLabel =
+                              PENDING_ACTION_TYPE_LABELS[action.actionType] ??
+                              action.actionTypeLabel
+                            const targetLabel =
+                              action.target.name && action.target.email
+                                ? `${action.target.name} (${action.target.email})`
+                                : action.target.name ||
+                                  action.target.email ||
+                                  action.description
+
+                            return (
+                              <TableRow key={action.id}>
+                                <TableCell className="px-4 align-middle">
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="font-medium">{typeLabel}</span>
+                                    <span className="font-mono text-xs text-muted-foreground">
+                                      {action.actionType}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="px-4 align-middle">
+                                  <div className="flex max-w-[240px] flex-col gap-0.5">
+                                    <span className="truncate" title={targetLabel}>
+                                      {targetLabel}
+                                    </span>
+                                    {action.target.role ? (
+                                      <span className="text-xs text-muted-foreground">
+                                        Papel: {action.target.role}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="px-4 align-middle">
+                                  <Badge
+                                    variant={statusInfo.variant}
+                                    className={statusInfo.className}
+                                  >
+                                    {statusInfo.label}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="px-4 text-right align-middle font-medium tabular-nums">
+                                  {formatCurrency(action.value)}
+                                </TableCell>
+                                <TableCell className="px-4 align-middle">
+                                  {formatDate(action.createdAt, tz)}
+                                </TableCell>
+                                <TableCell
+                                  className="px-4 align-middle font-mono text-xs"
+                                  title={action.paymentId ?? undefined}
+                                >
+                                  {action.paymentId ? (
+                                    <span className="truncate">{action.paymentId}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </TableCell>
+                                <TableCell className="px-4 text-center align-middle">
+                                  <div className="inline-flex flex-wrap items-center justify-center gap-2">
+                                    <Button asChild variant="outline" size="sm">
+                                      <Link
+                                        href={`/backoffice/clients/${details?.id}/invoices/${action.invoiceId}`}
+                                      >
+                                        <Eye data-icon="inline-start" />
+                                        Fatura
+                                      </Link>
+                                    </Button>
+                                    {action.checkoutUrl ? (
+                                      <>
+                                        <Button asChild variant="outline" size="sm">
+                                          <a
+                                            href={action.checkoutUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            <ExternalLink data-icon="inline-start" />
+                                            Checkout
+                                          </a>
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            void navigator.clipboard
+                                              .writeText(action.checkoutUrl!)
+                                              .then(() => toast.success("Link de checkout copiado"))
+                                              .catch(() =>
+                                                toast.error("Não foi possível copiar o link")
+                                              )
+                                          }}
+                                        >
+                                          <Copy data-icon="inline-start" />
+                                          Copiar
+                                        </Button>
+                                      </>
+                                    ) : null}
+                                    {canManage && action.canCancel ? (
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        disabled={isCancelingPendingAction}
+                                        onClick={() => setPendingActionToCancel(action)}
+                                      >
+                                        <Trash2 data-icon="inline-start" />
+                                        Cancelar
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             <TabsContent value="emails" className="mt-4">
               <BackofficeClientStudioEmailsPanel
                 masterId={masterId}
@@ -1295,6 +1509,53 @@ export function BackofficeClientDetailsContainer() {
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   {isTogglingMemberPro ? "Desabilitando..." : "Desabilitar"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog
+            open={pendingActionToCancel !== null}
+            onOpenChange={(open) => {
+              if (isCancelingPendingAction) return
+              if (!open) setPendingActionToCancel(null)
+            }}
+          >
+            <AlertDialogContent className="max-h-[90vh] flex flex-col">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cancelar ação pendente?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Isso remove a cobrança associada
+                  {pendingActionToCancel
+                    ? ` (${PENDING_ACTION_TYPE_LABELS[pendingActionToCancel.actionType] ?? pendingActionToCancel.actionTypeLabel} — ${pendingActionToCancel.description})`
+                    : ""}
+                  . A cobrança no Asaas será cancelada, se existir.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isCancelingPendingAction}>Voltar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (!pendingActionToCancel || isCancelingPendingAction) return
+                    void (async () => {
+                      try {
+                        const message = await cancelPendingAction(pendingActionToCancel.id)
+                        toast.success(message)
+                        setPendingActionToCancel(null)
+                      } catch (cancelError) {
+                        const message =
+                          cancelError instanceof Error
+                            ? cancelError.message
+                            : "Erro ao cancelar ação pendente"
+                        toast.error(message)
+                      }
+                    })()
+                  }}
+                  disabled={isCancelingPendingAction}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isCancelingPendingAction ? "Cancelando..." : "Cancelar cobrança"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

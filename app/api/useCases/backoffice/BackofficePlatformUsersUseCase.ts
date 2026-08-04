@@ -227,6 +227,128 @@ function createSupabaseAdmin() {
 const CHARGED_STATUSES = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"])
 const UPCOMING_STATUSES = new Set(["PENDING", "AWAITING_RISK_ANALYSIS"])
 const OVERDUE_STATUSES = new Set(["OVERDUE"])
+const CANCELABLE_ASAAS_STATUSES = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"])
+
+async function cancelOpenAsaasPayment(
+  paymentId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const payment = (await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
+      method: "GET",
+    })) as AsaasPaymentItem
+
+    if (!payment?.id) {
+      return { ok: true }
+    }
+
+    if (payment.deleted) {
+      return { ok: true }
+    }
+
+    const paymentStatus = String(payment.status ?? "PENDING")
+    if (CHARGED_STATUSES.has(paymentStatus)) {
+      return {
+        ok: false,
+        error: `Cobrança Asaas ${paymentId} já está paga (${paymentStatus}); não é possível remover`,
+      }
+    }
+
+    if (CANCELABLE_ASAAS_STATUSES.has(paymentStatus)) {
+      await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error(
+      `[BackofficePlatformUsersUseCase][cancelOpenAsaasPayment] Falha ao cancelar ${paymentId}:`,
+      error
+    )
+    return {
+      ok: false,
+      error: "Não foi possível cancelar a cobrança no Asaas",
+    }
+  }
+}
+
+function canSoftCancelPendingAction(action: {
+  status: string
+  payload: unknown
+}): { ok: true } | { ok: false; error: string } {
+  if (action.status === "canceled") {
+    return { ok: true }
+  }
+
+  if (action.status === "applied") {
+    const payload =
+      action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+        ? (action.payload as Record<string, unknown>)
+        : {}
+    if (payload.paymentStatus !== "WAIVED") {
+      return {
+        ok: false,
+        error: "Não é possível remover uma cobrança já aplicada/paga",
+      }
+    }
+  }
+
+  return { ok: true }
+}
+
+async function softCancelPendingAction(action: {
+  id: string
+  paymentId: string | null
+  status: string
+  payload: unknown
+}): Promise<{ ok: true; alreadyCanceled: boolean } | { ok: false; error: string }> {
+  const gate = canSoftCancelPendingAction(action)
+  if (!gate.ok) {
+    return gate
+  }
+
+  if (action.status === "canceled") {
+    if (action.paymentId) {
+      await pendingActionRepository.clearPaymentId(action.id)
+    }
+    return { ok: true, alreadyCanceled: true }
+  }
+
+  if (action.paymentId) {
+    await pendingActionRepository.clearPaymentId(action.id)
+  }
+  await pendingActionRepository.updateStatus(action.id, "canceled")
+  return { ok: true, alreadyCanceled: false }
+}
+
+async function resolvePendingActionLinkedToAsaasPayment(
+  masterProfileId: string,
+  payment: Pick<AsaasPaymentItem, "id" | "externalReference">
+): Promise<{
+  id: string
+  masterId: string
+  actionType: string
+  status: string
+  paymentId: string | null
+  payload: unknown
+} | null> {
+  const fromExternal = parsePendingActionInvoiceId(payment.externalReference ?? "")
+  if (fromExternal) {
+    const byExternal = await pendingActionRepository.findByIdSimple(fromExternal)
+    if (byExternal && byExternal.masterId === masterProfileId) {
+      return byExternal
+    }
+  }
+
+  if (!payment.id) {
+    return null
+  }
+
+  const byPaymentId = await pendingActionRepository.findByPaymentId(payment.id)
+  if (byPaymentId && byPaymentId.masterId === masterProfileId) {
+    return byPaymentId
+  }
+
+  return null
+}
 
 type InvoiceStatusFilter = "all" | "paid" | "overdue" | "upcoming"
 type InvoicePeriodFilter = "all" | "7d" | "30d" | "90d" | "this_month"
@@ -772,6 +894,101 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     }
   }
 
+  async listMasterUserPendingActions(masterProfileId: string): Promise<Output> {
+    try {
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const actions = await pendingActionRepository.listBillingByMasterId(masterProfileId)
+
+      const items = actions.map((action) => {
+        const payload =
+          action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+            ? (action.payload as Record<string, unknown>)
+            : {}
+        const charge = readPayloadCharge(payload)
+        const classification = classifyPendingActionInvoice(action.actionType)
+        const targetName =
+          typeof payload.name === "string"
+            ? payload.name
+            : typeof payload.teamName === "string"
+              ? payload.teamName
+              : null
+        const targetEmail = typeof payload.email === "string" ? payload.email : null
+        const targetRole = typeof payload.role === "string" ? payload.role : null
+        const payloadTeamId = typeof payload.teamId === "string" ? payload.teamId : null
+        const canCancel =
+          action.status === "pending" ||
+          action.status === "failed" ||
+          (action.status === "applied" && payload.paymentStatus === "WAIVED")
+
+        return {
+          id: action.id,
+          actionType: action.actionType,
+          actionTypeLabel: classification.invoiceName,
+          status: action.status,
+          paymentId: action.paymentId,
+          teamId: action.teamId ?? payloadTeamId,
+          value: charge,
+          createdAt: action.createdAt.toISOString(),
+          updatedAt: action.updatedAt.toISOString(),
+          description: buildPendingActionDescription(action.actionType, payload),
+          target: {
+            name: targetName,
+            email: targetEmail,
+            role: targetRole,
+            teamId: action.teamId ?? payloadTeamId,
+          },
+          checkoutUrl:
+            action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
+          invoiceId: buildPendingActionInvoiceId(action.id),
+          canCancel,
+        }
+      })
+
+      return new Output(true, [], [], {
+        items,
+        totalItems: items.length,
+      })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][listMasterUserPendingActions]", error)
+      return new Output(false, [], ["Erro ao carregar ações pendentes do cliente"], null)
+    }
+  }
+
+  async cancelMasterUserPendingAction(
+    masterProfileId: string,
+    pendingActionId: string,
+    actor: {
+      profileId: string
+      backofficeUserId: string | null
+      backofficeEmail: string
+    }
+  ): Promise<Output> {
+    if (!pendingActionId || pendingActionId.trim().length === 0) {
+      return new Output(false, [], ["ID da ação pendente é obrigatório"], null)
+    }
+
+    console.info(
+      "[BackofficePlatformUsersUseCase][cancelMasterUserPendingAction] Solicitação de cancelamento",
+      {
+        masterProfileId,
+        pendingActionId,
+        actorProfileId: actor.profileId,
+        actorBackofficeUserId: actor.backofficeUserId,
+        actorEmail: actor.backofficeEmail,
+      }
+    )
+
+    return this.deleteMasterUserInvoice(
+      masterProfileId,
+      buildPendingActionInvoiceId(pendingActionId),
+      actor
+    )
+  }
+
   async getMasterUserInvoiceById(masterProfileId: string, invoiceId: string): Promise<Output> {
     try {
       if (!invoiceId || invoiceId.trim().length === 0) {
@@ -1049,6 +1266,242 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][updateMasterUserInvoice]", error)
       return new Output(false, [], ["Erro ao atualizar a cobrança"], null)
+    }
+  }
+
+  async deleteMasterUserInvoice(
+    masterProfileId: string,
+    invoiceId: string,
+    actor: {
+      profileId: string
+      backofficeUserId: string | null
+      backofficeEmail: string
+    }
+  ): Promise<Output> {
+    const actorLog = {
+      actorProfileId: actor.profileId,
+      actorBackofficeUserId: actor.backofficeUserId,
+      actorEmail: actor.backofficeEmail,
+    }
+
+    try {
+      if (!invoiceId || invoiceId.trim().length === 0) {
+        return new Output(false, [], ["ID da fatura é obrigatório"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const pendingActionId = parsePendingActionInvoiceId(invoiceId)
+      if (pendingActionId) {
+        const action = await pendingActionRepository.findByIdSimple(pendingActionId)
+        if (!action || action.masterId !== masterProfileId) {
+          return new Output(false, [], ["Fatura não encontrada"], null)
+        }
+
+        if (action.status === "canceled") {
+          console.info(
+            "[BackofficePlatformUsersUseCase][deleteMasterUserInvoice] Cobrança já estava removida",
+            {
+              ...actorLog,
+              masterProfileId,
+              masterEmail: master.email,
+              invoiceId,
+              source: "pending_action",
+              pendingActionId: action.id,
+              actionType: action.actionType,
+              alreadyDeleted: true,
+            }
+          )
+          return new Output(true, ["Cobrança já estava removida"], [], {
+            id: buildPendingActionInvoiceId(action.id),
+            deleted: true,
+            pendingActionId: action.id,
+          })
+        }
+
+        const gate = canSoftCancelPendingAction(action)
+        if (!gate.ok) {
+          return new Output(false, [], [gate.error], null)
+        }
+
+        const asaasPaymentId = action.paymentId
+        if (action.paymentId) {
+          const cancelResult = await cancelOpenAsaasPayment(action.paymentId)
+          if (!cancelResult.ok) {
+            return new Output(false, [], [cancelResult.error], null)
+          }
+        }
+
+        const softCancel = await softCancelPendingAction(action)
+        if (!softCancel.ok) {
+          return new Output(false, [], [softCancel.error], null)
+        }
+
+        console.info(
+          "[BackofficePlatformUsersUseCase][deleteMasterUserInvoice] Fatura removida",
+          {
+            ...actorLog,
+            masterProfileId,
+            masterEmail: master.email,
+            invoiceId,
+            source: "pending_action",
+            pendingActionId: action.id,
+            actionType: action.actionType,
+            asaasPaymentId,
+            previousStatus: action.status,
+          }
+        )
+
+        return new Output(
+          true,
+          ["Cobrança removida e ação pendente cancelada com sucesso"],
+          [],
+          {
+            id: buildPendingActionInvoiceId(action.id),
+            deleted: true,
+            pendingActionId: action.id,
+          }
+        )
+      }
+
+      if (parseAdhesionExternalInvoiceId(invoiceId)) {
+        return new Output(
+          false,
+          [],
+          ["Não é possível remover faturas de adesão pagas externamente"],
+          null
+        )
+      }
+
+      if (!master.asaasCustomerId) {
+        return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
+      }
+
+      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "GET",
+      })) as AsaasPaymentItem
+
+      if (!payment?.id) {
+        return new Output(false, [], ["Fatura não encontrada"], null)
+      }
+
+      if (payment.customer && payment.customer !== master.asaasCustomerId) {
+        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
+      }
+
+      const linkedPendingAction = await resolvePendingActionLinkedToAsaasPayment(
+        masterProfileId,
+        payment
+      )
+
+      if (linkedPendingAction) {
+        const gate = canSoftCancelPendingAction(linkedPendingAction)
+        if (!gate.ok) {
+          return new Output(false, [], [gate.error], null)
+        }
+      }
+
+      if (payment.deleted) {
+        let pendingActionCanceled = false
+        if (linkedPendingAction && linkedPendingAction.status !== "canceled") {
+          const softCancel = await softCancelPendingAction(linkedPendingAction)
+          if (!softCancel.ok) {
+            return new Output(false, [], [softCancel.error], null)
+          }
+          pendingActionCanceled = !softCancel.alreadyCanceled
+        } else if (linkedPendingAction?.status === "canceled" && linkedPendingAction.paymentId) {
+          await pendingActionRepository.clearPaymentId(linkedPendingAction.id)
+        }
+
+        console.info(
+          "[BackofficePlatformUsersUseCase][deleteMasterUserInvoice] Cobrança já estava removida",
+          {
+            ...actorLog,
+            masterProfileId,
+            masterEmail: master.email,
+            invoiceId,
+            source: "asaas",
+            asaasPaymentId: payment.id,
+            alreadyDeleted: true,
+            pendingActionId: linkedPendingAction?.id ?? null,
+            actionType: linkedPendingAction?.actionType ?? null,
+            pendingActionCanceled,
+          }
+        )
+        return new Output(
+          true,
+          [
+            pendingActionCanceled
+              ? "Cobrança já estava removida; ação pendente cancelada"
+              : "Cobrança já estava removida",
+          ],
+          [],
+          {
+            id: payment.id,
+            deleted: true,
+            pendingActionId: linkedPendingAction?.id ?? null,
+          }
+        )
+      }
+
+      const previousStatus = payment.status ?? null
+      const cancelResult = await cancelOpenAsaasPayment(payment.id)
+      if (!cancelResult.ok) {
+        return new Output(false, [], [cancelResult.error], null)
+      }
+
+      let pendingActionCanceled = false
+      if (linkedPendingAction) {
+        const softCancel = await softCancelPendingAction(linkedPendingAction)
+        if (!softCancel.ok) {
+          return new Output(false, [], [softCancel.error], null)
+        }
+        pendingActionCanceled = !softCancel.alreadyCanceled
+      }
+
+      console.info(
+        "[BackofficePlatformUsersUseCase][deleteMasterUserInvoice] Fatura removida",
+        {
+          ...actorLog,
+          masterProfileId,
+          masterEmail: master.email,
+          invoiceId,
+          source: "asaas",
+          asaasPaymentId: payment.id,
+          previousStatus,
+          value: payment.value ?? null,
+          pendingActionId: linkedPendingAction?.id ?? null,
+          actionType: linkedPendingAction?.actionType ?? null,
+          pendingActionCanceled,
+          externalReference: payment.externalReference ?? null,
+        }
+      )
+
+      return new Output(
+        true,
+        [
+          pendingActionCanceled
+            ? "Cobrança removida e ação pendente cancelada com sucesso"
+            : "Cobrança removida com sucesso",
+        ],
+        [],
+        {
+          id: payment.id,
+          deleted: true,
+          pendingActionId: linkedPendingAction?.id ?? null,
+        }
+      )
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][deleteMasterUserInvoice]", {
+        ...actorLog,
+        masterProfileId,
+        invoiceId,
+        error,
+      })
+      return new Output(false, [], ["Erro ao remover a cobrança"], null)
     }
   }
 
