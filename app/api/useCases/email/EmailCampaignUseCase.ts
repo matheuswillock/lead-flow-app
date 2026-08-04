@@ -904,7 +904,7 @@ export class EmailCampaignUseCase {
       const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const maxPerSub = teamLimits.maxRecipientsPerSub
 
-      // Segmento + lista(s): união dedupe → materializa e-mails só-de-segmento → split se necessário
+      // Segmento + lista(s): união dedupe → valida schedule → materializa e-mails só-de-segmento → split
       if (hasRadar && hasLists) {
         const { contacts, error: resolveError } = await this.resolveCombinedAudience(
           ctx.teamId,
@@ -914,6 +914,23 @@ export class EmailCampaignUseCase {
         if (resolveError) return new Output(false, [], [resolveError], null)
         if (contacts.length === 0) {
           return new Output(false, [], ["Nenhum destinatário na audiência combinada"], null)
+        }
+
+        // Valida agendamento antes de materializar — evita lista/contatos órfãos em schedule inválido
+        const previewIds = contacts.map((contact, index) =>
+          contact.contactId ?? `preview-segment-${index}`
+        )
+        const schedulePreviewPlan = buildCampaignPlanFromContactIds({
+          campaignName: trimmedName,
+          contactIds: previewIds,
+          sourceContactListIds: contactListIds,
+          maxRecipientsPerSub: maxPerSub,
+          contactListId: contactListIds.length === 1 ? contactListIds[0] : null,
+          ...schedule,
+        })
+        const scheduleError = validateCampaignPlanSchedules(schedulePreviewPlan, schedule)
+        if (scheduleError) {
+          return new Output(false, [], [scheduleError], null)
         }
 
         const materialized = await this.materializeMissingContactIds({
@@ -932,11 +949,6 @@ export class EmailCampaignUseCase {
           contactListId: contactListIds.length === 1 ? contactListIds[0] : null,
           ...schedule,
         })
-
-        const scheduleError = validateCampaignPlanSchedules(plan, schedule)
-        if (scheduleError) {
-          return new Output(false, [], [scheduleError], null)
-        }
 
         const customSegmentId = effectiveRadarSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
           ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
