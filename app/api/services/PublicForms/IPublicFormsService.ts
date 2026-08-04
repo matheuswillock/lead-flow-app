@@ -47,5 +47,9 @@ export interface IPublicFormsService {
     to?: Date,
     publicationId?: string,
   ): Promise<unknown>
+  listFormConversionTotals(
+    teamId: string,
+    options?: { from?: Date; to?: Date },
+  ): Promise<Array<{ formId: string; name: string; viewed: number; completed: number }>>
   listLeadSubmissions(teamId: string, leadId: string): Promise<unknown>
 }

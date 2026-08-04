@@ -84,10 +84,11 @@ function buildCampaignPayload(params: {
   name: string
   description?: string | null
   templateId: string
-  recipientSource: "contact_list" | "radar_segment"
   contactListIds: string[]
   listStrategy: "single" | "merge" | "per_list"
   radarSegmentSlug: string
+  saveAsRadarSegment?: boolean
+  saveAsRadarSegmentName?: string
   scheduledAt?: Date
   uniformSchedule: boolean
   scheduleIntervalDays: number
@@ -111,21 +112,36 @@ function buildCampaignPayload(params: {
           })),
         }
       : {}),
+    ...(params.saveAsRadarSegment
+      ? {
+          saveAsRadarSegment: true,
+          saveAsRadarSegmentName: params.saveAsRadarSegmentName?.trim() || null,
+        }
+      : {}),
   }
 
-  if (params.recipientSource === "radar_segment") {
-    return { ...payload, radarSegmentSlug: params.radarSegmentSlug }
+  const hasLists = params.contactListIds.length > 0
+  const hasRadar = Boolean(params.radarSegmentSlug.trim())
+
+  if (hasRadar) {
+    payload.radarSegmentSlug = params.radarSegmentSlug.trim()
   }
 
-  if (params.contactListIds.length === 1) {
-    return { ...payload, contactListId: params.contactListIds[0] }
+  if (hasLists) {
+    if (params.contactListIds.length === 1) {
+      payload.contactListId = params.contactListIds[0]
+      if (hasRadar) {
+        // Combinação lista+segmento: envia também contactListIds para o backend unificar
+        payload.contactListIds = params.contactListIds
+        payload.listStrategy = "merge"
+      }
+    } else {
+      payload.contactListIds = params.contactListIds
+      payload.listStrategy = hasRadar ? "merge" : params.listStrategy
+    }
   }
 
-  return {
-    ...payload,
-    contactListIds: params.contactListIds,
-    listStrategy: params.listStrategy,
-  }
+  return payload
 }
 
 export type CampanhasActions = {
@@ -151,6 +167,8 @@ export type CampanhasActions = {
   setWizardListStrategy: (strategy: "single" | "merge" | "per_list") => void
   setWizardRecipientSource: (v: "contact_list" | "radar_segment") => void
   setWizardRadarSegmentSlug: (v: string) => void
+  setWizardSaveAsRadarSegment: (v: boolean) => void
+  setWizardSaveAsRadarSegmentName: (v: string) => void
   setWizardScheduledAt: (v: Date | undefined) => void
   setWizardUniformSchedule: (v: boolean) => void
   setWizardScheduleIntervalDays: (v: number) => void
@@ -194,6 +212,8 @@ export type CampanhasHookReturn = {
   wizardListStrategy: "single" | "merge" | "per_list"
   wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
+  wizardSaveAsRadarSegment: boolean
+  wizardSaveAsRadarSegmentName: string
   wizardScheduledAt: Date | undefined
   wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
@@ -252,6 +272,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardListStrategy, setWizardListStrategy] = useState<"single" | "merge" | "per_list">("single")
   const [wizardRecipientSource, setWizardRecipientSource] = useState<"contact_list" | "radar_segment">("contact_list")
   const [wizardRadarSegmentSlug, setWizardRadarSegmentSlug] = useState("")
+  const [wizardSaveAsRadarSegment, setWizardSaveAsRadarSegment] = useState(false)
+  const [wizardSaveAsRadarSegmentName, setWizardSaveAsRadarSegmentName] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
   const [wizardUniformSchedule, setWizardUniformScheduleState] = useState(true)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
@@ -731,6 +753,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardListStrategy("single")
     setWizardRecipientSource("contact_list")
     setWizardRadarSegmentSlug("")
+    setWizardSaveAsRadarSegment(false)
+    setWizardSaveAsRadarSegmentName("")
     setWizardScheduledAt(undefined)
     setWizardUniformScheduleState(true)
     setWizardScheduleIntervalDays(1)
@@ -1047,8 +1071,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       return
     }
     const hasAudience =
-      (wizardRecipientSource === "contact_list" && wizardContactListIds.length > 0) ||
-      (wizardRecipientSource === "radar_segment" && Boolean(wizardRadarSegmentSlug))
+      wizardContactListIds.length > 0 || Boolean(wizardRadarSegmentSlug.trim())
     if (!hasAudience) {
       setWizardPreviewPlan(null)
       return
@@ -1060,7 +1083,6 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         name: wizardName,
         description: wizardDescription,
         templateId: wizardTemplateId,
-        recipientSource: wizardRecipientSource,
         contactListIds: wizardContactListIds,
         listStrategy: wizardListStrategy,
         radarSegmentSlug: wizardRadarSegmentSlug,
@@ -1098,7 +1120,6 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardListStrategy,
     wizardName,
     wizardRadarSegmentSlug,
-    wizardRecipientSource,
     wizardScheduleIntervalDays,
     wizardScheduledAt,
     wizardSubCampaignSchedules,
@@ -1113,10 +1134,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         name: wizardName,
         description: wizardDescription,
         templateId: wizardTemplateId,
-        recipientSource: wizardRecipientSource,
         contactListIds: wizardContactListIds,
         listStrategy: wizardListStrategy,
         radarSegmentSlug: wizardRadarSegmentSlug,
+        saveAsRadarSegment: wizardSaveAsRadarSegment,
+        saveAsRadarSegmentName: wizardSaveAsRadarSegmentName,
         scheduledAt: wizardScheduledAt,
         uniformSchedule: wizardUniformSchedule,
         scheduleIntervalDays: wizardScheduleIntervalDays,
@@ -1219,7 +1241,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardName,
     wizardPreviewPlan?.subCampaigns,
     wizardRadarSegmentSlug,
-    wizardRecipientSource,
+    wizardSaveAsRadarSegment,
+    wizardSaveAsRadarSegmentName,
     wizardScheduleIntervalDays,
     wizardScheduledAt,
     wizardSubCampaignSchedules,
@@ -1312,6 +1335,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardListStrategy,
     wizardRecipientSource,
     wizardRadarSegmentSlug,
+    wizardSaveAsRadarSegment,
+    wizardSaveAsRadarSegmentName,
     wizardScheduledAt,
     wizardUniformSchedule,
     wizardScheduleIntervalDays,
@@ -1351,6 +1376,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardListStrategy,
     setWizardRecipientSource,
     setWizardRadarSegmentSlug,
+    setWizardSaveAsRadarSegment,
+    setWizardSaveAsRadarSegmentName,
     setWizardScheduledAt,
     setWizardUniformSchedule,
     setWizardScheduleIntervalDays,

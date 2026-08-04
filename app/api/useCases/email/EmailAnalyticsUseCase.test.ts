@@ -11,6 +11,7 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
     countLogs: mock(async () => 0),
     listDispatches: mock(async () => []),
     findDispatchPreview: mock(async () => null),
+    listTemplateVersionMetrics: mock(async () => []),
     ...overrides,
   }
 }
@@ -211,5 +212,81 @@ describe("EmailAnalyticsUseCase.getDispatchPreview", () => {
     expect(output.result.subject).toBe("Assunto Campanha")
     expect(output.result.html).toBe("<p>Corpo</p>")
     expect(output.result.templateVersionNumber).toBe(3)
+  })
+})
+
+describe("EmailAnalyticsUseCase.getTopTemplates", () => {
+  it("D18 — agrega versões do mesmo grupo e ranqueia top 3", async () => {
+    const listTemplateVersionMetrics = mock(async () => [
+      {
+        versionGroupId: "g1",
+        templateId: "t1-v1",
+        name: "Promo v1",
+        sent: 100,
+        delivered: 90,
+        opened: 40,
+        clicked: 5,
+        bounced: 0,
+        complained: 0,
+      },
+      {
+        versionGroupId: "g1",
+        templateId: "t1-v2",
+        name: "Promo v2",
+        sent: 100,
+        delivered: 90,
+        opened: 40,
+        clicked: 5,
+        bounced: 0,
+        complained: 0,
+      },
+      {
+        versionGroupId: "g2",
+        templateId: "t2",
+        name: "News",
+        sent: 100,
+        delivered: 95,
+        opened: 10,
+        clicked: 20,
+        bounced: 0,
+        complained: 0,
+      },
+      {
+        versionGroupId: "g3",
+        templateId: "t3",
+        name: "Sem dados",
+        sent: 0,
+        delivered: 0,
+        opened: 0,
+        clicked: 0,
+        bounced: 0,
+        complained: 0,
+      },
+    ])
+    const uc = new EmailAnalyticsUseCase(buildRepo({ listTemplateVersionMetrics }))
+    const output = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(true)
+    // g1 agrega 200 sent / 80 opened = 40% open — lidera abertura
+    expect(output.result.byOpenRate[0].versionGroupId).toBe("g1")
+    expect(output.result.byOpenRate[0].rates.openRate).toBe(40)
+    // g2 lidera clique (20%)
+    expect(output.result.byClickRate[0].versionGroupId).toBe("g2")
+    // Sem dados suficientes fica de fora
+    expect(
+      output.result.byOpenRate.every((row: { versionGroupId: string }) => row.versionGroupId !== "g3"),
+    ).toBe(true)
+  })
+
+  it("D18 — repository lança → isValid false", async () => {
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({
+        listTemplateVersionMetrics: mock(async () => {
+          throw new Error("db")
+        }),
+      }),
+    )
+    const output = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
+    expect(output.isValid).toBe(false)
   })
 })

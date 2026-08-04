@@ -195,6 +195,10 @@ export interface StudioEmailTemplatesService {
     teamId?: string | null
   ): Promise<{ templateApprovalRequired: boolean }>
   list(supabaseId: string, teamId?: string | null): Promise<Template[]>
+  getTopRanking?(
+    supabaseId: string,
+    teamId?: string | null
+  ): Promise<import("@/app/[supabaseId]/email/templates/features/context/TemplatesTypes").TemplateRankingResult>
   create(supabaseId: string, data: StudioEmailCreateTemplateData, teamId?: string | null): Promise<Template>
   delete(supabaseId: string, id: string, teamId?: string | null): Promise<void>
   submitForApproval(supabaseId: string, id: string, teamId?: string | null): Promise<Template>

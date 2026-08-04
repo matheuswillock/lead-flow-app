@@ -10775,6 +10775,38 @@
                   }
                 },
                 {
+                  "name": "GET Top 3 Formularios (Conversao)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/top-converting?from=&to=",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "public-forms",
+                        "top-converting"
+                      ],
+                      "query": [
+                        {
+                          "key": "from",
+                          "value": ""
+                        },
+                        {
+                          "key": "to",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    "description": "Ranking top 3 formulários por taxa de conversão (form_completed / form_viewed)."
+                  }
+                },
+                {
                   "name": "GET Studio Public Form",
                   "request": {
                     "method": "GET",
@@ -15178,7 +15210,7 @@
                     "preview-plan"
                   ]
                 },
-                "description": "Simula sub-campanhas sem persistir. Mesmo payload do POST /campaigns.",
+                "description": "Simula sub-campanhas sem persistir. Mesmo payload do POST /campaigns.\n\nTambém aceita segmento+lista juntos (união dedupe; split se total > limite).",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListIds\": [\"{{contactListId}}\"],\n  \"listStrategy\": \"merge\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1\n}",
@@ -15525,6 +15557,37 @@
                     },
                     {
                       "key": "campaignId",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Top 3 Templates de Email",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/analytics/top-templates?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "analytics",
+                    "top-templates"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": ""
+                    },
+                    {
+                      "key": "to",
                       "value": ""
                     }
                   ]
@@ -17621,7 +17684,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "crm"
               ]
@@ -17647,7 +17710,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "portfolio"
               ]
@@ -17673,7 +17736,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "email"
               ]
@@ -17699,7 +17762,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "sync",
                 "whatsapp"
               ]
@@ -17725,7 +17788,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "profiles"
               ],
               "query": [
@@ -17770,7 +17833,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "segments"
               ]
             }
@@ -17966,8 +18029,37 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "available-fields"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tipos de evento Radar disponíveis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/available-event-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "available-event-types"
               ]
             }
           },
@@ -17999,7 +18091,7 @@
               "path": [
                 "api",
                 "v1",
-                "cdp",
+                "radar",
                 "interpolation-preview"
               ]
             }
@@ -18119,6 +18211,44 @@
           "response": []
         },
         {
+          "name": "Contratos do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "contracts"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            },
+            "description": "D13: contratos atuais (LeadPortfolio[]) + histórico (LeadFinalized com holder/dependentes) do perfil Radar via identidades lead_id / portfolio_id."
+          },
+          "response": []
+        },
+        {
           "name": "Perfis do segmento do sistema",
           "request": {
             "method": "GET",
@@ -18150,6 +18280,80 @@
                   "key": "pageSize",
                   "value": "20"
                 }
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Preview contagem — segmento sistema → lista de contatos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/materialize-contact-list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "materialize-contact-list"
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Materializar segmento sistema → lista de contatos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/materialize-contact-list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "materialize-contact-list"
               ],
               "variable": [
                 {
@@ -18376,6 +18580,82 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Preview contagem — segmento custom → lista de contatos",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/materialize-contact-list",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId",
+                    "materialize-contact-list"
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Materializar segmento custom → lista de contatos",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/materialize-contact-list",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "radar",
+                    "segments",
+                    "custom",
+                    ":segmentId",
+                    "materialize-contact-list"
+                  ],
+                  "variable": [
+                    {
+                      "key": "segmentId",
+                      "value": "{{radarCustomSegmentId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -18591,6 +18871,140 @@
                 "field-definitions"
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar perfis filtrados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/export?search=&consent=&sourceType=&channel=&lastSeenFrom=&lastSeenTo=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "consent",
+                  "value": ""
+                },
+                {
+                  "key": "sourceType",
+                  "value": ""
+                },
+                {
+                  "key": "channel",
+                  "value": ""
+                },
+                {
+                  "key": "lastSeenFrom",
+                  "value": ""
+                },
+                {
+                  "key": "lastSeenTo",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "D16 — exporta perfis filtrados (até LEAD_IMPORT_MAX_ROWS) com colunas Perfil/Identidades/Último evento."
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar membros do segmento do sistema",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/:segment/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                ":segment",
+                "export"
+              ],
+              "variable": [
+                {
+                  "key": "segment",
+                  "value": "email_marketable"
+                }
+              ]
+            },
+            "description": "D16 — exporta membros de um segmento de sistema."
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar membros do segmento customizado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/segments/custom/:segmentId/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "segments",
+                "custom",
+                ":segmentId",
+                "export"
+              ],
+              "variable": [
+                {
+                  "key": "segmentId",
+                  "value": "{{radarSegmentId}}"
+                }
+              ]
+            },
+            "description": "D16 — exporta membros de um segmento customizado."
           },
           "response": []
         }

@@ -2,23 +2,154 @@
 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { RefreshCw } from "lucide-react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
+import { ChevronDown, ExternalLink } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
-import type { RadarProfileDetail, RadarProfileTouchpoints } from "../context/RadarTypes"
+import type {
+  RadarFinalizedContract,
+  RadarProfileContracts,
+  RadarProfileDetail,
+  RadarProfileTouchpoints,
+} from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
+import {
+  buildLeadCrmHref,
+  filterDisplayableIdentities,
+  getRadarIdentityDisplayValue,
+} from "../utils/radarIdentityDisplay"
+
+function resolvePersonLabel(person: { id: string; name: string | null } | null | undefined): string | null {
+  if (!person) return null
+  return person.name?.trim() || null
+}
+
+const CONSENT_CHANNEL_LABEL: Record<string, string> = {
+  email: "E-mail",
+  whatsapp: "WhatsApp",
+}
+
+const CONSENT_STATUS_LABEL: Record<string, string> = {
+  allowed: "Apto",
+  blocked: "Bloqueado",
+  unknown: "Indefinido",
+}
+
+const CONSENT_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  allowed: "default",
+  blocked: "destructive",
+  unknown: "secondary",
+}
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+
+const PORTFOLIO_STATUS_LABELS: Record<string, string> = {
+  active: "Ativo",
+  pending: "Pendente",
+  canceled: "Cancelado",
+}
+
+const RENEWAL_STATUS_LABELS: Record<string, string> = {
+  to_renew: "A renovar",
+  contacted: "Contatado",
+  proposal: "Proposta enviada",
+  renewed: "Renovado",
+  lost: "Perdido",
+}
+
+const PORTFOLIO_SOURCE_LABELS: Record<string, string> = {
+  crm: "CRM",
+  manual: "Manual",
+  brokerage_transfer: "Transferência de corretagem",
+}
+
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  individual: "PF",
+  corporate: "Empresarial",
+  adhesion: "Adesão",
+}
+
+function formatCurrency(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—"
+  return currencyFormatter.format(value)
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "—"
+  return format(new Date(value), "dd/MM/yyyy", { locale: ptBR })
+}
+
+function FinalizedContractCard({ item }: { item: RadarFinalizedContract }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{CONTRACT_TYPE_LABELS[item.contractType] ?? item.contractType}</Badge>
+          {item.operadora ? <Badge variant="secondary">{item.operadora}</Badge> : null}
+        </div>
+        <span className="font-medium">{formatCurrency(item.amount)}</span>
+      </div>
+      <p className="text-muted-foreground">
+        Fechado em {formatDate(item.finalizedDateAt)} · Início {formatDate(item.startDateAt)}
+      </p>
+      {item.productName ? <p className="text-muted-foreground">Produto: {item.productName}</p> : null}
+
+      {item.holder ? (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="justify-between px-0">
+              Titular: {item.holder.name}
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-1 rounded-md bg-muted/40 p-2 text-xs">
+            <p>Documento: {item.holder.document}</p>
+            {item.holder.razaoSocial ? <p>Razão social: {item.holder.razaoSocial}</p> : null}
+            {item.holder.cnpj ? <p>CNPJ: {item.holder.cnpj}</p> : null}
+            <p>Nascimento: {formatDate(item.holder.birthDate)}</p>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
+
+      {item.dependents.length > 0 ? (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="justify-between px-0">
+              Dependentes ({item.dependents.length})
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-2">
+            {item.dependents.map((dependent) => (
+              <div key={dependent.id} className="rounded-md bg-muted/40 p-2 text-xs">
+                <p className="font-medium">{dependent.name}</p>
+                <p className="text-muted-foreground">{dependent.parentesco}</p>
+                <p className="text-muted-foreground">Nascimento: {formatDate(dependent.birthDate)}</p>
+                {dependent.document ? (
+                  <p className="text-muted-foreground">Documento: {dependent.document}</p>
+                ) : (
+                  <p className="text-muted-foreground">Sem documento</p>
+                )}
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
+    </div>
+  )
+}
 
 type RadarProfileSheetProps = {
   open: boolean
@@ -29,10 +160,10 @@ type RadarProfileSheetProps = {
   detailEventsTotal: number
   isLoadingMoreEvents: boolean
   onLoadMoreEvents: () => void
-  isSyncingLead: boolean
-  onSyncLead: () => void
   touchpoints: RadarProfileTouchpoints | null
   isLoadingTouchpoints: boolean
+  contracts: RadarProfileContracts | null
+  isLoadingContracts: boolean
 }
 
 export function RadarProfileSheet({
@@ -44,16 +175,27 @@ export function RadarProfileSheet({
   detailEventsTotal,
   isLoadingMoreEvents,
   onLoadMoreEvents,
-  isSyncingLead,
-  onSyncLead,
   touchpoints,
   isLoadingTouchpoints,
+  contracts,
+  isLoadingContracts,
 }: RadarProfileSheetProps) {
+  const params = useParams()
+  const supabaseId = params.supabaseId as string
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
+  const displayableIdentities = profile ? filterDisplayableIdentities(profile.identities) : []
+  const assignees = profile?.assignees ?? []
+  const leadCodeById = new Map(assignees.map((item) => [item.leadId, item.leadCode]))
+  const hasAnyAssignee = assignees.some(
+    (item) => resolvePersonLabel(item.assignedTo) || resolvePersonLabel(item.closer)
+  )
   const baseDataEntries =
     profile?.profileData && typeof profile.profileData === "object" && !Array.isArray(profile.profileData)
       ? Object.entries(profile.profileData as Record<string, unknown>).filter(([key]) => key.startsWith("base."))
       : []
+
+  const hasContracts =
+    (contracts?.portfolios.length ?? 0) > 0 || (contracts?.finalized.length ?? 0) > 0
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -90,10 +232,50 @@ export function RadarProfileSheet({
                 </div>
               </div>
 
+              {hasLeadIdentity ? (
+                <>
+                  <Separator />
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">Responsáveis</p>
+                    {!hasAnyAssignee ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum responsável atribuído nos leads associados.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {assignees.map((item) => {
+                          const sdrName = resolvePersonLabel(item.assignedTo)
+                          const closerName = resolvePersonLabel(item.closer)
+                          if (!sdrName && !closerName) return null
+                          return (
+                            <div key={item.leadId} className="rounded-md border p-3 text-sm">
+                              <p className="mb-1 text-xs text-muted-foreground">Lead {item.leadCode}</p>
+                              {sdrName ? (
+                                <p>
+                                  <span className="text-muted-foreground">SDR: </span>
+                                  {sdrName}
+                                </p>
+                              ) : null}
+                              {closerName ? (
+                                <p>
+                                  <span className="text-muted-foreground">Closer: </span>
+                                  {closerName}
+                                </p>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+
               <Tabs defaultValue="resumo">
-                <TabsList>
+                <TabsList className="flex h-auto flex-wrap gap-1">
                   <TabsTrigger value="resumo">Resumo</TabsTrigger>
                   <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                  <TabsTrigger value="contratos">Contratos</TabsTrigger>
                   <TabsTrigger value="identidades">Identidades</TabsTrigger>
                   <TabsTrigger value="consentimentos">Consentimentos</TabsTrigger>
                   <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -188,20 +370,117 @@ export function RadarProfileSheet({
                   )}
                 </TabsContent>
 
-                <TabsContent value="identidades" className="flex flex-col gap-2">
-                  {profile.identities.map((identity) => (
-                    <div key={identity.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
-                      <Badge variant="outline">{identity.type}</Badge>
-                      <span className="text-muted-foreground">{identity.value ?? identity.normalizedValue}</span>
+                <TabsContent value="contratos" className="flex flex-col gap-3">
+                  {isLoadingContracts ? (
+                    <div className="flex flex-col gap-2">
+                      <Skeleton className="h-5 w-40" />
+                      <Skeleton className="h-24 w-full" />
+                      <Skeleton className="h-24 w-full" />
                     </div>
-                  ))}
+                  ) : !hasContracts ? (
+                    <p className="text-sm text-muted-foreground">Nenhum contrato encontrado para este perfil.</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Contratos atuais</p>
+                        <Badge variant="secondary">{contracts?.portfolios.length ?? 0}</Badge>
+                      </div>
+                      {(contracts?.portfolios.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sem contrato atual na carteira.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {contracts?.portfolios.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex flex-col gap-2 rounded-md border p-3 text-sm"
+                            >
+                              <div className="flex flex-wrap gap-2">
+                                <Badge variant="secondary">
+                                  {PORTFOLIO_STATUS_LABELS[item.portfolioStatus] ?? item.portfolioStatus}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {RENEWAL_STATUS_LABELS[item.renewalStatus] ?? item.renewalStatus}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {PORTFOLIO_SOURCE_LABELS[item.source] ?? item.source}
+                                </Badge>
+                              </div>
+                              <p>
+                                Valor de renovação:{" "}
+                                <span className="font-medium">{formatCurrency(item.renewalAmount)}</span>
+                              </p>
+                              <p className="text-muted-foreground">
+                                Último contato: {formatDate(item.lastContactAt)}
+                              </p>
+                              {item.note ? (
+                                <p className="text-muted-foreground">{item.note}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <Separator />
+
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Histórico</p>
+                        <Badge variant="secondary">{contracts?.finalized.length ?? 0}</Badge>
+                      </div>
+                      {(contracts?.finalized.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sem contratos finalizados.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {contracts?.finalized.map((item) => (
+                            <FinalizedContractCard key={item.id} item={item} />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="identidades" className="flex flex-col gap-2">
+                  {displayableIdentities.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma identidade exibível.</p>
+                  ) : (
+                    displayableIdentities.map((identity) => {
+                      const leadId = identity.normalizedValue || identity.value || ""
+                      const leadCode = identity.type === "lead_id" ? leadCodeById.get(leadId) : undefined
+
+                      return (
+                        <div
+                          key={identity.id}
+                          className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm"
+                        >
+                          <Badge variant="outline">{identity.type}</Badge>
+                          {identity.type === "lead_id" && leadCode ? (
+                            <Link
+                              href={buildLeadCrmHref(supabaseId, leadCode)}
+                              className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+                            >
+                              Abrir lead {leadCode}
+                              <ExternalLink className="size-3.5" />
+                            </Link>
+                          ) : identity.type === "lead_id" ? (
+                            <span className="text-muted-foreground">Lead associado</span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {getRadarIdentityDisplayValue(identity)}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
                 </TabsContent>
 
                 <TabsContent value="consentimentos" className="flex flex-col gap-2">
                   {profile.consents.map((consent) => (
                     <div key={`${consent.channel}-${consent.status}`} className="rounded-md border p-2 text-sm">
-                      <p className="font-medium">{consent.channel}</p>
-                      <p>{consent.status}</p>
+                      <p className="font-medium">{CONSENT_CHANNEL_LABEL[consent.channel] ?? consent.channel}</p>
+                      <Badge variant={CONSENT_STATUS_VARIANT[consent.status] ?? "secondary"}>
+                        {CONSENT_STATUS_LABEL[consent.status] ?? consent.status}
+                      </Badge>
                       {consent.reason ? <p className="text-muted-foreground">{consent.reason}</p> : null}
                     </div>
                   ))}
@@ -236,14 +515,6 @@ export function RadarProfileSheet({
           )}
         </div>
 
-        {hasLeadIdentity ? (
-          <SheetFooter>
-            <Button size="sm" variant="outline" disabled={isSyncingLead} onClick={onSyncLead}>
-              <RefreshCw className={cn(isSyncingLead && "animate-spin")} data-icon="inline-start" />
-              Sincronizar lead
-            </Button>
-          </SheetFooter>
-        ) : null}
       </SheetContent>
     </Sheet>
   )

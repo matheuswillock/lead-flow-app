@@ -187,6 +187,8 @@ export type CampanhasState = {
   wizardListStrategy: "single" | "merge" | "per_list"
   wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
+  wizardSaveAsRadarSegment: boolean
+  wizardSaveAsRadarSegmentName: string
   wizardScheduledAt: Date | undefined
   wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number

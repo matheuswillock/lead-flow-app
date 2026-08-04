@@ -38,6 +38,18 @@ export type EmailAnalyticsLogFilter =
   | "unsubscribed"
   | "suppressed"
 
+export type EmailTemplateVersionMetricRow = {
+  versionGroupId: string
+  templateId: string
+  name: string
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+  bounced: number
+  complained: number
+}
+
 export interface IEmailAnalyticsRepository {
   countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
   listDispatches(options: {
@@ -56,6 +68,11 @@ export interface IEmailAnalyticsRepository {
     templateVersionNumber: number
     templateName: string
   } | null>
+  listTemplateVersionMetrics(options: {
+    teamId: string
+    from: Date
+    to: Date
+  }): Promise<EmailTemplateVersionMetricRow[]>
 }
 
 export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
@@ -160,6 +177,52 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         templateName: true,
       },
     })
+  }
+
+  /**
+   * Totais por versão de template (via disparos no período).
+   * O UseCase agrega por versionGroupId e ranqueia.
+   */
+  async listTemplateVersionMetrics(options: {
+    teamId: string
+    from: Date
+    to: Date
+  }): Promise<EmailTemplateVersionMetricRow[]> {
+    const dispatches = await prisma.emailCampaignDispatch.findMany({
+      where: {
+        teamId: options.teamId,
+        dispatchedAt: { gte: options.from, lte: options.to },
+      },
+      select: {
+        totalSent: true,
+        totalDelivered: true,
+        totalOpened: true,
+        totalClicked: true,
+        totalBounced: true,
+        totalComplained: true,
+        templateId: true,
+        templateName: true,
+        template: {
+          select: {
+            versionGroupId: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { dispatchedAt: "asc" },
+    })
+
+    return dispatches.map((dispatch) => ({
+      versionGroupId: dispatch.template.versionGroupId,
+      templateId: dispatch.templateId,
+      name: dispatch.template.name || dispatch.templateName,
+      sent: dispatch.totalSent,
+      delivered: dispatch.totalDelivered,
+      opened: dispatch.totalOpened,
+      clicked: dispatch.totalClicked,
+      bounced: dispatch.totalBounced,
+      complained: dispatch.totalComplained,
+    }))
   }
 }
 

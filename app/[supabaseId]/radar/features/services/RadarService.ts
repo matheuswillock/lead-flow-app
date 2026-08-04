@@ -2,6 +2,8 @@ import type {
   IRadarService,
   RadarFieldOption,
   ListProfilesParams,
+  ExportProfilesParams,
+  RadarExportResult,
   CustomSegmentInput,
   CustomSegmentUpdateInput,
 } from "./IRadarService"
@@ -11,6 +13,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileContracts,
   RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
@@ -125,6 +128,51 @@ export class RadarFrontendService implements IRadarService {
     }>(res)
   }
 
+  async exportProfiles(
+    supabaseId: string,
+    teamId: string,
+    params: ExportProfilesParams
+  ): Promise<RadarExportResult> {
+    const query = new URLSearchParams()
+    if (params.search) query.set("search", params.search)
+    if (params.consent) query.set("consent", params.consent)
+    if (params.sourceType) query.set("sourceType", params.sourceType)
+    if (params.channel) query.set("channel", params.channel)
+    if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
+    if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
+
+    const qs = query.toString()
+    const res = await fetch(`${this.baseUrl}/profiles/export${qs ? `?${qs}` : ""}`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
+  async exportSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segment: string
+  ): Promise<RadarExportResult> {
+    const res = await fetch(`${this.baseUrl}/segments/${encodeURIComponent(segment)}/export`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
+  async exportCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarExportResult> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/${segmentId}/export`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
   async getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail> {
     const res = await fetch(`${this.baseUrl}/profiles/${id}`, {
       cache: "no-store",
@@ -181,6 +229,15 @@ export class RadarFrontendService implements IRadarService {
     })
     const result = await parseOutput<{ fields?: RadarFieldOption[] }>(res)
     return result.fields ?? []
+  }
+
+  async listAvailableEventTypes(supabaseId: string, teamId: string): Promise<string[]> {
+    const res = await fetch(`${this.baseUrl}/available-event-types`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const result = await parseOutput<{ eventTypes?: string[] }>(res)
+    return result.eventTypes ?? []
   }
 
   async previewInterpolation(
@@ -295,6 +352,18 @@ export class RadarFrontendService implements IRadarService {
     return parseOutput<RadarProfileTouchpoints>(res)
   }
 
+  async getProfileContracts(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileContracts> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/contracts`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileContracts>(res)
+  }
+
   async materializeContactList(
     supabaseId: string,
     teamId: string,
@@ -310,6 +379,40 @@ export class RadarFrontendService implements IRadarService {
       body: JSON.stringify(name ? { name } : {}),
     })
     return parseOutput<{ listId: string; totalContacts: number }>(res)
+  }
+
+  async previewSegmentContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ estimatedCount: number }> {
+    const path =
+      variant === "custom"
+        ? `${this.baseUrl}/segments/custom/${segmentSlug}/materialize-contact-list`
+        : `${this.baseUrl}/segments/${segmentSlug}/materialize-contact-list`
+    const res = await fetch(path, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ estimatedCount: number }>(res)
+  }
+
+  async materializeSegmentToContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ listId: string; contactCount: number }> {
+    const path =
+      variant === "custom"
+        ? `${this.baseUrl}/segments/custom/${segmentSlug}/materialize-contact-list`
+        : `${this.baseUrl}/segments/${segmentSlug}/materialize-contact-list`
+    const res = await fetch(path, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ listId: string; contactCount: number }>(res)
   }
 }
 

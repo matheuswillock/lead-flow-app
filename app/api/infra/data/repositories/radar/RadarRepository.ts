@@ -10,6 +10,7 @@ import type {
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
+import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
 
 export type RadarTeamScope = {
   teamId: string
@@ -650,6 +651,91 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Resolve (ou cria) um perfil chaveado por documento (D14) — titulares e
+   * dependentes de `LeadFinalized` não têm telefone/e-mail. Lock advisory em
+   * `(teamId, identityType, normalizedDocument)` evita corrida; a identidade
+   * `contract_holder`/`contract_dependent` é a chave natural.
+   */
+  async resolveProfileForDocument(input: {
+    teamId: string
+    identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
+    normalizedDocument: string
+    documentValue: string
+    displayName: string
+    normalizedName: string
+    documentSource: string
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const lockKey = `${input.teamId}:${input.identityType}:${input.normalizedDocument}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: input.identityType,
+            normalizedValue: input.normalizedDocument,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: {
+            lastSeenAt: input.lastSeenAt ?? new Date(),
+            displayName: input.displayName,
+            normalizedName: input.normalizedName,
+            primaryDocument: input.documentValue,
+            normalizedPrimaryDocument: input.normalizedDocument,
+          },
+        })
+        return { profile, wasExisting: true }
+      }
+
+      const profile = await tx.radarProfile.create({
+        data: {
+          teamId: input.teamId,
+          displayName: input.displayName,
+          normalizedName: input.normalizedName,
+          normalizedPhone: null,
+          displayPhone: null,
+          primaryDocument: input.documentValue,
+          normalizedPrimaryDocument: input.normalizedDocument,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: input.identityType,
+          value: input.documentValue,
+          normalizedValue: input.normalizedDocument,
+          source: input.documentSource,
+          isPrimary: true,
+        },
+      })
+
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      return { profile, wasExisting: false }
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
@@ -767,6 +853,70 @@ export class RadarRepository {
     }
   }
 
+  /**
+   * D8: dedupe por `(sourceType, sourceId, eventType)` ignorando `occurredAt`.
+   * Usado ao espelhar `PublicFormMetricEvent.eventKey` (@unique) como `sourceId`
+   * — retries fire-and-forget não devem gerar `RadarEvent` duplicado só porque
+   * o relógio avançou.
+   *
+   * A unique do banco inclui `occurredAt`, então check-then-insert sem lock
+   * permite corrida: dois retries com `occurredAt` distintos passam o findFirst
+   * e ambos inserem. Serializamos por source key via `pg_advisory_xact_lock`
+   * (mesmo padrão de `resolveProfileForVisitorSession`).
+   */
+  async appendEventIfNewBySourceKey(input: AppendEventInput) {
+    if (!input.sourceId) {
+      try {
+        return await prisma.radarEvent.create({
+          data: {
+            profileId: input.profileId,
+            teamId: input.teamId,
+            eventType: input.eventType,
+            sourceType: input.sourceType,
+            sourceId: null,
+            occurredAt: input.occurredAt,
+            metadata: input.metadata,
+          },
+        })
+      } catch {
+        return null
+      }
+    }
+
+    const sourceId = input.sourceId
+    return prisma.$transaction(async (tx) => {
+      const lockKey = `${input.teamId}:evt:${input.sourceType}:${sourceId}:${input.eventType}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarEvent.findFirst({
+        where: {
+          teamId: input.teamId,
+          sourceType: input.sourceType,
+          sourceId,
+          eventType: input.eventType,
+        },
+        select: { id: true },
+      })
+      if (existing) return null
+
+      try {
+        return await tx.radarEvent.create({
+          data: {
+            profileId: input.profileId,
+            teamId: input.teamId,
+            eventType: input.eventType,
+            sourceType: input.sourceType,
+            sourceId,
+            occurredAt: input.occurredAt,
+            metadata: input.metadata,
+          },
+        })
+      } catch {
+        return null
+      }
+    })
+  }
+
   async upsertConsent(input: UpsertConsentInput) {
     return prisma.radarChannelConsent.upsert({
       where: {
@@ -815,7 +965,44 @@ export class RadarRepository {
       take: number
     }
   ) {
-    const where: Prisma.RadarProfileWhereInput = {
+    const where = this.buildListProfilesWhere(scope, params)
+
+    const [items, total] = await Promise.all([
+      prisma.radarProfile.findMany({
+        where,
+        select: {
+          ...profileListSelect,
+          consents: {
+            where: { channel: "email" },
+            select: { status: true, reason: true, channel: true },
+          },
+          sourceLinks: {
+            select: { sourceType: true },
+            take: 5,
+          },
+        },
+        orderBy: { lastSeenAt: "desc" },
+        skip: params.skip,
+        take: params.take,
+      }),
+      prisma.radarProfile.count({ where }),
+    ])
+
+    return { items, total }
+  }
+
+  private buildListProfilesWhere(
+    scope: RadarTeamScope,
+    params: {
+      search?: string
+      consent?: RadarConsentStatus
+      sourceType?: RadarSourceType
+      channel?: RadarChannel
+      lastSeenFrom?: Date
+      lastSeenTo?: Date
+    }
+  ): Prisma.RadarProfileWhereInput {
+    return {
       teamId: scope.teamId,
       ...(params.search && {
         OR: [
@@ -846,29 +1033,77 @@ export class RadarRepository {
           }
         : {}),
     }
+  }
+
+  private readonly exportProfileSelect = {
+    id: true,
+    displayName: true,
+    displayPhone: true,
+    primaryEmail: true,
+    primaryDocument: true,
+    lastSeenAt: true,
+    identities: {
+      select: {
+        type: true,
+        value: true,
+        normalizedValue: true,
+      },
+      orderBy: { type: "asc" as const },
+    },
+    events: {
+      select: {
+        eventType: true,
+        occurredAt: true,
+      },
+      orderBy: { occurredAt: "desc" as const },
+      take: 1,
+    },
+  }
+
+  /**
+   * D16: lista perfis filtrados para export (até `RADAR_EXPORT_MAX_ROWS`),
+   * com identidades e o evento mais recente.
+   */
+  async listProfilesForExportWithCtx(
+    scope: RadarTeamScope,
+    params: {
+      search?: string
+      consent?: RadarConsentStatus
+      sourceType?: RadarSourceType
+      channel?: RadarChannel
+      lastSeenFrom?: Date
+      lastSeenTo?: Date
+    }
+  ) {
+    const where = this.buildListProfilesWhere(scope, params)
 
     const [items, total] = await Promise.all([
       prisma.radarProfile.findMany({
         where,
-        select: {
-          ...profileListSelect,
-          consents: {
-            where: { channel: "email" },
-            select: { status: true, reason: true, channel: true },
-          },
-          sourceLinks: {
-            select: { sourceType: true },
-            take: 5,
-          },
-        },
+        select: this.exportProfileSelect,
         orderBy: { lastSeenAt: "desc" },
-        skip: params.skip,
-        take: params.take,
+        take: RADAR_EXPORT_MAX_ROWS,
       }),
       prisma.radarProfile.count({ where }),
     ])
 
     return { items, total }
+  }
+
+  /**
+   * D16: carrega perfis por ids (ordem preservada) para export de segmento.
+   */
+  async listProfilesForExportByIdsWithCtx(scope: RadarTeamScope, profileIds: string[]) {
+    if (profileIds.length === 0) return []
+
+    const cappedIds = profileIds.slice(0, RADAR_EXPORT_MAX_ROWS)
+    const items = await prisma.radarProfile.findMany({
+      where: { teamId: scope.teamId, id: { in: cappedIds } },
+      select: this.exportProfileSelect,
+    })
+
+    const byId = new Map(items.map((item) => [item.id, item]))
+    return cappedIds.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item))
   }
 
   async getProfileDetailWithCtx(scope: RadarTeamScope, profileId: string) {
@@ -945,6 +1180,38 @@ export class RadarRepository {
     })
   }
 
+  /** D17: `SELECT DISTINCT eventType` escopado pelo time, ordenado alfabeticamente. */
+  async listDistinctEventTypes(scope: RadarTeamScope): Promise<string[]> {
+    const rows = await prisma.radarEvent.findMany({
+      where: { teamId: scope.teamId },
+      distinct: ["eventType"],
+      select: { eventType: true },
+      orderBy: { eventType: "asc" },
+    })
+    return rows.map((row) => row.eventType)
+  }
+
+  /**
+   * D17: carrega assignedTo/closerId dos leads associados a um perfil,
+   * com nomes resolvidos via Profile (assignee/closer).
+   */
+  async findLeadAssigneesByIds(teamId: string, leadIds: string[]) {
+    const unique = [...new Set(leadIds.filter(Boolean))]
+    if (unique.length === 0) return []
+
+    return prisma.lead.findMany({
+      where: { teamId, id: { in: unique } },
+      select: {
+        id: true,
+        leadCode: true,
+        assignedTo: true,
+        closerId: true,
+        assignee: { select: { id: true, fullName: true, email: true } },
+        closer: { select: { id: true, fullName: true, email: true } },
+      },
+    })
+  }
+
   async findLeadsForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
     return prisma.lead.findMany({
       where: {
@@ -993,6 +1260,47 @@ export class RadarRepository {
             contractDueDate: true,
             status: true,
           },
+        },
+      },
+    })
+  }
+
+  async findFinalizedForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
+    return prisma.leadFinalized.findMany({
+      where: {
+        lead: { teamId },
+        ...(filters.finalizedId ? { id: filters.finalizedId } : {}),
+        ...(filters.leadIds && filters.leadIds.length > 0
+          ? { leadId: { in: filters.leadIds } }
+          : filters.leadId
+            ? { leadId: filters.leadId }
+            : {}),
+        ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
+      },
+      select: {
+        id: true,
+        leadId: true,
+        finalizedDateAt: true,
+        updatedAt: true,
+        createdAt: true,
+        holder: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            cnpj: true,
+            birthDate: true,
+          },
+        },
+        dependents: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+            parentesco: true,
+          },
+          orderBy: { createdAt: "asc" },
         },
       },
     })
@@ -1117,6 +1425,169 @@ export class RadarRepository {
   async findLeadIdsByWhere(where: Prisma.LeadWhereInput): Promise<string[]> {
     const leads = await prisma.lead.findMany({ where, select: { id: true } })
     return leads.map((lead) => lead.id)
+  }
+
+  /**
+   * D13: retorna `leadId`s e `portfolioId`s de `LeadPortfolio` que batem o where —
+   * usados para projetar perfis via identidades `lead_id` / `portfolio_id`.
+   */
+  async findPortfolioProfileIdsByWhere(
+    where: Prisma.LeadPortfolioWhereInput
+  ): Promise<{ leadIds: string[]; portfolioIds: string[] }> {
+    const rows = await prisma.leadPortfolio.findMany({ where, select: { id: true, leadId: true } })
+    return {
+      leadIds: [...new Set(rows.map((row) => row.leadId))],
+      portfolioIds: rows.map((row) => row.id),
+    }
+  }
+
+  /**
+   * D13: retorna `leadId`s de `LeadFinalized` que batem o where —
+   * usados para projetar perfis via identidade `lead_id`.
+   */
+  async findFinalizedProfileIdsByWhere(where: Prisma.LeadFinalizedWhereInput): Promise<string[]> {
+    const rows = await prisma.leadFinalized.findMany({ where, select: { leadId: true } })
+    return [...new Set(rows.map((row) => row.leadId))]
+  }
+
+  /**
+   * D13/D14: contratos atuais (`LeadPortfolio`) + histórico (`LeadFinalized` com
+   * holder/dependentes) do perfil. Resolve via `lead_id` / `portfolio_id`,
+   * identidades `contract_holder`/`contract_dependent` (documento/CNPJ) e
+   * `leadId` em source links `lead_finalized` (perfis syncFromFinalized).
+   */
+  async findContractsForProfile(scope: RadarTeamScope, profileId: string) {
+    const [identities, sourceLinks] = await Promise.all([
+      prisma.radarIdentity.findMany({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          type: { in: ["lead_id", "portfolio_id", "contract_holder", "contract_dependent"] },
+        },
+        select: { type: true, normalizedValue: true },
+      }),
+      prisma.radarSourceLink.findMany({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          sourceType: "lead_finalized",
+        },
+        select: { sourceMetadata: true },
+      }),
+    ])
+
+    const leadIdSet = new Set(
+      identities
+        .filter((identity) => identity.type === "lead_id")
+        .map((identity) => identity.normalizedValue)
+    )
+    const portfolioIds = identities
+      .filter((identity) => identity.type === "portfolio_id")
+      .map((identity) => identity.normalizedValue)
+    const contractDocuments = identities
+      .filter(
+        (identity) =>
+          identity.type === "contract_holder" || identity.type === "contract_dependent"
+      )
+      .map((identity) => identity.normalizedValue)
+      .filter(Boolean)
+
+    for (const link of sourceLinks) {
+      const meta = link.sourceMetadata as { leadId?: unknown } | null
+      if (typeof meta?.leadId === "string" && meta.leadId.length > 0) {
+        leadIdSet.add(meta.leadId)
+      }
+    }
+
+    if (contractDocuments.length > 0) {
+      const byDocument = await prisma.leadFinalized.findMany({
+        where: {
+          lead: { teamId: scope.teamId },
+          OR: [
+            { holder: { document: { in: contractDocuments } } },
+            { holder: { cnpj: { in: contractDocuments } } },
+            { dependents: { some: { document: { in: contractDocuments } } } },
+          ],
+        },
+        select: { leadId: true },
+      })
+      for (const row of byDocument) {
+        leadIdSet.add(row.leadId)
+      }
+    }
+
+    const leadIds = [...leadIdSet]
+
+    if (leadIds.length === 0 && portfolioIds.length === 0) {
+      return { portfolios: [] as const, finalized: [] as const }
+    }
+
+    const portfolioWhere: Prisma.LeadPortfolioWhereInput =
+      leadIds.length > 0 && portfolioIds.length > 0
+        ? { teamId: scope.teamId, OR: [{ leadId: { in: leadIds } }, { id: { in: portfolioIds } }] }
+        : leadIds.length > 0
+          ? { teamId: scope.teamId, leadId: { in: leadIds } }
+          : { teamId: scope.teamId, id: { in: portfolioIds } }
+
+    const portfolios = await prisma.leadPortfolio.findMany({
+      where: portfolioWhere,
+      select: {
+        id: true,
+        leadId: true,
+        portfolioStatus: true,
+        renewalStatus: true,
+        renewalAmount: true,
+        source: true,
+        note: true,
+        lastContactAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    })
+
+    const resolvedLeadIds = [...new Set([...leadIds, ...portfolios.map((row) => row.leadId)])]
+    const finalized =
+      resolvedLeadIds.length === 0
+        ? []
+        : await prisma.leadFinalized.findMany({
+            where: { leadId: { in: resolvedLeadIds }, lead: { teamId: scope.teamId } },
+            select: {
+              id: true,
+              leadId: true,
+              finalizedDateAt: true,
+              startDateAt: true,
+              amount: true,
+              contractType: true,
+              operadora: true,
+              productName: true,
+              notes: true,
+              createdAt: true,
+              holder: {
+                select: {
+                  id: true,
+                  name: true,
+                  razaoSocial: true,
+                  birthDate: true,
+                  document: true,
+                  cnpj: true,
+                },
+              },
+              dependents: {
+                select: {
+                  id: true,
+                  name: true,
+                  birthDate: true,
+                  parentesco: true,
+                  document: true,
+                },
+                orderBy: { name: "asc" },
+              },
+            },
+            orderBy: { finalizedDateAt: "desc" },
+          })
+
+    return { portfolios, finalized }
   }
 
   async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {
@@ -1372,6 +1843,173 @@ export class RadarRepository {
         userAgent: input.userAgent,
         metadata: input.metadata as Prisma.InputJsonValue | undefined,
       },
+    })
+  }
+
+  async findSourceLinkBySource(input: {
+    teamId: string
+    sourceType: RadarSourceType
+    sourceId: string
+  }) {
+    return prisma.radarSourceLink.findUnique({
+      where: {
+        teamId_sourceType_sourceId: {
+          teamId: input.teamId,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+        },
+      },
+      select: { id: true, profileId: true },
+    })
+  }
+
+  async deleteSourceLinkById(id: string) {
+    await prisma.radarSourceLink.deleteMany({ where: { id } })
+  }
+
+  /**
+   * D14: ao corrigir o documento de um titular/dependente, remove a identidade
+   * obsoleta do perfil anterior (evita fantasma com documento antigo no Radar).
+   * Quando `keepNormalizedDocument` é `null`, remove todas as identidades do tipo.
+   */
+  async removeObsoleteContractIdentity(input: {
+    teamId: string
+    profileId: string
+    identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
+    keepNormalizedDocument: string | null
+  }) {
+    const identities = await prisma.radarIdentity.findMany({
+      where: {
+        teamId: input.teamId,
+        profileId: input.profileId,
+        type: input.identityType,
+      },
+      select: { id: true, normalizedValue: true },
+    })
+
+    const obsolete =
+      input.keepNormalizedDocument === null
+        ? identities
+        : identities.filter(
+            (identity) => identity.normalizedValue !== input.keepNormalizedDocument
+          )
+    if (obsolete.length === 0) return { removed: 0 }
+
+    await prisma.radarIdentity.deleteMany({
+      where: { id: { in: obsolete.map((identity) => identity.id) } },
+    })
+
+    const profile = await prisma.radarProfile.findUnique({
+      where: { id: input.profileId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (
+      profile?.normalizedPrimaryDocument &&
+      obsolete.some((identity) => identity.normalizedValue === profile.normalizedPrimaryDocument)
+    ) {
+      await prisma.radarProfile.update({
+        where: { id: input.profileId },
+        data: { primaryDocument: null, normalizedPrimaryDocument: null },
+      })
+    }
+
+    return { removed: obsolete.length }
+  }
+
+  /**
+   * D14: remove perfil fantasma após correção de documento — só quando não
+   * restam identidades nem source links (preserva perfis ainda referenciados).
+   */
+  async deleteOrphanRadarProfileIfEmpty(input: { teamId: string; profileId: string }) {
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: input.profileId, teamId: input.teamId },
+      select: {
+        id: true,
+        _count: { select: { identities: true, sourceLinks: true } },
+      },
+    })
+    if (!profile) return { deleted: false }
+    if (profile._count.identities > 0 || profile._count.sourceLinks > 0) {
+      return { deleted: false }
+    }
+
+    await prisma.radarProfile.delete({ where: { id: profile.id } })
+    return { deleted: true }
+  }
+
+  async getProfileNormalizedDocument(
+    teamId: string,
+    profileId: string
+  ): Promise<{ found: false } | { found: true; doc: string | null }> {
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: profileId, teamId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (!profile) return { found: false }
+    return { found: true, doc: profile.normalizedPrimaryDocument }
+  }
+
+  /**
+   * D14: histórico de contratos por documento — titular OU dependente.
+   * Perfis `contract_dependent` têm o doc em LeadFinalizedDependent, não no holder.
+   */
+  async findFinalizedContractsByNormalizedDocument(teamId: string, doc: string) {
+    return prisma.leadFinalized.findMany({
+      where: {
+        lead: { teamId },
+        OR: [
+          { holder: { document: doc } },
+          { holder: { cnpj: doc } },
+          { dependents: { some: { document: doc } } },
+        ],
+      },
+      select: {
+        id: true,
+        leadId: true,
+        finalizedDateAt: true,
+        amount: true,
+        contractType: true,
+        operadora: true,
+        productName: true,
+        createdAt: true,
+        holder: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            cnpj: true,
+            birthDate: true,
+          },
+        },
+        dependents: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+            parentesco: true,
+          },
+          orderBy: { name: "asc" },
+        },
+        lead: {
+          select: {
+            id: true,
+            portfolio: {
+              select: {
+                id: true,
+                portfolioStatus: true,
+                renewalStatus: true,
+                renewalAmount: true,
+                source: true,
+                lastContactAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { finalizedDateAt: "desc" },
     })
   }
 }

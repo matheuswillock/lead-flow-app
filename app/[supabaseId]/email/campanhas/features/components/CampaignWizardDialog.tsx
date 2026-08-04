@@ -172,6 +172,8 @@ export function CampaignWizardDialog() {
     wizardListStrategy,
     wizardRecipientSource,
     wizardRadarSegmentSlug,
+    wizardSaveAsRadarSegment,
+    wizardSaveAsRadarSegmentName,
     wizardScheduledAt,
     wizardUniformSchedule,
     wizardScheduleIntervalDays,
@@ -195,6 +197,8 @@ export function CampaignWizardDialog() {
     setWizardListStrategy,
     setWizardRecipientSource,
     setWizardRadarSegmentSlug,
+    setWizardSaveAsRadarSegment,
+    setWizardSaveAsRadarSegmentName,
     setWizardScheduledAt,
     setWizardUniformSchedule,
     setWizardScheduleIntervalDays,
@@ -216,14 +220,18 @@ export function CampaignWizardDialog() {
   const systemSegments = useMemo(() => radarSegments.filter((segment) => segment.isSystem), [radarSegments])
   const customSegments = useMemo(() => radarSegments.filter((segment) => !segment.isSystem), [radarSegments])
 
-  const recipientCount =
-    wizardRecipientSource === "radar_segment"
-      ? selectedSegment?.count ?? 0
-      : selectedLists.reduce(
-          (sum, list) => sum + (list.activeContacts ?? list.totalContacts ?? 0),
-          0
-        )
+  const recipientCount = wizardPreviewPlan?.totalRecipients
+    ?? (
+      (selectedSegment?.count ?? 0) +
+      selectedLists.reduce(
+        (sum, list) => sum + (list.activeContacts ?? list.totalContacts ?? 0),
+        0
+      )
+    )
 
+  const hasRadarSegment = Boolean(wizardRadarSegmentSlug.trim())
+  const hasContactLists = wizardContactListIds.length > 0
+  const canSaveAsSegment = wizardRadarSegmentSlug.startsWith("custom:")
   const previewSubCount = wizardPreviewPlan?.subCampaigns.length ?? 0
   const needsSplit = Boolean(wizardPreviewPlan?.needsSplit)
   const summarySubCampaigns = useMemo(
@@ -241,7 +249,6 @@ export function CampaignWizardDialog() {
   })
   const templateParse = campaignWizardTemplateSchema.safeParse({ templateId: wizardTemplateId })
   const audienciaParse = campaignWizardAudienciaSchema.safeParse({
-    recipientSource: wizardRecipientSource,
     contactListIds: wizardContactListIds,
     listStrategy: wizardListStrategy,
     radarSegmentSlug: wizardRadarSegmentSlug || undefined,
@@ -256,7 +263,8 @@ export function CampaignWizardDialog() {
     () =>
       buildCampaignWizardSubmitSchema({
         recipientCount: wizardPreviewPlan?.totalRecipients ?? recipientCount,
-        recipientSource: wizardRecipientSource,
+        hasRadarSegment,
+        hasContactLists,
         needsSplit,
         uniformSchedule: wizardUniformSchedule,
         subCampaignCount: previewSubCount,
@@ -264,7 +272,8 @@ export function CampaignWizardDialog() {
     [
       wizardPreviewPlan?.totalRecipients,
       recipientCount,
-      wizardRecipientSource,
+      hasRadarSegment,
+      hasContactLists,
       needsSplit,
       wizardUniformSchedule,
       previewSubCount,
@@ -275,10 +284,11 @@ export function CampaignWizardDialog() {
     name: wizardName,
     description: wizardDescription || undefined,
     templateId: wizardTemplateId,
-    recipientSource: wizardRecipientSource,
     contactListIds: wizardContactListIds,
     listStrategy: wizardListStrategy,
     radarSegmentSlug: wizardRadarSegmentSlug || undefined,
+    saveAsRadarSegment: wizardSaveAsRadarSegment,
+    saveAsRadarSegmentName: wizardSaveAsRadarSegmentName || undefined,
     scheduledAt: wizardScheduledAt,
     uniformSchedule: wizardUniformSchedule,
     scheduleIntervalDays: wizardScheduleIntervalDays,
@@ -467,70 +477,63 @@ export function CampaignWizardDialog() {
 
                 {wizardActiveTab === "audiencia" ? (
                   <FieldGroup>
+                    <Field>
+                      <FieldLabel>Listas de contatos</FieldLabel>
+                      <FieldDescription>
+                        Opcional se houver segmento Radar. Pode combinar listas e segmento (união com
+                        dedupe por e-mail).
+                      </FieldDescription>
+                      <div className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-md border p-3">
+                        {contactLists.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">Nenhuma lista disponível</p>
+                        ) : (
+                          contactLists.map((list) => {
+                            const checked = wizardContactListIds.includes(list.id)
+                            return (
+                              <label key={list.id} className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(value) =>
+                                    handleListToggle(list.id, value === true)
+                                  }
+                                  disabled={formDisabled || wizardMode === "edit"}
+                                />
+                                <span>{formatContactListLabel(list)}</span>
+                              </label>
+                            )
+                          })
+                        )}
+                      </div>
+                      {wizardContactListIds.length > 1 && wizardListStrategy ? (
+                        <FieldDescription>
+                          Estratégia:{" "}
+                          {wizardListStrategy === "merge"
+                            ? "Juntar listas"
+                            : "Uma sub-campanha por lista"}
+                          {hasRadarSegment && wizardListStrategy === "per_list"
+                            ? " (com segmento Radar use juntar listas)"
+                            : null}
+                        </FieldDescription>
+                      ) : null}
+                    </Field>
+
                     {!host ? (
                       <Field>
-                        <FieldLabel>Origem dos destinatários *</FieldLabel>
+                        <FieldLabel>Segmento Radar</FieldLabel>
+                        <FieldDescription>
+                          Opcional se houver lista. Segmento sozinho acima do limite é rejeitado;
+                          com lista, a união pode usar sub-campanhas.
+                        </FieldDescription>
                         <Select
-                          value={wizardRecipientSource}
-                          onValueChange={(value) =>
-                            setWizardRecipientSource(value as "contact_list" | "radar_segment")
-                          }
+                          value={wizardRadarSegmentSlug || undefined}
+                          onValueChange={(value) => {
+                            setWizardRadarSegmentSlug(value)
+                            setWizardRecipientSource("radar_segment")
+                          }}
                           disabled={formDisabled || wizardMode === "edit"}
                         >
                           <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="contact_list">Lista de contatos</SelectItem>
-                            <SelectItem value="radar_segment">Segmento Radar</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    ) : null}
-
-                    {wizardRecipientSource === "contact_list" || host ? (
-                      <Field>
-                        <FieldLabel>Listas de contatos *</FieldLabel>
-                        <div className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-md border p-3">
-                          {contactLists.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">Nenhuma lista disponível</p>
-                          ) : (
-                            contactLists.map((list) => {
-                              const checked = wizardContactListIds.includes(list.id)
-                              return (
-                                <label key={list.id} className="flex items-center gap-2 text-sm">
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={(value) =>
-                                      handleListToggle(list.id, value === true)
-                                    }
-                                    disabled={formDisabled || wizardMode === "edit"}
-                                  />
-                                  <span>{formatContactListLabel(list)}</span>
-                                </label>
-                              )
-                            })
-                          )}
-                        </div>
-                        {wizardContactListIds.length > 1 && wizardListStrategy ? (
-                          <FieldDescription>
-                            Estratégia:{" "}
-                            {wizardListStrategy === "merge"
-                              ? "Juntar listas"
-                              : "Uma sub-campanha por lista"}
-                          </FieldDescription>
-                        ) : null}
-                      </Field>
-                    ) : (
-                      <Field>
-                        <FieldLabel>Segmento Radar *</FieldLabel>
-                        <Select
-                          value={wizardRadarSegmentSlug}
-                          onValueChange={setWizardRadarSegmentSlug}
-                          disabled={formDisabled || wizardMode === "edit"}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione um segmento..." />
+                            <SelectValue placeholder="Nenhum segmento (opcional)" />
                           </SelectTrigger>
                           <SelectContent>
                             {systemSegments.length > 0 ? (
@@ -555,16 +558,33 @@ export function CampaignWizardDialog() {
                             ) : null}
                           </SelectContent>
                         </Select>
-                        {wizardRecipientSource === "radar_segment" &&
+                        {wizardRadarSegmentSlug ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="self-start"
+                            disabled={formDisabled || wizardMode === "edit"}
+                            onClick={() => {
+                              setWizardRadarSegmentSlug("")
+                              setWizardSaveAsRadarSegment(false)
+                            }}
+                          >
+                            Remover segmento
+                          </Button>
+                        ) : null}
+                        {hasRadarSegment &&
+                        !hasContactLists &&
                         recipientCount > EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB ? (
                           <Alert className="mt-2">
                             <Info />
                             <AlertTitle>Segmento grande</AlertTitle>
                             <AlertDescription className="flex flex-col gap-2">
                               <span>
-                                Este segmento tem mais de{" "}
+                                Audiência excede o limite de{" "}
                                 {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")}{" "}
-                                destinatários. Crie uma lista de contatos para usar sub-campanhas.
+                                destinatários por campanha de segmento. Refine as condições ou
+                                materialize em lista de contatos — listas podem usar sub-campanhas.
                               </span>
                               <Button
                                 type="button"
@@ -586,7 +606,22 @@ export function CampaignWizardDialog() {
                           </Alert>
                         ) : null}
                       </Field>
-                    )}
+                    ) : null}
+
+                    {needsSplit && previewSubCount > 1 ? (
+                      <Alert>
+                        <Info />
+                        <AlertTitle>Sub-campanhas</AlertTitle>
+                        <AlertDescription>
+                          A audiência resolvida tem{" "}
+                          {(wizardPreviewPlan?.totalRecipients ?? recipientCount).toLocaleString(
+                            "pt-BR"
+                          )}{" "}
+                          destinatários e será dividida em {previewSubCount} sub-campanhas de até{" "}
+                          {EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")} cada.
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
                   </FieldGroup>
                 ) : null}
 
@@ -801,18 +836,69 @@ export function CampaignWizardDialog() {
                 ) : null}
 
                 {wizardActiveTab === "revisao" ? (
-                  <CampaignWizardSummaryPanel
-                    name={wizardName}
-                    description={wizardDescription || undefined}
-                    template={selectedTemplate}
-                    selectedLists={selectedLists}
-                    selectedSegment={selectedSegment}
-                    linkedForm={wizardLinkedForm}
-                    totalRecipients={wizardPreviewPlan?.totalRecipients ?? recipientCount}
-                    listStrategy={wizardListStrategy}
-                    subCampaigns={summarySubCampaigns}
-                    tz={tz}
-                  />
+                  <div className="flex flex-col gap-4">
+                    <CampaignWizardSummaryPanel
+                      name={wizardName}
+                      description={wizardDescription || undefined}
+                      template={selectedTemplate}
+                      selectedLists={selectedLists}
+                      selectedSegment={selectedSegment}
+                      linkedForm={wizardLinkedForm}
+                      totalRecipients={wizardPreviewPlan?.totalRecipients ?? recipientCount}
+                      listStrategy={wizardListStrategy}
+                      subCampaigns={summarySubCampaigns}
+                      tz={tz}
+                    />
+
+                    <FieldGroup>
+                      {canSaveAsSegment ? (
+                        <Field>
+                          <label className="flex items-start gap-2 text-sm">
+                            <Checkbox
+                              checked={wizardSaveAsRadarSegment}
+                              onCheckedChange={(value) => {
+                                const enabled = value === true
+                                setWizardSaveAsRadarSegment(enabled)
+                                if (enabled && !wizardSaveAsRadarSegmentName.trim()) {
+                                  setWizardSaveAsRadarSegmentName(
+                                    `${wizardName.trim() || "Campanha"} — segmento`
+                                  )
+                                }
+                              }}
+                              disabled={formDisabled || wizardMode === "edit"}
+                            />
+                            <span className="flex flex-col gap-1">
+                              <span>Salvar como novo segmento Radar</span>
+                              <span className="text-muted-foreground">
+                                Clona as regras DSL do segmento custom selecionado em um novo
+                                TeamRadarSegment e vincula a campanha a ele.
+                              </span>
+                            </span>
+                          </label>
+                          {wizardSaveAsRadarSegment ? (
+                            <Input
+                              className="mt-2"
+                              value={wizardSaveAsRadarSegmentName}
+                              onChange={(event) =>
+                                setWizardSaveAsRadarSegmentName(event.target.value)
+                              }
+                              placeholder="Nome do novo segmento"
+                              disabled={formDisabled || wizardMode === "edit"}
+                              maxLength={120}
+                            />
+                          ) : null}
+                        </Field>
+                      ) : (
+                        <FieldDescription>
+                          {hasContactLists && !hasRadarSegment
+                            ? "Salvar como segmento Radar não se aplica a audiência só de listas (sem regras DSL)."
+                            : hasRadarSegment && !canSaveAsSegment
+                              ? "Segmentos do sistema não possuem DSL exportável — selecione um segmento custom para salvar uma cópia."
+                              : null}
+                        </FieldDescription>
+                      )}
+                    </FieldGroup>
+                  </div>
                 ) : null}
               </>
             )}

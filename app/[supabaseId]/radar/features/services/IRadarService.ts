@@ -4,6 +4,7 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileContracts,
   RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
@@ -36,6 +37,23 @@ export type ListProfilesParams = {
   lastSeenTo?: string
 }
 
+export type ExportProfilesParams = {
+  search?: string
+  consent?: string
+  sourceType?: string
+  channel?: string
+  lastSeenFrom?: string
+  lastSeenTo?: string
+}
+
+export type RadarExportResult = {
+  rows: Array<Record<string, string>>
+  total: number
+  exported: number
+  truncated: boolean
+  maxRows: number
+}
+
 export type RadarFieldOption = {
   key: string
   label: string
@@ -57,6 +75,21 @@ export interface IRadarService {
     page: number
     pageSize: number
   }>
+  exportProfiles(
+    supabaseId: string,
+    teamId: string,
+    params: ExportProfilesParams
+  ): Promise<RadarExportResult>
+  exportSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segment: string
+  ): Promise<RadarExportResult>
+  exportCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarExportResult>
   getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
   listSegments(
     supabaseId: string,
@@ -77,6 +110,7 @@ export interface IRadarService {
     pageSize: number
   ): Promise<{ items: RadarProfileDetail["events"]; total: number }>
   listAvailableFields(supabaseId: string, teamId: string): Promise<RadarFieldOption[]>
+  listAvailableEventTypes(supabaseId: string, teamId: string): Promise<string[]>
   previewInterpolation(
     supabaseId: string,
     teamId: string,
@@ -112,10 +146,23 @@ export interface IRadarService {
     rules: RadarSegmentRules
   ): Promise<{ count: number }>
   getProfileTouchpoints(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileTouchpoints>
+  getProfileContracts(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileContracts>
   materializeContactList(
     supabaseId: string,
     teamId: string,
     segmentSlug: string,
     name?: string
   ): Promise<{ listId: string; totalContacts: number }>
+  previewSegmentContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ estimatedCount: number }>
+  materializeSegmentToContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ listId: string; contactCount: number }>
 }

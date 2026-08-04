@@ -42,6 +42,84 @@ export type ListAudienceSlice = {
   contacts: ListAudienceContact[]
 }
 
+/** Contato da união lista+segmento; contactId null = veio só do segmento (ainda sem EmailContact). */
+export type CombinedAudienceContact = {
+  contactId: string | null
+  email: string
+  name?: string | null
+}
+
+/**
+ * União de destinatários de listas e segmento Radar, dedupe por e-mail normalizado.
+ * Prefere o contactId da lista quando o e-mail já existe nela.
+ */
+export function mergeListAndSegmentContacts(params: {
+  listContacts: ListAudienceContact[]
+  segmentRecipients: Array<{ email: string; name?: string | null }>
+}): CombinedAudienceContact[] {
+  const byEmail = new Map<string, CombinedAudienceContact>()
+
+  for (const contact of params.listContacts) {
+    const email = contact.email.trim().toLowerCase()
+    if (!email || byEmail.has(email)) continue
+    byEmail.set(email, {
+      contactId: contact.contactId,
+      email,
+      name: null,
+    })
+  }
+
+  for (const recipient of params.segmentRecipients) {
+    const email = recipient.email.trim().toLowerCase()
+    if (!email || byEmail.has(email)) continue
+    byEmail.set(email, {
+      contactId: null,
+      email,
+      name: recipient.name ?? null,
+    })
+  }
+
+  return Array.from(byEmail.values())
+}
+
+/**
+ * Monta plano de sub-campanhas a partir de IDs já resolvidos (merge + split).
+ * Usado para audiência só-lista (merge) e para união segmento+lista materializada.
+ */
+export function buildCampaignPlanFromContactIds(params: {
+  campaignName: string
+  contactIds: string[]
+  sourceContactListIds: string[]
+  scheduledAt?: Date | null
+  scheduleIntervalDays?: number | null
+  uniformSchedule?: boolean
+  subCampaignSchedules?: SubCampaignScheduleInput[]
+  maxRecipientsPerSub?: number | null
+  contactListId?: string | null
+  listName?: string | null
+}): CampaignPlanResult {
+  return buildCampaignPlan({
+    campaignName: params.campaignName,
+    listStrategy: "merge",
+    sourceContactListIds: params.sourceContactListIds,
+    listAudiences: [
+      {
+        listId: params.contactListId ?? "combined-audience",
+        listName: params.listName ?? "Audiência unificada",
+        contacts: params.contactIds.map((contactId) => ({
+          contactId,
+          email: `${contactId}@placeholder.local`,
+        })),
+      },
+    ],
+    scheduledAt: params.scheduledAt,
+    scheduleIntervalDays: params.scheduleIntervalDays,
+    uniformSchedule: params.uniformSchedule,
+    subCampaignSchedules: params.subCampaignSchedules,
+    maxRecipientsPerSub: params.maxRecipientsPerSub,
+  })
+}
+
 export function resolveListStrategy(params: {
   contactListId?: string
   contactListIds?: string[]

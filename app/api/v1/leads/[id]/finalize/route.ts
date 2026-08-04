@@ -7,6 +7,7 @@ import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits'
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { syncPortfolioToRadarInline } from '@/app/api/useCases/radar/syncPortfolioToRadarInline';
+import { syncFinalizedToRadarInline } from '@/app/api/useCases/radar/syncFinalizedToRadarInline';
 
 export async function POST(
   request: NextRequest,
@@ -260,6 +261,7 @@ export async function POST(
     if (createdOrUpdatedPortfolioId) {
       syncPortfolioToRadarInline(createdOrUpdatedPortfolioId, teamId);
     }
+    syncFinalizedToRadarInline({ teamId, finalizedId: result.leadFinalized.id });
     return NextResponse.json(
       new Output(true, ['Contrato finalizado com sucesso'], [], result),
       { status: 200 }

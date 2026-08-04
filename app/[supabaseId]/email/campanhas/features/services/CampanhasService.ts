@@ -9,6 +9,8 @@ export type CampaignWritePayload = {
   contactListIds?: string[]
   listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
+  saveAsRadarSegment?: boolean
+  saveAsRadarSegmentName?: string | null
   scheduledAt?: string
   scheduleIntervalDays?: number
   uniformSchedule?: boolean

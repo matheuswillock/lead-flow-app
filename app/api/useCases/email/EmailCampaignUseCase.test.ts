@@ -85,6 +85,14 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     },
     emailTeamSettings: { findUnique: mock(async () => null) },
     emailTemplate: { findFirst: emailTemplateFindFirstMock },
+    emailContactList: {
+      findMany: mock(async () => [
+        { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
+      ]),
+    },
+    emailContact: {
+      findMany: mock(async () => []),
+    },
     emailCampaignDispatch: {
       aggregate: emailCampaignDispatchAggregateMock,
       create: emailCampaignDispatchCreateMock,
@@ -827,5 +835,19 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     )
     expect(output.isValid).toBe(false)
     expect(output.errorMessages[0]).toContain("estratégia")
+  })
+
+  it("aceita preview com lista e segmento juntos (não rejeita por XOR)", async () => {
+    const uc = new EmailCampaignUseCase()
+    const both = await uc.previewPlan(
+      {
+        name: "Combo",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListId: "00000000-0000-4000-8000-000000000001",
+        radarSegmentSlug: "email_marketable",
+      },
+      teamCtx
+    )
+    expect(both.errorMessages.join(" ")).not.toContain("não ambos")
   })
 })

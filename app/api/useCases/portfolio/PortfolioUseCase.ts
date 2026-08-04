@@ -3,6 +3,7 @@ import { Output } from '@/lib/output';
 import { cacheTags } from '@/lib/cache/cacheTags';
 import { portfolioService } from '@/app/api/services/Portfolio/PortfolioService';
 import { syncPortfolioToRadarInline } from '@/app/api/useCases/radar/syncPortfolioToRadarInline';
+import { syncFinalizedToRadarInline } from '@/app/api/useCases/radar/syncFinalizedToRadarInline';
 import type { IPortfolioUseCase } from './IPortfolioUseCase';
 import type {
   CreatePortfolioEntryPayload,
@@ -85,6 +86,7 @@ export class PortfolioUseCase implements IPortfolioUseCase {
     try {
       const result = await portfolioService.createPortfolioEntry(teamId, profileId, data);
       syncPortfolioToRadarInline(result.portfolioId, teamId);
+      syncFinalizedToRadarInline({ teamId, leadId: result.leadId });
       return new Output(true, ['Cliente adicionado na carteira com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao criar cliente na carteira:', error);
@@ -189,6 +191,7 @@ export class PortfolioUseCase implements IPortfolioUseCase {
         payload
       );
       syncPortfolioToRadarInline(result.portfolioId, teamId);
+      syncFinalizedToRadarInline({ teamId, leadId });
       return new Output(true, ['Dados atualizados com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao atualizar detalhe:', error);
