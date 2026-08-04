@@ -67,16 +67,30 @@ import {
   type SubCampaignScheduleInput,
 } from "@/lib/email/campaign-plan"
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
+import {
+  CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+  CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+  CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+  selectFailedRecipientEmailsForRetry,
+} from "@/lib/email/campaign-failed-recipients"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
 const ORPHAN_RESUME_MIN_AGE_MS = 2 * 60 * 1000
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
-const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed"] as const
+const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
 const MANUAL_DISPATCH_STATUS_SET = new Set<EmailCampaignStatus>(MANUAL_DISPATCH_STATUSES)
+const RETRY_FAILED_ONLY_STATUSES = new Set<EmailCampaignStatus>(["failed", "partially_sent"])
+
+export type ManualDispatchOptions = {
+  /** Quando true (ou status failed/partially_sent), envia só destinatários com falha elegíveis. */
+  retryFailedOnly?: boolean
+}
 
 export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
+  NO_FAILED_RECIPIENTS:
+    "Não há destinatários com falha para reenviar. Quem já recebeu não será reenviado.",
   NO_HTML: "Template sem HTML. Edite o template antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
@@ -129,6 +143,7 @@ export type ManualDispatchJob = {
   templateVariables: EmailTemplateVariableDefinition[]
   logIdsByEmail: Array<{ email: string; logId: string }>
   totalRecipients: number
+  retryFailedOnly: boolean
   status: "sending"
 }
 
@@ -467,14 +482,18 @@ export class EmailCampaignUseCase {
         campaigns: campaigns.map((campaign) => {
           const childSum = aggregatesByParent.get(campaign.id)
           const subCampaignCount = campaign._count.subCampaigns
+          const totalRecipients = dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients
+          const totalSent = childSum?.totalSent ?? campaign.totalSent
+          const isLeafRetryStatus =
+            subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
           return resolveEmailCreator({
             id: campaign.id,
             name: campaign.name,
             status: campaign.status,
             scheduledAt: campaign.scheduledAt,
             sentAt: campaign.sentAt,
-            totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
-            totalSent: childSum?.totalSent ?? campaign.totalSent,
+            totalRecipients,
+            totalSent,
             totalDelivered: childSum?.totalDelivered ?? campaign.totalDelivered,
             totalOpened: childSum?.totalOpened ?? campaign.totalOpened,
             totalClicked: childSum?.totalClicked ?? campaign.totalClicked,
@@ -489,6 +508,10 @@ export class EmailCampaignUseCase {
             subCampaignCount,
             isParentCampaign: subCampaignCount > 0,
             managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
+            // Aproximação rápida na listagem; getById calcula o valor exato pelos logs.
+            failedRetryRecipientCount: isLeafRetryStatus
+              ? Math.max(0, totalRecipients - totalSent)
+              : undefined,
           })
         }),
         total,
@@ -588,6 +611,11 @@ export class EmailCampaignUseCase {
         )?.html ?? null
       )
 
+      const failedRetryRecipientCount =
+        !isParent && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+          ? (await this.resolveFailedRetryRecipientEmails(campaign.id)).length
+          : undefined
+
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
         sourceContactListIds,
@@ -595,6 +623,7 @@ export class EmailCampaignUseCase {
         totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
           ? activeRecipientCount
           : campaign.totalRecipients,
+        failedRetryRecipientCount,
         partiallySentCount: isParent
           ? campaign.subCampaigns.filter((sub) => sub.status === "sent").length
           : undefined,
@@ -603,6 +632,12 @@ export class EmailCampaignUseCase {
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
         managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
+        subCampaigns: campaign.subCampaigns.map((sub) => ({
+          ...sub,
+          failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
+            ? Math.max(0, sub.totalRecipients - sub.totalSent)
+            : undefined,
+        })),
       }))
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
@@ -1179,7 +1214,42 @@ export class EmailCampaignUseCase {
     }
   }
 
-  async startManualDispatch(id: string, ctx: TeamContext): Promise<Output> {
+  /**
+   * Lista e-mails da campanha elegíveis para "Redisparar falhas".
+   * Ver critério em `lib/email/campaign-failed-recipients.ts`.
+   */
+  private async resolveFailedRetryRecipientEmails(campaignId: string): Promise<string[]> {
+    const logs = await prisma.emailLog.findMany({
+      where: {
+        campaignId,
+        status: {
+          in: [
+            CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+            ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+            ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+          ],
+        },
+      },
+      select: { recipientEmail: true, status: true },
+    })
+
+    return selectFailedRecipientEmailsForRetry(logs)
+  }
+
+  async countFailedRetryRecipients(campaignId: string, ctx: TeamContext): Promise<number> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId, teamId: ctx.teamId },
+      select: { id: true },
+    })
+    if (!campaign) return 0
+    return (await this.resolveFailedRetryRecipientEmails(campaignId)).length
+  }
+
+  async startManualDispatch(
+    id: string,
+    ctx: TeamContext,
+    options?: ManualDispatchOptions
+  ): Promise<Output> {
     let previousStatus: EmailCampaignStatus | null = null
     let reservedCredits = 0
     let hasCampaignsBetaAccess = false
@@ -1281,14 +1351,35 @@ export class EmailCampaignUseCase {
         masterTimezone: campaign.team.master.timezone,
       })
 
-      if (dispatchInput.recipients.length === 0) {
+      // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
+      // Evita reenviar a lista inteira e duplicar quem já chegou ao provedor.
+      const retryFailedOnly =
+        options?.retryFailedOnly === true || RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+
+      let recipientsForDispatch = dispatchInput.recipients
+      if (retryFailedOnly) {
+        const failedEmails = new Set(await this.resolveFailedRetryRecipientEmails(campaign.id))
+        recipientsForDispatch = dispatchInput.recipients.filter((recipient) =>
+          failedEmails.has(recipient.email.trim().toLowerCase())
+        )
+        console.info("[EmailCampaignUseCase][startManualDispatch] retryFailedOnly", {
+          campaignId: campaign.id,
+          previousStatus: campaign.status,
+          fullAudienceCount: dispatchInput.recipients.length,
+          failedOnlyCount: recipientsForDispatch.length,
+        })
+      }
+
+      if (recipientsForDispatch.length === 0) {
         return new Output(
           false,
           [],
           [
-            campaign.radarSegmentSlug
-              ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
-              : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST,
+            retryFailedOnly
+              ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_FAILED_RECIPIENTS
+              : campaign.radarSegmentSlug
+                ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
+                : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST,
           ],
           null
         )
@@ -1299,7 +1390,7 @@ export class EmailCampaignUseCase {
         teamId: ctx.teamId,
         timezone: ownerTz,
         now: new Date(),
-        additionalRecipients: dispatchInput.recipients.length,
+        additionalRecipients: recipientsForDispatch.length,
       })
       if (dailyCap.exceeded && dailyCap.limit != null) {
         return new Output(
@@ -1313,7 +1404,7 @@ export class EmailCampaignUseCase {
       const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
         subject: dispatchInput.subject,
         html: dispatchInput.html,
-        recipients: dispatchInput.recipients,
+        recipients: recipientsForDispatch,
         globalDefaults: dispatchInput.globalDefaults,
         templateVariables: dispatchInput.templateVariables,
       })
@@ -1336,7 +1427,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
       }
 
-      const recipientsList = dispatchInput.recipients
+      const recipientsList = recipientsForDispatch
       const creditsToReserve = recipientsList.length
 
       const creditReservation = await this.reserveTeamCreditsForDispatch(
@@ -1369,7 +1460,7 @@ export class EmailCampaignUseCase {
           contactListName: campaign.contactList?.name ?? null,
           radarSegmentSlug: campaign.radarSegmentSlug,
           triggeredBy: ctx.profileId,
-          totalRecipients: dispatchInput.recipients.length,
+          totalRecipients: recipientsList.length,
           status: "sending",
         },
       })
@@ -1405,10 +1496,20 @@ export class EmailCampaignUseCase {
         templateVariables,
         logIdsByEmail: createdLogs.map(({ email, logId }) => ({ email, logId })),
         totalRecipients: recipientsList.length,
+        retryFailedOnly,
         status: "sending",
       }
 
-      return new Output(true, ["Disparo iniciado em segundo plano"], [], job)
+      return new Output(
+        true,
+        [
+          retryFailedOnly
+            ? `Reenvio das falhas iniciado em segundo plano (${recipientsList.length} destinatário(s))`
+            : "Disparo iniciado em segundo plano",
+        ],
+        [],
+        job
+      )
     } catch (error) {
       console.error("[EmailCampaignUseCase][startManualDispatch]", error)
 
@@ -1814,8 +1915,8 @@ export class EmailCampaignUseCase {
   }
 
   /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
-  async send(id: string, ctx: TeamContext): Promise<Output> {
-    const started = await this.startManualDispatch(id, ctx)
+  async send(id: string, ctx: TeamContext, options?: ManualDispatchOptions): Promise<Output> {
+    const started = await this.startManualDispatch(id, ctx, options)
     if (!started.isValid || !started.result) {
       return started
     }
@@ -1981,6 +2082,7 @@ export class EmailCampaignUseCase {
             logId: log.id,
           })),
           totalRecipients: dispatch.totalRecipients,
+          retryFailedOnly: false,
           status: "sending",
         }
 

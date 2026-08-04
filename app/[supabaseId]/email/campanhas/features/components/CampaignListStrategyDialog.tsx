@@ -10,12 +10,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type CampaignListStrategyDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelectStrategy: (strategy: "merge" | "per_list") => void
 }
+
+const optionButtonClassName = cn(
+  buttonVariants({ variant: "outline" }),
+  "h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left shadow-none"
+)
 
 export function CampaignListStrategyDialog({
   open,
@@ -24,27 +31,41 @@ export function CampaignListStrategyDialog({
 }: CampaignListStrategyDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md overflow-y-auto">
-        <AlertDialogHeader>
+      <AlertDialogContent className="max-h-[90vh] flex flex-col gap-4 overflow-hidden sm:max-w-md">
+        <AlertDialogHeader className="shrink-0 gap-2 space-y-0 text-left">
           <AlertDialogTitle>Como deseja usar estas listas?</AlertDialogTitle>
           <AlertDialogDescription>
-            Escolha se deseja unificar os contatos ou manter uma sub-campanha por lista.
+            Escolha se deseja unificar os contatos ou manter uma sub-campanha por
+            lista.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className="flex flex-col gap-2">
+
+        <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
           <AlertDialogAction
-            className="h-auto whitespace-normal py-3 text-left"
+            className={optionButtonClassName}
             onClick={() => onSelectStrategy("merge")}
           >
-            Juntar listas — unifica contatos (dedup) e divide em lotes de até 2.000
+            <span className="w-full font-medium">Juntar listas</span>
+            <span className="w-full text-sm font-normal text-muted-foreground whitespace-normal">
+              Unifica contatos (dedup) e divide em lotes de até 2.000.
+            </span>
           </AlertDialogAction>
+
           <AlertDialogAction
-            className="h-auto whitespace-normal py-3 text-left"
+            className={optionButtonClassName}
             onClick={() => onSelectStrategy("per_list")}
           >
-            Uma sub-campanha por lista — cada lista vira ao menos uma sub-campanha
+            <span className="w-full font-medium">Uma sub-campanha por lista</span>
+            <span className="w-full text-sm font-normal text-muted-foreground whitespace-normal">
+              Cada lista vira ao menos uma sub-campanha.
+            </span>
           </AlertDialogAction>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+        </div>
+
+        <AlertDialogFooter className="shrink-0 flex-col gap-2 sm:flex-col sm:space-x-0">
+          <AlertDialogCancel className="mt-0 w-full sm:w-full">
+            Cancelar
+          </AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

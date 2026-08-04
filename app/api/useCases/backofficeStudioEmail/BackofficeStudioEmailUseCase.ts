@@ -6,6 +6,7 @@ import {
   EmailCampaignUseCase,
   type CreateCampaignInput,
   type ManualDispatchJob,
+  type ManualDispatchOptions,
 } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
 import { EmailContactImportUseCase } from "@/app/api/useCases/email/EmailContactImportUseCase"
@@ -166,20 +167,28 @@ export class BackofficeStudioEmailUseCase {
     return decorateOutput(output)
   }
 
-  async sendCampaign(actor: StudioEmailActor, campaignId: string): Promise<Output> {
+  async sendCampaign(
+    actor: StudioEmailActor,
+    campaignId: string,
+    options?: ManualDispatchOptions
+  ): Promise<Output> {
     const resolved = await resolveCtx(actor)
     if (resolved.error) return resolved.error
-    const output = await this.campaigns.send(campaignId, resolved.ctx)
+    const output = await this.campaigns.send(campaignId, resolved.ctx, options)
     if (output.isValid) {
       await stampCampaignTree(campaignId, actor.access.backofficeUserId, resolved.ctx.teamId)
     }
     return decorateOutput(output)
   }
 
-  async startManualDispatch(actor: StudioEmailActor, campaignId: string): Promise<Output> {
+  async startManualDispatch(
+    actor: StudioEmailActor,
+    campaignId: string,
+    options?: ManualDispatchOptions
+  ): Promise<Output> {
     const resolved = await resolveCtx(actor)
     if (resolved.error) return resolved.error
-    const output = await this.campaigns.startManualDispatch(campaignId, resolved.ctx)
+    const output = await this.campaigns.startManualDispatch(campaignId, resolved.ctx, options)
     if (output.isValid) {
       await stampCampaignTree(campaignId, actor.access.backofficeUserId, resolved.ctx.teamId)
     }

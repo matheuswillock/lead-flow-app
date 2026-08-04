@@ -71,6 +71,7 @@ const emailCampaignDispatchFindManyMock = mock(async () => [])
 const emailCampaignDispatchUpdateMock = mock(async () => ({}))
 const emailCampaignDispatchUpdateManyMock = mock(async () => ({ count: 0 }))
 const emailTeamSenderFindFirstMock = mock(async () => null as { name: string; email: string } | null)
+const emailLogFindManyMock = mock(async () => [] as Array<{ recipientEmail: string; status: string }>)
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -95,6 +96,10 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     },
     emailTeamSender: {
       findFirst: emailTeamSenderFindFirstMock,
+    },
+    emailLog: {
+      findMany: emailLogFindManyMock,
+      count: mock(async () => 0),
     },
     backofficeTeamEmailLimitGrant: {
       findUnique: mock(async () => null),
@@ -233,6 +238,7 @@ const allMocks = [
   emailCampaignDispatchUpdateMock,
   emailCampaignDispatchUpdateManyMock,
   emailTeamSenderFindFirstMock,
+  emailLogFindManyMock,
   transactionMock,
   reserveCreditsMock,
   releaseCreditsMock,
@@ -266,6 +272,7 @@ describe("EmailCampaignUseCase.send", () => {
     emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-1" }))
     emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
     emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    emailLogFindManyMock.mockImplementation(async () => [])
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -665,6 +672,79 @@ describe("EmailCampaignUseCase.send", () => {
     expect(releaseCreditsMock).toHaveBeenCalledTimes(1)
     expect((releaseCreditsMock.mock.calls[0] as unknown as [string, number])[0]).toBe("team-1")
     expect((releaseCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(100)
+  })
+
+  // ---------------------------------------------------------------------------
+  // C14 — retryFailedOnly: só destinatários com falha (sem sucesso no provedor)
+  // ---------------------------------------------------------------------------
+  it("C14 — retryFailedOnly filtra só falhos; reserva créditos só pelos falhos", async () => {
+    const allRecipients = makeRecipients(5)
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(allRecipients)
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "sent" },
+      { recipientEmail: "r1@test.com", status: "delivered" },
+      { recipientEmail: "r2@test.com", status: "failed" },
+      { recipientEmail: "r3@test.com", status: "failed" },
+      { recipientEmail: "r3@test.com", status: "opened" },
+      { recipientEmail: "r4@test.com", status: "failed" },
+    ])
+    dispatchBatchMock.mockImplementation(async (params: unknown) => {
+      const typed = params as { recipients: Array<{ email: string }> }
+      return {
+        sent: typed.recipients.length,
+        failed: 0,
+        dispatched: typed.recipients.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      }
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(true)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+    const dispatchArgs = dispatchBatchMock.mock.calls[0] as unknown as [
+      { recipients: Array<{ email: string }> },
+    ]
+    expect(dispatchArgs[0].recipients.map((recipient) => recipient.email).sort()).toEqual([
+      "r2@test.com",
+      "r4@test.com",
+    ])
+    expect(reserveCreditsMock).toHaveBeenCalledTimes(1)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(2)
+    expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
+  })
+
+  it("C14b — failed sem elegíveis → NO_FAILED_RECIPIENTS; sem lock/créditos", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "sent" },
+      { recipientEmail: "r1@test.com", status: "failed" },
+      { recipientEmail: "r1@test.com", status: "delivered" },
+      { recipientEmail: "r2@test.com", status: "bounced" },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_FAILED_RECIPIENTS)
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
   })
 })
 

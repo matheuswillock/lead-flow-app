@@ -20,10 +20,11 @@ export interface ICampanhasService {
   create(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload): Promise<Campaign>
   previewPlan(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload): Promise<CampaignPreviewPlan>
   getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
-  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<{
+  send(supabaseId: string, teamId: string | null | undefined, id: string, options?: { retryFailedOnly?: boolean }): Promise<{
     campaignId: string
     dispatchId: string
     totalRecipients: number
+    retryFailedOnly?: boolean
     status: "sending"
   }>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
@@ -100,10 +101,18 @@ export class CampanhasService implements ICampanhasService {
     return json.result as Campaign
   }
 
-  async send(supabaseId: string, teamId: string | null | undefined, id: string) {
+  async send(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    id: string,
+    options?: { retryFailedOnly?: boolean }
+  ) {
     const res = await fetch(`${this.baseUrl}/campaigns/${id}/send`, {
       method: 'POST',
-      headers: this.buildHeaders(supabaseId, teamId),
+      headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
+      body: JSON.stringify({
+        ...(options?.retryFailedOnly ? { retryFailedOnly: true } : {}),
+      }),
     })
     const json = await res.json().catch(() => null)
     // 202 Accepted conta como sucesso (res.ok === true)
@@ -113,6 +122,7 @@ export class CampanhasService implements ICampanhasService {
       campaignId: string
       dispatchId: string
       totalRecipients: number
+      retryFailedOnly?: boolean
       status: "sending"
     }
   }

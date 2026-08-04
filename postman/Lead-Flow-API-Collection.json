@@ -15248,7 +15248,16 @@
               "name": "Disparar Campanha",
               "request": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"retryFailedOnly\": false\n}"
+                },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/send",
                   "host": [
@@ -15263,7 +15272,39 @@
                     "send"
                   ]
                 },
-                "description": "Inicia o disparo em segundo plano (HTTP 202). Valida, trava status sending, reserva créditos e cria dispatch; o envio dos chunks roda via after(). Resposta: { campaignId, dispatchId, totalRecipients, status: \"sending\" }."
+                "description": "Inicia o disparo em segundo plano (HTTP 202). Body opcional: { retryFailedOnly: true } para reenviar apenas destinatários com log failed e sem sucesso posterior (sent/delivered/opened/clicked/bounced/complained) nem suppressed. Em campanhas failed/partially_sent o backend força retryFailedOnly. Resposta: { campaignId, dispatchId, totalRecipients, retryFailedOnly, status: \"sending\" }."
+              },
+              "response": []
+            },
+            {
+              "name": "Redisparar apenas falhas",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"retryFailedOnly\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/send",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "send"
+                  ]
+                },
+                "description": "Reenvia somente destinatários elegíveis de falha da campanha (novo dispatchId/idempotency). Não reenvia quem já teve sent/delivered/opened/clicked/bounced/complained. Débito de créditos apenas pelo lote filtrado."
               },
               "response": []
             },

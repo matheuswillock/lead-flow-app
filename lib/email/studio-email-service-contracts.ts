@@ -57,6 +57,12 @@ export type StudioEmailUpdateCampaignData = {
   listStrategy?: "single" | "merge" | "per_list"
   radarSegmentSlug?: string
   scheduledAt?: string | null
+  subCampaignUpdates?: Array<{
+    id: string
+    name?: string
+    scheduledAt?: string | null
+    contactListId?: string
+  }>
 }
 
 export type StudioEmailListCampaignsResult = {
@@ -71,7 +77,12 @@ export type StudioEmailSendResult = {
   campaignId: string
   dispatchId: string
   totalRecipients: number
+  retryFailedOnly?: boolean
   status: "sending"
+}
+
+export type StudioEmailSendOptions = {
+  retryFailedOnly?: boolean
 }
 
 export interface StudioEmailCampanhasService {
@@ -102,7 +113,12 @@ export interface StudioEmailCampanhasService {
     id: string,
     data: StudioEmailUpdateCampaignData
   ): Promise<Campaign>
-  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<StudioEmailSendResult>
+  send(
+    supabaseId: string,
+    teamId: string | null | undefined,
+    id: string,
+    options?: StudioEmailSendOptions
+  ): Promise<StudioEmailSendResult>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>

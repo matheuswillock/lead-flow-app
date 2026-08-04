@@ -31,7 +31,12 @@ export type SendResult = {
   campaignId: string
   dispatchId: string
   totalRecipients: number
+  retryFailedOnly?: boolean
   status: "sending"
+}
+
+export type SendCampaignOptions = {
+  retryFailedOnly?: boolean
 }
 
 export interface ICampanhasService {
@@ -39,7 +44,7 @@ export interface ICampanhasService {
   create(supabaseId: string, teamId: string | null | undefined, data: CreateCampaignData): Promise<Campaign>
   getById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Campaign>
   update(supabaseId: string, teamId: string | null | undefined, id: string, data: UpdateCampaignData): Promise<Campaign>
-  send(supabaseId: string, teamId: string | null | undefined, id: string): Promise<SendResult>
+  send(supabaseId: string, teamId: string | null | undefined, id: string, options?: SendCampaignOptions): Promise<SendResult>
   cancel(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
