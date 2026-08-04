@@ -176,14 +176,20 @@ export function RadarProfileSheet({
                   })}
                   {isLoadingMoreEvents ? (
                     <>
-                      <Skeleton className="h-14 w-full" />
-                      <Skeleton className="h-14 w-full" />
-                      <Skeleton className="h-14 w-full" />
+                      <Skeleton className="h-14 w-full" aria-hidden="true" />
+                      <Skeleton className="h-14 w-full" aria-hidden="true" />
+                      <Skeleton className="h-14 w-full" aria-hidden="true" />
                     </>
                   ) : null}
-                  {!isLoadingMoreEvents && detailEvents.length < detailEventsTotal ? (
-                    <Button size="sm" variant="outline" onClick={onLoadMoreEvents}>
-                      Carregar mais
+                  {detailEvents.length < detailEventsTotal ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isLoadingMoreEvents}
+                      aria-busy={isLoadingMoreEvents}
+                      onClick={onLoadMoreEvents}
+                    >
+                      {isLoadingMoreEvents ? "Carregando..." : "Carregar mais"}
                     </Button>
                   ) : null}
                 </TabsContent>
