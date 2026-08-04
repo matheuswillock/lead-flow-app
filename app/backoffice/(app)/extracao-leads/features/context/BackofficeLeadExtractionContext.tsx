@@ -58,6 +58,7 @@ export function BackofficeLeadExtractionProvider({ children, service }: Props) {
         hasSearched,
         handleSearch,
         clearFilters,
+        searchCnaes: service.searchCnaes.bind(service),
       }}
     >
       {children}

@@ -60,7 +60,7 @@ export function DateRangeFilter({ label, from, to, onChange }: DateRangeFilterPr
           selected={range}
           onSelect={handleSelect}
           captionLayout="dropdown"
-          fromYear={1990}
+          fromYear={1900}
           toYear={new Date().getFullYear()}
           locale={ptBR}
           numberOfMonths={1}

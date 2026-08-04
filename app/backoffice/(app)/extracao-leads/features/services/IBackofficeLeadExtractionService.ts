@@ -45,6 +45,12 @@ export interface LeadExtractionSearchResult {
   items: LeadExtractionResultItem[]
 }
 
+export interface CnaeOption {
+  code: string
+  name: string
+}
+
 export interface IBackofficeLeadExtractionFrontendService {
   search(filters: LeadExtractionFiltersForm): Promise<LeadExtractionSearchResult>
+  searchCnaes(q?: string): Promise<CnaeOption[]>
 }

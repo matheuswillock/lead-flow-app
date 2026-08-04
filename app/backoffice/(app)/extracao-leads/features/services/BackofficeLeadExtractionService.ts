@@ -2,9 +2,20 @@ import type {
   IBackofficeLeadExtractionFrontendService,
   LeadExtractionFiltersForm,
   LeadExtractionSearchResult,
+  CnaeOption,
 } from "./IBackofficeLeadExtractionService"
 
 export class BackofficeLeadExtractionService implements IBackofficeLeadExtractionFrontendService {
+  async searchCnaes(q?: string): Promise<CnaeOption[]> {
+    const url = q
+      ? `/api/v1/backoffice/cnaes?q=${encodeURIComponent(q)}`
+      : "/api/v1/backoffice/cnaes"
+    const res = await fetch(url)
+    if (!res.ok) throw new Error("Erro ao buscar CNAEs")
+    const data = (await res.json()) as { items: CnaeOption[] }
+    return data.items
+  }
+
   async search(filters: LeadExtractionFiltersForm): Promise<LeadExtractionSearchResult> {
     const payload: Record<string, unknown> = {}
 

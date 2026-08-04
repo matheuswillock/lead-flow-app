@@ -1,4 +1,4 @@
-import type { LeadExtractionFiltersForm, LeadExtractionResultItem } from "../services/IBackofficeLeadExtractionService"
+import type { CnaeOption, LeadExtractionFiltersForm, LeadExtractionResultItem } from "../services/IBackofficeLeadExtractionService"
 
 export const EMPTY_FILTERS: LeadExtractionFiltersForm = {
   mainCnae: "",
@@ -26,4 +26,5 @@ export interface BackofficeLeadExtractionContextValue {
   hasSearched: boolean
   handleSearch: () => Promise<void>
   clearFilters: () => void
+  searchCnaes: (q?: string) => Promise<CnaeOption[]>
 }
