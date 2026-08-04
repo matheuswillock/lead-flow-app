@@ -15210,7 +15210,7 @@
                     "preview-plan"
                   ]
                 },
-                "description": "Simula sub-campanhas sem persistir. Mesmo payload do POST /campaigns.",
+                "description": "Simula sub-campanhas sem persistir. Mesmo payload do POST /campaigns.\n\nTambém aceita segmento+lista juntos (união dedupe; split se total > limite).",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListIds\": [\"{{contactListId}}\"],\n  \"listStrategy\": \"merge\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1\n}",
