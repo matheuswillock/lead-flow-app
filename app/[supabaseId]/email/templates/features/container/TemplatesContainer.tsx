@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useTemplatesContext } from '../context/TemplatesContext'
 import { TemplateCard } from '../components/TemplateCard'
+import { TemplateRankingPanel } from '../components/TemplateRankingPanel'
 import type { TemplateTab } from '../context/TemplatesTypes'
 import { useOptionalStudioEmailHost } from '@/lib/email/studio-email-host'
 import { useStudioEmailRuntime } from '@/lib/email/use-studio-email-runtime'
@@ -68,6 +69,8 @@ export function TemplatesContainer() {
 
   const {
     templates,
+    ranking,
+    rankingLoading,
     loading,
     deleting,
     duplicating,
@@ -137,6 +140,8 @@ export function TemplatesContainer() {
           className="pl-9"
         />
       </div>
+
+      <TemplateRankingPanel ranking={ranking} loading={rankingLoading} />
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TemplateTab)}>
         <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto">

@@ -4,8 +4,9 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
-import { ArrowLeft, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, Check, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { useOptionalUser } from "@/app/context/UserContext"
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext"
@@ -102,6 +103,7 @@ import {
 } from "@/components/ui/field"
 import type { PublicFormSettings } from "../context/PublicFormsTypes"
 import { publicFormsClientService } from "../services/PublicFormsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const steps = [
   "Básico",
@@ -342,6 +344,8 @@ export function PublicFormWizard({
     return emptyDraft
   })
   const [step, setStep] = useState(0)
+  /** Highest step index successfully advanced past via "Próxima etapa" (validated). */
+  const [completedThroughStep, setCompletedThroughStep] = useState(0)
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(Boolean(formId))
   const [saving, setSaving] = useState(false)
@@ -400,12 +404,12 @@ export function PublicFormWizard({
 
       if (!activeTeam?.id || !user?.id) return
       const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
-      void fetch(`/api/v1/teams/${activeTeam.id}/members`, { headers: h })
+      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h })
         .then((r) => r.json())
         .then((o) => {
           if (!cancelled) setMembers(o.result?.members ?? [])
         })
-      void fetch(`/api/v1/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
+      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
         .then((r) => r.json())
         .then((o) => {
           if (cancelled) return
@@ -415,7 +419,7 @@ export function PublicFormWizard({
               : [],
           )
         })
-      void fetch("/api/v1/health-plans", { headers: h })
+      void fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h })
         .then((r) => r.json())
         .then((o) => {
           if (cancelled) return
@@ -633,19 +637,32 @@ export function PublicFormWizard({
             Etapas
           </p>
           <nav className="flex flex-col gap-1">
-            {steps.map((s, i) => (
+            {steps.map((s, i) => {
+              const isActive = step === i
+              const isCompleted = i < completedThroughStep
+              return (
               <button
                 key={s}
                 type="button"
                 onClick={() => setStep(i)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm ${step === i ? "bg-accent font-medium" : "hover:bg-accent/50"}`}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm",
+                  isActive ? "bg-accent font-medium" : "hover:bg-accent/50",
+                )}
               >
-                <span className="grid size-6 place-items-center rounded-full border text-xs">
-                  {i + 1}
+                <span
+                  className={cn(
+                    "grid size-6 shrink-0 place-items-center rounded-full border text-xs tabular-nums",
+                    isCompleted && !isActive &&
+                      "border-semantic-success/40 bg-semantic-success/10 text-semantic-success",
+                  )}
+                >
+                  {isCompleted && !isActive ? <Check className="size-3" strokeWidth={2.5} /> : i + 1}
                 </span>
                 {s}
               </button>
-            ))}
+              )
+            })}
           </nav>
         </aside>
         <section className="min-w-0 overflow-y-auto p-5 md:p-8">
@@ -705,7 +722,9 @@ export function PublicFormWizard({
                         return
                       }
                     }
-                    setStep(step + 1)
+                    const nextStep = step + 1
+                    setCompletedThroughStep((prev) => Math.max(prev, nextStep))
+                    setStep(nextStep)
                   }}
                 >
                   Próxima etapa

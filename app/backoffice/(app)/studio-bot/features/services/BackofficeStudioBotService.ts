@@ -7,10 +7,11 @@ import type {
   BackofficeStudioBotQrCode,
 } from "../context/BackofficeStudioBotTypes"
 import type { ApiOutput, IBackofficeStudioBotService } from "./IBackofficeStudioBotService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   async getChannel() {
-    const res = await fetch("/api/v1/backoffice/bot/channel", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel`, { cache: "no-store" })
     const data = await res.json()
     if (!data.isValid) {
       throw new Error(data.errorMessages?.[0] ?? "Erro ao buscar canal")
@@ -19,7 +20,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   }
 
   async updateChannel(form: BackofficeStudioBotChannelFormData) {
-    const res = await fetch("/api/v1/backoffice/bot/channel", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -28,7 +29,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   }
 
   async updateChannelProfile(form: BackofficeStudioBotProfileFormData) {
-    const res = await fetch("/api/v1/backoffice/bot/channel/profile", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel/profile`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -40,14 +41,14 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   }
 
   async testPing() {
-    const res = await fetch("/api/v1/backoffice/bot/test-ping", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/test-ping`, { method: "POST" })
     return res.json() as Promise<ApiOutput<{ status: number; ok: boolean }>>
   }
 
   async uploadChannelAvatar(file: File) {
     const formData = new FormData()
     formData.append("file", file)
-    const res = await fetch("/api/v1/backoffice/bot/channel/avatar", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel/avatar`, {
       method: "POST",
       body: formData,
     })
@@ -55,14 +56,14 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   }
 
   async reconnectChannel() {
-    const res = await fetch("/api/v1/backoffice/bot/channel/reconnect", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel/reconnect`, { method: "POST" })
     return res.json() as Promise<
       ApiOutput<{ channel: BackofficeStudioBotChannel; qrCode: BackofficeStudioBotQrCode | null }>
     >
   }
 
   async refreshChannelConnection() {
-    const res = await fetch("/api/v1/backoffice/bot/channel/refresh-connection", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel/refresh-connection`, { method: "POST" })
     return res.json() as Promise<
       ApiOutput<{
         channel: BackofficeStudioBotChannel
@@ -73,12 +74,12 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   }
 
   async disconnectChannel() {
-    const res = await fetch("/api/v1/backoffice/bot/channel/disconnect", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel/disconnect`, { method: "POST" })
     return res.json() as Promise<ApiOutput<{ channel: BackofficeStudioBotChannel }>>
   }
 
   async syncChannelProfile() {
-    const res = await fetch("/api/v1/backoffice/bot/channel/sync-profile", { method: "POST" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/channel/sync-profile`, { method: "POST" })
     return res.json() as Promise<ApiOutput<{ ok: boolean; status: number }>>
   }
 
@@ -92,7 +93,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
     })
     if (filters.search.trim()) params.set("search", filters.search.trim())
 
-    const res = await fetch(`/api/v1/backoffice/bot/conversations?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/conversations?${params.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -109,7 +110,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
 
     const query = params.toString()
     const res = await fetch(
-      `/api/v1/backoffice/bot/conversations/${encodeURIComponent(userLinkId)}/messages${query ? `?${query}` : ""}`,
+      `${API_CLIENT_BASE}/backoffice/bot/conversations/${encodeURIComponent(userLinkId)}/messages${query ? `?${query}` : ""}`,
       { cache: "no-store" }
     )
     const data = await res.json()
@@ -124,7 +125,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
       page: String(pagination.page),
       pageSize: String(pagination.pageSize),
     })
-    const res = await fetch(`/api/v1/backoffice/bot/user-links?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/user-links?${params.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()
@@ -135,7 +136,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
   }
 
   async revokeUserLink(userLinkId: string) {
-    const res = await fetch(`/api/v1/backoffice/bot/user-links/${encodeURIComponent(userLinkId)}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/user-links/${encodeURIComponent(userLinkId)}`, {
       method: "DELETE",
     })
     return res.json() as Promise<ApiOutput<{ userLinkId: string }>>
@@ -152,7 +153,7 @@ export class BackofficeStudioBotService implements IBackofficeStudioBotService {
     if (filters.source !== "all") params.set("source", filters.source)
     if (filters.status !== "all") params.set("status", filters.status)
 
-    const res = await fetch(`/api/v1/backoffice/bot/auth-challenges?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/auth-challenges?${params.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()

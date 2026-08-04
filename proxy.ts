@@ -15,11 +15,55 @@ import { isBackofficeRole, isManagerLikeRole } from "@/lib/roles"
 import {
   nextWithSession,
   redirectWithSession,
+  rewriteWithSession,
   updateSession,
 } from "@/lib/supabase/auth-sessions"
+import { API_CLIENT_SLUG } from "@/lib/route-map"
+
+/** Prefixo público das chamadas client-side: /api/q/... */
+const SLUG_PREFIX = `/api/${API_CLIENT_SLUG}/`
+
+/** Prefixo interno reescrito — nunca exposto ao browser. */
+const REAL_API_PREFIX = "/api/v1/"
+
+/**
+ * Rate limiting por IP, restrito às rotas /api/q/** para não penalizar
+ * usuários legítimos em rotas de página. Janela: 60 s, máximo: 120 req.
+ * Para ambientes multi-instância, migrar para Vercel KV.
+ */
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 120
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+function checkApiRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+  entry.count += 1
+  return entry.count <= RATE_LIMIT_MAX
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const isClientApiSlug = pathname.startsWith(SLUG_PREFIX)
+
+  // Rate limit only for the public client slug — before session work.
+  if (isClientApiSlug) {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip") ??
+      "unknown"
+
+    if (!checkApiRateLimit(ip)) {
+      return new NextResponse("Too Many Requests", {
+        status: 429,
+        headers: { "Retry-After": "60" },
+      })
+    }
+  }
 
   try {
     if (pathname === "/monitoring" || pathname.startsWith("/monitoring/")) {
@@ -104,11 +148,29 @@ export async function proxy(request: NextRequest) {
       return response
     }
 
+    // /api/v1/** e /api/q/** (slug client-side). O slug é reescrito para /api/v1
+    // DEPOIS do refresh de sessão e da injeção de x-supabase-user-id — o early
+    // rewrite anterior pulava isso e quebrava getTeamAccess() nas rotas mascaradas.
     if (pathname.startsWith("/api")) {
       const requestHeaders = new Headers(request.headers)
       requestHeaders.delete("x-supabase-user-id")
       if (user) {
         requestHeaders.set("x-supabase-user-id", user.id)
+      }
+
+      if (isClientApiSlug) {
+        const rest = pathname.slice(SLUG_PREFIX.length)
+        const rewrittenUrl = request.nextUrl.clone()
+        rewrittenUrl.pathname = REAL_API_PREFIX + rest
+
+        const rewriteResponse = rewriteWithSession(response, rewrittenUrl, {
+          request: {
+            headers: requestHeaders,
+          },
+        })
+        rewriteResponse.headers.set("X-Content-Type-Options", "nosniff")
+        rewriteResponse.headers.set("X-Frame-Options", "DENY")
+        return rewriteResponse
       }
 
       return nextWithSession(response, {

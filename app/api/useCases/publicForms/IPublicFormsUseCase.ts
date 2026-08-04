@@ -41,6 +41,7 @@ export interface IPublicFormsUseCase {
     to?: Date,
     publicationId?: string,
   ): Promise<Output>
+  topConverting(access: TeamAccess, from?: Date, to?: Date): Promise<Output>
   leadSubmissions(access: TeamAccess, leadId: string): Promise<Output>
   preview(access: TeamAccess, id: string): Promise<Output>
 }

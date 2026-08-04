@@ -42,6 +42,7 @@ import type {
   BackofficeLeadScheduleInput,
 } from "@/app/backoffice/(app)/crm/features/context/BackofficeCrmTypes"
 import { useBackofficeCalendar } from "../context/BackofficeCalendarHook"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const SLOT_MINUTES = 30
 const ALL_TIME_SLOTS = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => {
@@ -300,7 +301,7 @@ export function BackofficeCalendarContainer() {
   }
 
   async function handleResendInvite(leadId: string) {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule/resend`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/schedule/resend`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target: "all" }),
@@ -317,7 +318,7 @@ export function BackofficeCalendarContainer() {
   }
 
   async function handleCopyPublicShareLink(leadId: string) {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule/share`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/schedule/share`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -709,7 +710,7 @@ export function BackofficeCalendarContainer() {
             leadToSchedule
               ? async () => {
                   const response = await fetch(
-                    `/api/v1/backoffice/leads/${leadToSchedule.id}/schedule/resend`,
+                    `${API_CLIENT_BASE}/backoffice/leads/${leadToSchedule.id}/schedule/resend`,
                     {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },

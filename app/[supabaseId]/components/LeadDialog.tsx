@@ -101,6 +101,7 @@ import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timelin
 import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDuplicateWarningDialog";
 import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
 import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface LeadDialogProps {
   open: boolean;
@@ -130,7 +131,7 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
   };
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(`/api/v1/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
+    void fetch(`${API_CLIENT_BASE}/teams/${teamId}/leads/${leadId}/public-form-submissions`, {
       headers: { "x-supabase-user-id": supabaseId, "x-team-id": teamId },
       signal: controller.signal,
     }).then(async (response) => {
@@ -285,6 +286,7 @@ export default function LeadDialog({
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [_pendingSubmitData, setPendingSubmitData] = useState<LeadFormWithCustomFields | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [shortShareUrl, setShortShareUrl] = useState("");
   const [scheduleShareDialogOpen, setScheduleShareDialogOpen] = useState(false);
   const [scheduleShareUrl, setScheduleShareUrl] = useState("");
   const [scheduleShareExpiresAt, setScheduleShareExpiresAt] = useState<string | null>(null);
@@ -505,26 +507,53 @@ export default function LeadDialog({
     return url.toString();
   }, [currentLead, origin]);
 
+  useEffect(() => {
+    setShortShareUrl("");
+    if (!shareUrl || !supabaseId || !activeTeamId) return;
+    let cancelled = false;
+    fetch("/api/v1/short-links", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId,
+      },
+      body: JSON.stringify({ targetUrl: shareUrl }),
+    })
+      .then((res) => res.json())
+      .then((output) => {
+        if (!cancelled && output?.isValid && output?.result?.shortUrl) {
+          setShortShareUrl(output.result.shortUrl as string);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [shareUrl, supabaseId, activeTeamId]);
+
+  const displayShareUrl = shortShareUrl || shareUrl;
+
   const shareMessage = useMemo(() => {
-    if (!currentLead) return shareUrl;
-    return `Lead: ${currentLead.name}\n${shareUrl}`;
-  }, [currentLead, shareUrl]);
+    if (!currentLead) return displayShareUrl;
+    return `Lead: ${currentLead.name}\n${displayShareUrl}`;
+  }, [currentLead, displayShareUrl]);
 
   const whatsappShare = useMemo(() => {
-    if (!shareUrl) return "#";
+    if (!displayShareUrl) return "#";
     return `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
-  }, [shareMessage, shareUrl]);
+  }, [shareMessage, displayShareUrl]);
 
   const messengerShare = useMemo(() => {
-    if (!shareUrl) return "#";
-    return `https://www.messenger.com/share?link=${encodeURIComponent(shareUrl)}`;
-  }, [shareUrl]);
+    if (!displayShareUrl) return "#";
+    return `https://www.messenger.com/share?link=${encodeURIComponent(displayShareUrl)}`;
+  }, [displayShareUrl]);
 
   const emailShare = useMemo(() => {
-    if (!shareUrl) return "#";
+    if (!displayShareUrl) return "#";
     const subject = encodeURIComponent("Lead compartilhado");
     return `mailto:?subject=${subject}&body=${encodeURIComponent(shareMessage)}`;
-  }, [shareMessage, shareUrl]);
+  }, [shareMessage, displayShareUrl]);
 
   const canFinalizeContract = currentLead && (
     currentLead.status === "invoicePayment" ||
@@ -878,9 +907,9 @@ export default function LeadDialog({
   };
 
   const handleCopyShareLink = async () => {
-    if (!shareUrl) return;
+    if (!displayShareUrl) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(displayShareUrl);
       toast.success("Link de compartilhamento copiado");
     } catch (error) {
       console.error("Erro ao copiar link de compartilhamento:", error);
@@ -941,7 +970,7 @@ export default function LeadDialog({
           label: mention.label,
         }));
 
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/activities`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/activities`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1136,7 +1165,7 @@ export default function LeadDialog({
 
     try {
       const response = await fetch(
-        `/api/v1/leads/${currentLead.id}/activities/${activityId}/reactions`,
+        `${API_CLIENT_BASE}/leads/${currentLead.id}/activities/${activityId}/reactions`,
         {
           method: "POST",
           headers: {
@@ -1495,7 +1524,7 @@ export default function LeadDialog({
     setMeetingHealdSaving(true);
 
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1550,7 +1579,7 @@ export default function LeadDialog({
     setMeetingPresenceConfirmSaving(true);
 
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1623,7 +1652,7 @@ export default function LeadDialog({
               return;
             }
 
-            const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+            const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
               method: "PUT",
               headers: {
                 "Content-Type": "application/json",
@@ -1696,7 +1725,7 @@ export default function LeadDialog({
             return;
           }
 
-          const scheduleResponse = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
+          const scheduleResponse = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/schedule`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -2196,7 +2225,7 @@ export default function LeadDialog({
       form.setValue("closerId", "", { shouldDirty: false });
     }
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2246,7 +2275,7 @@ export default function LeadDialog({
   const handleShareSchedule = async () => {
     if (!currentLead || !supabaseId) return;
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/share`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/schedule/share`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2275,7 +2304,7 @@ export default function LeadDialog({
 
     setSalesInfoSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2322,7 +2351,7 @@ export default function LeadDialog({
 
     setCloserRequirementSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2404,7 +2433,7 @@ export default function LeadDialog({
 
     setLeadInfoSaving(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2585,7 +2614,7 @@ export default function LeadDialog({
         return;
       }
       try {
-        const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${currentLead.id}/schedule`, {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
@@ -3362,7 +3391,7 @@ export default function LeadDialog({
                 asChild
                 variant="ghost"
                 className="h-auto flex-col gap-2 py-3"
-                disabled={!shareUrl}
+                disabled={!displayShareUrl}
               >
                 <a href={whatsappShare} target="_blank" rel="noreferrer">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
@@ -3375,7 +3404,7 @@ export default function LeadDialog({
                 asChild
                 variant="ghost"
                 className="h-auto flex-col gap-2 py-3"
-                disabled={!shareUrl}
+                disabled={!displayShareUrl}
               >
                 <a href={messengerShare} target="_blank" rel="noreferrer">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 text-blue-400">
@@ -3388,7 +3417,7 @@ export default function LeadDialog({
                 asChild
                 variant="ghost"
                 className="h-auto flex-col gap-2 py-3"
-                disabled={!shareUrl}
+                disabled={!displayShareUrl}
               >
                 <a href={emailShare} target="_blank" rel="noreferrer">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -3402,8 +3431,8 @@ export default function LeadDialog({
             <div className="grid gap-2">
               <Label>Link para compartilhar</Label>
               <div className="flex items-center gap-2">
-                <Input value={shareUrl} readOnly />
-                <Button type="button" variant="secondary" onClick={handleCopyShareLink} disabled={!shareUrl}>
+                <Input value={displayShareUrl} readOnly />
+                <Button type="button" variant="secondary" onClick={handleCopyShareLink} disabled={!displayShareUrl}>
                   <CopyIcon size={16} />
                   Copiar
                 </Button>

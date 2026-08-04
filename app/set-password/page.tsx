@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Lock, Mail, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 function SetPasswordContent() {
   const router = useRouter()
@@ -340,7 +341,7 @@ function SetPasswordContent() {
       
       if (user) {
         // Buscar perfil no banco
-        const profileResponse = await fetch(`/api/v1/profiles/${user.id}`)
+        const profileResponse = await fetch(`${API_CLIENT_BASE}/profiles/${user.id}`)
         const profileData = await profileResponse.json()
 
         if (profileData.isValid && profileData.result) {

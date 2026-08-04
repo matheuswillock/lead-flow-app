@@ -26,16 +26,19 @@ const PublicOfferContext = createContext<PublicOfferContextValue | null>(null)
 export function PublicOfferProvider({
   children,
   token,
+  initialShare,
 }: {
   children: ReactNode
   token: string
+  /** Dados pré-carregados pelo Server Component — evita requisição visível no Network. */
+  initialShare?: PublicOfferShare | null
 }) {
   const service = useMemo<IPublicOfferService>(() => new PublicOfferService(), [])
-  const [share, setShare] = useState<PublicOfferShare | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [share, setShare] = useState<PublicOfferShare | null>(initialShare ?? null)
+  const [isLoading, setIsLoading] = useState(!initialShare)
   const [error, setError] = useState<string | null>(null)
   const inFlightKey = useRef<string | null>(null)
-  const lastSuccessKey = useRef<string | null>(null)
+  const lastSuccessKey = useRef<string | null>(initialShare ? `offer-share:${token}` : null)
 
   const loadShare = useCallback(async () => {
     const requestKey = `offer-share:${token}`

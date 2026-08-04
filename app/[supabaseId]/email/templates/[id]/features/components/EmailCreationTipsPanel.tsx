@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { AlertTriangle, Info, Lightbulb } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useTemplateEditorContext } from "../context/TemplateEditorContext"
+import { useTemplateEditorStudioContext } from "@/components/email/template-editor/TemplateEditorStudioContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { createTemplateEditorService } from "../services/TemplateEditorService"
 import {
@@ -54,7 +54,7 @@ interface EmailCreationTipsPanelProps {
 }
 
 export function EmailCreationTipsPanel({ embedded = false }: EmailCreationTipsPanelProps) {
-  const { draft } = useTemplateEditorContext()
+  const { draft } = useTemplateEditorStudioContext()
   const params = useParams<{ supabaseId: string }>()
   const supabaseId = params.supabaseId
   const { activeTeamId } = useTeamContext()

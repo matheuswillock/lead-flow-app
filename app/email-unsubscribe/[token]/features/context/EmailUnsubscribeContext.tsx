@@ -28,14 +28,33 @@ function resolveScope(removeFromCampaign: boolean, removeFromAll: boolean): Emai
 export function EmailUnsubscribeProvider({
   children,
   service = defaultEmailUnsubscribeService,
+  token: tokenProp,
+  initialInfo,
 }: {
   children: ReactNode
   service?: IEmailUnsubscribeService
+  /** Token passado pelo Server Component (evita useParams no provider). */
+  token?: string
+  /** Info pré-carregada pelo Server Component — evita requisição visível no Network. */
+  initialInfo?: EmailUnsubscribeState["info"] | null
 }) {
   const params = useParams<{ token: string }>()
-  const token = params.token
-  const [state, setState] = useState<EmailUnsubscribeState>(() => createInitialEmailUnsubscribeState(token))
-  const loadedTokenRef = useRef<string | null>(null)
+  const token = tokenProp ?? params.token
+
+  const [state, setState] = useState<EmailUnsubscribeState>(() => {
+    const base = createInitialEmailUnsubscribeState(token)
+    if (initialInfo !== undefined) {
+      // initialInfo === null significa que o Server Component tentou carregar
+      // e o token era inválido/expirado — exibir erro imediatamente.
+      if (initialInfo === null) {
+        return { ...base, loading: false, info: null, error: "Link inválido ou expirado" }
+      }
+      const completed = !!(initialInfo.alreadyUnsubscribed || initialInfo.alreadyBlocked)
+      return { ...base, loading: false, info: initialInfo, completed }
+    }
+    return base
+  })
+  const loadedTokenRef = useRef<string | null>(initialInfo !== undefined ? token : null)
 
   useEffect(() => {
     if (!token || loadedTokenRef.current === token) return

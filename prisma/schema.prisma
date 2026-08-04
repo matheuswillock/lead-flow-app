@@ -765,6 +765,7 @@ enum EmailCampaignStatus {
   scheduled
   sending
   sent
+  partially_sent
   canceled
   failed
   archived
@@ -924,6 +925,8 @@ model Profile {
   createdTeamStatusRules                   TeamStatusRule[]                             @relation("TeamStatusRuleCreator")
   createdTeamAutomationRules               TeamAutomationRule[]                         @relation("TeamAutomationRuleCreator")
   createdTeamRadarSegments                 TeamRadarSegment[]                           @relation("TeamRadarSegmentCreator")
+  createdTeamRadarFieldDefinitions         TeamRadarFieldDefinition[]                   @relation("TeamRadarFieldDefinitionCreator")
+  requestedRadarImportJobs                 RadarImportJob[]                             @relation("RadarImportJobRequester")
   createdLeadCustomFieldDefinitions        LeadCustomFieldDefinition[]                  @relation("LeadCustomFieldDefinitionCreator")
   updatedLeadStatusTransitionFieldRules    BackofficeLeadStatusTransitionFieldRule[]    @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
   updatedLeadStatusTransitionGates         BackofficeLeadStatusTransitionGate[]         @relation("BackofficeLeadStatusTransitionGateUpdater")
@@ -1003,6 +1006,7 @@ model Profile {
   backofficeDeletionRequestsRequested BackofficeDeletionRequest[]  @relation("BackofficeDeletionRequestRequester")
   backofficeDeletionApprovals         BackofficeDeletionApproval[] @relation("BackofficeDeletionApprovalApprover")
   backofficeDeletionAuditLogs         BackofficeDeletionAuditLog[] @relation("BackofficeDeletionAuditLogActor")
+  leadExtractions                     BackofficeLeadExtraction[]
 
   @@index([role])
   @@index([managerId])
@@ -2389,6 +2393,8 @@ model Team {
   radarEvents           RadarEvent[]
   radarChannelConsents  RadarChannelConsent[]
   radarSegments         TeamRadarSegment[]
+  radarFieldDefinitions TeamRadarFieldDefinition[]
+  radarImportJobs       RadarImportJob[]
   backofficeBotSessions BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
@@ -3079,12 +3085,14 @@ model EmailCampaign {
   createdBy                 String              @db.Uuid
   managedByBackofficeUserId String?             @db.Uuid
   name                      String              @db.Text
+  description               String?             @db.Text
   templateId                String              @db.Uuid
   contactListId             String?             @db.Uuid
   radarSegmentSlug          String?             @db.Text
   parentCampaignId          String?             @db.Uuid
   subCampaignIndex          Int?
   audienceContactIds        String[]            @default([]) @db.Uuid
+  sourceContactListIds      String[]            @default([]) @db.Uuid @map("source_contact_list_ids")
   status                    EmailCampaignStatus @default(draft)
   scheduledAt               DateTime?           @db.Timestamptz(6)
   sentAt                    DateTime?           @db.Timestamptz(6)
@@ -4314,6 +4322,8 @@ enum RadarIdentityType {
   portfolio_id
   whatsapp_contact_id
   visitor_session
+  contract_holder
+  contract_dependent
 
   @@map("radar_identity_type")
 }
@@ -4324,7 +4334,9 @@ enum RadarSourceType {
   email_contact
   email_campaign
   whatsapp_contact
+  base_import
   pixel_hit
+  lead_finalized
 
   @@map("radar_source_type")
 }
@@ -4490,6 +4502,58 @@ model TeamRadarSegment {
   @@unique([teamId, name])
   @@index([teamId, isActive])
   @@map("corretor_studio_radar_segments")
+}
+
+model TeamRadarFieldDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  key         String   @db.Text
+  label       String   @db.Text
+  valueType   String   @db.Text
+  createdBy   String   @db.Uuid
+  importJobId String?  @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team      Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator   Profile         @relation("TeamRadarFieldDefinitionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  importJob RadarImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive])
+  @@map("corretor_studio_team_radar_field_definitions")
+}
+
+model RadarImportJob {
+  id            String   @id @default(uuid()) @db.Uuid
+  importId      String   @unique @db.Text
+  teamId        String   @db.Uuid
+  requestedBy   String   @db.Uuid
+  baseName      String   @db.Text
+  sourceFormat  String   @db.Text
+  storagePath   String   @db.Text
+  fieldMapping  Json
+  status        String   @default("pending") @db.Text
+  totalRows     Int      @default(0)
+  processedRows Int      @default(0)
+  createdCount  Int      @default(0)
+  enrichedCount Int      @default(0)
+  skippedCount  Int      @default(0)
+  deferredCount Int      @default(0)
+  skippedIssues Json?
+  failedBatches Json?
+  batchSize     Int      @default(500)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  team              Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  requester         Profile                    @relation("RadarImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  fieldDefinitions  TeamRadarFieldDefinition[]
+
+  @@index([teamId, status])
+  @@index([status, createdAt])
+  @@map("corretor_studio_radar_import_jobs")
 }
 
 // ==============================
@@ -5353,4 +5417,87 @@ model PublicFormMetricEvent {
   @@index([formId, createdAt(sort: Desc)])
   @@index([visitorSessionId, createdAt])
   @@map("corretor_studio_public_form_metric_events")
+}
+
+enum BackofficeLeadExtractionStatus {
+  PENDING
+  RUNNING
+  DONE
+  ERROR
+
+  @@map("backoffice_lead_extraction_status")
+}
+
+enum BackofficeCompanyType {
+  MEI
+  ME
+  EPP
+  EI
+  EIRELI
+  SLU
+  LTDA
+  SA
+  SS
+  OUTROS
+
+  @@map("backoffice_company_type")
+}
+
+model BackofficeLeadExtraction {
+  id         String                         @id @default(uuid()) @db.Uuid
+  profileId  String                         @db.Uuid
+  filters    Json
+  totalCount Int                            @default(0)
+  status     BackofficeLeadExtractionStatus @default(PENDING)
+  createdAt  DateTime                       @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime                       @updatedAt @db.Timestamptz(6)
+  results    BackofficeLeadExtractionResult[]
+  profile    Profile                        @relation(fields: [profileId], references: [id])
+
+  @@index([profileId, createdAt(sort: Desc)])
+  @@map("backoffice_lead_extractions")
+}
+
+model BackofficeLeadExtractionResult {
+  id           String                   @id @default(uuid()) @db.Uuid
+  extractionId String                   @db.Uuid
+  taxId        String
+  name         String
+  tradeName    String?
+  email        String?
+  phone        String?
+  city         String?
+  state        String?
+  cnae         String?
+  cnaeName     String?
+  type         BackofficeCompanyType?
+  raw          Json?
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(6)
+  extraction   BackofficeLeadExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+
+  @@index([extractionId])
+  @@map("backoffice_lead_extraction_results")
+}
+
+model ShortLink {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique @db.VarChar(16)
+  targetUrl String    @unique @db.Text
+  expiresAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([code])
+  @@map("short_links")
+}
+
+model BackofficeCnae {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("backoffice_cnaes")
 }

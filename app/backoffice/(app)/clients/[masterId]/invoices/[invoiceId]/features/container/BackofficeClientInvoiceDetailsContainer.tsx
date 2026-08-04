@@ -15,7 +15,7 @@ import {
   Share2,
   Wallet,
 } from "lucide-react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Dialog,
   DialogContent,
@@ -95,18 +105,22 @@ function formatDate(value: string | null, tz: string) {
 
 export function BackofficeClientInvoiceDetailsContainer() {
   const { tz } = useTimezone()
+  const router = useRouter()
   const {
     invoice,
     isLoading,
     isSendingNotification,
     isUpdatingInvoice,
+    isDeletingInvoice,
     error,
     reload,
     sendStatusNotification,
     updateInvoice,
+    deleteInvoice,
   } = useBackofficeClientInvoiceDetails()
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isRemoveChargeOpen, setIsRemoveChargeOpen] = useState(false)
   const [editValue, setEditValue] = useState("")
   const [editDueDate, setEditDueDate] = useState("")
   const params = useParams()
@@ -151,8 +165,19 @@ export function BackofficeClientInvoiceDetailsContainer() {
   const canEditInvoice =
     !isExternalAdhesionInvoice &&
     !currentInvoice.deleted &&
+    currentInvoice.source === "asaas" &&
     (currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue")
+  const canRemoveCharge =
+    !isExternalAdhesionInvoice &&
+    !currentInvoice.deleted &&
+    !isPaidInvoice &&
+    currentInvoice.status !== "WAIVED" &&
+    (currentInvoice.statusGroup === "upcoming" ||
+      currentInvoice.statusGroup === "overdue" ||
+      currentInvoice.source === "pending_action")
   const hasReceipt = Boolean(currentInvoice.transactionReceiptUrl)
+  const shareUrl = currentInvoice.checkoutUrl ?? currentInvoice.invoiceUrl
+  const canShareInvoice = Boolean(shareUrl)
   const canSendNotification =
     !isExternalAdhesionInvoice &&
     (currentInvoice.statusGroup === "upcoming" || currentInvoice.statusGroup === "overdue")
@@ -160,10 +185,6 @@ export function BackofficeClientInvoiceDetailsContainer() {
     currentInvoice.statusGroup === "overdue"
       ? "Disparar e-mail de assinatura vencida"
       : "Disparar e-mail de assinatura a vencer"
-
-  function handleNoopAction() {
-    return undefined
-  }
 
   function handleOpenEditDialog() {
     if (!invoice) return
@@ -201,12 +222,42 @@ export function BackofficeClientInvoiceDetailsContainer() {
     setIsReceiptModalOpen(true)
   }
 
+  async function handleShareInvoice() {
+    if (!shareUrl) {
+      toast.error("Nenhum link de pagamento disponível para compartilhar")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      toast.success("Link da fatura copiado")
+    } catch (shareError) {
+      console.error("[BackofficeClientInvoiceDetailsContainer][handleShareInvoice]", shareError)
+      toast.error("Não foi possível copiar o link da fatura")
+    }
+  }
+
   async function handleSendStatusNotification() {
     try {
       const message = await sendStatusNotification()
       toast.success(message)
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Erro ao enviar notificação"
+      toast.error(message)
+    }
+  }
+
+  async function handleConfirmRemoveCharge() {
+    if (isDeletingInvoice) return
+
+    try {
+      const message = await deleteInvoice()
+      toast.success(message)
+      setIsRemoveChargeOpen(false)
+      router.push(backHref)
+    } catch (removeError) {
+      const message =
+        removeError instanceof Error ? removeError.message : "Erro ao remover a cobrança"
       toast.error(message)
     }
   }
@@ -253,8 +304,16 @@ export function BackofficeClientInvoiceDetailsContainer() {
                 Editar
               </Button>
 
-              <Button type="button" variant="outline" size="sm" onClick={handleNoopAction}>
-                <Share2 className="mr-2 h-4 w-4" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canShareInvoice}
+                onClick={() => {
+                  void handleShareInvoice()
+                }}
+              >
+                <Share2 data-icon="inline-start" />
                 Compartilhar fatura
               </Button>
 
@@ -296,7 +355,12 @@ export function BackofficeClientInvoiceDetailsContainer() {
                   ) : null}
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
-                    onSelect={(event) => event.preventDefault()}
+                    disabled={!canRemoveCharge || isDeletingInvoice}
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      if (!canRemoveCharge || isDeletingInvoice) return
+                      setIsRemoveChargeOpen(true)
+                    }}
                   >
                     Remover cobrança
                   </DropdownMenuItem>
@@ -523,6 +587,38 @@ export function BackofficeClientInvoiceDetailsContainer() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isRemoveChargeOpen}
+        onOpenChange={(nextOpen) => {
+          if (isDeletingInvoice) return
+          setIsRemoveChargeOpen(nextOpen)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover esta cobrança?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A cobrança será cancelada no Asaas (se existir) e qualquer ação pendente vinculada
+              (criação de time, usuário adicional ou add-on) também será cancelada. Essa ação não
+              pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingInvoice}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeletingInvoice}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault()
+                void handleConfirmRemoveCharge()
+              }}
+            >
+              {isDeletingInvoice ? "Removendo..." : "Remover cobrança"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

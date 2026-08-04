@@ -1,8 +1,10 @@
 /**
- * Local dev orchestrator: Supabase + optional local stacks + Next.js.
+ * Local dev orchestrator: local DB stack + optional local stacks + Next.js.
  *
- * `bun run dev` and `bun run dev:local` are aliases — both use the local Docker
- * stack (not the remote DATABASE_URL from `.env`).
+ * `bun run dev` and `bun run dev:local` are aliases — both use the local
+ * hybrid stack (Postgres + Realtime locais, Auth + Storage remotos), not the
+ * remote DATABASE_URL from `.env`. Use `--full-supabase` for the legacy
+ * `supabase start` stack (Auth/Storage/Studio locais também).
  *
  * Optional stacks:
  *   n8n        Start N8N (Bethânia workflows).
@@ -14,13 +16,15 @@
  *   bun dev -- n8n
  *   bun dev -- evolution
  *   bun dev -- total
+ *   bun dev -- --full-supabase
  *
  * Flags:
- *   --skip-clone  Do not auto-clone even if auth.users is empty.
- *   --no-start    Fail fast if Supabase local stack is not running.
- *   --skip-evo    Legacy: keep Evolution API disabled.
- *   --skip-n8n    Legacy: keep N8N disabled.
- *   --turbo       Force Turbopack on Windows (default no Windows é Webpack por EPERM).
+ *   --skip-clone     Do not auto-clone even if auth.users is empty.
+ *   --no-start       Fail fast if the local stack is not running.
+ *   --full-supabase  Use `supabase start` (stack completo) em vez do stack híbrido.
+ *   --skip-evo       Legacy: keep Evolution API disabled.
+ *   --skip-n8n       Legacy: keep N8N disabled.
+ *   --turbo          Force Turbopack on Windows (default no Windows é Webpack por EPERM).
  *
  * Remaining args are forwarded to `next dev` (e.g. `--port 3001`).
  */
@@ -31,13 +35,19 @@ import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  LOCAL_DB_URL,
+  LOCAL_PROXY_URL,
+  probeLocalStack,
+  readRemoteStackOverrides,
+  startLocalStack,
+  waitForLocalStack,
+} from "./lib/local-stack";
+import {
   ensureBackofficeCatalog,
   EXPECTED_ACTIVE_BACKOFFICE_FEATURES,
-  LOCAL_DB_URL as CATALOG_LOCAL_DB_URL,
 } from "./lib/sync-backoffice-catalog";
 import { parseDevLocalArgs } from "./dev-local-options";
 
-const LOCAL_DB_URL = CATALOG_LOCAL_DB_URL;
 const LOCAL_EVO_API_URL = "http://127.0.0.1:8080";
 const LOCAL_EVO_WEBHOOK_PUBLIC_URL = "http://host.docker.internal:3000";
 const LOCAL_EVO_DEFAULT_API_KEY = "leadflow-local-evo-key";
@@ -53,6 +63,7 @@ const {
   skipClone,
   noStart,
   forceTurbo,
+  fullSupabase,
   startEvolution: shouldStartEvolution,
   startN8n: shouldStartN8n,
   nextArgs,
@@ -180,7 +191,8 @@ function readN8nEnvValue(key: string): string | undefined {
   return undefined;
 }
 
-function probeSupabase(): boolean {
+/** Legado — usado somente com --full-supabase. */
+function probeFullSupabase(): boolean {
   return run("supabase", ["status"], { env: supabaseEnv }).status === 0;
 }
 
@@ -211,7 +223,8 @@ async function waitForEvolution(maxWaitMs = 90_000): Promise<boolean> {
   return false;
 }
 
-async function startSupabase(): Promise<void> {
+/** Legado — usado somente com --full-supabase. */
+async function startFullSupabase(): Promise<void> {
   info("⚠ Supabase not running — starting (`supabase start`)…");
   const start = await runAsync("supabase", ["start"], {
     stdio: "inherit",
@@ -221,6 +234,21 @@ async function startSupabase(): Promise<void> {
     fail("`supabase start` failed. Check Docker Desktop is running.");
   }
   info("✓ Supabase started");
+}
+
+/** Stack híbrido padrão (Postgres + Realtime locais). */
+async function startHybridLocalStack(): Promise<void> {
+  info("⚠ Local stack not running — starting (`bun run local:up`)…");
+  const start = startLocalStack();
+  if (start.status !== 0) {
+    fail("`docker compose -f docker-compose.local.yml up -d` failed. Check Docker is running.");
+  }
+  info("  waiting for Postgres + proxy…");
+  const ready = await waitForLocalStack();
+  if (!ready) {
+    fail("Local stack did not become ready in time. Veja `bun run local:logs`.");
+  }
+  info("✓ Local stack started");
 }
 
 function ensureN8nDockerNetwork(): boolean {
@@ -304,21 +332,22 @@ async function ensureLocalStacks(): Promise<void> {
     shouldStartN8n ? "N8N" : undefined,
     shouldStartEvolution ? "Evolution" : undefined,
   ].filter(Boolean);
+  const dbStackLabel = fullSupabase ? "Supabase (full)" : "Postgres + Realtime";
 
   step(
     optionalStacks.length > 0
-      ? `Checking local stacks (Supabase + ${optionalStacks.join(" + ")})`
-      : "Checking local stacks (Supabase only)",
+      ? `Checking local stacks (${dbStackLabel} + ${optionalStacks.join(" + ")})`
+      : `Checking local stacks (${dbStackLabel} only)`,
   );
 
-  const supabaseUp = probeSupabase();
+  const dbStackUp = fullSupabase ? probeFullSupabase() : probeLocalStack();
   const evoUp = shouldStartEvolution ? probeEvolution() : true;
   const n8nUp = shouldStartN8n ? probeN8n() : true;
 
-  if (supabaseUp) {
-    info("✓ Supabase running");
+  if (dbStackUp) {
+    info(`✓ ${dbStackLabel} running`);
   } else if (noStart) {
-    fail("Supabase local stack is not running (--no-start passed).");
+    fail(`${dbStackLabel} local stack is not running (--no-start passed).`);
   }
 
   if (!shouldStartEvolution) {
@@ -334,7 +363,7 @@ async function ensureLocalStacks(): Promise<void> {
   }
 
   const startTasks: Promise<void>[] = [];
-  if (!supabaseUp) startTasks.push(startSupabase());
+  if (!dbStackUp) startTasks.push(fullSupabase ? startFullSupabase() : startHybridLocalStack());
   if (shouldStartN8n && !n8nUp) startTasks.push(startN8n());
 
   if (startTasks.length > 0) {
@@ -346,9 +375,9 @@ async function ensureLocalStacks(): Promise<void> {
   }
 }
 
-function countAuthUsers(): number {
+function countAuthUsers(dbUrl: string): number {
   const result = run("psql", [
-    LOCAL_DB_URL,
+    dbUrl,
     "-t",
     "-A",
     "-c",
@@ -378,13 +407,14 @@ function cloneRemote() {
 
 async function runPreflight() {
   await ensureLocalStacks();
+  const dbUrl = resolveActiveDbUrl();
 
   step("Checking local auth.users");
-  const users = countAuthUsers();
+  const users = countAuthUsers(dbUrl);
 
   if (users > 0) {
     info(`✓ ${users} users present — DB is populated, skipping clone.`);
-    ensureBackofficeCatalogSynced();
+    ensureBackofficeCatalogSynced(dbUrl);
     return;
   }
 
@@ -393,13 +423,19 @@ async function runPreflight() {
     return;
   }
 
-  cloneRemote();
-  ensureBackofficeCatalogSynced();
+  if (fullSupabase) {
+    // db:clone:remote só sabe popular o Postgres do stack híbrido (LOCAL_DB_URL).
+    info("⚠ 0 users found. `db:clone:remote` só popula o stack híbrido — pulando clone automático em --full-supabase.");
+    info("  Rode `bun run dev` (stack híbrido, sem --full-supabase) uma vez para clonar dados remotos, ou popule via `supabase db seed`.");
+  } else {
+    cloneRemote();
+  }
+  ensureBackofficeCatalogSynced(dbUrl);
 }
 
-function ensureBackofficeCatalogSynced() {
+function ensureBackofficeCatalogSynced(dbUrl: string) {
   try {
-    const synced = ensureBackofficeCatalog(LOCAL_DB_URL);
+    const synced = ensureBackofficeCatalog(dbUrl);
     if (synced) {
       info(
         `✓ Catálogo backoffice sincronizado (${EXPECTED_ACTIVE_BACKOFFICE_FEATURES} features ativas).`,
@@ -409,7 +445,7 @@ function ensureBackofficeCatalogSynced() {
     info(
       `⚠ Falha ao sincronizar catálogo backoffice: ${err instanceof Error ? err.message : String(err)}`,
     );
-    info("  Rode manualmente: DATABASE_URL=<local> bun run db:seed:backoffice-products");
+    info(`  Rode manualmente: DATABASE_URL=${dbUrl} bun run db:seed:backoffice-products`);
   }
 }
 
@@ -433,9 +469,34 @@ function parseSupabaseStatusEnv(stdout: string): Record<string, string> {
   return env;
 }
 
-function getLocalDatabaseOverrides(): EnvOverrides {
+/** Legado — usado somente com --full-supabase. Cacheia para evitar `supabase status` repetido. */
+let cachedFullSupabaseStatusEnv: Record<string, string> | null = null;
+function getFullSupabaseStatusEnv(): Record<string, string> {
+  if (cachedFullSupabaseStatusEnv) return cachedFullSupabaseStatusEnv;
   const status = run("supabase", ["status", "-o", "env"], { env: supabaseEnv });
-  if (status.status !== 0) {
+  cachedFullSupabaseStatusEnv = status.status === 0 ? parseSupabaseStatusEnv(status.stdout) : {};
+  return cachedFullSupabaseStatusEnv;
+}
+
+/**
+ * DB URL do modo ativo — supabase/config.toml usa [db].port != 55322 (evita
+ * conflito com o Postgres do stack híbrido em docker-compose.local.yml), então
+ * em --full-supabase o DB real de `supabase start` NÃO é LOCAL_DB_URL.
+ */
+function resolveActiveDbUrl(): string {
+  if (!fullSupabase) return LOCAL_DB_URL;
+  const parsed = getFullSupabaseStatusEnv();
+  if (!parsed.DB_URL) {
+    info("⚠ Could not read `supabase status -o env` — usando LOCAL_DB_URL como fallback (pode estar incorreto).");
+    return LOCAL_DB_URL;
+  }
+  return parsed.DB_URL;
+}
+
+/** Legado — usado somente com --full-supabase (Auth/Storage/Studio locais). */
+function getFullSupabaseDatabaseOverrides(): EnvOverrides {
+  const parsed = getFullSupabaseStatusEnv();
+  if (!parsed.DB_URL) {
     info("⚠ Could not read `supabase status -o env` — using default local DB URL.");
     return {
       DATABASE_URL: LOCAL_DB_URL,
@@ -443,8 +504,7 @@ function getLocalDatabaseOverrides(): EnvOverrides {
     };
   }
 
-  const parsed = parseSupabaseStatusEnv(status.stdout);
-  const dbUrl = parsed.DB_URL ?? LOCAL_DB_URL;
+  const dbUrl = parsed.DB_URL;
 
   return {
     DATABASE_URL: dbUrl,
@@ -455,6 +515,45 @@ function getLocalDatabaseOverrides(): EnvOverrides {
       ? { SUPABASE_SERVICE_ROLE_KEY: parsed.SERVICE_ROLE_KEY }
       : {}),
   };
+}
+
+/**
+ * Stack híbrido padrão: Postgres local para dados, proxy local (Caddy) para
+ * Auth/Storage remotos + Realtime local — tudo atrás de uma única
+ * NEXT_PUBLIC_SUPABASE_URL, como o supabase-js espera.
+ */
+function getHybridDatabaseOverrides(): EnvOverrides {
+  const remote = readRemoteStackOverrides();
+  if (!remote.SUPABASE_REMOTE_ANON_KEY || !remote.SUPABASE_REMOTE_SERVICE_ROLE_KEY) {
+    info(
+      "⚠ docker/local/.env.local-stack incompleto — Auth/Storage remotos podem falhar (faltam ANON_KEY/SERVICE_ROLE_KEY).",
+    );
+  }
+
+  return {
+    DATABASE_URL: LOCAL_DB_URL,
+    DIRECT_URL: LOCAL_DB_URL,
+    NEXT_PUBLIC_SUPABASE_URL: LOCAL_PROXY_URL,
+    // Marcador explícito para createSupabaseAdmin() (lib/supabase/server.ts)
+    // distinguir o proxy híbrido (Auth/Storage remotos) do --full-supabase
+    // (Auth/Storage locais de verdade), já que ambos usam 127.0.0.1.
+    SUPABASE_HYBRID_LOCAL_STACK: "true",
+    ...(remote.SUPABASE_REMOTE_ANON_KEY
+      ? { NEXT_PUBLIC_SUPABASE_ANON_KEY: remote.SUPABASE_REMOTE_ANON_KEY }
+      : {}),
+    ...(remote.SUPABASE_REMOTE_SERVICE_ROLE_KEY
+      ? { SUPABASE_SERVICE_ROLE_KEY: remote.SUPABASE_REMOTE_SERVICE_ROLE_KEY }
+      : {}),
+    // Repassa o opt-in (default: bloqueado) para createSupabaseAdmin() — ver
+    // docker/local/.env.local-stack.example.
+    ...(remote.SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN
+      ? { SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN: remote.SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN }
+      : {}),
+  };
+}
+
+function getLocalDatabaseOverrides(): EnvOverrides {
+  return fullSupabase ? getFullSupabaseDatabaseOverrides() : getHybridDatabaseOverrides();
 }
 
 function readEvolutionEnvValue(key: string): string | undefined {
@@ -548,6 +647,9 @@ function startNextDev(): never {
 
   step("Starting Next.js with local database overrides");
   info(`DATABASE_URL → ${localOverrides.DATABASE_URL ?? LOCAL_DB_URL}`);
+  if (localOverrides.NEXT_PUBLIC_SUPABASE_URL) {
+    info(`NEXT_PUBLIC_SUPABASE_URL → ${localOverrides.NEXT_PUBLIC_SUPABASE_URL}`);
+  }
   if (localOverrides.EVO_API_BASE_URL) {
     info(`EVO_API_BASE_URL → ${localOverrides.EVO_API_BASE_URL}`);
   }

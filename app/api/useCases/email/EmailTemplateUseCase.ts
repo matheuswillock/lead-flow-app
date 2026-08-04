@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isManagerLikeRole } from "@/lib/roles"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import { canCreateEmailTemplate } from "@/lib/email/email-rbac"
 import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
@@ -18,6 +19,7 @@ import {
 } from "@/lib/email/interpolate"
 import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
 import { getFullUrl } from "@/lib/utils/app-url"
+import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 
 const templateDetailSelect = {
   id: true,
@@ -202,15 +204,20 @@ export class EmailTemplateUseCase {
       })
 
       if (scope === "campaign") {
-        return new Output(
-          true,
-          [],
-          [],
-          templates.map((template) => ({
-            ...template,
-            managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
-          }))
+        const campaignTemplates = await Promise.all(
+          templates.map(async (template) => {
+            const linkedForm = await detectLinkedFormFromTemplateHtml(
+              ctx.teamId,
+              template.html
+            )
+            return resolveEmailCreator({
+              ...template,
+              linkedForm,
+              managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+            })
+          })
         )
+        return new Output(true, [], [], campaignTemplates)
       }
 
       const latestByGroup = new Map<string, (typeof templates)[number]>()
@@ -235,10 +242,12 @@ export class EmailTemplateUseCase {
         true,
         [],
         [],
-        Array.from(latestByGroup.values()).map((template) => ({
-          ...template,
-          managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
-        }))
+        Array.from(latestByGroup.values()).map((template) =>
+          resolveEmailCreator({
+            ...template,
+            managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
+          })
+        )
       )
     } catch (error) {
       console.error("[EmailTemplateUseCase][list]", error)
@@ -257,10 +266,10 @@ export class EmailTemplateUseCase {
         return new Output(false, [], ["Template não encontrado"], null)
       }
 
-      return new Output(true, [], [], {
+      return new Output(true, [], [], resolveEmailCreator({
         ...template,
         managedByCorretorStudio: Boolean(template.managedByBackofficeUserId),
-      })
+      }))
     } catch (error) {
       console.error("[EmailTemplateUseCase][getById]", error)
       return new Output(false, [], ["Erro ao buscar template de email"], null)

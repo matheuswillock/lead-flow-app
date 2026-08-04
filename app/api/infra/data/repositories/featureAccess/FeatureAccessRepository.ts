@@ -11,9 +11,7 @@ import type {
   OwnerUserTypeAssignment,
   UserRoleInfo,
   BetaEligibilityContext,
-  EmailBetaAccessContext,
 } from "./IFeatureAccessRepository"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const activeFeatureSelect = {
   id: true,
@@ -160,82 +158,6 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     }
 
     return eligible
-  }
-
-  async resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
-    const grantOwnerId = ctx.isMaster ? ctx.profileId : ctx.managerId
-    if (!grantOwnerId) return false
-
-    // Uma única query traz as features de e-mail e todos os nós ativos;
-    // a subida de ancestrais acontece em memória (antes era 1 query por nível).
-    const featureNodes = await prisma.backofficeFeature.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        slug: true,
-        parentId: true,
-        inheritParentSettings: true,
-        betaEnabled: true,
-      },
-    })
-
-    const nodeById = new Map(featureNodes.map((node) => [node.id, node]))
-    const findBySlug = (slug: string) => featureNodes.find((node) => node.slug === slug) ?? null
-
-    let current =
-      findBySlug(FEATURE_SLUGS.EMAIL_CAMPAIGNS) ?? findBySlug(FEATURE_SLUGS.EMAIL)
-
-    if (!current) return false
-
-    const visited = new Set<string>()
-    while (current.inheritParentSettings && current.parentId && !visited.has(current.id)) {
-      visited.add(current.id)
-      const parent = nodeById.get(current.parentId)
-      if (!parent) break
-      current = parent
-    }
-
-    if (!current.betaEnabled) return false
-
-    const emailRoot = findBySlug(FEATURE_SLUGS.EMAIL)
-
-    const candidateFeatureIds = Array.from(
-      new Set([current.id, emailRoot?.id].filter((id): id is string => Boolean(id)))
-    )
-
-    const grants = await prisma.backofficeFeatureGrant.findMany({
-      where: {
-        profileId: grantOwnerId,
-        grantType: "BETA",
-        isActive: true,
-        featureId: { in: candidateFeatureIds },
-      },
-      select: {
-        betaTeamScope: true,
-        teams: {
-          select: { teamId: true },
-        },
-      },
-    })
-
-    if (grants.length === 0) return false
-
-    for (const grant of grants) {
-      if (grant.betaTeamScope === "ALL_TEAMS") {
-        return true
-      }
-
-      if (ctx.isMaster) {
-        return true
-      }
-
-      const scopedTeamIds = grant.teams.map((item) => item.teamId)
-      if (scopedTeamIds.includes(ctx.teamId)) {
-        return true
-      }
-    }
-
-    return false
   }
 
   async findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null> {

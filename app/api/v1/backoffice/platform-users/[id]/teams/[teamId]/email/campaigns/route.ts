@@ -27,13 +27,6 @@ const createSchema = z
         path: ["contactListId"],
       })
     }
-    if (data.contactListId && data.radarSegmentSlug) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Use apenas contactListId ou radarSegmentSlug",
-        path: ["contactListId"],
-      })
-    }
   })
 
 const campaignStatusSchema = z.enum([

@@ -6,6 +6,7 @@ import { format, parseISO } from 'date-fns'
 import { ArrowRight, MessageCircle } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface LinkedConversation {
   id: string
@@ -47,7 +48,7 @@ export function LeadWhatsAppCard({ leadId, supabaseId, teamId, enabled = true }:
     try {
       const params = new URLSearchParams({ leadId, limit: '1' })
       const res = await fetch(
-        `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?${params.toString()}`,
+        `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/conversations?${params.toString()}`,
         { headers: { 'x-supabase-user-id': supabaseId } }
       )
       if (!res.ok) return

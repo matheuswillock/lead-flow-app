@@ -1,5 +1,6 @@
 import type { IAutomationsService } from "./IAutomationsService";
 import type { AutomationRule, AutomationRuleFormInput, AutomationRunsPage } from "../context/AutomationsTypes";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type ApiOutput<T> = {
   isValid: boolean;
@@ -25,14 +26,14 @@ function headers(supabaseId: string, teamId: string) {
 
 export class AutomationsService implements IAutomationsService {
   async listRules(supabaseId: string, teamId: string) {
-    const response = await fetch(`/api/v1/teams/${teamId}/automations`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/automations`, {
       headers: headers(supabaseId, teamId),
     });
     return parseOutput<AutomationRule[]>(response);
   }
 
   async createRule(supabaseId: string, teamId: string, input: AutomationRuleFormInput) {
-    const response = await fetch(`/api/v1/teams/${teamId}/automations`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/automations`, {
       method: "POST",
       headers: headers(supabaseId, teamId),
       body: JSON.stringify(input),
@@ -46,7 +47,7 @@ export class AutomationsService implements IAutomationsService {
     ruleId: string,
     input: Partial<AutomationRuleFormInput>
   ) {
-    const response = await fetch(`/api/v1/teams/${teamId}/automations/${ruleId}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/automations/${ruleId}`, {
       method: "PATCH",
       headers: headers(supabaseId, teamId),
       body: JSON.stringify(input),
@@ -55,7 +56,7 @@ export class AutomationsService implements IAutomationsService {
   }
 
   async deleteRule(supabaseId: string, teamId: string, ruleId: string) {
-    const response = await fetch(`/api/v1/teams/${teamId}/automations/${ruleId}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/automations/${ruleId}`, {
       method: "DELETE",
       headers: headers(supabaseId, teamId),
     });
@@ -63,7 +64,7 @@ export class AutomationsService implements IAutomationsService {
   }
 
   async toggleRule(supabaseId: string, teamId: string, ruleId: string, isEnabled: boolean) {
-    const response = await fetch(`/api/v1/teams/${teamId}/automations/${ruleId}/toggle`, {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/automations/${ruleId}/toggle`, {
       method: "POST",
       headers: headers(supabaseId, teamId),
       body: JSON.stringify({ isEnabled }),
@@ -73,7 +74,7 @@ export class AutomationsService implements IAutomationsService {
 
   async listRuns(supabaseId: string, teamId: string, ruleId: string, page = 1) {
     const response = await fetch(
-      `/api/v1/teams/${teamId}/automations/${ruleId}/runs?page=${page}&pageSize=20`,
+      `${API_CLIENT_BASE}/teams/${teamId}/automations/${ruleId}/runs?page=${page}&pageSize=20`,
       { headers: headers(supabaseId, teamId) }
     );
     return parseOutput<AutomationRunsPage>(response);

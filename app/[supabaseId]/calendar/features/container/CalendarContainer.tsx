@@ -47,6 +47,7 @@ import {
   parseDateKeyToUtc,
 } from "@/lib/dates"
 import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -316,7 +317,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       patchLead?.(lead.id, { meetingHeald: next })
 
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -381,7 +382,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       patchLead?.(lead.id, { meetingPresenceConfirmed: true })
 
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -621,7 +622,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
         )
       }
 
-      const response = await fetch(`/api/v1/leads/${leadToCancel.id}/schedule/cancel`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${leadToCancel.id}/schedule/cancel`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -657,7 +658,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
     async (lead: Lead) => {
       if (!supabaseId || !activeTeamId) return
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -782,7 +783,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
           if (lead.assignee?.email) params.set("sdrEmail", lead.assignee.email)
           if (lead.email) params.set("leadEmail", lead.email)
 
-          const res = await fetch(`/api/v1/leads/${lead.id}/schedule/attendees?${params}`, {
+          const res = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/schedule/attendees?${params}`, {
             headers: {
               "x-supabase-user-id": supabaseId,
               "x-team-id": activeTeamId,
@@ -833,7 +834,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
     }
     const dateFrom = `${selectedDateKey}T00:00:00.000Z`
     const dateTo = `${selectedDateKey}T23:59:59.999Z`
-    const url = `/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`
+    const url = `${API_CLIENT_BASE}/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`
 
     return fetch(url, {
       headers: {
@@ -896,7 +897,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
 
     const monthStart = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth(), 1, 0, 0, 0, 0))
     const monthEnd = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth() + 1, 0, 23, 59, 59, 999))
-    const url = `/api/v1/tasks?dateFrom=${encodeURIComponent(monthStart.toISOString())}&dateTo=${encodeURIComponent(monthEnd.toISOString())}`
+    const url = `${API_CLIENT_BASE}/tasks?dateFrom=${encodeURIComponent(monthStart.toISOString())}&dateTo=${encodeURIComponent(monthEnd.toISOString())}`
 
     return fetch(url, {
       headers: {

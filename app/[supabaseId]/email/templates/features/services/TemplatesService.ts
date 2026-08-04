@@ -1,9 +1,11 @@
-import type { Template } from '../context/TemplatesTypes'
+import type { Template, TemplateRankingResult } from '../context/TemplatesTypes'
 import type { CreateTemplateData, ITemplatesService } from './ITemplatesService'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class TemplatesService implements ITemplatesService {
-  private readonly baseUrl = '/api/v1/email/templates'
-  private readonly settingsUrl = '/api/v1/email/settings'
+  private readonly baseUrl = `${API_CLIENT_BASE}/email/templates`
+  private readonly settingsUrl = `${API_CLIENT_BASE}/email/settings`
+  private readonly analyticsTopUrl = `${API_CLIENT_BASE}/email/analytics/top-templates`
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {
@@ -27,6 +29,15 @@ class TemplatesService implements ITemplatesService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     return this.parseJson<Template[]>(response, 'Erro ao buscar templates')
+  }
+
+  async getTopRanking(supabaseId: string, teamId?: string | null): Promise<TemplateRankingResult> {
+    console.info('[TemplatesService] Fetching template ranking')
+    const response = await fetch(this.analyticsTopUrl, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return this.parseJson<TemplateRankingResult>(response, 'Erro ao buscar ranking de templates')
   }
 
   async getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }> {

@@ -7,7 +7,7 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
-import { useTemplateEditorContext } from "../context/TemplateEditorContext";
+import { useTemplateEditorStudioContext } from "@/components/email/template-editor/TemplateEditorStudioContext";
 import type { TemplateEditorDraft } from "../context/TemplateEditorTypes";
 import { EditorHtmlWorkspace } from "./EditorHtmlWorkspace";
 import { EditorSidebar } from "./EditorSidebar";
@@ -35,7 +35,7 @@ export const EmailEditorStudio = forwardRef<
       publishTemplate,
       updateDraft,
       setHtml,
-    } = useTemplateEditorContext();
+    } = useTemplateEditorStudioContext();
 
     const [htmlModeValue, setHtmlModeValue] = useState(() => draft.html);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

@@ -1,5 +1,7 @@
 import { Output } from "@/lib/output";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 import type { MarkAllAsReadOptions, NotificationsListResponse } from "../types/notification.types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type RequestContext = {
   supabaseId: string;
@@ -12,11 +14,18 @@ type ListParams = RequestContext & {
 };
 
 export class NotificationsService {
-  private baseUrl = "/api/v1/notifications";
+  private baseUrl = `${API_CLIENT_BASE}/notifications`;
 
   private async parseOutput(response: Response): Promise<Output> {
     const data = await response.json();
     return data as Output;
+  }
+
+  private throwFromResponse(response: Response, output: Output, fallback: string): never {
+    throw new ApiRequestError(
+      output.errorMessages?.join(", ") || fallback,
+      response.status,
+    );
   }
 
   async list(params: ListParams): Promise<NotificationsListResponse> {
@@ -34,14 +43,13 @@ export class NotificationsService {
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        "x-supabase-user-id": params.supabaseId,
         "x-team-id": params.teamId,
       },
     });
 
     const output = await this.parseOutput(response);
     if (!response.ok || !output.isValid || !output.result) {
-      throw new Error(output.errorMessages?.join(", ") || "Erro ao carregar notificações");
+      this.throwFromResponse(response, output, "Erro ao carregar notificações");
     }
 
     return output.result as NotificationsListResponse;
@@ -53,14 +61,13 @@ export class NotificationsService {
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        "x-supabase-user-id": context.supabaseId,
         "x-team-id": context.teamId,
       },
     });
 
     const output = await this.parseOutput(response);
     if (!response.ok || !output.isValid || !output.result) {
-      throw new Error(output.errorMessages?.join(", ") || "Erro ao consultar notificações");
+      this.throwFromResponse(response, output, "Erro ao consultar notificações");
     }
 
     return Number((output.result as { unreadCount?: number }).unreadCount ?? 0);
@@ -72,14 +79,13 @@ export class NotificationsService {
       keepalive: options?.keepalive ?? false,
       headers: {
         "Content-Type": "application/json",
-        "x-supabase-user-id": context.supabaseId,
         "x-team-id": context.teamId,
       },
     });
 
     const output = await this.parseOutput(response);
     if (!response.ok || !output.isValid || !output.result) {
-      throw new Error(output.errorMessages?.join(", ") || "Erro ao atualizar notificações");
+      this.throwFromResponse(response, output, "Erro ao atualizar notificações");
     }
 
     return Number((output.result as { markedCount?: number }).markedCount ?? 0);
