@@ -102,6 +102,7 @@ import {
 } from "@/components/ui/field"
 import type { PublicFormSettings } from "../context/PublicFormsTypes"
 import { publicFormsClientService } from "../services/PublicFormsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const steps = [
   "Básico",
@@ -400,12 +401,12 @@ export function PublicFormWizard({
 
       if (!activeTeam?.id || !user?.id) return
       const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
-      void fetch(`/api/v1/teams/${activeTeam.id}/members`, { headers: h })
+      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h })
         .then((r) => r.json())
         .then((o) => {
           if (!cancelled) setMembers(o.result?.members ?? [])
         })
-      void fetch(`/api/v1/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
+      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
         .then((r) => r.json())
         .then((o) => {
           if (cancelled) return
@@ -415,7 +416,7 @@ export function PublicFormWizard({
               : [],
           )
         })
-      void fetch("/api/v1/health-plans", { headers: h })
+      void fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h })
         .then((r) => r.json())
         .then((o) => {
           if (cancelled) return

@@ -6,6 +6,7 @@ import type {
   IForgotPasswordState,
 } from './ForgotPasswordTypes';
 import type { IForgotPasswordService } from '../services/IForgotPasswordService';
+import { requestPasswordResetAction } from '../actions/requestPasswordResetAction';
 
 interface UseForgotPasswordHookProps {
   service: IForgotPasswordService;
@@ -56,7 +57,7 @@ export function useForgotPasswordHook({
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      await service.requestPasswordReset(normalizedEmail);
+      await requestPasswordResetAction(normalizedEmail);
     } catch (error) {
       console.error('[useForgotPasswordHook] Error requesting reset:', error);
     } finally {

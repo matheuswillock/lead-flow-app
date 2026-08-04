@@ -24,6 +24,18 @@ export interface IBackofficePlatformUsersUseCase {
     }
   ): Promise<Output>
 
+  listMasterUserPendingActions(masterProfileId: string): Promise<Output>
+
+  cancelMasterUserPendingAction(
+    masterProfileId: string,
+    pendingActionId: string,
+    actor: {
+      profileId: string
+      backofficeUserId: string | null
+      backofficeEmail: string
+    }
+  ): Promise<Output>
+
   getMasterUserInvoiceById(
     masterProfileId: string,
     invoiceId: string
@@ -33,6 +45,16 @@ export interface IBackofficePlatformUsersUseCase {
     masterProfileId: string,
     invoiceId: string,
     data: { value: number; dueDate: string }
+  ): Promise<Output>
+
+  deleteMasterUserInvoice(
+    masterProfileId: string,
+    invoiceId: string,
+    actor: {
+      profileId: string
+      backofficeUserId: string | null
+      backofficeEmail: string
+    }
   ): Promise<Output>
 
   notifyMasterUserInvoiceStatusEmail(

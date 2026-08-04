@@ -5,7 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { emailCreditService, PLAN_CREDITS } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { addMonthsInTz, resolveTimezone, startOfMonthInTz } from "@/lib/dates"
-import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
+import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService"
 import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
 
 const PLAN_PRICES: Record<EmailCreditPlan, number> = {
@@ -43,7 +43,7 @@ export class EmailCreditUseCase {
     try {
       const { teamId } = ctx
 
-      const isBetaExempt = await featureAccessRepository.resolveEmailBetaAccess(ctx)
+      const isBetaExempt = await featureAccessService.resolveEmailBetaAccess(ctx)
       if (isBetaExempt) {
         return new Output(
           false,
@@ -118,7 +118,7 @@ export class EmailCreditUseCase {
 
   async getStatus(ctx: TeamContext): Promise<Output> {
     try {
-      const isBetaExempt = await featureAccessRepository.resolveEmailBetaAccess(ctx)
+      const isBetaExempt = await featureAccessService.resolveEmailBetaAccess(ctx)
 
       if (isBetaExempt) {
         return new Output(true, [], [], {

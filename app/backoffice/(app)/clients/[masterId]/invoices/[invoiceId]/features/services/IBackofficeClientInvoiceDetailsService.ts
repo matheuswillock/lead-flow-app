@@ -8,4 +8,5 @@ export interface IBackofficeClientInvoiceDetailsService {
     invoiceId: string,
     data: { value: number; dueDate: string }
   ): Promise<BackofficeClientInvoiceDetails>
+  deleteInvoice(masterId: string, invoiceId: string): Promise<{ message: string }>
 }

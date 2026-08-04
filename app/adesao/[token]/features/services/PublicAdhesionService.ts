@@ -4,6 +4,7 @@ import type {
   PublicAdhesionPayment,
 } from "../context/PublicAdhesionTypes"
 import type { IPublicAdhesionService } from "./IPublicAdhesionService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -22,7 +23,7 @@ async function parseOutput<T>(response: Response): Promise<T> {
 export class PublicAdhesionService implements IPublicAdhesionService {
   async getDetails(token: string): Promise<PublicAdhesionDetails> {
     return parseOutput<PublicAdhesionDetails>(
-      await fetch(`/api/v1/public-adhesions/${token}`, { cache: "no-store" })
+      await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}`, { cache: "no-store" })
     )
   }
 
@@ -31,7 +32,7 @@ export class PublicAdhesionService implements IPublicAdhesionService {
     input: PublicAdhesionCheckoutInput
   ): Promise<PublicAdhesionPayment> {
     return parseOutput<PublicAdhesionPayment>(
-      await fetch(`/api/v1/public-adhesions/${token}/checkout`, {
+      await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -43,7 +44,7 @@ export class PublicAdhesionService implements IPublicAdhesionService {
     token: string,
     options?: { sync?: boolean }
   ): Promise<PublicAdhesionPayment> {
-    const url = `/api/v1/public-adhesions/${token}/payment-status${
+    const url = `${API_CLIENT_BASE}/public-adhesions/${token}/payment-status${
       options?.sync ? "?sync=1" : ""
     }`
 

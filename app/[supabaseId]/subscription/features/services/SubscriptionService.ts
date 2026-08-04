@@ -4,6 +4,7 @@ import type {
   UpdateSubscriptionCreditsDTO,
   UpdatePaymentMethodDTO 
 } from '../types/subscription.types';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export interface ISubscriptionService {
   getSubscription(supabaseId: string): Promise<SubscriptionData | null>;
@@ -16,7 +17,7 @@ export interface ISubscriptionService {
 }
 
 export class SubscriptionService implements ISubscriptionService {
-  private baseUrl = '/api/v1/subscription-management';
+  private baseUrl = `${API_CLIENT_BASE}/subscription-management`;
 
   async getSubscription(supabaseId: string): Promise<SubscriptionData | null> {
     const response = await fetch(`${this.baseUrl}?supabaseId=${supabaseId}`);

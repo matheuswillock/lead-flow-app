@@ -3,6 +3,7 @@ import type {
   BackofficeEmailContactsPage,
 } from "../context/BackofficeEmailContatosTypes"
 import type { IBackofficeEmailContatosService } from "./IBackofficeEmailContatosService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -20,7 +21,7 @@ async function parseOutput<T>(response: Response): Promise<T> {
   return json.result
 }
 
-const BASE_URL = "/api/v1/backoffice/email-campaigns/contact-lists"
+const BASE_URL = `${API_CLIENT_BASE}/backoffice/email-campaigns/contact-lists`
 
 export class BackofficeEmailContatosService implements IBackofficeEmailContatosService {
   async listContactLists(): Promise<BackofficeEmailContactListItem[]> {

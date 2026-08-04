@@ -3,6 +3,7 @@ import type {
   PublicContractShare,
 } from "../context/PublicContractTypes"
 import type { IPublicContractService } from "./IPublicContractService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -12,7 +13,7 @@ interface OutputResponse<T> {
 
 export class PublicContractService implements IPublicContractService {
   async getShare(token: string): Promise<PublicContractShare> {
-    const response = await fetch(`/api/v1/public-contracts/${token}`, { cache: "no-store" })
+    const response = await fetch(`${API_CLIENT_BASE}/public-contracts/${token}`, { cache: "no-store" })
     const data = (await response.json()) as OutputResponse<PublicContractShare>
 
     if (!response.ok || !data.isValid || data.result === undefined) {
@@ -23,7 +24,7 @@ export class PublicContractService implements IPublicContractService {
   }
 
   async getDownloadUrl(token: string): Promise<PublicContractDownload> {
-    const response = await fetch(`/api/v1/public-contracts/${token}/download`, {
+    const response = await fetch(`${API_CLIENT_BASE}/public-contracts/${token}/download`, {
       cache: "no-store",
     })
     const data = (await response.json()) as OutputResponse<PublicContractDownload>

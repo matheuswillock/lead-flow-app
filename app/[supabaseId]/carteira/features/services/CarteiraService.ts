@@ -8,6 +8,7 @@ import type {
   UpdateCarteiraData,
   UpdateCarteiraDetailPayload,
 } from '../context/CarteiraTypes';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class CarteiraService implements ICarteiraService {
   async createEntry(
@@ -15,7 +16,7 @@ class CarteiraService implements ICarteiraService {
     teamId: string,
     payload: CreateCarteiraPayload
   ): Promise<CarteiraDetailData> {
-    const res = await fetch('/api/v1/portfolio', {
+    const res = await fetch(`${API_CLIENT_BASE}/portfolio`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -51,7 +52,7 @@ class CarteiraService implements ICarteiraService {
     params.set('page', String(filters.page));
     params.set('pageSize', String(filters.pageSize));
 
-    const res = await fetch(`/api/v1/portfolio?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/portfolio?${params.toString()}`, {
       headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
     });
 
@@ -66,7 +67,7 @@ class CarteiraService implements ICarteiraService {
     leadId: string,
     data: UpdateCarteiraData
   ): Promise<CarteiraRow> {
-    const res = await fetch(`/api/v1/portfolio/${leadId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/portfolio/${leadId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -86,7 +87,7 @@ class CarteiraService implements ICarteiraService {
     teamId: string,
     leadId: string
   ): Promise<CarteiraDetailData> {
-    const res = await fetch(`/api/v1/portfolio/${leadId}/detail`, {
+    const res = await fetch(`${API_CLIENT_BASE}/portfolio/${leadId}/detail`, {
       headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': teamId },
     });
 
@@ -101,7 +102,7 @@ class CarteiraService implements ICarteiraService {
     leadId: string,
     payload: UpdateCarteiraDetailPayload
   ): Promise<CarteiraDetailData> {
-    const res = await fetch(`/api/v1/portfolio/${leadId}/detail`, {
+    const res = await fetch(`${API_CLIENT_BASE}/portfolio/${leadId}/detail`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',

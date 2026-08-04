@@ -9,6 +9,7 @@ import type {
   LeadImportContext,
   LeadImportResult,
 } from "./ILeadImportService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type LeadImportApiResult = {
   created?: number;
@@ -46,7 +47,7 @@ function mapLeadImportApiResult(result: LeadImportApiResult | undefined): LeadIm
 
 export class LeadImportService implements ILeadImportService {
   async importMappedLeads(rows: LeadImportRow[], ctx: LeadImportContext): Promise<LeadImportResult> {
-    const response = await fetch("/api/v1/leads/import/mapped", {
+    const response = await fetch(`${API_CLIENT_BASE}/leads/import/mapped`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

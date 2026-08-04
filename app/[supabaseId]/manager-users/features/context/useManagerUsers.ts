@@ -187,7 +187,7 @@ export function useManagerUsers({
 
       toast.loading("Processando solicitação de usuário...");
 
-      const response = await fetch(`/api/v1/manager/${supabaseId}/users`, {
+      const response = await fetch(`${API_CLIENT_BASE}/manager/${supabaseId}/users`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

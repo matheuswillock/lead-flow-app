@@ -19,6 +19,7 @@ import {
   findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
+import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -303,26 +304,56 @@ export class PublicFormSubmissionUseCase {
           : undefined,
         metricEvents,
       })
+
+      for (const event of metricEvents) {
+        syncPublicFormMetricToRadarInline({
+          teamId: form.teamId,
+          eventType: event.eventType,
+          eventKey: event.eventKey,
+          visitorSessionId: event.visitorSessionId,
+          formId: event.formId,
+          publicationId: event.publicationId,
+          leadId: lead?.id ?? null,
+          origin: job.origin,
+        })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao processar respostas"
       console.error("[PublicFormSubmissionUseCase][processInBackground]", message)
       alerts.push(message)
+      const fallbackVisitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
+      const fallbackMetricEvents = [
+        {
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
+          visitorSessionId: fallbackVisitorSessionId,
+          eventType: "form_completed" as const,
+          eventKey: `${job.requestKey}:form_completed`,
+          origin: job.origin as Prisma.InputJsonValue,
+        },
+      ]
       await publicFormsRepository.completeSubmission({
         submissionId: job.submissionId,
         leadId: null,
         processingAlerts: formatLeadSyncAlerts(alerts),
         answers,
-        metricEvents: [
-          {
-            formId: job.snapshot.formId,
-            publicationId: job.publicationId,
-            visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
-            eventType: "form_completed",
-            eventKey: `${job.requestKey}:form_completed`,
-            origin: job.origin as Prisma.InputJsonValue,
-          },
-        ],
+        metricEvents: fallbackMetricEvents,
       })
+
+      const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(job.snapshot.formId)
+      if (teamCtx?.teamId) {
+        for (const event of fallbackMetricEvents) {
+          syncPublicFormMetricToRadarInline({
+            teamId: teamCtx.teamId,
+            eventType: event.eventType,
+            eventKey: event.eventKey,
+            visitorSessionId: event.visitorSessionId,
+            formId: event.formId,
+            publicationId: event.publicationId,
+            origin: job.origin,
+          })
+        }
+      }
     }
   }
 

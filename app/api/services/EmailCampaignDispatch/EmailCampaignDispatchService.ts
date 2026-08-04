@@ -25,6 +25,14 @@ import type {
 
 const BATCH_SIZE = 100
 
+/** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
+function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
+  if (statusCode === 409 && rawMessage.toLowerCase().includes("idempotency")) {
+    return "Falha no envio da campanha. Entre em contato com o suporte se o problema persistir."
+  }
+  return rawMessage
+}
+
 /** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */
 export function parseResendBatchSendItems(
   batchData: Array<{ id?: string }> | { data?: Array<{ id?: string }> } | null | undefined
@@ -48,6 +56,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     html: string
     campaignId: string
     teamId: string
+    dispatchId: string
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
@@ -145,19 +154,24 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         const batchResult = await resend.batch.send(batchPayload, {
           idempotencyKey: buildResendBatchIdempotencyKey(
             "campaign",
-            `${params.campaignId}/${params.dispatchNumber}/${chunkIndex}`
+            `${params.dispatchId}/${chunkIndex}`
           ),
         })
 
         if (batchResult.error) {
           console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
           result.failed += chunk.length
+          const errorStatusCode =
+            typeof batchResult.error.statusCode === "number"
+              ? batchResult.error.statusCode
+              : undefined
+          const errorMessage = resolveResendBatchErrorMessage(
+            batchResult.error.message || "Erro no envio via Resend",
+            errorStatusCode
+          )
           result.providerErrors.push({
-            message: batchResult.error.message || "Erro no envio via Resend",
-            statusCode:
-              typeof batchResult.error.statusCode === "number"
-                ? batchResult.error.statusCode
-                : undefined,
+            message: errorMessage,
+            statusCode: errorStatusCode,
             emails: chunk.map((recipient) => recipient.email),
           })
         } else {

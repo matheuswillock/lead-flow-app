@@ -9,6 +9,7 @@ import type {
   CarteiraImportResult,
   ICarteiraImportService,
 } from "./ICarteiraImportService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type CarteiraImportApiResult = {
   created?: number;
@@ -43,7 +44,7 @@ export class CarteiraImportService implements ICarteiraImportService {
     rows: PortfolioImportRow[],
     ctx: CarteiraImportContext
   ): Promise<CarteiraImportResult> {
-    const response = await fetch("/api/v1/portfolio/import/mapped", {
+    const response = await fetch(`${API_CLIENT_BASE}/portfolio/import/mapped`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

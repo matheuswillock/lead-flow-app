@@ -11,10 +11,14 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileContracts,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentRules,
 } from "./RadarTypes"
 import type { CustomSegmentInput, CustomSegmentUpdateInput } from "../services/IRadarService"
+import type { RadarExportFormat, RadarExportRow } from "@/lib/radar/exportRadarProfiles"
+import { downloadRadarExportFile } from "../utils/downloadRadarExport"
 
 export type RadarTab = "perfis" | "segmentos"
 
@@ -39,15 +43,15 @@ export function useRadarHookFn() {
   const [detailEventsTotal, setDetailEventsTotal] = useState(0)
   const [detailEventsPage, setDetailEventsPage] = useState(1)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false)
+  const [touchpoints, setTouchpoints] = useState<RadarProfileTouchpoints | null>(null)
+  const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
+  const [contracts, setContracts] = useState<RadarProfileContracts | null>(null)
+  const [isLoadingContracts, setIsLoadingContracts] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [isSyncingWhatsapp, setIsSyncingWhatsapp] = useState(false)
-  const [isSyncingLead, setIsSyncingLead] = useState(false)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [isPreviewingAudience, setIsPreviewingAudience] = useState(false)
   const [mutationLock, setMutationLock] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState("")
@@ -68,6 +72,8 @@ export function useRadarHookFn() {
   const loadKeyRef = useRef("")
   const inFlightRef = useRef(false)
   const autoOpenedProfileIdRef = useRef<string | null>(null)
+  const touchpointsProfileIdRef = useRef<string | null>(null)
+  const contractsProfileIdRef = useRef<string | null>(null)
 
   const activeTab: RadarTab = searchParams.get("tab") === "segmentos" ? "segmentos" : "perfis"
 
@@ -110,7 +116,7 @@ export function useRadarHookFn() {
       setCustomSegments(customSegmentsResult)
     } catch (loadError) {
       console.error("[useRadarHookFn][loadDashboard]", loadError)
-      setError("Não foi possível carregar os perfis Radar. Tente sincronizar novamente.")
+      setError("Não foi possível carregar os perfis Radar. Tente novamente.")
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -138,6 +144,8 @@ export function useRadarHookFn() {
       router.replace(buildProfileHref(pathname, searchParams, profileId), { scroll: false })
       setIsDetailLoading(true)
       setDetailEventsPage(1)
+      setTouchpoints(null)
+      setContracts(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -158,6 +166,36 @@ export function useRadarHookFn() {
       } finally {
         setIsDetailLoading(false)
       }
+
+      // Carrega touchpoints e contratos em segundo plano após o perfil abrir.
+      // Guard de stale: descarta a resposta se o profileId ativo mudou enquanto
+      // a request estava em voo (ex.: sheet fechada e reaberta para outro perfil).
+      touchpointsProfileIdRef.current = profileId
+      contractsProfileIdRef.current = profileId
+      setIsLoadingTouchpoints(true)
+      setIsLoadingContracts(true)
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
+          if (touchpointsProfileIdRef.current !== profileId) return
+          setTouchpoints(result)
+        } catch (tpError) {
+          console.error("[useRadarHookFn][loadTouchpoints]", tpError)
+        } finally {
+          if (touchpointsProfileIdRef.current === profileId) setIsLoadingTouchpoints(false)
+        }
+      })()
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileContracts(supabaseId, activeTeamId, profileId)
+          if (contractsProfileIdRef.current !== profileId) return
+          setContracts(result)
+        } catch (contractsError) {
+          console.error("[useRadarHookFn][loadContracts]", contractsError)
+        } finally {
+          if (contractsProfileIdRef.current === profileId) setIsLoadingContracts(false)
+        }
+      })()
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -167,6 +205,10 @@ export function useRadarHookFn() {
     setDetailEvents([])
     setDetailEventsTotal(0)
     setDetailEventsPage(1)
+    setTouchpoints(null)
+    touchpointsProfileIdRef.current = null
+    setContracts(null)
+    contractsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -215,65 +257,6 @@ export function useRadarHookFn() {
     selectedProfile,
     supabaseId,
   ])
-
-  const runSync = useCallback(async () => {
-    if (isSyncing || !supabaseId || !activeTeamId) return
-    setIsSyncing(true)
-    try {
-      const crm = await radarFrontendService.syncCrm(supabaseId, activeTeamId)
-      const portfolio = await radarFrontendService.syncPortfolio(supabaseId, activeTeamId)
-      const email = await radarFrontendService.syncEmail(supabaseId, activeTeamId)
-      setLastSyncAt(new Date())
-      toast.success(
-        `Sincronização concluída. Criados: ${crm.created + portfolio.created + email.created}, enriquecidos: ${crm.enriched + portfolio.enriched + email.enriched}.`
-      )
-      await loadDashboard()
-    } catch (syncError) {
-      console.error("[useRadarHookFn][runSync]", syncError)
-      toast.error("Falha ao sincronizar o Radar.")
-    } finally {
-      setIsSyncing(false)
-    }
-  }, [activeTeamId, isSyncing, loadDashboard, supabaseId])
-
-  const runWhatsappSync = useCallback(async () => {
-    if (isSyncingWhatsapp || !supabaseId || !activeTeamId) return
-    setIsSyncingWhatsapp(true)
-    try {
-      await radarFrontendService.syncWhatsapp(supabaseId, activeTeamId)
-      setLastSyncAt(new Date())
-      toast.success("Sincronização do WhatsApp concluída.")
-      await loadDashboard()
-    } catch (syncError) {
-      console.error("[useRadarHookFn][runWhatsappSync]", syncError)
-      toast.error("Falha ao sincronizar o WhatsApp no Radar.")
-    } finally {
-      setIsSyncingWhatsapp(false)
-    }
-  }, [activeTeamId, isSyncingWhatsapp, loadDashboard, supabaseId])
-
-  const syncLeadProfile = useCallback(async () => {
-    if (!selectedProfile || isSyncingLead || !supabaseId || !activeTeamId) return
-    const leadIdentity = selectedProfile.identities.find((identity) => identity.type === "lead_id")
-    if (!leadIdentity?.normalizedValue) {
-      toast.error("Este perfil não possui vínculo com lead do CRM.")
-      return
-    }
-
-    setIsSyncingLead(true)
-    try {
-      await radarFrontendService.syncCrm(supabaseId, activeTeamId, { leadId: leadIdentity.normalizedValue })
-      setLastSyncAt(new Date())
-      toast.success("Lead sincronizado com sucesso.")
-      await openProfile(selectedProfile.id)
-      await loadDashboard()
-    } catch (syncError) {
-      console.error("[useRadarHookFn][syncLeadProfile]", syncError)
-      toast.error("Falha ao sincronizar o lead.")
-    } finally {
-      setIsSyncingLead(false)
-    }
-  }, [activeTeamId, isSyncingLead, loadDashboard, openProfile, selectedProfile, supabaseId])
 
   const withMutationLock = useCallback(
     async <T,>(action: () => Promise<T>): Promise<T | null> => {
@@ -359,6 +342,148 @@ export function useRadarHookFn() {
     [activeTeamId, loadDashboard, supabaseId, withMutationLock]
   )
 
+  const materializeContactList = useCallback(
+    async (segmentSlug: string, segmentName: string, listName?: string) => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const materialized = await radarFrontendService.materializeContactList(
+            supabaseId,
+            activeTeamId,
+            segmentSlug,
+            listName
+          )
+          toast.success(
+            `Lista criada com ${materialized.totalContacts} contato(s) a partir de "${segmentName}".`,
+            {
+              action: {
+                label: "Ver contatos",
+                onClick: () => router.push(`/${supabaseId}/email/contatos`),
+              },
+            }
+          )
+          return true
+        } catch (materializeError) {
+          console.error("[useRadarHookFn][materializeContactList]", materializeError)
+          toast.error(
+            materializeError instanceof Error
+              ? materializeError.message
+              : "Não foi possível criar a lista de contatos."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [activeTeamId, router, supabaseId, withMutationLock]
+  )
+
+
+  const exportFilteredProfiles = useCallback(
+    async (format: RadarExportFormat) => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const exported = await radarFrontendService.exportProfiles(supabaseId, activeTeamId, {
+            search: search || undefined,
+            consent: consentFilter || undefined,
+            sourceType: sourceFilter || undefined,
+            channel: channelFilter || undefined,
+            lastSeenFrom: lastSeenFrom || undefined,
+            lastSeenTo: lastSeenTo || undefined,
+          })
+          const dateStr = new Date().toISOString().slice(0, 10)
+          await downloadRadarExportFile(
+            exported.rows as RadarExportRow[],
+            format,
+            `radar-perfis-${dateStr}`
+          )
+          if (exported.truncated) {
+            toast.success(
+              `Exportado ${exported.exported} de ${exported.total} perfis (limite de ${exported.maxRows}).`
+            )
+          } else {
+            toast.success(`Exportados ${exported.exported} perfil(is).`)
+          }
+          return true
+        } catch (exportError) {
+          console.error("[useRadarHookFn][exportFilteredProfiles]", exportError)
+          toast.error(
+            exportError instanceof Error ? exportError.message : "Não foi possível exportar os perfis."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [
+      activeTeamId,
+      channelFilter,
+      consentFilter,
+      lastSeenFrom,
+      lastSeenTo,
+      search,
+      sourceFilter,
+      supabaseId,
+      withMutationLock,
+    ]
+  )
+
+  const exportSegmentMembers = useCallback(
+    async (target: RadarSegmentProfilesTarget, format: RadarExportFormat) => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const exported =
+            target.kind === "system"
+              ? await radarFrontendService.exportSegmentProfiles(
+                  supabaseId,
+                  activeTeamId,
+                  target.slugOrId
+                )
+              : await radarFrontendService.exportCustomSegmentProfiles(
+                  supabaseId,
+                  activeTeamId,
+                  target.slugOrId
+                )
+          const slugSafe = target.name
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "")
+          const dateStr = new Date().toISOString().slice(0, 10)
+          await downloadRadarExportFile(
+            exported.rows as RadarExportRow[],
+            format,
+            `radar-segmento-${slugSafe || "export"}-${dateStr}`
+          )
+          if (exported.truncated) {
+            toast.success(
+              `Exportado ${exported.exported} de ${exported.total} membros (limite de ${exported.maxRows}).`
+            )
+          } else {
+            toast.success(`Exportados ${exported.exported} membro(s) de "${target.name}".`)
+          }
+          return true
+        } catch (exportError) {
+          console.error("[useRadarHookFn][exportSegmentMembers]", exportError)
+          toast.error(
+            exportError instanceof Error
+              ? exportError.message
+              : "Não foi possível exportar o segmento."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [activeTeamId, supabaseId, withMutationLock]
+  )
+
   const previewAudienceCount = useCallback(
     async (rules: RadarSegmentRules): Promise<number | null> => {
       if (isPreviewingAudience || !supabaseId || !activeTeamId) return null
@@ -439,6 +564,55 @@ export function useRadarHookFn() {
     [loadSegmentProfiles, segmentProfilesTarget]
   )
 
+  const previewSegmentContactList = useCallback(
+    async (slugOrId: string, variant: "system" | "custom"): Promise<number | null> => {
+      if (!supabaseId || !activeTeamId) return null
+      try {
+        const result = await radarFrontendService.previewSegmentContactList(
+          supabaseId,
+          activeTeamId,
+          slugOrId,
+          variant
+        )
+        return result.estimatedCount
+      } catch (previewError) {
+        console.error("[useRadarHookFn][previewSegmentContactList]", previewError)
+        toast.error("Não foi possível calcular a contagem do segmento.")
+        return null
+      }
+    },
+    [activeTeamId, supabaseId]
+  )
+
+  const materializeSegmentToContactList = useCallback(
+    async (slugOrId: string, variant: "system" | "custom"): Promise<boolean> => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          const res = await radarFrontendService.materializeSegmentToContactList(
+            supabaseId,
+            activeTeamId,
+            slugOrId,
+            variant
+          )
+          toast.success(`Lista criada com ${res.contactCount} contato(s).`)
+          return true
+        } catch (materializeError) {
+          console.error("[useRadarHookFn][materializeSegmentToContactList]", materializeError)
+          toast.error(
+            materializeError instanceof Error
+              ? materializeError.message
+              : "Não foi possível criar a lista de contatos."
+          )
+          return false
+        }
+      })
+      if (result === null) return false
+      return result
+    },
+    [activeTeamId, supabaseId, withMutationLock]
+  )
+
   return {
     profiles,
     segments,
@@ -449,14 +623,10 @@ export function useRadarHookFn() {
     detailEventsTotal,
     isLoadingMoreEvents,
     isLoading,
-    isSyncing,
-    isSyncingWhatsapp,
-    isSyncingLead,
     isDetailLoading,
     isPreviewingAudience,
     mutationLock,
     error,
-    lastSyncAt,
     page,
     total,
     pageSize,
@@ -478,12 +648,12 @@ export function useRadarHookFn() {
     openProfile,
     closeProfile,
     loadMoreProfileEvents,
-    runSync,
-    runWhatsappSync,
-    syncLeadProfile,
     createCustomSegment,
     updateCustomSegment,
     deleteCustomSegment,
+    materializeContactList,
+    exportFilteredProfiles,
+    exportSegmentMembers,
     previewAudienceCount,
     segmentProfilesTarget,
     segmentProfilesItems,
@@ -494,6 +664,12 @@ export function useRadarHookFn() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    touchpoints,
+    isLoadingTouchpoints,
+    contracts,
+    isLoadingContracts,
+    previewSegmentContactList,
+    materializeSegmentToContactList,
     reload: loadDashboard,
   }
 }

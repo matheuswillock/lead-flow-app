@@ -18,10 +18,17 @@ import type {
   TeamRadarSegmentInput,
   TeamRadarSegmentUpdateInput,
 } from "@/app/api/services/radar/ITeamRadarSegmentService"
+import { listRadarFieldCatalog } from "@/lib/radar/field-catalog"
 import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
+import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
 import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
+import {
+  buildRadarExportRows,
+  RADAR_EXPORT_MAX_ROWS,
+  type RadarExportProfileInput,
+} from "@/lib/radar/exportRadarProfiles"
 
 const SEGMENT_LABELS: Record<string, string> = {
   email_marketable: "Aptos para e-mail",
@@ -43,6 +50,32 @@ export type RadarListProfilesInput = {
   lastSeenTo?: string
   page: number
   pageSize: number
+}
+
+export type RadarExportProfilesInput = Omit<RadarListProfilesInput, "page" | "pageSize">
+
+function mapProfilesToExportInput(
+  items: Array<{
+    displayName: string
+    primaryEmail: string | null
+    displayPhone: string | null
+    primaryDocument: string | null
+    lastSeenAt: Date | null
+    identities: Array<{ type: string; value: string | null; normalizedValue: string }>
+    events: Array<{ eventType: string; occurredAt: Date }>
+  }>
+): RadarExportProfileInput[] {
+  return items.map((item) => ({
+    displayName: item.displayName,
+    primaryEmail: item.primaryEmail,
+    displayPhone: item.displayPhone,
+    primaryDocument: item.primaryDocument,
+    lastSeenAt: item.lastSeenAt,
+    identities: item.identities,
+    lastEvent: item.events[0]
+      ? { eventType: item.events[0].eventType, occurredAt: item.events[0].occurredAt }
+      : null,
+  }))
 }
 
 export class RadarUseCase {
@@ -120,12 +153,262 @@ export class RadarUseCase {
     })
   }
 
+  /**
+   * D16: exporta perfis filtrados (até `RADAR_EXPORT_MAX_ROWS`) com colunas
+   * próprias do Radar (perfil, identidades, último evento).
+   */
+  async exportProfiles(input: RadarExportProfilesInput) {
+    const scope = this.scope(input.teamId, input.ctx)
+    const result = await radarRepository.listProfilesForExportWithCtx(scope, {
+      search: input.search,
+      consent: input.consent,
+      sourceType: input.sourceType as never,
+      channel: input.channel,
+      lastSeenFrom: input.lastSeenFrom ? new Date(input.lastSeenFrom) : undefined,
+      lastSeenTo: input.lastSeenTo ? new Date(input.lastSeenTo) : undefined,
+    })
+
+    const rows = buildRadarExportRows(mapProfilesToExportInput(result.items))
+    const truncated = result.total > RADAR_EXPORT_MAX_ROWS
+    const messages = truncated
+      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${result.total} perfis no filtro).`]
+      : []
+
+    return new Output(true, messages, [], {
+      rows,
+      total: result.total,
+      exported: rows.length,
+      truncated,
+      maxRows: RADAR_EXPORT_MAX_ROWS,
+    })
+  }
+
+  /**
+   * D16: exporta membros de um segmento de sistema.
+   */
+  async exportSegmentProfiles(teamId: string, ctx: TeamContext, segment: string) {
+    if (!isRadarSegmentSlug(segment)) {
+      return new Output(false, [], ["Segmento inválido"], null)
+    }
+
+    const scope = this.scope(teamId, ctx)
+    const ids = await this.service.listSegmentProfileIds(scope, segment)
+    const truncated = ids.length > RADAR_EXPORT_MAX_ROWS
+    const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
+    const rows = buildRadarExportRows(mapProfilesToExportInput(items))
+    const messages = truncated
+      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${ids.length} membros no segmento).`]
+      : []
+
+    return new Output(true, messages, [], {
+      rows,
+      total: ids.length,
+      exported: rows.length,
+      truncated,
+      maxRows: RADAR_EXPORT_MAX_ROWS,
+      segment,
+    })
+  }
+
+  /**
+   * D16: exporta membros de um segmento customizado.
+   */
+  async exportCustomSegmentProfiles(teamId: string, ctx: TeamContext, segmentId: string) {
+    try {
+      const scope = this.scope(teamId, ctx)
+      const segment = await this.segmentService.findById(teamId, segmentId)
+      if (!segment || !segment.isActive) {
+        return new Output(false, [], ["Segmento não encontrado"], null)
+      }
+
+      const rules = parseRadarSegmentRules(segment.rulesJson)
+      const total = await this.segmentQueryService.countProfiles(scope, rules)
+      const ids = await this.segmentQueryService.listProfileIds(scope, rules, {
+        skip: 0,
+        take: RADAR_EXPORT_MAX_ROWS,
+      })
+      const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
+      const rows = buildRadarExportRows(mapProfilesToExportInput(items))
+      const truncated = total > RADAR_EXPORT_MAX_ROWS
+      const messages = truncated
+        ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${total} membros no segmento).`]
+        : []
+
+      return new Output(true, messages, [], {
+        rows,
+        total,
+        exported: rows.length,
+        truncated,
+        maxRows: RADAR_EXPORT_MAX_ROWS,
+        segmentId,
+      })
+    } catch (error) {
+      console.error("[RadarUseCase][exportCustomSegmentProfiles]", error)
+      return new Output(false, [], ["Erro ao exportar perfis do segmento"], null)
+    }
+  }
+
   async getProfile(teamId: string, ctx: TeamContext, profileId: string) {
     const profile = await radarRepository.getProfileDetailWithCtx(this.scope(teamId, ctx), profileId)
     if (!profile) {
       return new Output(false, [], ["Perfil não encontrado"], null)
     }
-    return new Output(true, [], [], profile)
+
+    // D17: responsáveis dos leads associados (nomes resolvidos, não só UUID).
+    const leadIds = profile.identities
+      .filter((identity) => identity.type === "lead_id")
+      .map((identity) => identity.normalizedValue || identity.value || "")
+      .filter(Boolean)
+    const leads = await radarRepository.findLeadAssigneesByIds(teamId, leadIds)
+    const assignees = leads.map((lead) => ({
+      leadId: lead.id,
+      leadCode: lead.leadCode,
+      assignedTo: lead.assignee
+        ? {
+            id: lead.assignee.id,
+            name: lead.assignee.fullName?.trim() || lead.assignee.email,
+          }
+        : lead.assignedTo
+          ? { id: lead.assignedTo, name: null }
+          : null,
+      closer: lead.closer
+        ? {
+            id: lead.closer.id,
+            name: lead.closer.fullName?.trim() || lead.closer.email,
+          }
+        : lead.closerId
+          ? { id: lead.closerId, name: null }
+          : null,
+    }))
+
+    return new Output(true, [], [], { ...profile, assignees })
+  }
+
+  /**
+   * D9: agrega eventos do perfil por canal de origem (prefixo do eventType).
+   * Canal = prefixo antes do primeiro ".": email → E-mail, whatsapp → WhatsApp,
+   * form → Formulário, pixel → Pixel, lead/portfolio/profile → CRM, demais → Outros.
+   * Retorna Output inválido (404) quando o perfil não existe ou pertence a outro time.
+   */
+  async getProfileTouchpoints(teamId: string, ctx: TeamContext, profileId: string) {
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const rows = await radarRepository.groupProfileEventsByType(scope, profileId)
+
+    const CHANNEL_MAP: Record<string, string> = {
+      email: "E-mail",
+      whatsapp: "WhatsApp",
+      form: "Formulário",
+      pixel: "Pixel",
+      lead: "CRM",
+      portfolio: "CRM",
+      profile: "CRM",
+    }
+
+    type ChannelBreakdown = {
+      channel: string
+      count: number
+      firstEventAt: string
+      lastEventAt: string
+    }
+
+    const channelMap = new Map<string, { count: number; firstEventAt: Date; lastEventAt: Date }>()
+
+    for (const row of rows) {
+      const prefix = row.eventType.split(".")[0] ?? row.eventType
+      const channel = CHANNEL_MAP[prefix] ?? "Outros"
+      const existing = channelMap.get(channel)
+      const rowMin = row._min.occurredAt
+      const rowMax = row._max.occurredAt
+      if (!rowMin || !rowMax) continue
+      if (existing) {
+        existing.count += row._count._all
+        if (rowMin < existing.firstEventAt) existing.firstEventAt = rowMin
+        if (rowMax > existing.lastEventAt) existing.lastEventAt = rowMax
+      } else {
+        channelMap.set(channel, {
+          count: row._count._all,
+          firstEventAt: rowMin,
+          lastEventAt: rowMax,
+        })
+      }
+    }
+
+    const breakdown: ChannelBreakdown[] = Array.from(channelMap.entries()).map(([channel, data]) => ({
+      channel,
+      count: data.count,
+      firstEventAt: data.firstEventAt.toISOString(),
+      lastEventAt: data.lastEventAt.toISOString(),
+    }))
+
+    const total = breakdown.reduce((sum, b) => sum + b.count, 0)
+
+    return new Output(true, [], [], { total, breakdown })
+  }
+
+
+  /**
+   * D13/D14: contratos atuais (LeadPortfolio) + histórico (LeadFinalized com
+   * holder/dependentes) do perfil — via lead_id/portfolio_id e identidades
+   * contract_holder/contract_dependent (documento/CNPJ + source links).
+   */
+  async getProfileContracts(teamId: string, ctx: TeamContext, profileId: string) {
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const raw = await radarRepository.findContractsForProfile(scope, profileId)
+
+    const portfolios = raw.portfolios.map((item) => ({
+      id: item.id,
+      leadId: item.leadId,
+      portfolioStatus: item.portfolioStatus,
+      renewalStatus: item.renewalStatus,
+      renewalAmount: item.renewalAmount != null ? Number(item.renewalAmount) : null,
+      source: item.source,
+      note: item.note,
+      lastContactAt: item.lastContactAt?.toISOString() ?? null,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+    }))
+
+    const finalized = raw.finalized.map((item) => ({
+      id: item.id,
+      leadId: item.leadId,
+      finalizedDateAt: item.finalizedDateAt.toISOString(),
+      startDateAt: item.startDateAt.toISOString(),
+      amount: Number(item.amount),
+      contractType: item.contractType,
+      operadora: item.operadora,
+      productName: item.productName,
+      notes: item.notes,
+      createdAt: item.createdAt.toISOString(),
+      holder: item.holder
+        ? {
+            id: item.holder.id,
+            name: item.holder.name,
+            razaoSocial: item.holder.razaoSocial,
+            birthDate: item.holder.birthDate.toISOString(),
+            document: item.holder.document,
+            cnpj: item.holder.cnpj,
+          }
+        : null,
+      dependents: item.dependents.map((dependent) => ({
+        id: dependent.id,
+        name: dependent.name,
+        birthDate: dependent.birthDate.toISOString(),
+        parentesco: dependent.parentesco,
+        document: dependent.document,
+      })),
+    }))
+
+    return new Output(true, [], [], { portfolios, finalized })
   }
 
   async listProfileEvents(
@@ -342,6 +625,40 @@ export class RadarUseCase {
     } catch (error) {
       console.error("[RadarUseCase][listCustomSegmentProfiles]", error)
       return new Output(false, [], ["Erro ao listar perfis do segmento"], null)
+    }
+  }
+
+  async listFieldDefinitions(teamId: string) {
+    const definitions = await teamRadarFieldDefinitionRepository.listActiveByTeam(teamId)
+    return new Output(true, [], [], { definitions })
+  }
+
+  async listAvailableFields(teamId: string) {
+    const catalogFields = listRadarFieldCatalog().map((field) => ({
+      key: field.key,
+      label: field.label,
+      sourceType: field.sourceType,
+    }))
+
+    const dynamicFields = await teamRadarFieldDefinitionRepository.listActiveByTeam(teamId)
+    const baseFields = dynamicFields.map((field) => ({
+      key: `base.${field.key}`,
+      label: field.label,
+      sourceType: "BASE",
+      valueType: field.valueType,
+    }))
+
+    return new Output(true, [], [], { fields: [...catalogFields, ...baseFields] })
+  }
+
+  /** D17: eventTypes distintos já ocorridos no time (para o Select do builder). */
+  async listAvailableEventTypes(teamId: string, ctx: TeamContext) {
+    try {
+      const eventTypes = await radarRepository.listDistinctEventTypes(this.scope(teamId, ctx))
+      return new Output(true, [], [], { eventTypes })
+    } catch (error) {
+      console.error("[RadarUseCase][listAvailableEventTypes]", error)
+      return new Output(false, [], ["Erro ao listar tipos de evento"], null)
     }
   }
 }

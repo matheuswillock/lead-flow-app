@@ -10,6 +10,7 @@ import type {
   SaveStudioWebhookConfigPayload,
   SaveStudioWebhookConfigResponse,
 } from "./IIntegrationsService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class IntegrationsService implements IIntegrationsService {
   resolveAppUrl(): string {
@@ -68,7 +69,7 @@ class IntegrationsService implements IIntegrationsService {
   }
 
   async getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<IntegrationsBootstrapResponse> {
-    const response = await fetch(`/api/v1/integrations/studio-webhook?teamId=${encodeURIComponent(teamId)}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/studio-webhook?teamId=${encodeURIComponent(teamId)}`, {
       method: "GET",
       headers: {
         "x-supabase-user-id": supabaseId,
@@ -85,7 +86,7 @@ class IntegrationsService implements IIntegrationsService {
   }
 
   async getStudioWebhookLogs(supabaseId: string, teamId: string): Promise<GetStudioWebhookLogsResponse> {
-    const response = await fetch(`/api/v1/integrations/studio-webhook/logs?teamId=${encodeURIComponent(teamId)}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/studio-webhook/logs?teamId=${encodeURIComponent(teamId)}`, {
       method: "GET",
       headers: {
         "x-supabase-user-id": supabaseId,
@@ -105,7 +106,7 @@ class IntegrationsService implements IIntegrationsService {
     supabaseId: string,
     payload: SaveStudioWebhookConfigPayload
   ): Promise<SaveStudioWebhookConfigResponse> {
-    const response = await fetch("/api/v1/integrations/studio-webhook", {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/studio-webhook`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",

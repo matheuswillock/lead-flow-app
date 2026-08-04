@@ -4,6 +4,7 @@ import type {
   WhatsAppAutoResponseMatchMode,
   WhatsAppAutoResponseRule,
 } from '../context/WhatsAppAutoResponsesTypes'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
@@ -22,7 +23,7 @@ class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
 
   async fetchRules(teamId: string, supabaseId: string): Promise<WhatsAppAutoResponseRule[]> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules`,
       {
         method: 'GET',
         headers: this.buildHeaders(supabaseId, teamId),
@@ -50,7 +51,7 @@ class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
     }>
   ): Promise<WhatsAppAutoResponseRule> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules/${encodeURIComponent(ruleId)}`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules/${encodeURIComponent(ruleId)}`,
       {
         method: 'PATCH',
         headers: this.buildHeaders(supabaseId, teamId),
@@ -71,7 +72,7 @@ class WhatsAppAutoResponsesService implements IWhatsAppAutoResponsesService {
     isActive: boolean
   ): Promise<WhatsAppAutoResponseRule> {
     const response = await fetch(
-      `/api/v1/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules/${encodeURIComponent(ruleId)}/toggle`,
+      `${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/whatsapp/auto-response-rules/${encodeURIComponent(ruleId)}/toggle`,
       {
         method: 'POST',
         headers: this.buildHeaders(supabaseId, teamId),

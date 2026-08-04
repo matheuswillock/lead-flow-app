@@ -21,6 +21,7 @@ import { useTeamContext } from '@/app/context/TeamContext';
 import type { LeadActivityResponseDTO } from '@/app/api/v1/leads/DTO/leadResponseDTO';
 import { resolveStudioActivityAuthor } from '@/lib/lead-activities/resolveActivityAuthor';
 import { isStudioAuthoredPayload } from '@/lib/studio-feed-identity';
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ACTIVITY_TYPES = [
   { value: 'note',     label: 'Comentário', Icon: MessageSquare },
@@ -69,7 +70,7 @@ export function CarteiraActivityFeed({ leadId, open = true }: CarteiraActivityFe
     if (!open || !leadId) return;
     let cancelled = false;
     setActivitiesLoading(true);
-    fetch(`/api/v1/leads/${leadId}/details`, {
+    fetch(`${API_CLIENT_BASE}/leads/${leadId}/details`, {
       headers: {
         'x-supabase-user-id': supabaseId,
         'x-team-id': activeTeamId ?? '',
@@ -95,7 +96,7 @@ export function CarteiraActivityFeed({ leadId, open = true }: CarteiraActivityFe
     if (!trimmed || activitySubmitting || !leadId) return;
     setActivitySubmitting(true);
     try {
-      const res = await fetch(`/api/v1/leads/${leadId}/activities`, {
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/activities`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
