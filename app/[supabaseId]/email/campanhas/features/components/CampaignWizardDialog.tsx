@@ -177,6 +177,7 @@ export function CampaignWizardDialog() {
     wizardScheduleIntervalDays,
     wizardSubCampaignSchedules,
     wizardSubCampaignListIds,
+    wizardSubCampaignNames,
     wizardPreviewPlan,
     wizardPreviewLoading,
     wizardLinkedForm,
@@ -199,6 +200,7 @@ export function CampaignWizardDialog() {
     setWizardScheduleIntervalDays,
     setWizardSubCampaignSchedule,
     setWizardSubCampaignListId,
+    setWizardSubCampaignName,
     handleSaveCampaign,
     refreshWizardPreviewPlan,
     handleMaterializeRadarSegment,
@@ -224,6 +226,14 @@ export function CampaignWizardDialog() {
 
   const previewSubCount = wizardPreviewPlan?.subCampaigns.length ?? 0
   const needsSplit = Boolean(wizardPreviewPlan?.needsSplit)
+  const summarySubCampaigns = useMemo(
+    () =>
+      wizardPreviewPlan?.subCampaigns.map((sub) => ({
+        ...sub,
+        name: (wizardSubCampaignNames[sub.index] ?? sub.name).trim() || sub.name,
+      })),
+    [wizardPreviewPlan?.subCampaigns, wizardSubCampaignNames]
+  )
 
   const geralParse = campaignWizardGeralSchema.safeParse({
     name: wizardName,
@@ -691,31 +701,52 @@ export function CampaignWizardDialog() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {wizardPreviewPlan.subCampaigns.map((sub) => (
+                          {wizardPreviewPlan.subCampaigns.map((sub) => {
+                            const resolvedName =
+                              wizardSubCampaignNames[sub.index] ?? sub.name
+                            const selectedListId =
+                              wizardSubCampaignListIds[sub.index] ??
+                              sub.contactListId ??
+                              ""
+                            const selectedListName =
+                              contactLists.find((list) => list.id === selectedListId)?.name ??
+                              sub.listName ??
+                              ""
+
+                            return (
                             <TableRow key={sub.index}>
-                              <TableCell>{sub.index}</TableCell>
-                              <TableCell>{sub.name}</TableCell>
-                              <TableCell>
+                              <TableCell className="w-10 tabular-nums text-muted-foreground">
+                                {sub.index}
+                              </TableCell>
+                              <TableCell className="min-w-48 max-w-72">
+                                <Input
+                                  value={resolvedName}
+                                  onChange={(event) =>
+                                    setWizardSubCampaignName(sub.index, event.target.value)
+                                  }
+                                  disabled={formDisabled}
+                                  aria-label={`Nome da sub-campanha ${sub.index}`}
+                                  title={resolvedName}
+                                  className="h-8"
+                                />
+                              </TableCell>
+                              <TableCell className="tabular-nums">
                                 {sub.totalRecipients.toLocaleString("pt-BR")}
                               </TableCell>
                               {wizardListStrategy === "per_list" ? (
-                                <TableCell>
+                                <TableCell className="max-w-52">
                                   <Select
-                                    value={
-                                      wizardSubCampaignListIds[sub.index] ??
-                                      sub.contactListId ??
-                                      ""
-                                    }
+                                    value={selectedListId}
                                     onValueChange={(v) => setWizardSubCampaignListId(sub.index, v)}
                                     disabled={formDisabled}
                                   >
-                                    <SelectTrigger className="w-44">
+                                    <SelectTrigger className="w-44" title={selectedListName || undefined}>
                                       <SelectValue placeholder="Mesma lista..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {contactLists.map((list) => (
-                                        <SelectItem key={list.id} value={list.id}>
-                                          {list.name}
+                                        <SelectItem key={list.id} value={list.id} title={list.name}>
+                                          <span className="block max-w-56 truncate">{list.name}</span>
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -749,7 +780,8 @@ export function CampaignWizardDialog() {
                                 )}
                               </TableCell>
                             </TableRow>
-                          ))}
+                            )
+                          })}
                         </TableBody>
                       </Table>
                     ) : (
@@ -778,7 +810,7 @@ export function CampaignWizardDialog() {
                     linkedForm={wizardLinkedForm}
                     totalRecipients={wizardPreviewPlan?.totalRecipients ?? recipientCount}
                     listStrategy={wizardListStrategy}
-                    subCampaigns={wizardPreviewPlan?.subCampaigns}
+                    subCampaigns={summarySubCampaigns}
                     tz={tz}
                   />
                 ) : null}
