@@ -71,7 +71,7 @@ function CampaignActionsMenu({
   openView: (campaign: Campaign) => void
   openEditWizard: (campaign: Campaign) => void
   openDuplicateWizard: (campaign: Campaign) => void
-  handleSend: (id: string) => Promise<void>
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
   handleArchive: (id: string) => Promise<void>
@@ -91,18 +91,21 @@ function CampaignActionsMenu({
     (campaign.status === "draft" ||
       campaign.status === "scheduled" ||
       campaign.status === "sent" ||
-      campaign.status === "failed")
+      campaign.status === "failed" ||
+      campaign.status === "partially_sent")
   const canSend = canSendCampaign && canSendByStatus && !sendBlockReason
-  const sendActionLabel = canRetryFailedSubs
+  const isLeafFailedRetry = !isParentCampaign && isFailedRetryStatus
+  const sendActionLabel = canRetryFailedSubs || isLeafFailedRetry
     ? "Redisparar falhas"
-    : isFailedRetryStatus && !isParentCampaign
-      ? "Redisparar"
-      : "Disparar"
+    : "Disparar"
+  const failedRetryCount =
+    campaign.failedRetryRecipientCount ??
+    Math.max(0, campaign.totalRecipients - campaign.totalSent)
   const sendDisabledReason =
     sendBlockReason ??
     (isParentCampaign
       ? canRetryFailedSubs
-        ? 'Abra a campanha e use "Reenviar" nas partes com falha'
+        ? 'Abra a campanha e use "Reenviar apenas falhas" nas partes com falha'
         : "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
@@ -115,7 +118,10 @@ function CampaignActionsMenu({
   async function handleSendConfirm() {
     setSending(true)
     try {
-      await handleSend(campaign.id)
+      await handleSend(
+        campaign.id,
+        isLeafFailedRetry ? { retryFailedOnly: true } : undefined
+      )
     } finally {
       setSending(false)
       setSendConfirmOpen(false)
@@ -234,16 +240,31 @@ function CampaignActionsMenu({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isFailedRetryStatus ? "Confirmar redisparo?" : "Confirmar disparo?"}
+              {isLeafFailedRetry
+                ? "Reenviar apenas as falhas?"
+                : "Confirmar disparo?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              A campanha <strong>"{campaign.name}"</strong> será enviada para{" "}
-              <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-              destinatário(s) ativo(s).
-              {campaign.status === "sent" || campaign.status === "failed"
-                ? " Campanhas já enviadas ou com falha geram um novo dispatch sem alterar o histórico anterior."
-                : null}{" "}
-              Os créditos correspondentes serão deduzidos.
+              {isLeafFailedRetry ? (
+                <>
+                  A campanha <strong>&quot;{campaign.name}&quot;</strong> será reenviada
+                  apenas para{" "}
+                  <strong>{failedRetryCount.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s) que falharam. Quem já recebeu{" "}
+                  <strong>não</strong> será reenviado. Os créditos correspondentes
+                  serão deduzidos só desse reenvio.
+                </>
+              ) : (
+                <>
+                  A campanha <strong>&quot;{campaign.name}&quot;</strong> será enviada para{" "}
+                  <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s) ativo(s).
+                  {campaign.status === "sent"
+                    ? " Campanhas já enviadas geram um novo dispatch sem alterar o histórico anterior."
+                    : null}{" "}
+                  Os créditos correspondentes serão deduzidos.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -253,14 +274,14 @@ function CampaignActionsMenu({
                 event.preventDefault()
                 void handleSendConfirm()
               }}
-              disabled={sending}
+              disabled={sending || (isLeafFailedRetry && failedRetryCount <= 0)}
             >
               {sending
-                ? isFailedRetryStatus
-                  ? "Redisparando..."
+                ? isLeafFailedRetry
+                  ? "Reenviando falhas..."
                   : "Disparando..."
-                : isFailedRetryStatus
-                  ? "Sim, redisparar"
+                : isLeafFailedRetry
+                  ? "Sim, reenviar apenas falhas"
                   : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>

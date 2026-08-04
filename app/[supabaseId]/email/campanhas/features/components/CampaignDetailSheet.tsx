@@ -74,19 +74,30 @@ function SubCampaignDispatchButton({
 }: {
   subCampaign: SubCampaignSummary
   sendingId: string | null
-  handleSend: (id: string) => Promise<void>
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const isSendingThis = sendingId === subCampaign.id
-  const isFailed = subCampaign.status === "failed"
-  const actionLabel = isFailed ? "Reenviar" : "Disparar"
-  const pendingLabel = isFailed ? "Reenviando..." : "Disparando..."
+  const isFailedRetry =
+    subCampaign.status === "failed" || subCampaign.status === "partially_sent"
+  const failedRetryCount =
+    subCampaign.failedRetryRecipientCount ??
+    Math.max(0, subCampaign.totalRecipients - subCampaign.totalSent)
+  const actionLabel = isFailedRetry
+    ? "Reenviar apenas falhas"
+    : "Disparar"
+  const pendingLabel = isFailedRetry
+    ? "Reenviando falhas..."
+    : "Disparando..."
 
   async function handleSendConfirm() {
     setSending(true)
     try {
-      await handleSend(subCampaign.id)
+      await handleSend(
+        subCampaign.id,
+        isFailedRetry ? { retryFailedOnly: true } : undefined
+      )
     } finally {
       setSending(false)
       setSendConfirmOpen(false)
@@ -99,7 +110,11 @@ function SubCampaignDispatchButton({
         type="button"
         variant="outline"
         size="sm"
-        disabled={isSendingThis || sending}
+        disabled={
+          isSendingThis ||
+          sending ||
+          (isFailedRetry && failedRetryCount <= 0)
+        }
         onClick={() => setSendConfirmOpen(true)}
       >
         {isSendingThis || sending ? (
@@ -114,12 +129,27 @@ function SubCampaignDispatchButton({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isFailed ? "Reenviar sub-campanha?" : "Disparar sub-campanha novamente?"}
+              {isFailedRetry
+                ? "Reenviar apenas as falhas?"
+                : "Disparar sub-campanha novamente?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              A sub-campanha <strong>"{subCampaign.name}"</strong> terá um novo disparo para{" "}
-              <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-              destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+              {isFailedRetry ? (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> será reenviada
+                  apenas para{" "}
+                  <strong>{failedRetryCount.toLocaleString("pt-BR")}</strong> destinatário(s) que
+                  falharam. Quem já recebeu <strong>não</strong> será reenviado. Os créditos
+                  correspondentes serão deduzidos só desse reenvio.
+                </>
+              ) : (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> terá um novo
+                  disparo para{" "}
+                  <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -129,9 +159,13 @@ function SubCampaignDispatchButton({
                 event.preventDefault()
                 void handleSendConfirm()
               }}
-              disabled={sending}
+              disabled={sending || (isFailedRetry && failedRetryCount <= 0)}
             >
-              {sending ? pendingLabel : isFailed ? "Sim, reenviar" : "Sim, disparar"}
+              {sending
+                ? pendingLabel
+                : isFailedRetry
+                  ? "Sim, reenviar apenas falhas"
+                  : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -154,20 +188,30 @@ function SubCampaignActionsMenu({
   sendBlockReason?: string
   sendingId: string | null
   openEditById: (id: string) => Promise<void>
-  handleSend: (id: string) => Promise<void>
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
   const canRetryByStatus =
-    subCampaign.status === "failed" || subCampaign.status === "sent"
-  const isFailed = subCampaign.status === "failed"
-  const actionLabel = isFailed ? "Reenviar" : "Disparar"
-  const pendingLabel = isFailed ? "Reenviando..." : "Disparando..."
+    subCampaign.status === "failed" ||
+    subCampaign.status === "partially_sent" ||
+    subCampaign.status === "sent"
+  const isFailedRetry =
+    subCampaign.status === "failed" || subCampaign.status === "partially_sent"
+  const actionLabel = isFailedRetry
+    ? "Reenviar apenas falhas"
+    : "Disparar"
+  const pendingLabel = isFailedRetry
+    ? "Reenviando falhas..."
+    : "Disparando..."
   const isSendingThis = sendingId === subCampaign.id
   const canRetry =
     canRetryByStatus && canSendCampaign && !sendBlockReason && !isSendingThis
+  const failedRetryCount =
+    subCampaign.failedRetryRecipientCount ??
+    Math.max(0, subCampaign.totalRecipients - subCampaign.totalSent)
   const retryDisabledReason =
     sendBlockReason ??
     (!canRetryByStatus
@@ -179,7 +223,10 @@ function SubCampaignActionsMenu({
   async function handleSendConfirm() {
     setSending(true)
     try {
-      await handleSend(subCampaign.id)
+      await handleSend(
+        subCampaign.id,
+        isFailedRetry ? { retryFailedOnly: true } : undefined
+      )
     } finally {
       setSending(false)
       setSendConfirmOpen(false)
@@ -241,7 +288,7 @@ function SubCampaignActionsMenu({
           ) : (
             <DropdownMenuItem
               onClick={() => setSendConfirmOpen(true)}
-              disabled={!canRetry}
+              disabled={!canRetry || (isFailedRetry && failedRetryCount <= 0)}
             >
               {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
               {isSendingThis ? pendingLabel : actionLabel}
@@ -254,12 +301,27 @@ function SubCampaignActionsMenu({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isFailed ? "Reenviar sub-campanha?" : "Disparar sub-campanha novamente?"}
+              {isFailedRetry
+                ? "Reenviar apenas as falhas?"
+                : "Disparar sub-campanha novamente?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              A sub-campanha <strong>"{subCampaign.name}"</strong> terá um novo disparo para{" "}
-              <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-              destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+              {isFailedRetry ? (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> será reenviada
+                  apenas para{" "}
+                  <strong>{failedRetryCount.toLocaleString("pt-BR")}</strong> destinatário(s) que
+                  falharam. Quem já recebeu <strong>não</strong> será reenviado. Os créditos
+                  correspondentes serão deduzidos só desse reenvio.
+                </>
+              ) : (
+                <>
+                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> terá um novo
+                  disparo para{" "}
+                  <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -269,9 +331,13 @@ function SubCampaignActionsMenu({
                 event.preventDefault()
                 void handleSendConfirm()
               }}
-              disabled={sending}
+              disabled={sending || (isFailedRetry && failedRetryCount <= 0)}
             >
-              {sending ? pendingLabel : isFailed ? "Sim, reenviar" : "Sim, disparar"}
+              {sending
+                ? pendingLabel
+                : isFailedRetry
+                  ? "Sim, reenviar apenas falhas"
+                  : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -317,7 +383,17 @@ export function CampaignDetailSheet({
     (detailCampaign.status === "draft" ||
       detailCampaign.status === "scheduled" ||
       detailCampaign.status === "sent" ||
-      detailCampaign.status === "failed")
+      detailCampaign.status === "failed" ||
+      detailCampaign.status === "partially_sent")
+  const isLeafFailedRetry =
+    detailCampaign?.status === "failed" || detailCampaign?.status === "partially_sent"
+  const leafFailedRetryCount =
+    detailCampaign?.failedRetryRecipientCount ??
+    (detailCampaign
+      ? Math.max(0, detailCampaign.totalRecipients - detailCampaign.totalSent)
+      : 0)
+  const leafSendActionLabel = isLeafFailedRetry ? "Redisparar falhas" : "Disparar"
+  const leafSendPendingLabel = isLeafFailedRetry ? "Reenviando falhas..." : "Disparando..."
   const leafSendBlockReason = detailCampaign
     ? getCampaignSendBlockReason({
         campaign: detailCampaign,
@@ -326,7 +402,12 @@ export function CampaignDetailSheet({
       })
     : undefined
   const canSendLeaf =
-    !readOnly && canSendByStatus && canSendCampaign && !leafSendBlockReason && sendingId !== detailCampaign?.id
+    !readOnly &&
+    canSendByStatus &&
+    canSendCampaign &&
+    !leafSendBlockReason &&
+    sendingId !== detailCampaign?.id &&
+    !(isLeafFailedRetry && leafFailedRetryCount <= 0)
 
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
@@ -340,7 +421,10 @@ export function CampaignDetailSheet({
     if (!detailCampaign) return
     setLeafSending(true)
     try {
-      await handleSend(detailCampaign.id)
+      await handleSend(
+        detailCampaign.id,
+        isLeafFailedRetry ? { retryFailedOnly: true } : undefined
+      )
     } finally {
       setLeafSending(false)
       setLeafSendConfirmOpen(false)
@@ -425,7 +509,8 @@ export function CampaignDetailSheet({
                             detailCampaign.subCampaigns.filter((sub) => sub.status === "failed")
                               .length
                           }{" "}
-                          parte(s) com falha — use "Reenviar"/"Disparar" nas ações de cada parte
+                          parte(s) com falha — use &quot;Reenviar apenas falhas&quot; nas ações de cada
+                          parte (somente quem falhou; quem já recebeu não é reenviado)
                         </span>
                       ) : null}
                     </div>
@@ -445,7 +530,9 @@ export function CampaignDetailSheet({
                           {detailCampaign.subCampaigns.map((sub) => {
                             const subSendBlockReason = getSendBlockReason(sub)
                             const canShowResend =
-                              sub.status === "failed" || sub.status === "sent"
+                              sub.status === "failed" ||
+                              sub.status === "partially_sent" ||
+                              sub.status === "sent"
                             const canResendNow =
                               canShowResend && canSendCampaign && !subSendBlockReason && !readOnly
 
@@ -499,7 +586,10 @@ export function CampaignDetailSheet({
                                               disabled
                                             >
                                               <Send data-icon="inline-start" />
-                                              {sub.status === "failed" ? "Reenviar" : "Disparar"}
+                                              {sub.status === "failed" ||
+                                              sub.status === "partially_sent"
+                                                ? "Reenviar apenas falhas"
+                                                : "Disparar"}
                                             </Button>
                                           </span>
                                         </TooltipTrigger>
@@ -585,7 +675,7 @@ export function CampaignDetailSheet({
                   canSendLeaf ? (
                     <Button onClick={() => setLeafSendConfirmOpen(true)}>
                       <Send data-icon="inline-start" />
-                      Disparar
+                      {leafSendActionLabel}
                     </Button>
                   ) : (
                     <Tooltip>
@@ -593,7 +683,7 @@ export function CampaignDetailSheet({
                         <span>
                           <Button disabled>
                             <Send data-icon="inline-start" />
-                            Disparar
+                            {leafSendActionLabel}
                           </Button>
                         </span>
                       </TooltipTrigger>
@@ -636,13 +726,32 @@ export function CampaignDetailSheet({
               <AlertDialog open={leafSendConfirmOpen} onOpenChange={setLeafSendConfirmOpen}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Disparar campanha?</AlertDialogTitle>
+                    <AlertDialogTitle>
+                      {isLeafFailedRetry
+                        ? "Reenviar apenas as falhas?"
+                        : "Disparar campanha?"}
+                    </AlertDialogTitle>
                     <AlertDialogDescription>
-                      A campanha <strong>"{detailCampaign.name}"</strong> terá um novo disparo para{" "}
-                      <strong>{detailCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-                      destinatário(s). Campanhas já enviadas ou com falha geram um novo dispatch
-                      (não alteram o histórico anterior). Os créditos correspondentes serão
-                      deduzidos.
+                      {isLeafFailedRetry ? (
+                        <>
+                          A campanha <strong>&quot;{detailCampaign.name}&quot;</strong> será
+                          reenviada apenas para{" "}
+                          <strong>{leafFailedRetryCount.toLocaleString("pt-BR")}</strong>{" "}
+                          destinatário(s) que falharam. Quem já recebeu <strong>não</strong> será
+                          reenviado. Os créditos correspondentes serão deduzidos só desse reenvio.
+                        </>
+                      ) : (
+                        <>
+                          A campanha <strong>&quot;{detailCampaign.name}&quot;</strong> terá um
+                          novo disparo para{" "}
+                          <strong>
+                            {detailCampaign.totalRecipients.toLocaleString("pt-BR")}
+                          </strong>{" "}
+                          destinatário(s). Campanhas já enviadas geram um novo dispatch (não
+                          alteram o histórico anterior). Os créditos correspondentes serão
+                          deduzidos.
+                        </>
+                      )}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -652,9 +761,13 @@ export function CampaignDetailSheet({
                         event.preventDefault()
                         void handleLeafSendConfirm()
                       }}
-                      disabled={leafSending}
+                      disabled={leafSending || (isLeafFailedRetry && leafFailedRetryCount <= 0)}
                     >
-                      {leafSending ? "Disparando..." : "Sim, disparar"}
+                      {leafSending
+                        ? leafSendPendingLabel
+                        : isLeafFailedRetry
+                          ? "Sim, reenviar apenas falhas"
+                          : "Sim, disparar"}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

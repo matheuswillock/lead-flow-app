@@ -27,6 +27,7 @@ export type SubCampaignSummary = {
   subCampaignIndex: number | null
   contactListId?: string | null
   errorMessage?: string | null
+  failedRetryRecipientCount?: number
 }
 
 export type Campaign = {
@@ -55,6 +56,7 @@ export type Campaign = {
   contactList: { id: string; name: string; totalContacts?: number; activeContacts?: number } | null
   radarSegmentSlug?: string | null
   errorMessage?: string | null
+  failedRetryRecipientCount?: number
   subCampaignCount?: number
   isParentCampaign?: boolean
   subCampaigns?: SubCampaignSummary[]
