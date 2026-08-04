@@ -535,6 +535,13 @@ export function useRadarHookFn() {
               )
         setSegmentProfilesItems(result.items)
         setSegmentProfilesTotal(result.total)
+        setCampaignDeepLinkSegment((prev) => {
+          if (!prev || target.kind !== "system" || target.slugOrId !== prev.slug) {
+            return prev
+          }
+          if (prev.count === result.total) return prev
+          return { ...prev, count: result.total }
+        })
       } catch (segmentProfilesError) {
         console.error("[useRadarHookFn][loadSegmentProfiles]", segmentProfilesError)
         toast.error("Não foi possível carregar os perfis do segmento.")
@@ -574,8 +581,19 @@ export function useRadarHookFn() {
 
     const campaignId = parseCampaignRadarSegmentSlug(segmentParam)
     if (!campaignId) return
-    if (deepLinkSegmentRef.current === segmentParam) return
-    deepLinkSegmentRef.current = segmentParam
+
+    // Key by team so a team switch with the same URL reloads the correct campaign card.
+    const deepLinkKey = `${activeTeamId}:${segmentParam}`
+    if (deepLinkSegmentRef.current === deepLinkKey) return
+
+    const previousKey = deepLinkSegmentRef.current
+    deepLinkSegmentRef.current = deepLinkKey
+    if (previousKey !== null && previousKey !== deepLinkKey) {
+      setCampaignDeepLinkSegment(null)
+      setSegmentProfilesItems([])
+      setSegmentProfilesTotal(0)
+      setSegmentProfilesPage(1)
+    }
 
     let cancelled = false
     void (async () => {
