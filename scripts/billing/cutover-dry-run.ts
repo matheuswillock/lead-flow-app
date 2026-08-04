@@ -112,23 +112,47 @@ async function main() {
   console.info(JSON.stringify(report, null, 2));
 
   if (apply) {
+    let created = 0;
+    let updated = 0;
     for (const m of masters) {
-      if (m.subscription) continue;
-      await prisma.profileSubscription.create({
-        data: {
-          profileId: m.id,
-          asaasSubscriptionId: m.asaasSubscriptionId || m.subscriptionId,
-          subscriptionStatus: m.subscriptionStatus,
-          subscriptionPlan: m.subscriptionPlan,
-          subscriptionCycle: m.subscriptionCycle,
-          subscriptionStartDate: m.subscriptionStartDate,
-          subscriptionEndDate: m.subscriptionEndDate,
-          subscriptionNextDueDate: m.subscriptionNextDueDate,
-          hasPermanentSubscription: m.hasPermanentSubscription,
-        },
-      });
+      const asaasId = m.asaasSubscriptionId || m.subscriptionId;
+      const payload = {
+        asaasSubscriptionId: asaasId,
+        subscriptionStatus: m.subscriptionStatus,
+        subscriptionPlan: m.subscriptionPlan,
+        subscriptionCycle: m.subscriptionCycle,
+        subscriptionStartDate: m.subscriptionStartDate,
+        subscriptionEndDate: m.subscriptionEndDate,
+        subscriptionNextDueDate: m.subscriptionNextDueDate,
+        hasPermanentSubscription: m.hasPermanentSubscription,
+      };
+
+      if (!m.subscription) {
+        await prisma.profileSubscription.create({
+          data: {
+            profileId: m.id,
+            ...payload,
+          },
+        });
+        created += 1;
+        continue;
+      }
+
+      const ps = m.subscription;
+      const diverges =
+        (asaasId && ps.asaasSubscriptionId !== asaasId) ||
+        (m.subscriptionStatus && ps.subscriptionStatus !== m.subscriptionStatus) ||
+        m.hasPermanentSubscription !== ps.hasPermanentSubscription;
+
+      if (diverges) {
+        await prisma.profileSubscription.update({
+          where: { id: ps.id },
+          data: payload,
+        });
+        updated += 1;
+      }
     }
-    console.info("[cutover] apply concluído — ProfileSubscription criados onde faltavam");
+    console.info("[cutover] apply concluído", { created, updated });
   }
 }
 

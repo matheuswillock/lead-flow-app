@@ -814,13 +814,19 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId },
         select: {
           id: true,
+          asaasCustomerId: true,
           subscriptionId: true,
           asaasSubscriptionId: true,
           subscription: { select: { asaasSubscriptionId: true } },
         },
       });
 
-      if (!profile || !(profile.subscription?.asaasSubscriptionId || profile.asaasSubscriptionId || profile.subscriptionId)) {
+      const asaasSubscriptionId =
+        profile?.subscription?.asaasSubscriptionId ||
+        profile?.asaasSubscriptionId ||
+        profile?.subscriptionId;
+
+      if (!profile || !asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -829,8 +835,45 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Asaas: pay with credit card / recreate — usar POST /v3/payments/{id}/payWithCreditCard quando disponível.
-      // Fail-closed até integração completa (Estágio 2 / C2b).
+      // Ownership: fatura deve pertencer ao customer/subscription do caller.
+      let payment: {
+        id?: string;
+        customer?: string;
+        subscription?: string;
+      };
+      try {
+        payment = await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+          method: 'GET',
+        });
+      } catch (lookupError) {
+        console.error('[SubscriptionManagementUseCase][retryPayment] fatura não encontrada', {
+          supabaseId,
+          invoiceId,
+          error: lookupError,
+        });
+        return new Output(false, [], ['Fatura não encontrada no Asaas'], null);
+      }
+
+      const ownsCustomer =
+        !!profile.asaasCustomerId && payment.customer === profile.asaasCustomerId;
+      const ownsSubscription =
+        !!payment.subscription && payment.subscription === asaasSubscriptionId;
+
+      if (!ownsCustomer && !ownsSubscription) {
+        console.warn('[SubscriptionManagementUseCase][retryPayment] ownership negado', {
+          supabaseId,
+          invoiceId,
+          paymentCustomer: payment.customer,
+          paymentSubscription: payment.subscription,
+        });
+        return new Output(
+          false,
+          [],
+          ['Fatura não pertence à assinatura deste usuário'],
+          null
+        );
+      }
+
       try {
         await asaasFetch(`${asaasApi.payments}/${invoiceId}/payWithCreditCard`, {
           method: 'POST',

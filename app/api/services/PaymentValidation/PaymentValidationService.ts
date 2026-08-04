@@ -164,12 +164,13 @@ export class PaymentValidationService implements IPaymentValidationService {
             profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer);
           }
           if (profile) {
+            // Avaliar limiar de past_due prolongado ANTES do update (updatedAt seria resetado).
+            await this.maybeInactivateAsaasAfterProlongedPastDue(profile.id, payment.subscription);
+
             await this.paymentRepository.updateSubscriptionData(profile.id, {
               subscriptionStatus: 'past_due',
             });
             console.info(`[PaymentValidationService] Profile marcado como past_due por OVERDUE: ${profile.id}`);
-
-            await this.maybeInactivateAsaasAfterProlongedPastDue(profile.id, payment.subscription);
 
             return {
               success: true,
