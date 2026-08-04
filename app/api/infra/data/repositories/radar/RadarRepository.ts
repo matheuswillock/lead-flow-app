@@ -650,6 +650,91 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Resolve (ou cria) um perfil chaveado por documento (D14) — titulares e
+   * dependentes de `LeadFinalized` não têm telefone/e-mail. Lock advisory em
+   * `(teamId, identityType, normalizedDocument)` evita corrida; a identidade
+   * `contract_holder`/`contract_dependent` é a chave natural.
+   */
+  async resolveProfileForDocument(input: {
+    teamId: string
+    identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
+    normalizedDocument: string
+    documentValue: string
+    displayName: string
+    normalizedName: string
+    documentSource: string
+    lastSeenAt?: Date
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const lockKey = `${input.teamId}:${input.identityType}:${input.normalizedDocument}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existingByIdentity = await tx.radarIdentity.findUnique({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: input.teamId,
+            type: input.identityType,
+            normalizedValue: input.normalizedDocument,
+          },
+        },
+        select: { profileId: true },
+      })
+
+      if (existingByIdentity) {
+        const profile = await tx.radarProfile.update({
+          where: { id: existingByIdentity.profileId },
+          data: {
+            lastSeenAt: input.lastSeenAt ?? new Date(),
+            displayName: input.displayName,
+            normalizedName: input.normalizedName,
+            primaryDocument: input.documentValue,
+            normalizedPrimaryDocument: input.normalizedDocument,
+          },
+        })
+        return { profile, wasExisting: true }
+      }
+
+      const profile = await tx.radarProfile.create({
+        data: {
+          teamId: input.teamId,
+          displayName: input.displayName,
+          normalizedName: input.normalizedName,
+          normalizedPhone: null,
+          displayPhone: null,
+          primaryDocument: input.documentValue,
+          normalizedPrimaryDocument: input.normalizedDocument,
+          lastSeenAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      await tx.radarIdentity.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          type: input.identityType,
+          value: input.documentValue,
+          normalizedValue: input.normalizedDocument,
+          source: input.documentSource,
+          isPrimary: true,
+        },
+      })
+
+      await tx.radarEvent.create({
+        data: {
+          profileId: profile.id,
+          teamId: input.teamId,
+          eventType: "profile.first_contact",
+          sourceType: "profile",
+          sourceId: profile.id,
+          occurredAt: input.lastSeenAt ?? new Date(),
+        },
+      })
+
+      return { profile, wasExisting: false }
+    })
+  }
+
   async upsertIdentity(input: UpsertIdentityInput) {
     return prisma.radarIdentity.upsert({
       where: {
@@ -993,6 +1078,46 @@ export class RadarRepository {
             contractDueDate: true,
             status: true,
           },
+        },
+      },
+    })
+  }
+
+  async findFinalizedForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
+    return prisma.leadFinalized.findMany({
+      where: {
+        lead: { teamId },
+        ...(filters.finalizedId ? { id: filters.finalizedId } : {}),
+        ...(filters.leadIds && filters.leadIds.length > 0
+          ? { leadId: { in: filters.leadIds } }
+          : filters.leadId
+            ? { leadId: filters.leadId }
+            : {}),
+        ...(filters.updatedSince ? { updatedAt: { gte: filters.updatedSince } } : {}),
+      },
+      select: {
+        id: true,
+        leadId: true,
+        finalizedDateAt: true,
+        updatedAt: true,
+        createdAt: true,
+        holder: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+          },
+        },
+        dependents: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+            parentesco: true,
+          },
+          orderBy: { createdAt: "asc" },
         },
       },
     })
@@ -1488,6 +1613,142 @@ export class RadarRepository {
         userAgent: input.userAgent,
         metadata: input.metadata as Prisma.InputJsonValue | undefined,
       },
+    })
+  }
+
+  async findSourceLinkBySource(input: {
+    teamId: string
+    sourceType: RadarSourceType
+    sourceId: string
+  }) {
+    return prisma.radarSourceLink.findUnique({
+      where: {
+        teamId_sourceType_sourceId: {
+          teamId: input.teamId,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+        },
+      },
+      select: { id: true, profileId: true },
+    })
+  }
+
+  /**
+   * D14: ao corrigir o documento de um titular/dependente, remove a identidade
+   * obsoleta do perfil anterior (evita fantasma com documento antigo no Radar).
+   */
+  async removeObsoleteContractIdentity(input: {
+    teamId: string
+    profileId: string
+    identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
+    keepNormalizedDocument: string
+  }) {
+    const identities = await prisma.radarIdentity.findMany({
+      where: {
+        teamId: input.teamId,
+        profileId: input.profileId,
+        type: input.identityType,
+      },
+      select: { id: true, normalizedValue: true },
+    })
+
+    const obsolete = identities.filter(
+      (identity) => identity.normalizedValue !== input.keepNormalizedDocument
+    )
+    if (obsolete.length === 0) return { removed: 0 }
+
+    await prisma.radarIdentity.deleteMany({
+      where: { id: { in: obsolete.map((identity) => identity.id) } },
+    })
+
+    const profile = await prisma.radarProfile.findUnique({
+      where: { id: input.profileId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (
+      profile?.normalizedPrimaryDocument &&
+      obsolete.some((identity) => identity.normalizedValue === profile.normalizedPrimaryDocument)
+    ) {
+      await prisma.radarProfile.update({
+        where: { id: input.profileId },
+        data: { primaryDocument: null, normalizedPrimaryDocument: null },
+      })
+    }
+
+    return { removed: obsolete.length }
+  }
+
+  async getProfileNormalizedDocument(
+    teamId: string,
+    profileId: string
+  ): Promise<{ found: false } | { found: true; doc: string | null }> {
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: profileId, teamId },
+      select: { normalizedPrimaryDocument: true },
+    })
+    if (!profile) return { found: false }
+    return { found: true, doc: profile.normalizedPrimaryDocument }
+  }
+
+  /**
+   * D14: histórico de contratos por documento — titular OU dependente.
+   * Perfis `contract_dependent` têm o doc em LeadFinalizedDependent, não no holder.
+   */
+  async findFinalizedContractsByNormalizedDocument(teamId: string, doc: string) {
+    return prisma.leadFinalized.findMany({
+      where: {
+        lead: { teamId },
+        OR: [
+          { holder: { document: doc } },
+          { dependents: { some: { document: doc } } },
+        ],
+      },
+      select: {
+        id: true,
+        leadId: true,
+        finalizedDateAt: true,
+        amount: true,
+        contractType: true,
+        operadora: true,
+        productName: true,
+        createdAt: true,
+        holder: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+          },
+        },
+        dependents: {
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            birthDate: true,
+            parentesco: true,
+          },
+          orderBy: { name: "asc" },
+        },
+        lead: {
+          select: {
+            id: true,
+            portfolio: {
+              select: {
+                id: true,
+                portfolioStatus: true,
+                renewalStatus: true,
+                renewalAmount: true,
+                source: true,
+                lastContactAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { finalizedDateAt: "desc" },
     })
   }
 }

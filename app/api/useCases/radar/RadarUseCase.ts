@@ -495,6 +495,66 @@ export class RadarUseCase {
 
     return new Output(true, [], [], { fields: [...catalogFields, ...baseFields] })
   }
+
+  /**
+   * D14: contrato atual + histórico associados ao perfil via documento
+   * (`contract_holder` / `contract_dependent`). Busca por titular OU dependente.
+   */
+  async getProfileContracts(teamId: string, _ctx: TeamContext, profileId: string): Promise<Output> {
+    try {
+      const profileResult = await radarRepository.getProfileNormalizedDocument(teamId, profileId)
+
+      if (!profileResult.found) {
+        return new Output(false, [], ["Perfil não encontrado"], null)
+      }
+
+      const doc = profileResult.doc
+      if (!doc) {
+        return new Output(true, [], [], { current: null, history: [] })
+      }
+
+      const finalizedRows = await radarRepository.findFinalizedContractsByNormalizedDocument(
+        teamId,
+        doc
+      )
+
+      const history = finalizedRows.map((row) => ({
+        id: row.id,
+        finalizedDateAt: row.finalizedDateAt,
+        amount: row.amount,
+        contractType: row.contractType,
+        operadora: row.operadora,
+        productName: row.productName,
+        createdAt: row.createdAt,
+        holder: row.holder
+          ? {
+              id: row.holder.id,
+              name: row.holder.name,
+              document: row.holder.document,
+              birthDate: row.holder.birthDate,
+            }
+          : null,
+        dependents: row.dependents.map((d) => ({
+          id: d.id,
+          name: d.name,
+          document: d.document,
+          birthDate: d.birthDate,
+          parentesco: d.parentesco,
+        })),
+      }))
+
+      const activePortfolio =
+        finalizedRows
+          .map((row) => row.lead.portfolio)
+          .find((portfolio) => portfolio && portfolio.portfolioStatus === "active") ?? null
+
+      return new Output(true, [], [], { current: activePortfolio, history })
+    } catch (error) {
+      console.error("[RadarUseCase][getProfileContracts]", error)
+      return new Output(false, [], ["Erro ao buscar contratos do perfil"], null)
+    }
+  }
+
 }
 
 export const customerDataPlatformUseCase = new RadarUseCase()
