@@ -72,3 +72,55 @@ export function computeEngagementScore(
 
   return { score, band }
 }
+
+export type EngagementContribution = {
+  eventType: string
+  occurredAt: Date
+  contribution: number
+}
+
+function eventContribution(
+  event: EngagementEventInput,
+  weights: WeightMap,
+  config: EngagementConfig,
+  now: Date
+): number {
+  const weight = weights[event.eventType] ?? 0
+  if (weight === 0) return 0
+
+  const ageMs = now.getTime() - event.occurredAt.getTime()
+  const ageDays = ageMs / (1000 * 60 * 60 * 24)
+
+  let multiplier = 0
+  if (ageDays <= config.windowRecentDays) multiplier = config.recentMultiplier
+  else if (ageDays <= config.windowMidDays) multiplier = 1.0
+  else if (ageDays <= config.windowOldDays) multiplier = config.oldMultiplier
+
+  return weight * multiplier
+}
+
+/**
+ * Top N eventos por |weight × multiplier| dentro da janela de engajamento.
+ */
+export function rankTopEngagementEvents(
+  events: EngagementEventInput[],
+  weights: WeightMap,
+  config: EngagementConfig,
+  limit = 3,
+  now: Date = new Date()
+): EngagementContribution[] {
+  const ranked: EngagementContribution[] = []
+
+  for (const event of events) {
+    const contribution = eventContribution(event, weights, config, now)
+    if (contribution === 0) continue
+    ranked.push({
+      eventType: event.eventType,
+      occurredAt: event.occurredAt,
+      contribution,
+    })
+  }
+
+  ranked.sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+  return ranked.slice(0, limit)
+}

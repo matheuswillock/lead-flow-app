@@ -17944,7 +17944,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/radar/profiles?page=1&pageSize=20",
+              "raw": "{{baseUrl}}/api/v1/radar/profiles?page=1&pageSize=20&sort=engagementScore&order=desc",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17972,9 +17972,56 @@
                   "key": "lastSeenTo",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "engagementScore"
+                },
+                {
+                  "key": "order",
+                  "value": "desc"
                 }
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Engajamento por lead",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/by-lead/:leadId/engagement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                "by-lead",
+                ":leadId",
+                "engagement"
+              ],
+              "variable": [
+                {
+                  "key": "leadId",
+                  "value": "{{leadId}}"
+                }
+              ]
+            },
+            "description": "D19-D: score/banda/topEvents do perfil Radar associado ao lead (identidade lead_id), ou { notFound: true }."
           },
           "response": []
         },

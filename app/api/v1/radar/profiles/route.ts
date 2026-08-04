@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
     const channel = searchParams.get("channel") as "email" | "whatsapp" | null
     const lastSeenFrom = searchParams.get("lastSeenFrom") ?? undefined
     const lastSeenTo = searchParams.get("lastSeenTo") ?? undefined
+    const sortParam = searchParams.get("sort")
+    const orderParam = searchParams.get("order")
+    const sort =
+      sortParam === "lastSeenAt" || sortParam === "engagementScore" ? sortParam : "engagementScore"
+    const order = orderParam === "asc" || orderParam === "desc" ? orderParam : "desc"
 
     const result = await customerDataPlatformUseCase.listProfiles({
       teamId: radarAccess.access.teamId,
@@ -31,6 +36,8 @@ export async function GET(request: NextRequest) {
       lastSeenTo,
       page,
       pageSize,
+      sort,
+      order,
     })
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 })

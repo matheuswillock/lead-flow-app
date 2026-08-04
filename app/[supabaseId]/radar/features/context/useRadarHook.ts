@@ -112,6 +112,8 @@ export function useRadarHookFn() {
           channel: channelFilter || undefined,
           lastSeenFrom: lastSeenFrom || undefined,
           lastSeenTo: lastSeenTo || undefined,
+          sort: "engagementScore",
+          order: "desc",
         }),
         radarFrontendService.listCustomSegments(supabaseId, activeTeamId),
       ])

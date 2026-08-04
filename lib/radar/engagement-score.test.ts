@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
   computeEngagementScore,
+  rankTopEngagementEvents,
   type WeightMap,
 } from "./engagement-score"
 
@@ -112,5 +113,41 @@ describe("computeEngagementScore", () => {
       NOW
     )
     expect(result).toEqual({ score: 0, band: "cold" })
+  })
+})
+
+describe("rankTopEngagementEvents", () => {
+  test("retorna top 3 por |weight × multiplier|", () => {
+    const top = rankTopEngagementEvents(
+      [
+        { eventType: "email.opened", occurredAt: daysAgo(1) },
+        { eventType: "form.completed", occurredAt: daysAgo(1) },
+        { eventType: "email.clicked", occurredAt: daysAgo(1) },
+        { eventType: "email.bounced", occurredAt: daysAgo(1) },
+      ],
+      WEIGHTS,
+      DEFAULT_ENGAGEMENT_CONFIG,
+      3,
+      NOW
+    )
+    expect(top).toHaveLength(3)
+    expect(top[0]?.eventType).toBe("email.bounced")
+    expect(Math.abs(top[0]?.contribution ?? 0)).toBeGreaterThanOrEqual(
+      Math.abs(top[1]?.contribution ?? 0)
+    )
+  })
+
+  test("ignora eventos fora da janela ou sem peso", () => {
+    const top = rankTopEngagementEvents(
+      [
+        { eventType: "form.completed", occurredAt: daysAgo(120) },
+        { eventType: "pixel.unknown", occurredAt: daysAgo(1) },
+      ],
+      WEIGHTS,
+      DEFAULT_ENGAGEMENT_CONFIG,
+      3,
+      NOW
+    )
+    expect(top).toEqual([])
   })
 })

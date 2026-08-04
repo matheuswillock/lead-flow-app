@@ -14,6 +14,8 @@ import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
   computeEngagementScore,
+  rankTopEngagementEvents,
+  type EngagementBand,
   type EngagementConfig,
   type WeightMap,
 } from "@/lib/radar/engagement-score"
@@ -93,6 +95,8 @@ const profileListSelect = {
   normalizedPrimaryEmail: true,
   primaryDocument: true,
   lastSeenAt: true,
+  engagementScore: true,
+  engagementBand: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -982,6 +986,64 @@ export class RadarRepository {
     return { score, band }
   }
 
+  /**
+   * D19-D: resolve perfil via identidade `lead_id` e devolve score/banda + top eventos.
+   */
+  async getLeadRadarEngagementWithCtx(scope: RadarTeamScope, leadId: string) {
+    const identity = await this.findProfileByIdentity(scope.teamId, "lead_id", leadId)
+    if (!identity) {
+      return { notFound: true as const }
+    }
+
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: identity.profileId, teamId: scope.teamId },
+      select: {
+        id: true,
+        engagementScore: true,
+        engagementBand: true,
+      },
+    })
+    if (!profile) {
+      return { notFound: true as const }
+    }
+
+    const { weights, config } = await this.loadEngagementWeightsAndConfig()
+    const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+    const events = await prisma.radarEvent.findMany({
+      where: {
+        profileId: profile.id,
+        teamId: scope.teamId,
+        occurredAt: { gte: since },
+      },
+      select: {
+        eventType: true,
+        occurredAt: true,
+      },
+    })
+
+    let score = profile.engagementScore
+    let band = profile.engagementBand as EngagementBand | null
+    if (score == null || band == null) {
+      const computed = computeEngagementScore(events, weights, config)
+      score = computed.score
+      band = computed.band
+    }
+
+    const topEvents = rankTopEngagementEvents(events, weights, config, 3).map((item) => ({
+      eventType: item.eventType,
+      occurredAt: item.occurredAt.toISOString(),
+      contribution: Math.round(item.contribution * 100) / 100,
+    }))
+
+    return {
+      notFound: false as const,
+      profileId: profile.id,
+      score,
+      band,
+      topEvents,
+    }
+  }
+
   private async loadEngagementWeightsAndConfig(): Promise<{
     weights: WeightMap
     config: EngagementConfig
@@ -1088,9 +1150,13 @@ export class RadarRepository {
       lastSeenTo?: Date
       skip: number
       take: number
+      sort?: "engagementScore" | "lastSeenAt"
+      order?: "asc" | "desc"
     }
   ) {
     const where = this.buildListProfilesWhere(scope, params)
+    const sortField = params.sort === "lastSeenAt" ? "lastSeenAt" : "engagementScore"
+    const sortOrder = params.order === "asc" ? "asc" : "desc"
 
     const [items, total] = await Promise.all([
       prisma.radarProfile.findMany({
@@ -1106,7 +1172,7 @@ export class RadarRepository {
             take: 5,
           },
         },
-        orderBy: { lastSeenAt: "desc" },
+        orderBy: { [sortField]: { sort: sortOrder, nulls: "last" } },
         skip: params.skip,
         take: params.take,
       }),

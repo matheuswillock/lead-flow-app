@@ -97,6 +97,7 @@ import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
+import { LeadRadarTemperatureCard } from "@/app/[supabaseId]/components/LeadRadarTemperatureCard";
 import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timeline/LeadActivityTimeline";
 import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDuplicateWarningDialog";
 import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
@@ -2952,6 +2953,15 @@ export default function LeadDialog({
                   supabaseId={supabaseId ?? ''}
                   teamId={activeTeamId}
                   enabled={!isLeadContentLoading}
+                />
+              )}
+
+              {currentLead && activeTeamId && hasAccess(FEATURE_SLUGS.RADAR) && (
+                <LeadRadarTemperatureCard
+                  leadId={currentLead.id}
+                  supabaseId={supabaseId ?? ""}
+                  teamId={activeTeamId}
+                  enabled={open && !isLeadContentLoading}
                 />
               )}
 

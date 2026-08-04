@@ -6,10 +6,25 @@ export type RadarProfileListItem = {
   displayPhone: string | null
   primaryEmail: string | null
   lastSeenAt: string | null
+  engagementScore?: number | null
+  engagementBand?: string | null
   primarySegment?: string | null
   primarySegmentName?: string | null
   consents: Array<{ channel: string; status: RadarConsentStatus; reason: string | null }>
   sourceLinks: Array<{ sourceType: string }>
+}
+
+/** D19-D: resposta de `GET .../profiles/by-lead/:leadId/engagement` (quando encontrado). */
+export type LeadRadarEngagement = {
+  notFound?: false
+  profileId: string
+  score: number
+  band: string
+  topEvents: Array<{
+    eventType: string
+    occurredAt: string
+    contribution: number
+  }>
 }
 
 export type RadarSegment = {
@@ -55,6 +70,11 @@ export type RadarLeadStatusCondition = {
   statuses: string[]
 }
 
+export type RadarEngagementBandCondition = {
+  kind: "engagement_band"
+  bands: Array<"hot" | "warm" | "lukewarm" | "cold">
+}
+
 export type RadarLeadFieldCondition = {
   kind: "lead_field"
   fieldKey:
@@ -97,6 +117,7 @@ export type RadarSegmentCondition =
   | RadarEventCondition
   | RadarLeadCustomFieldCondition
   | RadarLeadStatusCondition
+  | RadarEngagementBandCondition
   | RadarLeadFieldCondition
   | RadarPortfolioFieldCondition
 

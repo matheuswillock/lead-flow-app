@@ -115,6 +115,8 @@ export class RadarFrontendService implements IRadarService {
     if (params.channel) query.set("channel", params.channel)
     if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
     if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
+    query.set("sort", params.sort ?? "engagementScore")
+    query.set("order", params.order ?? "desc")
 
     const res = await fetch(`${this.baseUrl}/profiles?${query}`, {
       cache: "no-store",

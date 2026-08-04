@@ -35,6 +35,8 @@ export type ListProfilesParams = {
   segment?: string
   lastSeenFrom?: string
   lastSeenTo?: string
+  sort?: "engagementScore" | "lastSeenAt"
+  order?: "asc" | "desc"
 }
 
 export type ExportProfilesParams = {

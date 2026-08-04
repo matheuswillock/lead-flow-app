@@ -55,6 +55,8 @@ export type RadarListProfilesInput = {
   lastSeenTo?: string
   page: number
   pageSize: number
+  sort?: "engagementScore" | "lastSeenAt"
+  order?: "asc" | "desc"
 }
 
 export type RadarExportProfilesInput = Omit<RadarListProfilesInput, "page" | "pageSize">
@@ -134,6 +136,8 @@ export class RadarUseCase {
       lastSeenTo: input.lastSeenTo ? new Date(input.lastSeenTo) : undefined,
       skip,
       take: input.pageSize,
+      sort: input.sort,
+      order: input.order,
     })
 
     const primarySegments = await this.service.resolvePrimarySegmentsForProfiles(
