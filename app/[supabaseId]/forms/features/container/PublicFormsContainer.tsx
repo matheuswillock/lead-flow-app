@@ -69,6 +69,10 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  PUBLIC_FORM_TEMPLATE_IDS,
+  isTeamAllowedForPublicFormTemplate,
+} from "@/lib/public-forms/templates-access"
 import { usePublicForms } from "../context/PublicFormsContext"
 import type {
   PublicFormListItem,
@@ -158,7 +162,7 @@ export function PublicFormsContainer() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Link
-              href={`/${params.supabaseId}/forms/new?template=health_plan_simulator`}
+              href={`/${params.supabaseId}/forms/new?template=${PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR}`}
               className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
             >
               <span className="font-medium">Simulador de Redução</span>
@@ -166,6 +170,20 @@ export function PublicFormsContainer() {
                 Modelo com capa, perguntas, cálculo de economia e agendamento.
               </span>
             </Link>
+            {isTeamAllowedForPublicFormTemplate(
+              PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN,
+              forms.ids?.teamId,
+            ) ? (
+              <Link
+                href={`/${params.supabaseId}/forms/new?template=${PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN}`}
+                className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
+              >
+                <span className="font-medium">Formulário básico</span>
+                <span className="text-xs text-muted-foreground">
+                  Modelo exclusivo com capa, qualificação e captura de leads.
+                </span>
+              </Link>
+            ) : null}
           </div>
         </section>
       ) : null}
