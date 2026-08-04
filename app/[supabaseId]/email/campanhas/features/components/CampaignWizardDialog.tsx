@@ -148,10 +148,10 @@ function HoldToConfirmButton({
       aria-description="Mantenha Space ou Enter pressionado por 2 segundos para confirmar"
     >
       <div
-        className="absolute inset-y-0 left-0 bg-primary-foreground/20"
+        className="pointer-events-none absolute inset-y-0 left-0 bg-primary-foreground/20"
         style={{ width: `${progress}%` }}
       />
-      <span className="relative">
+      <span className="pointer-events-none relative">
         {progress > 0 ? "Segure..." : label}
       </span>
     </Button>
@@ -613,20 +613,22 @@ export function CampaignWizardDialog() {
                       </FieldDescription>
                     </Field>
 
-                    <Field>
-                      <DateTimePicker
-                        date={wizardScheduledAt}
-                        onDateChange={setWizardScheduledAt}
-                        label={
-                          needsSplit || previewSubCount > 1
-                            ? "Início do agendamento *"
-                            : "Agendamento (opcional)"
-                        }
-                        disabled={formDisabled}
-                        disablePastDates
-                        tz={tz}
-                      />
-                    </Field>
+                    {previewSubCount <= 1 || wizardUniformSchedule ? (
+                      <Field>
+                        <DateTimePicker
+                          date={wizardScheduledAt}
+                          onDateChange={setWizardScheduledAt}
+                          label={
+                            needsSplit || previewSubCount > 1
+                              ? "Início do agendamento *"
+                              : "Agendamento (opcional)"
+                          }
+                          disabled={formDisabled}
+                          disablePastDates
+                          tz={tz}
+                        />
+                      </Field>
+                    ) : null}
                     {previewSubCount > 1 ? (
                       <Field>
                         <label className="flex items-center gap-2 text-sm">
@@ -637,6 +639,11 @@ export function CampaignWizardDialog() {
                           />
                           Mesmo intervalo para todas as sub-campanhas
                         </label>
+                        <FieldDescription>
+                          Marque para calcular as datas automaticamente a partir do início e do
+                          intervalo em dias. Desmarque para definir data e hora em cada
+                          sub-campanha na tabela abaixo.
+                        </FieldDescription>
                       </Field>
                     ) : null}
                     {wizardUniformSchedule && previewSubCount > 1 ? (
@@ -655,6 +662,10 @@ export function CampaignWizardDialog() {
                           }}
                           disabled={formDisabled}
                         />
+                        <FieldDescription>
+                          Cada sub-campanha será agendada {wizardScheduleIntervalDays}{" "}
+                          {wizardScheduleIntervalDays === 1 ? "dia" : "dias"} após a anterior.
+                        </FieldDescription>
                       </Field>
                     ) : null}
 
@@ -674,7 +685,9 @@ export function CampaignWizardDialog() {
                             {wizardListStrategy === "per_list" ? (
                               <TableHead>Lista</TableHead>
                             ) : null}
-                            <TableHead>Agendamento</TableHead>
+                            <TableHead>
+                              {wizardUniformSchedule ? "Agendamento" : "Agendamento *"}
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -744,6 +757,14 @@ export function CampaignWizardDialog() {
                         Nenhuma sub-campanha necessária para a configuração atual.
                       </p>
                     )}
+                    {!wizardUniformSchedule &&
+                    wizardPreviewPlan &&
+                    wizardPreviewPlan.subCampaigns.length > 1 ? (
+                      <FieldDescription>
+                        Informe data e hora de envio para cada sub-campanha. Todas as datas são
+                        obrigatórias.
+                      </FieldDescription>
+                    ) : null}
                   </FieldGroup>
                 ) : null}
 
@@ -765,43 +786,45 @@ export function CampaignWizardDialog() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex flex-row items-center justify-between gap-2 sm:justify-between">
             <Button variant="outline" onClick={closeWizard} disabled={wizardSaving}>
               Cancelar
             </Button>
-            {previousTab ? (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setWizardActiveTab(previousTab)}
-                disabled={formDisabled}
-              >
-                Anterior
-              </Button>
-            ) : null}
-            {!isRevisao ? (
-              <Button
-                type="button"
-                onClick={() => {
-                  if (nextTab && canGoNext) setWizardActiveTab(nextTab)
-                }}
-                disabled={!canGoNext || formDisabled}
-              >
-                Próxima
-              </Button>
-            ) : (
-              <HoldToConfirmButton
-                onConfirm={() => void handleSaveCampaign()}
-                disabled={!submitParse.success || formDisabled}
-                label={
-                  wizardSaving
-                    ? "Salvando..."
-                    : wizardMode === "edit"
-                      ? "Segure para salvar"
-                      : "Segure para confirmar"
-                }
-              />
-            )}
+            <div className="flex items-center gap-2">
+              {previousTab ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setWizardActiveTab(previousTab)}
+                  disabled={formDisabled}
+                >
+                  Anterior
+                </Button>
+              ) : null}
+              {!isRevisao ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (nextTab && canGoNext) setWizardActiveTab(nextTab)
+                  }}
+                  disabled={!canGoNext || formDisabled}
+                >
+                  Próxima
+                </Button>
+              ) : (
+                <HoldToConfirmButton
+                  onConfirm={() => void handleSaveCampaign()}
+                  disabled={!submitParse.success || formDisabled}
+                  label={
+                    wizardSaving
+                      ? "Salvando..."
+                      : wizardMode === "edit"
+                        ? "Segure para salvar"
+                        : "Segure para confirmar"
+                  }
+                />
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
