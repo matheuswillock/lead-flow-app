@@ -10775,6 +10775,38 @@
                   }
                 },
                 {
+                  "name": "GET Top 3 Formularios (Conversao)",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/top-converting?from=&to=",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "public-forms",
+                        "top-converting"
+                      ],
+                      "query": [
+                        {
+                          "key": "from",
+                          "value": ""
+                        },
+                        {
+                          "key": "to",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    "description": "Ranking top 3 formulários por taxa de conversão (form_completed / form_viewed)."
+                  }
+                },
+                {
                   "name": "GET Studio Public Form",
                   "request": {
                     "method": "GET",
@@ -15484,6 +15516,37 @@
                     },
                     {
                       "key": "campaignId",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Top 3 Templates de Email",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/analytics/top-templates?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "analytics",
+                    "top-templates"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": ""
+                    },
+                    {
+                      "key": "to",
                       "value": ""
                     }
                   ]

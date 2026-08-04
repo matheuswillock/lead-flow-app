@@ -3,6 +3,7 @@ import type {
   PublicFormsIds,
   PublicFormsPage,
   PublicFormSettings,
+  RankedForm,
 } from "../context/PublicFormsTypes"
 import type { PublicFormDraftInput } from "@/lib/public-forms/types"
 import type {
@@ -121,6 +122,15 @@ class PublicFormsClientService implements IPublicFormsService {
     }
     return this.parse<PublicFormAnalytics>(
       await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/${formId}/analytics?${query}`, {
+        headers: this.headers(ids),
+        cache: "no-store",
+      }),
+    )
+  }
+
+  async topConverting(ids: PublicFormsIds) {
+    return this.parse<{ items: RankedForm[] }>(
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/top-converting`, {
         headers: this.headers(ids),
         cache: "no-store",
       }),

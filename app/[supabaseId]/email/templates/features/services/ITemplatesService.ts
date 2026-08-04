@@ -1,4 +1,4 @@
-import type { Template } from '../context/TemplatesTypes'
+import type { Template, TemplateRankingResult } from '../context/TemplatesTypes'
 
 export type CreateTemplateData = {
   name: string
@@ -11,6 +11,7 @@ export type CreateTemplateData = {
 export interface ITemplatesService {
   getApprovalSettings(supabaseId: string, teamId?: string | null): Promise<{ templateApprovalRequired: boolean }>
   list(supabaseId: string, teamId?: string | null): Promise<Template[]>
+  getTopRanking(supabaseId: string, teamId?: string | null): Promise<TemplateRankingResult>
   create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template>
   delete(supabaseId: string, id: string, teamId?: string | null): Promise<void>
   submitForApproval(supabaseId: string, id: string, teamId?: string | null): Promise<Template>

@@ -43,3 +43,12 @@ export type PublicFormDetail = PublicFormDraftInput &
   }
 
 export type PublicFormsIds = { supabaseId: string; teamId: string }
+
+export type RankedForm = {
+  formId: string
+  name: string
+  viewed: number
+  completed: number
+  conversionRate: number
+  rank: number
+}
