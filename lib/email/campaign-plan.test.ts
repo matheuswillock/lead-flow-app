@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { buildCampaignPlan, dedupeContactsFromSlices } from "@/lib/email/campaign-plan"
+import {
+  buildCampaignPlan,
+  dedupeContactsFromSlices,
+  mergeListAndSegmentContacts,
+} from "@/lib/email/campaign-plan"
 
 describe("campaign-plan", () => {
   it("merge virtual deduplica contatos por e-mail", () => {
@@ -84,5 +88,24 @@ describe("campaign-plan", () => {
 
     expect(plan.subCampaigns[0]?.scheduledAt).toBe("2030-01-01T12:00:00.000Z")
     expect(plan.subCampaigns[1]?.scheduledAt).toBe("2030-01-05T12:00:00.000Z")
+  })
+
+  it("mergeListAndSegmentContacts une lista+segmento com dedupe por e-mail", () => {
+    const merged = mergeListAndSegmentContacts({
+      listContacts: [
+        { contactId: "c1", email: "A@test.com" },
+        { contactId: "c2", email: "b@test.com" },
+      ],
+      segmentRecipients: [
+        { email: "a@test.com", name: "Duplicado" },
+        { email: "c@test.com", name: "Só segmento" },
+      ],
+    })
+
+    expect(merged).toEqual([
+      { contactId: "c1", email: "a@test.com", name: null },
+      { contactId: "c2", email: "b@test.com", name: null },
+      { contactId: null, email: "c@test.com", name: "Só segmento" },
+    ])
   })
 })

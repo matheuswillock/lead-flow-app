@@ -18,6 +18,8 @@ const previewPlanSchema = z
     scheduledAt: z.string().datetime().nullable().optional(),
     scheduleIntervalDays: z.number().int().min(1).optional().nullable(),
     uniformSchedule: z.boolean().optional(),
+    saveAsRadarSegment: z.boolean().optional(),
+    saveAsRadarSegmentName: z.string().max(120).nullable().optional(),
     subCampaignSchedules: z
       .array(
         z.object({
@@ -33,13 +35,6 @@ const previewPlanSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Informe contactListId, contactListIds ou radarSegmentSlug",
-        path: ["contactListId"],
-      })
-    }
-    if (hasList && data.radarSegmentSlug) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Use apenas listas de contatos ou segmento Radar",
         path: ["contactListId"],
       })
     }

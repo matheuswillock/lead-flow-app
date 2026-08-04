@@ -59,13 +59,19 @@ import {
 } from "@/lib/email/campaign-sub-campaigns"
 import {
   buildCampaignPlan,
+  buildCampaignPlanFromContactIds,
+  mergeListAndSegmentContacts,
   normalizeContactListIds,
   resolveListStrategy,
   validateCampaignPlanSchedules,
+  type CombinedAudienceContact,
   type ListAudienceSlice,
   type ListStrategy,
   type SubCampaignScheduleInput,
 } from "@/lib/email/campaign-plan"
+import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
+import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 import {
   CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
@@ -109,6 +115,9 @@ export interface CreateCampaignInput {
   contactListIds?: string[]
   listStrategy?: ListStrategy
   radarSegmentSlug?: string
+  /** Na revisão: clonar regras do segmento custom selecionado em um novo TeamRadarSegment. */
+  saveAsRadarSegment?: boolean
+  saveAsRadarSegmentName?: string | null
   scheduledAt?: string | null
   scheduleIntervalDays?: number | null
   uniformSchedule?: boolean
@@ -268,6 +277,142 @@ export class EmailCampaignUseCase {
     return { slices }
   }
 
+  /**
+   * União lista(s) + segmento: dedupe por e-mail.
+   * Contatos só-de-segmento ficam sem contactId até materialização no create.
+   */
+  private async resolveCombinedAudience(
+    teamId: string,
+    contactListIds: string[],
+    radarSegmentSlug: string | undefined
+  ): Promise<{ contacts: CombinedAudienceContact[]; error?: string }> {
+    let listContacts: Array<{ contactId: string; email: string }> = []
+
+    if (contactListIds.length > 0) {
+      const { slices, error } = await this.loadListAudiences(teamId, contactListIds)
+      if (error) return { contacts: [], error }
+      listContacts = slices.flatMap((slice) => slice.contacts)
+    }
+
+    const segmentRecipients = radarSegmentSlug
+      ? await listRadarSegmentEmailRecipients(teamId, radarSegmentSlug)
+      : []
+
+    return {
+      contacts: mergeListAndSegmentContacts({
+        listContacts,
+        segmentRecipients,
+      }),
+    }
+  }
+
+  /**
+   * Garante EmailContact IDs para e-mails só-de-segmento (snapshot em lista dedicada).
+   * Necessário para freeze em audienceContactIds e split de sub-campanhas (DA11).
+   */
+  private async materializeMissingContactIds(params: {
+    teamId: string
+    profileId: string
+    campaignName: string
+    contacts: CombinedAudienceContact[]
+  }): Promise<{ contactIds: string[]; snapshotListId: string | null; error?: string }> {
+    const withIds = params.contacts.filter(
+      (contact): contact is CombinedAudienceContact & { contactId: string } =>
+        Boolean(contact.contactId)
+    )
+    const withoutIds = params.contacts.filter((contact) => !contact.contactId)
+
+    if (withoutIds.length === 0) {
+      return {
+        contactIds: withIds.map((contact) => contact.contactId),
+        snapshotListId: null,
+      }
+    }
+
+    const timestamp = new Date().toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    const listName = `Campanha: ${params.campaignName.trim()} — segmento (${timestamp})`
+
+    const list = await emailContactListRepository.createList({
+      teamId: params.teamId,
+      createdBy: params.profileId,
+      name: listName,
+    })
+
+    const BATCH_SIZE = 500
+    for (let i = 0; i < withoutIds.length; i += BATCH_SIZE) {
+      const batch = withoutIds.slice(i, i + BATCH_SIZE)
+      await emailContactListRepository.createContacts(
+        list.id,
+        batch.map((contact) => ({ email: contact.email, name: contact.name ?? null }))
+      )
+    }
+
+    const created = await prisma.emailContact.findMany({
+      where: { listId: list.id },
+      select: { id: true },
+    })
+
+    await emailContactListRepository.updateContactCount(list.id, created.length)
+
+    return {
+      contactIds: [...withIds.map((contact) => contact.contactId), ...created.map((row) => row.id)],
+      snapshotListId: list.id,
+    }
+  }
+
+  /**
+   * Clona regras de um segmento custom em novo TeamRadarSegment (revisão do wizard).
+   * Segmentos de sistema não têm DSL — não inventa regras.
+   */
+  private async maybeSaveAsRadarSegment(
+    teamId: string,
+    profileId: string,
+    data: CreateCampaignInput
+  ): Promise<{ radarSegmentSlug: string | undefined; error?: string }> {
+    const currentSlug = data.radarSegmentSlug?.trim() || undefined
+    if (!data.saveAsRadarSegment) {
+      return { radarSegmentSlug: currentSlug }
+    }
+
+    if (!currentSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)) {
+      return {
+        radarSegmentSlug: currentSlug,
+        error:
+          "Salvar como segmento Radar só é possível a partir de um segmento custom com regras DSL (não a partir de listas ou segmentos do sistema)",
+      }
+    }
+
+    const segmentId = currentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+    const existing = await teamRadarSegmentService.findById(teamId, segmentId)
+    if (!existing?.isActive) {
+      return { radarSegmentSlug: currentSlug, error: "Segmento Radar inválido" }
+    }
+
+    const name =
+      data.saveAsRadarSegmentName?.trim() ||
+      `${data.name.trim()} — segmento` ||
+      existing.name
+
+    try {
+      const rules = parseRadarSegmentRules(existing.rulesJson)
+      const created = await teamRadarSegmentService.create(teamId, profileId, {
+        name,
+        description: existing.description,
+        rules,
+      })
+      return { radarSegmentSlug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${created.id}` }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar segmento Radar"
+      return { radarSegmentSlug: currentSlug, error: message }
+    }
+  }
+
   private parseScheduleInput(data: CreateCampaignInput) {
     return {
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
@@ -290,25 +435,42 @@ export class EmailCampaignUseCase {
       if (!hasLists && !hasRadar) {
         return new Output(false, [], ["Selecione uma lista de contatos ou um segmento Radar"], null)
       }
-      if (hasLists && hasRadar) {
-        return new Output(false, [], ["Use apenas lista de contatos ou segmento Radar, não ambos"], null)
+
+      if (hasRadar && data.radarSegmentSlug && !(await isValidRadarSegmentAudience(ctx.teamId, data.radarSegmentSlug))) {
+        return new Output(false, [], ["Segmento Radar inválido"], null)
       }
 
-      if (hasRadar) {
+      if (hasRadar && hasLists && data.listStrategy === "per_list") {
+        return new Output(
+          false,
+          [],
+          ["Estratégia por lista não é compatível com segmento Radar. Use juntar listas (merge)"],
+          null
+        )
+      }
+
+      const schedule = this.parseScheduleInput(data)
+      const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
+      const maxPerSub = teamLimits.maxRecipientsPerSub
+
+      // Somente segmento: rejeita acima do limite (DA11 — sem split)
+      if (hasRadar && !hasLists) {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           radarSegmentSlug: data.radarSegmentSlug,
         })
-        if (requiresSubCampaignSplit(totalRecipients)) {
+        if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+          const limitLabel =
+            maxPerSub?.toLocaleString("pt-BR") ??
+            EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
           return new Output(
             false,
             [],
             [
-              `Segmentos Radar com mais de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} destinatários não são suportados. Use uma lista de contatos ou reduza o segmento`,
+              `Audiência excede o limite de ${limitLabel} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos (listas podem usar sub-campanhas)`,
             ],
             null
           )
         }
-        const schedule = this.parseScheduleInput(data)
         return new Output(true, [], [], {
           subCampaigns: [
             {
@@ -320,6 +482,47 @@ export class EmailCampaignUseCase {
           ],
           needsSplit: false,
           totalRecipients,
+          listStrategy: "single",
+          sourceContactListIds: [],
+          isParentCampaign: false,
+          audienceMode: "segment_only",
+        })
+      }
+
+      // Lista(s) ou segmento+lista: união com dedupe; split permitido (audiência materializável)
+      if (hasRadar && hasLists) {
+        const { contacts, error } = await this.resolveCombinedAudience(
+          ctx.teamId,
+          contactListIds,
+          data.radarSegmentSlug
+        )
+        if (error) return new Output(false, [], [error], null)
+
+        // Preview: IDs reais das listas + placeholders estáveis para e-mails só-de-segmento
+        const previewIds = contacts.map((contact, index) =>
+          contact.contactId ?? `preview-segment-${index}`
+        )
+        const plan = buildCampaignPlanFromContactIds({
+          campaignName: data.name,
+          contactIds: previewIds,
+          sourceContactListIds: contactListIds,
+          maxRecipientsPerSub: maxPerSub,
+          ...schedule,
+        })
+
+        const scheduleError = validateCampaignPlanSchedules(plan, schedule)
+        if (scheduleError) {
+          return new Output(false, [], [scheduleError], null)
+        }
+
+        return new Output(true, [], [], {
+          ...plan,
+          audienceMode: "combined",
+          // Não vaza placeholders no payload — create materializa de verdade
+          subCampaigns: plan.subCampaigns.map((sub) => ({
+            ...sub,
+            audienceContactIds: undefined,
+          })),
         })
       }
 
@@ -331,14 +534,12 @@ export class EmailCampaignUseCase {
       const { slices, error } = await this.loadListAudiences(ctx.teamId, contactListIds)
       if (error) return new Output(false, [], [error], null)
 
-      const schedule = this.parseScheduleInput(data)
-      const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const plan = buildCampaignPlan({
         campaignName: data.name,
         listStrategy,
         sourceContactListIds: listStrategy === "merge" ? contactListIds : contactListIds,
         listAudiences: slices,
-        maxRecipientsPerSub: teamLimits.maxRecipientsPerSub,
+        maxRecipientsPerSub: maxPerSub,
         ...schedule,
       })
 
@@ -347,14 +548,10 @@ export class EmailCampaignUseCase {
         return new Output(false, [], [scheduleError], null)
       }
 
-      return new Output(true, [], [], {
-        subCampaigns: plan.subCampaigns,
-        needsSplit: plan.needsSplit,
-        totalRecipients: plan.totalRecipients,
-      })
+      return new Output(true, [], [], { ...plan, audienceMode: "list_only" })
     } catch (error) {
       console.error("[EmailCampaignUseCase][previewPlan]", error)
-      return new Output(false, [], ["Erro ao gerar preview da campanha"], null)
+      return new Output(false, [], ["Erro ao calcular plano da campanha"], null)
     }
   }
 
@@ -669,11 +866,16 @@ export class EmailCampaignUseCase {
       if (!hasLists && !hasRadar) {
         return new Output(false, [], ["Selecione uma lista de contatos ou um segmento Radar"], null)
       }
-      if (hasLists && hasRadar) {
-        return new Output(false, [], ["Use apenas lista de contatos ou segmento Radar, não ambos"], null)
-      }
       if (data.radarSegmentSlug && !(await isValidRadarSegmentAudience(ctx.teamId, data.radarSegmentSlug))) {
         return new Output(false, [], ["Segmento Radar inválido"], null)
+      }
+      if (hasRadar && hasLists && data.listStrategy === "per_list") {
+        return new Output(
+          false,
+          [],
+          ["Estratégia por lista não é compatível com segmento Radar. Use juntar listas (merge)"],
+          null
+        )
       }
 
       const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
@@ -687,14 +889,169 @@ export class EmailCampaignUseCase {
         )
       }
 
+      const savedSegment = await this.maybeSaveAsRadarSegment(ctx.teamId, ctx.profileId, data)
+      if (savedSegment.error) {
+        return new Output(false, [], [savedSegment.error], null)
+      }
+      const effectiveRadarSlug = savedSegment.radarSegmentSlug
+
       const schedule = this.parseScheduleInput(data)
       const trimmedName = data.name.trim()
       const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const maxPerSub = teamLimits.maxRecipientsPerSub
 
+      // Segmento + lista(s): união dedupe → materializa e-mails só-de-segmento → split se necessário
+      if (hasRadar && hasLists) {
+        const { contacts, error: resolveError } = await this.resolveCombinedAudience(
+          ctx.teamId,
+          contactListIds,
+          effectiveRadarSlug
+        )
+        if (resolveError) return new Output(false, [], [resolveError], null)
+        if (contacts.length === 0) {
+          return new Output(false, [], ["Nenhum destinatário na audiência combinada"], null)
+        }
+
+        const materialized = await this.materializeMissingContactIds({
+          teamId: ctx.teamId,
+          profileId: ctx.profileId,
+          campaignName: trimmedName,
+          contacts,
+        })
+        if (materialized.error) return new Output(false, [], [materialized.error], null)
+
+        const plan = buildCampaignPlanFromContactIds({
+          campaignName: trimmedName,
+          contactIds: materialized.contactIds,
+          sourceContactListIds: contactListIds,
+          maxRecipientsPerSub: maxPerSub,
+          contactListId: contactListIds.length === 1 ? contactListIds[0] : null,
+          ...schedule,
+        })
+
+        const scheduleError = validateCampaignPlanSchedules(plan, schedule)
+        if (scheduleError) {
+          return new Output(false, [], [scheduleError], null)
+        }
+
+        const customSegmentId = effectiveRadarSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
+          ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+          : null
+
+        const createCombined = async () => {
+          if (!plan.isParentCampaign) {
+            const single = plan.subCampaigns[0]
+            return prisma.emailCampaign.create({
+              data: {
+                id: randomUUID(),
+                teamId: ctx.teamId,
+                createdBy: ctx.profileId,
+                name: trimmedName,
+                description: data.description?.trim() ? data.description.trim() : null,
+                templateId: data.templateId,
+                contactListId:
+                  single?.contactListId ??
+                  (contactListIds.length === 1 ? contactListIds[0] ?? null : null),
+                radarSegmentSlug: effectiveRadarSlug ?? null,
+                audienceContactIds: single?.audienceContactIds ?? materialized.contactIds,
+                sourceContactListIds: contactListIds,
+                status: single?.scheduledAt ? "scheduled" : "draft",
+                scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
+                totalRecipients: plan.totalRecipients,
+              },
+            })
+          }
+
+          const parentId = randomUUID()
+          const parentStatus: EmailCampaignStatus = plan.subCampaigns.some((sub) => sub.scheduledAt)
+            ? "scheduled"
+            : "draft"
+
+          return prisma.$transaction(async (tx) => {
+            const parent = await tx.emailCampaign.create({
+              data: {
+                id: parentId,
+                teamId: ctx.teamId,
+                createdBy: ctx.profileId,
+                name: trimmedName,
+                description: data.description?.trim() ? data.description.trim() : null,
+                templateId: data.templateId,
+                contactListId: contactListIds.length === 1 ? contactListIds[0] ?? null : null,
+                radarSegmentSlug: effectiveRadarSlug ?? null,
+                sourceContactListIds: contactListIds,
+                status: parentStatus,
+                scheduledAt: null,
+                totalRecipients: plan.totalRecipients,
+              },
+            })
+
+            const subCampaigns = []
+            for (const sub of plan.subCampaigns) {
+              const child = await tx.emailCampaign.create({
+                data: {
+                  id: randomUUID(),
+                  teamId: ctx.teamId,
+                  createdBy: ctx.profileId,
+                  name: sub.name,
+                  description: data.description?.trim() ? data.description.trim() : null,
+                  templateId: data.templateId,
+                  contactListId: sub.contactListId ?? null,
+                  parentCampaignId: parentId,
+                  subCampaignIndex: sub.index,
+                  audienceContactIds: sub.audienceContactIds ?? [],
+                  status: sub.scheduledAt ? "scheduled" : "draft",
+                  scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
+                  totalRecipients: sub.totalRecipients,
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  subCampaignIndex: true,
+                  scheduledAt: true,
+                  totalRecipients: true,
+                  status: true,
+                },
+              })
+              subCampaigns.push(child)
+            }
+
+            return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
+          })
+        }
+
+        if (!customSegmentId) {
+          const result = await createCombined()
+          const message = plan.isParentCampaign
+            ? "Campanha criada com sub-campanhas"
+            : "Campanha criada com sucesso"
+          return new Output(true, [message], [], result)
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
+          const stillActive = await tx.teamRadarSegment.findFirst({
+            where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
+          })
+          if (!stillActive) return null
+          // Lock adquirido; createCombined usa prisma root — ok após validação
+          return "ok" as const
+        })
+        if (!result) {
+          return new Output(false, [], ["Segmento Radar inválido"], null)
+        }
+
+        const created = await createCombined()
+        const message = plan.isParentCampaign
+          ? "Campanha criada com sub-campanhas"
+          : "Campanha criada com sucesso"
+        return new Output(true, [message], [], created)
+      }
+
+      // Somente segmento: rejeita acima do limite (DA11 — sem split)
       if (hasRadar) {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
-          radarSegmentSlug: data.radarSegmentSlug,
+          radarSegmentSlug: effectiveRadarSlug,
         })
         if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
           const limitLabel =
@@ -704,7 +1061,7 @@ export class EmailCampaignUseCase {
             false,
             [],
             [
-              `Segmentos Radar com mais de ${limitLabel} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Audiência excede o limite de ${limitLabel} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos (listas podem usar sub-campanhas)`,
             ],
             null
           )
@@ -720,14 +1077,14 @@ export class EmailCampaignUseCase {
           description: data.description?.trim() ? data.description.trim() : null,
           templateId: data.templateId,
           contactListId: null,
-          radarSegmentSlug: data.radarSegmentSlug ?? null,
+          radarSegmentSlug: effectiveRadarSlug ?? null,
           status: (schedule.scheduledAt ? "scheduled" : "draft") as EmailCampaignStatus,
           scheduledAt: schedule.scheduledAt,
           totalRecipients,
         }
 
-        const customSegmentId = data.radarSegmentSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
-          ? data.radarSegmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+        const customSegmentId = effectiveRadarSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
+          ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
           : null
 
         if (!customSegmentId) {
@@ -932,7 +1289,8 @@ export class EmailCampaignUseCase {
           contactListId: nextContactListId,
           radarSegmentSlug: nextSegmentSlug,
         })
-        if (nextSegmentSlug && requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+        // Só rejeita por limite de segmento quando NÃO há lista (DA11). Com lista, união materializa.
+        if (nextSegmentSlug && !nextContactListId && requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
           const limitLabel =
             maxPerSub?.toLocaleString("pt-BR") ??
             EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
@@ -940,7 +1298,7 @@ export class EmailCampaignUseCase {
             false,
             [],
             [
-              `Segmentos Radar com mais de ${limitLabel} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Audiência excede o limite de ${limitLabel} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos (listas podem usar sub-campanhas)`,
             ],
             null
           )
@@ -1045,11 +1403,7 @@ export class EmailCampaignUseCase {
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
           ...(data.radarSegmentSlug !== undefined && {
             radarSegmentSlug: data.radarSegmentSlug,
-            ...(data.radarSegmentSlug ? { contactListId: null } : {}),
           }),
-          ...(data.contactListId !== undefined && data.contactListId
-            ? { radarSegmentSlug: null }
-            : {}),
           ...(totalRecipients !== undefined && { totalRecipients }),
           ...(canChangeSchedule && data.scheduledAt !== undefined && {
             scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
