@@ -352,8 +352,9 @@ export class RadarUseCase {
 
 
   /**
-   * D13: contratos atuais (LeadPortfolio) + histórico (LeadFinalized com
-   * holder/dependentes) do perfil, via identidades `lead_id` / `portfolio_id`.
+   * D13/D14: contratos atuais (LeadPortfolio) + histórico (LeadFinalized com
+   * holder/dependentes) do perfil — via lead_id/portfolio_id e identidades
+   * contract_holder/contract_dependent (documento/CNPJ + source links).
    */
   async getProfileContracts(teamId: string, ctx: TeamContext, profileId: string) {
     const scope = this.scope(teamId, ctx)

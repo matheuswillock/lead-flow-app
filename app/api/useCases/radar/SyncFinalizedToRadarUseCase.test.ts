@@ -15,6 +15,7 @@ const appendEventIfNew = mock(async () => ({}))
 const findFinalizedForRadarSync = mock(async () => [] as unknown[])
 const findSourceLinkBySource = mock(async (): Promise<{ id: string; profileId: string } | null> => null)
 const removeObsoleteContractIdentity = mock(async () => ({ removed: 0 }))
+const deleteOrphanRadarProfileIfEmpty = mock(async () => ({ deleted: false }))
 
 mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
   radarRepository: {
@@ -25,6 +26,7 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     findFinalizedForRadarSync,
     findSourceLinkBySource,
     removeObsoleteContractIdentity,
+    deleteOrphanRadarProfileIfEmpty,
   },
 }))
 
@@ -51,6 +53,7 @@ const updatedAt = new Date("2026-08-01T12:00:00.000Z")
 
 function finalizedFixture(overrides?: {
   holderDocument?: string
+  holderCnpj?: string | null
   dependents?: Array<{
     id: string
     name: string
@@ -69,6 +72,7 @@ function finalizedFixture(overrides?: {
       id: "holder-1",
       name: "Titular Silva",
       document: overrides?.holderDocument ?? "123.456.789-09",
+      cnpj: overrides?.holderCnpj ?? null,
       birthDate,
     },
     dependents: overrides?.dependents ?? [
@@ -99,6 +103,7 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     findFinalizedForRadarSync.mockReset()
     findSourceLinkBySource.mockReset()
     removeObsoleteContractIdentity.mockReset()
+    deleteOrphanRadarProfileIfEmpty.mockReset()
 
     resolveProfileForDocument.mockImplementation(async () => ({
       profile: { id: `profile-${Math.random().toString(36).slice(2, 8)}` },
@@ -109,6 +114,7 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
     appendEventIfNew.mockImplementation(async () => ({}))
     findSourceLinkBySource.mockImplementation(async () => null)
     removeObsoleteContractIdentity.mockImplementation(async () => ({ removed: 0 }))
+    deleteOrphanRadarProfileIfEmpty.mockImplementation(async () => ({ deleted: false }))
   })
 
   it("cria perfil para titular e dependente com documento; pula dependente sem documento", async () => {
@@ -216,5 +222,30 @@ describe("SyncFinalizedToRadarUseCase / syncFromFinalized (D14)", () => {
       identityType: "contract_holder",
       keepNormalizedDocument: "11122233344",
     })
+    expect(deleteOrphanRadarProfileIfEmpty).toHaveBeenCalledWith({
+      teamId: "team-1",
+      profileId: "old-profile",
+    })
+  })
+
+  it("titular corporativo usa CNPJ quando document (CPF) está vazio", async () => {
+    findFinalizedForRadarSync.mockImplementation(async () => [
+      finalizedFixture({
+        holderDocument: "",
+        holderCnpj: "12.345.678/0001-99",
+        dependents: [],
+      }),
+    ])
+
+    const result = await radarService.syncFromFinalized(scope, { finalizedId: "finalized-1" })
+
+    expect(result.created).toBe(1)
+    expect(result.skipped).toBe(0)
+    expect(resolveProfileForDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identityType: "contract_holder",
+        normalizedDocument: "12345678000199",
+      })
+    )
   })
 })

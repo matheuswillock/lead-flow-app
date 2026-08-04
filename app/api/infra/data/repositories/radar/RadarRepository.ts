@@ -1224,6 +1224,7 @@ export class RadarRepository {
             id: true,
             name: true,
             document: true,
+            cnpj: true,
             birthDate: true,
           },
         },
@@ -1386,25 +1387,72 @@ export class RadarRepository {
   }
 
   /**
-   * D13: contratos atuais (`LeadPortfolio`) + histórico (`LeadFinalized` com
-   * holder/dependentes) do perfil. Resolve via `lead_id` e, como fallback,
-   * via `portfolio_id` (sync só-carteira antes do fix de identidade).
+   * D13/D14: contratos atuais (`LeadPortfolio`) + histórico (`LeadFinalized` com
+   * holder/dependentes) do perfil. Resolve via `lead_id` / `portfolio_id`,
+   * identidades `contract_holder`/`contract_dependent` (documento/CNPJ) e
+   * `leadId` em source links `lead_finalized` (perfis syncFromFinalized).
    */
   async findContractsForProfile(scope: RadarTeamScope, profileId: string) {
-    const identities = await prisma.radarIdentity.findMany({
-      where: {
-        profileId,
-        teamId: scope.teamId,
-        type: { in: ["lead_id", "portfolio_id"] },
-      },
-      select: { type: true, normalizedValue: true },
-    })
-    const leadIds = identities
-      .filter((identity) => identity.type === "lead_id")
-      .map((identity) => identity.normalizedValue)
+    const [identities, sourceLinks] = await Promise.all([
+      prisma.radarIdentity.findMany({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          type: { in: ["lead_id", "portfolio_id", "contract_holder", "contract_dependent"] },
+        },
+        select: { type: true, normalizedValue: true },
+      }),
+      prisma.radarSourceLink.findMany({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          sourceType: "lead_finalized",
+        },
+        select: { sourceMetadata: true },
+      }),
+    ])
+
+    const leadIdSet = new Set(
+      identities
+        .filter((identity) => identity.type === "lead_id")
+        .map((identity) => identity.normalizedValue)
+    )
     const portfolioIds = identities
       .filter((identity) => identity.type === "portfolio_id")
       .map((identity) => identity.normalizedValue)
+    const contractDocuments = identities
+      .filter(
+        (identity) =>
+          identity.type === "contract_holder" || identity.type === "contract_dependent"
+      )
+      .map((identity) => identity.normalizedValue)
+      .filter(Boolean)
+
+    for (const link of sourceLinks) {
+      const meta = link.sourceMetadata as { leadId?: unknown } | null
+      if (typeof meta?.leadId === "string" && meta.leadId.length > 0) {
+        leadIdSet.add(meta.leadId)
+      }
+    }
+
+    if (contractDocuments.length > 0) {
+      const byDocument = await prisma.leadFinalized.findMany({
+        where: {
+          lead: { teamId: scope.teamId },
+          OR: [
+            { holder: { document: { in: contractDocuments } } },
+            { holder: { cnpj: { in: contractDocuments } } },
+            { dependents: { some: { document: { in: contractDocuments } } } },
+          ],
+        },
+        select: { leadId: true },
+      })
+      for (const row of byDocument) {
+        leadIdSet.add(row.leadId)
+      }
+    }
+
+    const leadIds = [...leadIdSet]
 
     if (leadIds.length === 0 && portfolioIds.length === 0) {
       return { portfolios: [] as const, finalized: [] as const }
@@ -1796,6 +1844,27 @@ export class RadarRepository {
     return { removed: obsolete.length }
   }
 
+  /**
+   * D14: remove perfil fantasma após correção de documento — só quando não
+   * restam identidades nem source links (preserva perfis ainda referenciados).
+   */
+  async deleteOrphanRadarProfileIfEmpty(input: { teamId: string; profileId: string }) {
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: input.profileId, teamId: input.teamId },
+      select: {
+        id: true,
+        _count: { select: { identities: true, sourceLinks: true } },
+      },
+    })
+    if (!profile) return { deleted: false }
+    if (profile._count.identities > 0 || profile._count.sourceLinks > 0) {
+      return { deleted: false }
+    }
+
+    await prisma.radarProfile.delete({ where: { id: profile.id } })
+    return { deleted: true }
+  }
+
   async getProfileNormalizedDocument(
     teamId: string,
     profileId: string
@@ -1818,6 +1887,7 @@ export class RadarRepository {
         lead: { teamId },
         OR: [
           { holder: { document: doc } },
+          { holder: { cnpj: doc } },
           { dependents: { some: { document: doc } } },
         ],
       },
@@ -1835,6 +1905,7 @@ export class RadarRepository {
             id: true,
             name: true,
             document: true,
+            cnpj: true,
             birthDate: true,
           },
         },

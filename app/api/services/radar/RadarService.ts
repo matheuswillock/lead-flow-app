@@ -450,12 +450,14 @@ export class RadarService {
     for (const entry of finalizedRows) {
       try {
         if (entry.holder) {
+          // Corporativo: finalize exige CNPJ e permite document (CPF) vazio.
+          const holderDocument = entry.holder.document?.trim() || entry.holder.cnpj?.trim() || null
           const synced = await this.syncContractPartyToRadar({
             scope,
             identityType: "contract_holder",
             partyId: entry.holder.id,
             name: entry.holder.name,
-            document: entry.holder.document,
+            document: holderDocument,
             birthDate: entry.holder.birthDate,
             finalizedId: entry.id,
             leadId: entry.leadId,
@@ -538,10 +540,13 @@ export class RadarService {
 
     // Documento corrigido: o source link aponta ao perfil antigo com a identidade
     // obsoleta — remove-a antes de mover o link para o perfil do novo documento.
-    if (existingLink && existingLink.profileId !== profile.id) {
+    const obsoleteProfileId =
+      existingLink && existingLink.profileId !== profile.id ? existingLink.profileId : null
+
+    if (obsoleteProfileId) {
       await radarRepository.removeObsoleteContractIdentity({
         teamId: input.scope.teamId,
-        profileId: existingLink.profileId,
+        profileId: obsoleteProfileId,
         identityType: input.identityType,
         keepNormalizedDocument: normalizedDocument,
       })
@@ -584,6 +589,14 @@ export class RadarService {
         leadId: input.leadId,
       },
     })
+
+    // Após mover o source link, remove o perfil antigo se ficou sem identidades/links.
+    if (obsoleteProfileId) {
+      await radarRepository.deleteOrphanRadarProfileIfEmpty({
+        teamId: input.scope.teamId,
+        profileId: obsoleteProfileId,
+      })
+    }
 
     return wasExisting ? "enriched" : "created"
   }
