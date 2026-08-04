@@ -16,6 +16,11 @@ import {
   applyHealthPlanCatalogToDraft,
   createHealthPlanSimulatorDraft,
 } from "@/lib/public-forms/templates/health-plan-simulator"
+import { createProfessionHealthPlanDraft } from "@/lib/public-forms/templates/profession-health-plan"
+import {
+  PUBLIC_FORM_TEMPLATE_IDS,
+  isTeamAllowedForPublicFormTemplate,
+} from "@/lib/public-forms/templates-access"
 import type {
   PublicFormCoverHighlight,
   PublicFormDraftInput,
@@ -324,9 +329,17 @@ export function PublicFormWizard({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setOverride } = usePageBreadcrumb()
-  const isHealthPlanTemplate =
-    !formId && searchParams.get("template") === "health_plan_simulator"
+  const templateParam = !formId ? searchParams.get("template") : null
+  const isHealthPlanTemplate = templateParam === PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR
+  const isProfessionHealthPlanTemplate =
+    templateParam === PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN
   const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
+  const canUseProfessionHealthPlanTemplate =
+    isProfessionHealthPlanTemplate &&
+    isTeamAllowedForPublicFormTemplate(
+      PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN,
+      host ? null : activeTeam?.id,
+    )
   const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
   const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
   const previewHref =
@@ -339,6 +352,7 @@ export function PublicFormWizard({
   const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
     if (formId) return emptyDraft
     if (isHealthPlanTemplate) return createHealthPlanSimulatorDraft()
+    if (canUseProfessionHealthPlanTemplate) return createProfessionHealthPlanDraft()
     return emptyDraft
   })
   const [step, setStep] = useState(0)
