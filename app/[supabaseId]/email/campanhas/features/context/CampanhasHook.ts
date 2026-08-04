@@ -23,7 +23,7 @@ const defaultService = new CampanhasService()
 
 import type { CampaignWritePayload } from "../services/CampanhasService"
 
-const EDITABLE_STATUSES = new Set(["draft", "scheduled", "sent", "failed", "partially_sent"])
+const EDITABLE_STATUSES = new Set(["draft", "scheduled"])
 
 function statusKey(statuses: string[]): string {
   return [...statuses].sort().join(",")
@@ -145,6 +145,7 @@ export type CampanhasHookReturn = {
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
   wizardSaving: boolean
+  wizardHydrating: boolean
   materializingSegment: boolean
   templates: Template[]
   contactLists: ContactList[]
@@ -202,6 +203,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardPreviewLoading, setWizardPreviewLoading] = useState(false)
   const [wizardLinkedForm, setWizardLinkedForm] = useState<{ id: string; name: string; publicId: string } | null>(null)
   const [wizardSaving, setWizardSaving] = useState(false)
+  const [wizardHydrating, setWizardHydrating] = useState(false)
   const [materializingSegment, setMaterializingSegment] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contactLists, setContactLists] = useState<ContactList[]>([])
@@ -639,6 +641,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardSubCampaignListIds({})
     setWizardPreviewPlan(null)
     setWizardLinkedForm(null)
+    setWizardHydrating(false)
   }, [])
 
   const loadWizardOptions = useCallback(async () => {
@@ -660,43 +663,154 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
   }, [activeTeamId, hideRadarSegments, service, supabaseId])
 
-  const hydrateWizardFromCampaign = useCallback((campaign: Campaign) => {
+  const ensureWizardOptionsFromCampaign = useCallback((campaign: Campaign) => {
+    const templateId = campaign.template?.id ?? campaign.templateId
+    if (templateId) {
+      setTemplates((prev) => {
+        if (prev.some((template) => template.id === templateId)) return prev
+        const injected: Template = {
+          id: templateId,
+          name: campaign.template?.name ?? "Template da campanha",
+          subject: campaign.template?.subject ?? "",
+          status: "published",
+          isCurrentPublished: true,
+        }
+        return [injected, ...prev]
+      })
+    }
+
     const listIds =
       campaign.sourceContactListIds && campaign.sourceContactListIds.length > 0
         ? campaign.sourceContactListIds
-        : campaign.contactList?.id
-          ? [campaign.contactList.id]
-          : []
+        : campaign.contactList?.id || campaign.contactListId
+          ? [campaign.contactList?.id ?? (campaign.contactListId as string)]
+          : (campaign.subCampaigns ?? [])
+              .map((sub) => sub.contactListId)
+              .filter((id): id is string => Boolean(id))
+
+    const uniqueListIds = Array.from(new Set(listIds))
+    if (uniqueListIds.length === 0) return
+
+    setContactLists((prev) => {
+      const missing = uniqueListIds.filter((id) => !prev.some((list) => list.id === id))
+      if (missing.length === 0) return prev
+
+      const injected: ContactList[] = missing.map((id) => {
+        if (campaign.contactList?.id === id) {
+          return {
+            id,
+            name: campaign.contactList.name,
+            totalContacts: campaign.contactList.totalContacts ?? 0,
+            activeContacts: campaign.contactList.activeContacts,
+          }
+        }
+        const child = campaign.subCampaigns?.find((sub) => sub.contactListId === id)
+        return {
+          id,
+          name: child?.name ? `Lista de ${child.name}` : "Lista da campanha",
+          totalContacts: child?.totalRecipients ?? 0,
+        }
+      })
+      return [...injected, ...prev]
+    })
+  }, [])
+
+  const hydrateWizardFromCampaign = useCallback((campaign: Campaign) => {
+    const childListIds = Array.from(
+      new Set(
+        (campaign.subCampaigns ?? [])
+          .map((sub) => sub.contactListId)
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    const storedSourceIds = campaign.sourceContactListIds ?? []
+    const listIds =
+      storedSourceIds.length > 0
+        ? storedSourceIds
+        : campaign.contactList?.id || campaign.contactListId
+          ? [campaign.contactList?.id ?? (campaign.contactListId as string)]
+          : childListIds
+
+    const uniqueListIds = Array.from(new Set(listIds))
+    const isPerList =
+      uniqueListIds.length > 1 &&
+      childListIds.length > 1 &&
+      storedSourceIds.length === 0
+
+    const templateId = campaign.template?.id ?? campaign.templateId ?? ""
+    const subSchedules = (campaign.subCampaigns ?? [])
+      .filter((sub) => sub.scheduledAt && (sub.subCampaignIndex ?? 0) > 0)
+      .map((sub) => ({
+        index: sub.subCampaignIndex as number,
+        scheduledAt: new Date(sub.scheduledAt as string),
+      }))
+      .sort((a, b) => a.index - b.index)
+
+    const firstScheduled =
+      campaign.scheduledAt
+        ? new Date(campaign.scheduledAt)
+        : subSchedules[0]?.scheduledAt
+
+    const MS_PER_DAY = 24 * 60 * 60 * 1000
+    let intervalDays = 1
+    let uniform = true
+    if (subSchedules.length > 1) {
+      const deltas: number[] = []
+      let allExactWholeDayGaps = true
+      for (let i = 1; i < subSchedules.length; i++) {
+        const diffMs =
+          subSchedules[i].scheduledAt.getTime() - subSchedules[i - 1].scheduledAt.getTime()
+        // Only treat as uniform when every gap is an exact identical whole-day interval.
+        // Rounding (e.g. 36h → 2 days) would silently rewrite custom schedules on save.
+        if (diffMs <= 0 || diffMs % MS_PER_DAY !== 0) {
+          allExactWholeDayGaps = false
+          break
+        }
+        const days = diffMs / MS_PER_DAY
+        if (days < 1) {
+          allExactWholeDayGaps = false
+          break
+        }
+        deltas.push(days)
+      }
+      if (
+        allExactWholeDayGaps &&
+        deltas.length > 0 &&
+        deltas.every((day) => day === deltas[0])
+      ) {
+        intervalDays = deltas[0]
+        uniform = true
+      } else {
+        uniform = false
+      }
+    }
+
+    const subListIds: Record<number, string> = {}
+    for (const sub of campaign.subCampaigns ?? []) {
+      if (sub.subCampaignIndex && sub.contactListId) {
+        subListIds[sub.subCampaignIndex] = sub.contactListId
+      }
+    }
 
     setWizardMode("edit")
     setWizardCampaignId(campaign.id)
     setWizardActiveTab("geral")
-    setWizardName(campaign.name)
-    setWizardTemplateId(campaign.template?.id ?? "")
-    setWizardContactListIds(listIds)
+    setWizardName(campaign.name ?? "")
+    setWizardTemplateId(templateId)
+    setWizardContactListIds(uniqueListIds)
     setWizardListStrategy(
-      listIds.length > 1
-        ? campaign.sourceContactListIds && campaign.sourceContactListIds.length > 0
-          ? "merge"
-          : "per_list"
-        : "single"
+      uniqueListIds.length > 1 ? (isPerList ? "per_list" : "merge") : "single"
     )
     setWizardRecipientSource(campaign.radarSegmentSlug ? "radar_segment" : "contact_list")
     setWizardRadarSegmentSlug(campaign.radarSegmentSlug ?? "")
-    setWizardScheduledAt(campaign.scheduledAt ? new Date(campaign.scheduledAt) : undefined)
-    setWizardUniformSchedule(true)
-    setWizardScheduleIntervalDays(1)
-    setWizardSubCampaignSchedules(
-      (campaign.subCampaigns ?? [])
-        .filter((sub) => sub.scheduledAt)
-        .map((sub) => ({
-          index: sub.subCampaignIndex ?? 0,
-          scheduledAt: new Date(sub.scheduledAt as string),
-        }))
-    )
-    setWizardSubCampaignListIds({})
+    setWizardScheduledAt(firstScheduled)
+    setWizardUniformSchedule(uniform)
+    setWizardScheduleIntervalDays(intervalDays)
+    setWizardSubCampaignSchedules(uniform ? [] : subSchedules)
+    setWizardSubCampaignListIds(subListIds)
     setWizardLinkedForm(campaign.linkedForm ?? null)
-  }, [])
+    ensureWizardOptionsFromCampaign(campaign)
+  }, [ensureWizardOptionsFromCampaign])
 
   const openWizard = useCallback(async () => {
     resetWizardState()
@@ -714,20 +828,27 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       return
     }
     resetWizardState()
+    setWizardHydrating(true)
+    // Preenche com o que já temos enquanto carrega o detalhe completo
+    hydrateWizardFromCampaign(campaign)
     setWizardOpen(true)
+    setDetailCampaign(null)
     try {
       await loadWizardOptions()
       const detailed = await service.getById(supabaseId, activeTeamId, campaign.id)
       hydrateWizardFromCampaign(detailed)
     } catch (err) {
       console.error("[useCampanhas] openEditWizard error", err)
-      toast.error("Erro ao carregar campanha para edição")
+      toast.error("Erro ao carregar detalhes da campanha para edição")
+    } finally {
+      setWizardHydrating(false)
     }
   }, [activeTeamId, hydrateWizardFromCampaign, loadWizardOptions, resetWizardState, service, supabaseId])
 
   const closeWizard = useCallback(() => {
     if (wizardSaving) return
     setWizardOpen(false)
+    setWizardHydrating(false)
   }, [wizardSaving])
 
   const toggleWizardContactListId = useCallback((listId: string, selected: boolean) => {
@@ -990,6 +1111,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardPreviewLoading,
     wizardLinkedForm,
     wizardSaving,
+    wizardHydrating,
     materializingSegment,
     templates,
     contactLists,

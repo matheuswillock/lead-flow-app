@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Info, Loader2 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -90,6 +91,7 @@ export function CampaignWizardDialog() {
     wizardPreviewLoading,
     wizardLinkedForm,
     wizardSaving,
+    wizardHydrating,
     templates,
     contactLists,
     radarSegments,
@@ -269,6 +271,8 @@ export function CampaignWizardDialog() {
   }
 
   const title = wizardMode === "edit" ? "Editar campanha" : "Nova campanha"
+  const isEditHydrating = wizardMode === "edit" && wizardHydrating
+  const formDisabled = wizardSaving || isEditHydrating
 
   return (
     <>
@@ -282,9 +286,28 @@ export function CampaignWizardDialog() {
             activeTab={wizardActiveTab}
             tabStates={tabStates}
             onTabChange={setWizardActiveTab}
+            disabled={isEditHydrating}
           />
 
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
+            {isEditHydrating ? (
+              <div className="flex flex-col gap-4" aria-busy="true" aria-live="polite">
+                <p className="text-sm text-muted-foreground">Carregando dados da campanha...</p>
+                <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-4 w-40" />
+                </div>
+                <div className="flex flex-col gap-3">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-24 w-full" />
+                </div>
+              </div>
+            ) : (
+              <>
             <CampaignWizardSummaryPanel
               template={selectedTemplate}
               selectedLists={selectedLists}
@@ -300,7 +323,7 @@ export function CampaignWizardDialog() {
                     id="wizard-name"
                     value={wizardName}
                     onChange={(event) => setWizardName(event.target.value)}
-                    disabled={wizardSaving}
+                    disabled={formDisabled}
                   />
                   {fieldErrorMessage(geralParse.success ? [] : geralParse.error.issues, "name") ? (
                     <FieldError>
@@ -315,7 +338,7 @@ export function CampaignWizardDialog() {
               <FieldGroup>
                 <Field>
                   <FieldLabel>Template *</FieldLabel>
-                  <Select value={wizardTemplateId} onValueChange={setWizardTemplateId} disabled={wizardSaving}>
+                  <Select value={wizardTemplateId} onValueChange={setWizardTemplateId} disabled={formDisabled}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um template..." />
                     </SelectTrigger>
@@ -575,14 +598,25 @@ export function CampaignWizardDialog() {
                 )}
               </FieldGroup>
             ) : null}
+              </>
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={closeWizard} disabled={wizardSaving}>
               Cancelar
             </Button>
-            <Button onClick={() => void handleSaveCampaign()} disabled={!submitParse.success || wizardSaving}>
-              {wizardSaving ? "Salvando..." : wizardMode === "edit" ? "Salvar alterações" : "Criar campanha"}
+            <Button
+              onClick={() => void handleSaveCampaign()}
+              disabled={!submitParse.success || formDisabled}
+            >
+              {wizardSaving
+                ? "Salvando..."
+                : isEditHydrating
+                  ? "Carregando..."
+                  : wizardMode === "edit"
+                    ? "Salvar alterações"
+                    : "Criar campanha"}
             </Button>
           </DialogFooter>
         </DialogContent>

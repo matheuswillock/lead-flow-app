@@ -7,6 +7,7 @@ import type {
   PreScheduleSlotsResult,
 } from "./IPublicLeadFormService";
 import { DEFAULT_TZ } from "@/lib/dates";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class PublicLeadFormService implements IPublicLeadFormService {
   private resolveTrackingPayload(): Pick<
@@ -49,7 +50,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
       params.set("supabaseId", supabaseId);
     }
 
-    const response = await fetch(`/api/v1/integrations/bootstrap?${params}`);
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/bootstrap?${params}`);
     const result = await response.json();
 
     if (!response.ok || !result?.isValid) {
@@ -81,7 +82,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
     supabaseId?: string
   ): Promise<AvailabilityResult> {
     const payload = supabaseId ? { supabaseId, teamId, closerId, date } : { teamId, closerId, date };
-    const response = await fetch("/api/v1/integrations/availability", {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/availability`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -105,7 +106,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
       params.set("supabaseId", supabaseId);
     }
 
-    const response = await fetch(`/api/v1/integrations/pre-schedule-slots?${params}`);
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/pre-schedule-slots?${params}`);
     const result = await response.json();
 
     if (!response.ok || !result?.isValid) {
@@ -119,7 +120,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
   async submitLead(payload: SubmitPublicLeadPayload): Promise<SubmitPublicLeadResult> {
     const trackingPayload = this.resolveTrackingPayload();
 
-    const response = await fetch("/api/v1/integrations/lead-form", {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/lead-form`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -11,6 +11,7 @@ import type {
   NotificationItem,
   NotificationsContextState,
 } from "../types/notification.types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type NotificationsProviderProps = {
   children: React.ReactNode;
@@ -309,7 +310,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
         if (!accessToken) {
           try {
-            const response = await fetch("/api/v1/realtime/auth-token", {
+            const response = await fetch(`${API_CLIENT_BASE}/realtime/auth-token`, {
               method: "GET",
               cache: "no-store",
             });

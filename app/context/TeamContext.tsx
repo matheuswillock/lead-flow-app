@@ -8,6 +8,7 @@ import {
   readTeamsBootstrapCache,
   writeTeamsBootstrapCache,
 } from "@/lib/bootstrap/sessionBootstrapCache";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const teamsInFlightBySupabaseId = new Map<string, Promise<Output>>();
 
@@ -151,7 +152,7 @@ export const TeamProvider = ({
       setError(null);
 
       const createTeamsRequest = async (): Promise<Output> => {
-        const response = await fetch("/api/v1/teams", {
+        const response = await fetch(`${API_CLIENT_BASE}/teams`, {
           headers: {
             "x-supabase-user-id": supabaseId
           }
@@ -218,7 +219,7 @@ export const TeamProvider = ({
     }
 
     try {
-      const response = await fetch("/api/v1/teams/active", {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/active`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

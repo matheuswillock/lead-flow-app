@@ -6,6 +6,7 @@ import {
   ManagerUserTeamsApiResponse
 } from "../types";
 import { isManagerLikeRole } from "@/lib/roles";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class ManagerUsersService {
   private baseUrl: string;
@@ -121,7 +122,7 @@ class ManagerUsersService {
 
   // Verificar se email está disponível
   async checkEmailAvailability(email: string): Promise<{ available: boolean; error?: string }> {
-    const url = `/api/v1/manager/${this.supabaseId}/users?email=${encodeURIComponent(email)}`;
+    const url = `${API_CLIENT_BASE}/manager/${this.supabaseId}/users?email=${encodeURIComponent(email)}`;
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -153,7 +154,7 @@ class ManagerUsersService {
   // Reenviar convite por e-mail para operador
   async resendInvite(email: string, userId?: string): Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }> {
     try {
-      const response = await fetch('/api/v1/operators/resend-invite', {
+      const response = await fetch(`${API_CLIENT_BASE}/operators/resend-invite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

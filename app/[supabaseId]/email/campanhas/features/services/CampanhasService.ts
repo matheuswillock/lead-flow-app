@@ -1,4 +1,5 @@
 import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, CampaignLogDetail, CampaignPreviewPlan } from '../context/CampanhasTypes'
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type CampaignWritePayload = {
   name: string
@@ -38,7 +39,7 @@ export interface ICampanhasService {
 }
 
 export class CampanhasService implements ICampanhasService {
-  private readonly baseUrl = '/api/v1/email'
+  private readonly baseUrl = `${API_CLIENT_BASE}/email`
 
   private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
     return {

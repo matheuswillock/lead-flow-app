@@ -3,6 +3,7 @@ import type {
   TeamEmailLimitGrantItem,
   TeamSearchItem,
 } from "../context/BackofficeTeamEmailLimitTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -21,14 +22,14 @@ async function parseOutput<T>(response: Response): Promise<T> {
 export class BackofficeTeamEmailLimitService implements IBackofficeTeamEmailLimitService {
   async list(): Promise<{ grants: TeamEmailLimitGrantItem[] }> {
     return parseOutput<{ grants: TeamEmailLimitGrantItem[] }>(
-      await fetch("/api/v1/backoffice/team-email-limit-grants", { cache: "no-store" })
+      await fetch(`${API_CLIENT_BASE}/backoffice/team-email-limit-grants`, { cache: "no-store" })
     )
   }
 
   async searchTeams(query: string): Promise<{ teams: TeamSearchItem[] }> {
     const params = new URLSearchParams({ q: query })
     return parseOutput<{ teams: TeamSearchItem[] }>(
-      await fetch(`/api/v1/backoffice/team-email-limit-grants?${params.toString()}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/team-email-limit-grants?${params.toString()}`, {
         cache: "no-store",
       })
     )
@@ -40,7 +41,7 @@ export class BackofficeTeamEmailLimitService implements IBackofficeTeamEmailLimi
     notes?: string | null
   ): Promise<TeamEmailLimitGrantItem> {
     return parseOutput<TeamEmailLimitGrantItem>(
-      await fetch("/api/v1/backoffice/team-email-limit-grants", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/team-email-limit-grants`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId, maxEmailsPerDay, notes }),
@@ -50,7 +51,7 @@ export class BackofficeTeamEmailLimitService implements IBackofficeTeamEmailLimi
 
   async revoke(grantId: string): Promise<void> {
     await parseOutput<unknown>(
-      await fetch(`/api/v1/backoffice/team-email-limit-grants/${grantId}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/team-email-limit-grants/${grantId}`, {
         method: "DELETE",
       })
     )

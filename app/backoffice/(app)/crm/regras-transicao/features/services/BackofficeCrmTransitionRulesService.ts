@@ -5,10 +5,11 @@ import type {
   BackofficeCrmTransitionRulesResult,
 } from "../context/BackofficeCrmTransitionRulesTypes";
 import type { IBackofficeCrmTransitionRulesService } from "./IBackofficeCrmTransitionRulesService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeCrmTransitionRulesService implements IBackofficeCrmTransitionRulesService {
   async list(): Promise<BackofficeCrmTransitionRulesResult> {
-    const response = await fetch("/api/v1/backoffice/crm-lead-status-transition-rules", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/crm-lead-status-transition-rules`, {
       cache: "no-store",
     });
     const data = await response.json();
@@ -22,7 +23,7 @@ export class BackofficeCrmTransitionRulesService implements IBackofficeCrmTransi
     targetStatus: BackofficeLeadStatus,
     fieldKeys: LeadTransitionFieldKey[]
   ): Promise<Output> {
-    const response = await fetch("/api/v1/backoffice/crm-lead-status-transition-rules", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/crm-lead-status-transition-rules`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ targetStatus, fieldKeys }),

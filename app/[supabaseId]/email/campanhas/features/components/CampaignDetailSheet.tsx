@@ -294,7 +294,7 @@ export function CampaignDetailSheet({
   const canEdit =
     detailCampaign &&
     !isParentCampaign &&
-    ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(detailCampaign.status)
+    ["draft", "scheduled"].includes(detailCampaign.status)
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
       campaign: subCampaign,

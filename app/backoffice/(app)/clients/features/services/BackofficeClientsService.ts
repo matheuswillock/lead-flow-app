@@ -3,6 +3,7 @@ import type {
   BackofficeClientsFilters,
   BackofficeClientsListResult,
 } from "../context/BackofficeClientsTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeClientsService implements IBackofficeClientsService {
   async list(params?: {
@@ -27,7 +28,7 @@ export class BackofficeClientsService implements IBackofficeClientsService {
       search.set("userType", params.filters.userType)
     }
 
-    const res = await fetch(`/api/v1/backoffice/clients?${search.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/clients?${search.toString()}`, {
       cache: "no-store",
     })
     const data = await res.json()

@@ -8,6 +8,7 @@ import type {
   TeamWebhookSummary,
   UpdateTeamWebhookPayload,
 } from "./ITeamWebhooksService";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class TeamWebhooksService implements ITeamWebhooksService {
   private extractErrorMessage(output: unknown, fallback: string): string {
@@ -46,7 +47,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
     if (params.status) search.set("status", params.status);
     if (params.search?.trim()) search.set("search", params.search.trim());
 
-    const response = await fetch(`/api/v1/integrations/webhooks?${search.toString()}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks?${search.toString()}`, {
       method: "GET",
       headers: this.headers(supabaseId, teamId),
     });
@@ -58,7 +59,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
   }
 
   async getById(supabaseId: string, teamId: string, id: string) {
-    const response = await fetch(`/api/v1/integrations/webhooks/${id}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks/${id}`, {
       method: "GET",
       headers: this.headers(supabaseId, teamId),
     });
@@ -74,7 +75,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
     teamId: string,
     payload: CreateInboundWebhookPayload | CreateOutboundWebhookPayload
   ) {
-    const response = await fetch(`/api/v1/integrations/webhooks`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks`, {
       method: "POST",
       headers: this.headers(supabaseId, teamId),
       body: JSON.stringify(payload),
@@ -92,7 +93,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
     id: string,
     payload: UpdateTeamWebhookPayload
   ) {
-    const response = await fetch(`/api/v1/integrations/webhooks/${id}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks/${id}`, {
       method: "PATCH",
       headers: this.headers(supabaseId, teamId),
       body: JSON.stringify(payload),
@@ -110,7 +111,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
     id: string,
     body: { status: "active" | "disabled" } | { action: "reactivate" }
   ) {
-    const response = await fetch(`/api/v1/integrations/webhooks/${id}/status`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks/${id}/status`, {
       method: "POST",
       headers: this.headers(supabaseId, teamId),
       body: JSON.stringify(body),
@@ -134,7 +135,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
     });
     if (params.result) search.set("result", params.result);
 
-    const response = await fetch(`/api/v1/integrations/webhooks/${id}/logs?${search.toString()}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks/${id}/logs?${search.toString()}`, {
       method: "GET",
       headers: this.headers(supabaseId, teamId),
     });
@@ -146,7 +147,7 @@ class TeamWebhooksService implements ITeamWebhooksService {
   }
 
   async testDelivery(supabaseId: string, teamId: string, id: string) {
-    const response = await fetch(`/api/v1/integrations/webhooks/${id}/test`, {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/webhooks/${id}/test`, {
       method: "POST",
       headers: this.headers(supabaseId, teamId),
     });

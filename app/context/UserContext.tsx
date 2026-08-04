@@ -9,6 +9,7 @@ import {
   readUserBootstrapCache,
   writeUserBootstrapCache,
 } from "@/lib/bootstrap/sessionBootstrapCache";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type UserBootstrapResponse = {
   profileOutput: Output;
@@ -155,7 +156,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       setError(null);
 
       const createBootstrapRequest = async (): Promise<UserBootstrapResponse> => {
-        const profilePromise = fetch(`/api/v1/profiles/${supabaseId}`).then(
+        const profilePromise = fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`).then(
           (response) => response.json() as Promise<Output>
         );
 
@@ -168,7 +169,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
             return null;
           }
 
-          const checkResponse = await fetch("/api/v1/subscriptions/check", {
+          const checkResponse = await fetch(`${API_CLIENT_BASE}/subscriptions/check`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -198,7 +199,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
           return { profileOutput, subscriptionCheckResult };
         }
 
-        const checkResponse = await fetch("/api/v1/subscriptions/check", {
+        const checkResponse = await fetch(`${API_CLIENT_BASE}/subscriptions/check`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -290,7 +291,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -334,7 +335,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/v1/profiles/${supabaseId}/password`, {
+      const response = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}/password`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -375,7 +376,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       const formData = new FormData();
       formData.append('icon', file);
 
-      const response = await fetch(`/api/v1/profiles/${supabaseId}/icon`, {
+      const response = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}/icon`, {
         method: "POST",
         body: formData,
       });
@@ -412,7 +413,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/v1/profiles/${supabaseId}/icon`, {
+      const response = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}/icon`, {
         method: "DELETE",
       });
 
