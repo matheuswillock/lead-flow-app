@@ -154,10 +154,15 @@ const STATIC_IMPORT_SPECIFIER_REGEX =
 const DYNAMIC_IMPORT_SPECIFIER_REGEX = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 const FETCH_REQUEST_REGEX = /\bfetch\s*\(/;
 const AXIOS_REQUEST_REGEX = /\baxios\s*(?:\(|\.)/;
-/** Hardcoded product API path in client-side source (must use API_CLIENT_BASE). */
-const HARDCODED_API_V1_PATH_REGEX = /['"`]\/api\/v1(?:\/|['"`])/;
+/**
+ * Hardcoded product API path in client-side source (must use API_CLIENT_BASE).
+ * Matches both quoted roots (`'/api/v1/...'`, `` `/api/v1/...` ``) and path
+ * segments after an interpolated/absolute origin
+ * (`${this.baseUrl}/api/v1/...`, `https://host/api/v1/...`).
+ */
+const HARDCODED_API_V1_PATH_REGEX = /\/api\/v1(?:\/|['"`]|$)/;
 const API_V1_MODULE_IMPORT_REGEX =
-  /(?:from\s+|import\s*\(\s*)['"][^'"]*\/api\/v1\//;
+  /(?:from\s+|import\s*\(\s*)['"][^'"]*\/api\/v1(?:\/|['"])/;
 const SERVER_ONLY_MODULE_REGEX =
   /(?:^|\n)\s*(?:import\s+['"]server-only['"]|['"]use server['"]|["']use server["'])/;
 const CLIENT_API_MASKING_SCAN_DIRECTORIES = ["app", "components", "hooks", "lib"];
