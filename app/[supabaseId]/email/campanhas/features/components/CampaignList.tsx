@@ -81,6 +81,9 @@ function CampaignActionsMenu({
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const isParentCampaign = Boolean(campaign.isParentCampaign || (campaign.subCampaignCount ?? 0) > 0)
+  const canRetryFailedSubs =
+    isParentCampaign &&
+    (campaign.status === "failed" || campaign.status === "partially_sent")
   const canSendByStatus =
     !isParentCampaign &&
     (campaign.status === "draft" ||
@@ -91,11 +94,13 @@ function CampaignActionsMenu({
   const sendDisabledReason =
     sendBlockReason ??
     (isParentCampaign
-      ? "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
+      ? canRetryFailedSubs
+        ? 'Abra a campanha e use "Reenviar" nas partes com falha'
+        : "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
-  const canEdit = ["draft", "scheduled", "sent", "failed", "partially_sent"].includes(campaign.status)
+  const canEdit = ["draft", "scheduled"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
   const canArchive = ["sent", "failed", "partially_sent"].includes(campaign.status)
@@ -143,14 +148,29 @@ function CampaignActionsMenu({
           </DropdownMenuItem>
           {!readOnly ? (
             <>
-              <DropdownMenuItem
-                onClick={() => setSendConfirmOpen(true)}
-                disabled={!canSend}
-                title={!canSend ? sendDisabledReason : undefined}
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Disparar
-              </DropdownMenuItem>
+              {canRetryFailedSubs ? (
+                <DropdownMenuItem onClick={() => openView(campaign)}>
+                  <Send className="mr-2 h-4 w-4" />
+                  Redisparar falhas
+                </DropdownMenuItem>
+              ) : sendDisabledReason && !canSend ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="w-full">
+                      <DropdownMenuItem disabled className="pointer-events-none w-full">
+                        <Send className="mr-2 h-4 w-4" />
+                        Disparar
+                      </DropdownMenuItem>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm">{sendDisabledReason}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <DropdownMenuItem onClick={() => setSendConfirmOpen(true)} disabled={!canSend}>
+                  <Send className="mr-2 h-4 w-4" />
+                  Disparar
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => void openEditWizard(campaign)} disabled={!canEdit}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar

@@ -11,6 +11,7 @@ type CampaignWizardBrowserTabsProps = {
   activeTab: WizardTabId
   tabStates: Record<WizardTabId, WizardTabState>
   onTabChange: (tab: WizardTabId) => void
+  disabled?: boolean
 }
 
 const TAB_LABELS: Record<WizardTabId, string> = {
@@ -35,14 +36,27 @@ export function CampaignWizardBrowserTabs({
   activeTab,
   tabStates,
   onTabChange,
+  disabled = false,
 }: CampaignWizardBrowserTabsProps) {
   return (
-    <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as WizardTabId)}>
-      <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0">
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => {
+        if (disabled) return
+        onTabChange(value as WizardTabId)
+      }}
+    >
+      <TabsList
+        className={cn(
+          "h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0",
+          disabled && "pointer-events-none opacity-40"
+        )}
+      >
         {(Object.keys(TAB_LABELS) as WizardTabId[]).map((tabId) => (
           <TabsTrigger
             key={tabId}
             value={tabId}
+            disabled={disabled}
             className={cn(
               "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2 shadow-none",
               "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"

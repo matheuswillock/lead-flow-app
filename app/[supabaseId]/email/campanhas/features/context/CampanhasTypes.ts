@@ -21,6 +21,7 @@ export type SubCampaignSummary = {
   totalClicked: number
   totalBounced: number
   subCampaignIndex: number | null
+  contactListId?: string | null
   errorMessage?: string | null
 }
 
@@ -28,6 +29,8 @@ export type Campaign = {
   id: string
   name: string
   parentCampaignId?: string | null
+  templateId?: string
+  contactListId?: string | null
   audienceContactIds?: string[]
   sourceContactListIds?: string[]
   linkedForm?: { id: string; name: string; publicId: string } | null
@@ -43,8 +46,8 @@ export type Campaign = {
   dispatchCount: number
   createdAt: string
   creator: { fullName: string | null; email: string | null } | null
-  template: { id: string; name: string } | null
-  contactList: { id: string; name: string } | null
+  template: { id: string; name: string; subject?: string } | null
+  contactList: { id: string; name: string; totalContacts?: number; activeContacts?: number } | null
   radarSegmentSlug?: string | null
   errorMessage?: string | null
   subCampaignCount?: number
@@ -186,6 +189,7 @@ export type CampanhasState = {
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
   wizardSaving: boolean
+  wizardHydrating: boolean
   materializingSegment: boolean
   templates: Template[]
   contactLists: ContactList[]
