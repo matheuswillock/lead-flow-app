@@ -12395,6 +12395,113 @@
           ]
         },
         {
+          "name": "Backoffice Radar Engagement",
+          "item": [
+            {
+              "name": "GET Radar Engagement Weights",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/radar/engagement-weights",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "radar",
+                    "engagement-weights"
+                  ]
+                },
+                "description": "Lista pesos globais de engajamento do Radar (backoffice)."
+              }
+            },
+            {
+              "name": "PUT Radar Engagement Weights",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/radar/engagement-weights",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "radar",
+                    "engagement-weights"
+                  ]
+                },
+                "description": "Upsert em lote dos pesos por eventType (master).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"weights\": [\n    {\n      \"eventType\": \"email.opened\",\n      \"weight\": 5,\n      \"description\": \"Curiosidade, sinal passivo\",\n      \"isActive\": true\n    }\n  ]\n}"
+                }
+              }
+            },
+            {
+              "name": "GET Radar Engagement Config",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/radar/engagement-config",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "radar",
+                    "engagement-config"
+                  ]
+                },
+                "description": "Retorna a configuração ativa (singleton) de janelas e limiares."
+              }
+            },
+            {
+              "name": "PATCH Radar Engagement Config",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/radar/engagement-config",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "radar",
+                    "engagement-config"
+                  ]
+                },
+                "description": "Atualiza (ou cria) a configuração ativa de engajamento (master).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"windowRecentDays\": 7,\n  \"windowMidDays\": 30,\n  \"windowOldDays\": 90,\n  \"recentMultiplier\": 2.0,\n  \"oldMultiplier\": 0.2,\n  \"hotThreshold\": 60,\n  \"warmThreshold\": 30,\n  \"lukewarmThreshold\": 10\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Contracts",
           "item": [
             {
