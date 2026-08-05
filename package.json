@@ -83,6 +83,7 @@
     "prisma:backfill-teams": "bunx tsx scripts/backfill-teams.ts",
     "prisma:backfill-subscription-capacities": "bunx tsx scripts/backfill-subscription-capacities.ts",
     "prisma:backfill-waive-pending-add-user": "bunx tsx scripts/backfill-waive-pending-add-user.ts",
+    "audit:fake-email-attribution-leads": "bunx tsx scripts/audit-fake-email-attribution-leads.ts",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "bunx prisma studio",
     "prisma:generate": "bunx prisma generate",
