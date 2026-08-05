@@ -19,6 +19,7 @@ const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
+const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000
 
 type ImportRow = {
   line?: number
@@ -395,10 +396,32 @@ export class EmailContactImportUseCase {
     console.info(`[EmailContactImport][${job.importId}] Concluído — ${message}`)
   }
 
+  private async reclaimStuckJobs(now = new Date()): Promise<number> {
+    const threshold = new Date(now.getTime() - STUCK_PROCESSING_THRESHOLD_MS)
+
+    const result = await prisma.emailImportJob.updateMany({
+      where: {
+        status: "processing",
+        updatedAt: { lt: threshold },
+      },
+      data: { status: "pending" },
+    })
+
+    if (result.count > 0) {
+      console.info(
+        `[EmailContactImportUseCase][reclaimStuckJobs] ${result.count} job(s) reclaimed from processing to pending`
+      )
+    }
+
+    return result.count
+  }
+
   async processPendingJobs(): Promise<Output> {
     const startedAt = Date.now()
 
     try {
+      await this.reclaimStuckJobs()
+
       const claimed = await prisma.$transaction(async (tx) => {
         const pending = await tx.emailImportJob.findFirst({
           where: { status: "pending" },
