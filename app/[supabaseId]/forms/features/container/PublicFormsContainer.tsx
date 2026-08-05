@@ -899,7 +899,7 @@ function AnalyticsDialog({
                             >
                               <span className="truncate">{origin.source}</span>
                               <span className="shrink-0 tabular-nums text-muted-foreground">
-                                {origin.sessions} sessão{origin.sessions === 1 ? "" : "ões"}
+                                {origin.sessions} {origin.sessions === 1 ? "sessão" : "sessões"}
                               </span>
                             </div>
                           ))}
