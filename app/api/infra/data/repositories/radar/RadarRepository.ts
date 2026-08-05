@@ -173,6 +173,26 @@ export class RadarRepository {
   }
 
   /**
+   * E3: funde `losingProfileId` em `winningProfileId` e recalcula o engagement
+   * score do vencedor. Abre transação própria — entrypoint público para call
+   * sites externos (ex.: MergeLeadsUseCase / E3b). O auto-merge em
+   * `resolveProfileForPhone` usa `mergeProfilesWithTx` + score pós-commit.
+   */
+  async mergeProfiles(
+    teamId: string,
+    losingProfileId: string,
+    winningProfileId: string
+  ): Promise<void> {
+    if (losingProfileId === winningProfileId) return
+
+    await prisma.$transaction(async (tx) => {
+      await this.mergeProfilesWithTx(tx, teamId, losingProfileId, winningProfileId)
+    })
+
+    await this.updateEngagementScore(winningProfileId, teamId)
+  }
+
+  /**
    * D4: funde `losingProfileId` em `winningProfileId` quando o telefone e o
    * e-mail resolvidos apontam para dois perfis diferentes já existentes
    * (ex.: um perfil nasceu email-only via EmailContact/webhook, e depois um
@@ -181,8 +201,10 @@ export class RadarRepository {
    * identidades/eventos/links/consentimentos para o vencedor (com dedupe
    * por chave única onde ela é escopada por team, não por perfil) e apaga
    * o perdedor. Sempre roda dentro da transação já travada pelo chamador.
+   * Não recalcula score aqui — `updateEngagementScore` usa o client global e
+   * não enxergaria writes ainda não commitados; o caller pós-commit chama.
    */
-  private async mergeProfiles(
+  private async mergeProfilesWithTx(
     tx: Prisma.TransactionClient,
     teamId: string,
     losingProfileId: string,
@@ -307,7 +329,9 @@ export class RadarRepository {
     normalizedPrimaryDocument?: string | null
     lastSeenAt?: Date
   }) {
-    return prisma.$transaction(async (tx) => {
+    let mergedWinningProfileId: string | null = null
+
+    const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedPhone}))`
 
       // D4: quando um e-mail acompanha o telefone, também trava o lock por
@@ -347,7 +371,13 @@ export class RadarRepository {
           })
 
           if (emailOwner && emailOwner.profileId !== existingByIdentity.profileId) {
-            await this.mergeProfiles(tx, input.teamId, emailOwner.profileId, existingByIdentity.profileId)
+            await this.mergeProfilesWithTx(
+              tx,
+              input.teamId,
+              emailOwner.profileId,
+              existingByIdentity.profileId
+            )
+            mergedWinningProfileId = existingByIdentity.profileId
           }
         }
 
@@ -518,6 +548,14 @@ export class RadarRepository {
 
       return { profile, wasExisting: Boolean(existingByKey) }
     })
+
+    // E3a: score pós-commit — mergeProfilesWithTx não recalcula (client global
+    // não vê writes da tx aberta).
+    if (mergedWinningProfileId) {
+      await this.updateEngagementScore(mergedWinningProfileId, input.teamId)
+    }
+
+    return result
   }
 
   /**

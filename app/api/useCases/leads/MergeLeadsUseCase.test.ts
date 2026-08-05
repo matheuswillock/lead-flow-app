@@ -12,6 +12,11 @@ const getMergeRelationSnapshotMock = mock(async () => ({
   sourceSchedule: false,
 }));
 const mergeLeadsInTransactionMock = mock(async () => undefined);
+const findProfileByIdentityMock = mock(
+  async (_teamId: string, _type: "lead_id", _value: string): Promise<{ profileId: string } | null> =>
+    null
+);
+const mergeProfilesMock = mock(async () => undefined);
 
 const { MergeLeadsUseCase } = await import("./MergeLeadsUseCase");
 
@@ -59,11 +64,27 @@ const baseLead = {
   meetingType: null,
 };
 
+function makeUseCase() {
+  return new MergeLeadsUseCase(
+    {
+      findById: findByIdMock,
+      getMergeRelationSnapshot: getMergeRelationSnapshotMock,
+      mergeLeadsInTransaction: mergeLeadsInTransactionMock,
+    } as never,
+    {
+      findProfileByIdentity: findProfileByIdentityMock,
+      mergeProfiles: mergeProfilesMock,
+    }
+  );
+}
+
 describe("MergeLeadsUseCase", () => {
   beforeEach(() => {
     findByIdMock.mockReset();
     getMergeRelationSnapshotMock.mockReset();
     mergeLeadsInTransactionMock.mockReset();
+    findProfileByIdentityMock.mockReset();
+    mergeProfilesMock.mockReset();
     getMergeRelationSnapshotMock.mockResolvedValue({
       targetPortfolio: false,
       sourcePortfolio: false,
@@ -84,18 +105,72 @@ describe("MergeLeadsUseCase", () => {
         email: "origem@test.com",
       });
 
-    const useCase = new MergeLeadsUseCase({
-      findById: findByIdMock,
-      getMergeRelationSnapshot: getMergeRelationSnapshotMock,
-      mergeLeadsInTransaction: mergeLeadsInTransactionMock,
-    } as never);
-    const output = await useCase.execute(makeAccess(), {
+    const output = await makeUseCase().execute(makeAccess(), {
       targetLeadId: "target-1",
       sourceLeadId: "source-1",
     });
 
     expect(output.isValid).toBe(true);
     expect(mergeLeadsInTransactionMock).toHaveBeenCalled();
+  });
+
+  it("E3b: funde perfis Radar distintos após merge CRM", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1", leadCode: "LF-TARGET" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+
+    findProfileByIdentityMock
+      .mockResolvedValueOnce({ profileId: "radar-target" })
+      .mockResolvedValueOnce({ profileId: "radar-source" });
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(mergeLeadsInTransactionMock).toHaveBeenCalled();
+    expect(findProfileByIdentityMock).toHaveBeenCalledTimes(2);
+    expect(findProfileByIdentityMock).toHaveBeenCalledWith("team-1", "lead_id", "target-1");
+    expect(findProfileByIdentityMock).toHaveBeenCalledWith("team-1", "lead_id", "source-1");
+    expect(mergeProfilesMock).toHaveBeenCalledWith("team-1", "radar-source", "radar-target");
+  });
+
+  it("E3b: não funde Radar quando os leads já compartilham o mesmo perfil", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+
+    findProfileByIdentityMock
+      .mockResolvedValueOnce({ profileId: "radar-shared" })
+      .mockResolvedValueOnce({ profileId: "radar-shared" });
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(mergeProfilesMock).not.toHaveBeenCalled();
+  });
+
+  it("E3b: falha no Radar após CRM não invalida a mesclagem", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+
+    findProfileByIdentityMock
+      .mockResolvedValueOnce({ profileId: "radar-target" })
+      .mockResolvedValueOnce({ profileId: "radar-source" });
+    mergeProfilesMock.mockRejectedValueOnce(new Error("radar down"));
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(mergeProfilesMock).toHaveBeenCalled();
   });
 
   it("aborta quando ambos possuem carteira", async () => {
@@ -111,12 +186,7 @@ describe("MergeLeadsUseCase", () => {
       sourceSchedule: false,
     });
 
-    const useCase = new MergeLeadsUseCase({
-      findById: findByIdMock,
-      getMergeRelationSnapshot: getMergeRelationSnapshotMock,
-      mergeLeadsInTransaction: mergeLeadsInTransactionMock,
-    } as never);
-    const output = await useCase.execute(makeAccess(), {
+    const output = await makeUseCase().execute(makeAccess(), {
       targetLeadId: "target-1",
       sourceLeadId: "source-1",
     });
@@ -124,6 +194,7 @@ describe("MergeLeadsUseCase", () => {
     expect(output.isValid).toBe(false);
     expect(output.errorMessages[0]).toContain("carteira");
     expect(mergeLeadsInTransactionMock).not.toHaveBeenCalled();
+    expect(mergeProfilesMock).not.toHaveBeenCalled();
   });
 
   it("falha quando lead de origem não existe", async () => {
@@ -131,12 +202,7 @@ describe("MergeLeadsUseCase", () => {
       .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
       .mockResolvedValueOnce(null);
 
-    const useCase = new MergeLeadsUseCase({
-      findById: findByIdMock,
-      getMergeRelationSnapshot: getMergeRelationSnapshotMock,
-      mergeLeadsInTransaction: mergeLeadsInTransactionMock,
-    } as never);
-    const output = await useCase.execute(makeAccess(), {
+    const output = await makeUseCase().execute(makeAccess(), {
       targetLeadId: "target-1",
       sourceLeadId: "missing",
     });
@@ -150,12 +216,7 @@ describe("MergeLeadsUseCase", () => {
       .mockResolvedValueOnce({ ...baseLead, id: "target-1", teamId: "team-1" })
       .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE", teamId: "team-2" });
 
-    const useCase = new MergeLeadsUseCase({
-      findById: findByIdMock,
-      getMergeRelationSnapshot: getMergeRelationSnapshotMock,
-      mergeLeadsInTransaction: mergeLeadsInTransactionMock,
-    } as never);
-    const output = await useCase.execute(makeAccess("team-1"), {
+    const output = await makeUseCase().execute(makeAccess("team-1"), {
       targetLeadId: "target-1",
       sourceLeadId: "source-1",
     });
