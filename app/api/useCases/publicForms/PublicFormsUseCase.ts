@@ -152,6 +152,22 @@ export class PublicFormsUseCase {
     return new Output(true, [], [], await publicFormsService.listPublishedOptions(access.teamId))
   }
 
+  async listTemplates(access: TeamAccess) {
+    if (!isManager(access) && !(await canApprove(access))) {
+      return new Output(false, [], ["Acesso negado aos formulários"], null)
+    }
+    return new Output(true, [], [], await publicFormsService.listTemplates(access.teamId))
+  }
+
+  async getTemplate(access: TeamAccess, slug: string) {
+    if (!isManager(access) && !(await canApprove(access))) {
+      return new Output(false, [], ["Acesso negado aos formulários"], null)
+    }
+    const template = await publicFormsService.getTemplate(access.teamId, slug)
+    if (!template) return new Output(false, [], ["Template não encontrado"], null)
+    return new Output(true, [], [], template)
+  }
+
   async get(access: TeamAccess, id: string) {
     const approvalPermission = await canApprove(access)
     if (!isManager(access) && !approvalPermission) {

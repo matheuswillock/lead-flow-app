@@ -24,6 +24,10 @@ export class BackofficeClientPublicFormEditorService
   publish(masterId: string, teamId: string, formId: string) {
     return backofficeStudioPublicFormsService.action(masterId, teamId, formId, "publish")
   }
+
+  getTemplate(masterId: string, teamId: string, slug: string) {
+    return backofficeStudioPublicFormsService.getTemplate(masterId, teamId, slug)
+  }
 }
 
 export const backofficeClientPublicFormEditorService =

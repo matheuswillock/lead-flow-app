@@ -15,13 +15,8 @@ import { PublicFormRenderer } from "@/components/public-forms/PublicFormRenderer
 import { ThemeProvider } from "@/components/theme-provider"
 import {
   applyHealthPlanCatalogToDraft,
-  createHealthPlanSimulatorDraft,
 } from "@/lib/public-forms/templates/health-plan-simulator"
-import { createProfessionHealthPlanDraft } from "@/lib/public-forms/templates/profession-health-plan"
-import {
-  PUBLIC_FORM_TEMPLATE_IDS,
-  isTeamAllowedForPublicFormTemplate,
-} from "@/lib/public-forms/templates-access"
+import { PUBLIC_FORM_TEMPLATE_IDS } from "@/lib/public-forms/templates-access"
 import type {
   PublicFormCoverHighlight,
   PublicFormDraftInput,
@@ -173,6 +168,7 @@ export type PublicFormWizardHost = {
     settings: PublicFormSettings | null
   }>
   getForm: (formId: string) => Promise<PublicFormDraftInput & { id: string }>
+  getTemplate: (slug: string) => Promise<PublicFormDraftInput>
   save: (
     formId: string | null,
     input: PublicFormDraftInput
@@ -339,15 +335,7 @@ export function PublicFormWizard({
   const { setOverride } = usePageBreadcrumb()
   const templateParam = !formId ? searchParams.get("template") : null
   const isHealthPlanTemplate = templateParam === PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR
-  const isProfessionHealthPlanTemplate =
-    templateParam === PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN
   const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
-  const canUseProfessionHealthPlanTemplate =
-    isProfessionHealthPlanTemplate &&
-    isTeamAllowedForPublicFormTemplate(
-      PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN,
-      host ? null : activeTeam?.id,
-    )
   const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
   const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
   const previewHref =
@@ -357,17 +345,12 @@ export function PublicFormWizard({
     throw new Error("PublicFormWizard requires TeamProvider when host is not provided")
   }
 
-  const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
-    if (formId) return emptyDraft
-    if (isHealthPlanTemplate) return createHealthPlanSimulatorDraft()
-    if (canUseProfessionHealthPlanTemplate) return createProfessionHealthPlanDraft()
-    return emptyDraft
-  })
+  const [draft, setDraft] = useState<PublicFormDraftInput>(() => emptyDraft)
   const [step, setStep] = useState(0)
   /** Highest step index successfully advanced past via "Próxima etapa" (validated). */
   const [completedThroughStep, setCompletedThroughStep] = useState(0)
   const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(Boolean(formId))
+  const [loading, setLoading] = useState(Boolean(formId) || Boolean(templateParam))
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -376,16 +359,6 @@ export function PublicFormWizard({
   const [healthPlans, setHealthPlans] = useState<Array<{ id: string; name: string }>>([])
   const [settings, setSettings] = useState<PublicFormSettings | null>(null)
   const [confirmExit, setConfirmExit] = useState(false)
-
-  // Team id may arrive after client-side TeamProvider bootstrap; apply restricted
-  // template once access is known, without overwriting an already-filled draft.
-  useEffect(() => {
-    if (formId || !isProfessionHealthPlanTemplate || !canUseProfessionHealthPlanTemplate) return
-    setDraft((current) => {
-      if (current.questions.length > 0) return current
-      return createProfessionHealthPlanDraft()
-    })
-  }, [formId, isProfessionHealthPlanTemplate, canUseProfessionHealthPlanTemplate])
 
   useEffect(() => {
     setOverride({ label: formId ? draft.name || "Editar formulário" : "Novo formulário" })
@@ -403,14 +376,6 @@ export function PublicFormWizard({
           setCustomFields(context.customFields.filter((field) => field.isActive))
           setHealthPlans(context.healthPlans)
           setSettings(context.settings)
-          if (isHealthPlanTemplate && context.healthPlans.length > 0) {
-            setDraft((current) =>
-              applyHealthPlanCatalogToDraft(
-                current,
-                context.healthPlans.map((plan) => plan.name),
-              ),
-            )
-          }
           if (formId) {
             const form = await host.getForm(formId)
             if (cancelled) return
@@ -423,6 +388,17 @@ export function PublicFormWizard({
               rules: form.rules ?? [],
               scoreBands: form.scoreBands ?? [],
             })
+          } else if (templateParam) {
+            const templateDraft = await host.getTemplate(templateParam)
+            if (cancelled) return
+            const withCatalog =
+              isHealthPlanTemplate && context.healthPlans.length > 0
+                ? applyHealthPlanCatalogToDraft(
+                    templateDraft,
+                    context.healthPlans.map((plan) => plan.name),
+                  )
+                : templateDraft
+            setDraft(withCatalog)
           }
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Erro ao carregar")
@@ -433,69 +409,71 @@ export function PublicFormWizard({
       }
 
       if (!activeTeam?.id || !user?.id) return
+      const ids = { supabaseId: user.id, teamId: activeTeam.id }
       const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
-      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (!cancelled) setMembers(o.result?.members ?? [])
-        })
-      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (cancelled) return
-          setCustomFields(
-            Array.isArray(o.result)
-              ? o.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
-              : [],
-          )
-        })
-      void fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (cancelled) return
-          const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
-          setHealthPlans(plans)
-          if (isHealthPlanTemplate && plans.length > 0) {
-            setDraft((current) =>
-              applyHealthPlanCatalogToDraft(
-                current,
-                plans.map((plan: { name: string }) => plan.name),
-              ),
-            )
-          }
-        })
-      void publicFormsClientService
-        .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
-        .then((value) => {
+      try {
+        const [membersRes, fieldsRes, plansRes] = await Promise.all([
+          fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h }).then((r) =>
+            r.json(),
+          ),
+          fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, {
+            headers: h,
+          }).then((r) => r.json()),
+          fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h }).then((r) => r.json()),
+        ])
+        if (cancelled) return
+        setMembers(membersRes.result?.members ?? [])
+        setCustomFields(
+          Array.isArray(fieldsRes.result)
+            ? fieldsRes.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
+            : [],
+        )
+        const plans = Array.isArray(plansRes.result?.healthPlans)
+          ? plansRes.result.healthPlans
+          : []
+        setHealthPlans(plans)
+        try {
+          const value = await publicFormsClientService.getSettings(ids)
           if (!cancelled) setSettings(value)
-        })
-        .catch(() => null)
-      if (formId) {
-        void publicFormsService
-          .get(user.id, activeTeam.id, formId)
-          .then((f) => {
-            if (cancelled) return
-            setDraft({
-              ...emptyDraft,
-              ...f,
-              coverHighlights: f.coverHighlights ?? [],
-              successActions: f.successActions ?? [],
-              questions: f.questions ?? [],
-              rules: f.rules ?? [],
-              scoreBands: f.scoreBands ?? [],
-            })
+        } catch {
+          /* settings opcional no bootstrap */
+        }
+
+        if (formId) {
+          const f = await publicFormsService.get(user.id, activeTeam.id, formId)
+          if (cancelled) return
+          setDraft({
+            ...emptyDraft,
+            ...f,
+            coverHighlights: f.coverHighlights ?? [],
+            successActions: f.successActions ?? [],
+            questions: f.questions ?? [],
+            rules: f.rules ?? [],
+            scoreBands: f.scoreBands ?? [],
           })
-          .catch((e) => toast.error(e.message))
-          .finally(() => {
-            if (!cancelled) setLoading(false)
-          })
+        } else if (templateParam) {
+          const template = await publicFormsClientService.getTemplate(ids, templateParam)
+          if (cancelled) return
+          const withCatalog =
+            isHealthPlanTemplate && plans.length > 0
+              ? applyHealthPlanCatalogToDraft(
+                  template.draft,
+                  plans.map((plan: { name: string }) => plan.name),
+                )
+              : template.draft
+          setDraft(withCatalog)
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host])
+  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host, templateParam])
 
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {

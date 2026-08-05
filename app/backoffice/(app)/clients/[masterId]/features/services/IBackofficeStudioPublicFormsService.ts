@@ -120,4 +120,15 @@ export interface IBackofficeStudioPublicFormsService {
     filters?: { from?: string; to?: string; publicationId?: string }
   ): Promise<StudioPublicFormAnalytics>
   getWizardContext(masterId: string, teamId: string): Promise<StudioPublicFormWizardContext>
+  getTemplate(
+    masterId: string,
+    teamId: string,
+    slug: string
+  ): Promise<{
+    slug: string
+    name: string
+    description: string | null
+    formKind: string
+    draft: PublicFormDraftInput
+  }>
 }

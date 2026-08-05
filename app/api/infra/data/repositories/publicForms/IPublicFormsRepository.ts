@@ -373,4 +373,22 @@ export interface IPublicFormsRepository {
       answers: Array<{ value: Prisma.JsonValue; questionSnapshot: Prisma.JsonValue }>
     }>
   >
+  listTemplatesForTeam(teamId: string): Promise<PublicFormTemplateListItem[]>
+  findTemplateForTeam(
+    teamId: string,
+    slug: string,
+  ): Promise<PublicFormTemplateDetailRecord | null>
+}
+
+export type PublicFormTemplateListItem = {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  formKind: string
+  sortOrder: number
+}
+
+export type PublicFormTemplateDetailRecord = PublicFormTemplateListItem & {
+  draft: Prisma.JsonValue
 }

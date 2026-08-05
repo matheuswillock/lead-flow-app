@@ -3794,6 +3794,20 @@ OUTROS OUTROS
     DateTime updatedAt 
     }
   
+
+  "corretor_studio_public_form_templates" {
+    String id "🗝️"
+    String slug 
+    String name 
+    String description "❓"
+    String formKind 
+    Json draft 
+    Int sortOrder 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -4296,4 +4310,5 @@ OUTROS OUTROS
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
     "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
+    "corretor_studio_public_form_templates" }o--|o corretor_studio_teams : "team"
 ```

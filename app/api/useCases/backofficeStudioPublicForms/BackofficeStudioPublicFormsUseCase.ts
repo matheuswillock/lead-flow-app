@@ -246,6 +246,18 @@ export class BackofficeStudioPublicFormsUseCase {
       settings: settingsOutput.result,
     })
   }
+
+  async listTemplates(actor: StudioPublicFormsActor): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    return decorateOutput(await this.forms.listTemplates(resolved.ctx))
+  }
+
+  async getTemplate(actor: StudioPublicFormsActor, slug: string): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    return decorateOutput(await this.forms.getTemplate(resolved.ctx, slug))
+  }
 }
 
 export const backofficeStudioPublicFormsUseCase = new BackofficeStudioPublicFormsUseCase()

@@ -2,8 +2,12 @@ import type { PublicFormDraftInput } from "../types"
 import { createDefaultThankYouPage } from "../thank-you-pages"
 
 /**
- * Static template mirrored from form publicId aa08d755-0af3-4046-af2a-3bb6a91d8ab4
- * (Kathrein Antunes team). Content is fixed in code — not a shared editable template.
+ * Seed source for the team-scoped `profession_health_plan` template
+ * (Formulário básico — Kathrein Antunes, exclusive WhatsApp CTA).
+ * The global copy for all teams is `basic_form` (`createBasicFormDraft`).
+ * Runtime loads from `PublicFormTemplate`.
+ *
+ * Originally mirrored from form publicId aa08d755-0af3-4046-af2a-3bb6a91d8ab4.
  */
 export function createProfessionHealthPlanDraft(): PublicFormDraftInput {
   const page = {
