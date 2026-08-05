@@ -135,7 +135,7 @@ function HoldToConfirmButton({
   return (
     <Button
       type="button"
-      className="relative min-w-52 overflow-hidden"
+      className="relative w-full min-w-0 overflow-hidden sm:w-auto sm:min-w-52"
       onPointerDown={startHold}
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
@@ -910,15 +910,21 @@ export function CampaignWizardDialog() {
             )}
           </div>
 
-          <DialogFooter className="flex flex-row items-center justify-between gap-2 sm:justify-between">
-            <Button variant="outline" onClick={closeWizard} disabled={wizardSaving}>
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={closeWizard}
+              disabled={wizardSaving}
+            >
               Cancelar
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               {previousTab ? (
                 <Button
                   type="button"
                   variant="secondary"
+                  className="w-full sm:w-auto"
                   onClick={() => setWizardActiveTab(previousTab)}
                   disabled={formDisabled}
                 >
@@ -928,6 +934,7 @@ export function CampaignWizardDialog() {
               {!isRevisao ? (
                 <Button
                   type="button"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     if (nextTab && canGoNext) setWizardActiveTab(nextTab)
                   }}
