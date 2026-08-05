@@ -17,6 +17,11 @@ import {
   applyHealthPlanCatalogToDraft,
   createHealthPlanSimulatorDraft,
 } from "@/lib/public-forms/templates/health-plan-simulator"
+import { createProfessionHealthPlanDraft } from "@/lib/public-forms/templates/profession-health-plan"
+import {
+  PUBLIC_FORM_TEMPLATE_IDS,
+  isTeamAllowedForPublicFormTemplate,
+} from "@/lib/public-forms/templates-access"
 import type {
   PublicFormCoverHighlight,
   PublicFormDraftInput,
@@ -39,6 +44,11 @@ import {
   sumQuestionScoreWeights,
   withEqualOptionScores,
 } from "@/lib/public-forms/scoring"
+import {
+  previewTemperatureForOption,
+} from "@/lib/public-forms/temperature-preview"
+import { useFormEngagementConfig } from "../hooks/useFormEngagementConfig"
+import { TemperaturePreviewPill } from "../components/TemperaturePreviewPill"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   getPageKey,
@@ -69,6 +79,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -326,9 +337,17 @@ export function PublicFormWizard({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setOverride } = usePageBreadcrumb()
-  const isHealthPlanTemplate =
-    !formId && searchParams.get("template") === "health_plan_simulator"
+  const templateParam = !formId ? searchParams.get("template") : null
+  const isHealthPlanTemplate = templateParam === PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR
+  const isProfessionHealthPlanTemplate =
+    templateParam === PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN
   const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
+  const canUseProfessionHealthPlanTemplate =
+    isProfessionHealthPlanTemplate &&
+    isTeamAllowedForPublicFormTemplate(
+      PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN,
+      host ? null : activeTeam?.id,
+    )
   const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
   const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
   const previewHref =
@@ -341,6 +360,7 @@ export function PublicFormWizard({
   const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
     if (formId) return emptyDraft
     if (isHealthPlanTemplate) return createHealthPlanSimulatorDraft()
+    if (canUseProfessionHealthPlanTemplate) return createProfessionHealthPlanDraft()
     return emptyDraft
   })
   const [step, setStep] = useState(0)
@@ -356,6 +376,16 @@ export function PublicFormWizard({
   const [healthPlans, setHealthPlans] = useState<Array<{ id: string; name: string }>>([])
   const [settings, setSettings] = useState<PublicFormSettings | null>(null)
   const [confirmExit, setConfirmExit] = useState(false)
+
+  // Team id may arrive after client-side TeamProvider bootstrap; apply restricted
+  // template once access is known, without overwriting an already-filled draft.
+  useEffect(() => {
+    if (formId || !isProfessionHealthPlanTemplate || !canUseProfessionHealthPlanTemplate) return
+    setDraft((current) => {
+      if (current.questions.length > 0) return current
+      return createProfessionHealthPlanDraft()
+    })
+  }, [formId, isProfessionHealthPlanTemplate, canUseProfessionHealthPlanTemplate])
 
   useEffect(() => {
     setOverride({ label: formId ? draft.name || "Editar formulário" : "Novo formulário" })
@@ -1210,6 +1240,18 @@ function Questions({
   const stepErrors = getQuestionStepErrors(d)
   const pages = groupQuestionsByPage(d.questions)
   const scoreTotal = sumQuestionScoreWeights(d.questions)
+  const { config: engagementConfig, isLoading: engagementConfigLoading } =
+    useFormEngagementConfig(true)
+
+  const hasAnyScoreWeight = d.questions.some((q) => Math.max(0, q.scoreWeight ?? 0) > 0)
+  const allOptionsZero =
+    hasAnyScoreWeight &&
+    d.questions.every((q) => {
+      if (Math.max(0, q.scoreWeight ?? 0) <= 0) return true
+      if (!["single_choice", "multiple_choice", "health_plan"].includes(q.type)) return true
+      return q.options.every((o) => Math.max(0, o.score) <= 0)
+    })
+  const showQualificationBanner = scoreTotal === 100 && allOptionsZero
 
   function updateQuestion(id: string, patch: Partial<PublicFormQuestionInput>) {
     if (patch.scoreWeight !== undefined) {
@@ -1573,6 +1615,22 @@ function Questions({
             Obrigatória
           </label>
         </div>
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => Math.max(0, o.score) <= 0) ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Esta pergunta não influencia o score — configure um peso para pelo menos uma opção
+          </Badge>
+        ) : null}
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => (o.scorePolarity ?? "positive") === "negative") ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Nenhuma resposta positiva: o lead sempre será penalizado nesta pergunta
+          </Badge>
+        ) : null}
         {q.type === "scheduling" ? (
           <div className="mt-4">
             <ScheduleInline draft={d} change={change} members={members} />
@@ -1719,6 +1777,19 @@ function Questions({
                       </div>
                     </FieldContent>
                   </Field>
+                  {engagementConfigLoading ? (
+                    <Skeleton className="h-5 w-48" />
+                  ) : engagementConfig && o.id && q.id ? (
+                    (() => {
+                      const band = previewTemperatureForOption(
+                        d,
+                        q.id,
+                        o.id,
+                        engagementConfig,
+                      )
+                      return band ? <TemperaturePreviewPill band={band} /> : null
+                    })()
+                  ) : null}
                 </div>
               )
             })}
@@ -1760,6 +1831,14 @@ function Questions({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Total: {scoreTotal}%</p>
+      {showQualificationBanner ? (
+        <Alert>
+          <AlertDescription>
+            Score de qualificação não configurado — o formulário não influenciará a temperatura do
+            lead
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {stepErrors.length > 0 ? (
         <Alert variant="destructive">
           <AlertDescription>

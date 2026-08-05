@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const result = await customerDataPlatformUseCase.listSegmentProfiles(
       radarAccess.access.teamId,
       teamContextFromRadarAccess(radarAccess.access),
-      segment,
+      decodeURIComponent(segment),
       page,
       pageSize
     )

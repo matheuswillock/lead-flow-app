@@ -83,6 +83,8 @@ function isConditionCompleteForSave(condition: RadarSegmentCondition): boolean {
       return Boolean(condition.definitionId) && (!conditionNeedsValueInput(condition) || condition.value !== undefined)
     case "lead_status":
       return condition.statuses.length > 0
+    case "engagement_band":
+      return condition.bands.length > 0
     case "lead_field": {
       if (!condition.fieldKey) return false
       if (!conditionNeedsValueInput(condition)) return true

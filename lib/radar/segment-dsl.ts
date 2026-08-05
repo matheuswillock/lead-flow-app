@@ -142,6 +142,8 @@ const eventConditionSchema = z.object({
   eventType: z.string().min(1, "eventType é obrigatório"),
   occurrence: z.enum(["occurred", "not_occurred"]),
   windowDays: z.number().int().positive().optional(),
+  /** Filtra `RadarEvent.metadata.campaignId` (eventos de e-mail). */
+  campaignId: z.string().uuid("campaignId deve ser um UUID válido").optional(),
 })
 
 const leadCustomFieldConditionSchema = z
@@ -160,6 +162,16 @@ const leadCustomFieldConditionSchema = z
 const leadStatusConditionSchema = z.object({
   kind: z.literal("lead_status"),
   statuses: z.array(leadStatusSchema).min(1, "informe ao menos um status"),
+})
+
+const engagementBandSchema = z.enum(["hot", "warm", "lukewarm", "cold"])
+
+/** Fonte única para o frontend popular o multi-select de engagement_band. */
+export const RADAR_SEGMENT_ENGAGEMENT_BANDS = engagementBandSchema.options
+
+const engagementBandConditionSchema = z.object({
+  kind: z.literal("engagement_band"),
+  bands: z.array(engagementBandSchema).min(1, "informe ao menos uma banda"),
 })
 
 export const LEAD_FIELD_CATALOG = {
@@ -431,6 +443,7 @@ export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
   portfolioFieldConditionSchema,
   emailContactListConditionSchema,
   emailContactFieldConditionSchema,
+  engagementBandConditionSchema,
 ])
 
 export const radarSegmentRulesSchema = z.object({

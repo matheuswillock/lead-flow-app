@@ -24,13 +24,15 @@ describe("map-public-form-metric-to-radar-event (D8)", () => {
     }
   })
 
-  it("tipos lead-resolvidos batem com a SPEC D8", () => {
+  it("tipos lead-resolvidos incluem abertura/início (atribuição e-mail→form)", () => {
     expect([...PUBLIC_FORM_LEAD_RESOLVED_METRIC_TYPES].sort()).toEqual([
       "form_completed",
+      "form_started",
+      "form_viewed",
       "lead_attached",
       "lead_created",
     ])
-    expect(isPublicFormLeadResolvedMetricType("form_viewed")).toBe(false)
+    expect(isPublicFormLeadResolvedMetricType("form_viewed")).toBe(true)
     expect(isPublicFormLeadResolvedMetricType("form_completed")).toBe(true)
   })
 

@@ -2760,6 +2760,45 @@ OUTROS OUTROS
     }
   
 
+  "backoffice_radar_engagement_weights" {
+    String id "🗝️"
+    String eventType 
+    Int weight 
+    String description "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_radar_engagement_configs" {
+    String id "🗝️"
+    Int windowRecentDays 
+    Int windowMidDays 
+    Int windowOldDays 
+    Float recentMultiplier 
+    Float oldMultiplier 
+    Int hotThreshold 
+    Int warmThreshold 
+    Int lukewarmThreshold 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_form_engagement_score_rules" {
+    String id "🗝️"
+    Int minPercent 
+    Int maxPercent 
+    Float multiplier 
+    String label 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_crm_lead_status_transition_field_rules" {
     String id "🗝️"
     BackofficeLeadStatus targetStatus 
@@ -3196,6 +3235,8 @@ OUTROS OUTROS
     String normalizedPrimaryDocument "❓"
     DateTime lastSeenAt "❓"
     Json profileData "❓"
+    Int engagementScore "❓"
+    String engagementBand "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3597,6 +3638,7 @@ OUTROS OUTROS
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
     String formKind 
+    Boolean emailCampaignTrackingEnabled 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 
