@@ -13,7 +13,11 @@ import { Prisma } from "@prisma/client"
 
 export const maxDuration = 60
 
-function describeEvent(rawEvent: unknown): { eventType: string; providerMessageId: string } {
+function describeEvent(rawEvent: unknown): {
+  eventType: string
+  providerMessageId: string
+  ack: number | null
+} {
   const ev = rawEvent as Record<string, unknown>
   const data = ev?.["data"] as Record<string, unknown> | undefined
   const id = data?.["id"]
@@ -21,10 +25,23 @@ function describeEvent(rawEvent: unknown): { eventType: string; providerMessageI
     typeof id === "object" && id !== null
       ? (id as Record<string, unknown>)["_serialized"]
       : id
-  return {
-    eventType: typeof ev?.["event"] === "string" ? (ev["event"] as string) : "",
-    providerMessageId: typeof serialized === "string" ? serialized : "",
+  const eventType = typeof ev?.["event"] === "string" ? (ev["event"] as string) : ""
+  const providerMessageId = typeof serialized === "string" ? serialized : ""
+  const ack =
+    eventType === "message_ack" && typeof data?.["ack"] === "number" ? data["ack"] : null
+  return { eventType, providerMessageId, ack }
+}
+
+function buildProviderEventId(
+  eventType: string,
+  providerMessageId: string,
+  ack: number | null,
+  fallbackEventId: string
+): string {
+  if (eventType === "message_ack" && providerMessageId && ack !== null) {
+    return `${eventType}:${providerMessageId}:ack:${ack}`
   }
+  return providerMessageId || `event:${eventType}:${fallbackEventId}`
 }
 
 export async function POST(
@@ -52,14 +69,14 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  const { eventType, providerMessageId } = describeEvent(rawEvent)
+  const { eventType, providerMessageId, ack } = describeEvent(rawEvent)
 
   try {
     const eventId = crypto.randomUUID()
     const persistedEventId = await whatsAppRepository.persistWebhookEvent({
       configId: config.id,
       teamId: config.teamId,
-      providerEventId: providerMessageId || `event:${eventType}:${eventId}`,
+      providerEventId: buildProviderEventId(eventType, providerMessageId, ack, eventId),
       eventType: eventType || "openwa",
       payload: sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue,
     })

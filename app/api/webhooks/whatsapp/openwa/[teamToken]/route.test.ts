@@ -128,4 +128,51 @@ describe("OpenWa webhook route", () => {
     expect(res.status).toBe(200)
     expect(persistWebhookEvent).toHaveBeenCalled()
   })
+
+  it("message_ack inclui event type e ack no providerEventId", async () => {
+    findConfigByWebhookSecret.mockImplementation(async () => ({
+      id: "cfg-1",
+      teamId: "team-1",
+    }))
+    process.env.OPENWA_WEBHOOK_SECRET = SECRET
+    persistWebhookEvent.mockClear()
+
+    const ackBodies = [
+      JSON.stringify({
+        instance: "i",
+        event: "message_ack",
+        data: { id: "msg-1", ack: 1 },
+        timestamp: 1,
+      }),
+      JSON.stringify({
+        instance: "i",
+        event: "message_ack",
+        data: { id: "msg-1", ack: 3 },
+        timestamp: 2,
+      }),
+    ]
+
+    for (const body of ackBodies) {
+      const res = await POST(makeRequest(body, { "x-openwa-signature": sign(body) }), {
+        params: Promise.resolve({ teamToken: TEAM_TOKEN }),
+      })
+      expect(res.status).toBe(200)
+    }
+
+    expect(persistWebhookEvent).toHaveBeenCalledTimes(2)
+    expect(persistWebhookEvent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        providerEventId: "message_ack:msg-1:ack:1",
+        eventType: "message_ack",
+      })
+    )
+    expect(persistWebhookEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        providerEventId: "message_ack:msg-1:ack:3",
+        eventType: "message_ack",
+      })
+    )
+  })
 })
