@@ -2,8 +2,10 @@ import type { PublicFormDraftInput } from "../types"
 import { createDefaultThankYouPage } from "../thank-you-pages"
 
 /**
- * Static template mirrored from form publicId aa08d755-0af3-4046-af2a-3bb6a91d8ab4
- * (Kathrein Antunes team). Content is fixed in code — not a shared editable template.
+ * Seed source for the global `profession_health_plan` template
+ * (Formulário básico). Runtime loads from `PublicFormTemplate` in the database.
+ *
+ * Originally mirrored from form publicId aa08d755-0af3-4046-af2a-3bb6a91d8ab4.
  */
 export function createProfessionHealthPlanDraft(): PublicFormDraftInput {
   const page = {

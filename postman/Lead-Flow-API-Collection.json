@@ -11114,6 +11114,40 @@
                     },
                     "description": "Salva progresso parcial do formulário público (status inicial/parcial, upsert de lead quando há identidade)."
                   }
+                },
+                {
+                  "name": "GET Public Form Templates",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}"
+                      },
+                      {
+                        "key": "x-team-id",
+                        "value": "{{teamId}}"
+                      }
+                    ],
+                    "url": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/templates"
+                  }
+                },
+                {
+                  "name": "GET Public Form Template By Slug",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}"
+                      },
+                      {
+                        "key": "x-team-id",
+                        "value": "{{teamId}}"
+                      }
+                    ],
+                    "url": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/templates/{{publicFormTemplateSlug}}"
+                  }
                 }
               ]
             }

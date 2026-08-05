@@ -35,8 +35,23 @@ export interface PublicFormAnalytics {
   origins: Array<{ source: string; sessions: number }>
 }
 
+export type PublicFormTemplateListItem = {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  formKind: string
+  sortOrder: number
+}
+
+export type PublicFormTemplateDetail = PublicFormTemplateListItem & {
+  draft: PublicFormDraftInput
+}
+
 export interface IPublicFormsService {
   list(ids: PublicFormsIds, filters: PublicFormsListFilters): Promise<PublicFormsPage>
+  listTemplates(ids: PublicFormsIds): Promise<PublicFormTemplateListItem[]>
+  getTemplate(ids: PublicFormsIds, slug: string): Promise<PublicFormTemplateDetail>
   get(ids: PublicFormsIds, formId: string): Promise<PublicFormDetail>
   create(ids: PublicFormsIds, input: PublicFormDraftInput): Promise<PublicFormDetail>
   update(ids: PublicFormsIds, formId: string, input: PublicFormDraftInput): Promise<PublicFormDetail>

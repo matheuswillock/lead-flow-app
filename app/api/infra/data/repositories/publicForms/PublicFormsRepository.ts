@@ -12,6 +12,8 @@ import {
   type PublicFormPublishedOption,
   type PublicFormPublishedSnapshot,
   type PublicFormSubmissionContext,
+  type PublicFormTemplateDetailRecord,
+  type PublicFormTemplateListItem,
   publicFormDetailSelect,
 } from "./IPublicFormsRepository"
 
@@ -955,6 +957,46 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
       orderBy: { submittedAt: "desc" },
       take: input.take ?? 20,
+    })
+  }
+
+  listTemplatesForTeam(teamId: string): Promise<PublicFormTemplateListItem[]> {
+    return prisma.publicFormTemplate.findMany({
+      where: {
+        isActive: true,
+        OR: [{ teamId: null }, { teamId }],
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        formKind: true,
+        sortOrder: true,
+      },
+    })
+  }
+
+  findTemplateForTeam(
+    teamId: string,
+    slug: string,
+  ): Promise<PublicFormTemplateDetailRecord | null> {
+    return prisma.publicFormTemplate.findFirst({
+      where: {
+        slug,
+        isActive: true,
+        OR: [{ teamId: null }, { teamId }],
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        formKind: true,
+        sortOrder: true,
+        draft: true,
+      },
     })
   }
 }
