@@ -141,6 +141,7 @@ const navigationItems: NavItem[] = [
   { title: "WhatsApp", url: "/backoffice/whatsapp", icon: MessageCircle },
   { title: "Bethânia", url: "/backoffice/studio-bot", icon: Bot },
   { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
+  { title: "Templates de formulário", url: "/backoffice/form-templates", icon: FileText },
   {
     title: "E-mails operacionais",
     url: "/backoffice/emails/campanhas",

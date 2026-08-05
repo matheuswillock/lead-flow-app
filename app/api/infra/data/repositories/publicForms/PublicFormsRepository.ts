@@ -960,11 +960,11 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  listTemplatesForTeam(teamId: string): Promise<PublicFormTemplateListItem[]> {
+  listTemplatesForTeam(_teamId: string): Promise<PublicFormTemplateListItem[]> {
     return prisma.publicFormTemplate.findMany({
       where: {
         isActive: true,
-        OR: [{ teamId: null }, { teamId }],
+        teamId: null,
       },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
@@ -979,14 +979,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   }
 
   findTemplateForTeam(
-    teamId: string,
+    _teamId: string,
     slug: string,
   ): Promise<PublicFormTemplateDetailRecord | null> {
     return prisma.publicFormTemplate.findFirst({
       where: {
         slug,
         isActive: true,
-        OR: [{ teamId: null }, { teamId }],
+        teamId: null,
       },
       select: {
         id: true,
