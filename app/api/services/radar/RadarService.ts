@@ -32,7 +32,7 @@ import {
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
-import { LEAD_STATUS_MILESTONE_EVENT_TYPE } from "@/lib/radar/lead-milestone-map"
+import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
   formatDisplayPhone,
   isValidRadarPrimaryIdentity,
@@ -145,7 +145,12 @@ export class RadarService {
   private async appendLeadStatusEvents(
     scope: RadarTeamScope,
     profileId: string,
-    lead: { id: string; status: LeadStatus | null; statusEnteredAt: Date }
+    lead: {
+      id: string
+      status: LeadStatus | null
+      createdAt: Date
+      statusEnteredAt: Date
+    }
   ): Promise<void> {
     if (!lead.status) return
 
@@ -159,7 +164,12 @@ export class RadarService {
       metadata: { status: lead.status },
     })
 
-    const milestoneEventType = LEAD_STATUS_MILESTONE_EVENT_TYPE[lead.status]
+    // E2: milestone new_opportunity só em transição real (não no nascimento).
+    const milestoneEventType = resolveLeadStatusMilestoneEventType(
+      lead.status,
+      lead.createdAt,
+      lead.statusEnteredAt
+    )
     if (milestoneEventType) {
       await radarRepository.appendEventIfNew({
         profileId,

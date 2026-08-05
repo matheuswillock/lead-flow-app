@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   extractPhoneFromCustomFields,
   parseEmailLogIdFromOrigin,
+  parseRecipientEmailFromOrigin,
   resolveAttributionDisplayName,
 } from "./email-campaign-attribution"
 
@@ -15,6 +16,12 @@ describe("email-campaign-attribution", () => {
   it("rejeita token inválido", () => {
     expect(parseEmailLogIdFromOrigin({ emailLogId: "not-a-uuid" })).toBeNull()
     expect(parseEmailLogIdFromOrigin({})).toBeNull()
+  })
+
+  it("parseia recipientEmail do origin (E1)", () => {
+    expect(parseRecipientEmailFromOrigin({ recipientEmail: "  Ana@X.com " })).toBe("ana@x.com")
+    expect(parseRecipientEmailFromOrigin({ recipientEmail: "invalido" })).toBeNull()
+    expect(parseRecipientEmailFromOrigin({})).toBeNull()
   })
 
   it("extrai telefone de customFields", () => {

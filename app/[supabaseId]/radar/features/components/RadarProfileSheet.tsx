@@ -4,7 +4,7 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ChevronDown, ExternalLink } from "lucide-react"
+import { ChevronDown, ExternalLink, Mail, Mails } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -185,6 +185,22 @@ export function RadarProfileSheet({
   const supabaseId = params.supabaseId as string
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
   const displayableIdentities = profile ? filterDisplayableIdentities(profile.identities) : []
+  const emailIdentities = profile
+    ? profile.identities.filter((identity) => identity.type === "email")
+    : []
+  const emailLabels = Array.from(
+    new Set(
+      emailIdentities
+        .map((identity) => getRadarIdentityDisplayValue(identity))
+        .filter((value) => value !== "—")
+    )
+  )
+  const headerEmails =
+    emailLabels.length > 0
+      ? emailLabels
+      : profile?.primaryEmail
+        ? [profile.primaryEmail]
+        : []
   const assignees = profile?.assignees ?? []
   const leadCodeById = new Map(assignees.map((item) => [item.leadId, item.leadCode]))
   const hasAnyAssignee = assignees.some(
@@ -226,8 +242,27 @@ export function RadarProfileSheet({
                   {profile.displayPhone ? (
                     <p className="text-sm text-muted-foreground">{profile.displayPhone}</p>
                   ) : null}
-                  {profile.primaryEmail ? (
-                    <p className="text-sm text-muted-foreground">{profile.primaryEmail}</p>
+                  {headerEmails.length > 1 ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Mails className="size-4 shrink-0" aria-hidden />
+                        <span>
+                          {headerEmails.length} e-mails vinculados
+                        </span>
+                      </div>
+                      <ul className="flex flex-col gap-0.5 pl-6">
+                        {headerEmails.map((email) => (
+                          <li key={email} className="text-sm text-muted-foreground">
+                            {email}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : headerEmails.length === 1 ? (
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <Mail className="size-4 shrink-0" aria-hidden />
+                      <span>{headerEmails[0]}</span>
+                    </div>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
                     <EligibilityBadge profile={profile} />

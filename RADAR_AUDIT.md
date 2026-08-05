@@ -28,6 +28,15 @@
 | D17 | Polimento de UI | ✅ Concluído |
 | D18 | Ranking templates/formulários | ✅ Concluído |
 | D19 | Motor de engajamento (score 0–100 + temperatura) | ✅ Concluído — schema/seed `*_radar-d19-engagement-foundation.sql`; pesos no backoffice; score inline; DSL `engagement_band`; cron backfill; UI Lead Dialog/Sheet/tabela |
+| **E1–E6** | **Incidente leads fantasma / milestone inflado** (spec `specs/radar-fase-e-incidente-leads-fantasma.md`) | ✅ Código na branch `fix/radar-fase-e-leads-fantasma` — **aguardando deploy**; E6 `--apply` só após E1 em prod + OK do owner. Migration remota N/A. |
+
+**Fase E (checklist rápido):**
+- E1 — sem criar Lead em `form_viewed`/`form_started`; resolve Radar por e-mail; gate nome+telefone na criação por atribuição
+- E2 — `lead.milestone.new_opportunity` só em transição real (não no nascimento)
+- E3 — `mergeProfiles` recalcula score; `MergeLeads` funde perfis Radar
+- E4 — touchpoints = canal × dia; CRM fora da contagem
+- E5 — Resend `emailEvent` upsert idempotente
+- E6 — script cleanup dry-run pronto; **não aplicar** até E1 em prod
 
 ---
 
