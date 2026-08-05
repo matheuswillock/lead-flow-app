@@ -18,6 +18,7 @@ const DEFAULT_LIST_NAME = "Todos contatos"
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
+const RADAR_SYNC_CHUNK_SIZE = 5
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
 const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000
 
@@ -510,17 +511,23 @@ export class EmailContactImportUseCase {
           const batchResult = await this.upsertContactsBatch(claimed.listId, batch)
           importedCount += batchResult.imported
           updatedCount += batchResult.updated
-          processedRows += batch.length
 
           if (hasRadarFeature) {
             // D6: sync síncrono (não fire-and-forget) — "já deve constar na
             // lista de segmentos assim que for importado" exige que o job só
             // marque o import como concluído depois que os perfis existirem.
+            // I3: processedRows só avança após o sync Radar do lote (ou skip
+            // quando feature off) — timeout mid-sync reprocessa o lote inteiro.
             const batchContacts = await prisma.emailContact.findMany({
               where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
               select: { id: true },
             })
-            for (const batchContact of batchContacts) {
+
+            for (
+              let chunkStart = 0;
+              chunkStart < batchContacts.length;
+              chunkStart += RADAR_SYNC_CHUNK_SIZE
+            ) {
               if (Date.now() - startedAt > MAX_PROCESSING_MS) {
                 await prisma.emailImportJob.update({
                   where: { id: claimed.id },
@@ -543,22 +550,39 @@ export class EmailContactImportUseCase {
                   resumedAtBatch: batchIndex + 1,
                 })
               }
-              const syncResult = await syncEmailContactToRadarUseCase.execute({
-                emailContactId: batchContact.id,
-                teamId: claimed.teamId,
-              })
-              if (!syncResult.isValid) {
-                console.error(
-                  `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
-                  syncResult.errorMessages
+
+              const chunk = batchContacts.slice(
+                chunkStart,
+                chunkStart + RADAR_SYNC_CHUNK_SIZE
+              )
+              const syncResults = await Promise.all(
+                chunk.map((batchContact) =>
+                  syncEmailContactToRadarUseCase.execute({
+                    emailContactId: batchContact.id,
+                    teamId: claimed.teamId,
+                  })
                 )
-              } else if ((syncResult.result as { errors?: number } | null)?.errors) {
-                console.error(
-                  `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${(syncResult.result as { errors?: number }).errors} erro(s)`
-                )
+              )
+
+              for (let i = 0; i < syncResults.length; i++) {
+                const syncResult = syncResults[i]
+                const batchContact = chunk[i]
+                if (!syncResult.isValid) {
+                  console.error(
+                    `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
+                    syncResult.errorMessages
+                  )
+                } else if ((syncResult.result as { errors?: number } | null)?.errors) {
+                  console.error(
+                    `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${(syncResult.result as { errors?: number }).errors} erro(s)`
+                  )
+                }
               }
             }
           }
+
+          // I3: avança checkpoint só depois do sync Radar (ou skip se feature off).
+          processedRows += batch.length
 
           if (!list.isSystemDefault) {
             const defaultList = await this.ensureDefaultList(ctx)
