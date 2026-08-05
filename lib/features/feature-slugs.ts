@@ -20,6 +20,7 @@ export const FEATURE_SLUGS = {
   EMAIL_UNSUBSCRIBE: "email-unsubscribe",
   CONFIGURATION: "integration",
   PUBLIC_FORMS: "public-forms",
+  FORM_TEMPLATES: "form-templates",
   WHATSAPP: "whatsapp",
   WHATSAPP_SETTINGS: "whatsapp-settings",
   WHATSAPP_AUTO_RESPONSES: "whatsapp-auto-responses",
