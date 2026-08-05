@@ -21,7 +21,7 @@ type CampaignListStrategyDialogProps = {
 
 const optionButtonClassName = cn(
   buttonVariants({ variant: "outline" }),
-  "h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left shadow-none"
+  "h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left text-foreground shadow-none hover:text-foreground"
 )
 
 export function CampaignListStrategyDialog({
@@ -45,7 +45,7 @@ export function CampaignListStrategyDialog({
             className={optionButtonClassName}
             onClick={() => onSelectStrategy("merge")}
           >
-            <span className="w-full font-medium">Juntar listas</span>
+            <span className="w-full font-medium text-foreground">Juntar listas</span>
             <span className="w-full text-sm font-normal text-muted-foreground whitespace-normal">
               Unifica contatos (dedup) e divide em lotes de até 2.000.
             </span>
@@ -55,7 +55,9 @@ export function CampaignListStrategyDialog({
             className={optionButtonClassName}
             onClick={() => onSelectStrategy("per_list")}
           >
-            <span className="w-full font-medium">Uma sub-campanha por lista</span>
+            <span className="w-full font-medium text-foreground">
+              Uma sub-campanha por lista
+            </span>
             <span className="w-full text-sm font-normal text-muted-foreground whitespace-normal">
               Cada lista vira ao menos uma sub-campanha.
             </span>
