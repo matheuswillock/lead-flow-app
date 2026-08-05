@@ -5858,38 +5858,7 @@
                         "permanent-subscription"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/profiles/[supabaseId]/permanent-subscription/route.ts",
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{}"
-                    }
-                  },
-                  "response": []
-                },
-                {
-                  "name": "POST /api/v1/profiles/permanent-subscription",
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json",
-                        "type": "text"
-                      }
-                    ],
-                    "url": {
-                      "raw": "{{baseUrl}}/api/v1/profiles/permanent-subscription",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "v1",
-                        "profiles",
-                        "permanent-subscription"
-                      ]
-                    },
-                    "description": "Auto-generated from app/api/v1/profiles/permanent-subscription/route.ts",
+                    "description": "Backoffice only (getBackofficeAccess). Estágio 0 / D6 — vitalício exclusivo do Backoffice.",
                     "body": {
                       "mode": "raw",
                       "raw": "{}"
@@ -12533,6 +12502,115 @@
                   ]
                 },
                 "description": "Auto-generated from app/api/v1/backoffice/health-plans/icon-upload/route.ts"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Public Form Templates",
+          "item": [
+            {
+              "name": "GET Backoffice Public Form Templates",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates?includeInactive=true",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates"],
+                  "query": [{ "key": "includeInactive", "value": "true" }]
+                },
+                "description": "Lista templates globais de formulário público (backoffice)."
+              }
+            },
+            {
+              "name": "POST Create Backoffice Public Form Template",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"slug\": \"my_template\",\n  \"name\": \"Meu template\",\n  \"description\": \"Descrição do template\",\n  \"sortOrder\": 0,\n  \"draft\": {}\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates"]
+                },
+                "description": "Cria rascunho de template global."
+              }
+            },
+            {
+              "name": "GET Backoffice Public Form Template",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId"],
+                  "variable": [{ "key": "templateId", "value": "" }]
+                },
+                "description": "Detalhe de template (metadados + draft)."
+              }
+            },
+            {
+              "name": "PATCH Update Backoffice Public Form Template",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Meu template atualizado\",\n  \"sortOrder\": 1,\n  \"draft\": {}\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId"],
+                  "variable": [{ "key": "templateId", "value": "" }]
+                },
+                "description": "Atualiza metadados e draft do template."
+              }
+            },
+            {
+              "name": "POST Publish Backoffice Public Form Template",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId/publish",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId", "publish"],
+                  "variable": [{ "key": "templateId", "value": "" }]
+                },
+                "description": "Valida draft e publica template (isActive=true)."
+              }
+            },
+            {
+              "name": "POST Unpublish Backoffice Public Form Template",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId/unpublish",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId", "unpublish"],
+                  "variable": [{ "key": "templateId", "value": "" }]
+                },
+                "description": "Despublica template (isActive=false)."
+              }
+            },
+            {
+              "name": "GET Backoffice Public Form Template Wizard Context",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/wizard-context",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "public-form-templates", "wizard-context"]
+                },
+                "description": "Contexto do wizard (operadoras globais, sem time)."
               }
             }
           ]

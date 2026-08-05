@@ -7,6 +7,7 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import type { 
   ISubscriptionManagementUseCase, 
   UpdatePaymentMethodDTO 
@@ -623,9 +624,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
   async cancelSubscription(supabaseId: string, reason?: string): Promise<Output> {
     try {
-      // Mark optional param as intentionally unused for now
-      void reason;
-      // Validação
       if (!supabaseId) {
         return new Output(
           false,
@@ -635,12 +633,24 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Buscar profile
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          subscriptionId: true,
+          asaasSubscriptionId: true,
+          subscription: {
+            select: { asaasSubscriptionId: true },
+          },
+        },
       });
 
-      if (!profile || !profile.subscriptionId) {
+      const asaasSubscriptionId =
+        profile?.subscription?.asaasSubscriptionId ||
+        profile?.asaasSubscriptionId ||
+        profile?.subscriptionId;
+
+      if (!profile || !asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -649,17 +659,45 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Atualizar status da assinatura
+      // Fail-closed: Asaas primeiro; só então marca local (Estágio 2 / C2)
+      try {
+        await AsaasSubscriptionService.cancelSubscription(asaasSubscriptionId);
+      } catch (asaasError) {
+        console.error('[SubscriptionManagementUseCase][cancelSubscription] Asaas falhou', {
+          supabaseId,
+          asaasSubscriptionId,
+          reason,
+          error: asaasError,
+        });
+        return new Output(
+          false,
+          [],
+          ['Não foi possível cancelar a assinatura no Asaas. Tente novamente.'],
+          null
+        );
+      }
+
       await prisma.profile.update({
         where: { id: profile.id },
         data: {
           subscriptionStatus: 'canceled',
-          subscriptionEndDate: new Date()
-        }
+          subscriptionEndDate: new Date(),
+        },
       });
 
-      // TODO: Chamar API Asaas para cancelar assinatura
-      // await asaasService.cancelSubscription(profile.subscriptionId);
+      await prisma.profileSubscription.updateMany({
+        where: { profileId: profile.id },
+        data: {
+          subscriptionStatus: 'canceled',
+          subscriptionEndDate: new Date(),
+        },
+      });
+
+      console.info('[SubscriptionManagementUseCase][cancelSubscription] cancelado', {
+        profileId: profile.id,
+        asaasSubscriptionId,
+        reason,
+      });
 
       return new Output(
         true,
@@ -684,7 +722,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
     paymentData: UpdatePaymentMethodDTO
   ): Promise<Output> {
     try {
-      // Validações
       if (!supabaseId) {
         return new Output(
           false,
@@ -705,12 +742,23 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         return new Output(false, [], errors, null);
       }
 
-      // Buscar profile
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          subscriptionId: true,
+          asaasSubscriptionId: true,
+          asaasCustomerId: true,
+          subscription: { select: { asaasSubscriptionId: true } },
+        },
       });
 
-      if (!profile || !profile.subscriptionId) {
+      const asaasSubscriptionId =
+        profile?.subscription?.asaasSubscriptionId ||
+        profile?.asaasSubscriptionId ||
+        profile?.subscriptionId;
+
+      if (!profile || !asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -719,17 +767,16 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // TODO: Atualizar método de pagamento na API Asaas
-      // await asaasService.updatePaymentMethod(
-      //   profile.subscriptionId,
-      //   paymentData
-      // );
-
+      // Ainda sem tokenização completa no Asaas nesta etapa — fail-closed (não mentir sucesso)
+      console.info('[SubscriptionManagementUseCase][updatePaymentMethod] não implementado no Asaas', {
+        profileId: profile.id,
+        asaasSubscriptionId,
+      });
       return new Output(
-        true,
-        ['Método de pagamento atualizado com sucesso'],
+        false,
         [],
-        { updatedAt: new Date().toISOString() }
+        ['Atualização de cartão ainda não disponível. Contate o suporte ou atualize via portal Asaas.'],
+        null
       );
 
     } catch (error) {
@@ -745,7 +792,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
   async retryPayment(supabaseId: string, invoiceId: string): Promise<Output> {
     try {
-      // Validações
       if (!supabaseId) {
         return new Output(
           false,
@@ -764,12 +810,23 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Buscar profile
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          asaasCustomerId: true,
+          subscriptionId: true,
+          asaasSubscriptionId: true,
+          subscription: { select: { asaasSubscriptionId: true } },
+        },
       });
 
-      if (!profile || !profile.subscriptionId) {
+      const asaasSubscriptionId =
+        profile?.subscription?.asaasSubscriptionId ||
+        profile?.asaasSubscriptionId ||
+        profile?.subscriptionId;
+
+      if (!profile || !asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -778,8 +835,63 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // TODO: Retentar pagamento na API Asaas
-      // await asaasService.retryPayment(invoiceId);
+      // Ownership: fatura deve pertencer ao customer/subscription do caller.
+      let payment: {
+        id?: string;
+        customer?: string;
+        subscription?: string;
+      };
+      try {
+        payment = await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+          method: 'GET',
+        });
+      } catch (lookupError) {
+        console.error('[SubscriptionManagementUseCase][retryPayment] fatura não encontrada', {
+          supabaseId,
+          invoiceId,
+          error: lookupError,
+        });
+        return new Output(false, [], ['Fatura não encontrada no Asaas'], null);
+      }
+
+      const ownsCustomer =
+        !!profile.asaasCustomerId && payment.customer === profile.asaasCustomerId;
+      const ownsSubscription =
+        !!payment.subscription && payment.subscription === asaasSubscriptionId;
+
+      if (!ownsCustomer && !ownsSubscription) {
+        console.warn('[SubscriptionManagementUseCase][retryPayment] ownership negado', {
+          supabaseId,
+          invoiceId,
+          paymentCustomer: payment.customer,
+          paymentSubscription: payment.subscription,
+        });
+        return new Output(
+          false,
+          [],
+          ['Fatura não pertence à assinatura deste usuário'],
+          null
+        );
+      }
+
+      try {
+        await asaasFetch(`${asaasApi.payments}/${invoiceId}/payWithCreditCard`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+      } catch (asaasError) {
+        console.error('[SubscriptionManagementUseCase][retryPayment] Asaas falhou', {
+          supabaseId,
+          invoiceId,
+          error: asaasError,
+        });
+        return new Output(
+          false,
+          [],
+          ['Não foi possível retentar o pagamento no Asaas. Verifique a fatura ou o cartão.'],
+          null
+        );
+      }
 
       return new Output(
         true,

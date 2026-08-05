@@ -17,6 +17,23 @@ describe("sanitizePublicFormOrigin", () => {
     })
   })
 
+  it("preserva recipientEmail válido (E1 — resolução Radar sem Lead)", () => {
+    expect(
+      sanitizePublicFormOrigin({
+        emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        recipientEmail: "  Destinatario@Exemplo.COM ",
+        utmCampaign: "campanha@leak.com",
+      }),
+    ).toEqual({
+      emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      recipientEmail: "destinatario@exemplo.com",
+    })
+  })
+
+  it("rejeita recipientEmail inválido", () => {
+    expect(sanitizePublicFormOrigin({ recipientEmail: "nao-e-email" })).toEqual({})
+  })
+
   it("ignora URLs inválidas", () => {
     expect(sanitizePublicFormOrigin({ landingUrl: "não é url" })).toEqual({})
   })

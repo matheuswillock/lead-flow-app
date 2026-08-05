@@ -190,6 +190,17 @@ const FEATURES: Array<{
     sortOrder: 190,
     productSlug: null,
   },
+  {
+    slug: "form-templates",
+    name: "Templates de formulário",
+    accessMode: BackofficeFeatureAccessMode.PUBLIC,
+    defaultAccessLevel: BackofficeFeatureAccessLevel.FULL,
+    betaEnabled: false,
+    inheritParentSettings: false,
+    sortOrder: 195,
+    parentSlug: "integration",
+    productSlug: null,
+  },
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
@@ -425,6 +436,11 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
     { principal: "OPERATOR", accessLevel: "FULL" },
+  ]),
+  "form-templates": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),
 
 }

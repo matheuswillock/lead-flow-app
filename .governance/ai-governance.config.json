@@ -281,7 +281,6 @@
       "app/api/useCases/leads/LeadUseCase.ts",
       "app/api/useCases/metaLeads/MetaLeadUseCase.ts",
       "app/api/useCases/pendingActions/PendingActionUseCase.ts",
-      "app/api/useCases/profiles/TogglePermanentSubscriptionUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
       "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
