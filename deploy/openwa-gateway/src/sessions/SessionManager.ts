@@ -1,13 +1,28 @@
+import { createRequire } from "node:module";
 import { WebhookDispatcher } from "../webhook/WebhookDispatcher.js";
-import type { ClientFactory, InstanceStatus, RemoteAuthStore, WhatsAppClientLike } from "../types.js";
+import type {
+  ClientFactory,
+  InstanceStatus,
+  RemoteAuthStore,
+  SessionRegistry,
+  WhatsAppClientLike,
+} from "../types.js";
 import { SupabaseRemoteAuthStore } from "./SupabaseRemoteAuth.js";
+import { SupabaseSessionRegistry } from "./SessionRegistry.js";
 import { config } from "../config.js";
+
+const require = createRequire(import.meta.url);
 
 function toGatewayChatId(remoteJid: string): string {
   if (remoteJid.endsWith("@s.whatsapp.net")) {
     return `${remoteJid.slice(0, -"@s.whatsapp.net".length)}@c.us`;
   }
   return remoteJid;
+}
+
+function resolveOutboundChatId(to: string): string {
+  if (to.includes("@")) return toGatewayChatId(to);
+  return `${to}@c.us`;
 }
 
 function toProductJid(wwebJid: string): string {
@@ -30,10 +45,14 @@ function requireClient(instanceName: string, clients: Map<string, WhatsAppClient
   };
 }
 
-function serializeMessage(msg: unknown): unknown {
+type MessageWithMedia = {
+  downloadMedia?: () => Promise<{ data?: string; mimetype?: string; filename?: string } | null>;
+};
+
+async function serializeMessage(msg: unknown): Promise<unknown> {
   if (!msg || typeof msg !== "object") return msg;
   const m = msg as Record<string, unknown>;
-  return {
+  const payload: Record<string, unknown> = {
     id: (m.id as { _serialized?: string })?._serialized,
     body: m.body,
     from: m.from,
@@ -41,7 +60,23 @@ function serializeMessage(msg: unknown): unknown {
     timestamp: m.timestamp,
     hasMedia: m.hasMedia,
     type: m.type,
+    fromMe: m.fromMe,
   };
+
+  if (m.hasMedia && typeof (m as MessageWithMedia).downloadMedia === "function") {
+    try {
+      const media = await (m as MessageWithMedia).downloadMedia!();
+      if (media?.data) {
+        payload.mediaBase64 = media.data;
+        payload.mimetype = media.mimetype;
+        payload.filename = media.filename;
+      }
+    } catch (err) {
+      console.error("[SessionManager] downloadMedia falhou", err);
+    }
+  }
+
+  return payload;
 }
 
 function defaultClientFactory(
@@ -49,7 +84,6 @@ function defaultClientFactory(
   _webhookUrl: string,
   store: RemoteAuthStore
 ): WhatsAppClientLike {
-  // Importação dinâmica para evitar erro em ambiente de teste sem Chromium
   const { Client, RemoteAuth } = require("whatsapp-web.js");
   return new Client({
     authStrategy: new RemoteAuth({
@@ -78,14 +112,39 @@ export class SessionManager {
 
   constructor(
     private readonly clientFactory: ClientFactory = defaultClientFactory,
-    private readonly storeFactory: () => RemoteAuthStore = () => new SupabaseRemoteAuthStore()
+    private readonly storeFactory: () => RemoteAuthStore = () => new SupabaseRemoteAuthStore(),
+    private readonly registryFactory: () => SessionRegistry = () => new SupabaseSessionRegistry()
   ) {}
+
+  async restoreSessions(): Promise<void> {
+    const registry = this.registryFactory();
+    const entries = await registry.list();
+
+    for (const { instanceName, webhookUrl } of entries) {
+      if (this.clients.has(instanceName)) continue;
+
+      const store = this.storeFactory();
+      const exists = await store.sessionExists({ session: instanceName });
+      if (!exists) {
+        await registry.remove(instanceName);
+        continue;
+      }
+
+      try {
+        await this.startSession(instanceName, webhookUrl);
+        console.info(`[SessionManager] sessão restaurada: ${instanceName}`);
+      } catch (err) {
+        console.error(`[SessionManager] falha ao restaurar ${instanceName}`, err);
+      }
+    }
+  }
 
   async startSession(instanceName: string, webhookUrl: string): Promise<void> {
     if (this.clients.has(instanceName)) return;
 
     this.webhooks.set(instanceName, webhookUrl);
     this.states.set(instanceName, { status: "INITIALIZING" });
+    await this.registryFactory().upsert(instanceName, webhookUrl);
 
     const store = this.storeFactory();
     const dispatcher = new WebhookDispatcher();
@@ -107,7 +166,11 @@ export class SessionManager {
     });
 
     client.on("message", (msg: unknown) => {
-      dispatcher.send(webhookUrl, instanceName, "message", serializeMessage(msg));
+      void serializeMessage(msg)
+        .then((payload) => dispatcher.send(webhookUrl, instanceName, "message", payload))
+        .catch((err: unknown) => {
+          console.error(`[SessionManager] serialização de mensagem falhou para ${instanceName}`, err);
+        });
     });
 
     client.on("message_ack", (msg: unknown, ack: unknown) => {
@@ -118,7 +181,6 @@ export class SessionManager {
     });
 
     this.clients.set(instanceName, client);
-    // initialize() é assíncrono mas não bloqueamos a rota — eventos chegam via callbacks
     client.initialize().catch((err: unknown) => {
       console.error(`[SessionManager] initialize falhou para ${instanceName}`, err);
       this.states.set(instanceName, { status: "DISCONNECTED" });
@@ -141,6 +203,7 @@ export class SessionManager {
     }
     const store = this.storeFactory();
     await store.delete({ session: instanceName });
+    await this.registryFactory().remove(instanceName);
     this.states.delete(instanceName);
     this.webhooks.delete(instanceName);
   }
@@ -148,7 +211,7 @@ export class SessionManager {
   async sendText(instanceName: string, to: string, text: string): Promise<string> {
     const client = this.clients.get(instanceName);
     if (!client) throw new Error(`Instância ${instanceName} não encontrada`);
-    const chatId = to.includes("@c.us") ? to : `${to}@c.us`;
+    const chatId = resolveOutboundChatId(to);
     const msg = await client.sendMessage(chatId, text);
     return msg.id._serialized;
   }
@@ -161,7 +224,7 @@ export class SessionManager {
     const client = this.clients.get(instanceName);
     if (!client) throw new Error(`Instância ${instanceName} não encontrada`);
     const { MessageMedia } = require("whatsapp-web.js");
-    const chatId = to.includes("@c.us") ? to : `${to}@c.us`;
+    const chatId = resolveOutboundChatId(to);
     const wwebMedia = new MessageMedia(media.mimetype, media.base64, media.filename);
     const msg = await client.sendMessage(chatId, wwebMedia, { caption: media.caption });
     return msg.id._serialized;
@@ -170,7 +233,7 @@ export class SessionManager {
   async markChatSeen(instanceName: string, chatId: string): Promise<void> {
     const client = this.clients.get(instanceName);
     if (!client) return;
-    const normalizedId = toGatewayChatId(chatId);
+    const normalizedId = resolveOutboundChatId(chatId);
     const chat = await client.getChatById(normalizedId);
     await chat.sendSeen();
   }

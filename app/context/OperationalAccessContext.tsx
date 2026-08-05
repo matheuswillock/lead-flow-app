@@ -12,6 +12,7 @@ import {
 } from "react"
 import { useUserContext } from "./UserContext"
 import { useTeamContext } from "./TeamContext"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export interface OperationalAccessData {
   associadosQueue: boolean
@@ -75,7 +76,7 @@ export function OperationalAccessProvider({
     inFlightRef.current = true
     setIsLoading(true)
     try {
-      const response = await fetch("/api/v1/me/operational-access", { cache: "no-store" })
+      const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, { cache: "no-store" })
       const data = await response.json()
       if (response.ok && data.isValid && data.result) {
         setAccess(data.result as OperationalAccessData)

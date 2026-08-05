@@ -3,6 +3,7 @@ import type {
   OperationalAccessListResult,
 } from "../context/BackofficeOperationalAccessTypes"
 import type { IBackofficeOperationalAccessService } from "./IBackofficeOperationalAccessService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -21,13 +22,13 @@ async function parseOutput<T>(response: Response): Promise<T> {
 export class BackofficeOperationalAccessService implements IBackofficeOperationalAccessService {
   async list(): Promise<OperationalAccessListResult> {
     return parseOutput<OperationalAccessListResult>(
-      await fetch("/api/v1/backoffice/operational-access", { cache: "no-store" })
+      await fetch(`${API_CLIENT_BASE}/backoffice/operational-access`, { cache: "no-store" })
     )
   }
 
   async grantAssociados(profileId: string, notes?: string | null): Promise<OperationalAccessGrantItem> {
     return parseOutput<OperationalAccessGrantItem>(
-      await fetch("/api/v1/backoffice/operational-access", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/operational-access`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -41,7 +42,7 @@ export class BackofficeOperationalAccessService implements IBackofficeOperationa
 
   async grantMultiskill(masterId: string, notes?: string | null): Promise<OperationalAccessGrantItem> {
     return parseOutput<OperationalAccessGrantItem>(
-      await fetch("/api/v1/backoffice/operational-access", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/operational-access`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -55,7 +56,7 @@ export class BackofficeOperationalAccessService implements IBackofficeOperationa
 
   async revoke(grantId: string): Promise<OperationalAccessGrantItem> {
     return parseOutput<OperationalAccessGrantItem>(
-      await fetch(`/api/v1/backoffice/operational-access/${grantId}`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/operational-access/${grantId}`, {
         method: "DELETE",
       })
     )

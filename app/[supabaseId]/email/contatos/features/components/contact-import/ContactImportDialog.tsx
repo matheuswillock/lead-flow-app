@@ -29,8 +29,9 @@ import {
 } from "./autoMapEmailContactColumns";
 import { ContatosService } from "../../services/ContatosService";
 import { ContactListSegmentPicker } from "./ContactListSegmentPicker";
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { useOptionalFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime";
 
 type ContactImportStep = "upload" | "mapping" | "summary";
 
@@ -73,8 +74,11 @@ export function ContactImportDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [segmentId, setSegmentId] = useState<string | null>(null);
   const [segmentName, setSegmentName] = useState<string | null>(null);
-  const { hasAccess } = useFeatureAccess();
-  const hasRadar = hasAccess(FEATURE_SLUGS.RADAR);
+  const { hideRadarSegments } = useStudioEmailRuntime();
+  const featureAccess = useOptionalFeatureAccess();
+  const hasRadar = hideRadarSegments
+    ? false
+    : Boolean(featureAccess?.hasAccess(FEATURE_SLUGS.RADAR));
 
   const resetState = () => {
     setStep("upload");

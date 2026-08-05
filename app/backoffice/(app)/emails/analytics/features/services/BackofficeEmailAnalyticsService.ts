@@ -6,6 +6,7 @@ import type {
   BackofficeCampaignOption,
 } from "../context/BackofficeEmailAnalyticsTypes"
 import type { IBackofficeEmailAnalyticsService } from "./IBackofficeEmailAnalyticsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -38,14 +39,14 @@ export class BackofficeEmailAnalyticsService implements IBackofficeEmailAnalytic
     const { from, to } = periodToDateRange(period)
     const params = new URLSearchParams({ from, to })
     if (campaignId) params.set("campaignId", campaignId)
-    const response = await fetch(`/api/v1/backoffice/email-campaigns/analytics?${params}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns/analytics?${params}`, {
       cache: "no-store",
     })
     return parseOutput<AnalyticsData>(response)
   }
 
   async listCampaignOptions(): Promise<BackofficeCampaignOption[]> {
-    const response = await fetch("/api/v1/backoffice/email-campaigns", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns`, {
       method: "GET",
       cache: "no-store",
     })

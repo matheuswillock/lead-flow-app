@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
+import { isUnauthorizedApiError } from "@/lib/http/api-request-error";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { notificationsService } from "../services/NotificationsService";
 import { inAppNotificationBridge } from "@/lib/notifications/in-app-notification-bridge";
@@ -11,6 +12,7 @@ import type {
   NotificationItem,
   NotificationsContextState,
 } from "../types/notification.types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type NotificationsProviderProps = {
   children: React.ReactNode;
@@ -44,6 +46,9 @@ const NotificationsContext = createContext<NotificationsContextState | undefined
 const LIST_TTL_MS = 30_000;
 // Debounce dos re-syncs disparados pelo realtime (o payload já aplica o delta).
 const REALTIME_SYNC_DEBOUNCE_MS = 5_000;
+// Após 401 (sessão ausente no proxy), não martelar unread-count/list.
+const AUTH_FAIL_COOLDOWN_MS = 60_000;
+const UNREAD_TTL_MS = 15_000;
 
 function normalizeRealtimeRow(row: Partial<NotificationRealtimeRow>): NotificationRealtimeRow {
   return {
@@ -83,6 +88,16 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   const unreadCountRef = useRef(0);
   const syncDebounceTimerRef = useRef<number | null>(null);
   const focusCheckInFlightRef = useRef(false);
+  const authBlockedUntilRef = useRef(0);
+  const unreadInFlightKeyRef = useRef<string | null>(null);
+  const lastUnreadKeyRef = useRef("");
+  const lastUnreadAtRef = useRef(0);
+
+  const isAuthBlocked = useCallback(() => Date.now() < authBlockedUntilRef.current, []);
+
+  const markAuthFailure = useCallback(() => {
+    authBlockedUntilRef.current = Date.now() + AUTH_FAIL_COOLDOWN_MS;
+  }, []);
 
   const mapRealtimeRowToNotification = useCallback((row: NotificationRealtimeRow): NotificationItem => {
     return {
@@ -103,11 +118,14 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
   const loadNotifications = useCallback(
     async (params?: { limit?: number; offset?: number; force?: boolean }) => {
-      if (!supabaseId || !activeTeamId) {
+      // Espera user do contexto — sem sessão o proxy não injeta x-supabase-user-id (401).
+      if (!supabaseId || !activeTeamId || !user?.id) {
         setNotifications([]);
         setTotal(0);
         return;
       }
+
+      if (isAuthBlocked()) return;
 
       // Dedupe: chave estável + guard de in-flight + TTL de última carga.
       const requestKey = `${supabaseId}:${params?.limit ?? 100}:${params?.offset ?? 0}`;
@@ -145,8 +163,15 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
         listWasLoadedRef.current = true;
         lastListKeyRef.current = capturedKey;
         lastListAtRef.current = Date.now();
+        lastUnreadKeyRef.current = `${supabaseId}:${activeTeamId}`;
+        lastUnreadAtRef.current = Date.now();
+        authBlockedUntilRef.current = 0;
       } catch (err) {
         if (activeListKeyRef.current !== capturedKey) return;
+        if (isUnauthorizedApiError(err)) {
+          markAuthFailure();
+          return;
+        }
         const message = err instanceof Error ? err.message : "Erro ao carregar notificações";
         setError(message);
       } finally {
@@ -158,14 +183,51 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
         }
       }
     },
-    [supabaseId, activeTeamId],
+    [supabaseId, activeTeamId, user?.id, isAuthBlocked, markAuthFailure],
   );
 
+  const fetchUnreadCount = useCallback(async (force = false): Promise<number | null> => {
+    if (!supabaseId || !activeTeamId || !user?.id) return null;
+    if (isAuthBlocked()) return null;
+
+    const requestKey = `${supabaseId}:${activeTeamId}`;
+    const isSameRequest = lastUnreadKeyRef.current === requestKey;
+    const isFresh = Date.now() - lastUnreadAtRef.current < UNREAD_TTL_MS;
+    if (!force && isSameRequest && isFresh) {
+      return unreadCountRef.current;
+    }
+    if (unreadInFlightKeyRef.current === requestKey) return null;
+
+    unreadInFlightKeyRef.current = requestKey;
+    try {
+      const serverUnread = await notificationsService.unreadCount({
+        supabaseId,
+        teamId: activeTeamId,
+      });
+      lastUnreadKeyRef.current = requestKey;
+      lastUnreadAtRef.current = Date.now();
+      authBlockedUntilRef.current = 0;
+      return serverUnread;
+    } catch (err) {
+      if (isUnauthorizedApiError(err)) {
+        markAuthFailure();
+        return null;
+      }
+      throw err;
+    } finally {
+      if (unreadInFlightKeyRef.current === requestKey) {
+        unreadInFlightKeyRef.current = null;
+      }
+    }
+  }, [supabaseId, activeTeamId, user?.id, isAuthBlocked, markAuthFailure]);
+
   const refreshUnreadCount = useCallback(async () => {
-    if (!supabaseId || !activeTeamId) {
+    if (!supabaseId || !activeTeamId || !user?.id) {
       setUnreadCount(0);
       return;
     }
+
+    if (isAuthBlocked()) return;
 
     try {
       setIsLoadingUnread(true);
@@ -177,15 +239,20 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
       setUnreadCount(notificationsRef.current.reduce((acc, item) => (item.isRead ? acc : acc + 1), 0));
     } catch (err) {
+      if (isUnauthorizedApiError(err)) {
+        markAuthFailure();
+        return;
+      }
       console.error("[NotificationsContext] Erro ao buscar contador:", err);
     } finally {
       setIsLoadingUnread(false);
     }
-  }, [supabaseId, activeTeamId, loadNotifications]);
+  }, [supabaseId, activeTeamId, user?.id, loadNotifications, isAuthBlocked, markAuthFailure]);
 
   const markAllAsRead = useCallback(
     async (options?: MarkAllAsReadOptions) => {
-      if (!supabaseId || !activeTeamId) return;
+      if (!supabaseId || !activeTeamId || !user?.id) return;
+      if (isAuthBlocked()) return;
 
       try {
         await notificationsService.markAllAsRead(
@@ -204,13 +271,18 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
             readAt: notification.readAt || new Date().toISOString(),
           })),
         );
+        authBlockedUntilRef.current = 0;
       } catch (err) {
+        if (isUnauthorizedApiError(err)) {
+          markAuthFailure();
+          return;
+        }
         const message =
           err instanceof Error ? err.message : "Erro ao marcar notificações como vistas";
         setError(message);
       }
     },
-    [supabaseId, activeTeamId],
+    [supabaseId, activeTeamId, user?.id, isAuthBlocked, markAuthFailure],
   );
 
   useEffect(() => {
@@ -229,6 +301,9 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   useEffect(() => {
     listWasLoadedRef.current = false;
     lastListKeyRef.current = "";
+    lastUnreadKeyRef.current = "";
+    lastUnreadAtRef.current = 0;
+    authBlockedUntilRef.current = 0;
     setNotifications([]);
     setUnreadCount(0);
     setTotal(0);
@@ -236,9 +311,10 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   }, [supabaseId]);
 
   useEffect(() => {
-    if (!supabaseId || !activeTeamId || listWasLoadedRef.current) return;
+    if (!supabaseId || !activeTeamId || !user?.id || listWasLoadedRef.current) return;
+    if (isAuthBlocked()) return;
     void loadNotifications({ limit: 100, offset: 0 });
-  }, [supabaseId, activeTeamId, loadNotifications]);
+  }, [supabaseId, activeTeamId, user?.id, loadNotifications, isAuthBlocked]);
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId || !user?.id) return;
@@ -282,12 +358,13 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
     // Debounce trailing: o payload do realtime já aplica o delta localmente;
     // o re-sync serve só para reconciliar (ex.: dados do actor) sem gerar uma
-    // requisição por evento.
+    // requisição por evento. Em 401, não agenda re-sync (evita storm).
     const syncFromServer = () => {
+      if (isAuthBlocked()) return;
       if (syncDebounceTimerRef.current !== null) return;
       syncDebounceTimerRef.current = window.setTimeout(() => {
         syncDebounceTimerRef.current = null;
-        if (!cancelled) {
+        if (!cancelled && !isAuthBlocked()) {
           void loadNotificationsRef.current();
         }
       }, REALTIME_SYNC_DEBOUNCE_MS);
@@ -309,7 +386,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
 
         if (!accessToken) {
           try {
-            const response = await fetch("/api/v1/realtime/auth-token", {
+            const response = await fetch(`${API_CLIENT_BASE}/realtime/auth-token`, {
               method: "GET",
               cache: "no-store",
             });
@@ -447,7 +524,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
         syncDebounceTimerRef.current = null;
       }
     };
-  }, [supabaseId, user?.id, mapRealtimeRowToNotification]);
+  }, [supabaseId, user?.id, mapRealtimeRowToNotification, isAuthBlocked]);
 
   useEffect(() => {
     if (!supabaseId || !activeTeamId || !user?.id) return;
@@ -457,18 +534,23 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
     const checkUnreadAndMaybeReload = async () => {
       if (document.visibilityState !== "visible") return;
       if (focusCheckInFlightRef.current) return;
+      if (isAuthBlocked()) return;
       focusCheckInFlightRef.current = true;
 
       try {
-        const serverUnread = await notificationsService.unreadCount({
-          supabaseId,
-          teamId: activeTeamId,
-        });
+        const serverUnread = await fetchUnreadCount();
+        if (serverUnread === null) return;
 
         if (serverUnread !== unreadCountRef.current || !listWasLoadedRef.current) {
           await loadNotificationsRef.current();
+        } else {
+          setUnreadCount(serverUnread);
         }
       } catch (err) {
+        if (isUnauthorizedApiError(err)) {
+          markAuthFailure();
+          return;
+        }
         console.error("[NotificationsContext] Erro ao verificar unread-count:", err);
       } finally {
         focusCheckInFlightRef.current = false;
@@ -486,7 +568,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
       window.removeEventListener("focus", syncOnFocusOrVisibility);
       document.removeEventListener("visibilitychange", syncOnFocusOrVisibility);
     };
-  }, [supabaseId, activeTeamId, user?.id]);
+  }, [supabaseId, activeTeamId, user?.id, fetchUnreadCount, isAuthBlocked, markAuthFailure]);
 
   const value = useMemo<NotificationsContextState>(
     () => ({

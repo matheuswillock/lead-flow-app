@@ -4,17 +4,18 @@ import type {
   CreateUserFormData,
   UpdateUserFormData,
 } from "./IBackofficeUsersService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class BackofficeUsersService implements IBackofficeUsersService {
   async list(): Promise<BackofficeUserItem[]> {
-    const res = await fetch("/api/v1/backoffice/users", { cache: "no-store" })
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/users`, { cache: "no-store" })
     const data = await res.json()
     if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao buscar usuários")
     return data.result ?? []
   }
 
   async create(body: CreateUserFormData) {
-    const res = await fetch("/api/v1/backoffice/users", {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -23,7 +24,7 @@ export class BackofficeUsersService implements IBackofficeUsersService {
   }
 
   async update(id: string, body: UpdateUserFormData) {
-    const res = await fetch(`/api/v1/backoffice/users/${id}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -32,7 +33,7 @@ export class BackofficeUsersService implements IBackofficeUsersService {
   }
 
   async delete(id: string) {
-    const res = await fetch(`/api/v1/backoffice/users/${id}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/users/${id}`, {
       method: "DELETE",
     })
     return res.json()

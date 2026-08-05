@@ -6,6 +6,7 @@ import type {
   CreateBackofficeEmailCampaignFormData,
 } from "../context/BackofficeEmailCampaignsTypes"
 import type { IBackofficeEmailCampaignsService } from "./IBackofficeEmailCampaignsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BackofficeApiOutput<T> {
   isValid: boolean
@@ -25,7 +26,7 @@ async function parseOutput<T>(response: Response): Promise<T> {
 
 export class BackofficeEmailCampaignsService implements IBackofficeEmailCampaignsService {
   async listCampaigns(): Promise<BackofficeEmailCampaignItem[]> {
-    const response = await fetch("/api/v1/backoffice/email-campaigns", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns`, {
       method: "GET",
       cache: "no-store",
     })
@@ -35,7 +36,7 @@ export class BackofficeEmailCampaignsService implements IBackofficeEmailCampaign
   async createCampaign(
     data: CreateBackofficeEmailCampaignFormData
   ): Promise<BackofficeEmailCampaignItem> {
-    const response = await fetch("/api/v1/backoffice/email-campaigns", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -47,7 +48,7 @@ export class BackofficeEmailCampaignsService implements IBackofficeEmailCampaign
     id: string,
     data: Partial<CreateBackofficeEmailCampaignFormData>
   ): Promise<BackofficeEmailCampaignItem> {
-    const response = await fetch(`/api/v1/backoffice/email-campaigns/${id}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -56,21 +57,21 @@ export class BackofficeEmailCampaignsService implements IBackofficeEmailCampaign
   }
 
   async cancelCampaign(id: string): Promise<BackofficeEmailCampaignItem> {
-    const response = await fetch(`/api/v1/backoffice/email-campaigns/${id}`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns/${id}`, {
       method: "DELETE",
     })
     return parseOutput<BackofficeEmailCampaignItem>(response)
   }
 
   async sendNow(id: string): Promise<BackofficeEmailCampaignItem> {
-    const response = await fetch(`/api/v1/backoffice/email-campaigns/${id}/send-now`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns/${id}/send-now`, {
       method: "POST",
     })
     return parseOutput<BackofficeEmailCampaignItem>(response)
   }
 
   async listDispatches(id: string): Promise<BackofficeEmailCampaignDispatchItem[]> {
-    const response = await fetch(`/api/v1/backoffice/email-campaigns/${id}/dispatches`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns/${id}/dispatches`, {
       method: "GET",
       cache: "no-store",
     })
@@ -78,7 +79,7 @@ export class BackofficeEmailCampaignsService implements IBackofficeEmailCampaign
   }
 
   async listContactLists(): Promise<BackofficeEmailContactListOption[]> {
-    const response = await fetch("/api/v1/backoffice/email-campaigns/contact-lists", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-campaigns/contact-lists`, {
       method: "GET",
       cache: "no-store",
     })
@@ -86,7 +87,7 @@ export class BackofficeEmailCampaignsService implements IBackofficeEmailCampaign
   }
 
   async listTemplates(): Promise<BackofficeEmailTemplateOption[]> {
-    const response = await fetch("/api/v1/backoffice/email-templates", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/email-templates`, {
       method: "GET",
       cache: "no-store",
     })

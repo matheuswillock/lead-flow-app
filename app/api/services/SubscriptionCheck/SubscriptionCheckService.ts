@@ -101,11 +101,11 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         };
       }
 
-      const hasSubscription = !!profile.subscriptionId;
-      const isActive = profile.subscriptionStatus === 'active';
+      const hasSubscription = !!(profile.subscriptionId || profile.asaasSubscriptionId);
+      const isActive = await isAccountSubscriptionActive(profile.id);
 
       if (hasSubscription && isActive) {
-        console.info('✅ [SubscriptionCheckService] Master com assinatura ativa');
+        console.info('[SubscriptionCheckService] Master com assinatura ativa (PS/legado alinhados)');
         return {
           success: true,
           hasActiveSubscription: true,
@@ -128,11 +128,11 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         ? 'Master com assinatura inativa'
         : 'Master sem assinatura';
 
-      console.warn(`⚠️ [SubscriptionCheckService] ${message}`);
+      console.warn(`[SubscriptionCheckService] ${message}`);
 
       const hasGuestAccess = await this.hasActiveGuestMembership(profile.id);
       if (hasGuestAccess) {
-        console.info('✅ [SubscriptionCheckService] Master com membership em conta ativa');
+        console.info('[SubscriptionCheckService] Master com membership em conta ativa');
         return {
           success: true,
           hasActiveSubscription: true,

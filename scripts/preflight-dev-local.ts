@@ -2,27 +2,27 @@
  * Standalone preflight for local dev (clone check only).
  *
  * Prefer `bun run dev` or `bun run dev:local` — both use `scripts/dev-local.ts`,
- * which starts Supabase + Evolution API + Next.js with local env overrides.
+ * which starts the local hybrid stack (Postgres + Realtime) + Evolution API +
+ * Next.js with local env overrides.
  *
- * This script only runs the Supabase/clone portion (no Evolution, no Next.js).
+ * This script only runs the DB/clone portion (no Evolution, no Next.js).
  *
- * 1. Ensures the Supabase local stack is up (starts it if needed).
+ * 1. Ensures the local hybrid stack is up (starts it if needed).
  * 2. Counts rows in `auth.users` on the local DB.
  * 3. If empty, runs `bun run db:clone:remote` so the dev session starts with
  *    a usable copy of remote data (auth + storage + public).
  *
  * Flags:
  *   --skip-clone  Do not auto-clone even if the DB is empty.
- *   --no-start    Fail fast if the Supabase stack is not running.
+ *   --no-start    Fail fast if the local stack is not running.
  */
 
 import { spawnSync } from "node:child_process";
+import { LOCAL_DB_URL, probeLocalStack, startLocalStack, waitForLocalStack } from "./lib/local-stack";
 
-const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres";
 const args = process.argv.slice(2);
 const skipClone = args.includes("--skip-clone");
 const noStart = args.includes("--no-start");
-type EnvOverrides = Partial<NodeJS.ProcessEnv>;
 
 function step(label: string) {
   console.info(`\n▶ ${label}`);
@@ -40,19 +40,12 @@ function fail(msg: string): never {
 function run(
   cmd: string,
   cmdArgs: string[],
-  opts: {
-    stdio?: "inherit" | "pipe";
-    env?: EnvOverrides;
-  } = {},
+  opts: { stdio?: "inherit" | "pipe" } = {},
 ): { status: number; stdout: string; stderr: string } {
   const result = spawnSync(cmd, cmdArgs, {
     stdio: opts.stdio ?? "pipe",
-    shell: process.platform === "win32",
+    shell: false,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      ...opts.env,
-    },
   });
   return {
     status: result.status ?? 1,
@@ -61,27 +54,24 @@ function run(
   };
 }
 
-function ensureSupabaseRunning() {
-  step("Checking Supabase local stack");
-  const supabaseEnv: EnvOverrides = {
-    SUPABASE_DISABLE_TELEMETRY: "1",
-    DO_NOT_TRACK: "1",
-  };
-  const probe = run("supabase", ["status"], { env: supabaseEnv });
-  if (probe.status === 0) {
+async function ensureLocalStackRunning() {
+  step("Checking local hybrid stack (Postgres + Realtime)");
+  if (probeLocalStack()) {
     info("✓ Running");
     return;
   }
   if (noStart) {
-    fail("Supabase local stack is not running (--no-start passed).");
+    fail("Local stack is not running (--no-start passed).");
   }
-  info("⚠ Not running — starting it (`supabase start`)…");
-  const start = run("supabase", ["start"], {
-    stdio: "inherit",
-    env: supabaseEnv,
-  });
+  info("⚠ Not running — starting it (`bun run local:up`)…");
+  const start = startLocalStack();
   if (start.status !== 0) {
-    fail("`supabase start` failed. Check Docker Desktop is running.");
+    fail("`docker compose -f docker-compose.local.yml up -d` failed. Check Docker is running.");
+  }
+  info("  waiting for Postgres + proxy…");
+  const ready = await waitForLocalStack();
+  if (!ready) {
+    fail("Local stack did not become ready in time.");
   }
   info("✓ Started");
 }
@@ -115,8 +105,8 @@ function cloneRemote() {
   info("✓ Clone done");
 }
 
-function main() {
-  ensureSupabaseRunning();
+async function main() {
+  await ensureLocalStackRunning();
 
   step("Checking local auth.users");
   const users = countAuthUsers();
@@ -134,8 +124,6 @@ function main() {
   cloneRemote();
 }
 
-try {
-  main();
-} catch (err) {
+main().catch((err) => {
   fail(err instanceof Error ? err.message : String(err));
-}
+});

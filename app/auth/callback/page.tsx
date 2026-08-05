@@ -8,6 +8,7 @@ import { AlertCircle } from "lucide-react";
 import { ConnectingDots } from "@/components/ui/connecting-dots";
 import { isBackofficeRole } from "@/lib/roles";
 import { isValidBackofficeEmail } from "@/lib/backoffice/email-domain";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type Status = "connecting" | "error";
 
@@ -27,7 +28,7 @@ function persistGoogleConnection(
     source: "login" | "account";
   }
 ) {
-  void fetch("/api/v1/google/connect", {
+  void fetch(`${API_CLIENT_BASE}/google/connect`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -221,7 +222,7 @@ function AuthCallbackContent() {
           return;
         }
 
-        const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
+        const profileResponse = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`, {
           cache: "no-store",
         });
 
@@ -269,7 +270,7 @@ function AuthCallbackContent() {
         return;
       }
 
-      const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
+      const profileResponse = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`, {
         cache: "no-store",
       });
 
@@ -292,7 +293,7 @@ function AuthCallbackContent() {
       const profileRole = profilePayload.result?.role;
 
       if (isBackofficeAccountConnectFlow) {
-        const response = await fetch("/api/v1/backoffice/google/connect", {
+        const response = await fetch(`${API_CLIENT_BASE}/backoffice/google/connect`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -317,7 +318,7 @@ function AuthCallbackContent() {
         return;
       }
 
-      const response = await fetch("/api/v1/google/connect", {
+      const response = await fetch(`${API_CLIENT_BASE}/google/connect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -336,7 +337,7 @@ function AuthCallbackContent() {
       }
 
       if (isBackofficeRole(profileRole)) {
-        void fetch("/api/v1/backoffice/google/connect", {
+        void fetch(`${API_CLIENT_BASE}/backoffice/google/connect`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

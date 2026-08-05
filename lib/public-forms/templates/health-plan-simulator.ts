@@ -13,7 +13,10 @@ const FALLBACK_HEALTH_PLANS = [
   "Outros",
 ]
 
-/** Default Onside-style health plan reduction simulator template. */
+/**
+ * Seed source for the global `health_plan_simulator` template.
+ * Runtime loads the snapshot from `PublicFormTemplate` in the database.
+ */
 export function createHealthPlanSimulatorDraft(
   planNames: string[] = FALLBACK_HEALTH_PLANS,
 ): PublicFormDraftInput {

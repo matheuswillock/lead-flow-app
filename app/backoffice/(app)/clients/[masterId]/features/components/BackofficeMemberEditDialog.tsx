@@ -31,6 +31,7 @@ import {
   buildTeamsDraft,
   type TeamMembershipDraft,
 } from "../utils/memberTeamAccessUtils"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ProfileFormState {
   fullName: string
@@ -317,7 +318,7 @@ export function BackofficeMemberEditDialog({
                         deletionInFlight.current = true
                         setIsRequestingDeletion(true)
                         try {
-                          const response = await fetch("/api/v1/backoffice/deletion-requests", {
+                          const response = await fetch(`${API_CLIENT_BASE}/backoffice/deletion-requests`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -379,7 +380,7 @@ export function BackofficeMemberEditDialog({
                         deletionInFlight.current = true
                         setIsRequestingDeletion(true)
                         try {
-                          const response = await fetch("/api/v1/backoffice/deletion-requests", {
+                          const response = await fetch(`${API_CLIENT_BASE}/backoffice/deletion-requests`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({

@@ -4,6 +4,7 @@ import type {
   BackofficeBackupDownloadResult,
   BackofficeBackupsListResult,
 } from "../context/BackofficeBackupsTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -34,14 +35,14 @@ function parseContentDispositionFileName(header: string | null, fallback: string
 export class BackofficeBackupsService implements IBackofficeBackupsService {
   async list(): Promise<BackofficeBackupsListResult> {
     return parseOutput<BackofficeBackupsListResult>(
-      await fetch("/api/v1/backoffice/backups", { cache: "no-store" }),
+      await fetch(`${API_CLIENT_BASE}/backoffice/backups`, { cache: "no-store" }),
       "Erro ao carregar backups"
     )
   }
 
   async createManualBackup(): Promise<BackofficeBackupCreateResult> {
     return parseOutput<BackofficeBackupCreateResult>(
-      await fetch("/api/v1/backoffice/backups", {
+      await fetch(`${API_CLIENT_BASE}/backoffice/backups`, {
         method: "POST",
         cache: "no-store",
       }),
@@ -51,7 +52,7 @@ export class BackofficeBackupsService implements IBackofficeBackupsService {
 
   async download(id: string): Promise<BackofficeBackupDownloadResult> {
     const response = await fetch(
-      `/api/v1/backoffice/backups/${encodeURIComponent(id)}/download`,
+      `${API_CLIENT_BASE}/backoffice/backups/${encodeURIComponent(id)}/download`,
       { cache: "no-store" }
     )
 

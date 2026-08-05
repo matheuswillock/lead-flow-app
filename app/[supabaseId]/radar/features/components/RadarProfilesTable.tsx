@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table"
 import type { RadarProfileListItem } from "../context/RadarTypes"
 import { EligibilityBadge, SourceBadges } from "./RadarProfileBadges"
+import { RadarEngagementBadge } from "./RadarEngagementBadge"
 
 type RadarProfilesTableProps = {
   profiles: RadarProfileListItem[]
@@ -66,6 +67,7 @@ export function RadarProfilesTable({
             <TableRow>
               <TableHead>Cliente</TableHead>
               <TableHead>Segmento</TableHead>
+              <TableHead>Temp.</TableHead>
               <TableHead>Consentimento</TableHead>
               <TableHead>Origem</TableHead>
               <TableHead>Última interação</TableHead>
@@ -92,6 +94,9 @@ export function RadarProfilesTable({
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
+                </TableCell>
+                <TableCell>
+                  <RadarEngagementBadge band={profile.engagementBand} />
                 </TableCell>
                 <TableCell>
                   <EligibilityBadge profile={profile} />
@@ -122,7 +127,10 @@ export function RadarProfilesTable({
             <CardContent className="flex flex-col gap-2 p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{profile.displayName}</span>
-                <EligibilityBadge profile={profile} />
+                <div className="flex flex-wrap items-center justify-end gap-1">
+                  <RadarEngagementBadge band={profile.engagementBand} />
+                  <EligibilityBadge profile={profile} />
+                </div>
               </div>
               {profile.primarySegmentName ? (
                 <Badge variant="secondary" className="w-fit text-xs">

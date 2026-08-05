@@ -7,9 +7,10 @@ import type {
   UpsertEmailVariableData,
 } from "./IEmailSettingsService"
 import type { EmailGlobalVariable, EmailSender, EmailSettings } from "../context/EmailSettingsTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export class EmailSettingsService implements IEmailSettingsService {
-  private readonly base = "/api/v1/email/settings"
+  private readonly base = `${API_CLIENT_BASE}/email/settings`
 
   async get(): Promise<EmailSettings> {
     const res = await fetch(this.base)

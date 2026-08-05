@@ -1,15 +1,42 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { SessionManager } from "./SessionManager.js";
-import type { ClientFactory, RemoteAuthStore, WhatsAppClientLike } from "../types.js";
+import type { ClientFactory, RemoteAuthStore, SessionRegistry, WhatsAppClientLike } from "../types.js";
 
-function makeStoreMock(): RemoteAuthStore & { deleteCalls: string[] } {
+function makeStoreMock(opts?: { exists?: boolean }): RemoteAuthStore & { deleteCalls: string[] } {
   const deleteCalls: string[] = [];
   return {
     deleteCalls,
-    sessionExists: async () => false,
+    sessionExists: async () => opts?.exists ?? false,
     save: async () => {},
     extract: async () => {},
-    delete: async ({ session }: { session: string }) => { deleteCalls.push(session); },
+    delete: async ({ session }: { session: string }) => {
+      deleteCalls.push(session);
+    },
+  };
+}
+
+function makeRegistryMock(): SessionRegistry & {
+  entries: Map<string, string>;
+  upsertCalls: Array<{ instanceName: string; webhookUrl: string }>;
+  removeCalls: string[];
+} {
+  const entries = new Map<string, string>();
+  const upsertCalls: Array<{ instanceName: string; webhookUrl: string }> = [];
+  const removeCalls: string[] = [];
+  return {
+    entries,
+    upsertCalls,
+    removeCalls,
+    upsert: async (instanceName: string, webhookUrl: string) => {
+      upsertCalls.push({ instanceName, webhookUrl });
+      entries.set(instanceName, webhookUrl);
+    },
+    remove: async (instanceName: string) => {
+      removeCalls.push(instanceName);
+      entries.delete(instanceName);
+    },
+    list: async () =>
+      [...entries.entries()].map(([instanceName, webhookUrl]) => ({ instanceName, webhookUrl })),
   };
 }
 
@@ -59,7 +86,9 @@ function makeClientMock(): WhatsAppClientLike & {
 
     async getChatById(chatId: string) {
       return {
-        sendSeen: async () => { _chatsSeen.push(chatId); },
+        sendSeen: async () => {
+          _chatsSeen.push(chatId);
+        },
       };
     },
   };
@@ -69,21 +98,30 @@ function makeClientMock(): WhatsAppClientLike & {
 
 describe("SessionManager", () => {
   let store: ReturnType<typeof makeStoreMock>;
+  let registry: ReturnType<typeof makeRegistryMock>;
   let client: ReturnType<typeof makeClientMock>;
   let manager: SessionManager;
 
   beforeEach(() => {
     store = makeStoreMock();
+    registry = makeRegistryMock();
     client = makeClientMock();
     const factory: ClientFactory = () => client;
-    manager = new SessionManager(factory, () => store);
+    manager = new SessionManager(factory, () => store, () => registry);
   });
 
   it("startSession inicializa o client", async () => {
     await manager.startSession("inst-1", "https://hook.example.com");
-    // Aguardar initialize assíncrono
     await new Promise((r) => setTimeout(r, 10));
     expect(client._initCalled).toBe(true);
+  });
+
+  it("startSession persiste webhook no registry", async () => {
+    await manager.startSession("inst-1", "https://hook.example.com");
+    expect(registry.upsertCalls).toContainEqual({
+      instanceName: "inst-1",
+      webhookUrl: "https://hook.example.com",
+    });
   });
 
   it("startSession é idempotente (não reinicia sessão existente)", async () => {
@@ -125,11 +163,12 @@ describe("SessionManager", () => {
     expect(manager.getStatus("inst-1").status).toBe("DISCONNECTED");
   });
 
-  it("deleteSession chama destroy e store.delete", async () => {
+  it("deleteSession chama destroy, store.delete e registry.remove", async () => {
     await manager.startSession("inst-1", "https://hook.example.com");
     await manager.deleteSession("inst-1");
     expect(client._destroyCalled).toBe(true);
     expect(store.deleteCalls).toContain("inst-1");
+    expect(registry.removeCalls).toContain("inst-1");
   });
 
   it("deleteSession limpa o estado da instância", async () => {
@@ -142,6 +181,12 @@ describe("SessionManager", () => {
   it("sendText formata chatId com @c.us", async () => {
     await manager.startSession("inst-1", "https://hook.example.com");
     await manager.sendText("inst-1", "5511999991111", "oi");
+    expect(client._sentMessages[0].chatId).toBe("5511999991111@c.us");
+  });
+
+  it("sendText converte @s.whatsapp.net para @c.us", async () => {
+    await manager.startSession("inst-1", "https://hook.example.com");
+    await manager.sendText("inst-1", "5511999991111@s.whatsapp.net", "oi");
     expect(client._sentMessages[0].chatId).toBe("5511999991111@c.us");
   });
 
@@ -159,5 +204,30 @@ describe("SessionManager", () => {
     await manager.startSession("inst-1", "https://hook.example.com");
     await manager.markChatSeen("inst-1", "5511999991111");
     expect(client._chatsSeen).toContain("5511999991111@c.us");
+  });
+
+  it("restoreSessions reinicia instâncias com sessão persistida", async () => {
+    registry.entries.set("inst-1", "https://hook.example.com");
+    store = makeStoreMock({ exists: true });
+    const restoreClient = makeClientMock();
+    const factory: ClientFactory = () => restoreClient;
+    manager = new SessionManager(factory, () => store, () => registry);
+
+    await manager.restoreSessions();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(restoreClient._initCalled).toBe(true);
+    expect(manager.getStatus("inst-1").status).toBe("INITIALIZING");
+  });
+
+  it("restoreSessions remove registry quando sessão não existe no store", async () => {
+    registry.entries.set("inst-orphan", "https://hook.example.com");
+    store = makeStoreMock({ exists: false });
+    manager = new SessionManager(() => client, () => store, () => registry);
+
+    await manager.restoreSessions();
+
+    expect(registry.removeCalls).toContain("inst-orphan");
+    expect(registry.entries.has("inst-orphan")).toBe(false);
   });
 });

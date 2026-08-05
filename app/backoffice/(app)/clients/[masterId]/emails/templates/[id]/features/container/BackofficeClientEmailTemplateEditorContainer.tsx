@@ -1,36 +1,132 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, Loader2, Save } from "lucide-react"
+import { useRef, useState } from "react"
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  Ellipsis,
+  FileText,
+  Mail,
+  Save,
+  Send,
+  Undo2,
+  X,
+} from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
-import { useBackofficeClientEmailTemplateEditorContext } from "../context/BackofficeClientEmailTemplateEditorContext"
+import { Spinner } from "@/components/ui/spinner"
+import { Textarea } from "@/components/ui/textarea"
+import { useTemplateEditorStudioContext } from "@/components/email/template-editor/TemplateEditorStudioContext"
+import { EmailEditorStudio, type EmailEditorStudioRef } from "@/app/[supabaseId]/email/templates/[id]/features/components/EmailEditorStudio"
+import { TemplateTestDialog } from "@/app/[supabaseId]/email/templates/[id]/features/components/TemplateTestDialog"
+import { toast } from "sonner"
+
+function StatusBadge({
+  approvalStatus,
+  status,
+}: {
+  approvalStatus: string | undefined
+  status: string | undefined
+}) {
+  if (approvalStatus === "approved" && status !== "published") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success"
+      >
+        <Check className="size-3" />
+        Template aprovado e pronto para publicar
+      </Badge>
+    )
+  }
+  if (status === "published") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-semantic-success/30 bg-semantic-success/10 text-semantic-success"
+      >
+        <Send className="size-3" />
+        Publicado
+      </Badge>
+    )
+  }
+  if (approvalStatus === "pending_approval") {
+    return (
+      <Badge variant="outline" className="gap-1 border-warning/30 bg-warning/10 text-warning">
+        <FileText className="size-3" />
+        Aguardando aprovação
+      </Badge>
+    )
+  }
+  if (approvalStatus === "rejected") {
+    return (
+      <Badge variant="outline" className="gap-1 border-destructive/30 bg-destructive/10 text-destructive">
+        <X className="size-3" />
+        Recusado
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="gap-1 text-muted-foreground">
+      <FileText className="size-3" />
+      Rascunho
+    </Badge>
+  )
+}
 
 export function BackofficeClientEmailTemplateEditorContainer({
   masterId,
   teamId,
+  templateId,
 }: {
   masterId: string
   teamId: string | null
+  templateId: string
 }) {
   const {
+    draft,
+    template,
+    error,
     loading,
     saving,
-    template,
-    name,
-    subject,
-    html,
-    error,
-    save,
-    setName,
-    setSubject,
-    setHtml,
-  } = useBackofficeClientEmailTemplateEditorContext()
+    templateApprovalRequired,
+    updateDraft,
+    unpublishTemplate,
+    submitForApproval,
+    approveTemplate,
+    rejectTemplate,
+    sendTestTemplate,
+  } = useTemplateEditorStudioContext()
+
+  const isPublished = template?.status === "published"
+  const isPending = template?.approvalStatus === "pending_approval"
+  const isApproved = template?.approvalStatus === "approved"
+  const isRejected = template?.approvalStatus === "rejected"
+
+  const editorRef = useRef<EmailEditorStudioRef>(null)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [reviewNote, setReviewNote] = useState("")
+  const [testOpen, setTestOpen] = useState(false)
+  const [testHtml, setTestHtml] = useState("")
 
   if (!teamId) {
     return (
@@ -43,57 +139,242 @@ export function BackofficeClientEmailTemplateEditorContainer({
     )
   }
 
+  const handleConfirmReject = async () => {
+    if (!reviewNote.trim()) return
+    await rejectTemplate(reviewNote.trim())
+    setRejectOpen(false)
+    setReviewNote("")
+  }
+
+  const handleOpenTestDialog = async () => {
+    try {
+      const snapshot = await editorRef.current?.getCurrentSnapshot()
+      if (!snapshot?.html?.trim()) {
+        toast.error("Não foi possível capturar o HTML atual do template.")
+        return
+      }
+      setTestHtml(snapshot.html)
+      setTestOpen(true)
+    } catch (err) {
+      console.error("[BackofficeClientEmailTemplateEditorContainer][handleOpenTestDialog]", err)
+      toast.error("Erro ao preparar o teste de envio.")
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full min-h-0 flex-1 flex-col gap-4 bg-background p-6">
+        <Skeleton className="h-10 w-72" />
+        <Skeleton className="h-10 w-full max-w-3xl" />
+        <Skeleton className="min-h-0 flex-1 w-full" />
+      </div>
+    )
+  }
+
+  const showSubmitButton =
+    templateApprovalRequired && !isPublished && !isPending && (isApproved || isRejected)
+  const showApproveReject = isPending
+  const showPublish =
+    !isPublished &&
+    isApproved &&
+    !isPending &&
+    (!templateApprovalRequired || Boolean(template?.approvedAt))
+  const pendingVariableReviewCount = draft.variables.filter(
+    (variable) => variable.reviewStatus === "pending"
+  ).length
+  const hasPendingVariableReview = pendingVariableReviewCount > 0
+
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
-      <div className="flex items-center justify-between gap-3">
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/backoffice/clients/${masterId}?tab=emails&teamId=${teamId}`}>
-            <ArrowLeft data-icon="inline-start" />
-            Voltar ao cliente
-          </Link>
-        </Button>
-        <Button type="button" onClick={() => void save()} disabled={saving || loading}>
-          {saving ? (
-            <Loader2 className="animate-spin" data-icon="inline-start" />
-          ) : (
-            <Save data-icon="inline-start" />
-          )}
-          Salvar
-        </Button>
+    <>
+      <div className="flex h-full max-h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-background p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="ghost" size="sm">
+                <Link href={`/backoffice/clients/${masterId}?tab=emails&teamId=${teamId}`}>
+                  Voltar ao cliente
+                </Link>
+              </Button>
+              {template ? (
+                <StatusBadge approvalStatus={template.approvalStatus} status={template.status} />
+              ) : null}
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold">Editor de template</h1>
+            <p className="text-sm text-muted-foreground">
+              Configure os metadados e o conteúdo visual do e-mail.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="icon" disabled={saving} aria-label="Mais ações">
+                  <Ellipsis />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void handleOpenTestDialog()} disabled={saving}>
+                  <Mail data-icon="inline-start" />
+                  Testar envio
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void editorRef.current?.publish()}
+              disabled={saving}
+            >
+              {saving ? <Spinner data-icon="inline-start" /> : <Save data-icon="inline-start" />}
+              Salvar rascunho
+            </Button>
+            {isPublished ? (
+              <Button type="button" variant="outline" onClick={() => void unpublishTemplate()} disabled={saving}>
+                <Undo2 data-icon="inline-start" />
+                Despublicar
+              </Button>
+            ) : showApproveReject ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={saving}
+                  onClick={() => setRejectOpen(true)}
+                >
+                  <X data-icon="inline-start" />
+                  Recusar
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-semantic-success text-white hover:bg-semantic-success/90"
+                  disabled={saving}
+                  onClick={() => void approveTemplate()}
+                >
+                  {saving ? <Spinner data-icon="inline-start" /> : <Check data-icon="inline-start" />}
+                  Aprovar template
+                </Button>
+              </>
+            ) : showPublish ? (
+              <Button
+                onClick={() => void editorRef.current?.saveAndPublish()}
+                disabled={saving || hasPendingVariableReview}
+              >
+                {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
+                {saving ? "Publicando..." : "Publicar"}
+              </Button>
+            ) : showSubmitButton ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving || hasPendingVariableReview}
+                onClick={() => void submitForApproval()}
+              >
+                {saving ? <Spinner data-icon="inline-start" /> : <ArrowRight data-icon="inline-start" />}
+                {isRejected ? "Reenviar para aprovação" : "Enviar para aprovação"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {error ? (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertTitle>Erro no template</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {hasPendingVariableReview ? (
+          <Alert>
+            <AlertCircle />
+            <AlertTitle>Variáveis pendentes de revisão</AlertTitle>
+            <AlertDescription>
+              Revise {pendingVariableReviewCount} variável(is) no painel lateral antes de enviar para aprovação ou
+              publicar.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {template?.approvalStatus === "rejected" && template.reviewNote ? (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertTitle>Template recusado</AlertTitle>
+            <AlertDescription>{template.reviewNote}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <Input
+            value={draft.name}
+            onChange={(event) => updateDraft({ name: event.target.value })}
+            placeholder="Nome do template"
+            aria-label="Nome do template"
+          />
+          <Input
+            value={draft.subject}
+            onChange={(event) => updateDraft({ subject: event.target.value })}
+            placeholder="Assunto do e-mail"
+            aria-label="Assunto do e-mail"
+          />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <EmailEditorStudio ref={editorRef} />
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
-          <CardTitle>Editor de template</CardTitle>
-          {template?.managedByCorretorStudio ? <ManagedByCorretorStudioBadge /> : null}
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : error ? (
-            <p className="text-sm text-destructive">{error}</p>
-          ) : (
-            <FieldGroup>
-              <Field>
-                <FieldLabel>Nome</FieldLabel>
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel>Assunto</FieldLabel>
-                <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel>HTML</FieldLabel>
-                <Textarea
-                  value={html}
-                  onChange={(e) => setHtml(e.target.value)}
-                  className="min-h-64 font-mono text-xs"
-                />
-              </Field>
-            </FieldGroup>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      <Dialog
+        open={rejectOpen}
+        onOpenChange={(open) => {
+          setRejectOpen(open)
+          if (!open) setReviewNote("")
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Recusar template</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="backoffice-editor-review-note">
+              Motivo da recusa <span className="text-primary">*</span>
+            </Label>
+            <Textarea
+              id="backoffice-editor-review-note"
+              placeholder="Descreva o que precisa ser ajustado..."
+              value={reviewNote}
+              onChange={(e) => setReviewNote(e.target.value)}
+              maxLength={500}
+              rows={4}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setRejectOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={!reviewNote.trim() || saving}
+              onClick={() => void handleConfirmReject()}
+            >
+              {saving ? <Spinner data-icon="inline-start" /> : null}
+              Confirmar recusa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TemplateTestDialog
+        open={testOpen}
+        onOpenChange={setTestOpen}
+        supabaseId=""
+        templateId={template?.id ?? templateId}
+        subject={draft.subject}
+        html={testHtml}
+        variables={draft.variables}
+        sending={saving}
+        onSend={sendTestTemplate}
+      />
+    </>
   )
 }

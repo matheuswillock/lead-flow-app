@@ -3,6 +3,7 @@ import type {
   PublicFormsIds,
   PublicFormsPage,
   PublicFormSettings,
+  RankedForm,
 } from "../context/PublicFormsTypes"
 import type { PublicFormDraftInput } from "@/lib/public-forms/types"
 
@@ -34,8 +35,23 @@ export interface PublicFormAnalytics {
   origins: Array<{ source: string; sessions: number }>
 }
 
+export type PublicFormTemplateListItem = {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  formKind: string
+  sortOrder: number
+}
+
+export type PublicFormTemplateDetail = PublicFormTemplateListItem & {
+  draft: PublicFormDraftInput
+}
+
 export interface IPublicFormsService {
   list(ids: PublicFormsIds, filters: PublicFormsListFilters): Promise<PublicFormsPage>
+  listTemplates(ids: PublicFormsIds): Promise<PublicFormTemplateListItem[]>
+  getTemplate(ids: PublicFormsIds, slug: string): Promise<PublicFormTemplateDetail>
   get(ids: PublicFormsIds, formId: string): Promise<PublicFormDetail>
   create(ids: PublicFormsIds, input: PublicFormDraftInput): Promise<PublicFormDetail>
   update(ids: PublicFormsIds, formId: string, input: PublicFormDraftInput): Promise<PublicFormDetail>
@@ -47,4 +63,5 @@ export interface IPublicFormsService {
     formId: string,
     filters?: { from?: string; to?: string; publicationId?: string },
   ): Promise<PublicFormAnalytics>
+  topConverting(ids: PublicFormsIds): Promise<{ items: RankedForm[] }>
 }

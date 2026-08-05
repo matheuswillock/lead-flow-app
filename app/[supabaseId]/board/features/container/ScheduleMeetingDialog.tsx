@@ -48,6 +48,7 @@ import {
   formatLocalTimeValue,
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -214,7 +215,7 @@ export function ScheduleMeetingDialog({
     const fetchTeamMembers = async () => {
       setTeamMembersLoading(true);
       try {
-        const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
+        const response = await fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/members`, {
           headers: {
             "x-supabase-user-id": supabaseId,
           },
@@ -315,7 +316,7 @@ export function ScheduleMeetingDialog({
       setAvailabilityError(null);
       try {
         const todayKey = formatLocalDateValue(new Date(), SCHEDULE_TIMEZONE);
-        const response = await fetch("/api/v1/calendar/availability", {
+        const response = await fetch(`${API_CLIENT_BASE}/calendar/availability`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -376,7 +377,7 @@ export function ScheduleMeetingDialog({
     }
     let isMounted = true;
     setPreSlotsLoading(true);
-    fetch(`/api/v1/teams/${activeTeamId}/pre-schedule-slots?date=${meetingDateKey}&excludeLeadId=${lead.id}`, {
+    fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/pre-schedule-slots?date=${meetingDateKey}&excludeLeadId=${lead.id}`, {
       headers: {
         "x-supabase-user-id": supabaseId,
         "x-team-id": activeTeamId,
@@ -444,7 +445,7 @@ export function ScheduleMeetingDialog({
   };
 
   const requestPublicShare = useCallback(async (): Promise<ScheduleShareResponse> => {
-    const response = await fetch(`/api/v1/leads/${lead.id}/schedule/share`, {
+    const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/schedule/share`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -518,7 +519,7 @@ export function ScheduleMeetingDialog({
       let resolvedLeadEmail = lead.email?.trim().toLowerCase() || null;
 
       if (!isPreSchedule && isOnlineMeeting && normalizedLeadEmail !== resolvedLeadEmail) {
-        const updateLeadResponse = await fetch(`/api/v1/leads/${lead.id}`, {
+        const updateLeadResponse = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -539,7 +540,7 @@ export function ScheduleMeetingDialog({
       }
 
       // 1. Criar agendamento
-      const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}/schedule`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

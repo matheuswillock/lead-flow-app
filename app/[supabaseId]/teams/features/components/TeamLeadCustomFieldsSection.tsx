@@ -35,6 +35,7 @@ import {
 } from "@/lib/leadCustomFields/types";
 import type { LeadCustomFieldType } from "@prisma/client";
 import { isManagerLikeRole } from "@/lib/roles";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type TeamLeadCustomFieldsSectionProps = {
   teamId: string;
@@ -96,7 +97,7 @@ export function TeamLeadCustomFieldsSection({
     if (!teamId || !supabaseId) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/v1/teams/${teamId}/lead-custom-fields?includeInactive=true`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/lead-custom-fields?includeInactive=true`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           "x-team-id": teamId,
@@ -173,8 +174,8 @@ export function TeamLeadCustomFieldsSection({
 
       const response = await fetch(
         editingDefinition
-          ? `/api/v1/teams/${teamId}/lead-custom-fields/${editingDefinition.id}`
-          : `/api/v1/teams/${teamId}/lead-custom-fields`,
+          ? `${API_CLIENT_BASE}/teams/${teamId}/lead-custom-fields/${editingDefinition.id}`
+          : `${API_CLIENT_BASE}/teams/${teamId}/lead-custom-fields`,
         {
           method: editingDefinition ? "PATCH" : "POST",
           headers: {
@@ -204,7 +205,7 @@ export function TeamLeadCustomFieldsSection({
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/v1/teams/${teamId}/lead-custom-fields/${deleteTarget.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/lead-custom-fields/${deleteTarget.id}`, {
         method: "DELETE",
         headers: {
           "x-supabase-user-id": supabaseId,
@@ -235,7 +236,7 @@ export function TeamLeadCustomFieldsSection({
     setIsSaving(true);
     try {
       await Promise.all([
-        fetch(`/api/v1/teams/${teamId}/lead-custom-fields/${current.id}`, {
+        fetch(`${API_CLIENT_BASE}/teams/${teamId}/lead-custom-fields/${current.id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -244,7 +245,7 @@ export function TeamLeadCustomFieldsSection({
           },
           body: JSON.stringify({ displayOrder: swapWith.displayOrder }),
         }),
-        fetch(`/api/v1/teams/${teamId}/lead-custom-fields/${swapWith.id}`, {
+        fetch(`${API_CLIENT_BASE}/teams/${teamId}/lead-custom-fields/${swapWith.id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",

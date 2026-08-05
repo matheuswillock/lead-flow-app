@@ -19373,6 +19373,77 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Short Links",
+      "item": [
+        {
+          "name": "Encurtar link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUrl\": \"{{appUrl}}/crm?leadCode=EXAMPLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{appUrl}}/api/v1/short-links",
+              "host": [
+                "{{appUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "short-links"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Forms Engagement Config",
+      "item": [
+        {
+          "name": "GET Forms Engagement Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/forms/engagement-config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "forms",
+                "engagement-config"
+              ]
+            },
+            "description": "Pesos e regras de bridge para preview de temperatura no builder (team auth)."
+          }
+        }
+      ]
     }
   ]
 }

@@ -4,8 +4,9 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
-import { ArrowLeft, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, Check, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { useOptionalUser } from "@/app/context/UserContext"
 import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext"
@@ -14,8 +15,8 @@ import { PublicFormRenderer } from "@/components/public-forms/PublicFormRenderer
 import { ThemeProvider } from "@/components/theme-provider"
 import {
   applyHealthPlanCatalogToDraft,
-  createHealthPlanSimulatorDraft,
 } from "@/lib/public-forms/templates/health-plan-simulator"
+import { PUBLIC_FORM_TEMPLATE_IDS } from "@/lib/public-forms/templates-access"
 import type {
   PublicFormCoverHighlight,
   PublicFormDraftInput,
@@ -38,6 +39,11 @@ import {
   sumQuestionScoreWeights,
   withEqualOptionScores,
 } from "@/lib/public-forms/scoring"
+import {
+  previewTemperatureForOption,
+} from "@/lib/public-forms/temperature-preview"
+import { useFormEngagementConfig } from "../hooks/useFormEngagementConfig"
+import { TemperaturePreviewPill } from "../components/TemperaturePreviewPill"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   getPageKey,
@@ -68,6 +74,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -102,6 +109,7 @@ import {
 } from "@/components/ui/field"
 import type { PublicFormSettings } from "../context/PublicFormsTypes"
 import { publicFormsClientService } from "../services/PublicFormsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const steps = [
   "Básico",
@@ -150,6 +158,7 @@ const emptyDraft: PublicFormDraftInput = {
 type Member = { profileId: string; name: string; functions: ("SDR" | "CLOSER")[] }
 
 export type PublicFormWizardHost = {
+  mode?: "form" | "catalog-template"
   listHref: string
   formHref: (formId: string) => string
   previewHref: (formId: string) => string
@@ -160,11 +169,25 @@ export type PublicFormWizardHost = {
     settings: PublicFormSettings | null
   }>
   getForm: (formId: string) => Promise<PublicFormDraftInput & { id: string }>
+  getTemplate: (slug: string) => Promise<PublicFormDraftInput>
+  getTemplateRecord?: (templateId: string) => Promise<{
+    id: string
+    slug: string
+    sortOrder: number
+    description: string | null
+    draft: PublicFormDraftInput
+  }>
   save: (
     formId: string | null,
     input: PublicFormDraftInput
   ) => Promise<PublicFormDraftInput & { id: string }>
+  saveTemplate?: (
+    templateId: string | null,
+    input: PublicFormDraftInput,
+    meta: { slug?: string; sortOrder: number; description?: string | null },
+  ) => Promise<{ id: string }>
   publish: (formId: string) => Promise<void>
+  publishTemplate?: (templateId: string) => Promise<void>
 }
 
 function clampPercent(value: number): number {
@@ -324,8 +347,9 @@ export function PublicFormWizard({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setOverride } = usePageBreadcrumb()
-  const isHealthPlanTemplate =
-    !formId && searchParams.get("template") === "health_plan_simulator"
+  const templateParam = !formId ? searchParams.get("template") : null
+  const isCatalogTemplate = host?.mode === "catalog-template"
+  const isHealthPlanTemplate = templateParam === PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR
   const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
   const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
   const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
@@ -336,14 +360,12 @@ export function PublicFormWizard({
     throw new Error("PublicFormWizard requires TeamProvider when host is not provided")
   }
 
-  const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
-    if (formId) return emptyDraft
-    if (isHealthPlanTemplate) return createHealthPlanSimulatorDraft()
-    return emptyDraft
-  })
+  const [draft, setDraft] = useState<PublicFormDraftInput>(() => emptyDraft)
   const [step, setStep] = useState(0)
+  /** Highest step index successfully advanced past via "Próxima etapa" (validated). */
+  const [completedThroughStep, setCompletedThroughStep] = useState(0)
   const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(Boolean(formId))
+  const [loading, setLoading] = useState(Boolean(formId) || Boolean(templateParam))
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -352,11 +374,22 @@ export function PublicFormWizard({
   const [healthPlans, setHealthPlans] = useState<Array<{ id: string; name: string }>>([])
   const [settings, setSettings] = useState<PublicFormSettings | null>(null)
   const [confirmExit, setConfirmExit] = useState(false)
+  const [templateSlug, setTemplateSlug] = useState("")
+  const [templateSortOrder, setTemplateSortOrder] = useState(0)
+  const [templateSlugReadonly, setTemplateSlugReadonly] = useState(false)
 
   useEffect(() => {
-    setOverride({ label: formId ? draft.name || "Editar formulário" : "Novo formulário" })
+    setOverride({
+      label: isCatalogTemplate
+        ? formId
+          ? draft.name || "Editar template"
+          : "Novo template"
+        : formId
+          ? draft.name || "Editar formulário"
+          : "Novo formulário",
+    })
     return () => setOverride(null)
-  }, [setOverride, formId, draft.name])
+  }, [setOverride, formId, draft.name, isCatalogTemplate])
 
   useEffect(() => {
     let cancelled = false
@@ -369,26 +402,48 @@ export function PublicFormWizard({
           setCustomFields(context.customFields.filter((field) => field.isActive))
           setHealthPlans(context.healthPlans)
           setSettings(context.settings)
-          if (isHealthPlanTemplate && context.healthPlans.length > 0) {
-            setDraft((current) =>
-              applyHealthPlanCatalogToDraft(
-                current,
-                context.healthPlans.map((plan) => plan.name),
-              ),
-            )
-          }
           if (formId) {
-            const form = await host.getForm(formId)
+            if (isCatalogTemplate && host.getTemplateRecord) {
+              const record = await host.getTemplateRecord(formId)
+              if (cancelled) return
+              setTemplateSlug(record.slug)
+              setTemplateSortOrder(record.sortOrder)
+              setTemplateSlugReadonly(true)
+              setDraft({
+                ...emptyDraft,
+                ...record.draft,
+                name: record.draft.name || record.slug,
+                description: record.description ?? record.draft.description,
+                coverHighlights: record.draft.coverHighlights ?? [],
+                successActions: record.draft.successActions ?? [],
+                questions: record.draft.questions ?? [],
+                rules: record.draft.rules ?? [],
+                scoreBands: record.draft.scoreBands ?? [],
+              })
+            } else {
+              const form = await host.getForm(formId)
+              if (cancelled) return
+              setDraft({
+                ...emptyDraft,
+                ...form,
+                coverHighlights: form.coverHighlights ?? [],
+                successActions: form.successActions ?? [],
+                questions: form.questions ?? [],
+                rules: form.rules ?? [],
+                scoreBands: form.scoreBands ?? [],
+              })
+            }
+          } else if (templateParam) {
+            const templateDraft = await host.getTemplate(templateParam)
             if (cancelled) return
-            setDraft({
-              ...emptyDraft,
-              ...form,
-              coverHighlights: form.coverHighlights ?? [],
-              successActions: form.successActions ?? [],
-              questions: form.questions ?? [],
-              rules: form.rules ?? [],
-              scoreBands: form.scoreBands ?? [],
-            })
+            const withCatalog =
+              isHealthPlanTemplate && context.healthPlans.length > 0
+                ? applyHealthPlanCatalogToDraft(
+                    templateDraft,
+                    context.healthPlans.map((plan) => plan.name),
+                  )
+                : templateDraft
+            setDraft(withCatalog)
           }
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Erro ao carregar")
@@ -399,77 +454,71 @@ export function PublicFormWizard({
       }
 
       if (!activeTeam?.id || !user?.id) return
+      const ids = { supabaseId: user.id, teamId: activeTeam.id }
       const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
-      void fetch(`/api/v1/teams/${activeTeam.id}/members`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (!cancelled) setMembers(o.result?.members ?? [])
-        })
-      void fetch(`/api/v1/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (cancelled) return
-          setCustomFields(
-            Array.isArray(o.result)
-              ? o.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
-              : [],
-          )
-        })
-      void fetch("/api/v1/health-plans", { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (cancelled) return
-          const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
-          setHealthPlans(plans)
-          if (isHealthPlanTemplate && plans.length > 0) {
-            setDraft((current) =>
-              applyHealthPlanCatalogToDraft(
-                current,
-                plans.map((plan: { name: string }) => plan.name),
-              ),
-            )
-          }
-        })
-      void publicFormsClientService
-        .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
-        .then((value) => {
+      try {
+        const [membersRes, fieldsRes, plansRes] = await Promise.all([
+          fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h }).then((r) =>
+            r.json(),
+          ),
+          fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, {
+            headers: h,
+          }).then((r) => r.json()),
+          fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h }).then((r) => r.json()),
+        ])
+        if (cancelled) return
+        setMembers(membersRes.result?.members ?? [])
+        setCustomFields(
+          Array.isArray(fieldsRes.result)
+            ? fieldsRes.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
+            : [],
+        )
+        const plans = Array.isArray(plansRes.result?.healthPlans)
+          ? plansRes.result.healthPlans
+          : []
+        setHealthPlans(plans)
+        try {
+          const value = await publicFormsClientService.getSettings(ids)
           if (!cancelled) setSettings(value)
-        })
-        .catch(() => null)
-      if (formId) {
-        void publicFormsService
-          .get(user.id, activeTeam.id, formId)
-          .then((f) => {
-            if (cancelled) return
-            setDraft({
-              ...emptyDraft,
-              ...f,
-              coverHighlights: f.coverHighlights ?? [],
-              successActions: f.successActions ?? [],
-              questions: f.questions ?? [],
-              rules: f.rules ?? [],
-              scoreBands: f.scoreBands ?? [],
-            })
+        } catch {
+          /* settings opcional no bootstrap */
+        }
+
+        if (formId) {
+          const f = await publicFormsService.get(user.id, activeTeam.id, formId)
+          if (cancelled) return
+          setDraft({
+            ...emptyDraft,
+            ...f,
+            coverHighlights: f.coverHighlights ?? [],
+            successActions: f.successActions ?? [],
+            questions: f.questions ?? [],
+            rules: f.rules ?? [],
+            scoreBands: f.scoreBands ?? [],
           })
-          .catch((e) => toast.error(e.message))
-          .finally(() => {
-            if (!cancelled) setLoading(false)
-          })
+        } else if (templateParam) {
+          const template = await publicFormsClientService.getTemplate(ids, templateParam)
+          if (cancelled) return
+          const withCatalog =
+            isHealthPlanTemplate && plans.length > 0
+              ? applyHealthPlanCatalogToDraft(
+                  template.draft,
+                  plans.map((plan: { name: string }) => plan.name),
+                )
+              : template.draft
+          setDraft(withCatalog)
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host])
-
-  useEffect(() => {
-    const h = (e: BeforeUnloadEvent) => {
-      if (dirty) e.preventDefault()
-    }
-    addEventListener("beforeunload", h)
-    return () => removeEventListener("beforeunload", h)
-  }, [dirty])
+  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host, templateParam, isCatalogTemplate])
 
   const change = (patch: Partial<PublicFormDraftInput>) => {
     setDraft((prev) => ({ ...prev, ...patch }))
@@ -477,6 +526,33 @@ export function PublicFormWizard({
   }
 
   async function save() {
+    if (host?.mode === "catalog-template" && host.saveTemplate) {
+      setSaving(true)
+      try {
+        const payload = buildSavePayload(draft)
+        if (!currentId && !templateSlug.trim()) {
+          toast.error("Informe o slug do template")
+          return null
+        }
+        const saved = await host.saveTemplate(currentId ?? null, payload, {
+          slug: templateSlugReadonly ? undefined : templateSlug,
+          sortOrder: templateSortOrder,
+          description: draft.description ?? null,
+        })
+        setCurrentId(saved.id)
+        setTemplateSlugReadonly(true)
+        setDirty(false)
+        toast.success("Rascunho salvo")
+        if (!formId) router.replace(host.formHref(saved.id))
+        return saved
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+        return null
+      } finally {
+        setSaving(false)
+      }
+    }
+
     if (host) {
       setSaving(true)
       try {
@@ -513,16 +589,32 @@ export function PublicFormWizard({
     }
   }
 
+  useEffect(() => {
+    const h = (e: BeforeUnloadEvent) => {
+      if (dirty) e.preventDefault()
+    }
+    addEventListener("beforeunload", h)
+    return () => removeEventListener("beforeunload", h)
+  }, [dirty])
+
   async function publish() {
     setPublishing(true)
     try {
       const f = await save()
       if (!f) return
+      const id = "id" in f ? f.id : currentId
+      if (!id) return
+      if (host?.mode === "catalog-template" && host.publishTemplate) {
+        await host.publishTemplate(id)
+        toast.success("Template publicado")
+        router.push(listHref)
+        return
+      }
       if (host) {
-        await host.publish(f.id)
+        await host.publish(id)
       } else {
         if (!activeTeam?.id || !user?.id) return
-        await publicFormsService.action(user.id, activeTeam.id, f.id, "publish")
+        await publicFormsService.action(user.id, activeTeam.id, id, "publish")
       }
       toast.success("Formulário publicado")
       router.push(listHref)
@@ -613,7 +705,7 @@ export function PublicFormWizard({
             }}
           >
             <ArrowLeft data-icon="inline-start" />
-            Formulários
+            {isCatalogTemplate ? "Templates" : "Formulários"}
           </Link>
         </Button>
         <div className="flex gap-2">
@@ -621,10 +713,12 @@ export function PublicFormWizard({
             <Save data-icon="inline-start" />
             {saving ? "Salvando..." : "Salvar rascunho"}
           </Button>
-          <Button variant="outline" onClick={() => void openPreview()} disabled={publishing}>
-            <Eye data-icon="inline-start" />
-            Preview
-          </Button>
+          {!isCatalogTemplate ? (
+            <Button variant="outline" onClick={() => void openPreview()} disabled={publishing}>
+              <Eye data-icon="inline-start" />
+              Preview
+            </Button>
+          ) : null}
         </div>
       </header>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[190px_minmax(360px,1fr)_minmax(360px,0.9fr)]">
@@ -633,19 +727,32 @@ export function PublicFormWizard({
             Etapas
           </p>
           <nav className="flex flex-col gap-1">
-            {steps.map((s, i) => (
+            {steps.map((s, i) => {
+              const isActive = step === i
+              const isCompleted = i < completedThroughStep
+              return (
               <button
                 key={s}
                 type="button"
                 onClick={() => setStep(i)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm ${step === i ? "bg-accent font-medium" : "hover:bg-accent/50"}`}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm",
+                  isActive ? "bg-accent font-medium" : "hover:bg-accent/50",
+                )}
               >
-                <span className="grid size-6 place-items-center rounded-full border text-xs">
-                  {i + 1}
+                <span
+                  className={cn(
+                    "grid size-6 shrink-0 place-items-center rounded-full border text-xs tabular-nums",
+                    isCompleted && !isActive &&
+                      "border-semantic-success/40 bg-semantic-success/10 text-semantic-success",
+                  )}
+                >
+                  {isCompleted && !isActive ? <Check className="size-3" strokeWidth={2.5} /> : i + 1}
                 </span>
                 {s}
               </button>
-            ))}
+              )
+            })}
           </nav>
         </aside>
         <section className="min-w-0 overflow-y-auto p-5 md:p-8">
@@ -668,7 +775,19 @@ export function PublicFormWizard({
               </Badge>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">{steps[step]}</h1>
             </div>
-            {step === 0 && <Basic draft={draft} change={change} members={members} />}
+            {step === 0 && (
+              <Basic
+                draft={draft}
+                change={change}
+                members={members}
+                isCatalogTemplate={isCatalogTemplate}
+                templateSlug={templateSlug}
+                templateSlugReadonly={templateSlugReadonly}
+                templateSortOrder={templateSortOrder}
+                onTemplateSlugChange={setTemplateSlug}
+                onTemplateSortOrderChange={setTemplateSortOrder}
+              />
+            )}
             {step === 1 && <Cover draft={draft} change={change} />}
             {step === 2 && (
               <Questions
@@ -677,6 +796,7 @@ export function PublicFormWizard({
                 customFields={customFields}
                 healthPlans={healthPlans}
                 members={members}
+                isCatalogTemplate={isCatalogTemplate}
               />
             )}
             {step === 3 && <Thanks draft={draft} change={change} />}
@@ -687,6 +807,7 @@ export function PublicFormWizard({
               <Review
                 draft={draft}
                 publishing={publishing}
+                isCatalogTemplate={isCatalogTemplate}
                 onPublish={() => void publish()}
                 onGoToStep={setStep}
               />
@@ -699,13 +820,17 @@ export function PublicFormWizard({
                 <Button
                   onClick={() => {
                     if (step === 2) {
-                      const errors = getQuestionStepErrors(draft)
+                      const errors = getQuestionStepErrors(draft, {
+                        mode: isCatalogTemplate ? "catalog-template" : "form",
+                      })
                       if (errors.length > 0) {
                         toast.error(errors[0])
                         return
                       }
                     }
-                    setStep(step + 1)
+                    const nextStep = step + 1
+                    setCompletedThroughStep((prev) => Math.max(prev, nextStep))
+                    setStep(nextStep)
                   }}
                 >
                   Próxima etapa
@@ -765,22 +890,63 @@ function Basic({
   draft: d,
   change,
   members,
+  isCatalogTemplate = false,
+  templateSlug = "",
+  templateSlugReadonly = false,
+  templateSortOrder = 0,
+  onTemplateSlugChange,
+  onTemplateSortOrderChange,
 }: {
   draft: PublicFormDraftInput
   change: (p: Partial<PublicFormDraftInput>) => void
   members: Member[]
+  isCatalogTemplate?: boolean
+  templateSlug?: string
+  templateSlugReadonly?: boolean
+  templateSortOrder?: number
+  onTemplateSlugChange?: (value: string) => void
+  onTemplateSortOrderChange?: (value: number) => void
 }) {
   return (
     <FieldGroup>
+      {isCatalogTemplate ? (
+        <>
+          <Field>
+            <FieldLabel>Slug do template</FieldLabel>
+            <FieldDescription>Identificador único (letras minúsculas, números e _)</FieldDescription>
+            <FieldContent>
+              <Input
+                value={templateSlug}
+                readOnly={templateSlugReadonly}
+                onChange={(e) => onTemplateSlugChange?.(e.target.value)}
+              />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>Ordem no catálogo</FieldLabel>
+            <FieldContent>
+              <Input
+                type="number"
+                value={templateSortOrder}
+                onChange={(e) => onTemplateSortOrderChange?.(Number(e.target.value) || 0)}
+              />
+            </FieldContent>
+          </Field>
+        </>
+      ) : null}
       <Field>
-        <FieldLabel>Nome do formulário</FieldLabel>
+        <FieldLabel>{isCatalogTemplate ? "Nome do template" : "Nome do formulário"}</FieldLabel>
         <FieldContent>
           <Input value={d.name} onChange={(e) => change({ name: e.target.value })} />
         </FieldContent>
       </Field>
       <Field>
         <FieldLabel>Descrição</FieldLabel>
-        <FieldDescription>Somente para o time — não aparece no formulário público</FieldDescription>
+        <FieldDescription>
+          {isCatalogTemplate
+            ? "Descrição exibida no catálogo de templates"
+            : "Somente para o time — não aparece no formulário público"}
+        </FieldDescription>
         <FieldContent>
           <Textarea
             value={d.description ?? ""}
@@ -788,29 +954,31 @@ function Basic({
           />
         </FieldContent>
       </Field>
-      <Field>
-        <FieldLabel>SDR responsável (opcional)</FieldLabel>
-        <FieldContent>
-          <Select
-            value={d.assignedSdrId ?? "__none__"}
-            onValueChange={(v) => change({ assignedSdrId: v === "__none__" ? null : v })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Nenhum (opcional)</SelectItem>
-              {members
-                .filter((m) => m.functions.includes("SDR"))
-                .map((m) => (
-                  <SelectItem key={m.profileId} value={m.profileId}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </FieldContent>
-      </Field>
+      {!isCatalogTemplate ? (
+        <Field>
+          <FieldLabel>SDR responsável (opcional)</FieldLabel>
+          <FieldContent>
+            <Select
+              value={d.assignedSdrId ?? "__none__"}
+              onValueChange={(v) => change({ assignedSdrId: v === "__none__" ? null : v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Nenhum (opcional)</SelectItem>
+                {members
+                  .filter((m) => m.functions.includes("SDR"))
+                  .map((m) => (
+                    <SelectItem key={m.profileId} value={m.profileId}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </FieldContent>
+        </Field>
+      ) : null}
     </FieldGroup>
   )
 }
@@ -1181,16 +1349,32 @@ function Questions({
   customFields,
   healthPlans,
   members,
+  isCatalogTemplate = false,
 }: {
   draft: PublicFormDraftInput
   change: (p: Partial<PublicFormDraftInput>) => void
   customFields: LeadCustomFieldDefinitionDTO[]
   healthPlans: Array<{ id: string; name: string }>
   members: Member[]
+  isCatalogTemplate?: boolean
 }) {
-  const stepErrors = getQuestionStepErrors(d)
+  const stepErrors = getQuestionStepErrors(d, {
+    mode: isCatalogTemplate ? "catalog-template" : "form",
+  })
   const pages = groupQuestionsByPage(d.questions)
   const scoreTotal = sumQuestionScoreWeights(d.questions)
+  const { config: engagementConfig, isLoading: engagementConfigLoading } =
+    useFormEngagementConfig(true)
+
+  const hasAnyScoreWeight = d.questions.some((q) => Math.max(0, q.scoreWeight ?? 0) > 0)
+  const allOptionsZero =
+    hasAnyScoreWeight &&
+    d.questions.every((q) => {
+      if (Math.max(0, q.scoreWeight ?? 0) <= 0) return true
+      if (!["single_choice", "multiple_choice", "health_plan"].includes(q.type)) return true
+      return q.options.every((o) => Math.max(0, o.score) <= 0)
+    })
+  const showQualificationBanner = scoreTotal === 100 && allOptionsZero
 
   function updateQuestion(id: string, patch: Partial<PublicFormQuestionInput>) {
     if (patch.scoreWeight !== undefined) {
@@ -1554,6 +1738,22 @@ function Questions({
             Obrigatória
           </label>
         </div>
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => Math.max(0, o.score) <= 0) ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Esta pergunta não influencia o score — configure um peso para pelo menos uma opção
+          </Badge>
+        ) : null}
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => (o.scorePolarity ?? "positive") === "negative") ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Nenhuma resposta positiva: o lead sempre será penalizado nesta pergunta
+          </Badge>
+        ) : null}
         {q.type === "scheduling" ? (
           <div className="mt-4">
             <ScheduleInline draft={d} change={change} members={members} />
@@ -1700,6 +1900,19 @@ function Questions({
                       </div>
                     </FieldContent>
                   </Field>
+                  {engagementConfigLoading ? (
+                    <Skeleton className="h-5 w-48" />
+                  ) : engagementConfig && o.id && q.id ? (
+                    (() => {
+                      const band = previewTemperatureForOption(
+                        d,
+                        q.id,
+                        o.id,
+                        engagementConfig,
+                      )
+                      return band ? <TemperaturePreviewPill band={band} /> : null
+                    })()
+                  ) : null}
                 </div>
               )
             })}
@@ -1741,6 +1954,14 @@ function Questions({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Total: {scoreTotal}%</p>
+      {showQualificationBanner ? (
+        <Alert>
+          <AlertDescription>
+            Score de qualificação não configurado — o formulário não influenciará a temperatura do
+            lead
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {stepErrors.length > 0 ? (
         <Alert variant="destructive">
           <AlertDescription>
@@ -2549,15 +2770,19 @@ function Appearance({
 function Review({
   draft: d,
   publishing,
+  isCatalogTemplate = false,
   onPublish,
   onGoToStep,
 }: {
   draft: PublicFormDraftInput
   publishing: boolean
+  isCatalogTemplate?: boolean
   onPublish: () => void
   onGoToStep: (step: number) => void
 }) {
-  const questionErrors = getQuestionStepErrors(d)
+  const questionErrors = getQuestionStepErrors(d, {
+    mode: isCatalogTemplate ? "catalog-template" : "form",
+  })
   const checks = [
     { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
     { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 2 },
@@ -2566,11 +2791,15 @@ function Review({
       text: "Nome do lead mapeado",
       step: 2,
     },
-    {
-      ok: !d.schedulingEnabled || d.eligibleCloserIds.length > 0,
-      text: "Closer selecionado para agenda",
-      step: 2,
-    },
+    ...(isCatalogTemplate
+      ? []
+      : [
+          {
+            ok: !d.schedulingEnabled || d.eligibleCloserIds.length > 0,
+            text: "Closer selecionado para agenda",
+            step: 2,
+          },
+        ]),
     {
       ok: questionErrors.length === 0,
       text: "Perguntas configuradas corretamente",
@@ -2607,7 +2836,7 @@ function Review({
         </Alert>
       ) : null}
       <Button disabled={!ready || publishing} onClick={onPublish}>
-        {publishing ? "Publicando..." : "Publicar formulário"}
+        {publishing ? "Publicando..." : isCatalogTemplate ? "Publicar template" : "Publicar formulário"}
       </Button>
     </div>
   )

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export interface BackofficeUserData {
   profileId: string
@@ -49,7 +50,7 @@ export function BackofficeUserProvider({ children }: { children: ReactNode }) {
     inFlight.current = true
     setError(null)
 
-    await fetch("/api/v1/backoffice/current-user", { cache: "no-store" })
+    await fetch(`${API_CLIENT_BASE}/backoffice/current-user`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data.isValid && data.result) {

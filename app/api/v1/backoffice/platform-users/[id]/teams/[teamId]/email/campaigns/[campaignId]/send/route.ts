@@ -22,9 +22,18 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const resolved = await resolveStudioEmailActor(request, Promise.resolve(all))
     if (resolved.error) return resolved.error
 
+    let retryFailedOnly = false
+    try {
+      const body = (await request.json()) as { retryFailedOnly?: unknown } | null
+      retryFailedOnly = body?.retryFailedOnly === true
+    } catch {
+      retryFailedOnly = false
+    }
+
     const output = await backofficeStudioEmailUseCase.startManualDispatch(
       resolved.actor,
-      all.campaignId
+      all.campaignId,
+      { retryFailedOnly }
     )
     if (!output.isValid || !output.result) {
       const status = output.errorMessages.some((message) => message.includes("permissão"))
@@ -48,6 +57,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         campaignId: job.campaignId,
         dispatchId: job.dispatchId,
         totalRecipients: job.totalRecipients,
+        retryFailedOnly: job.retryFailedOnly,
         status: "sending" as const,
       }),
       202

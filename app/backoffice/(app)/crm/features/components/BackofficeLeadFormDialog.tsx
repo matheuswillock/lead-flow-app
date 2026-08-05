@@ -47,6 +47,7 @@ import {
 } from "../context/BackofficeCrmTypes"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
 import { formatDocumentInput, maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"
@@ -355,7 +356,7 @@ export function BackofficeLeadFormDialog() {
     setShareLoading(true)
     try {
       const response = await fetch(
-        `/api/v1/backoffice/leads/${selectedLead.id}/schedule/share`,
+        `${API_CLIENT_BASE}/backoffice/leads/${selectedLead.id}/schedule/share`,
         { method: "POST" }
       )
       const output = await response.json()
@@ -380,7 +381,7 @@ export function BackofficeLeadFormDialog() {
     setResendLoading(true)
     try {
       const response = await fetch(
-        `/api/v1/backoffice/leads/${selectedLead.id}/schedule/resend`,
+        `${API_CLIENT_BASE}/backoffice/leads/${selectedLead.id}/schedule/resend`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

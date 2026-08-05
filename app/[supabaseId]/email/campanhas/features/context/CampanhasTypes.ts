@@ -1,8 +1,13 @@
+import type { WizardTabId } from "../validation/campaignWizardSchema"
+
+export type { WizardTabId }
+
 export type CampaignStatus =
   | "draft"
   | "scheduled"
   | "sending"
   | "sent"
+  | "partially_sent"
   | "canceled"
   | "failed"
   | "archived"
@@ -20,14 +25,21 @@ export type SubCampaignSummary = {
   totalClicked: number
   totalBounced: number
   subCampaignIndex: number | null
+  contactListId?: string | null
   errorMessage?: string | null
+  failedRetryRecipientCount?: number
 }
 
 export type Campaign = {
   id: string
   name: string
+  description?: string | null
   parentCampaignId?: string | null
+  templateId?: string
+  contactListId?: string | null
   audienceContactIds?: string[]
+  sourceContactListIds?: string[]
+  linkedForm?: { id: string; name: string; publicId: string } | null
   status: CampaignStatus
   scheduledAt: string | null
   sentAt: string | null
@@ -40,14 +52,17 @@ export type Campaign = {
   dispatchCount: number
   createdAt: string
   creator: { fullName: string | null; email: string | null } | null
-  template: { id: string; name: string } | null
-  contactList: { id: string; name: string } | null
+  template: { id: string; name: string; subject?: string } | null
+  contactList: { id: string; name: string; totalContacts?: number; activeContacts?: number } | null
   radarSegmentSlug?: string | null
   errorMessage?: string | null
+  failedRetryRecipientCount?: number
   subCampaignCount?: number
   isParentCampaign?: boolean
   subCampaigns?: SubCampaignSummary[]
   managedByCorretorStudio?: boolean
+  partiallySentCount?: number
+  partiallySentTotal?: number
 }
 
 export type CreditStatus = {
@@ -72,6 +87,7 @@ export type Template = {
   subject: string
   status?: 'draft' | 'published'
   isCurrentPublished?: boolean
+  linkedForm?: { id: string; name: string; publicId: string } | null
 }
 
 export type ContactList = {
@@ -129,6 +145,19 @@ export type CampaignEmailEvent = {
 
 export type CampaignLogDetail = CampaignEmailLog & { events: CampaignEmailEvent[] }
 
+export type CampaignPreviewPlan = {
+  subCampaigns: Array<{
+    index: number
+    name: string
+    totalRecipients: number
+    scheduledAt?: string | null
+    contactListId?: string | null
+    listName?: string | null
+  }>
+  needsSplit: boolean
+  totalRecipients: number
+}
+
 export type CampanhasState = {
   campaigns: Campaign[]
   total: number
@@ -148,24 +177,34 @@ export type CampanhasState = {
   archivingId: string | null
   // Wizard state
   wizardOpen: boolean
-  wizardStep: 1 | 2 | 3
+  wizardMode: "create" | "edit"
+  wizardCampaignId?: string
+  wizardActiveTab: WizardTabId
   wizardName: string
+  wizardDescription: string
   wizardTemplateId: string
-  wizardContactListId: string
+  wizardContactListIds: string[]
+  wizardListStrategy: "single" | "merge" | "per_list"
   wizardRecipientSource: "contact_list" | "radar_segment"
   wizardRadarSegmentSlug: string
+  wizardSaveAsRadarSegment: boolean
+  wizardSaveAsRadarSegmentName: string
   wizardScheduledAt: Date | undefined
+  wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
-  wizardCreating: boolean
+  wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+  wizardSubCampaignListIds: Record<number, string>
+  wizardSubCampaignNames: Record<number, string>
+  wizardPreviewPlan: CampaignPreviewPlan | null
+  wizardPreviewLoading: boolean
+  wizardLinkedForm: { id: string; name: string; publicId: string } | null
+  wizardSaving: boolean
+  wizardHydrating: boolean
+  materializingSegment: boolean
   templates: Template[]
   contactLists: ContactList[]
   radarSegments: RadarSegmentOption[]
   // Detail sheet state
   detailCampaign: Campaign | null
   sheetTab: CampaignSheetTab
-  editName: string
-  editTemplateId: string
-  editContactListId: string
-  editScheduledAt: Date | undefined
-  editSaving: boolean
 }

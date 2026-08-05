@@ -5,27 +5,37 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
+const listStrategySchema = z.enum(["single", "merge", "per_list"])
+
 const createSchema = z
   .object({
     name: z.string().min(1, "Nome é obrigatório"),
+    description: z.string().max(500).nullable().optional(),
     templateId: z.string().uuid("templateId inválido"),
     contactListId: z.string().uuid("contactListId inválido").optional(),
+    contactListIds: z.array(z.string().uuid()).optional(),
+    listStrategy: listStrategySchema.optional(),
     radarSegmentSlug: z.string().min(1).optional(),
     scheduledAt: z.string().datetime().nullable().optional(),
     scheduleIntervalDays: z.number().int().min(1).optional().nullable(),
+    uniformSchedule: z.boolean().optional(),
+    saveAsRadarSegment: z.boolean().optional(),
+    saveAsRadarSegmentName: z.string().max(120).nullable().optional(),
+    subCampaignSchedules: z
+      .array(
+        z.object({
+          index: z.number().int().min(1),
+          scheduledAt: z.string().datetime(),
+        })
+      )
+      .optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.contactListId && !data.radarSegmentSlug) {
+    const hasList = Boolean(data.contactListId) || (data.contactListIds?.length ?? 0) > 0
+    if (!hasList && !data.radarSegmentSlug) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Informe contactListId ou radarSegmentSlug",
-        path: ["contactListId"],
-      })
-    }
-    if (data.contactListId && data.radarSegmentSlug) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Use apenas contactListId ou radarSegmentSlug",
+        message: "Informe contactListId, contactListIds ou radarSegmentSlug",
         path: ["contactListId"],
       })
     }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BillingSlots {
   hasAvailableTeamSlot: boolean
@@ -16,7 +17,7 @@ export function useBillingSlots(supabaseId: string, enabled: boolean): BillingSl
   useEffect(() => {
     if (!enabled || !supabaseId) return
 
-    fetch("/api/v1/billing/summary", {
+    fetch(`${API_CLIENT_BASE}/billing/summary`, {
       headers: { "x-supabase-user-id": supabaseId },
     })
       .then((r) => r.json())

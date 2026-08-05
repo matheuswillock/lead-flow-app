@@ -37,6 +37,7 @@ import type {
   BackofficeCrmUserOption,
   BackofficeLeadScheduleInput,
 } from "../context/BackofficeCrmTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const DEFAULT_MEETING_TITLE = "Demonstração Corretor Studio"
 
@@ -136,7 +137,7 @@ export function BackofficeLeadScheduleDialog({
     const startDate =
       meetingDateKey ?? formatLocalDateValue(new Date(), closerTimezone)
 
-    fetch("/api/v1/backoffice/calendar/availability", {
+    fetch(`${API_CLIENT_BASE}/backoffice/calendar/availability`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

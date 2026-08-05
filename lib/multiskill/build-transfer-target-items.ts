@@ -5,14 +5,31 @@ type InternalTransferTarget = {
   teamName: string;
 };
 
+type ExternalTransferMember = {
+  profileId: string;
+  fullName: string | null;
+  email: string;
+  googleCalendarConnected?: boolean;
+};
+
 type ExternalTransferTarget = {
   masterId: string;
   masterName: string | null;
   masterEmail: string;
   defaultTeamId: string;
   defaultTeamName: string;
-  closers: Array<{ profileId: string; fullName: string | null; email: string }>;
+  closers: ExternalTransferMember[];
+  sdrs?: ExternalTransferMember[];
 };
+
+function mapMemberRef(member: ExternalTransferMember) {
+  return {
+    profileId: member.profileId,
+    fullName: member.fullName,
+    email: member.email,
+    googleCalendarConnected: member.googleCalendarConnected ?? false,
+  };
+}
 
 function sortTransferTargetItems(items: TransferTargetItem[]): TransferTargetItem[] {
   return [...items].sort((a, b) => {
@@ -50,11 +67,8 @@ export function buildTransferTargetItems(input: {
         masterId: target.masterId,
         masterName: target.masterName,
         masterEmail: target.masterEmail,
-        closers: target.closers.map((closer) => ({
-          profileId: closer.profileId,
-          fullName: closer.fullName,
-          email: closer.email,
-        })),
+        closers: target.closers.map(mapMemberRef),
+        sdrs: (target.sdrs ?? []).map(mapMemberRef),
       });
     }
   }

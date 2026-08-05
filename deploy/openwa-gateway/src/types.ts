@@ -32,3 +32,9 @@ export type ClientFactory = (
   webhookUrl: string,
   store: RemoteAuthStore
 ) => WhatsAppClientLike;
+
+export interface SessionRegistry {
+  upsert(instanceName: string, webhookUrl: string): Promise<void>;
+  remove(instanceName: string): Promise<void>;
+  list(): Promise<Array<{ instanceName: string; webhookUrl: string }>>;
+}

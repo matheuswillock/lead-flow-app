@@ -7,6 +7,7 @@ import {
   EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
   templateIncludesManualUnsubscribeLink,
 } from "@/lib/email/unsubscribe-link-embed"
+import { appendEmailLogIdToFormUrls } from "@/lib/email/append-email-log-to-form-urls"
 import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
@@ -24,6 +25,14 @@ import type {
 } from "./IEmailCampaignDispatchService"
 
 const BATCH_SIZE = 100
+
+/** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
+function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
+  if (statusCode === 409 && rawMessage.toLowerCase().includes("idempotency")) {
+    return "Falha no envio da campanha. Entre em contato com o suporte se o problema persistir."
+  }
+  return rawMessage
+}
 
 /** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */
 export function parseResendBatchSendItems(
@@ -48,14 +57,23 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     html: string
     campaignId: string
     teamId: string
+    dispatchId: string
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
+    logIdByEmail?: Map<string, string> | Record<string, string> | null
     onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
   }): Promise<DispatchBatchResult> {
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
     }
+
+    const logIdByEmail =
+      params.logIdByEmail instanceof Map
+        ? params.logIdByEmail
+        : params.logIdByEmail
+          ? new Map(Object.entries(params.logIdByEmail))
+          : null
 
     const result: DispatchBatchResult = {
       sent: 0,
@@ -100,7 +118,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             ? buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId)
             : ""
           const usesManualUnsubscribe = manualUnsubscribeLink && Boolean(unsubscribeUrl)
-          const renderedHtml = interpolateEmailTemplate(
+          let renderedHtml = interpolateEmailTemplate(
             params.html,
             recipient,
             params.globalDefaults,
@@ -109,6 +127,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               ? { [EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]: unsubscribeUrl }
               : null,
           )
+          const emailLogId = logIdByEmail?.get(recipient.email)
+          if (emailLogId) {
+            renderedHtml = appendEmailLogIdToFormUrls(renderedHtml, emailLogId)
+          }
           const renderedSubject = interpolateEmailTemplate(
             params.subject,
             recipient,
@@ -145,19 +167,24 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         const batchResult = await resend.batch.send(batchPayload, {
           idempotencyKey: buildResendBatchIdempotencyKey(
             "campaign",
-            `${params.campaignId}/${params.dispatchNumber}/${chunkIndex}`
+            `${params.dispatchId}/${chunkIndex}`
           ),
         })
 
         if (batchResult.error) {
           console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
           result.failed += chunk.length
+          const errorStatusCode =
+            typeof batchResult.error.statusCode === "number"
+              ? batchResult.error.statusCode
+              : undefined
+          const errorMessage = resolveResendBatchErrorMessage(
+            batchResult.error.message || "Erro no envio via Resend",
+            errorStatusCode
+          )
           result.providerErrors.push({
-            message: batchResult.error.message || "Erro no envio via Resend",
-            statusCode:
-              typeof batchResult.error.statusCode === "number"
-                ? batchResult.error.statusCode
-                : undefined,
+            message: errorMessage,
+            statusCode: errorStatusCode,
             emails: chunk.map((recipient) => recipient.email),
           })
         } else {

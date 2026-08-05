@@ -2,6 +2,8 @@ import type {
   IRadarService,
   RadarFieldOption,
   ListProfilesParams,
+  ExportProfilesParams,
+  RadarExportResult,
   CustomSegmentInput,
   CustomSegmentUpdateInput,
 } from "./IRadarService"
@@ -11,11 +13,14 @@ import type {
   RadarMetrics,
   RadarProfileDetail,
   RadarProfileListItem,
+  RadarProfileContracts,
+  RadarProfileTouchpoints,
   RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 async function parseOutput<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -25,7 +30,7 @@ async function parseOutput<T>(res: Response): Promise<T> {
 }
 
 export class RadarFrontendService implements IRadarService {
-  private readonly baseUrl = "/api/v1/radar"
+  private readonly baseUrl = `${API_CLIENT_BASE}/radar`
 
   private buildHeaders(supabaseId: string, teamId: string): HeadersInit {
     return {
@@ -110,6 +115,8 @@ export class RadarFrontendService implements IRadarService {
     if (params.channel) query.set("channel", params.channel)
     if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
     if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
+    query.set("sort", params.sort ?? "engagementScore")
+    query.set("order", params.order ?? "desc")
 
     const res = await fetch(`${this.baseUrl}/profiles?${query}`, {
       cache: "no-store",
@@ -121,6 +128,51 @@ export class RadarFrontendService implements IRadarService {
       page: number
       pageSize: number
     }>(res)
+  }
+
+  async exportProfiles(
+    supabaseId: string,
+    teamId: string,
+    params: ExportProfilesParams
+  ): Promise<RadarExportResult> {
+    const query = new URLSearchParams()
+    if (params.search) query.set("search", params.search)
+    if (params.consent) query.set("consent", params.consent)
+    if (params.sourceType) query.set("sourceType", params.sourceType)
+    if (params.channel) query.set("channel", params.channel)
+    if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
+    if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
+
+    const qs = query.toString()
+    const res = await fetch(`${this.baseUrl}/profiles/export${qs ? `?${qs}` : ""}`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
+  async exportSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segment: string
+  ): Promise<RadarExportResult> {
+    const res = await fetch(`${this.baseUrl}/segments/${encodeURIComponent(segment)}/export`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
+  }
+
+  async exportCustomSegmentProfiles(
+    supabaseId: string,
+    teamId: string,
+    segmentId: string
+  ): Promise<RadarExportResult> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/${segmentId}/export`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarExportResult>(res)
   }
 
   async getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail> {
@@ -150,10 +202,13 @@ export class RadarFrontendService implements IRadarService {
     pageSize: number
   ) {
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
-    const res = await fetch(`${this.baseUrl}/segments/${segment}/profiles?${query}`, {
-      cache: "no-store",
-      headers: this.buildHeaders(supabaseId, teamId),
-    })
+    const res = await fetch(
+      `${this.baseUrl}/segments/${encodeURIComponent(segment)}/profiles?${query}`,
+      {
+        cache: "no-store",
+        headers: this.buildHeaders(supabaseId, teamId),
+      }
+    )
     return parseOutput<{ items: RadarProfileDetail[]; total: number }>(res)
   }
 
@@ -179,6 +234,27 @@ export class RadarFrontendService implements IRadarService {
     })
     const result = await parseOutput<{ fields?: RadarFieldOption[] }>(res)
     return result.fields ?? []
+  }
+
+  async listAvailableEventTypes(supabaseId: string, teamId: string): Promise<string[]> {
+    const res = await fetch(`${this.baseUrl}/available-event-types`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const result = await parseOutput<{ eventTypes?: string[] }>(res)
+    return result.eventTypes ?? []
+  }
+
+  async listAvailableCampaigns(
+    supabaseId: string,
+    teamId: string
+  ): Promise<Array<{ id: string; name: string }>> {
+    const res = await fetch(`${this.baseUrl}/available-campaigns`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const result = await parseOutput<{ campaigns?: Array<{ id: string; name: string }> }>(res)
+    return result.campaigns ?? []
   }
 
   async previewInterpolation(
@@ -279,6 +355,81 @@ export class RadarFrontendService implements IRadarService {
       body: JSON.stringify({ rules }),
     })
     return parseOutput<{ count: number }>(res)
+  }
+
+  async getProfileTouchpoints(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileTouchpoints> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/touchpoints`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileTouchpoints>(res)
+  }
+
+  async getProfileContracts(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileContracts> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/contracts`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileContracts>(res)
+  }
+
+  async materializeContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    name?: string
+  ): Promise<{ listId: string; totalContacts: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/${encodeURIComponent(segmentSlug)}/materialize-list`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(name ? { name } : {}),
+    })
+    return parseOutput<{ listId: string; totalContacts: number }>(res)
+  }
+
+  async previewSegmentContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ estimatedCount: number }> {
+    const path =
+      variant === "custom"
+        ? `${this.baseUrl}/segments/custom/${segmentSlug}/materialize-contact-list`
+        : `${this.baseUrl}/segments/${segmentSlug}/materialize-contact-list`
+    const res = await fetch(path, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ estimatedCount: number }>(res)
+  }
+
+  async materializeSegmentToContactList(
+    supabaseId: string,
+    teamId: string,
+    segmentSlug: string,
+    variant: "system" | "custom"
+  ): Promise<{ listId: string; contactCount: number }> {
+    const path =
+      variant === "custom"
+        ? `${this.baseUrl}/segments/custom/${segmentSlug}/materialize-contact-list`
+        : `${this.baseUrl}/segments/${segmentSlug}/materialize-contact-list`
+    const res = await fetch(path, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ listId: string; contactCount: number }>(res)
   }
 }
 

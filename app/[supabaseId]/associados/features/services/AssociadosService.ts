@@ -5,6 +5,7 @@ import type {
   AssociateProposalDetail,
   LeadAttachmentOption,
 } from "../context/AssociadosTypes";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 function headers(supabaseId: string, teamId: string) {
   return {
@@ -37,7 +38,7 @@ export class AssociadosService implements IAssociadosService {
     params.set("page", String(filters.page));
     params.set("pageSize", String(filters.pageSize));
 
-    const res = await fetch(`/api/v1/associates/proposals?${params.toString()}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/associates/proposals?${params.toString()}`, {
       headers: headers(supabaseId, teamId),
     });
 
@@ -45,14 +46,14 @@ export class AssociadosService implements IAssociadosService {
   }
 
   async getDetail(supabaseId: string, teamId: string, leadId: string) {
-    const res = await fetch(`/api/v1/associates/proposals/${leadId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/associates/proposals/${leadId}`, {
       headers: headers(supabaseId, teamId),
     });
     return parseOutput<AssociateProposalDetail>(res, "Erro ao carregar detalhe");
   }
 
   async listLeadAttachments(supabaseId: string, teamId: string, leadId: string) {
-    const res = await fetch(`/api/v1/leads/${leadId}/attachments?teamId=${teamId}`, {
+    const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/attachments?teamId=${teamId}`, {
       headers: headers(supabaseId, teamId),
     });
     const json = await res.json();
@@ -69,7 +70,7 @@ export class AssociadosService implements IAssociadosService {
     leadId: string,
     input: { title: string; message: string }
   ): Promise<void> {
-    const res = await fetch(`/api/v1/associates/proposals/${leadId}/criticize`, {
+    const res = await fetch(`${API_CLIENT_BASE}/associates/proposals/${leadId}/criticize`, {
       method: "POST",
       headers: { ...headers(supabaseId, teamId), "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -88,7 +89,7 @@ export class AssociadosService implements IAssociadosService {
       attachmentIds?: string[];
     }
   ): Promise<void> {
-    const res = await fetch(`/api/v1/associates/proposals/${leadId}/register-sale`, {
+    const res = await fetch(`${API_CLIENT_BASE}/associates/proposals/${leadId}/register-sale`, {
       method: "POST",
       headers: { ...headers(supabaseId, teamId), "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -98,7 +99,7 @@ export class AssociadosService implements IAssociadosService {
 
   async approveDocument(supabaseId: string, teamId: string, leadId: string, documentType: string) {
     const res = await fetch(
-      `/api/v1/associates/proposals/${leadId}/documents/${documentType}/approve`,
+      `${API_CLIENT_BASE}/associates/proposals/${leadId}/documents/${documentType}/approve`,
       {
         method: "POST",
         headers: headers(supabaseId, teamId),
@@ -115,7 +116,7 @@ export class AssociadosService implements IAssociadosService {
     reason: string
   ) {
     const res = await fetch(
-      `/api/v1/associates/proposals/${leadId}/documents/${documentType}/reject`,
+      `${API_CLIENT_BASE}/associates/proposals/${leadId}/documents/${documentType}/reject`,
       {
         method: "POST",
         headers: { ...headers(supabaseId, teamId), "Content-Type": "application/json" },
@@ -131,7 +132,7 @@ export class AssociadosService implements IAssociadosService {
     leadId: string,
     input: { documentType: string; attachmentId: string }
   ) {
-    const res = await fetch(`/api/v1/associates/proposals/${leadId}/documents`, {
+    const res = await fetch(`${API_CLIENT_BASE}/associates/proposals/${leadId}/documents`, {
       method: "POST",
       headers: { ...headers(supabaseId, teamId), "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -140,7 +141,7 @@ export class AssociadosService implements IAssociadosService {
   }
 
   async uploadPaymentProof(supabaseId: string, teamId: string, leadId: string, attachmentId: string) {
-    const res = await fetch(`/api/v1/associates/proposals/${leadId}/payment-proof`, {
+    const res = await fetch(`${API_CLIENT_BASE}/associates/proposals/${leadId}/payment-proof`, {
       method: "POST",
       headers: { ...headers(supabaseId, teamId), "Content-Type": "application/json" },
       body: JSON.stringify({ attachmentId }),

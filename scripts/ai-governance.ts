@@ -4,7 +4,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 type AdapterKind = "copilot" | "github" | "cursor" | "claude" | "codex";
-type Command = "check" | "sync-adapters" | "warn-allowlist";
+type Command =
+  | "check"
+  | "check-api-masking"
+  | "sync-adapters"
+  | "warn-allowlist";
 
 interface CanonicalConfig {
   path: string;
@@ -33,6 +37,8 @@ interface LegacyExceptionsConfig {
   serviceImportOutsideUseCaseAllowlist?: string[];
   nonRepositoryDatabaseAccessAllowlist?: string[];
   prismaIncludeAllowlist?: string[];
+  /** Client-side files still hardcoding `/api/v1/` instead of `API_CLIENT_BASE`. */
+  clientApiPathMaskingAllowlist?: string[];
 }
 
 interface GovernanceConfig {
@@ -148,6 +154,22 @@ const STATIC_IMPORT_SPECIFIER_REGEX =
 const DYNAMIC_IMPORT_SPECIFIER_REGEX = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 const FETCH_REQUEST_REGEX = /\bfetch\s*\(/;
 const AXIOS_REQUEST_REGEX = /\baxios\s*(?:\(|\.)/;
+/**
+ * Hardcoded product API path in client-side source (must use API_CLIENT_BASE).
+ * Matches both quoted roots (`'/api/v1/...'`, `` `/api/v1/...` ``) and path
+ * segments after an interpolated/absolute origin
+ * (`${this.baseUrl}/api/v1/...`, `https://host/api/v1/...`).
+ */
+const HARDCODED_API_V1_PATH_REGEX = /\/api\/v1(?:\/|['"`]|$)/;
+const API_V1_MODULE_IMPORT_REGEX =
+  /(?:from\s+|import\s*\(\s*)['"][^'"]*\/api\/v1(?:\/|['"])/;
+const SERVER_ONLY_MODULE_REGEX =
+  /(?:^|\n)\s*(?:import\s+['"]server-only['"]|['"]use server['"]|["']use server["'])/;
+const CLIENT_API_MASKING_SCAN_DIRECTORIES = ["app", "components", "hooks", "lib"];
+const CLIENT_API_MASKING_EXCLUDED_PATH_PREFIXES = [
+  "app/api/",
+  "lib/route-map/",
+];
 
 function extractImportSpecifiers(fileContent: string): string[] {
   const specifiers = new Set<string>();
@@ -1121,6 +1143,127 @@ async function validateBrowserNativeDialogs(issues: string[]): Promise<void> {
   }
 }
 
+function isClientApiMaskingExcludedPath(relativePath: string): boolean {
+  return CLIENT_API_MASKING_EXCLUDED_PATH_PREFIXES.some((prefix) =>
+    relativePath.startsWith(prefix),
+  );
+}
+
+function isServerOnlySource(fileContent: string): boolean {
+  return SERVER_ONLY_MODULE_REGEX.test(fileContent);
+}
+
+function lineHardcodesClientApiV1Path(line: string): boolean {
+  const trimmed = line.trim();
+  if (
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("*") ||
+    trimmed.startsWith("/*")
+  ) {
+    return false;
+  }
+
+  // Type/value imports from app/api/v1 modules are allowed (not Network URLs).
+  if (API_V1_MODULE_IMPORT_REGEX.test(line)) {
+    return false;
+  }
+
+  return HARDCODED_API_V1_PATH_REGEX.test(line);
+}
+
+async function collectClientApiMaskingSourceFiles(): Promise<string[]> {
+  const found = new Set<string>();
+
+  for (const rootDirectory of CLIENT_API_MASKING_SCAN_DIRECTORIES) {
+    const absoluteRoot = path.join(ROOT, rootDirectory);
+    const files = await collectFilesRecursively(
+      absoluteRoot,
+      (filename, absolutePath) => {
+        const extension = path.extname(absolutePath).toLowerCase();
+        if (!FRONTEND_SOURCE_EXTENSIONS.has(extension)) {
+          return false;
+        }
+        if (filename.endsWith(".test.ts") || filename.endsWith(".test.tsx")) {
+          return false;
+        }
+        const relative = normalizeRelativePath(absolutePath);
+        return !isClientApiMaskingExcludedPath(relative);
+      },
+    );
+
+    for (const file of files) {
+      found.add(file);
+    }
+  }
+
+  return Array.from(found).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Ensures client-side HTTP calls do not expose `/api/v1/...` in the browser
+ * Network tab. New code MUST use `API_CLIENT_BASE` from `@/lib/route-map`
+ * (rewritten by proxy to `/api/v1`). Legacy paths may be allowlisted.
+ */
+async function validateClientApiPathMasking(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.clientApiPathMaskingAllowlist,
+  );
+  const sourceFiles = await collectClientApiMaskingSourceFiles();
+  const currentViolations = new Set<string>();
+
+  for (const sourceFile of sourceFiles) {
+    const relative = normalizeRelativePath(sourceFile);
+    const content = await fs.readFile(sourceFile, "utf8");
+
+    if (isServerOnlySource(content)) {
+      continue;
+    }
+
+    const lines = content.split(/\r?\n/);
+    const offendingLines: number[] = [];
+
+    for (let index = 0; index < lines.length; index++) {
+      if (lineHardcodesClientApiV1Path(lines[index])) {
+        offendingLines.push(index + 1);
+      }
+    }
+
+    if (offendingLines.length === 0) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      const preview = offendingLines.slice(0, 3).join(", ");
+      const more =
+        offendingLines.length > 3 ? ` (+${offendingLines.length - 3} more)` : "";
+      issues.push(
+        `Client API path masking violation: ${relative} (lines ${preview}${more}). Use \`API_CLIENT_BASE\` from \`@/lib/route-map\` instead of hardcoding \`/api/v1/...\`, or add a justified LEGACY EXCEPTION in clientApiPathMaskingAllowlist.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (clientApiPathMaskingAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (no hardcoded /api/v1 path detected): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
 const BUN_GLOBAL_SCAN_DIRECTORIES = ["app", "lib"];
 const BUN_GLOBAL_REGEX = /(?<![\w.$])Bun\s*\./;
 
@@ -1287,6 +1430,7 @@ async function checkGovernance(
   await validateUseCaseOutputContract(config, issues, warnings);
   await validateFrontendFeatureStructure(config, issues, warnings);
   await validateNonTypeScriptFiles(config, issues, warnings);
+  await validateClientApiPathMasking(config, issues, warnings);
   await validateBrowserNativeDialogs(issues);
   await validateBunGlobalUsage(issues);
 
@@ -1308,9 +1452,36 @@ async function checkGovernance(
   console.info("[governance:check] OK");
 }
 
+async function checkClientApiPathMaskingOnly(
+  config: GovernanceConfig,
+): Promise<void> {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+
+  await validateClientApiPathMasking(config, issues, warnings);
+
+  if (warnings.length > 0) {
+    console.warn("\n[governance:check-api-masking] WARNINGS");
+    for (const warning of warnings) {
+      console.warn(`  - ${warning}`);
+    }
+  }
+
+  if (issues.length > 0) {
+    console.error("\n[governance:check-api-masking] FAILED");
+    for (const issue of issues) {
+      console.error(`  - ${issue}`);
+    }
+    process.exit(1);
+  }
+
+  console.info("[governance:check-api-masking] OK");
+}
+
 async function main(): Promise<void> {
   const validCommands = new Set<Command>([
     "check",
+    "check-api-masking",
     "sync-adapters",
     "warn-allowlist",
   ]);
@@ -1319,7 +1490,7 @@ async function main(): Promise<void> {
   if (!validCommands.has(maybeCommand)) {
     console.error("Unknown command:", maybeCommand);
     console.error(
-      "Usage: bun scripts/ai-governance.ts [check|sync-adapters|warn-allowlist]",
+      "Usage: bun scripts/ai-governance.ts [check|check-api-masking|sync-adapters|warn-allowlist]",
     );
     process.exit(1);
   }
@@ -1338,6 +1509,11 @@ async function main(): Promise<void> {
   if (maybeCommand === "warn-allowlist") {
     const monitoringConfig = await loadAllowlistMonitoringConfig();
     printAllowlistWarnings(config, monitoringConfig);
+    return;
+  }
+
+  if (maybeCommand === "check-api-masking") {
+    await checkClientApiPathMaskingOnly(config);
     return;
   }
 

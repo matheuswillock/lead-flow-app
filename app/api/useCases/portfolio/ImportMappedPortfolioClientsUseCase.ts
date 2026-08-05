@@ -7,6 +7,7 @@ import {
 } from "@/lib/leadImport/normalizers";
 import { portfolioService } from "@/app/api/services/Portfolio/PortfolioService";
 import type { IPortfolioService } from "@/app/api/services/Portfolio/IPortfolioService";
+import { syncFinalizedToRadarInlineBatch } from "@/app/api/useCases/radar/syncFinalizedToRadarInline";
 import type {
   MappedPortfolioImportRequest,
   MappedPortfolioImportRow,
@@ -81,6 +82,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
     });
 
     let created = 0;
+    const importedLeadIds: string[] = [];
     let skipped = 0;
     const errors: string[] = [];
     const issues: PortfolioImportRowIssue[] = [];
@@ -138,7 +140,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
       const rowContractType = row.contractType ?? 'individual';
 
       try {
-        await this.portfolioService.createPortfolioEntryFromImport(
+        const leadId = await this.portfolioService.createPortfolioEntryFromImport(
           ctx.teamId,
           target.masterId,
           ctx.profileId,
@@ -160,6 +162,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
             holder,
           }
         );
+        importedLeadIds.push(leadId);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Não foi possível criar o cliente";
@@ -172,6 +175,8 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
       if (email) existingEmails.add(email);
       if (cnpj) existingCnpjs.add(cnpj);
     }
+
+    syncFinalizedToRadarInlineBatch({ teamId: ctx.teamId, leadIds: importedLeadIds });
 
     const result: ImportMappedPortfolioClientsResult = {
       created,

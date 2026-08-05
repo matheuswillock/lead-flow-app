@@ -8,6 +8,7 @@ import type {
   StudioPublicFormsPage,
   StudioPublicFormWizardContext,
 } from "./IBackofficeStudioPublicFormsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ApiOutput<T> {
   isValid: boolean
@@ -24,7 +25,7 @@ async function parseOutput<T>(response: Response): Promise<T> {
 }
 
 function basePath(masterId: string, teamId: string) {
-  return `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`
+  return `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/teams/${teamId}`
 }
 
 export class BackofficeStudioPublicFormsService implements IBackofficeStudioPublicFormsService {
@@ -149,6 +150,20 @@ export class BackofficeStudioPublicFormsService implements IBackofficeStudioPubl
       { cache: "no-store" }
     )
     return parseOutput(response)
+  }
+
+  async getTemplate(masterId: string, teamId: string, slug: string) {
+    const response = await fetch(
+      `${basePath(masterId, teamId)}/public-forms/templates/${encodeURIComponent(slug)}`,
+      { cache: "no-store" },
+    )
+    return parseOutput<{
+      slug: string
+      name: string
+      description: string | null
+      formKind: string
+      draft: PublicFormDraftInput
+    }>(response)
   }
 }
 

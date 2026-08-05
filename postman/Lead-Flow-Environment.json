@@ -398,11 +398,19 @@
       "key": "publicToken",
       "value": "",
       "type": "default",
-      "enabled": true
+      "enabled": true,
+      "description": "Token público do Corretor Studio Pixel (TeamRadarPixelConfig.publicToken) — usado em POST /api/v1/public-pixel/:token/hit"
     },
     {
       "key": "visitorSession",
       "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Identidade visitor_session do Radar — query ?vs= no hit público do pixel"
+    },
+    {
+      "key": "publicFormTemplateSlug",
+      "value": "health_plan_simulator",
       "type": "default",
       "enabled": true
     }

@@ -11,6 +11,7 @@ export type PublicFormListItem = {
   _count: { submissions: number }
   publications: Array<{ id: string; version: number }>
   managedByCorretorStudio?: boolean
+  emailCampaignTrackingEnabled?: boolean
 }
 
 export type PublicFormsPage = {
@@ -43,3 +44,12 @@ export type PublicFormDetail = PublicFormDraftInput &
   }
 
 export type PublicFormsIds = { supabaseId: string; teamId: string }
+
+export type RankedForm = {
+  formId: string
+  name: string
+  viewed: number
+  completed: number
+  conversionRate: number
+  rank: number
+}

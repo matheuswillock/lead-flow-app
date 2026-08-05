@@ -3,13 +3,17 @@ import type {
   PublicFormsIds,
   PublicFormsPage,
   PublicFormSettings,
+  RankedForm,
 } from "../context/PublicFormsTypes"
 import type { PublicFormDraftInput } from "@/lib/public-forms/types"
 import type {
   IPublicFormsService,
   PublicFormAnalytics,
+  PublicFormTemplateDetail,
+  PublicFormTemplateListItem,
   PublicFormsListFilters,
 } from "./IPublicFormsService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type Output<T> = { isValid: boolean; result: T; errorMessages?: string[] }
 
@@ -42,16 +46,37 @@ class PublicFormsClientService implements IPublicFormsService {
     if (filters.updatedFrom) query.set("updatedFrom", filters.updatedFrom)
     if (filters.updatedTo) query.set("updatedTo", filters.updatedTo)
     return this.parse<PublicFormsPage>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-forms?${query}`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms?${query}`, {
         headers: this.headers(ids),
         cache: "no-store",
       }),
     )
   }
 
+  async listTemplates(ids: PublicFormsIds) {
+    return this.parse<PublicFormTemplateListItem[]>(
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/templates`, {
+        headers: this.headers(ids),
+        cache: "no-store",
+      }),
+    )
+  }
+
+  async getTemplate(ids: PublicFormsIds, slug: string) {
+    return this.parse<PublicFormTemplateDetail>(
+      await fetch(
+        `${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/templates/${encodeURIComponent(slug)}`,
+        {
+          headers: this.headers(ids),
+          cache: "no-store",
+        },
+      ),
+    )
+  }
+
   async get(ids: PublicFormsIds, formId: string) {
     return this.parse<PublicFormDetail>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-forms/${formId}`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/${formId}`, {
         headers: this.headers(ids),
         cache: "no-store",
       }),
@@ -60,7 +85,7 @@ class PublicFormsClientService implements IPublicFormsService {
 
   async create(ids: PublicFormsIds, input: PublicFormDraftInput) {
     return this.parse<PublicFormDetail>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-forms`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms`, {
         method: "POST",
         headers: this.headers(ids, true),
         body: JSON.stringify(input),
@@ -70,7 +95,7 @@ class PublicFormsClientService implements IPublicFormsService {
 
   async update(ids: PublicFormsIds, formId: string, input: PublicFormDraftInput) {
     return this.parse<PublicFormDetail>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-forms/${formId}`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/${formId}`, {
         method: "PATCH",
         headers: this.headers(ids, true),
         body: JSON.stringify(input),
@@ -80,7 +105,7 @@ class PublicFormsClientService implements IPublicFormsService {
 
   async action(ids: PublicFormsIds, formId: string, action: string, body?: unknown) {
     return this.parse<unknown>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-forms/${formId}/${action}`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/${formId}/${action}`, {
         method: "POST",
         headers: this.headers(ids, body !== undefined),
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -90,7 +115,7 @@ class PublicFormsClientService implements IPublicFormsService {
 
   async getSettings(ids: PublicFormsIds) {
     return this.parse<PublicFormSettings>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-form-settings`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-form-settings`, {
         headers: this.headers(ids),
         cache: "no-store",
       }),
@@ -99,7 +124,7 @@ class PublicFormsClientService implements IPublicFormsService {
 
   async saveSettings(ids: PublicFormsIds, input: PublicFormSettings) {
     return this.parse<PublicFormSettings>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-form-settings`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-form-settings`, {
         method: "PATCH",
         headers: this.headers(ids, true),
         body: JSON.stringify(input),
@@ -119,7 +144,16 @@ class PublicFormsClientService implements IPublicFormsService {
       query.set("publicationId", filters.publicationId)
     }
     return this.parse<PublicFormAnalytics>(
-      await fetch(`/api/v1/teams/${ids.teamId}/public-forms/${formId}/analytics?${query}`, {
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/${formId}/analytics?${query}`, {
+        headers: this.headers(ids),
+        cache: "no-store",
+      }),
+    )
+  }
+
+  async topConverting(ids: PublicFormsIds) {
+    return this.parse<{ items: RankedForm[] }>(
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/top-converting`, {
         headers: this.headers(ids),
         cache: "no-store",
       }),

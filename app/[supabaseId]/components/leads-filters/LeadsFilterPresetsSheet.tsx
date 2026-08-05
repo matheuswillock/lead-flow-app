@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { FilterPresetsTriggerButton } from "@/app/[supabaseId]/components/leads-filters/FilterPresetsTriggerButton";
 import type { FilterPresetScope } from "@/lib/team-filter-presets/types";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type StoredFilterPreset<T> = {
   id: string;
@@ -77,9 +78,16 @@ export function LeadsFilterPresetsSheet<T>({
   const [presetVisibility, setPresetVisibility] = useState<"private" | "team">("private");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
   const [lastUsedPresetId, setLastUsedPresetId] = useState<string | null>(null);
-  const [importDone, setImportDone] = useState(false);
+  const importDoneRef = useRef(false);
+  const inFlightKeyRef = useRef<string | null>(null);
+  const lastSettledKeyRef = useRef<string | null>(null);
+  const normalizePresetFiltersRef = useRef(normalizePresetFilters);
+  const onPresetsChangeRef = useRef(onPresetsChange);
 
-  const apiBase = teamId ? `/api/v1/teams/${teamId}/${scope}/filter-presets` : null;
+  normalizePresetFiltersRef.current = normalizePresetFilters;
+  onPresetsChangeRef.current = onPresetsChange;
+
+  const apiBase = teamId ? `${API_CLIENT_BASE}/teams/${teamId}/${scope}/filter-presets` : null;
 
   useEffect(() => {
     if (!lastPresetStorageKey || typeof window === "undefined") {
@@ -88,6 +96,12 @@ export function LeadsFilterPresetsSheet<T>({
     }
     setLastUsedPresetId(window.localStorage.getItem(lastPresetStorageKey));
   }, [lastPresetStorageKey]);
+
+  useEffect(() => {
+    importDoneRef.current = false;
+    lastSettledKeyRef.current = null;
+    inFlightKeyRef.current = null;
+  }, [apiBase]);
 
   const requestHeaders = useMemo(() => {
     if (!supabaseId || !teamId) return null;
@@ -99,12 +113,12 @@ export function LeadsFilterPresetsSheet<T>({
   }, [supabaseId, teamId]);
 
   const importLocalPresets = useCallback(async () => {
-    if (!importFromLocalStorageKey || !apiBase || !requestHeaders || importDone) return;
+    if (!importFromLocalStorageKey || !apiBase || !requestHeaders || importDoneRef.current) return;
     if (typeof window === "undefined") return;
 
     const stored = window.localStorage.getItem(importFromLocalStorageKey);
     if (!stored) {
-      setImportDone(true);
+      importDoneRef.current = true;
       return;
     }
 
@@ -114,14 +128,14 @@ export function LeadsFilterPresetsSheet<T>({
       const existing = Array.isArray(listResult?.result) ? listResult.result : [];
       if (existing.length > 0) {
         window.localStorage.removeItem(importFromLocalStorageKey);
-        setImportDone(true);
+        importDoneRef.current = true;
         return;
       }
 
       const parsed = JSON.parse(stored);
       if (!Array.isArray(parsed)) {
         window.localStorage.removeItem(importFromLocalStorageKey);
-        setImportDone(true);
+        importDoneRef.current = true;
         return;
       }
 
@@ -142,17 +156,27 @@ export function LeadsFilterPresetsSheet<T>({
     } catch (error) {
       console.error("[LeadsFilterPresetsSheet] Falha ao importar presets do localStorage:", error);
     } finally {
-      setImportDone(true);
+      importDoneRef.current = true;
     }
-  }, [apiBase, importDone, importFromLocalStorageKey, requestHeaders]);
+  }, [apiBase, importFromLocalStorageKey, requestHeaders]);
 
-  const loadPresets = useCallback(async () => {
+  const loadPresets = useCallback(async (options?: { force?: boolean }) => {
     if (!apiBase || !requestHeaders) {
       setPresets([]);
       return;
     }
 
-    if (importFromLocalStorageKey && !importDone) {
+    const requestKey = apiBase;
+    if (
+      !options?.force &&
+      (inFlightKeyRef.current === requestKey || lastSettledKeyRef.current === requestKey)
+    ) {
+      return;
+    }
+
+    inFlightKeyRef.current = requestKey;
+
+    if (importFromLocalStorageKey && !importDoneRef.current) {
       await importLocalPresets();
     }
 
@@ -167,26 +191,24 @@ export function LeadsFilterPresetsSheet<T>({
         ? result.result.map((preset: StoredFilterPreset<T> & { queryJson: unknown }) => ({
             ...preset,
             visibility: preset.visibility === "team" ? "team" : "private",
-            queryJson: normalizePresetFilters(preset.queryJson),
+            queryJson: normalizePresetFiltersRef.current(preset.queryJson),
           }))
         : [];
       setPresets(nextPresets);
-      onPresetsChange?.(nextPresets);
+      onPresetsChangeRef.current?.(nextPresets);
+      lastSettledKeyRef.current = requestKey;
     } catch (error) {
+      // Assenta mesmo em erro para não martelar o endpoint em loop de 5xx.
+      lastSettledKeyRef.current = requestKey;
       toast.error(error instanceof Error ? error.message : "Erro ao carregar filtros salvos.");
       setPresets([]);
     } finally {
+      if (inFlightKeyRef.current === requestKey) {
+        inFlightKeyRef.current = null;
+      }
       setPresetsLoading(false);
     }
-  }, [
-    apiBase,
-    importDone,
-    importFromLocalStorageKey,
-    importLocalPresets,
-    normalizePresetFilters,
-    onPresetsChange,
-    requestHeaders,
-  ]);
+  }, [apiBase, importFromLocalStorageKey, importLocalPresets, requestHeaders]);
 
   useEffect(() => {
     void loadPresets();
@@ -236,7 +258,7 @@ export function LeadsFilterPresetsSheet<T>({
       setPresetName("");
       setPresetDescription("");
       setPresetVisibility("private");
-      await loadPresets();
+      await loadPresets({ force: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao salvar preset.");
     } finally {
@@ -264,7 +286,7 @@ export function LeadsFilterPresetsSheet<T>({
 
     toast.success(`Preset "${preset.name}" aplicado.`);
     setPresetsOpen(false);
-    await loadPresets();
+    await loadPresets({ force: true });
   };
 
   const handleDeletePreset = async (presetId: string) => {
@@ -283,7 +305,7 @@ export function LeadsFilterPresetsSheet<T>({
         setLastUsedPresetId(null);
       }
       toast.success("Preset removido.");
-      await loadPresets();
+      await loadPresets({ force: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao remover preset.");
     }
@@ -349,7 +371,7 @@ export function LeadsFilterPresetsSheet<T>({
       open={presetsOpen}
       onOpenChange={(open) => {
         setPresetsOpen(open);
-        if (open) void loadPresets();
+        if (open) void loadPresets({ force: true });
       }}
     >
       <SheetTrigger asChild>

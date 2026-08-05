@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type ExternalMemberInviteFormProps = {
   teamId: string;
@@ -58,7 +59,7 @@ export function ExternalMemberInviteForm({
     setLookupLoading(true);
     try {
       const response = await fetch(
-        `/api/v1/teams/${teamId}/members/external/lookup?email=${encodeURIComponent(normalized)}`,
+        `${API_CLIENT_BASE}/teams/${teamId}/members/external/lookup?email=${encodeURIComponent(normalized)}`,
         {
           headers: { "x-supabase-user-id": supabaseId },
         }
@@ -89,7 +90,7 @@ export function ExternalMemberInviteForm({
 
     setSubmitLoading(true);
     try {
-      const response = await fetch(`/api/v1/teams/${teamId}/members/external`, {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/members/external`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

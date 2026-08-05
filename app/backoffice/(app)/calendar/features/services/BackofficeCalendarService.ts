@@ -7,6 +7,7 @@ import type {
   BackofficeCalendarAvailability,
   IBackofficeCalendarService,
 } from "./IBackofficeCalendarService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ApiOutput<T> {
   isValid: boolean
@@ -25,13 +26,13 @@ async function parseOutput<T>(response: Response): Promise<ApiOutput<T>> {
 
 export class BackofficeCalendarService implements IBackofficeCalendarService {
   async listLeads(): Promise<BackofficeLeadItem[]> {
-    const response = await fetch("/api/v1/backoffice/leads", { cache: "no-store" })
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads`, { cache: "no-store" })
     const output = await parseOutput<BackofficeLeadItem[]>(response)
     return output.result ?? []
   }
 
   async listUsers(): Promise<BackofficeCrmUserOption[]> {
-    const response = await fetch("/api/v1/backoffice/users", { cache: "no-store" })
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/users`, { cache: "no-store" })
     const output = await parseOutput<
       Array<{
         id: string
@@ -67,7 +68,7 @@ export class BackofficeCalendarService implements IBackofficeCalendarService {
     timezone: string
     excludeLeadId?: string | null
   }): Promise<BackofficeCalendarAvailability> {
-    const response = await fetch("/api/v1/backoffice/calendar/availability", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/calendar/availability`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -80,7 +81,7 @@ export class BackofficeCalendarService implements IBackofficeCalendarService {
     leadId: string,
     input: BackofficeLeadScheduleInput
   ): Promise<BackofficeLeadItem> {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -90,7 +91,7 @@ export class BackofficeCalendarService implements IBackofficeCalendarService {
   }
 
   async cancelSchedule(leadId: string, reason?: string | null): Promise<BackofficeLeadItem> {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule/cancel`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/schedule/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
@@ -100,7 +101,7 @@ export class BackofficeCalendarService implements IBackofficeCalendarService {
   }
 
   async getAttendees(leadId: string) {
-    const response = await fetch(`/api/v1/backoffice/leads/${leadId}/schedule/attendees`, {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/leads/${leadId}/schedule/attendees`, {
       cache: "no-store",
     })
     const output = await parseOutput<{
