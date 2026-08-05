@@ -2,9 +2,13 @@ import { Output } from "@/lib/output"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase"
 import { radarMaterializeRepository } from "@/app/api/infra/data/repositories/radar/RadarMaterializeRepository"
+import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
-import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
+import {
+  CUSTOM_RADAR_SEGMENT_PREFIX,
+  parseCampaignRadarSegmentSlug,
+} from "@/lib/radar/segment-audience"
 import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
 
@@ -24,6 +28,8 @@ const SYSTEM_SEGMENT_LABELS: Record<string, string> = {
   clicked_not_closed: "Clicaram e não fecharam",
   portfolio_renewal_due: "Carteira próxima de renovação",
   inactive_recent_campaign: "Sem campanha recente",
+  portfolio_clients: "Carteira",
+  crm_clients: "CRM",
 }
 
 export class RadarSegmentMaterializeUseCase {
@@ -60,6 +66,12 @@ export class RadarSegmentMaterializeUseCase {
         segmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
       )
       return segment?.name ?? null
+    }
+
+    const campaignId = parseCampaignRadarSegmentSlug(segmentSlug)
+    if (campaignId) {
+      const name = await radarRepository.findEmailCampaignName(teamId, campaignId)
+      return name ? `Campanha: ${name}` : null
     }
 
     if (isRadarSegmentSlug(segmentSlug)) {

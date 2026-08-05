@@ -11,6 +11,27 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
+import {
+  DEFAULT_ENGAGEMENT_CONFIG,
+  DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
+  computeEngagementScore,
+  rankTopEngagementEvents,
+  type EngagementBand,
+  type EngagementConfig,
+  type FormEngagementScoreRule,
+  type WeightMap,
+} from "@/lib/radar/engagement-score"
+
+const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
+
+type EngagementWeightsConfigCache = {
+  weights: WeightMap
+  config: EngagementConfig
+  formRules: FormEngagementScoreRule[]
+  expiresAt: number
+}
+
+let engagementWeightsConfigCache: EngagementWeightsConfigCache | null = null
 
 export type RadarTeamScope = {
   teamId: string
@@ -77,6 +98,8 @@ const profileListSelect = {
   normalizedPrimaryEmail: true,
   primaryDocument: true,
   lastSeenAt: true,
+  engagementScore: true,
+  engagementBand: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -837,7 +860,7 @@ export class RadarRepository {
     }
 
     try {
-      return await prisma.radarEvent.create({
+      const created = await prisma.radarEvent.create({
         data: {
           profileId: input.profileId,
           teamId: input.teamId,
@@ -848,6 +871,10 @@ export class RadarRepository {
           metadata: input.metadata,
         },
       })
+      void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
+        console.error("[RadarRepository][updateEngagementScore]", error)
+      })
+      return created
     } catch {
       return null
     }
@@ -867,7 +894,7 @@ export class RadarRepository {
   async appendEventIfNewBySourceKey(input: AppendEventInput) {
     if (!input.sourceId) {
       try {
-        return await prisma.radarEvent.create({
+        const created = await prisma.radarEvent.create({
           data: {
             profileId: input.profileId,
             teamId: input.teamId,
@@ -878,13 +905,17 @@ export class RadarRepository {
             metadata: input.metadata,
           },
         })
+        void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
+          console.error("[RadarRepository][updateEngagementScore]", error)
+        })
+        return created
       } catch {
         return null
       }
     }
 
     const sourceId = input.sourceId
-    return prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       const lockKey = `${input.teamId}:evt:${input.sourceType}:${sourceId}:${input.eventType}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
@@ -915,6 +946,210 @@ export class RadarRepository {
         return null
       }
     })
+
+    // Fora da transação/advisory lock — não participa do dedupe.
+    if (created) {
+      void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
+        console.error("[RadarRepository][updateEngagementScore]", error)
+      })
+    }
+    return created
+  }
+
+  /**
+   * D19: recalcula `engagementScore`/`engagementBand` do perfil a partir dos
+   * eventos dentro de `windowOldDays`. Pesos + config backoffice com cache 5 min.
+   */
+  async updateEngagementScore(profileId: string, teamId: string) {
+    const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
+
+    const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+    const events = await prisma.radarEvent.findMany({
+      where: {
+        profileId,
+        teamId,
+        occurredAt: { gte: since },
+      },
+      select: {
+        eventType: true,
+        occurredAt: true,
+        metadata: true,
+      },
+    })
+
+    const { score, band } = computeEngagementScore(events, weights, config, new Date(), formRules)
+
+    await prisma.radarProfile.updateMany({
+      where: { id: profileId, teamId },
+      data: {
+        engagementScore: score,
+        engagementBand: band,
+      },
+    })
+
+    return { score, band }
+  }
+
+  /**
+   * D19-D: resolve perfil via identidade `lead_id` e devolve score/banda + top eventos.
+   */
+  async getLeadRadarEngagementWithCtx(scope: RadarTeamScope, leadId: string) {
+    const identity = await this.findProfileByIdentity(scope.teamId, "lead_id", leadId)
+    if (!identity) {
+      return { notFound: true as const }
+    }
+
+    const profile = await prisma.radarProfile.findFirst({
+      where: { id: identity.profileId, teamId: scope.teamId },
+      select: {
+        id: true,
+        engagementScore: true,
+        engagementBand: true,
+      },
+    })
+    if (!profile) {
+      return { notFound: true as const }
+    }
+
+    const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
+    const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+    const events = await prisma.radarEvent.findMany({
+      where: {
+        profileId: profile.id,
+        teamId: scope.teamId,
+        occurredAt: { gte: since },
+      },
+      select: {
+        eventType: true,
+        occurredAt: true,
+        metadata: true,
+      },
+    })
+
+    let score = profile.engagementScore
+    let band = profile.engagementBand as EngagementBand | null
+    if (score == null || band == null) {
+      const computed = computeEngagementScore(events, weights, config, new Date(), formRules)
+      score = computed.score
+      band = computed.band
+    }
+
+    const topEvents = rankTopEngagementEvents(events, weights, config, 3, new Date(), formRules).map(
+      (item) => ({
+        eventType: item.eventType,
+        occurredAt: item.occurredAt.toISOString(),
+        contribution: Math.round(item.contribution * 100) / 100,
+      })
+    )
+
+    return {
+      notFound: false as const,
+      profileId: profile.id,
+      score,
+      band,
+      topEvents,
+    }
+  }
+
+  /**
+   * D19-C: pagina perfis de todos os times para backfill de engajamento.
+   * Cursor por `id` evita skip em tabelas grandes.
+   */
+  async listProfilesForEngagementBackfill(params: {
+    take: number
+    cursorId?: string | null
+  }): Promise<Array<{ id: string; teamId: string }>> {
+    return prisma.radarProfile.findMany({
+      where: params.cursorId ? { id: { gt: params.cursorId } } : undefined,
+      select: { id: true, teamId: true },
+      orderBy: { id: "asc" },
+      take: params.take,
+    })
+  }
+
+  private async loadEngagementWeightsAndConfig(): Promise<{
+    weights: WeightMap
+    config: EngagementConfig
+    formRules: FormEngagementScoreRule[]
+  }> {
+    const now = Date.now()
+    if (engagementWeightsConfigCache && engagementWeightsConfigCache.expiresAt > now) {
+      return {
+        weights: engagementWeightsConfigCache.weights,
+        config: engagementWeightsConfigCache.config,
+        formRules: engagementWeightsConfigCache.formRules,
+      }
+    }
+
+    const [weightRows, configRow, formRuleRows] = await Promise.all([
+      prisma.backofficeRadarEngagementWeight.findMany({
+        where: { isActive: true },
+        select: { eventType: true, weight: true },
+      }),
+      prisma.backofficeRadarEngagementConfig.findFirst({
+        where: { isActive: true },
+        select: {
+          windowRecentDays: true,
+          windowMidDays: true,
+          windowOldDays: true,
+          recentMultiplier: true,
+          oldMultiplier: true,
+          hotThreshold: true,
+          warmThreshold: true,
+          lukewarmThreshold: true,
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.backofficeFormEngagementScoreRule.findMany({
+        where: { isActive: true },
+        select: {
+          minPercent: true,
+          maxPercent: true,
+          multiplier: true,
+          label: true,
+          isActive: true,
+        },
+        orderBy: { minPercent: "asc" },
+      }),
+    ])
+
+    const weights: WeightMap = {}
+    for (const row of weightRows) {
+      weights[row.eventType] = row.weight
+    }
+
+    const config: EngagementConfig = configRow
+      ? {
+          windowRecentDays: configRow.windowRecentDays,
+          windowMidDays: configRow.windowMidDays,
+          windowOldDays: configRow.windowOldDays,
+          recentMultiplier: configRow.recentMultiplier,
+          oldMultiplier: configRow.oldMultiplier,
+          hotThreshold: configRow.hotThreshold,
+          warmThreshold: configRow.warmThreshold,
+          lukewarmThreshold: configRow.lukewarmThreshold,
+        }
+      : DEFAULT_ENGAGEMENT_CONFIG
+
+    const formRules: FormEngagementScoreRule[] =
+      formRuleRows.length > 0
+        ? formRuleRows.map((row) => ({
+            minPercent: row.minPercent,
+            maxPercent: row.maxPercent,
+            multiplier: row.multiplier,
+            label: row.label,
+            isActive: row.isActive,
+          }))
+        : DEFAULT_FORM_ENGAGEMENT_SCORE_RULES
+
+    engagementWeightsConfigCache = {
+      weights,
+      config,
+      formRules,
+      expiresAt: now + ENGAGEMENT_CACHE_TTL_MS,
+    }
+
+    return { weights, config, formRules }
   }
 
   async upsertConsent(input: UpsertConsentInput) {
@@ -963,9 +1198,13 @@ export class RadarRepository {
       lastSeenTo?: Date
       skip: number
       take: number
+      sort?: "engagementScore" | "lastSeenAt"
+      order?: "asc" | "desc"
     }
   ) {
     const where = this.buildListProfilesWhere(scope, params)
+    const sortField = params.sort === "lastSeenAt" ? "lastSeenAt" : "engagementScore"
+    const sortOrder = params.order === "asc" ? "asc" : "desc"
 
     const [items, total] = await Promise.all([
       prisma.radarProfile.findMany({
@@ -981,7 +1220,7 @@ export class RadarRepository {
             take: 5,
           },
         },
-        orderBy: { lastSeenAt: "desc" },
+        orderBy: { [sortField]: { sort: sortOrder, nulls: "last" } },
         skip: params.skip,
         take: params.take,
       }),
@@ -1189,6 +1428,40 @@ export class RadarRepository {
       orderBy: { eventType: "asc" },
     })
     return rows.map((row) => row.eventType)
+  }
+
+  /**
+   * Perfis com ≥1 `RadarEvent` `email.*` cujo `metadata.campaignId` coincide
+   * com a campanha (audiência virtual `campaign:{id}`).
+   */
+  async findProfileIdsByEmailCampaign(teamId: string, campaignId: string): Promise<string[]> {
+    const rows = await prisma.radarEvent.findMany({
+      where: {
+        teamId,
+        eventType: { startsWith: "email." },
+        metadata: { path: ["campaignId"], equals: campaignId },
+      },
+      distinct: ["profileId"],
+      select: { profileId: true },
+    })
+    return rows.map((row) => row.profileId)
+  }
+
+  async findEmailCampaignName(teamId: string, campaignId: string): Promise<string | null> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId, teamId },
+      select: { name: true },
+    })
+    return campaign?.name ?? null
+  }
+
+  /** Campanhas do time para o Select do builder (id + nome). */
+  async listEmailCampaignOptions(teamId: string): Promise<Array<{ id: string; name: string }>> {
+    return prisma.emailCampaign.findMany({
+      where: { teamId },
+      select: { id: true, name: true },
+      orderBy: { updatedAt: "desc" },
+    })
   }
 
   /**

@@ -127,6 +127,22 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(appendArg.sourceId).toBe(`vs-abc:${eventType}:form`)
   })
 
+  it("form_viewed com leadId (atribuição e-mail) → identidade lead_id", async () => {
+    findProfileByIdentity.mockImplementation(async () => ({ profileId: "lead-profile-attr" }))
+
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+      eventKey: "vs-abc:form_viewed:form",
+      leadId: "lead-attr-1",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(findProfileByIdentity).toHaveBeenCalledWith("team-1", "lead_id", "lead-attr-1")
+    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
+    expect(lastAppendArg().profileId).toBe("lead-profile-attr")
+  })
+
   it.each(["form_completed", "lead_created", "lead_attached"] as const)(
     "evento com leadId %s → identidade lead_id",
     async (eventType) => {

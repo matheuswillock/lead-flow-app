@@ -6,7 +6,10 @@ import type { RadarSegmentSlug } from "@/lib/radar/segment-config"
 import { isRadarSegmentSlug, RECENT_CAMPAIGN_WINDOW_DAYS } from "@/lib/radar/segment-config"
 import { profileMatchesRadarSegment, type RadarSegmentProfileInput } from "@/lib/radar/segment-rules"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
-import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
+import {
+  CUSTOM_RADAR_SEGMENT_PREFIX,
+  parseCampaignRadarSegmentSlug,
+} from "@/lib/radar/segment-audience"
 
 export type RadarSegmentEmailRecipient = {
   email: string
@@ -27,7 +30,7 @@ async function buildLeadStatusMap(teamId: string, profiles: RadarSegmentProfileI
 }
 
 /**
- * Todo destinatário de segmento (fixo ou custom) precisa também satisfazer
+ * Todo destinatário de segmento (sistema ou custom) precisa também satisfazer
  * "email_marketable" (e-mail válido + consentimento não bloqueado) e ser
  * deduplicado por e-mail — regra única, reutilizada pelos dois caminhos.
  */
@@ -79,6 +82,23 @@ async function listCustomSegmentEmailRecipients(
   return buildEmailRecipients(profiles, leadStatuses, now, recentMs)
 }
 
+async function listCampaignSegmentEmailRecipients(
+  teamId: string,
+  campaignId: string,
+  now: number,
+  recentMs: number
+): Promise<RadarSegmentEmailRecipient[]> {
+  const campaignName = await radarRepository.findEmailCampaignName(teamId, campaignId)
+  if (!campaignName) return []
+
+  const profileIds = await radarRepository.findProfileIdsByEmailCampaign(teamId, campaignId)
+  if (profileIds.length === 0) return []
+
+  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, profileIds)
+  const leadStatuses = await buildLeadStatusMap(teamId, profiles)
+  return buildEmailRecipients(profiles, leadStatuses, now, recentMs)
+}
+
 export async function listRadarSegmentEmailRecipients(
   teamId: string,
   segmentSlug: string
@@ -93,6 +113,11 @@ export async function listRadarSegmentEmailRecipients(
       now,
       recentMs
     )
+  }
+
+  const campaignId = parseCampaignRadarSegmentSlug(segmentSlug)
+  if (campaignId) {
+    return listCampaignSegmentEmailRecipients(teamId, campaignId, now, recentMs)
   }
 
   if (!isRadarSegmentSlug(segmentSlug)) return []

@@ -4,7 +4,6 @@ import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRe
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
-  isPublicFormLeadResolvedMetricType,
   mapPublicFormMetricToRadarEventType,
   PUBLIC_FORM_RADAR_SOURCE_TYPE,
 } from "@/lib/radar/map-public-form-metric-to-radar-event"
@@ -76,10 +75,8 @@ class SyncPublicFormMetricToRadarUseCase {
 
   private async resolveProfileId(input: SyncPublicFormMetricToRadarInput): Promise<string | null> {
     const leadId = input.leadId?.trim() || null
-    const useLeadIdentity =
-      Boolean(leadId) && isPublicFormLeadResolvedMetricType(input.eventType)
-
-    if (useLeadIdentity && leadId) {
+    // Com atribuição e-mail→form, qualquer métrica com leadId conhecido usa o mesmo perfil Radar.
+    if (leadId) {
       let identity = await radarRepository.findProfileByIdentity(input.teamId, "lead_id", leadId)
       if (!identity) {
         await syncLeadToRadarUseCase.execute({ leadId, teamId: input.teamId })
