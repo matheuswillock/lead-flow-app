@@ -1677,6 +1677,11 @@ OUTROS OUTROS
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
     String asaasInstallmentId "❓"
+    Decimal discountPercent "❓"
+    String discountStatus "❓"
+    String discountApprovedByProfileId "❓"
+    DateTime discountApprovedAt "❓"
+    Decimal negotiatedTotalAmount "❓"
     Int installmentCount "❓"
     String billingType "❓"
     DateTime paymentDueDate "❓"
@@ -2760,6 +2765,45 @@ OUTROS OUTROS
     }
   
 
+  "backoffice_radar_engagement_weights" {
+    String id "🗝️"
+    String eventType 
+    Int weight 
+    String description "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_radar_engagement_configs" {
+    String id "🗝️"
+    Int windowRecentDays 
+    Int windowMidDays 
+    Int windowOldDays 
+    Float recentMultiplier 
+    Float oldMultiplier 
+    Int hotThreshold 
+    Int warmThreshold 
+    Int lukewarmThreshold 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_form_engagement_score_rules" {
+    String id "🗝️"
+    Int minPercent 
+    Int maxPercent 
+    Float multiplier 
+    String label 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_crm_lead_status_transition_field_rules" {
     String id "🗝️"
     BackofficeLeadStatus targetStatus 
@@ -2797,6 +2841,17 @@ OUTROS OUTROS
     Boolean hasPermanentSubscription 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_subscription_change_logs" {
+    String id "🗝️"
+    String source 
+    String changeType 
+    Json before "❓"
+    Json after "❓"
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -3196,6 +3251,8 @@ OUTROS OUTROS
     String normalizedPrimaryDocument "❓"
     DateTime lastSeenAt "❓"
     Json profileData "❓"
+    Int engagementScore "❓"
+    String engagementBand "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3597,6 +3654,7 @@ OUTROS OUTROS
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
     String formKind 
+    Boolean emailCampaignTrackingEnabled 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 
@@ -3747,6 +3805,20 @@ OUTROS OUTROS
     Int id "🗝️"
     String code 
     String name 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_templates" {
+    String id "🗝️"
+    String slug 
+    String name 
+    String description "❓"
+    String formKind 
+    Json draft 
+    Int sortOrder 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
@@ -4065,6 +4137,8 @@ OUTROS OUTROS
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
+    "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
@@ -4254,4 +4328,5 @@ OUTROS OUTROS
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
     "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
+    "corretor_studio_public_form_templates" }o--|o corretor_studio_teams : "team"
 ```

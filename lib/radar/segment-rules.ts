@@ -125,7 +125,14 @@ export function profileMatchesRadarSegment(
       )
     case "inactive_recent_campaign":
       return !recentSent
-    default:
+    case "portfolio_clients":
+      return hasPortfolio
+    case "crm_clients":
+      return Boolean(profile.identities.some((identity) => identity.type === "lead_id"))
+    default: {
+      const _exhaustive: never = segment
+      void _exhaustive
       return false
+    }
   }
 }

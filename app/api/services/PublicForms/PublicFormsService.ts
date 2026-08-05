@@ -21,6 +21,9 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
+import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
+import { instantiatePublicFormTemplateDraft } from "@/lib/public-forms/instantiate-template-draft"
+import { publicFormDraftSchema } from "@/lib/public-forms/validation"
 import type { IPublicFormsService } from "./IPublicFormsService"
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -209,6 +212,32 @@ export class PublicFormsService implements IPublicFormsService {
     return publicFormsRepository.listPublishedOptions(teamId)
   }
 
+  listTemplates(teamId: string) {
+    return publicFormsRepository.listTemplatesForTeam(teamId)
+  }
+
+  async getTemplate(teamId: string, slug: string) {
+    const template = await publicFormsRepository.findTemplateForTeam(teamId, slug)
+    if (!template) return null
+    const parsed = publicFormDraftSchema.safeParse(template.draft)
+    if (!parsed.success) {
+      console.error(
+        `[PublicFormsService][getTemplate] draft inválido para slug=${slug}`,
+        parsed.error.issues,
+      )
+      return null
+    }
+    return {
+      id: template.id,
+      slug: template.slug,
+      name: template.name,
+      description: template.description,
+      formKind: template.formKind,
+      sortOrder: template.sortOrder,
+      draft: instantiatePublicFormTemplateDraft(parsed.data),
+    }
+  }
+
   list(teamId: string, filters: PublicFormListFilters) {
     return publicFormsRepository.list(teamId, filters)
   }
@@ -367,7 +396,40 @@ export class PublicFormsService implements IPublicFormsService {
     ) {
       return false
     }
-    const origin = sanitizePublicFormOrigin(input.origin ?? {})
+    let origin = sanitizePublicFormOrigin(input.origin ?? {})
+    let leadId: string | null = null
+
+    const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(
+      current.snapshot.formId
+    )
+
+    if (
+      teamCtx?.teamId &&
+      (input.eventType === "form_viewed" ||
+        input.eventType === "form_started" ||
+        input.eventType === "form_completed")
+    ) {
+      const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
+        teamId: teamCtx.teamId,
+        formId: current.snapshot.formId,
+        formName: teamCtx.name,
+        formPublicId: teamCtx.publicId,
+        publicationId: current.publicationId,
+        emailCampaignTrackingEnabled: teamCtx.emailCampaignTrackingEnabled,
+        eventType: input.eventType,
+        origin,
+        visitorSessionId: input.visitorSessionId,
+      })
+      if (attribution.isValid && attribution.result) {
+        const result = attribution.result as {
+          leadId: string | null
+          enrichedOrigin: Record<string, unknown>
+        }
+        leadId = result.leadId
+        origin = sanitizePublicFormOrigin(result.enrichedOrigin)
+      }
+    }
+
     await publicFormsRepository.upsertMetricEvent({
       formId: current.snapshot.formId,
       publicationId: current.publicationId,
@@ -379,9 +441,6 @@ export class PublicFormsService implements IPublicFormsService {
     })
 
     // D8: espelha a métrica já persistida no Radar (fire-and-forget).
-    const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(
-      current.snapshot.formId
-    )
     if (teamCtx?.teamId) {
       syncPublicFormMetricToRadarInline({
         teamId: teamCtx.teamId,
@@ -391,6 +450,7 @@ export class PublicFormsService implements IPublicFormsService {
         formId: current.snapshot.formId,
         publicationId: current.publicationId,
         questionId: input.questionId,
+        leadId,
         origin,
       })
     }
@@ -410,7 +470,11 @@ export class PublicFormsService implements IPublicFormsService {
     const origins = new Map<string, Set<string>>()
     for (const event of originEvents) {
       const origin = event.origin as Record<string, unknown>
-      const label = String(origin.utmSource || origin.source || "direct").slice(0, 160)
+      const label = String(
+        origin.campaignId
+          ? `campaign:${origin.campaignId}`
+          : origin.utmSource || origin.source || "direct"
+      ).slice(0, 160)
       const sessions = origins.get(label) ?? new Set<string>()
       sessions.add(event.visitorSessionId)
       origins.set(label, sessions)

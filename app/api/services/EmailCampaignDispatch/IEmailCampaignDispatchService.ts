@@ -31,6 +31,8 @@ export interface IEmailCampaignDispatchService {
     dispatchNumber: number
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
+    /** Map e-mail → EmailLog.id para injetar `cs_el` em links de formulário. */
+    logIdByEmail?: Map<string, string> | Record<string, string> | null
     /** Chamado imediatamente após cada chunk ser aceito pelo Resend, antes do próximo chunk.
      *  Permite salvar resendEmailIds no banco antes que os webhooks de entrega cheguem. */
     onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>

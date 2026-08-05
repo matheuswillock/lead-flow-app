@@ -41,8 +41,20 @@ export type MarkSentEntry = {
   resendEmailId: string
 }
 
+export type CampaignEmailLogAttributionRecord = {
+  id: string
+  campaignId: string | null
+  dispatchId: string | null
+  recipientEmail: string
+  recipientName: string | null
+}
+
 export interface IEmailLogRepository {
   findByResendEmailId(resendEmailId: string): Promise<EmailLogWebhookRecord | null>
+  findCampaignLogForAttribution(
+    teamId: string,
+    emailLogId: string
+  ): Promise<CampaignEmailLogAttributionRecord | null>
   hasDuplicateEvent(logId: string, eventType: EmailEventType, occurredAt: Date): Promise<boolean>
   applyWebhookEvent(input: ApplyEmailLogWebhookInput): Promise<void>
   createQueuedLog(input: CreateTeamEmailLogInput): Promise<string>

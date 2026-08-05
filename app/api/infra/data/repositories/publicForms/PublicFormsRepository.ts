@@ -12,6 +12,8 @@ import {
   type PublicFormPublishedOption,
   type PublicFormPublishedSnapshot,
   type PublicFormSubmissionContext,
+  type PublicFormTemplateDetailRecord,
+  type PublicFormTemplateListItem,
   publicFormDetailSelect,
 } from "./IPublicFormsRepository"
 
@@ -187,6 +189,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           approvalStatus: true,
           assignedSdrId: true,
           managedByBackofficeUserId: true,
+          emailCampaignTrackingEnabled: true,
           updatedAt: true,
           assignedSdr: { select: { id: true, fullName: true } },
           _count: { select: { submissions: true } },
@@ -420,6 +423,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       where: { id: formId },
       select: {
         teamId: true,
+        name: true,
+        publicId: true,
+        emailCampaignTrackingEnabled: true,
         team: { select: { master: { select: { timezone: true } } } },
       },
     })
@@ -650,6 +656,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         publicId: true,
         teamId: true,
         assignedSdrId: true,
+        emailCampaignTrackingEnabled: true,
         assignedSdr: { select: { email: true } },
         team: { select: { master: { select: { id: true, supabaseId: true, timezone: true } } } },
       },
@@ -851,6 +858,146 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     return result.count === 1
+  }
+
+  async findCampaignContactListIds(teamId: string, campaignId: string) {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId, teamId },
+      select: { contactListId: true, sourceContactListIds: true },
+    })
+    if (!campaign) return []
+    return [
+      ...(campaign.contactListId ? [campaign.contactListId] : []),
+      ...campaign.sourceContactListIds,
+    ]
+  }
+
+  async findEmailContactCustomFields(email: string, listIds: string[]) {
+    if (listIds.length === 0) return null
+    const contact = await prisma.emailContact.findFirst({
+      where: { email, listId: { in: listIds } },
+      select: { customFields: true },
+      orderBy: { updatedAt: "desc" },
+    })
+    return contact?.customFields ?? null
+  }
+
+  async findRadarPhoneByEmail(teamId: string, normalizedEmail: string) {
+    const identity = await prisma.radarIdentity.findFirst({
+      where: { teamId, type: "email", normalizedValue: normalizedEmail },
+      select: { profileId: true },
+    })
+    if (!identity) return null
+    const phoneIdentity = await prisma.radarIdentity.findFirst({
+      where: { profileId: identity.profileId, type: "phone" },
+      select: { value: true, normalizedValue: true },
+    })
+    return phoneIdentity?.value ?? phoneIdentity?.normalizedValue ?? null
+  }
+
+  async findLeadActivityByEmailLogAttribution(input: {
+    leadId: string
+    body: string
+    emailLogId: string
+  }) {
+    return prisma.leadActivity.findFirst({
+      where: {
+        leadId: input.leadId,
+        type: ActivityType.note,
+        body: input.body,
+        payload: {
+          path: ["emailLogId"],
+          equals: input.emailLogId,
+        },
+      },
+      select: { id: true },
+    })
+  }
+
+  async createLeadActivityNote(input: {
+    leadId: string
+    body: string
+    payload: Prisma.InputJsonValue
+  }) {
+    await prisma.leadActivity.create({
+      data: {
+        leadId: input.leadId,
+        type: ActivityType.note,
+        body: input.body,
+        payload: input.payload,
+      },
+    })
+  }
+
+  async findCompletedSubmissionsWithAnswersByLeadId(input: {
+    teamId: string
+    leadId: string
+    take?: number
+  }) {
+    return prisma.publicFormSubmission.findMany({
+      where: {
+        leadId: input.leadId,
+        form: { teamId: input.teamId },
+        status: "completed",
+      },
+      select: {
+        id: true,
+        formId: true,
+        score: true,
+        scoreBandLabel: true,
+        submittedAt: true,
+        createdAt: true,
+        form: { select: { name: true } },
+        answers: {
+          select: {
+            value: true,
+            questionSnapshot: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: "desc" },
+      take: input.take ?? 20,
+    })
+  }
+
+  listTemplatesForTeam(teamId: string): Promise<PublicFormTemplateListItem[]> {
+    return prisma.publicFormTemplate.findMany({
+      where: {
+        isActive: true,
+        OR: [{ teamId: null }, { teamId }],
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        formKind: true,
+        sortOrder: true,
+      },
+    })
+  }
+
+  findTemplateForTeam(
+    teamId: string,
+    slug: string,
+  ): Promise<PublicFormTemplateDetailRecord | null> {
+    return prisma.publicFormTemplate.findFirst({
+      where: {
+        slug,
+        isActive: true,
+        OR: [{ teamId: null }, { teamId }],
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        formKind: true,
+        sortOrder: true,
+        draft: true,
+      },
+    })
   }
 }
 

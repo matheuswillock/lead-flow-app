@@ -1972,6 +1972,7 @@ export class EmailCampaignUseCase {
                 dispatchNumber: job.dispatchNumber,
                 globalDefaults: job.globalDefaults,
                 templateVariables: job.templateVariables,
+                logIdByEmail: logIdsByEmail,
                 onChunkDispatched: async (chunkDispatched) => {
                   const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
                     const logId = logIdsByEmail.get(email)
@@ -2791,6 +2792,7 @@ export class EmailCampaignUseCase {
                 dispatchNumber,
                 globalDefaults: dispatchInput.globalDefaults,
                 templateVariables: dispatchInput.templateVariables,
+                logIdByEmail: logIdsByEmail,
                 onChunkDispatched: async (chunkDispatched) => {
                   const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
                     const logId = logIdsByEmail.get(email)

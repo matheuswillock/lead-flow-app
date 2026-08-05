@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
+import { EmailCampaignTrackingBadge } from "@/components/public-forms/EmailCampaignTrackingBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -156,15 +157,18 @@ export function PublicFormsContainer() {
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Link
-              href={`/${params.supabaseId}/forms/new?template=health_plan_simulator`}
-              className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
-            >
-              <span className="font-medium">Simulador de Redução</span>
-              <span className="text-xs text-muted-foreground">
-                Modelo com capa, perguntas, cálculo de economia e agendamento.
-              </span>
-            </Link>
+            {forms.templates.map((template) => (
+              <Link
+                key={template.id}
+                href={`/${params.supabaseId}/forms/new?template=${template.slug}`}
+                className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
+              >
+                <span className="font-medium">{template.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {template.description || "Modelo pronto para personalizar."}
+                </span>
+              </Link>
+            ))}
           </div>
         </section>
       ) : null}
@@ -303,6 +307,9 @@ export function PublicFormsContainer() {
                         item.name
                       )}
                       {item.managedByCorretorStudio ? <ManagedByCorretorStudioBadge /> : null}
+                      {item.emailCampaignTrackingEnabled !== false ? (
+                        <EmailCampaignTrackingBadge />
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -892,7 +899,7 @@ function AnalyticsDialog({
                             >
                               <span className="truncate">{origin.source}</span>
                               <span className="shrink-0 tabular-nums text-muted-foreground">
-                                {origin.sessions} sessão{origin.sessions === 1 ? "" : "ões"}
+                                {origin.sessions} {origin.sessions === 1 ? "sessão" : "sessões"}
                               </span>
                             </div>
                           ))}

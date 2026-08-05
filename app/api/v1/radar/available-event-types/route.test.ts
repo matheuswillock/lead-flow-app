@@ -1,6 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
 import { NextRequest } from "next/server"
-import { GET } from "./route"
+
+mock.module("server-only", () => ({}))
 
 mock.module("@/app/api/v1/radar/utils/getRadarAccess", () => ({
   getRadarAccess: mock(async () => ({})),
@@ -13,6 +14,7 @@ mock.module("@/app/api/useCases/radar/RadarUseCase", () => ({
   },
 }))
 
+const { GET } = await import("./route")
 const { getRadarAccess } = await import("@/app/api/v1/radar/utils/getRadarAccess")
 const { customerDataPlatformUseCase } = await import("@/app/api/useCases/radar/RadarUseCase")
 

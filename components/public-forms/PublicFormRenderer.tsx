@@ -49,13 +49,16 @@ type Props = {
 
 function getOrigin() {
   const params = new URLSearchParams(window.location.search)
+  const emailLogId = params.get("cs_el")
   return {
-    source: params.get("utm_source") ?? "direct",
+    source: params.get("utm_source") ?? (emailLogId ? "email_campaign" : "direct"),
     utmSource: params.get("utm_source"),
     utmMedium: params.get("utm_medium"),
     utmCampaign: params.get("utm_campaign"),
     utmContent: params.get("utm_content"),
     utmTerm: params.get("utm_term"),
+    emailLogId: emailLogId || undefined,
+    campaignId: params.get("campaign_id") || undefined,
     landingUrl: window.location.href,
     referrer: document.referrer,
   }

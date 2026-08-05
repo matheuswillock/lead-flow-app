@@ -327,10 +327,9 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
   }
 
   const subscriptionStatusChangeEvents = [
-    "SUBSCRIPTION_ACTIVATED",
+    "SUBSCRIPTION_CREATED",
+    "SUBSCRIPTION_UPDATED",
     "SUBSCRIPTION_INACTIVATED",
-    "SUBSCRIPTION_SUSPENDED",
-    "SUBSCRIPTION_CANCELED",
     "SUBSCRIPTION_DELETED",
   ];
 

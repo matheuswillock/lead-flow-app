@@ -11,6 +11,7 @@ export type PublicFormListItem = {
   _count: { submissions: number }
   publications: Array<{ id: string; version: number }>
   managedByCorretorStudio?: boolean
+  emailCampaignTrackingEnabled?: boolean
 }
 
 export type PublicFormsPage = {

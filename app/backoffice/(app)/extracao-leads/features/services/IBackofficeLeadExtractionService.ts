@@ -50,7 +50,34 @@ export interface CnaeOption {
   name: string
 }
 
+export interface SocioFiltersForm {
+  names: string
+  types: string[]
+  ageRanges: string[]
+}
+
+export interface SocioMembership {
+  since: string
+  company: { id: number; name: string }
+  role: { id: number; text: string }
+}
+
+export interface SocioResultItem {
+  id: string
+  type: string
+  name: string
+  taxId?: string
+  age?: string
+  membership: SocioMembership[]
+}
+
+export interface SocioSearchResult {
+  items: SocioResultItem[]
+  totalCount: number
+}
+
 export interface IBackofficeLeadExtractionFrontendService {
   search(filters: LeadExtractionFiltersForm): Promise<LeadExtractionSearchResult>
   searchCnaes(q?: string): Promise<CnaeOption[]>
+  searchSocios(filters: SocioFiltersForm): Promise<SocioSearchResult>
 }

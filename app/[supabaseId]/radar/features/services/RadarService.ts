@@ -115,6 +115,8 @@ export class RadarFrontendService implements IRadarService {
     if (params.channel) query.set("channel", params.channel)
     if (params.lastSeenFrom) query.set("lastSeenFrom", params.lastSeenFrom)
     if (params.lastSeenTo) query.set("lastSeenTo", params.lastSeenTo)
+    query.set("sort", params.sort ?? "engagementScore")
+    query.set("order", params.order ?? "desc")
 
     const res = await fetch(`${this.baseUrl}/profiles?${query}`, {
       cache: "no-store",
@@ -200,10 +202,13 @@ export class RadarFrontendService implements IRadarService {
     pageSize: number
   ) {
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
-    const res = await fetch(`${this.baseUrl}/segments/${segment}/profiles?${query}`, {
-      cache: "no-store",
-      headers: this.buildHeaders(supabaseId, teamId),
-    })
+    const res = await fetch(
+      `${this.baseUrl}/segments/${encodeURIComponent(segment)}/profiles?${query}`,
+      {
+        cache: "no-store",
+        headers: this.buildHeaders(supabaseId, teamId),
+      }
+    )
     return parseOutput<{ items: RadarProfileDetail[]; total: number }>(res)
   }
 
@@ -238,6 +243,18 @@ export class RadarFrontendService implements IRadarService {
     })
     const result = await parseOutput<{ eventTypes?: string[] }>(res)
     return result.eventTypes ?? []
+  }
+
+  async listAvailableCampaigns(
+    supabaseId: string,
+    teamId: string
+  ): Promise<Array<{ id: string; name: string }>> {
+    const res = await fetch(`${this.baseUrl}/available-campaigns`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const result = await parseOutput<{ campaigns?: Array<{ id: string; name: string }> }>(res)
+    return result.campaigns ?? []
   }
 
   async previewInterpolation(

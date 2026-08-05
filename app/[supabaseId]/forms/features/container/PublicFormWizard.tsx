@@ -15,8 +15,8 @@ import { PublicFormRenderer } from "@/components/public-forms/PublicFormRenderer
 import { ThemeProvider } from "@/components/theme-provider"
 import {
   applyHealthPlanCatalogToDraft,
-  createHealthPlanSimulatorDraft,
 } from "@/lib/public-forms/templates/health-plan-simulator"
+import { PUBLIC_FORM_TEMPLATE_IDS } from "@/lib/public-forms/templates-access"
 import type {
   PublicFormCoverHighlight,
   PublicFormDraftInput,
@@ -39,6 +39,11 @@ import {
   sumQuestionScoreWeights,
   withEqualOptionScores,
 } from "@/lib/public-forms/scoring"
+import {
+  previewTemperatureForOption,
+} from "@/lib/public-forms/temperature-preview"
+import { useFormEngagementConfig } from "../hooks/useFormEngagementConfig"
+import { TemperaturePreviewPill } from "../components/TemperaturePreviewPill"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   getPageKey,
@@ -69,6 +74,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -162,6 +168,7 @@ export type PublicFormWizardHost = {
     settings: PublicFormSettings | null
   }>
   getForm: (formId: string) => Promise<PublicFormDraftInput & { id: string }>
+  getTemplate: (slug: string) => Promise<PublicFormDraftInput>
   save: (
     formId: string | null,
     input: PublicFormDraftInput
@@ -326,8 +333,8 @@ export function PublicFormWizard({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setOverride } = usePageBreadcrumb()
-  const isHealthPlanTemplate =
-    !formId && searchParams.get("template") === "health_plan_simulator"
+  const templateParam = !formId ? searchParams.get("template") : null
+  const isHealthPlanTemplate = templateParam === PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR
   const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
   const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
   const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
@@ -338,16 +345,12 @@ export function PublicFormWizard({
     throw new Error("PublicFormWizard requires TeamProvider when host is not provided")
   }
 
-  const [draft, setDraft] = useState<PublicFormDraftInput>(() => {
-    if (formId) return emptyDraft
-    if (isHealthPlanTemplate) return createHealthPlanSimulatorDraft()
-    return emptyDraft
-  })
+  const [draft, setDraft] = useState<PublicFormDraftInput>(() => emptyDraft)
   const [step, setStep] = useState(0)
   /** Highest step index successfully advanced past via "Próxima etapa" (validated). */
   const [completedThroughStep, setCompletedThroughStep] = useState(0)
   const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(Boolean(formId))
+  const [loading, setLoading] = useState(Boolean(formId) || Boolean(templateParam))
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -373,14 +376,6 @@ export function PublicFormWizard({
           setCustomFields(context.customFields.filter((field) => field.isActive))
           setHealthPlans(context.healthPlans)
           setSettings(context.settings)
-          if (isHealthPlanTemplate && context.healthPlans.length > 0) {
-            setDraft((current) =>
-              applyHealthPlanCatalogToDraft(
-                current,
-                context.healthPlans.map((plan) => plan.name),
-              ),
-            )
-          }
           if (formId) {
             const form = await host.getForm(formId)
             if (cancelled) return
@@ -393,6 +388,17 @@ export function PublicFormWizard({
               rules: form.rules ?? [],
               scoreBands: form.scoreBands ?? [],
             })
+          } else if (templateParam) {
+            const templateDraft = await host.getTemplate(templateParam)
+            if (cancelled) return
+            const withCatalog =
+              isHealthPlanTemplate && context.healthPlans.length > 0
+                ? applyHealthPlanCatalogToDraft(
+                    templateDraft,
+                    context.healthPlans.map((plan) => plan.name),
+                  )
+                : templateDraft
+            setDraft(withCatalog)
           }
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Erro ao carregar")
@@ -403,69 +409,71 @@ export function PublicFormWizard({
       }
 
       if (!activeTeam?.id || !user?.id) return
+      const ids = { supabaseId: user.id, teamId: activeTeam.id }
       const h = { "x-supabase-user-id": user.id, "x-team-id": activeTeam.id }
-      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (!cancelled) setMembers(o.result?.members ?? [])
-        })
-      void fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (cancelled) return
-          setCustomFields(
-            Array.isArray(o.result)
-              ? o.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
-              : [],
-          )
-        })
-      void fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h })
-        .then((r) => r.json())
-        .then((o) => {
-          if (cancelled) return
-          const plans = Array.isArray(o.result?.healthPlans) ? o.result.healthPlans : []
-          setHealthPlans(plans)
-          if (isHealthPlanTemplate && plans.length > 0) {
-            setDraft((current) =>
-              applyHealthPlanCatalogToDraft(
-                current,
-                plans.map((plan: { name: string }) => plan.name),
-              ),
-            )
-          }
-        })
-      void publicFormsClientService
-        .getSettings({ supabaseId: user.id, teamId: activeTeam.id })
-        .then((value) => {
+      try {
+        const [membersRes, fieldsRes, plansRes] = await Promise.all([
+          fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/members`, { headers: h }).then((r) =>
+            r.json(),
+          ),
+          fetch(`${API_CLIENT_BASE}/teams/${activeTeam.id}/lead-custom-fields`, {
+            headers: h,
+          }).then((r) => r.json()),
+          fetch(`${API_CLIENT_BASE}/health-plans`, { headers: h }).then((r) => r.json()),
+        ])
+        if (cancelled) return
+        setMembers(membersRes.result?.members ?? [])
+        setCustomFields(
+          Array.isArray(fieldsRes.result)
+            ? fieldsRes.result.filter((field: LeadCustomFieldDefinitionDTO) => field.isActive)
+            : [],
+        )
+        const plans = Array.isArray(plansRes.result?.healthPlans)
+          ? plansRes.result.healthPlans
+          : []
+        setHealthPlans(plans)
+        try {
+          const value = await publicFormsClientService.getSettings(ids)
           if (!cancelled) setSettings(value)
-        })
-        .catch(() => null)
-      if (formId) {
-        void publicFormsService
-          .get(user.id, activeTeam.id, formId)
-          .then((f) => {
-            if (cancelled) return
-            setDraft({
-              ...emptyDraft,
-              ...f,
-              coverHighlights: f.coverHighlights ?? [],
-              successActions: f.successActions ?? [],
-              questions: f.questions ?? [],
-              rules: f.rules ?? [],
-              scoreBands: f.scoreBands ?? [],
-            })
+        } catch {
+          /* settings opcional no bootstrap */
+        }
+
+        if (formId) {
+          const f = await publicFormsService.get(user.id, activeTeam.id, formId)
+          if (cancelled) return
+          setDraft({
+            ...emptyDraft,
+            ...f,
+            coverHighlights: f.coverHighlights ?? [],
+            successActions: f.successActions ?? [],
+            questions: f.questions ?? [],
+            rules: f.rules ?? [],
+            scoreBands: f.scoreBands ?? [],
           })
-          .catch((e) => toast.error(e.message))
-          .finally(() => {
-            if (!cancelled) setLoading(false)
-          })
+        } else if (templateParam) {
+          const template = await publicFormsClientService.getTemplate(ids, templateParam)
+          if (cancelled) return
+          const withCatalog =
+            isHealthPlanTemplate && plans.length > 0
+              ? applyHealthPlanCatalogToDraft(
+                  template.draft,
+                  plans.map((plan: { name: string }) => plan.name),
+                )
+              : template.draft
+          setDraft(withCatalog)
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host])
+  }, [activeTeam?.id, user?.id, formId, isHealthPlanTemplate, host, templateParam])
 
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
@@ -1210,6 +1218,18 @@ function Questions({
   const stepErrors = getQuestionStepErrors(d)
   const pages = groupQuestionsByPage(d.questions)
   const scoreTotal = sumQuestionScoreWeights(d.questions)
+  const { config: engagementConfig, isLoading: engagementConfigLoading } =
+    useFormEngagementConfig(true)
+
+  const hasAnyScoreWeight = d.questions.some((q) => Math.max(0, q.scoreWeight ?? 0) > 0)
+  const allOptionsZero =
+    hasAnyScoreWeight &&
+    d.questions.every((q) => {
+      if (Math.max(0, q.scoreWeight ?? 0) <= 0) return true
+      if (!["single_choice", "multiple_choice", "health_plan"].includes(q.type)) return true
+      return q.options.every((o) => Math.max(0, o.score) <= 0)
+    })
+  const showQualificationBanner = scoreTotal === 100 && allOptionsZero
 
   function updateQuestion(id: string, patch: Partial<PublicFormQuestionInput>) {
     if (patch.scoreWeight !== undefined) {
@@ -1573,6 +1593,22 @@ function Questions({
             Obrigatória
           </label>
         </div>
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => Math.max(0, o.score) <= 0) ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Esta pergunta não influencia o score — configure um peso para pelo menos uma opção
+          </Badge>
+        ) : null}
+        {Math.max(0, q.scoreWeight ?? 0) > 0 &&
+        ["single_choice", "multiple_choice", "health_plan"].includes(q.type) &&
+        q.options.length > 0 &&
+        q.options.every((o) => (o.scorePolarity ?? "positive") === "negative") ? (
+          <Badge variant="destructive" className="mt-2 w-fit font-normal">
+            Nenhuma resposta positiva: o lead sempre será penalizado nesta pergunta
+          </Badge>
+        ) : null}
         {q.type === "scheduling" ? (
           <div className="mt-4">
             <ScheduleInline draft={d} change={change} members={members} />
@@ -1719,6 +1755,19 @@ function Questions({
                       </div>
                     </FieldContent>
                   </Field>
+                  {engagementConfigLoading ? (
+                    <Skeleton className="h-5 w-48" />
+                  ) : engagementConfig && o.id && q.id ? (
+                    (() => {
+                      const band = previewTemperatureForOption(
+                        d,
+                        q.id,
+                        o.id,
+                        engagementConfig,
+                      )
+                      return band ? <TemperaturePreviewPill band={band} /> : null
+                    })()
+                  ) : null}
                 </div>
               )
             })}
@@ -1760,6 +1809,14 @@ function Questions({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Total: {scoreTotal}%</p>
+      {showQualificationBanner ? (
+        <Alert>
+          <AlertDescription>
+            Score de qualificação não configurado — o formulário não influenciará a temperatura do
+            lead
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {stepErrors.length > 0 ? (
         <Alert variant="destructive">
           <AlertDescription>

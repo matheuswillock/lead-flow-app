@@ -88,6 +88,7 @@ export function RadarContainer() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    campaignDeepLinkSegment,
     touchpoints,
     isLoadingTouchpoints,
     contracts,
@@ -127,7 +128,12 @@ export function RadarContainer() {
     }
   }, [contactListPreviewTarget, materializeSegmentToContactList])
 
-  const systemSegments = useMemo(() => segments.filter((segment: RadarSegment) => segment.isSystem), [segments])
+  const systemSegments = useMemo(() => {
+    const base = segments.filter((segment: RadarSegment) => segment.isSystem)
+    if (!campaignDeepLinkSegment) return base
+    if (base.some((segment) => segment.slug === campaignDeepLinkSegment.slug)) return base
+    return [campaignDeepLinkSegment, ...base]
+  }, [campaignDeepLinkSegment, segments])
 
   if (!hasAccess(FEATURE_SLUGS.RADAR)) {
     return (

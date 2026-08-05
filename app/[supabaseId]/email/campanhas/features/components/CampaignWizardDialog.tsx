@@ -135,7 +135,7 @@ function HoldToConfirmButton({
   return (
     <Button
       type="button"
-      className="relative overflow-hidden"
+      className="relative w-full min-w-0 overflow-hidden sm:w-auto sm:min-w-52"
       onPointerDown={startHold}
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
@@ -150,9 +150,15 @@ function HoldToConfirmButton({
       <div
         className="pointer-events-none absolute inset-y-0 left-0 bg-primary-foreground/20"
         style={{ width: `${progress}%` }}
+        aria-hidden
       />
-      <span className="pointer-events-none relative">
-        {progress > 0 ? "Segure..." : label}
+      <span className="pointer-events-none relative inline-grid place-items-center">
+        <span className="invisible col-start-1 row-start-1 whitespace-nowrap" aria-hidden>
+          {label}
+        </span>
+        <span className="col-start-1 row-start-1 whitespace-nowrap">
+          {progress > 0 ? "Segure..." : label}
+        </span>
       </span>
     </Button>
   )
@@ -904,15 +910,13 @@ export function CampaignWizardDialog() {
             )}
           </div>
 
-          <DialogFooter className="flex flex-row items-center justify-between gap-2 sm:justify-between">
-            <Button variant="outline" onClick={closeWizard} disabled={wizardSaving}>
-              Cancelar
-            </Button>
-            <div className="flex items-center gap-2">
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="order-1 flex w-full flex-col gap-2 sm:order-2 sm:w-auto sm:flex-row sm:items-center">
               {previousTab ? (
                 <Button
                   type="button"
                   variant="secondary"
+                  className="w-full sm:w-auto"
                   onClick={() => setWizardActiveTab(previousTab)}
                   disabled={formDisabled}
                 >
@@ -922,6 +926,7 @@ export function CampaignWizardDialog() {
               {!isRevisao ? (
                 <Button
                   type="button"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     if (nextTab && canGoNext) setWizardActiveTab(nextTab)
                   }}
@@ -943,6 +948,14 @@ export function CampaignWizardDialog() {
                 />
               )}
             </div>
+            <Button
+              variant="outline"
+              className="order-2 w-full sm:order-1 sm:w-auto"
+              onClick={closeWizard}
+              disabled={wizardSaving}
+            >
+              Cancelar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -108,6 +108,14 @@ const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string
     name: "Sem campanha recente",
     description: "Sem envio de campanha nos últimos 60 dias",
   },
+  portfolio_clients: {
+    name: "Carteira",
+    description: "Perfis vinculados à carteira de clientes",
+  },
+  crm_clients: {
+    name: "CRM",
+    description: "Perfis com identidade de lead no CRM",
+  },
 }
 
 function emptyCounters(): SyncCounters {
@@ -972,6 +980,8 @@ export class RadarService {
       clicked_not_closed: 0,
       portfolio_renewal_due: 0,
       inactive_recent_campaign: 0,
+      portfolio_clients: 0,
+      crm_clients: 0,
     }
 
     const now = Date.now()
@@ -1015,6 +1025,10 @@ export class RadarService {
     }
 
     return ids
+  }
+
+  async listCampaignSegmentProfileIds(scope: RadarTeamScope, campaignId: string): Promise<string[]> {
+    return radarRepository.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
   async getMetrics(scope: RadarTeamScope) {

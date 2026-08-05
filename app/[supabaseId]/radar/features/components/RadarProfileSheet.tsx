@@ -25,6 +25,7 @@ import type {
 } from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
+import { RadarEngagementBadge } from "./RadarEngagementBadge"
 import {
   buildLeadCrmHref,
   filterDisplayableIdentities,
@@ -215,7 +216,10 @@ export function RadarProfileSheet({
             <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col gap-2">
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-lg font-semibold">{profile.displayName}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold">{profile.displayName}</h2>
+                    <RadarEngagementBadge band={profile.engagementBand} />
+                  </div>
                   {profile.primaryDocument ? (
                     <p className="text-sm text-muted-foreground">Documento: {profile.primaryDocument}</p>
                   ) : null}
@@ -284,6 +288,18 @@ export function RadarProfileSheet({
                 <TabsContent value="resumo" className="flex flex-col gap-3">
                   <div className="flex flex-wrap gap-1">
                     <SourceBadges profile={profile} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs text-muted-foreground">Temperatura</p>
+                      <RadarEngagementBadge band={profile.engagementBand} />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs text-muted-foreground">Score</p>
+                      <p className="text-sm font-medium tabular-nums">
+                        {profile.engagementScore != null ? `${profile.engagementScore}/100` : "—"}
+                      </p>
+                    </div>
                   </div>
                   {baseDataEntries.length > 0 ? (
                     <>
