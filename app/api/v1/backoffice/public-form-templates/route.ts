@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
   try {
     const access = await getBackofficeAccess(request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const includeInactive = request.nextUrl.searchParams.get("includeInactive") !== "false"
     const output = await backofficePublicFormTemplateUseCase.list(includeInactive)

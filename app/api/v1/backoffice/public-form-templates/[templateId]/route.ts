@@ -21,6 +21,8 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
   try {
     const access = await getBackofficeAccess(_request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })
+    const denied = requireManagerAccess(access.access)
+    if (denied) return denied
 
     const { templateId } = await params
     const output = await backofficePublicFormTemplateUseCase.getById(templateId)

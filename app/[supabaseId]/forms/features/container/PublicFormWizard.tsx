@@ -796,6 +796,7 @@ export function PublicFormWizard({
                 customFields={customFields}
                 healthPlans={healthPlans}
                 members={members}
+                isCatalogTemplate={isCatalogTemplate}
               />
             )}
             {step === 3 && <Thanks draft={draft} change={change} />}
@@ -819,7 +820,9 @@ export function PublicFormWizard({
                 <Button
                   onClick={() => {
                     if (step === 2) {
-                      const errors = getQuestionStepErrors(draft)
+                      const errors = getQuestionStepErrors(draft, {
+                        mode: isCatalogTemplate ? "catalog-template" : "form",
+                      })
                       if (errors.length > 0) {
                         toast.error(errors[0])
                         return
@@ -1346,14 +1349,18 @@ function Questions({
   customFields,
   healthPlans,
   members,
+  isCatalogTemplate = false,
 }: {
   draft: PublicFormDraftInput
   change: (p: Partial<PublicFormDraftInput>) => void
   customFields: LeadCustomFieldDefinitionDTO[]
   healthPlans: Array<{ id: string; name: string }>
   members: Member[]
+  isCatalogTemplate?: boolean
 }) {
-  const stepErrors = getQuestionStepErrors(d)
+  const stepErrors = getQuestionStepErrors(d, {
+    mode: isCatalogTemplate ? "catalog-template" : "form",
+  })
   const pages = groupQuestionsByPage(d.questions)
   const scoreTotal = sumQuestionScoreWeights(d.questions)
   const { config: engagementConfig, isLoading: engagementConfigLoading } =
@@ -2773,7 +2780,9 @@ function Review({
   onPublish: () => void
   onGoToStep: (step: number) => void
 }) {
-  const questionErrors = getQuestionStepErrors(d)
+  const questionErrors = getQuestionStepErrors(d, {
+    mode: isCatalogTemplate ? "catalog-template" : "form",
+  })
   const checks = [
     { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
     { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 2 },
