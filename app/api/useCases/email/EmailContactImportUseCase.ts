@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto"
-import { NotificationType, Prisma } from "@prisma/client"
+import { NotificationType, Prisma, type PrismaClient } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { prisma, getImportCronPrisma } from "@/app/api/infra/data/prisma"
+import { RadarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { EmailContactListService } from "@/app/api/services/EmailContactList/EmailContactListService"
+import { RadarService } from "@/app/api/services/radar/RadarService"
 import { notificationService } from "@/app/api/services/notifications/NotificationService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import {
@@ -18,6 +20,8 @@ const DEFAULT_LIST_NAME = "Todos contatos"
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
+const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000
+const RADAR_SYNC_CONCURRENCY = 5
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
 
 type ImportRow = {
@@ -41,6 +45,39 @@ type FailedBatchEntry = {
 
 export class EmailContactImportUseCase {
   private contactListService = new EmailContactListService()
+  private readonly importRadarService: RadarService
+
+  constructor(private readonly db: PrismaClient = prisma) {
+    this.importRadarService = new RadarService(new RadarRepository(this.db))
+  }
+
+  static forImportCron(): EmailContactImportUseCase {
+    return new EmailContactImportUseCase(getImportCronPrisma())
+  }
+
+  private chunkArray<T>(items: T[], size: number): T[][] {
+    const chunks: T[][] = []
+    for (let i = 0; i < items.length; i += size) {
+      chunks.push(items.slice(i, i + size))
+    }
+    return chunks
+  }
+
+  private async reclaimStuckJobs(now = new Date()): Promise<number> {
+    const threshold = new Date(now.getTime() - STUCK_PROCESSING_THRESHOLD_MS)
+    const result = await this.db.emailImportJob.updateMany({
+      where: { status: "processing", updatedAt: { lt: threshold } },
+      data: { status: "pending" },
+    })
+
+    if (result.count > 0) {
+      console.info(
+        `[EmailContactImportUseCase][reclaimStuckJobs] ${result.count} job(s) devolvido(s) a pending`
+      )
+    }
+
+    return result.count
+  }
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase()
@@ -55,7 +92,7 @@ export class EmailContactImportUseCase {
   }
 
   private async ensureDefaultList(ctx: TeamContext): Promise<{ id: string }> {
-    const existingDefault = await prisma.emailContactList.findFirst({
+    const existingDefault = await this.db.emailContactList.findFirst({
       where: {
         teamId: ctx.teamId,
         isArchived: false,
@@ -68,7 +105,7 @@ export class EmailContactImportUseCase {
       return existingDefault
     }
 
-    return prisma.emailContactList.create({
+    return this.db.emailContactList.create({
       data: {
         id: randomUUID(),
         teamId: ctx.teamId,
@@ -90,7 +127,7 @@ export class EmailContactImportUseCase {
 
     const uniqueRows = this.dedupeRowsByEmail(rows)
     const emails = uniqueRows.map((row) => row.email)
-    const existingContacts = await prisma.emailContact.findMany({
+    const existingContacts = await this.db.emailContact.findMany({
       where: { listId, email: { in: emails } },
       select: { email: true },
     })
@@ -101,7 +138,7 @@ export class EmailContactImportUseCase {
 
     let imported = 0
     if (newRows.length > 0) {
-      const result = await prisma.emailContact.createMany({
+      const result = await this.db.emailContact.createMany({
         data: newRows.map((row) => ({
           id: randomUUID(),
           listId,
@@ -117,7 +154,7 @@ export class EmailContactImportUseCase {
     if (updateRows.length > 0) {
       await Promise.all(
         updateRows.map((row) =>
-          prisma.emailContact.update({
+          this.db.emailContact.update({
             where: { listId_email: { listId, email: row.email } },
             data: {
               name: row.name ?? null,
@@ -184,7 +221,7 @@ export class EmailContactImportUseCase {
     storagePath: string
     totalRows: number
   }): Promise<{ importId: string; jobId: string }> {
-    const job = await prisma.emailImportJob.create({
+    const job = await this.db.emailImportJob.create({
       data: {
         id: randomUUID(),
         importId: params.importId,
@@ -210,7 +247,7 @@ export class EmailContactImportUseCase {
     ctx: TeamContext
   ): Promise<Output> {
     try {
-      const existing = await prisma.emailContactList.findFirst({
+      const existing = await this.db.emailContactList.findFirst({
         where: { id: listId, teamId: ctx.teamId, isArchived: false },
       })
 
@@ -252,7 +289,7 @@ export class EmailContactImportUseCase {
     ctx: TeamContext
   ): Promise<Output> {
     try {
-      const existing = await prisma.emailContactList.findFirst({
+      const existing = await this.db.emailContactList.findFirst({
         where: { id: listId, teamId: ctx.teamId, isArchived: false },
       })
 
@@ -341,18 +378,18 @@ export class EmailContactImportUseCase {
     listIsSystemDefault: boolean,
     ctx: TeamContext
   ): Promise<void> {
-    const totalCount = await prisma.emailContact.count({ where: { listId: job.listId } })
-    await prisma.emailContactList.update({
+    const totalCount = await this.db.emailContact.count({ where: { listId: job.listId } })
+    await this.db.emailContactList.update({
       where: { id: job.listId },
       data: { totalContacts: totalCount },
     })
 
     if (!listIsSystemDefault) {
       const defaultList = await this.ensureDefaultList(ctx)
-      const defaultTotalCount = await prisma.emailContact.count({
+      const defaultTotalCount = await this.db.emailContact.count({
         where: { listId: defaultList.id },
       })
-      await prisma.emailContactList.update({
+      await this.db.emailContactList.update({
         where: { id: defaultList.id },
         data: { totalContacts: defaultTotalCount },
       })
@@ -365,7 +402,7 @@ export class EmailContactImportUseCase {
     const status =
       failedBatches.length > 0 ? "completed_with_errors" : "completed"
 
-    await prisma.emailImportJob.update({
+    await this.db.emailImportJob.update({
       where: { id: job.id },
       data: { status },
     })
@@ -399,7 +436,9 @@ export class EmailContactImportUseCase {
     const startedAt = Date.now()
 
     try {
-      const claimed = await prisma.$transaction(async (tx) => {
+      await this.reclaimStuckJobs()
+
+      const claimed = await this.db.$transaction(async (tx) => {
         const pending = await tx.emailImportJob.findFirst({
           where: { status: "pending" },
           orderBy: { createdAt: "asc" },
@@ -418,12 +457,12 @@ export class EmailContactImportUseCase {
         return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
       }
 
-      const list = await prisma.emailContactList.findFirst({
+      const list = await this.db.emailContactList.findFirst({
         where: { id: claimed.listId, teamId: claimed.teamId },
         select: { id: true, isSystemDefault: true },
       })
       if (!list) {
-        await prisma.emailImportJob.update({
+        await this.db.emailImportJob.update({
           where: { id: claimed.id },
           data: { status: "failed" },
         })
@@ -457,7 +496,7 @@ export class EmailContactImportUseCase {
 
       while (batchIndex < totalBatches) {
         if (Date.now() - startedAt > MAX_PROCESSING_MS) {
-          await prisma.emailImportJob.update({
+          await this.db.emailImportJob.update({
             where: { id: claimed.id },
             data: {
               status: "pending",
@@ -487,19 +526,19 @@ export class EmailContactImportUseCase {
           const batchResult = await this.upsertContactsBatch(claimed.listId, batch)
           importedCount += batchResult.imported
           updatedCount += batchResult.updated
-          processedRows += batch.length
 
           if (hasRadarFeature) {
             // D6: sync síncrono (não fire-and-forget) — "já deve constar na
             // lista de segmentos assim que for importado" exige que o job só
             // marque o import como concluído depois que os perfis existirem.
-            const batchContacts = await prisma.emailContact.findMany({
+            const batchContacts = await this.db.emailContact.findMany({
               where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
               select: { id: true },
             })
-            for (const batchContact of batchContacts) {
+
+            for (const contactChunk of this.chunkArray(batchContacts, RADAR_SYNC_CONCURRENCY)) {
               if (Date.now() - startedAt > MAX_PROCESSING_MS) {
-                await prisma.emailImportJob.update({
+                await this.db.emailImportJob.update({
                   where: { id: claimed.id },
                   data: {
                     status: "pending",
@@ -520,22 +559,32 @@ export class EmailContactImportUseCase {
                   resumedAtBatch: batchIndex + 1,
                 })
               }
-              const syncResult = await syncEmailContactToRadarUseCase.execute({
-                emailContactId: batchContact.id,
-                teamId: claimed.teamId,
-              })
-              if (!syncResult.isValid) {
-                console.error(
-                  `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
-                  syncResult.errorMessages
-                )
-              } else if ((syncResult.result as { errors?: number } | null)?.errors) {
-                console.error(
-                  `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${(syncResult.result as { errors?: number }).errors} erro(s)`
-                )
-              }
+
+              await Promise.all(
+                contactChunk.map(async (batchContact) => {
+                  const syncResult = await syncEmailContactToRadarUseCase.execute(
+                    {
+                      emailContactId: batchContact.id,
+                      teamId: claimed.teamId,
+                    },
+                    { radarService: this.importRadarService }
+                  )
+                  if (!syncResult.isValid) {
+                    console.error(
+                      `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
+                      syncResult.errorMessages
+                    )
+                  } else if ((syncResult.result as { errors?: number } | null)?.errors) {
+                    console.error(
+                      `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${(syncResult.result as { errors?: number }).errors} erro(s)`
+                    )
+                  }
+                })
+              )
             }
           }
+
+          processedRows += batch.length
 
           if (!list.isSystemDefault) {
             const defaultList = await this.ensureDefaultList(ctx)
@@ -567,7 +616,7 @@ export class EmailContactImportUseCase {
           }
         }
 
-        await prisma.emailImportJob.update({
+        await this.db.emailImportJob.update({
           where: { id: claimed.id },
           data: {
             processedRows,

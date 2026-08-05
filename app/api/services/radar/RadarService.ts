@@ -6,6 +6,7 @@ import type {
   RenewalStatus,
 } from "@prisma/client"
 import {
+  RadarRepository,
   radarRepository,
   type RadarTeamScope,
 } from "@/app/api/infra/data/repositories/radar/RadarRepository"
@@ -134,6 +135,7 @@ function consentFromEmailFlags(flags: {
 }
 
 export class RadarService {
+  constructor(private readonly repo: RadarRepository = radarRepository) {}
   /**
    * D5 (fix review PR #561): compartilhado pelos 2 caminhos de `syncFromCrm`
    * (lead com telefone válido e lead só-com-e-mail que já tem perfil via
@@ -149,7 +151,7 @@ export class RadarService {
   ): Promise<void> {
     if (!lead.status) return
 
-    await radarRepository.appendEventIfNew({
+    await this.repo.appendEventIfNew({
       profileId,
       teamId: scope.teamId,
       eventType: "lead.status_changed",
@@ -161,7 +163,7 @@ export class RadarService {
 
     const milestoneEventType = LEAD_STATUS_MILESTONE_EVENT_TYPE[lead.status]
     if (milestoneEventType) {
-      await radarRepository.appendEventIfNew({
+      await this.repo.appendEventIfNew({
         profileId,
         teamId: scope.teamId,
         eventType: milestoneEventType,
@@ -175,7 +177,7 @@ export class RadarService {
 
   async syncFromCrm(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
-    const leads = await radarRepository.findLeadsForRadarSync(scope.teamId, filters)
+    const leads = await this.repo.findLeadsForRadarSync(scope.teamId, filters)
 
     for (const lead of leads) {
       try {
@@ -194,7 +196,7 @@ export class RadarService {
           // arbitrário poderia anexar o lead ao perfil errado. Sem uma
           // identidade email inequívoca, o lead fica "adiado" (nunca
           // adivinha um perfil ambíguo).
-          const existingByEmailIdentity = await radarRepository.findProfileByIdentity(
+          const existingByEmailIdentity = await this.repo.findProfileByIdentity(
             scope.teamId,
             "email",
             normalizedEmail
@@ -204,7 +206,7 @@ export class RadarService {
             continue
           }
 
-          await radarRepository.upsertIdentity({
+          await this.repo.upsertIdentity({
             profileId: existingByEmailIdentity.profileId,
             teamId: scope.teamId,
             type: "lead_id",
@@ -213,7 +215,7 @@ export class RadarService {
             source: "crm",
           })
 
-          await radarRepository.upsertSourceLink({
+          await this.repo.upsertSourceLink({
             profileId: existingByEmailIdentity.profileId,
             teamId: scope.teamId,
             sourceType: "crm_lead",
@@ -221,7 +223,7 @@ export class RadarService {
             sourceMetadata: { status: lead.status },
           })
 
-          await radarRepository.appendEventIfNew({
+          await this.repo.appendEventIfNew({
             profileId: existingByEmailIdentity.profileId,
             teamId: scope.teamId,
             eventType: "lead.created",
@@ -241,7 +243,7 @@ export class RadarService {
         const normalizedEmail = lead.email ? normalizeRadarEmail(lead.email) : null
         const normalizedDocument = lead.cnpj ? normalizeRadarDocument(lead.cnpj) : null
 
-        const { profile, wasExisting } = await radarRepository.resolveProfileForPhone({
+        const { profile, wasExisting } = await this.repo.resolveProfileForPhone({
           teamId: scope.teamId,
           displayName: lead.name.trim(),
           normalizedName,
@@ -260,7 +262,7 @@ export class RadarService {
         else counters.created += 1
 
         if (normalizedEmail) {
-          await radarRepository.upsertIdentity({
+          await this.repo.upsertIdentity({
             profileId: profile.id,
             teamId: scope.teamId,
             type: "email",
@@ -271,7 +273,7 @@ export class RadarService {
         }
 
         if (normalizedDocument) {
-          await radarRepository.upsertIdentity({
+          await this.repo.upsertIdentity({
             profileId: profile.id,
             teamId: scope.teamId,
             type: "document",
@@ -281,7 +283,7 @@ export class RadarService {
           })
         }
 
-        await radarRepository.upsertIdentity({
+        await this.repo.upsertIdentity({
           profileId: profile.id,
           teamId: scope.teamId,
           type: "lead_id",
@@ -290,7 +292,7 @@ export class RadarService {
           source: "crm",
         })
 
-        await radarRepository.upsertSourceLink({
+        await this.repo.upsertSourceLink({
           profileId: profile.id,
           teamId: scope.teamId,
           sourceType: "crm_lead",
@@ -298,7 +300,7 @@ export class RadarService {
           sourceMetadata: { status: lead.status },
         })
 
-        await radarRepository.appendEventIfNew({
+        await this.repo.appendEventIfNew({
           profileId: profile.id,
           teamId: scope.teamId,
           eventType: "lead.created",
@@ -319,7 +321,7 @@ export class RadarService {
 
   async syncFromPortfolio(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
-    const portfolios = await radarRepository.findPortfoliosForRadarSync(scope.teamId, filters)
+    const portfolios = await this.repo.findPortfoliosForRadarSync(scope.teamId, filters)
 
     for (const entry of portfolios) {
       try {
@@ -332,7 +334,7 @@ export class RadarService {
         const normalizedPhone = normalizeRadarPhone(lead.phone)
         const normalizedName = normalizeRadarName(lead.name)
 
-        const { profile, wasExisting } = await radarRepository.resolveProfileForPhone({
+        const { profile, wasExisting } = await this.repo.resolveProfileForPhone({
           teamId: scope.teamId,
           displayName: lead.name.trim(),
           normalizedName,
@@ -350,7 +352,7 @@ export class RadarService {
         if (wasExisting) counters.enriched += 1
         else counters.created += 1
 
-        await radarRepository.upsertSourceLink({
+        await this.repo.upsertSourceLink({
           profileId: profile.id,
           teamId: scope.teamId,
           sourceType: "portfolio",
@@ -362,7 +364,7 @@ export class RadarService {
           },
         })
 
-        await radarRepository.upsertIdentity({
+        await this.repo.upsertIdentity({
           profileId: profile.id,
           teamId: scope.teamId,
           type: "portfolio_id",
@@ -373,7 +375,7 @@ export class RadarService {
 
         // D13: clientes criados só na carteira não passam pelo sync CRM;
         // anexar lead_id aqui habilita portfolio_field + aba Contratos.
-        await radarRepository.upsertIdentity({
+        await this.repo.upsertIdentity({
           profileId: profile.id,
           teamId: scope.teamId,
           type: "lead_id",
@@ -382,7 +384,7 @@ export class RadarService {
           source: "portfolio",
         })
 
-        await radarRepository.appendEventIfNew({
+        await this.repo.appendEventIfNew({
           profileId: profile.id,
           teamId: scope.teamId,
           eventType: "portfolio.created",
@@ -392,7 +394,7 @@ export class RadarService {
         })
 
         if (this.isRenewalDue(entry.renewalStatus, lead.contractDueDate)) {
-          await radarRepository.appendEventIfNew({
+          await this.repo.appendEventIfNew({
             profileId: profile.id,
             teamId: scope.teamId,
             eventType: "portfolio.renewal_due",
@@ -404,14 +406,14 @@ export class RadarService {
         }
 
         if (entry.renewalStatus === "renewed") {
-          const alreadyRenewed = await radarRepository.hasEventEverOccurredForSource(
+          const alreadyRenewed = await this.repo.hasEventEverOccurredForSource(
             scope.teamId,
             "portfolio",
             `${entry.id}:renewed`,
             "portfolio.renewed"
           )
           if (!alreadyRenewed) {
-            await radarRepository.appendEventIfNew({
+            await this.repo.appendEventIfNew({
               profileId: profile.id,
               teamId: scope.teamId,
               eventType: "portfolio.renewed",
@@ -424,14 +426,14 @@ export class RadarService {
         }
 
         if (entry.source === "brokerage_transfer") {
-          const alreadyTransferred = await radarRepository.hasEventEverOccurredForSource(
+          const alreadyTransferred = await this.repo.hasEventEverOccurredForSource(
             scope.teamId,
             "portfolio",
             `${entry.id}:brokerage_transfer`,
             "portfolio.brokerage_transfer"
           )
           if (!alreadyTransferred) {
-            await radarRepository.appendEventIfNew({
+            await this.repo.appendEventIfNew({
               profileId: profile.id,
               teamId: scope.teamId,
               eventType: "portfolio.brokerage_transfer",
@@ -453,7 +455,7 @@ export class RadarService {
 
   async syncFromFinalized(scope: RadarTeamScope, filters: RadarSyncFilters = {}): Promise<SyncCounters> {
     const counters = emptyCounters()
-    const finalizedRows = await radarRepository.findFinalizedForRadarSync(scope.teamId, filters)
+    const finalizedRows = await this.repo.findFinalizedForRadarSync(scope.teamId, filters)
 
     for (const entry of finalizedRows) {
       try {
@@ -525,7 +527,7 @@ export class RadarService {
     const displayName = input.name.trim()
     const normalizedName = normalizeRadarName(displayName)
 
-    const existingLink = await radarRepository.findSourceLinkBySource({
+    const existingLink = await this.repo.findSourceLinkBySource({
       teamId: input.scope.teamId,
       sourceType: "lead_finalized",
       sourceId: input.partyId,
@@ -535,14 +537,14 @@ export class RadarService {
     // obsoleta para o party não permanecer pesquisável/segmentável.
     if (!normalizedDocument || !normalizedName) {
       if (existingLink) {
-        await radarRepository.deleteSourceLinkById(existingLink.id)
-        await radarRepository.removeObsoleteContractIdentity({
+        await this.repo.deleteSourceLinkById(existingLink.id)
+        await this.repo.removeObsoleteContractIdentity({
           teamId: input.scope.teamId,
           profileId: existingLink.profileId,
           identityType: input.identityType,
           keepNormalizedDocument: null,
         })
-        await radarRepository.deleteOrphanRadarProfileIfEmpty({
+        await this.repo.deleteOrphanRadarProfileIfEmpty({
           teamId: input.scope.teamId,
           profileId: existingLink.profileId,
         })
@@ -550,7 +552,7 @@ export class RadarService {
       return "skipped"
     }
 
-    const { profile, wasExisting } = await radarRepository.resolveProfileForDocument({
+    const { profile, wasExisting } = await this.repo.resolveProfileForDocument({
       teamId: input.scope.teamId,
       identityType: input.identityType,
       normalizedDocument,
@@ -567,7 +569,7 @@ export class RadarService {
       existingLink && existingLink.profileId !== profile.id ? existingLink.profileId : null
 
     if (obsoleteProfileId) {
-      await radarRepository.removeObsoleteContractIdentity({
+      await this.repo.removeObsoleteContractIdentity({
         teamId: input.scope.teamId,
         profileId: obsoleteProfileId,
         identityType: input.identityType,
@@ -575,7 +577,7 @@ export class RadarService {
       })
     }
 
-    await radarRepository.upsertIdentity({
+    await this.repo.upsertIdentity({
       profileId: profile.id,
       teamId: input.scope.teamId,
       type: input.identityType,
@@ -585,7 +587,7 @@ export class RadarService {
       isPrimary: true,
     })
 
-    await radarRepository.upsertSourceLink({
+    await this.repo.upsertSourceLink({
       profileId: profile.id,
       teamId: input.scope.teamId,
       sourceType: "lead_finalized",
@@ -599,7 +601,7 @@ export class RadarService {
       },
     })
 
-    await radarRepository.appendEventIfNew({
+    await this.repo.appendEventIfNew({
       profileId: profile.id,
       teamId: input.scope.teamId,
       eventType:
@@ -615,7 +617,7 @@ export class RadarService {
 
     // Após mover o source link, remove o perfil antigo se ficou sem identidades/links.
     if (obsoleteProfileId) {
-      await radarRepository.deleteOrphanRadarProfileIfEmpty({
+      await this.repo.deleteOrphanRadarProfileIfEmpty({
         teamId: input.scope.teamId,
         profileId: obsoleteProfileId,
       })
@@ -642,14 +644,14 @@ export class RadarService {
       const normalizedEmail = normalizeRadarEmail(contact.email)
 
       const phoneFromCustom = contact.name
-        ? await radarRepository.findLeadPhoneByEmail(scope.teamId, normalizedEmail)
+        ? await this.repo.findLeadPhoneByEmail(scope.teamId, normalizedEmail)
         : null
       const hasValidPhone = Boolean(
         contact.name && phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)
       )
 
       const resolved = hasValidPhone
-        ? await radarRepository.resolveProfileForPhone({
+        ? await this.repo.resolveProfileForPhone({
             teamId: scope.teamId,
             normalizedPhone: normalizeRadarPhone(phoneFromCustom!.phone),
             normalizedName: normalizeRadarName(contact.name!),
@@ -661,7 +663,7 @@ export class RadarService {
             normalizedPrimaryEmail: normalizedEmail,
             lastSeenAt: contact.updatedAt,
           })
-        : await radarRepository.resolveProfileForEmail({
+        : await this.repo.resolveProfileForEmail({
             teamId: scope.teamId,
             normalizedEmail,
             emailValue: contact.email,
@@ -675,7 +677,7 @@ export class RadarService {
       if (resolved.wasExisting) counters.enriched += 1
       else counters.created += 1
 
-      await radarRepository.upsertIdentity({
+      await this.repo.upsertIdentity({
         profileId: profile.id,
         teamId: scope.teamId,
         type: "email",
@@ -684,7 +686,7 @@ export class RadarService {
         source: "email",
       })
 
-      await radarRepository.upsertIdentity({
+      await this.repo.upsertIdentity({
         profileId: profile.id,
         teamId: scope.teamId,
         type: "email_contact_id",
@@ -693,7 +695,7 @@ export class RadarService {
         source: "email",
       })
 
-      await radarRepository.upsertSourceLink({
+      await this.repo.upsertSourceLink({
         profileId: profile.id,
         teamId: scope.teamId,
         sourceType: "email_contact",
@@ -702,7 +704,7 @@ export class RadarService {
       })
 
       const consent = consentFromEmailFlags(contact)
-      await radarRepository.upsertConsent({
+      await this.repo.upsertConsent({
         profileId: profile.id,
         teamId: scope.teamId,
         channel: "email",
@@ -721,36 +723,36 @@ export class RadarService {
     const counters = emptyCounters()
 
     if (filters.emailContactId) {
-      const contact = await radarRepository.findEmailContactById(filters.emailContactId)
+      const contact = await this.repo.findEmailContactById(filters.emailContactId)
       if (contact && contact.list.teamId === scope.teamId) {
         await this.processEmailContactForRadar(scope, contact, counters)
       }
       return counters
     }
 
-    const lists = await radarRepository.findEmailContactLists(scope.teamId)
+    const lists = await this.repo.findEmailContactLists(scope.teamId)
 
     for (const list of lists) {
-      const contacts = await radarRepository.findEmailContacts(list.id)
+      const contacts = await this.repo.findEmailContacts(list.id)
 
       for (const contact of contacts) {
         await this.processEmailContactForRadar(scope, contact, counters)
       }
     }
 
-    const logs = await radarRepository.findEmailLogsForRadarSync(scope.teamId, filters)
+    const logs = await this.repo.findEmailLogsForRadarSync(scope.teamId, filters)
 
     for (const log of logs) {
       try {
         const normalizedEmail = normalizeRadarEmail(log.recipientEmail)
-        const profile = await radarRepository.findProfileByEmail(scope.teamId, normalizedEmail)
+        const profile = await this.repo.findProfileByEmail(scope.teamId, normalizedEmail)
         if (!profile) continue
 
         for (const event of log.events) {
           const eventType = EMAIL_EVENT_MAP[event.type]
           if (!eventType) continue
 
-          await radarRepository.appendEventIfNew({
+          await this.repo.appendEventIfNew({
             profileId: profile.id,
             teamId: scope.teamId,
             eventType,
@@ -766,7 +768,7 @@ export class RadarService {
           if (event.type === "bounced" || event.type === "complained" || event.type === "unsubscribed") {
             const reason: RadarConsentReason =
               event.type === "bounced" ? "bounce" : event.type === "complained" ? "complaint" : "unsubscribe"
-            await radarRepository.upsertConsent({
+            await this.repo.upsertConsent({
               profileId: profile.id,
               teamId: scope.teamId,
               channel: "email",
@@ -797,7 +799,7 @@ export class RadarService {
     const normalizedPhone = normalizeRadarPhone(input.conversation.contactPhone)
     const normalizedName = normalizeRadarName(displayName)
 
-    const { profile } = await radarRepository.resolveProfileForPhone({
+    const { profile } = await this.repo.resolveProfileForPhone({
       teamId: input.teamId,
       displayName: displayName.trim(),
       normalizedName,
@@ -808,7 +810,7 @@ export class RadarService {
       lastSeenAt: input.message.sentAt ?? input.message.createdAt,
     })
 
-    await radarRepository.upsertIdentity({
+    await this.repo.upsertIdentity({
       profileId: profile.id,
       teamId: input.teamId,
       type: "whatsapp_contact_id",
@@ -817,14 +819,14 @@ export class RadarService {
       source: "whatsapp",
     })
 
-    await radarRepository.upsertSourceLink({
+    await this.repo.upsertSourceLink({
       profileId: profile.id,
       teamId: input.teamId,
       sourceType: "whatsapp_contact",
       sourceId: input.conversation.id,
     })
 
-    await radarRepository.upsertConsent({
+    await this.repo.upsertConsent({
       profileId: profile.id,
       teamId: input.teamId,
       channel: "whatsapp",
@@ -841,7 +843,7 @@ export class RadarService {
 
     if (!input.message.providerMessageId) return
 
-    await radarRepository.appendEventIfNew({
+    await this.repo.appendEventIfNew({
       profileId: profile.id,
       teamId: input.teamId,
       eventType,
@@ -867,7 +869,7 @@ export class RadarService {
     const normalizedPhone = normalizeRadarPhone(conversation.contactPhone)
     const normalizedName = normalizeRadarName(displayName)
 
-    const { profile } = await radarRepository.resolveProfileForPhone({
+    const { profile } = await this.repo.resolveProfileForPhone({
       teamId,
       displayName: displayName.trim(),
       normalizedName,
@@ -878,7 +880,7 @@ export class RadarService {
       lastSeenAt: conversation.lastMessageAt ?? conversation.updatedAt,
     })
 
-    await radarRepository.upsertIdentity({
+    await this.repo.upsertIdentity({
       profileId: profile.id,
       teamId,
       type: "whatsapp_contact_id",
@@ -887,14 +889,14 @@ export class RadarService {
       source: "whatsapp",
     })
 
-    await radarRepository.upsertSourceLink({
+    await this.repo.upsertSourceLink({
       profileId: profile.id,
       teamId,
       sourceType: "whatsapp_contact",
       sourceId: conversation.id,
     })
 
-    await radarRepository.upsertConsent({
+    await this.repo.upsertConsent({
       profileId: profile.id,
       teamId,
       channel: "whatsapp",
@@ -904,7 +906,7 @@ export class RadarService {
       sourceId: conversation.id,
     })
 
-    await radarRepository.appendEventIfNew({
+    await this.repo.appendEventIfNew({
       profileId: profile.id,
       teamId,
       eventType: "whatsapp.contact_created",
@@ -965,9 +967,9 @@ export class RadarService {
   }
 
   async countSegments(scope: RadarTeamScope): Promise<SegmentCount[]> {
-    const profiles = await radarRepository.listProfilesForSegmentation(scope.teamId)
+    const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
 
-    const rawLeadStatuses = await radarRepository.findLeadStatuses(
+    const rawLeadStatuses = await this.repo.findLeadStatuses(
       scope.teamId,
       profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
     )
@@ -1006,9 +1008,9 @@ export class RadarService {
     const segments = await this.countSegments(scope)
     if (!segments.find((s) => s.slug === segment)) return []
 
-    const profiles = await radarRepository.listProfilesForSegmentation(scope.teamId)
+    const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
 
-    const rawLeadStatuses = await radarRepository.findLeadStatuses(
+    const rawLeadStatuses = await this.repo.findLeadStatuses(
       scope.teamId,
       profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
     )
@@ -1028,12 +1030,12 @@ export class RadarService {
   }
 
   async listCampaignSegmentProfileIds(scope: RadarTeamScope, campaignId: string): Promise<string[]> {
-    return radarRepository.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
+    return this.repo.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
   async getMetrics(scope: RadarTeamScope) {
     const [totalProfiles, segments] = await Promise.all([
-      radarRepository.countProfiles(scope),
+      this.repo.countProfiles(scope),
       this.countSegments(scope),
     ])
 
@@ -1059,14 +1061,14 @@ export class RadarService {
     const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
 
     const lead = input.recipientName
-      ? await radarRepository.findLeadPhoneByEmail(input.teamId, normalizedEmail)
+      ? await this.repo.findLeadPhoneByEmail(input.teamId, normalizedEmail)
       : null
     const hasValidPhone = Boolean(
       input.recipientName && lead?.phone && isValidRadarPrimaryIdentity(lead.phone, input.recipientName)
     )
 
     const resolved = hasValidPhone
-      ? await radarRepository.resolveProfileForPhone({
+      ? await this.repo.resolveProfileForPhone({
           teamId: input.teamId,
           normalizedPhone: normalizeRadarPhone(lead!.phone),
           normalizedName: normalizeRadarName(input.recipientName!),
@@ -1078,7 +1080,7 @@ export class RadarService {
           normalizedPrimaryEmail: normalizedEmail,
           lastSeenAt: input.occurredAt,
         })
-      : await radarRepository.resolveProfileForEmail({
+      : await this.repo.resolveProfileForEmail({
           teamId: input.teamId,
           normalizedEmail,
           emailValue: input.recipientEmail,
@@ -1093,7 +1095,7 @@ export class RadarService {
     const mapped = EMAIL_EVENT_MAP[input.eventType]
     if (!mapped) return
 
-    await radarRepository.appendEventIfNew({
+    await this.repo.appendEventIfNew({
       profileId: profile.id,
       teamId: input.teamId,
       eventType: mapped,
@@ -1110,7 +1112,7 @@ export class RadarService {
           : input.eventType === "complained"
             ? "complaint"
             : "unsubscribe"
-      await radarRepository.upsertConsent({
+      await this.repo.upsertConsent({
         profileId: profile.id,
         teamId: input.teamId,
         channel: "email",
@@ -1132,21 +1134,21 @@ export class RadarService {
   }
 
   async syncProfileDataForTeam(scope: RadarTeamScope) {
-    const variables = await radarRepository.listRadarEmailVariables(scope.teamId)
+    const variables = await this.repo.listRadarEmailVariables(scope.teamId)
     if (variables.length === 0) return { updated: 0 }
 
-    const profiles = await radarRepository.listProfilesForProfileDataSync(scope.teamId)
+    const profiles = await this.repo.listProfilesForProfileDataSync(scope.teamId)
     const leadIds = profiles
       .map((profile) => getLeadIdFromProfile(profile as RadarResolvableProfile))
       .filter((id): id is string => Boolean(id))
-    const leadsById = await radarRepository.findLeadsForRadarFieldResolution(scope.teamId, leadIds)
+    const leadsById = await this.repo.findLeadsForRadarFieldResolution(scope.teamId, leadIds)
 
     let updated = 0
     for (const profile of profiles) {
       const leadId = getLeadIdFromProfile(profile as RadarResolvableProfile)
       const lead = leadId ? (leadsById.get(leadId) as RadarResolvableLead) : null
       const profileData = buildProfileDataMap(variables, profile as RadarResolvableProfile, lead)
-      await radarRepository.updateProfileData(profile.id, scope.teamId, profileData)
+      await this.repo.updateProfileData(profile.id, scope.teamId, profileData)
       updated += 1
     }
 
@@ -1157,12 +1159,12 @@ export class RadarService {
     scope: RadarTeamScope,
     profileId: string
   ): Promise<RadarSegmentSlug | null> {
-    const profiles = await radarRepository.listProfilesForSegmentationByIds(scope.teamId, [profileId])
+    const profiles = await this.repo.listProfilesForSegmentationByIds(scope.teamId, [profileId])
     const profile = profiles[0]
     if (!profile) return null
 
     const leadStatuses = toSegmentLeadStatusMap(
-      await radarRepository.findLeadStatuses(
+      await this.repo.findLeadStatuses(
       scope.teamId,
       profile.identities.map((identity) => identity.normalizedValue)
     )
@@ -1183,10 +1185,10 @@ export class RadarService {
   async resolvePrimarySegmentsForProfiles(scope: RadarTeamScope, profileIds: string[]) {
     if (profileIds.length === 0) return new Map<string, RadarSegmentSlug>()
 
-    const profiles = await radarRepository.listProfilesForSegmentationByIds(scope.teamId, profileIds)
+    const profiles = await this.repo.listProfilesForSegmentationByIds(scope.teamId, profileIds)
     const profileMap = new Map(profiles.map((profile) => [profile.id, profile]))
     const leadStatuses = toSegmentLeadStatusMap(
-      await radarRepository.findLeadStatuses(
+      await this.repo.findLeadStatuses(
       scope.teamId,
       profiles.flatMap((profile) => profile.identities.map((identity) => identity.normalizedValue))
     )
@@ -1216,10 +1218,10 @@ export class RadarService {
     profileId: string,
     variableKeys: string[]
   ) {
-    const profile = await radarRepository.getProfileDetailWithCtx(scope, profileId)
+    const profile = await this.repo.getProfileDetailWithCtx(scope, profileId)
     if (!profile) return null
 
-    const variables = await radarRepository.listRadarEmailVariables(scope.teamId)
+    const variables = await this.repo.listRadarEmailVariables(scope.teamId)
     const filtered =
       variableKeys.length > 0
         ? variables.filter((variable) => variableKeys.includes(variable.key))
@@ -1227,7 +1229,7 @@ export class RadarService {
 
     const leadId = getLeadIdFromProfile(profile as RadarResolvableProfile)
     const leadsById = leadId
-      ? await radarRepository.findLeadsForRadarFieldResolution(scope.teamId, [leadId])
+      ? await this.repo.findLeadsForRadarFieldResolution(scope.teamId, [leadId])
       : new Map()
     const lead = leadId ? ((leadsById.get(leadId) as RadarResolvableLead) ?? null) : null
 
