@@ -135,7 +135,7 @@ function HoldToConfirmButton({
   return (
     <Button
       type="button"
-      className="relative overflow-hidden"
+      className="relative min-w-52 overflow-hidden"
       onPointerDown={startHold}
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
@@ -150,9 +150,15 @@ function HoldToConfirmButton({
       <div
         className="pointer-events-none absolute inset-y-0 left-0 bg-primary-foreground/20"
         style={{ width: `${progress}%` }}
+        aria-hidden
       />
-      <span className="pointer-events-none relative">
-        {progress > 0 ? "Segure..." : label}
+      <span className="pointer-events-none relative inline-grid place-items-center">
+        <span className="invisible col-start-1 row-start-1 whitespace-nowrap" aria-hidden>
+          {label}
+        </span>
+        <span className="col-start-1 row-start-1 whitespace-nowrap">
+          {progress > 0 ? "Segure..." : label}
+        </span>
       </span>
     </Button>
   )
