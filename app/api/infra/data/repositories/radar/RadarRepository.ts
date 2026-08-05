@@ -1443,17 +1443,14 @@ export class RadarRepository {
   }
 
   /**
-   * D9: agrupa todos os eventos do perfil por `eventType` via Prisma groupBy,
-   * retornando contagem, primeiro e último evento por tipo. O agrupamento por
-   * canal (prefixo) é feito na camada de use case.
+   * E4: marcadores leves (eventType + occurredAt) para agregar pontos de contato
+   * como pares distintos canal × dia calendário no use case.
    */
-  async groupProfileEventsByType(scope: RadarTeamScope, profileId: string) {
-    return prisma.radarEvent.groupBy({
-      by: ["eventType"],
+  async listProfileTouchpointEventMarkers(scope: RadarTeamScope, profileId: string) {
+    return prisma.radarEvent.findMany({
       where: { profileId, teamId: scope.teamId },
-      _count: { _all: true },
-      _min: { occurredAt: true },
-      _max: { occurredAt: true },
+      select: { eventType: true, occurredAt: true },
+      orderBy: { occurredAt: "asc" },
     })
   }
 
