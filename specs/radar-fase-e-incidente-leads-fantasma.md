@@ -1,8 +1,9 @@
 # Spec: Incidente — Leads Fantasma, Milestone Inflado e Motor de Engajamento (Fase E)
 
-**Versão:** 1.0
+**Versão:** 1.1
 **Data:** 2026-08-05
-**Status:** Investigação concluída — proposta de correção, aguardando implementação
+**Status:** Implementado no código — aguardando deploy em produção + E6 `--apply` (com OK do owner, só depois de E1 em prod). Migration remota N/A.
+**Branch:** `fix/radar-fase-e-leads-fantasma`
 **Relacionado:** `specs/radar-d19-engagement-score.md`, `specs/radar-d19b-form-score-engagement-bridge.md`, `specs/radar-d19c-form-option-weight-scoring.md`
 
 ---
@@ -147,3 +148,20 @@ Só executar **depois de E1 estar em produção** (senão o script de correção
 - Nenhuma mudança de contrato de rota HTTP.
 - Diff de E1-E5 restrito aos arquivos listados; nenhuma migration necessária (schema já suporta tudo).
 - Script de correção (E6) roda em dry-run antes de qualquer `--apply`; escopado só ao dia do incidente.
+
+---
+
+## Estado da implementação (2026-08-05)
+
+| Item | Status |
+|---|---|
+| E1 — sem Lead em `form_viewed` + resolve Radar por e-mail | ✅ Código |
+| E1 follow-up — nome+telefone válidos na criação por atribuição | ✅ Código |
+| E2 — milestone `new_opportunity` só em transição | ✅ Código (+ asserts D5 no integration test) |
+| E3 — mergeProfiles score + MergeLeads Radar | ✅ Código |
+| E4 — touchpoints canal×dia, CRM fora | ✅ Código |
+| E5 — Resend upsert idempotente | ✅ Código |
+| E6 — script cleanup dry-run | ✅ Código (dry-run only) |
+| Deploy produção | ⏳ Aguardando |
+| E6 `--apply` | ⏳ Bloqueado até E1 em prod + OK do owner |
+| Migration remota | N/A (sem mudança de schema) |

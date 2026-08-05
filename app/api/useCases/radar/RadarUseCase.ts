@@ -1,4 +1,6 @@
 import { Output } from "@/lib/output"
+import { DEFAULT_TZ } from "@/lib/dates/DEFAULT_TZ"
+import { formatLocalDateValue } from "@/lib/dates/parse"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarTeamScope } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
@@ -294,9 +296,10 @@ export class RadarUseCase {
   }
 
   /**
-   * D9: agrega eventos do perfil por canal de origem (prefixo do eventType).
+   * E4: pontos de contato = pares distintos canal × dia calendário (America/Sao_Paulo).
    * Canal = prefixo antes do primeiro ".": email → E-mail, whatsapp → WhatsApp,
-   * form → Formulário, pixel → Pixel, lead/portfolio/profile → CRM, demais → Outros.
+   * form → Formulário, pixel → Pixel, demais → Outros.
+   * Prefixos internos de CRM (`lead`/`portfolio`/`profile`) ficam fora da contagem/lista.
    * Retorna Output inválido (404) quando o perfil não existe ou pertence a outro time.
    */
   async getProfileTouchpoints(teamId: string, ctx: TeamContext, profileId: string) {
@@ -306,17 +309,15 @@ export class RadarUseCase {
       return new Output(false, [], ["Perfil não encontrado"], null)
     }
 
-    const rows = await radarRepository.groupProfileEventsByType(scope, profileId)
+    const rows = await radarRepository.listProfileTouchpointEventMarkers(scope, profileId)
 
     const CHANNEL_MAP: Record<string, string> = {
       email: "E-mail",
       whatsapp: "WhatsApp",
       form: "Formulário",
       pixel: "Pixel",
-      lead: "CRM",
-      portfolio: "CRM",
-      profile: "CRM",
     }
+    const CRM_PREFIXES = new Set(["lead", "portfolio", "profile"])
 
     type ChannelBreakdown = {
       channel: string
@@ -325,31 +326,33 @@ export class RadarUseCase {
       lastEventAt: string
     }
 
-    const channelMap = new Map<string, { count: number; firstEventAt: Date; lastEventAt: Date }>()
+    const channelMap = new Map<
+      string,
+      { dayKeys: Set<string>; firstEventAt: Date; lastEventAt: Date }
+    >()
 
     for (const row of rows) {
       const prefix = row.eventType.split(".")[0] ?? row.eventType
+      if (CRM_PREFIXES.has(prefix)) continue
       const channel = CHANNEL_MAP[prefix] ?? "Outros"
+      const dayKey = formatLocalDateValue(row.occurredAt, DEFAULT_TZ)
       const existing = channelMap.get(channel)
-      const rowMin = row._min.occurredAt
-      const rowMax = row._max.occurredAt
-      if (!rowMin || !rowMax) continue
       if (existing) {
-        existing.count += row._count._all
-        if (rowMin < existing.firstEventAt) existing.firstEventAt = rowMin
-        if (rowMax > existing.lastEventAt) existing.lastEventAt = rowMax
+        existing.dayKeys.add(dayKey)
+        if (row.occurredAt < existing.firstEventAt) existing.firstEventAt = row.occurredAt
+        if (row.occurredAt > existing.lastEventAt) existing.lastEventAt = row.occurredAt
       } else {
         channelMap.set(channel, {
-          count: row._count._all,
-          firstEventAt: rowMin,
-          lastEventAt: rowMax,
+          dayKeys: new Set([dayKey]),
+          firstEventAt: row.occurredAt,
+          lastEventAt: row.occurredAt,
         })
       }
     }
 
     const breakdown: ChannelBreakdown[] = Array.from(channelMap.entries()).map(([channel, data]) => ({
       channel,
-      count: data.count,
+      count: data.dayKeys.size,
       firstEventAt: data.firstEventAt.toISOString(),
       lastEventAt: data.lastEventAt.toISOString(),
     }))

@@ -80,15 +80,30 @@ export class EmailLogRepository implements IEmailLogRepository {
     try {
       await withDeadlockRetry(async () => {
         await prisma.$transaction(async (tx) => {
-          await tx.emailEvent.create({
-            data: {
+          // Upsert on logId_type_occurredAt: duplicate Resend deliveries become a no-op
+          // (update: {}) instead of P2002 → HTTP 500 → retry loop.
+          const upserted = await tx.emailEvent.upsert({
+            where: {
+              logId_type_occurredAt: {
+                logId: log.id,
+                type: eventType,
+                occurredAt,
+              },
+            },
+            create: {
               id: eventId,
               logId: log.id,
               type: eventType,
               occurredAt,
               metadata: Object.keys(metadata).length > 0 ? (metadata as Prisma.InputJsonValue) : undefined,
             },
+            update: {},
           })
+
+          // Update path reused the existing row (different id) — side effects already applied.
+          if (upserted.id !== eventId) {
+            return
+          }
 
           await tx.emailLog.update({
             where: { id: log.id },
