@@ -910,16 +910,8 @@ export function CampaignWizardDialog() {
             )}
           </div>
 
-          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={closeWizard}
-              disabled={wizardSaving}
-            >
-              Cancelar
-            </Button>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="order-1 flex w-full flex-col gap-2 sm:order-2 sm:w-auto sm:flex-row sm:items-center">
               {previousTab ? (
                 <Button
                   type="button"
@@ -956,6 +948,14 @@ export function CampaignWizardDialog() {
                 />
               )}
             </div>
+            <Button
+              variant="outline"
+              className="order-2 w-full sm:order-1 sm:w-auto"
+              onClick={closeWizard}
+              disabled={wizardSaving}
+            >
+              Cancelar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
