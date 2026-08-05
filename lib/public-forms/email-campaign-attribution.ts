@@ -11,6 +11,18 @@ export const FORM_COMPLETE_ACTIVITY_BODY = "Fim do preenchimento do formulário"
 export type EmailCampaignAttributionOrigin = {
   emailLogId?: string
   campaignId?: string
+  recipientEmail?: string
+}
+
+export function parseRecipientEmailFromOrigin(
+  origin: Record<string, unknown> | null | undefined
+): string | null {
+  if (!origin || typeof origin !== "object") return null
+  const raw = origin.recipientEmail
+  if (typeof raw !== "string") return null
+  const email = raw.trim().toLowerCase()
+  if (!email || !email.includes("@") || email.includes(" ")) return null
+  return email
 }
 
 export function parseEmailLogIdFromOrigin(origin: Record<string, unknown> | null | undefined): string | null {

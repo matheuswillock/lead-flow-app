@@ -2,6 +2,8 @@ import type { PublicFormMetricType, Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
+import { parseRecipientEmailFromOrigin } from "@/lib/public-forms/email-campaign-attribution"
+import { normalizeRadarEmail } from "@/lib/radar/normalization"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
   mapPublicFormMetricToRadarEventType,
@@ -83,6 +85,29 @@ class SyncPublicFormMetricToRadarUseCase {
         identity = await radarRepository.findProfileByIdentity(input.teamId, "lead_id", leadId)
       }
       if (identity) return identity.profileId
+    }
+
+    // E1: form_viewed/started sem Lead — resolve pelo destinatário do EmailLog
+    // (mesmo caminho de syncFromEmail / handleEmailWebhookEvent desde D4).
+    const recipientEmail = parseRecipientEmailFromOrigin(
+      input.origin && typeof input.origin === "object" && input.origin !== null
+        ? (input.origin as Record<string, unknown>)
+        : null
+    )
+    if (recipientEmail) {
+      const normalizedEmail = normalizeRadarEmail(recipientEmail)
+      if (normalizedEmail) {
+        const { profile } = await radarRepository.resolveProfileForEmail({
+          teamId: input.teamId,
+          normalizedEmail,
+          emailValue: recipientEmail,
+          displayName: null,
+          normalizedName: null,
+          emailSource: "email_log",
+          lastSeenAt: input.occurredAt ?? new Date(),
+        })
+        return profile.id
+      }
     }
 
     const { profile } = await radarRepository.resolveProfileForVisitorSession({

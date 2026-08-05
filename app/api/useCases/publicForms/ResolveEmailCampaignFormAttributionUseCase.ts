@@ -73,6 +73,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
       }
 
       enrichedOrigin.emailLogId = log.id
+      enrichedOrigin.recipientEmail = log.recipientEmail
       if (log.campaignId) enrichedOrigin.campaignId = log.campaignId
       if (log.dispatchId) enrichedOrigin.dispatchId = log.dispatchId
 
@@ -87,6 +88,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
         formName: input.formName,
         formPublicId: input.formPublicId,
         publicationId: input.publicationId,
+        eventType: input.eventType,
         name,
         email,
         phone: phone ?? "",
@@ -157,6 +159,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
     formName: string
     formPublicId: string
     publicationId: string
+    eventType: ResolveEmailCampaignFormAttributionInput["eventType"]
     name: string
     email: string
     phone: string
@@ -190,6 +193,11 @@ class ResolveEmailCampaignFormAttributionUseCase {
       if (!match.phone && input.phone) data.phone = input.phone
       if (!data.email && !data.phone) return match
       return publicFormsRepository.updateLead(match.id, data)
+    }
+
+    // E1: form_viewed/form_started não criam Lead fantasma — só form_completed.
+    if (input.eventType !== "form_completed") {
+      return null
     }
 
     const createData: CreateLeadRequest = {
