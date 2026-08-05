@@ -3,6 +3,8 @@ import type {
   LeadExtractionFiltersForm,
   LeadExtractionSearchResult,
   CnaeOption,
+  SocioFiltersForm,
+  SocioSearchResult,
 } from "./IBackofficeLeadExtractionService"
 
 export class BackofficeLeadExtractionService implements IBackofficeLeadExtractionFrontendService {
@@ -47,5 +49,30 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
     }
 
     return data.result as LeadExtractionSearchResult
+  }
+
+  async searchSocios(filters: SocioFiltersForm): Promise<SocioSearchResult> {
+    const names = filters.names
+      .split(",")
+      .map((n) => n.trim())
+      .filter(Boolean)
+
+    const payload: Record<string, unknown> = {}
+    if (names.length > 0) payload.names = names
+    if (filters.types.length > 0) payload.types = filters.types
+    if (filters.ageRanges.length > 0) payload.ageRanges = filters.ageRanges
+
+    const response = await fetch("/api/v1/backoffice/socios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await response.json()
+    if (!data.isValid) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao pesquisar sócios")
+    }
+
+    return data.result as SocioSearchResult
   }
 }
