@@ -64,7 +64,7 @@ Agents **MUST NOT** create Pull Requests manually (via `gh pr create` or the Git
 
 Agents **MUST NOT** commit or push directly to `main`, `develop`, or any `release/*` branch (e.g. `release/develop-to-main`), under any circumstances — not even to resolve review comments on a PR already open against one of these branches. `release/*` branches are entirely CI-managed (recreated/force-pushed from `develop` on every push); a direct commit is overwritten on the next `develop` push or creates history inconsistency.
 
-To resolve review comments on a `develop → main` PR (via `release/develop-to-main`) or a `feature/bugfix → develop` PR: make the fix on a **new** `feature/*` or `bugfix/*` branch with its own PR into `develop` (opened automatically by CI). CI then regenerates `release/develop-to-main` and updates the PR into `main` automatically. Never commit directly onto the existing review branch when that branch is `release/*`.
+To resolve review comments on a `develop → main` PR (via `release/develop-to-main`): make the fix on a **new** `feature/*` or `bugfix/*` branch with its own PR into `develop` (opened automatically by CI). CI then regenerates `release/develop-to-main` and updates the PR into `main` automatically. Never commit directly onto `release/*` branches. For `feature/bugfix → develop` PRs, push fixes directly to the existing head branch — the auto-PR will update seamlessly.
 
 ## Migration Policy (Supabase CLI + Prisma ORM)
 
