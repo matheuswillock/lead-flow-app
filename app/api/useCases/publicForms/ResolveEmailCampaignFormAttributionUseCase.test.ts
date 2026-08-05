@@ -175,6 +175,8 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
   })
 
   it("form_completed após form_viewed (mesmo emailLogId) → cria Lead e mantém recipientEmail", async () => {
+    findRadarPhoneByEmail.mockImplementation(async () => "11999998888")
+
     const viewed = await resolveEmailCampaignFormAttributionUseCase.execute({
       ...baseInput,
       eventType: "form_viewed",
@@ -189,6 +191,11 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
 
     expect(completed.isValid).toBe(true)
     expect(createLead).toHaveBeenCalledTimes(1)
+    const createArgs = createLead.mock.calls[0] as unknown as [string, { name: string; phone: string }]
+    expect(createArgs[1]).toMatchObject({
+      name: "Destinatário",
+      phone: "11999998888",
+    })
     expect(completed.result).toMatchObject({
       leadId: "lead-created-1",
       emailLogId: EMAIL_LOG_ID,
@@ -197,6 +204,46 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
         emailLogId: EMAIL_LOG_ID,
       }),
     })
+  })
+
+  it("form_completed sem telefone válido → não cria Lead (regra nome+telefone)", async () => {
+    findRadarPhoneByEmail.mockImplementation(async () => null)
+
+    const output = await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_completed",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(createLead).not.toHaveBeenCalled()
+    expect(output.result).toMatchObject({
+      leadId: null,
+      emailLogId: EMAIL_LOG_ID,
+      enrichedOrigin: expect.objectContaining({
+        recipientEmail: "destinatario@exemplo.com",
+      }),
+    })
+  })
+
+  it("form_completed sem nome válido → não cria Lead", async () => {
+    findRadarPhoneByEmail.mockImplementation(async () => "11999998888")
+    findCampaignLogForAttribution.mockImplementation(async () => ({
+      id: EMAIL_LOG_ID,
+      campaignId: "campaign-1",
+      dispatchId: "dispatch-1",
+      recipientEmail: "x@exemplo.com",
+      recipientName: " ",
+    }))
+
+    const output = await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_completed",
+    })
+
+    // resolveAttributionDisplayName cai no local-part do e-mail ("x") — 1 char < 2
+    expect(output.isValid).toBe(true)
+    expect(createLead).not.toHaveBeenCalled()
+    expect(output.result).toMatchObject({ leadId: null })
   })
 
   it("form_viewed quando já existe lead real (mesmo e-mail) → encontra/atualiza, não cria", async () => {

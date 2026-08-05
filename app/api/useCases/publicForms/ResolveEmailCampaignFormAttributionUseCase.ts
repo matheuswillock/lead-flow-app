@@ -15,7 +15,7 @@ import {
   parseEmailLogIdFromOrigin,
   resolveAttributionDisplayName,
 } from "@/lib/public-forms/email-campaign-attribution"
-import { normalizeLeadPhoneDigits } from "@/lib/masks"
+import { isValidPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
 
 const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
 
@@ -200,10 +200,20 @@ class ResolveEmailCampaignFormAttributionUseCase {
       return null
     }
 
+    // Regra CRM: lead só nasce com nome + telefone válidos (sem telefone → só Radar por e-mail).
+    const trimmedName = input.name.trim()
+    if (trimmedName.length < 2 || !isValidPhone(input.normalizedPhone || input.phone)) {
+      console.info(
+        "[ResolveEmailCampaignFormAttributionUseCase][createLead] skip: nome/telefone insuficientes",
+        { emailLogId: input.emailLogId, hasName: trimmedName.length >= 2, hasPhone: Boolean(input.normalizedPhone) }
+      )
+      return null
+    }
+
     const createData: CreateLeadRequest = {
-      name: input.name,
+      name: trimmedName,
       email: input.email,
-      phone: input.phone || undefined,
+      phone: input.normalizedPhone || input.phone,
       cnpj: undefined,
       age: undefined,
       currentHealthPlan: undefined,
