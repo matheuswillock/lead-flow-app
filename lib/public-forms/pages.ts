@@ -28,7 +28,15 @@ export function groupQuestionsByPage(
   return order.map((pageKey) => ({ pageKey, questions: map.get(pageKey)! }))
 }
 
-export function getQuestionStepErrors(draft: PublicFormDraftInput): string[] {
+export type GetQuestionStepErrorsOptions = {
+  mode?: "form" | "catalog-template"
+}
+
+export function getQuestionStepErrors(
+  draft: PublicFormDraftInput,
+  options: GetQuestionStepErrorsOptions = {},
+): string[] {
+  const mode = options.mode ?? "form"
   const errors: string[] = []
   const pages = groupQuestionsByPage(draft.questions)
   const schedulingQuestions = draft.questions.filter((question) => question.type === "scheduling")
@@ -36,10 +44,12 @@ export function getQuestionStepErrors(draft: PublicFormDraftInput): string[] {
   if (schedulingQuestions.length > 1) {
     errors.push("Só é permitido uma pergunta de agendamento por formulário")
   }
-  if (draft.schedulingEnabled || schedulingQuestions.length > 0) {
-    if (draft.eligibleCloserIds.length === 0) {
-      errors.push("Selecione ao menos um closer elegível para o agendamento")
-    }
+  if (
+    mode === "form" &&
+    (draft.schedulingEnabled || schedulingQuestions.length > 0) &&
+    draft.eligibleCloserIds.length === 0
+  ) {
+    errors.push("Selecione ao menos um closer elegível para o agendamento")
   }
 
   for (const question of draft.questions) {
