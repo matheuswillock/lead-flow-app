@@ -17,6 +17,12 @@ function RateRow({
   items: RankedTemplate[]
   rateKey: 'openRate' | 'clickRate'
 }) {
+  const eventCountOf =
+    rateKey === 'openRate'
+      ? (item: RankedTemplate) => item.opened
+      : (item: RankedTemplate) => item.clicked
+  const eventLabel = rateKey === 'openRate' ? 'aberturas' : 'cliques'
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
@@ -51,7 +57,9 @@ function RateRow({
               <span className="font-semibold text-foreground">
                 {item.rates[rateKey].toFixed(2)}%
               </span>
-              <span className="ml-1">· {item.sent} envios</span>
+              <span className="ml-1">
+                · {eventCountOf(item)} {eventLabel}
+              </span>
             </div>
           </li>
         ))}
