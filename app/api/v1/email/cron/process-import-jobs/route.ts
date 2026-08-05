@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
     }
 
-    const useCase = new EmailContactImportUseCase()
+    const useCase = EmailContactImportUseCase.forImportCron()
     const result = await useCase.processPendingJobs()
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 500 })
