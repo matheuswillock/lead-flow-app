@@ -1677,6 +1677,11 @@ OUTROS OUTROS
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
     String asaasInstallmentId "❓"
+    Decimal discountPercent "❓"
+    String discountStatus "❓"
+    String discountApprovedByProfileId "❓"
+    DateTime discountApprovedAt "❓"
+    Decimal negotiatedTotalAmount "❓"
     Int installmentCount "❓"
     String billingType "❓"
     DateTime paymentDueDate "❓"
@@ -2836,6 +2841,17 @@ OUTROS OUTROS
     Boolean hasPermanentSubscription 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_subscription_change_logs" {
+    String id "🗝️"
+    String source 
+    String changeType 
+    Json before "❓"
+    Json after "❓"
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -4121,6 +4137,8 @@ OUTROS OUTROS
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
+    "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"

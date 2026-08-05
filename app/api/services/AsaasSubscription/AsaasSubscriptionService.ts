@@ -31,6 +31,8 @@ export interface AsaasSubscription {
   endDate?: string;              // Data de término da assinatura
   maxPayments?: number;          // Número máximo de cobranças
   updatePendingPayments?: boolean;
+  /** Status Asaas da assinatura (PUT): ACTIVE | EXPIRED | INACTIVE */
+  status?: 'ACTIVE' | 'EXPIRED' | 'INACTIVE';
 }
 
 export interface AsaasSubscriptionResponse {

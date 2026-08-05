@@ -310,6 +310,49 @@ Fonte: [`BILLING_AUDIT.md`](BILLING_AUDIT.md) §3A.2–3.3. **Meta Estágio 6:**
 
 ## Changelog de implementação
 
+### [Estágio -1] RLS billing tables — 2026-08-04
+
+**Branch:** `feat/billing-stage-minus1-rls`
+
+**O que foi feito:**
+- Grants produção documentados no audit §1.3 (sem grants `anon`/`authenticated`; RLS off nas 3 tabelas).
+- Migration [`supabase/migrations/20260804191440_fix-billing-tables-rls.sql`](supabase/migrations/20260804191440_fix-billing-tables-rls.sql): ENABLE RLS em `asaas_webhook_events` (sem policy), `profile_user_types` (SELECT authenticated), `profile_user_type_assignments` (SELECT próprio profile).
+- Sem `db:migrate:push` remoto.
+
+**Estágio -1 encerrado no repo.** Próximo: Estágio 0 (vitalício só Backoffice). Push remoto RLS aguarda auth do owner.
+
+### [Estágio 0] Vitalício só Backoffice — 2026-08-04
+
+**Branch:** `feat/billing-stage-minus1-rls` (wave 0)
+
+**O que foi feito:**
+- DELETE `app/api/v1/profiles/permanent-subscription/route.ts` (POST público).
+- PUT `profiles/[supabaseId]/permanent-subscription` via `getBackofficeAccess()`; log `[PermanentSubscriptionRoute][PUT]` com ator.
+- `UpdatePermanentSubscriptionUseCase` grava `ProfileSubscription` + espelho Profile; remove check `isMaster` de produto.
+- Removido toggle vitalício em manager-users; removidos `TogglePermanentSubscriptionUseCase` + interface.
+- Postman: removido POST público; PUT documentado como backoffice-only.
+
+**Aceite:** POST pública 404; PUT sem backoffice 403.
+
+### [Estágio 1] Webhook Asaas real — 2026-08-04
+
+**O que foi feito:**
+- Helper `lib/billing/asaas-subscription-status.ts` + testes (eventos reais, INACTIVE/EXPIRED, sem fallback `active`).
+- `PaymentValidationService`: só eventos reais; handlers refund/chargeback; past_due prolongado → PUT Asaas `INACTIVE`.
+- `processAsaasWebhookEvent`: lista de eventos alinhada ao Asaas real.
+
+### [Estágio 2] Cancel/cartão/retry — 2026-08-04
+
+**O que foi feito:**
+- `cancelSubscription`: Asaas DELETE fail-closed antes do local.
+- `updatePaymentMethod`: `Output(false)` (não mente sucesso).
+- `retryPayment` + rota `POST .../subscription-management/invoices/retry`.
+
+### [Estágio 3] Sem manager_base forçado — 2026-08-04
+
+**O que foi feito:**
+- Removido hardcode em vínculo/confirmação; preserva `subscriptionPlan`; deriva só se nulo.
+
 ### [Estágio 4 parcial] Parcelas CUSTOM — 2026-07-27
 
 **Branch:** `claude/blissful-faraday-05e253`  
@@ -357,3 +400,28 @@ Fonte: [`BILLING_AUDIT.md`](BILLING_AUDIT.md) §3A.2–3.3. **Meta Estágio 6:**
 - Documentação: inventário writers/readers Estágios 5–6 nesta SPEC (seção acima).
 
 **Estágio 4 encerrado.** Próximo: Estágio 5 (cutover de dados).
+### [Estágio 4 verificação] D12 ainda verde — 2026-08-04
+
+Confirmado no tree: `featureSlugs String[]`, `InstallmentSplitMode`, checkout público CUSTOM/EQUAL, seed CRM-Radar. Sem regressão detectada.
+
+### [Estágios 5–12] Wave cutover → dunning — 2026-08-04
+
+**Branch:** `feat/billing-stage-minus1-rls` (implementação contínua wave 0–6)
+
+**Estágio 5:** `scripts/billing/cutover-dry-run.ts` (dry-run default; `--apply` exige `BILLING_CUTOVER_APPLY=1`). Migration no-op de rastreio.
+
+**Estágio 6 (parcial):** `lib/billing/resolvePrice.ts`; `isAccountSubscriptionActive` prefere ProfileSubscription; `SubscriptionCheckService` alinhado a status ativos unificados. Literais System A ainda presentes em alguns fluxos legados — remoção completa continua pós-cutover apply.
+
+**Estágio 7:** migration `subscription-change-log-and-cycle-enum` + model `SubscriptionChangeLog` + `logSubscriptionChange`.
+
+**Estágio 8:** `ACTIVE_SUBSCRIPTION_STATUSES` exportado; check usa `isAccountSubscriptionActive`.
+
+**Estágio 9:** `requireManagerAccess` em `POST /api/v1/backoffice/payments`.
+
+**Estágio 10:** campos desconto em adesão + `ApproveAdhesionDiscountUseCase` + rota `approve-discount`.
+
+**Estágio 11:** `TransitionSubscriptionLevelUseCase` (nível genérico + ChangeLog).
+
+**Estágio 12:** cron `GET /api/v1/billing/cron/overdue-reminder` (CRON_SECRET).
+
+**Nota:** `db:migrate:push` remoto **não** executado — aguarda auth do owner.
