@@ -19,4 +19,15 @@ export interface IBackofficeClientPublicFormEditorService {
     input: PublicFormDraftInput
   ): Promise<StudioPublicFormDetail>
   publish(masterId: string, teamId: string, formId: string): Promise<unknown>
+  getTemplate(
+    masterId: string,
+    teamId: string,
+    slug: string
+  ): Promise<{
+    slug: string
+    name: string
+    description: string | null
+    formKind: string
+    draft: PublicFormDraftInput
+  }>
 }

@@ -151,6 +151,20 @@ export class BackofficeStudioPublicFormsService implements IBackofficeStudioPubl
     )
     return parseOutput(response)
   }
+
+  async getTemplate(masterId: string, teamId: string, slug: string) {
+    const response = await fetch(
+      `${basePath(masterId, teamId)}/public-forms/templates/${encodeURIComponent(slug)}`,
+      { cache: "no-store" },
+    )
+    return parseOutput<{
+      slug: string
+      name: string
+      description: string | null
+      formKind: string
+      draft: PublicFormDraftInput
+    }>(response)
+  }
 }
 
 export const backofficeStudioPublicFormsService = new BackofficeStudioPublicFormsService()

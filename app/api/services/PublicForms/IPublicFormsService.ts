@@ -8,6 +8,8 @@ import type {
 export interface IPublicFormsService {
   list(teamId: string, filters: PublicFormListFilters): Promise<unknown>
   listPublishedOptions(teamId: string): Promise<unknown>
+  listTemplates(teamId: string): Promise<unknown>
+  getTemplate(teamId: string, slug: string): Promise<unknown>
   get(teamId: string, id: string): Promise<unknown>
   create(teamId: string, profileId: string, input: PublicFormDraftInput): Promise<unknown>
   update(teamId: string, id: string, input: PublicFormDraftInput): Promise<unknown>

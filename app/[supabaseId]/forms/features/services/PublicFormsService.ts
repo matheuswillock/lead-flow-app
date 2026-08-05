@@ -9,6 +9,8 @@ import type { PublicFormDraftInput } from "@/lib/public-forms/types"
 import type {
   IPublicFormsService,
   PublicFormAnalytics,
+  PublicFormTemplateDetail,
+  PublicFormTemplateListItem,
   PublicFormsListFilters,
 } from "./IPublicFormsService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
@@ -48,6 +50,27 @@ class PublicFormsClientService implements IPublicFormsService {
         headers: this.headers(ids),
         cache: "no-store",
       }),
+    )
+  }
+
+  async listTemplates(ids: PublicFormsIds) {
+    return this.parse<PublicFormTemplateListItem[]>(
+      await fetch(`${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/templates`, {
+        headers: this.headers(ids),
+        cache: "no-store",
+      }),
+    )
+  }
+
+  async getTemplate(ids: PublicFormsIds, slug: string) {
+    return this.parse<PublicFormTemplateDetail>(
+      await fetch(
+        `${API_CLIENT_BASE}/teams/${ids.teamId}/public-forms/templates/${encodeURIComponent(slug)}`,
+        {
+          headers: this.headers(ids),
+          cache: "no-store",
+        },
+      ),
     )
   }
 

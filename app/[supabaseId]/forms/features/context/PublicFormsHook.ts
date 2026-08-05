@@ -6,6 +6,7 @@ import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { publicFormsClientService } from "../services/PublicFormsService"
+import type { PublicFormTemplateListItem } from "../services/IPublicFormsService"
 import type { PublicFormListItem, PublicFormsIds, RankedForm } from "./PublicFormsTypes"
 
 export function usePublicFormsState() {
@@ -18,6 +19,7 @@ export function usePublicFormsState() {
   const [items, setItems] = useState<PublicFormListItem[]>([])
   const [ranking, setRanking] = useState<RankedForm[]>([])
   const [rankingLoading, setRankingLoading] = useState(true)
+  const [templates, setTemplates] = useState<PublicFormTemplateListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -36,20 +38,24 @@ export function usePublicFormsState() {
     setLoading(true)
     setError(null)
     try {
-      const result = await publicFormsClientService.list(ids, {
-        search,
-        status,
-        approvalStatus: approval,
-        assignedSdrId: sdrIds[0],
-        updatedFrom: dateRange?.from?.toISOString(),
-        updatedTo: dateRange?.to?.toISOString(),
-        page,
-        pageSize: 20,
-      })
+      const [result, templateItems] = await Promise.all([
+        publicFormsClientService.list(ids, {
+          search,
+          status,
+          approvalStatus: approval,
+          assignedSdrId: sdrIds[0],
+          updatedFrom: dateRange?.from?.toISOString(),
+          updatedTo: dateRange?.to?.toISOString(),
+          page,
+          pageSize: 20,
+        }),
+        publicFormsClientService.listTemplates(ids).catch(() => [] as PublicFormTemplateListItem[]),
+      ])
       setItems(result.items)
       setTotal(result.total)
       setTotalPages(result.totalPages)
       setCapabilities(result.capabilities)
+      setTemplates(templateItems)
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível carregar")
     } finally {
@@ -113,6 +119,7 @@ export function usePublicFormsState() {
     items,
     ranking,
     rankingLoading,
+    templates,
     loading,
     error,
     search,
