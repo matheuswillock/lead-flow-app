@@ -38,7 +38,7 @@ async function main() {
 
   const byTeam = new Map<string, number>();
   for (const lead of affected) {
-    const teamName = lead.team?.name ?? lead.teamId;
+    const teamName = lead.team?.name ?? lead.teamId ?? "—";
     byTeam.set(teamName, (byTeam.get(teamName) ?? 0) + 1);
   }
 
@@ -54,7 +54,7 @@ async function main() {
     console.info(
       [
         lead.id,
-        lead.team?.name ?? lead.teamId,
+        lead.team?.name ?? lead.teamId ?? "—",
         JSON.stringify(lead.name ?? ""),
         lead.email ?? "",
         lead.phone ?? "",
