@@ -1,10 +1,19 @@
 import { Cnpja } from "@cnpja/sdk"
+import type { OfficeSearchDto, PersonSearchDto } from "@cnpja/sdk"
 import type { BackofficeCompanyType } from "@prisma/client"
 import type { LeadExtractionFilters, LeadExtractionResultData } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadExtraction/IBackofficeLeadExtractionRepository"
 import type {
   IBackofficeLeadExtractionService,
   LeadExtractionSearchOutput,
+  PersonSearchFilters,
+  PersonSearchOutput,
+  PersonSearchResultItem,
 } from "./IBackofficeLeadExtractionService"
+
+const MAX_RESULTS_PER_SEARCH = 100
+
+// CNAEs de contabilidade/auditoria para exclusão quando removeContadores = true
+const CONTADOR_CNAES = [6920601, 6920602]
 
 function resolveCompanyType(office: {
   simei?: { optant?: boolean } | null
@@ -30,8 +39,6 @@ function resolveCompanyType(office: {
   return "OUTROS"
 }
 
-const MAX_RESULTS_PER_SEARCH = 100
-
 export class BackofficeLeadExtractionService implements IBackofficeLeadExtractionService {
   private _client: Cnpja | null = null
 
@@ -47,7 +54,7 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
   }
 
   async search(filters: LeadExtractionFilters, limit = MAX_RESULTS_PER_SEARCH): Promise<LeadExtractionSearchOutput> {
-    const query: Record<string, unknown> = {
+    const query: OfficeSearchDto = {
       limit: Math.min(limit, MAX_RESULTS_PER_SEARCH),
     }
 
@@ -55,36 +62,32 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
       query["mainActivity.id.in"] = [Number(filters.mainCnae)]
     }
 
-    if (filters.sideCnae) {
-      query["sideActivity.id.in"] = [Number(filters.sideCnae)]
-    }
-
-    if (filters.state) {
-      query["address.state.in"] = [filters.state]
+    if (filters.states?.length) {
+      query["address.state.in"] = filters.states as OfficeSearchDto["address.state.in"]
     }
 
     if (filters.municipalityCode) {
       query["address.municipality.in"] = [filters.municipalityCode]
     }
 
-    if (filters.statusId) {
-      query["status.id.in"] = [Number(filters.statusId)]
+    if (filters.statusIds?.length) {
+      query["status.id.in"] = filters.statusIds.map(Number)
     }
 
-    if (filters.natureId) {
-      query["nature.id.in"] = [Number(filters.natureId)]
+    if (filters.natureIds?.length) {
+      query["company.nature.id.in"] = filters.natureIds.map(Number)
     }
 
-    if (filters.sizeId) {
-      query["size.id.in"] = [Number(filters.sizeId)]
+    if (filters.sizeIds?.length) {
+      query["company.size.id.in"] = filters.sizeIds.map(Number)
     }
 
     if (filters.simplesOptant !== undefined) {
-      query["simples.optant"] = filters.simplesOptant
+      query["company.simples.optant.eq"] = filters.simplesOptant
     }
 
     if (filters.simeiOptant !== undefined) {
-      query["simei.optant"] = filters.simeiOptant
+      query["company.simei.optant.eq"] = filters.simeiOptant
     }
 
     if (filters.foundedGte) {
@@ -103,10 +106,14 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
       query["emails.ex"] = filters.hasEmail
     }
 
+    if (filters.removeContadores) {
+      query["mainActivity.id.nin"] = CONTADOR_CNAES
+    }
+
     const items: LeadExtractionResultData[] = []
     let totalCount = 0
 
-    for await (const page of this.client.office.search(query as Parameters<typeof this.client.office.search>[0])) {
+    for await (const page of this.client.office.search(query)) {
       const offices = Array.isArray(page) ? page : [page]
       totalCount += offices.length
 
@@ -126,6 +133,49 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
           cnaeName: office.mainActivity?.text ?? null,
           type: resolveCompanyType(office),
           raw: office as unknown as object,
+        })
+      }
+    }
+
+    return { items, totalCount }
+  }
+
+  async searchPersons(filters: PersonSearchFilters, limit = MAX_RESULTS_PER_SEARCH): Promise<PersonSearchOutput> {
+    const query: PersonSearchDto = {
+      limit: Math.min(limit, MAX_RESULTS_PER_SEARCH),
+    }
+
+    if (filters.names?.length) {
+      query["name.in"] = filters.names
+    }
+
+    if (filters.types?.length) {
+      query["type.in"] = filters.types
+    }
+
+    if (filters.ageRanges?.length) {
+      query["age.in"] = filters.ageRanges as PersonSearchDto["age.in"]
+    }
+
+    const items: PersonSearchResultItem[] = []
+    let totalCount = 0
+
+    for await (const page of this.client.person.search(query)) {
+      const persons = Array.isArray(page) ? page : [page]
+      totalCount += persons.length
+
+      for (const person of persons) {
+        items.push({
+          id: person.id,
+          type: person.type,
+          name: person.name,
+          taxId: person.taxId,
+          age: person.age,
+          membership: (person.membership ?? []).map((m) => ({
+            since: m.since,
+            company: { id: m.company.id, name: m.company.name },
+            role: { id: m.role.id, text: m.role.text },
+          })),
         })
       }
     }

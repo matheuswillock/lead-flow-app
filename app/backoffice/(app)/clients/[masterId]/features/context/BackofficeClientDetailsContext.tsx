@@ -15,6 +15,7 @@ import type {
   BackofficeClientInvoiceFilters,
   BackofficeClientDetails,
   BackofficeClientDetailsFilters,
+  BackofficeClientPendingAction,
   BackofficePagination,
 } from "./BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -47,7 +48,7 @@ const DEFAULT_INVOICE_FILTERS: BackofficeClientInvoiceFilters = {
   period: "all",
 }
 
-type ClientDetailsSection = "teams" | "invoices" | "emails" | "forms"
+type ClientDetailsSection = "teams" | "invoices" | "pending-actions" | "emails" | "forms"
 
 interface BackofficeClientDetailsContextValue {
   masterId: string
@@ -64,12 +65,16 @@ interface BackofficeClientDetailsContextValue {
     upcoming: number
     overdue: number
   }
+  pendingActions: BackofficeClientPendingAction[]
   isLoading: boolean
   isTeamsLoading: boolean
   isInvoicesLoading: boolean
+  isPendingActionsLoading: boolean
+  isCancelingPendingAction: boolean
   error: string | null
   teamsError: string | null
   invoicesError: string | null
+  pendingActionsError: string | null
   activeSection: ClientDetailsSection
   setActiveSection: (section: ClientDetailsSection) => void
   filters: BackofficeClientDetailsFilters
@@ -88,6 +93,8 @@ interface BackofficeClientDetailsContextValue {
   }) => Promise<void>
   setInvoicesPage: (page: number) => Promise<void>
   setInvoicesFilters: (filters: Partial<BackofficeClientInvoiceFilters>) => Promise<void>
+  fetchPendingActions: () => Promise<void>
+  cancelPendingAction: (pendingActionId: string) => Promise<string>
   reload: () => Promise<void>
   clearFilters: () => Promise<void>
 }
@@ -122,16 +129,21 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     upcoming: 0,
     overdue: 0,
   })
+  const [pendingActions, setPendingActions] = useState<BackofficeClientPendingAction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isTeamsLoading, setIsTeamsLoading] = useState(false)
   const [isInvoicesLoading, setIsInvoicesLoading] = useState(true)
+  const [isPendingActionsLoading, setIsPendingActionsLoading] = useState(true)
+  const [isCancelingPendingAction, setIsCancelingPendingAction] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [teamsError, setTeamsError] = useState<string | null>(null)
   const [invoicesError, setInvoicesError] = useState<string | null>(null)
+  const [pendingActionsError, setPendingActionsError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<ClientDetailsSection>("teams")
   const [filters, setFilters] = useState<BackofficeClientDetailsFilters>(DEFAULT_FILTERS)
   const inFlight = useRef(false)
   const invoicesInFlight = useRef(false)
+  const pendingActionsInFlight = useRef(false)
   const hasLoadedDetails = useRef(false)
 
   const loadDetails = useCallback(async (
@@ -232,6 +244,28 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     }
   }, [masterId, service, tz])
 
+  const loadPendingActions = useCallback(async () => {
+    if (pendingActionsInFlight.current) {
+      return
+    }
+
+    pendingActionsInFlight.current = true
+    setIsPendingActionsLoading(true)
+    setPendingActionsError(null)
+
+    try {
+      const result = await service.getPendingActionsByMasterId(masterId)
+      setPendingActions(result.items)
+    } catch (err) {
+      console.error("[BackofficeClientDetailsContext][pending-actions]", err)
+      setPendingActionsError("Erro ao carregar ações pendentes do cliente")
+      setPendingActions([])
+    } finally {
+      setIsPendingActionsLoading(false)
+      pendingActionsInFlight.current = false
+    }
+  }, [masterId, service])
+
   const fetchDetails = useCallback(async (options?: {
     filters?: Partial<BackofficeClientDetailsFilters>
     page?: number
@@ -289,10 +323,42 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     await loadInvoices(1, invoicesPagination.pageSize, mergedFilters)
   }, [invoiceFilters, invoicesPagination.pageSize, loadInvoices])
 
+  const fetchPendingActions = useCallback(async () => {
+    await loadPendingActions()
+  }, [loadPendingActions])
+
+  const cancelPendingAction = useCallback(async (pendingActionId: string) => {
+    if (isCancelingPendingAction) {
+      throw new Error("Cancelamento já em andamento")
+    }
+
+    setIsCancelingPendingAction(true)
+    try {
+      const result = await service.cancelPendingAction(masterId, pendingActionId)
+      await Promise.all([
+        loadPendingActions(),
+        loadInvoices(invoicesPagination.page, invoicesPagination.pageSize, invoiceFilters),
+      ])
+      return result.message
+    } finally {
+      setIsCancelingPendingAction(false)
+    }
+  }, [
+    invoiceFilters,
+    invoicesPagination.page,
+    invoicesPagination.pageSize,
+    isCancelingPendingAction,
+    loadInvoices,
+    loadPendingActions,
+    masterId,
+    service,
+  ])
+
   const reload = useCallback(async () => {
     await Promise.all([
       loadDetails(filters, teamsPagination.page, teamsPagination.pageSize),
       loadInvoices(invoicesPagination.page, invoicesPagination.pageSize, invoiceFilters),
+      loadPendingActions(),
     ])
   }, [
     filters,
@@ -301,6 +367,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     invoicesPagination.pageSize,
     loadDetails,
     loadInvoices,
+    loadPendingActions,
     teamsPagination.page,
     teamsPagination.pageSize,
   ])
@@ -313,8 +380,9 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     void Promise.all([
       loadDetails(DEFAULT_FILTERS, 1, DEFAULT_TEAMS_PAGINATION.pageSize),
       loadInvoices(1, DEFAULT_INVOICES_PAGINATION.pageSize, DEFAULT_INVOICE_FILTERS),
+      loadPendingActions(),
     ])
-  }, [loadDetails, loadInvoices])
+  }, [loadDetails, loadInvoices, loadPendingActions])
 
   const teams = details?.teams ?? []
 
@@ -331,12 +399,16 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         invoicesPagination,
         invoiceFilters,
         invoicesSummary,
+        pendingActions,
         isLoading,
         isTeamsLoading,
         isInvoicesLoading,
+        isPendingActionsLoading,
+        isCancelingPendingAction,
         error,
         teamsError,
         invoicesError,
+        pendingActionsError,
         activeSection,
         setActiveSection,
         filters,
@@ -347,6 +419,8 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         fetchInvoices,
         setInvoicesPage,
         setInvoicesFilters,
+        fetchPendingActions,
+        cancelPendingAction,
         reload,
         clearFilters,
       }}

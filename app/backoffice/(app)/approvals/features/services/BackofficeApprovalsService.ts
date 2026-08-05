@@ -5,6 +5,7 @@ import type {
   BackofficeApprovalsListResult,
   BackofficeDeletionApprovalDecision,
 } from "../context/BackofficeApprovalsTypes"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -36,8 +37,8 @@ export class BackofficeApprovalsService implements IBackofficeApprovalsService {
 
     const query = search.toString()
     const url = query
-      ? `/api/v1/backoffice/deletion-requests?${query}`
-      : "/api/v1/backoffice/deletion-requests"
+      ? `${API_CLIENT_BASE}/backoffice/deletion-requests?${query}`
+      : `${API_CLIENT_BASE}/backoffice/deletion-requests`
 
     return parseOutput<BackofficeApprovalsListResult>(
       await fetch(url, { cache: "no-store" }),
@@ -50,7 +51,7 @@ export class BackofficeApprovalsService implements IBackofficeApprovalsService {
     decision: BackofficeDeletionApprovalDecision
   ): Promise<BackofficeApprovalDecisionResult> {
     return parseOutput<BackofficeApprovalDecisionResult>(
-      await fetch(`/api/v1/backoffice/deletion-requests/${encodeURIComponent(requestId)}/approve`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/deletion-requests/${encodeURIComponent(requestId)}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision }),

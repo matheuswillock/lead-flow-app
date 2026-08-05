@@ -770,6 +770,7 @@ canceled canceled
 scheduled scheduled
 sending sending
 sent sent
+partially_sent partially_sent
 canceled canceled
 failed failed
 archived archived
@@ -1039,6 +1040,8 @@ email_contact_id email_contact_id
 portfolio_id portfolio_id
 whatsapp_contact_id whatsapp_contact_id
 visitor_session visitor_session
+contract_holder contract_holder
+contract_dependent contract_dependent
         }
     
 
@@ -1049,7 +1052,9 @@ portfolio portfolio
 email_contact email_contact
 email_campaign email_campaign
 whatsapp_contact whatsapp_contact
+base_import base_import
 pixel_hit pixel_hit
+lead_finalized lead_finalized
         }
     
 
@@ -1685,6 +1690,11 @@ completed completed
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
     String asaasInstallmentId "❓"
+    Decimal discountPercent "❓"
+    String discountStatus "❓"
+    String discountApprovedByProfileId "❓"
+    DateTime discountApprovedAt "❓"
+    Decimal negotiatedTotalAmount "❓"
     Int installmentCount "❓"
     String billingType "❓"
     DateTime paymentDueDate "❓"
@@ -2560,9 +2570,11 @@ completed completed
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
+    String description "❓"
     String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
     String audienceContactIds 
+    String source_contact_list_ids 
     EmailCampaignStatus status 
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
@@ -2770,6 +2782,45 @@ completed completed
     }
   
 
+  "backoffice_radar_engagement_weights" {
+    String id "🗝️"
+    String eventType 
+    Int weight 
+    String description "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_radar_engagement_configs" {
+    String id "🗝️"
+    Int windowRecentDays 
+    Int windowMidDays 
+    Int windowOldDays 
+    Float recentMultiplier 
+    Float oldMultiplier 
+    Int hotThreshold 
+    Int warmThreshold 
+    Int lukewarmThreshold 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_form_engagement_score_rules" {
+    String id "🗝️"
+    Int minPercent 
+    Int maxPercent 
+    Float multiplier 
+    String label 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_crm_lead_status_transition_field_rules" {
     String id "🗝️"
     BackofficeLeadStatus targetStatus 
@@ -2807,6 +2858,17 @@ completed completed
     Boolean hasPermanentSubscription 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_subscription_change_logs" {
+    String id "🗝️"
+    String source 
+    String changeType 
+    Json before "❓"
+    Json after "❓"
+    Json metadata "❓"
+    DateTime createdAt 
     }
   
 
@@ -3206,6 +3268,8 @@ completed completed
     String normalizedPrimaryDocument "❓"
     DateTime lastSeenAt "❓"
     Json profileData "❓"
+    Int engagementScore "❓"
+    String engagementBand "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3263,6 +3327,39 @@ completed completed
     Json rulesJson 
     Boolean isSystem 
     Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_radar_field_definitions" {
+    String id "🗝️"
+    String key 
+    String label 
+    String valueType 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_radar_import_jobs" {
+    String id "🗝️"
+    String importId 
+    String baseName 
+    String sourceFormat 
+    String storagePath 
+    Json fieldMapping 
+    String status 
+    Int totalRows 
+    Int processedRows 
+    Int createdCount 
+    Int enrichedCount 
+    Int skippedCount 
+    Int deferredCount 
+    Json skippedIssues "❓"
+    Json failedBatches "❓"
+    Int batchSize 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3574,6 +3671,7 @@ completed completed
     Int meetingDurationMinutes 
     String schedulingMessage "❓"
     String formKind 
+    Boolean emailCampaignTrackingEnabled 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 
@@ -3720,6 +3818,30 @@ completed completed
     }
   
 
+  "backoffice_cnaes" {
+    Int id "🗝️"
+    String code 
+    String name 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_public_form_templates" {
+    String id "🗝️"
+    String slug 
+    String name 
+    String description "❓"
+    String formKind 
+    Json draft 
+    Int sortOrder 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_lead_tags" {
     String id "🗝️"
     String name 
@@ -3743,6 +3865,7 @@ completed completed
     String message "❓"
     LeadDocumentRequestStatus status 
     DateTime lastEmailSentAt "❓"
+    DateTime expiresAt 
     DateTime completedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -4072,6 +4195,8 @@ completed completed
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
+    "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
@@ -4175,6 +4300,11 @@ completed completed
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_radar_field_definitions" }o--|o corretor_studio_radar_import_jobs : "importJob"
+    "corretor_studio_radar_import_jobs" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelType" : "enum:channelType"
     "backoffice_bot_channels" |o--|| "BackofficeBotChannelStatus" : "enum:status"
     "backoffice_bot_auth_challenges" |o--|| "BackofficeBotAuthChallengeSource" : "enum:source"
@@ -4256,6 +4386,7 @@ completed completed
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
     "backoffice_lead_extraction_results" }o--|| backoffice_lead_extractions : "extraction"
+    "corretor_studio_public_form_templates" }o--|o corretor_studio_teams : "team"
     "corretor_studio_lead_tags" }o--|| corretor_studio_teams : "team"
     "corretor_studio_lead_tag_assignments" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_tag_assignments" }o--|| corretor_studio_lead_tags : "tag"

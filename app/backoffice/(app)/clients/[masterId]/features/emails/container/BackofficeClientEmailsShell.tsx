@@ -64,7 +64,7 @@ export function BackofficeClientEmailsShell() {
           <Field>
             <FieldLabel>Time</FieldLabel>
             <Select
-              value={selectedTeamId ?? undefined}
+              value={selectedTeamId ?? ""}
               onValueChange={(value) => onSelectedTeamIdChange(value)}
             >
               <SelectTrigger>

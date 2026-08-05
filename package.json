@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.184.1",
+  "version": "0.195.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -38,8 +38,9 @@
     "start": "next start",
     "governance:sync": "bun scripts/ai-governance.ts sync-adapters",
     "governance:check": "bun scripts/ai-governance.ts check",
+    "governance:check-api-masking": "bun scripts/ai-governance.ts check-api-masking",
     "governance:warn-allowlist": "bun scripts/ai-governance.ts warn-allowlist",
-    "validate:implementation": "bun run governance:sync && git diff --exit-code -- .github/copilot-instructions.md .cursor/rules/lead-flow-agents.mdc CLAUDE.md && bun run governance:check && bun run lint && bun run typecheck && bun run test:proxy",
+    "validate:implementation": "bun run governance:sync && git diff --exit-code -- .github/copilot-instructions.md .cursor/rules/lead-flow-agents.mdc CLAUDE.md && bun run governance:check && bun run governance:check-api-masking && bun run lint && bun run typecheck && bun run test:proxy",
     "hooks:install": "bun scripts/install-git-hooks.ts",
     "design:sync": "bun scripts/design/sync-tokens.ts",
     "design:check": "bun scripts/design/sync-tokens.ts --check",
@@ -54,7 +55,7 @@
     "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth lib/backoffice-adhesions app/api/services/backofficeAdhesion \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/leadSchedule app/api/useCases/email app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup app/api/useCases/integrations app/api/useCases/metaLeads",
     "test:backoffice-deletion": "bun test --isolate app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
     "test:email": "bun test --isolate app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
-    "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts",
+    "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts lib/supabase/auth-sessions.test.ts",
     "test:integration": "RADAR_INTEGRATION_TEST=1 bun test lib/radar/radar.integration.test.ts",
     "test:integration:local": "bun run local:up && RADAR_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration",
     "format": "prettier --write .",
@@ -82,6 +83,8 @@
     "prisma:backfill-teams": "bunx tsx scripts/backfill-teams.ts",
     "prisma:backfill-subscription-capacities": "bunx tsx scripts/backfill-subscription-capacities.ts",
     "prisma:backfill-waive-pending-add-user": "bunx tsx scripts/backfill-waive-pending-add-user.ts",
+    "audit:fake-email-attribution-leads": "bunx tsx scripts/audit-fake-email-attribution-leads.ts",
+    "cleanup:fake-email-attribution-leads": "bunx tsx scripts/cleanup-fake-email-attribution-leads.ts",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "bunx prisma studio",
     "prisma:generate": "bunx prisma generate",

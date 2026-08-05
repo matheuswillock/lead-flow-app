@@ -1,12 +1,9 @@
 "use client"
 
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
-import { useMemo, useState } from "react"
-import { Database, Plus, RefreshCw } from "lucide-react"
+import { useCallback, useMemo, useState } from "react"
+import { Database, Download, Plus } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -23,9 +20,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useRadarContext } from "../context/RadarContext"
-import type { RadarCustomSegmentListItem } from "../context/RadarTypes"
+import type { RadarCustomSegmentListItem, RadarSegment } from "../context/RadarTypes"
+import type { RadarSegmentProfilesTarget } from "../context/useRadarHook"
 import { RadarEmptyState } from "../components/RadarEmptyState"
 import { RadarProfileFilters } from "../components/RadarProfileFilters"
 import { RadarProfileSheet } from "../components/RadarProfileSheet"
@@ -33,6 +36,7 @@ import { RadarProfilesTable } from "../components/RadarProfilesTable"
 import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDialog"
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
 import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
+import { RadarImportButton } from "../components/radar-import/RadarImportButton"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -46,13 +50,9 @@ export function RadarContainer() {
     detailEventsTotal,
     isLoadingMoreEvents,
     isLoading,
-    isSyncing,
-    isSyncingWhatsapp,
-    isSyncingLead,
     isDetailLoading,
     mutationLock,
     error,
-    lastSyncAt,
     page,
     total,
     pageSize,
@@ -74,10 +74,11 @@ export function RadarContainer() {
     openProfile,
     closeProfile,
     loadMoreProfileEvents,
-    runSync,
-    runWhatsappSync,
-    syncLeadProfile,
     deleteCustomSegment,
+    previewSegmentContactList,
+    materializeSegmentToContactList,
+    exportFilteredProfiles,
+    exportSegmentMembers,
     segmentProfilesTarget,
     segmentProfilesItems,
     segmentProfilesTotal,
@@ -87,13 +88,52 @@ export function RadarContainer() {
     openSegmentProfiles,
     closeSegmentProfiles,
     changeSegmentProfilesPage,
+    campaignDeepLinkSegment,
+    touchpoints,
+    isLoadingTouchpoints,
+    contracts,
+    isLoadingContracts,
+    reload,
   } = useRadarContext()
 
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingSegment, setEditingSegment] = useState<RadarCustomSegmentListItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RadarCustomSegmentListItem | null>(null)
+  const [contactListPreviewTarget, setContactListPreviewTarget] = useState<RadarSegmentProfilesTarget | null>(null)
+  const [contactListPreviewCount, setContactListPreviewCount] = useState<number | null>(null)
+  const [isPreviewingContactList, setIsPreviewingContactList] = useState(false)
+  const [isCreatingContactList, setIsCreatingContactList] = useState(false)
 
-  const systemSegments = useMemo(() => segments.filter((segment) => segment.isSystem), [segments])
+  const handleOpenContactListDialog = useCallback(
+    async (target: RadarSegmentProfilesTarget) => {
+      setContactListPreviewTarget(target)
+      setContactListPreviewCount(null)
+      setIsPreviewingContactList(true)
+      const count = await previewSegmentContactList(target.slugOrId, target.kind)
+      setContactListPreviewCount(count)
+      setIsPreviewingContactList(false)
+    },
+    [previewSegmentContactList]
+  )
+
+  const handleConfirmContactList = useCallback(async () => {
+    if (!contactListPreviewTarget) return
+    setIsCreatingContactList(true)
+    try {
+      await materializeSegmentToContactList(contactListPreviewTarget.slugOrId, contactListPreviewTarget.kind)
+      setContactListPreviewTarget(null)
+      setContactListPreviewCount(null)
+    } finally {
+      setIsCreatingContactList(false)
+    }
+  }, [contactListPreviewTarget, materializeSegmentToContactList])
+
+  const systemSegments = useMemo(() => {
+    const base = segments.filter((segment: RadarSegment) => segment.isSystem)
+    if (!campaignDeepLinkSegment) return base
+    if (base.some((segment) => segment.slug === campaignDeepLinkSegment.slug)) return base
+    return [campaignDeepLinkSegment, ...base]
+  }, [campaignDeepLinkSegment, segments])
 
   if (!hasAccess(FEATURE_SLUGS.RADAR)) {
     return (
@@ -108,29 +148,12 @@ export function RadarContainer() {
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Database data-icon="inline-start" />
-              <h1 className="text-xl font-semibold">Radar</h1>
-            </div>
-            <p className="text-sm text-muted-foreground">Perfis unificados para campanhas de e-mail</p>
-          </div>
+        <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            {lastSyncAt ? (
-              <Badge variant="outline">
-                Último sync: {format(lastSyncAt, "dd/MM HH:mm", { locale: ptBR })}
-              </Badge>
-            ) : null}
-            <Button variant="outline" disabled={isSyncingWhatsapp} onClick={() => void runWhatsappSync()}>
-              <RefreshCw className={cn(isSyncingWhatsapp && "animate-spin")} data-icon="inline-start" />
-              Sincronizar WhatsApp
-            </Button>
-            <Button variant="outline" disabled={isSyncing} onClick={() => void runSync()}>
-              <RefreshCw className={cn(isSyncing && "animate-spin")} data-icon="inline-start" />
-              Sincronizar
-            </Button>
+            <Database data-icon="inline-start" />
+            <h1 className="text-xl font-semibold">Radar</h1>
           </div>
+          <p className="text-sm text-muted-foreground">Perfis unificados para campanhas de e-mail</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -158,6 +181,25 @@ export function RadarContainer() {
           </TabsList>
 
           <TabsContent value="perfis" className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={mutationLock || total === 0}>
+                    <Download data-icon="inline-start" />
+                    Exportar
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void exportFilteredProfiles("csv")}>
+                    CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void exportFilteredProfiles("excel")}>
+                    Excel
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <RadarImportButton mutationLock={mutationLock} onImportComplete={() => void reload()} />
+            </div>
             <RadarProfileFilters
               search={search}
               onSearchChange={(value) => {
@@ -198,8 +240,8 @@ export function RadarContainer() {
               <CardContent>
                 {!isLoading && !error && profiles.length === 0 ? (
                   <RadarEmptyState
-                    title="Nenhum perfil sincronizado"
-                    description='Use "Sincronizar" para importar dados do CRM, carteira e e-mail.'
+                    title="Nenhum perfil encontrado"
+                    description="Os perfis são sincronizados automaticamente a partir do CRM, carteira e e-mail."
                   />
                 ) : (
                   <RadarProfilesTable
@@ -230,8 +272,18 @@ export function RadarContainer() {
                         description={segment.description}
                         count={segment.count}
                         variant="system"
+                        mutationLock={mutationLock}
                         onViewProfiles={() =>
                           openSegmentProfiles({ kind: "system", slugOrId: segment.slug, name: segment.name })
+                        }
+                        onExport={(format) =>
+                          void exportSegmentMembers(
+                            { kind: "system", slugOrId: segment.slug, name: segment.name },
+                            format
+                          )
+                        }
+                        onCreateContactList={() =>
+                          void handleOpenContactListDialog({ kind: "system", slugOrId: segment.slug, name: segment.name })
                         }
                       />
                     ))}
@@ -284,6 +336,25 @@ export function RadarContainer() {
                               ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
                               : undefined
                           }
+                          onExport={
+                            segment.isActive
+                              ? (format) =>
+                                  void exportSegmentMembers(
+                                    { kind: "custom", slugOrId: segment.id, name: segment.name },
+                                    format
+                                  )
+                              : undefined
+                          }
+                          onCreateContactList={
+                            segment.isActive
+                              ? () =>
+                                  void handleOpenContactListDialog({
+                                    kind: "custom",
+                                    slugOrId: segment.id,
+                                    name: segment.name,
+                                  })
+                              : undefined
+                          }
                           onEdit={() => {
                             setEditingSegment(segment)
                             setBuilderOpen(true)
@@ -306,8 +377,10 @@ export function RadarContainer() {
           detailEventsTotal={detailEventsTotal}
           isLoadingMoreEvents={isLoadingMoreEvents}
           onLoadMoreEvents={() => void loadMoreProfileEvents()}
-          isSyncingLead={isSyncingLead}
-          onSyncLead={() => void syncLeadProfile()}
+          touchpoints={touchpoints}
+          isLoadingTouchpoints={isLoadingTouchpoints}
+          contracts={contracts}
+          isLoadingContracts={isLoadingContracts}
         />
 
         <RadarSegmentBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} segment={editingSegment} />
@@ -327,6 +400,41 @@ export function RadarContainer() {
             void openProfile(id)
           }}
         />
+
+        <AlertDialog
+          open={Boolean(contactListPreviewTarget)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setContactListPreviewTarget(null)
+              setContactListPreviewCount(null)
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Criar lista de contatos?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {isPreviewingContactList
+                  ? "Calculando contagem do segmento…"
+                  : contactListPreviewCount === null
+                    ? "Não foi possível calcular a contagem."
+                    : `Será criada uma lista com ${contactListPreviewCount} contato(s) do segmento "${contactListPreviewTarget?.name}". Esta é uma cópia estática — alterações futuras no segmento não atualizam a lista.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isCreatingContactList}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isPreviewingContactList || isCreatingContactList || contactListPreviewCount === null}
+                onClick={(e) => {
+                  e.preventDefault()
+                  void handleConfirmContactList()
+                }}
+              >
+                {isCreatingContactList ? "Criando…" : "Criar lista"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
           <AlertDialogContent>

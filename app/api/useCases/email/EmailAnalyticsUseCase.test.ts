@@ -11,6 +11,11 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
     countLogs: mock(async () => 0),
     listDispatches: mock(async () => []),
     findDispatchPreview: mock(async () => null),
+    listTemplateVersionMetrics: mock(async () => []),
+    listCampaignMetrics: mock(async () => []),
+    countFormCompletions: mock(async () => 0),
+    findCampaignTemplateHtml: mock(async () => null),
+    findCampaignNames: mock(async () => []),
     ...overrides,
   }
 }
@@ -22,17 +27,15 @@ const baseWindow = { from: new Date("2026-01-01"), to: new Date("2026-01-31") }
 describe("EmailAnalyticsUseCase.getAnalytics", () => {
   it("A1 — openRate usa 'sent' como denominador (não 'delivered')", async () => {
     const repo = buildRepo({
-      countLogs: mock()
-        .mockResolvedValueOnce(2000)    // total (sent)
-        .mockResolvedValueOnce(1800)    // delivered
-        .mockResolvedValueOnce(400)     // opened
-        .mockResolvedValueOnce(100)     // clicked
-        .mockResolvedValueOnce(50)      // bounced
-        .mockResolvedValueOnce(5)       // complained
-        .mockResolvedValueOnce(0)       // failed
-        .mockResolvedValueOnce(0)       // delivery_delayed
-        .mockResolvedValueOnce(0)       // unsubscribed
-        .mockResolvedValueOnce(0),      // suppressed
+      countLogs: mock(async (_where, filter) => {
+        if (!filter) return 2000
+        if (filter === "delivered") return 1800
+        if (filter === "opened") return 400
+        if (filter === "clicked") return 100
+        if (filter === "bounced") return 50
+        if (filter === "complained") return 5
+        return 0
+      }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -42,21 +45,21 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
     expect(output.result.rates.openRate).toBe(20)
     // garante que o bug antigo (400/1800 ≈ 22.22) não está presente
     expect(output.result.rates.openRate).not.toBe(22.22)
+    expect(output.result.deltas).toBeDefined()
+    expect(output.result.totals.formCompletions).toBe(0)
   })
 
   it("A2 — clickRate usa 'sent' como denominador", async () => {
     const repo = buildRepo({
-      countLogs: mock()
-        .mockResolvedValueOnce(2000)
-        .mockResolvedValueOnce(1800)
-        .mockResolvedValueOnce(400)
-        .mockResolvedValueOnce(100)
-        .mockResolvedValueOnce(50)
-        .mockResolvedValueOnce(5)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0),
+      countLogs: mock(async (_where, filter) => {
+        if (!filter) return 2000
+        if (filter === "delivered") return 1800
+        if (filter === "opened") return 400
+        if (filter === "clicked") return 100
+        if (filter === "bounced") return 50
+        if (filter === "complained") return 5
+        return 0
+      }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -67,17 +70,15 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
 
   it("A3 — deliverabilityRate = delivered / sent", async () => {
     const repo = buildRepo({
-      countLogs: mock()
-        .mockResolvedValueOnce(2000)
-        .mockResolvedValueOnce(1800)
-        .mockResolvedValueOnce(400)
-        .mockResolvedValueOnce(100)
-        .mockResolvedValueOnce(50)
-        .mockResolvedValueOnce(5)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0),
+      countLogs: mock(async (_where, filter) => {
+        if (!filter) return 2000
+        if (filter === "delivered") return 1800
+        if (filter === "opened") return 400
+        if (filter === "clicked") return 100
+        if (filter === "bounced") return 50
+        if (filter === "complained") return 5
+        return 0
+      }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -101,17 +102,12 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
   it("A5 — safeRate arredonda para 2 casas decimais", async () => {
     // 1 opened / 3 sent = 33.33...
     const repo = buildRepo({
-      countLogs: mock()
-        .mockResolvedValueOnce(3)   // sent
-        .mockResolvedValueOnce(3)   // delivered
-        .mockResolvedValueOnce(1)   // opened
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0),
+      countLogs: mock(async (_where, filter) => {
+        if (!filter) return 3
+        if (filter === "delivered") return 3
+        if (filter === "opened") return 1
+        return 0
+      }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -129,17 +125,15 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
   })
 
   it("A7 — com campaignId: rates por disparo calculadas com 'sent' como denominador", async () => {
-    const countLogs = mock()
-      .mockResolvedValueOnce(500)   // overall sent
-      .mockResolvedValueOnce(450)
-      .mockResolvedValueOnce(200)
-      .mockResolvedValueOnce(50)
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
+    const countLogs = mock(async (_where, filter) => {
+      if (!filter) return 500
+      if (filter === "delivered") return 450
+      if (filter === "opened") return 200
+      if (filter === "clicked") return 50
+      if (filter === "bounced") return 10
+      if (filter === "complained") return 2
+      return 0
+    })
     const listDispatches = mock(async () => [
       {
         id: "disp-1",
@@ -211,5 +205,81 @@ describe("EmailAnalyticsUseCase.getDispatchPreview", () => {
     expect(output.result.subject).toBe("Assunto Campanha")
     expect(output.result.html).toBe("<p>Corpo</p>")
     expect(output.result.templateVersionNumber).toBe(3)
+  })
+})
+
+describe("EmailAnalyticsUseCase.getTopTemplates", () => {
+  it("D18 — agrega versões do mesmo grupo e ranqueia top 3", async () => {
+    const listTemplateVersionMetrics = mock(async () => [
+      {
+        versionGroupId: "g1",
+        templateId: "t1-v1",
+        name: "Promo v1",
+        sent: 100,
+        delivered: 90,
+        opened: 40,
+        clicked: 5,
+        bounced: 0,
+        complained: 0,
+      },
+      {
+        versionGroupId: "g1",
+        templateId: "t1-v2",
+        name: "Promo v2",
+        sent: 100,
+        delivered: 90,
+        opened: 40,
+        clicked: 5,
+        bounced: 0,
+        complained: 0,
+      },
+      {
+        versionGroupId: "g2",
+        templateId: "t2",
+        name: "News",
+        sent: 100,
+        delivered: 95,
+        opened: 10,
+        clicked: 20,
+        bounced: 0,
+        complained: 0,
+      },
+      {
+        versionGroupId: "g3",
+        templateId: "t3",
+        name: "Sem dados",
+        sent: 0,
+        delivered: 0,
+        opened: 0,
+        clicked: 0,
+        bounced: 0,
+        complained: 0,
+      },
+    ])
+    const uc = new EmailAnalyticsUseCase(buildRepo({ listTemplateVersionMetrics }))
+    const output = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(true)
+    // g1 agrega 200 sent / 80 opened = 40% open — lidera abertura
+    expect(output.result.byOpenRate[0].versionGroupId).toBe("g1")
+    expect(output.result.byOpenRate[0].rates.openRate).toBe(40)
+    // g2 lidera clique (20%)
+    expect(output.result.byClickRate[0].versionGroupId).toBe("g2")
+    // Sem dados suficientes fica de fora
+    expect(
+      output.result.byOpenRate.every((row: { versionGroupId: string }) => row.versionGroupId !== "g3"),
+    ).toBe(true)
+  })
+
+  it("D18 — repository lança → isValid false", async () => {
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({
+        listTemplateVersionMetrics: mock(async () => {
+          throw new Error("db")
+        }),
+      }),
+    )
+    const output = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
+    expect(output.isValid).toBe(false)
   })
 })

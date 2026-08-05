@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS "corretor_studio_lead_document_requests" (
   "message"            TEXT,
   "status"             "lead_document_request_status" NOT NULL DEFAULT 'pending',
   "lastEmailSentAt"    TIMESTAMPTZ,
+  "expiresAt"          TIMESTAMPTZ                   NOT NULL DEFAULT (now() + interval '30 days'),
   "completedAt"        TIMESTAMPTZ,
   "createdAt"          TIMESTAMPTZ                   NOT NULL DEFAULT now(),
   "updatedAt"          TIMESTAMPTZ                   NOT NULL DEFAULT now(),
@@ -120,6 +121,8 @@ CREATE INDEX IF NOT EXISTS "corretor_studio_lead_document_requests_token_idx"
   ON "corretor_studio_lead_document_requests" ("publicToken");
 CREATE INDEX IF NOT EXISTS "corretor_studio_lead_document_requests_status_email_idx"
   ON "corretor_studio_lead_document_requests" ("status", "lastEmailSentAt");
+CREATE INDEX IF NOT EXISTS "corretor_studio_lead_document_requests_expires_at_idx"
+  ON "corretor_studio_lead_document_requests" ("expiresAt");
 
 -- ==============================
 -- 8. LeadDocumentRequestItem

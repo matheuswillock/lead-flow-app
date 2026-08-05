@@ -41,6 +41,7 @@ import {
   LeadInfoRequirementDialog,
   type LeadInfoPayload,
 } from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface BoardContainerProps {
   title?: string;
@@ -275,7 +276,7 @@ export function BoardContainer({
       const loadingToast = toast.loading("Confirmando agenda...");
 
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -316,7 +317,7 @@ export function BoardContainer({
     if (data.contractFile && supabaseId) {
       const formData = new FormData();
       formData.append('file', data.contractFile);
-      const uploadRes = await fetch(`/api/v1/leads/${selectedLead.id}/attachments`, {
+      const uploadRes = await fetch(`${API_CLIENT_BASE}/leads/${selectedLead.id}/attachments`, {
         method: 'POST',
         headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': activeTeamId ?? '' },
         body: formData,

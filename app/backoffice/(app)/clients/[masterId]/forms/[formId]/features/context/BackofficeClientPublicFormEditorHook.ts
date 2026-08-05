@@ -30,6 +30,10 @@ export function useBackofficeClientPublicFormEditor(
         }
       },
       getForm: (id) => service.get(masterId, teamId, id),
+      getTemplate: async (slug) => {
+        const template = await service.getTemplate(masterId, teamId, slug)
+        return template.draft
+      },
       save: (id, input) =>
         id
           ? service.update(masterId, teamId, id, input)

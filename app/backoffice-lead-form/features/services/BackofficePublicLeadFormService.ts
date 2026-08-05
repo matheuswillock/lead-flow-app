@@ -4,6 +4,7 @@ import type {
   SubmitBackofficePublicLeadPayload,
   SubmitBackofficePublicLeadResult,
 } from "./IBackofficePublicLeadFormService"
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 class BackofficePublicLeadFormService implements IBackofficePublicLeadFormService {
   private resolveTrackingPayload(): Pick<
@@ -39,7 +40,7 @@ class BackofficePublicLeadFormService implements IBackofficePublicLeadFormServic
   }
 
   async fetchClosers(): Promise<BackofficePublicCloserOption[]> {
-    const response = await fetch("/api/v1/backoffice/public-lead-form/bootstrap", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/public-lead-form/bootstrap`, {
       cache: "no-store",
     })
     const result = await response.json()
@@ -54,7 +55,7 @@ class BackofficePublicLeadFormService implements IBackofficePublicLeadFormServic
     date: string
     timezone?: string
   }): Promise<string[]> {
-    const response = await fetch("/api/v1/backoffice/public-lead-form/availability", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/public-lead-form/availability`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -70,7 +71,7 @@ class BackofficePublicLeadFormService implements IBackofficePublicLeadFormServic
     payload: SubmitBackofficePublicLeadPayload,
   ): Promise<SubmitBackofficePublicLeadResult> {
     const tracking = this.resolveTrackingPayload()
-    const response = await fetch("/api/v1/backoffice/public-lead-form", {
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/public-lead-form`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

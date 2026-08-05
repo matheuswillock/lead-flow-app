@@ -1,0 +1,627 @@
+import { randomUUID } from "crypto"
+import { NotificationType, Prisma } from "@prisma/client"
+import { Output } from "@/lib/output"
+import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
+import { radarImportJobRepository } from "@/app/api/infra/data/repositories/radar/RadarImportJobRepository"
+import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
+import { radarService } from "@/app/api/services/radar/RadarService"
+import { notificationService } from "@/app/api/services/notifications/NotificationService"
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import { generateRadarImportId } from "@/lib/radar/generate-import-id"
+import {
+  downloadRadarImportPayload,
+  uploadRadarImportPayload,
+} from "@/lib/radar/radar-import-storage"
+import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import {
+  inferRadarFieldValueType,
+  isRadarNewFieldKey,
+  profileDataKeyForImportField,
+  RADAR_IMPORT_MAX_ROWS,
+  slugifyRadarFieldKey,
+} from "@/lib/radarImport/radarImportFields"
+import type { ParsedRadarImportRow } from "@/lib/radarImport/parseRadarImportBuffer"
+import {
+  formatDisplayPhone,
+  isValidRadarPrimaryIdentity,
+  normalizeRadarDocument,
+  normalizeRadarEmail,
+  normalizeRadarName,
+  normalizeRadarPhone,
+} from "@/lib/radar/normalization"
+
+const BATCH_SIZE = 500
+const MAX_BATCH_ATTEMPTS = 3
+const MAX_PROCESSING_MS = 45_000
+const SKIPPED_ISSUES_PERSIST_LIMIT = 100
+const PREVIEW_ROW_LIMIT = 5
+
+type StoredImportPayload = {
+  columns: string[]
+  rows: ParsedRadarImportRow[]
+  sourceFormat: string
+}
+
+type SkippedImportIssue = {
+  line?: number
+  reason: string
+}
+
+type FailedBatchEntry = {
+  batchIndex: number
+  attempts: number
+  lastError: string
+}
+
+export class RadarBaseImportUseCase {
+  private parseStoredPayload(raw: string): StoredImportPayload {
+    return JSON.parse(raw) as StoredImportPayload
+  }
+
+  private buildDedupeKey(params: {
+    normalizedPhone: string
+    normalizedName: string
+    normalizedEmail: string
+  }): string {
+    if (params.normalizedPhone && params.normalizedName) {
+      return `phone:${params.normalizedPhone}:${params.normalizedName}`
+    }
+    if (params.normalizedEmail) {
+      return `email:${params.normalizedEmail}`
+    }
+    return ""
+  }
+
+  private extractMappedValues(
+    row: ParsedRadarImportRow,
+    fieldMapping: Record<string, string>
+  ): Record<string, string> {
+    const values: Record<string, string> = {}
+    for (const [fieldKey, column] of Object.entries(fieldMapping)) {
+      const value = row.values[column]
+      if (value?.trim()) {
+        values[fieldKey] = value.trim()
+      }
+    }
+    return values
+  }
+
+  private mergeProfileData(
+    existing: Prisma.JsonValue | null | undefined,
+    patch: Record<string, unknown>
+  ): Prisma.InputJsonValue {
+    const base =
+      existing && typeof existing === "object" && !Array.isArray(existing)
+        ? (existing as Record<string, unknown>)
+        : {}
+    return { ...base, ...patch } as Prisma.InputJsonValue
+  }
+
+  private buildProfileDataPatch(
+    mappedValues: Record<string, string>,
+    fieldMapping: Record<string, string>
+  ): Record<string, unknown> {
+    const patch: Record<string, unknown> = {}
+    for (const fieldKey of Object.keys(fieldMapping)) {
+      if (fieldKey === "name" || fieldKey === "phone" || fieldKey === "email" || fieldKey === "document") {
+        continue
+      }
+      const value = mappedValues[fieldKey]
+      if (!value) continue
+      patch[profileDataKeyForImportField(fieldKey)] = value
+    }
+    return patch
+  }
+
+  private async upsertFieldDefinitions(
+    teamId: string,
+    profileId: string,
+    fieldMapping: Record<string, string>,
+    rows: ParsedRadarImportRow[],
+    importJobId: string
+  ): Promise<Record<string, string>> {
+    const resolvedMapping = { ...fieldMapping }
+
+    for (const [fieldKey, column] of Object.entries(fieldMapping)) {
+      if (!isRadarNewFieldKey(fieldKey)) continue
+
+      const slug = fieldKey.slice(4) || slugifyRadarFieldKey(column)
+      const label = column
+      const samples = rows
+        .map((row) => row.values[column])
+        .filter((value): value is string => Boolean(value?.trim()))
+        .slice(0, 20)
+
+      await teamRadarFieldDefinitionRepository.upsertDefinition({
+        id: randomUUID(),
+        teamId,
+        key: slug,
+        label,
+        valueType: inferRadarFieldValueType(samples),
+        createdBy: profileId,
+        importJobId,
+      })
+
+      resolvedMapping[`new:${slug}`] = column
+      delete resolvedMapping[fieldKey]
+    }
+
+    return resolvedMapping
+  }
+
+  private async processRow(
+    teamId: string,
+    importJobId: string,
+    row: ParsedRadarImportRow,
+    fieldMapping: Record<string, string>,
+    seenKeys: Set<string>
+  ): Promise<{ outcome: "created" | "enriched" | "skipped" | "deferred"; issue?: SkippedImportIssue }> {
+    const mappedValues = this.extractMappedValues(row, fieldMapping)
+    const rawName = mappedValues.name ?? ""
+    const rawPhone = mappedValues.phone ?? ""
+    const rawEmail = mappedValues.email ?? ""
+    const rawDocument = mappedValues.document ?? ""
+
+    const normalizedName = normalizeRadarName(rawName)
+    const normalizedPhone = normalizeRadarPhone(rawPhone)
+    const normalizedEmail = normalizeRadarEmail(rawEmail)
+    const normalizedDocument = normalizeRadarDocument(rawDocument)
+
+    const emailValidation = rawEmail ? isValidResendRecipientEmail(rawEmail) : null
+    const hasValidEmail = emailValidation?.ok === true
+    const hasValidPhoneIdentity = isValidRadarPrimaryIdentity(rawPhone, rawName)
+
+    if (!hasValidPhoneIdentity && !hasValidEmail) {
+      return {
+        outcome: "deferred",
+        issue: { line: row.line, reason: "Sem identidade válida (telefone+nome ou e-mail)" },
+      }
+    }
+
+    if (rawEmail && !hasValidEmail) {
+      return {
+        outcome: "skipped",
+        issue: {
+          line: row.line,
+          reason: emailValidation && !emailValidation.ok ? emailValidation.reason : "E-mail inválido",
+        },
+      }
+    }
+
+    const dedupeKey = this.buildDedupeKey({ normalizedPhone, normalizedName, normalizedEmail: hasValidEmail ? normalizedEmail : "" })
+    if (dedupeKey && seenKeys.has(dedupeKey)) {
+      return { outcome: "skipped", issue: { line: row.line, reason: "Duplicata na importação" } }
+    }
+    if (dedupeKey) seenKeys.add(dedupeKey)
+
+    const profileDataPatch = this.buildProfileDataPatch(mappedValues, fieldMapping)
+    const now = new Date()
+    let profileId: string
+    let wasExisting = false
+
+    if (hasValidPhoneIdentity) {
+      const email = hasValidEmail && emailValidation?.ok ? emailValidation.email : null
+      const resolved = await radarRepository.resolveProfileForPhone({
+        teamId,
+        normalizedPhone,
+        normalizedName,
+        displayName: rawName.trim(),
+        displayPhone: formatDisplayPhone(rawPhone),
+        phoneValue: rawPhone,
+        phoneSource: "base_import",
+        primaryEmail: email,
+        normalizedPrimaryEmail: email,
+        primaryDocument: rawDocument || null,
+        normalizedPrimaryDocument: normalizedDocument || null,
+        lastSeenAt: now,
+      })
+      profileId = resolved.profile.id
+      wasExisting = resolved.wasExisting
+    } else {
+      if (!emailValidation || !emailValidation.ok) {
+        return {
+          outcome: "skipped",
+          issue: { line: row.line, reason: "E-mail inválido" },
+        }
+      }
+      const validatedEmail = emailValidation.email
+      const resolved = await radarRepository.resolveProfileForEmail({
+        teamId,
+        normalizedEmail: validatedEmail,
+        emailValue: rawEmail.trim(),
+        displayName: rawName.trim() || null,
+        normalizedName: normalizedName || null,
+        emailSource: "base_import",
+        lastSeenAt: now,
+      })
+      profileId = resolved.profile.id
+      wasExisting = resolved.wasExisting
+    }
+
+    if (normalizedDocument) {
+      await radarRepository.upsertIdentity({
+        profileId,
+        teamId,
+        type: "document",
+        value: rawDocument,
+        normalizedValue: normalizedDocument,
+        source: "base_import",
+      })
+    }
+
+    const existingProfile = await radarImportJobRepository.findProfileData(profileId, teamId)
+
+    await radarRepository.updateProfileData(
+      profileId,
+      teamId,
+      this.mergeProfileData(existingProfile?.profileData, profileDataPatch)
+    )
+
+    await radarRepository.upsertSourceLink({
+      profileId,
+      teamId,
+      sourceType: "base_import",
+      sourceId: `${importJobId}:row:${row.line}`,
+      sourceMetadata: { line: row.line },
+    })
+
+    await radarRepository.appendEventIfNew({
+      profileId,
+      teamId,
+      eventType: "profile.imported",
+      sourceType: "base_import",
+      sourceId: `${importJobId}:${row.line}`,
+      occurredAt: now,
+      metadata: { importJobId },
+    })
+
+    return { outcome: wasExisting ? "enriched" : "created" }
+  }
+
+  async uploadFile(
+    buffer: Buffer,
+    fileName: string,
+    ctx: TeamAccess
+  ): Promise<Output> {
+    try {
+      const { parseRadarImportBuffer } = await import("@/lib/radarImport/parseRadarImportBuffer")
+      const parsed = parseRadarImportBuffer(buffer, fileName)
+
+      if (parsed.rows.length === 0) {
+        return new Output(false, [], ["Nenhuma linha válida encontrada no arquivo"], null)
+      }
+
+      if (parsed.rows.length > RADAR_IMPORT_MAX_ROWS) {
+        return new Output(
+          false,
+          [],
+          [`O arquivo excede o limite de ${RADAR_IMPORT_MAX_ROWS} linhas`],
+          null
+        )
+      }
+
+      const importId = generateRadarImportId()
+      const storagePath = await uploadRadarImportPayload(
+        ctx.teamId,
+        importId,
+        JSON.stringify({
+          columns: parsed.columns,
+          rows: parsed.rows,
+          sourceFormat: parsed.sourceFormat,
+        })
+      )
+
+      return new Output(true, [], [], {
+        importId,
+        storagePath,
+        columns: parsed.columns,
+        previewRows: parsed.rows.slice(0, PREVIEW_ROW_LIMIT),
+        totalRows: parsed.rows.length,
+        sourceFormat: parsed.sourceFormat,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao processar arquivo"
+      console.error("[RadarBaseImportUseCase][uploadFile]", error)
+      return new Output(false, [], [message], null)
+    }
+  }
+
+  async enqueueMappedImport(input: {
+    importId: string
+    storagePath: string
+    baseName: string
+    fieldMapping: Record<string, string>
+    sourceFormat: string
+    totalRows: number
+    ctx: TeamAccess
+  }): Promise<Output> {
+    try {
+      if (!input.baseName.trim()) {
+        return new Output(false, [], ["Informe o nome da base"], null)
+      }
+
+      if (Object.keys(input.fieldMapping).length === 0) {
+        return new Output(false, [], ["Mapeie ao menos um campo"], null)
+      }
+
+      const hasIdentityMapping = ["name", "phone", "email"].some((key) => input.fieldMapping[key])
+      if (!hasIdentityMapping) {
+        return new Output(false, [], ["Mapeie pelo menos nome, telefone ou e-mail"], null)
+      }
+
+      const raw = await downloadRadarImportPayload(input.storagePath)
+      const payload = this.parseStoredPayload(raw)
+
+      const jobId = randomUUID()
+
+      // Create the job first so field definitions can reference it via FK
+      await radarImportJobRepository.create({
+        id: jobId,
+        importId: input.importId,
+        team: { connect: { id: input.ctx.teamId } },
+        requester: { connect: { id: input.ctx.profileId } },
+        baseName: input.baseName.trim(),
+        sourceFormat: input.sourceFormat,
+        storagePath: input.storagePath,
+        fieldMapping: input.fieldMapping,
+        status: "pending",
+        totalRows: input.totalRows,
+        batchSize: BATCH_SIZE,
+        failedBatches: Prisma.JsonNull,
+      })
+
+      const resolvedFieldMapping = await this.upsertFieldDefinitions(
+        input.ctx.teamId,
+        input.ctx.profileId,
+        input.fieldMapping,
+        payload.rows,
+        jobId
+      )
+
+      await radarImportJobRepository.updateJob(jobId, {
+        fieldMapping: resolvedFieldMapping as unknown as Prisma.InputJsonValue,
+      })
+
+      return new Output(true, ["Importação enfileirada"], [], { importId: input.importId })
+    } catch (error) {
+      console.error("[RadarBaseImportUseCase][enqueueMappedImport]", error)
+      return new Output(false, [], ["Erro ao enfileirar importação"], null)
+    }
+  }
+
+  async getJobStatus(teamId: string, importId: string): Promise<Output> {
+    const job = await radarImportJobRepository.findByImportId(teamId, importId)
+
+    if (!job) {
+      return new Output(false, [], ["Job de importação não encontrado"], null)
+    }
+
+    return new Output(true, [], [], job)
+  }
+
+  private parseFailedBatches(value: Prisma.JsonValue | null): FailedBatchEntry[] {
+    if (!value || !Array.isArray(value)) return []
+    return value as FailedBatchEntry[]
+  }
+
+  private parseAttemptsByBatch(value: Prisma.JsonValue | null): Record<string, number> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+    return value as Record<string, number>
+  }
+
+  private async finalizeJob(
+    job: {
+      id: string
+      importId: string
+      teamId: string
+      requestedBy: string
+      createdCount: number
+      enrichedCount: number
+      skippedCount: number
+      deferredCount: number
+      skippedIssues: Prisma.JsonValue | null
+      failedBatches: Prisma.JsonValue | null
+    },
+    ctx: TeamAccess
+  ): Promise<void> {
+    const failedBatches = this.parseFailedBatches(job.failedBatches)
+    const status = failedBatches.length > 0 ? "completed_with_errors" : "completed"
+
+    await radarImportJobRepository.updateJob(job.id, { status })
+
+    await radarService.syncProfileDataForTeam({ teamId: job.teamId, ctx })
+
+    const message =
+      `Importação da base "${job.importId}" concluída: ${job.createdCount} criados, ${job.enrichedCount} enriquecidos, ${job.skippedCount} ignorados, ${job.deferredCount} adiados.`
+
+    await notificationService.createSystemNotification({
+      recipientProfileId: job.requestedBy,
+      teamId: job.teamId,
+      type: NotificationType.EMAIL_IMPORT_COMPLETED,
+      message,
+      metadata: {
+        event: "RADAR_IMPORT_COMPLETED",
+        importId: job.importId,
+        created: job.createdCount,
+        enriched: job.enrichedCount,
+        skipped: job.skippedCount,
+        deferred: job.deferredCount,
+        failedBatches: failedBatches.length,
+      },
+    })
+
+    console.info(`[RadarBaseImport][${job.importId}] Concluído — ${message}`)
+  }
+
+  async processPendingJobs(): Promise<Output> {
+    const startedAt = Date.now()
+
+    try {
+      const claimed = await radarImportJobRepository.claimPendingJob()
+
+      if (!claimed) {
+        return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
+      }
+
+      let raw: string
+      let payload: StoredImportPayload
+      try {
+        raw = await downloadRadarImportPayload(claimed.storagePath)
+        payload = this.parseStoredPayload(raw)
+      } catch (setupError) {
+        console.error(`[RadarBaseImport][${claimed.importId}] Falha no setup do job`, setupError)
+        await radarImportJobRepository.updateJob(claimed.id, { status: "failed" })
+        return new Output(false, [], ["Falha ao carregar payload do job"], null)
+      }
+
+      const fieldMapping = claimed.fieldMapping as Record<string, string>
+
+      let processedRows = claimed.processedRows
+      let createdCount = claimed.createdCount
+      let enrichedCount = claimed.enrichedCount
+      let skippedCount = claimed.skippedCount
+      let deferredCount = claimed.deferredCount
+      const skippedIssues: SkippedImportIssue[] = Array.isArray(claimed.skippedIssues)
+        ? (claimed.skippedIssues as SkippedImportIssue[])
+        : []
+      const failedBatches = this.parseFailedBatches(claimed.failedBatches)
+      const attemptsByBatch: Record<string, number> = {}
+      const seenKeys = new Set<string>()
+
+      const totalBatches = Math.ceil(payload.rows.length / BATCH_SIZE) || 0
+      let batchIndex = Math.floor(processedRows / BATCH_SIZE)
+
+      const ctx = {
+        profileId: claimed.requestedBy,
+        teamId: claimed.teamId,
+      } as TeamAccess
+
+      while (batchIndex < totalBatches) {
+        if (Date.now() - startedAt > MAX_PROCESSING_MS) {
+          await radarImportJobRepository.updateJob(claimed.id, {
+            status: "pending",
+            processedRows,
+            createdCount,
+            enrichedCount,
+            skippedCount,
+            deferredCount,
+            skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT) as unknown as Prisma.InputJsonValue,
+            failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
+          })
+          return new Output(true, ["Job re-enfileirado por tempo"], [], {
+            importId: claimed.importId,
+            resumedAtBatch: batchIndex + 1,
+          })
+        }
+
+        const batchKey = String(batchIndex)
+        const currentAttempts = attemptsByBatch[batchKey] ?? 0
+        const batch = payload.rows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
+
+        // Snapshot counters before processing; restore on failure to prevent double-counting
+        const batchCheckpoint = {
+          processedRows,
+          createdCount,
+          enrichedCount,
+          skippedCount,
+          deferredCount,
+          skippedIssuesLength: skippedIssues.length,
+        }
+
+        try {
+          for (const row of batch) {
+            const result = await this.processRow(
+              claimed.teamId,
+              claimed.id,
+              row,
+              fieldMapping,
+              seenKeys
+            )
+            if (result.outcome === "created") createdCount += 1
+            if (result.outcome === "enriched") enrichedCount += 1
+            if (result.outcome === "skipped") {
+              skippedCount += 1
+              if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
+                skippedIssues.push(result.issue)
+              }
+            }
+            if (result.outcome === "deferred") {
+              deferredCount += 1
+              if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
+                skippedIssues.push(result.issue)
+              }
+            }
+            processedRows += 1
+          }
+
+          console.info(
+            `[RadarBaseImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — sucesso`
+          )
+          batchIndex += 1
+        } catch (error) {
+          // Restore to pre-batch state so a retry starts the batch cleanly
+          processedRows = batchCheckpoint.processedRows
+          createdCount = batchCheckpoint.createdCount
+          enrichedCount = batchCheckpoint.enrichedCount
+          skippedCount = batchCheckpoint.skippedCount
+          deferredCount = batchCheckpoint.deferredCount
+          skippedIssues.splice(batchCheckpoint.skippedIssuesLength)
+
+          const nextAttempt = currentAttempts + 1
+          attemptsByBatch[batchKey] = nextAttempt
+          const reason = error instanceof Error ? error.message : "Erro desconhecido"
+
+          console.error(
+            `[RadarBaseImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — falha, tentativa ${nextAttempt}/${MAX_BATCH_ATTEMPTS} — ${reason}`
+          )
+
+          if (nextAttempt >= MAX_BATCH_ATTEMPTS) {
+            failedBatches.push({ batchIndex, attempts: nextAttempt, lastError: reason })
+            processedRows += batch.length
+            batchIndex += 1
+          }
+        }
+
+        await radarImportJobRepository.updateJob(claimed.id, {
+          processedRows,
+          createdCount,
+          enrichedCount,
+          skippedCount,
+          deferredCount,
+          skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
+          failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
+        })
+      }
+
+      await this.finalizeJob(
+        {
+          id: claimed.id,
+          importId: claimed.importId,
+          teamId: claimed.teamId,
+          requestedBy: claimed.requestedBy,
+          createdCount,
+          enrichedCount,
+          skippedCount,
+          deferredCount,
+          skippedIssues: skippedIssues as unknown as Prisma.JsonValue,
+          failedBatches: failedBatches as unknown as Prisma.JsonValue,
+        },
+        ctx
+      )
+
+      return new Output(true, ["Job processado"], [], {
+        importId: claimed.importId,
+        created: createdCount,
+        enriched: enrichedCount,
+        skipped: skippedCount,
+        deferred: deferredCount,
+        failedBatches: failedBatches.length,
+      })
+    } catch (error) {
+      console.error("[RadarBaseImportUseCase][processPendingJobs]", error)
+      return new Output(false, [], ["Erro ao processar jobs de importação"], null)
+    }
+  }
+}
+
+export const radarBaseImportUseCase = new RadarBaseImportUseCase()

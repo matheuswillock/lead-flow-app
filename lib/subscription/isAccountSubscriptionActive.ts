@@ -1,12 +1,17 @@
 import { prisma } from "@/app/api/infra/data/prisma";
-
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"]);
+import {
+  ACTIVE_SUBSCRIPTION_STATUSES,
+  isActiveSubscriptionStatus,
+} from "@/lib/billing/active-subscription-statuses";
 
 export type AccountSubscriptionStatus = {
   isActive: boolean;
   hasPermanentSubscription: boolean;
 };
 
+/**
+ * Estágio 6/8 — fonte preferencial ProfileSubscription; Profile só fallback legado.
+ */
 export async function getAccountSubscriptionStatus(
   masterProfileId: string
 ): Promise<AccountSubscriptionStatus> {
@@ -35,12 +40,12 @@ export async function getAccountSubscriptionStatus(
     return { isActive: true, hasPermanentSubscription: true };
   }
 
-  const legacyStatus = profile.subscriptionStatus ?? null;
   const modernStatus = profileSubscription?.subscriptionStatus ?? null;
+  const legacyStatus = profile.subscriptionStatus ?? null;
 
-  const isActive =
-    (legacyStatus !== null && ACTIVE_SUBSCRIPTION_STATUSES.has(legacyStatus)) ||
-    (modernStatus !== null && ACTIVE_SUBSCRIPTION_STATUSES.has(modernStatus));
+  // Prefer PS; só usa Profile se PS ausente (cutover incompleto)
+  const status = modernStatus ?? legacyStatus;
+  const isActive = isActiveSubscriptionStatus(status);
 
   return { isActive, hasPermanentSubscription: false };
 }
@@ -49,3 +54,5 @@ export async function isAccountSubscriptionActive(masterProfileId: string): Prom
   const status = await getAccountSubscriptionStatus(masterProfileId);
   return status.isActive;
 }
+
+export { ACTIVE_SUBSCRIPTION_STATUSES, isActiveSubscriptionStatus };

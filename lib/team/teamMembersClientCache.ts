@@ -1,3 +1,4 @@
+import { API_CLIENT_BASE } from "@/lib/route-map";
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import type { UserFunction } from "@prisma/client";
 
@@ -43,7 +44,7 @@ async function fetchTeamMembersFromApi(
   supabaseId: string,
   teamId: string
 ): Promise<TeamMembersPayload> {
-  const response = await fetch(`/api/v1/teams/${teamId}/members`, {
+  const response = await fetch(`${API_CLIENT_BASE}/teams/${teamId}/members`, {
     method: "GET",
     cache: "no-store",
     headers: {

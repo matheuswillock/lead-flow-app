@@ -1,8 +1,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.4.0
-**Last Updated:** 2026-05-06
+**Version:** 2.5.0
+**Last Updated:** 2026-08-05
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -32,6 +32,30 @@ This document defines the implementation governance for AI agents in this reposi
 - Before deleting any record, check for FK constraints in the schema.
 - **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
+
+## Git Branch & Pull Request Workflow (MUST)
+
+The repository has three fully CI-automated PR flows. Agents **MUST** rely on them instead of acting manually:
+
+| Push to | Workflow | What it does |
+|---------|----------|---------------|
+| `feature/*`, `bugfix/*` (and `cursor/*`, `claude/*`) | `ci-feature.yml` / `ci-bugfix.yml` / `ci-cursor.yml` / `ci-claude.yml` → `ci-branch-reusable.yml` (`auto-pr` job) | Creates/updates the PR into `develop` automatically. |
+| `develop` | `ci-develop.yml` (`auto-pr-develop-to-main` job) | Resets/force-pushes the `release/develop-to-main` branch from the validated `develop` commit and creates/updates the PR into `main`. |
+| `main` | `ci-sync-develop.yml` | Creates/updates the sync-back PR (`features/sync-main-to-develop` → `develop`). |
+
+### Before starting new work (MUST)
+
+Before creating or starting work on a `feature/*` or `bugfix/*` branch, agents **MUST** update the local branch from `develop` first (e.g. `git fetch origin develop && git checkout -b <branch> origin/develop`, or `git pull origin develop` if the branch already exists) to avoid a stale base and avoidable merge conflicts.
+
+### Pull Requests are pipeline-only (MUST NOT)
+
+Agents **MUST NOT** create Pull Requests manually (via `gh pr create` or the GitHub UI) for any of the three flows above, under any circumstances. These PRs **MUST** be created exclusively by the CI jobs listed. The correct flow is: push the branch and verify the CI opened/updated the PR (`gh pr list --head <branch>`) — never open one manually.
+
+### Protected branches — no direct commits (MUST NOT)
+
+Agents **MUST NOT** commit or push directly to `main`, `develop`, or any `release/*` branch (e.g. `release/develop-to-main`), under any circumstances — not even to resolve review comments on a PR already open against one of these branches. `release/*` branches are entirely CI-managed (recreated/force-pushed from `develop` on every push); a direct commit is overwritten on the next `develop` push or creates history inconsistency.
+
+To resolve review comments on a `develop → main` PR (via `release/develop-to-main`): make the fix on a **new** `feature/*` or `bugfix/*` branch with its own PR into `develop` (opened automatically by CI). CI then regenerates `release/develop-to-main` and updates the PR into `main` automatically. Never commit directly onto `release/*` branches. For `feature/bugfix → develop` PRs, push fixes directly to the existing head branch — the auto-PR will update seamlessly.
 
 ## Migration Policy (Supabase CLI + Prisma ORM)
 
@@ -102,6 +126,7 @@ After every edit, automatically run in this order:
 bun run typecheck 2>&1 | head -20
 bun run lint
 bun run governance:check
+bun run governance:check-api-masking
 bun run lint:pt-br
 ```
 
@@ -111,6 +136,7 @@ bun run lint:pt-br
     - Do NOT report the task as done if any command fails.
     - Fix all errors immediately before moving to the next file or task.
     - If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
+    - If `governance:check-api-masking` fails, replace hardcoded `/api/v1/...` client calls with `API_CLIENT_BASE` — do not add to `clientApiPathMaskingAllowlist` unless explicitly instructed.
     - If `lint:pt-br` fails, fix the accentuation in the flagged UI text — only add the word to `IGNORE_WORDS` in `scripts/lint-pt-br.ts` when it is a proper noun/brand/technical term that is correct as written.
 
 ## Visual Implementation (FOR NEW FEATURES)
@@ -274,13 +300,14 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 
 ### MUST NOT
 
-- Commit or push directly to `main` or `develop` branches under any circumstances. All changes **MUST** go through a feature, bugfix, or release branch and be merged via pull request.
+- Commit or push directly to protected branches, or create Pull Requests manually — see [Git Branch & Pull Request Workflow](#git-branch--pull-request-workflow-must).
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar).
 - Use npm or yarn (project standard is Bun).
 - Use the `Bun.*` runtime global in `app/**` or `lib/**` (production runs on Node at Vercel; Bun is only the local script runner). Use portable APIs instead (e.g. `bcryptjs`, `node:crypto`). Enforced by `governance:check`.
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
 - Create routes/folders/files with ambiguous or generic names that don't describe intent (e.g. `me`, `data`, `misc`, `temp`, `utils2`).
 - Use browser-native dialogs (`window.alert`, `window.confirm`, `window.prompt`, or global equivalents). Use shadcn `AlertDialog`/`Dialog` and `sonner` instead.
+- Hardcode `/api/v1/...` in client-side HTTP calls (`fetch`, axios, URL constants consumed by the browser). Use `API_CLIENT_BASE` from `@/lib/route-map` so the Network tab shows `/api/q/...` (rewritten by `proxy.ts`). Enforced by `governance:check` (`clientApiPathMaskingAllowlist` for LEGACY EXCEPTIONS only).
 - Create `DialogContent` without scroll support when the content may overflow the viewport. Every `DialogContent` with non-trivial content **MUST** use `max-h-[90vh] flex flex-col` on the `DialogContent`, a scrollable inner `div` with `overflow-y-auto flex-1` wrapping the form fields, and a fixed `DialogFooter` outside the scrollable area.
 
 ### MUST
@@ -304,6 +331,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 ### FOR NEW FEATURES
 
 - Implementation code **MUST** be written in TypeScript. JavaScript and Python **MUST NOT** be used.
+- Client-side HTTP calls **MUST** use `API_CLIENT_BASE` from `@/lib/route-map` (never hardcode `/api/v1/...`). Prefer Server Components / Server Actions when the request can leave the browser entirely.
 
 ### SHOULD
 
@@ -332,13 +360,14 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 
 ## LEGACY EXCEPTIONS
 
-Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
+Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`, `clientApiPathMaskingAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
 
 ## Automated Enforcement
 
 CI **MUST** fail when governance checks fail.
 
 - Check: `bun run governance:check`
+- Client API masking (CI step dedicado): `bun run governance:check-api-masking`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
 ## Feature Registration Policy (FOR NEW FEATURES)
@@ -400,12 +429,15 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 ## Pull Request Checklist (MUST)
 
 - [ ] Seguiu `agents.md`?
+- [ ] Fez pull da `develop` antes de iniciar a branch de trabalho?
+- [ ] Confirmou que nenhum PR foi criado manualmente e que nenhum commit foi feito direto em `main`/`develop`/`release/*`?
 - [ ] Criou migration? Schema via `bun run db:migrate:from-prisma -- <name>` ou manual via `db:migrate:new`; revisou SQL e aplicou remoto somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
 - [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
+- [ ] Rodou `bun run governance:check-api-masking`?
 
 ## Environment Essentials
 

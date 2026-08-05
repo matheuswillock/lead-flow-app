@@ -12,6 +12,8 @@ export const RADAR_SEGMENT_SLUGS = [
   "clicked_not_closed",
   "portfolio_renewal_due",
   "inactive_recent_campaign",
+  "portfolio_clients",
+  "crm_clients",
 ] as const
 
 export type RadarSegmentSlug = (typeof RADAR_SEGMENT_SLUGS)[number]

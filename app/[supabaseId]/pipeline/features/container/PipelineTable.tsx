@@ -74,6 +74,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface PipelineTableProps {
   useExternalFilters?: boolean;
@@ -206,7 +207,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     if (!leadToDelete || isDeletingLead) return;
     setIsDeletingLead(true);
     try {
-      const response = await fetch(`/api/v1/leads/${leadToDelete.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${leadToDelete.id}`, {
         method: 'DELETE',
         headers: {
           ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),

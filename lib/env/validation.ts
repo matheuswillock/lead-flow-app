@@ -171,6 +171,14 @@ export const envSchema = z.object({
   BACKOFFICE_BETHANIA_AI_ENABLED: z.string().optional().describe('Kill switch mirror (DB is source of truth)'),
   BACKOFFICE_BETHANIA_AI_BASE_URL: urlSchema.optional().describe('OpenAI-compatible Groq base URL'),
   BACKOFFICE_BETHANIA_AI_ROLLUP_CRON_SECRET: z.string().optional().describe('Cron secret for AI rollup'),
+
+  // Route masking & action tokens (Network tab obfuscation)
+  ACTION_TOKEN_SECRET: z.string().optional().describe('HMAC secret for short-lived action tokens'),
+  ACTION_TOKEN_TTL_MINUTES: z
+    .string()
+    .regex(/^\d+$/, { message: 'Must be a positive integer' })
+    .optional()
+    .describe('TTL in minutes for action tokens (default: 15)'),
 });
 
 // Infer the type from the schema

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3 } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -38,8 +38,6 @@ import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
@@ -53,7 +51,8 @@ function CampaignActionsMenu({
   archivingId,
   readOnly,
   openView,
-  openEdit,
+  openEditWizard,
+  openDuplicateWizard,
   handleSend,
   handleCancel,
   handleDeleteDraft,
@@ -68,12 +67,13 @@ function CampaignActionsMenu({
   archivingId: string | null
   readOnly: boolean
   openView: (campaign: Campaign) => void
-  openEdit: (campaign: Campaign) => void
-  handleSend: (id: string) => Promise<void>
+  openEditWizard: (campaign: Campaign) => void
+  openDuplicateWizard: (campaign: Campaign) => void
+  handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
   handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
   handleArchive: (id: string) => Promise<void>
-  onOpenAnalytics: (campaign: Campaign) => void
+  onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
@@ -81,29 +81,45 @@ function CampaignActionsMenu({
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const isParentCampaign = Boolean(campaign.isParentCampaign || (campaign.subCampaignCount ?? 0) > 0)
+  const isFailedRetryStatus =
+    campaign.status === "failed" || campaign.status === "partially_sent"
+  const canRetryFailedSubs = isParentCampaign && isFailedRetryStatus
   const canSendByStatus =
     !isParentCampaign &&
     (campaign.status === "draft" ||
       campaign.status === "scheduled" ||
       campaign.status === "sent" ||
-      campaign.status === "failed")
+      campaign.status === "failed" ||
+      campaign.status === "partially_sent")
   const canSend = canSendCampaign && canSendByStatus && !sendBlockReason
+  const isLeafFailedRetry = !isParentCampaign && isFailedRetryStatus
+  const sendActionLabel = canRetryFailedSubs || isLeafFailedRetry
+    ? "Redisparar falhas"
+    : "Disparar"
+  const failedRetryCount =
+    campaign.failedRetryRecipientCount ??
+    Math.max(0, campaign.totalRecipients - campaign.totalSent)
   const sendDisabledReason =
     sendBlockReason ??
     (isParentCampaign
-      ? "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
+      ? canRetryFailedSubs
+        ? 'Abra a campanha e use "Reenviar apenas falhas" nas partes com falha'
+        : "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
-  const canEdit = ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
+  const canEdit = ["draft", "scheduled"].includes(campaign.status)
   const canCancel = campaign.status === "scheduled"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
-  const canArchive = ["sent", "failed"].includes(campaign.status)
+  const canArchive = ["sent", "failed", "partially_sent"].includes(campaign.status)
 
   async function handleSendConfirm() {
     setSending(true)
     try {
-      await handleSend(campaign.id)
+      await handleSend(
+        campaign.id,
+        isLeafFailedRetry ? { retryFailedOnly: true } : undefined
+      )
     } finally {
       setSending(false)
       setSendConfirmOpen(false)
@@ -143,23 +159,46 @@ function CampaignActionsMenu({
           </DropdownMenuItem>
           {!readOnly ? (
             <>
-              <DropdownMenuItem
-                onClick={() => setSendConfirmOpen(true)}
-                disabled={!canSend}
-                title={!canSend ? sendDisabledReason : undefined}
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Disparar
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+              {canRetryFailedSubs ? (
+                <DropdownMenuItem onClick={() => openView(campaign)}>
+                  <Send className="mr-2 h-4 w-4" />
+                  {sendActionLabel}
+                </DropdownMenuItem>
+              ) : sendDisabledReason && !canSend ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="w-full">
+                      <DropdownMenuItem disabled className="pointer-events-none w-full">
+                        <Send className="mr-2 h-4 w-4" />
+                        {sendActionLabel}
+                      </DropdownMenuItem>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm">{sendDisabledReason}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <DropdownMenuItem onClick={() => setSendConfirmOpen(true)} disabled={!canSend}>
+                  <Send className="mr-2 h-4 w-4" />
+                  {sendActionLabel}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => void openEditWizard(campaign)} disabled={!canEdit}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void openDuplicateWizard(campaign)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Duplicar
               </DropdownMenuItem>
             </>
           ) : null}
           <DropdownMenuItem onClick={() => onOpenAnalytics(campaign)}>
             <BarChart3 className="mr-2 h-4 w-4" />
             Métricas
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenAnalytics(campaign, "logs")}>
+            <ScrollText className="mr-2 h-4 w-4" />
+            Ver logs
           </DropdownMenuItem>
           {!readOnly ? (
             <>
@@ -198,12 +237,32 @@ function CampaignActionsMenu({
       <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar disparo?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isLeafFailedRetry
+                ? "Reenviar apenas as falhas?"
+                : "Confirmar disparo?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A campanha <strong>"{campaign.name}"</strong> será enviada para{" "}
-              <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-              destinatário(s) ativo(s).
-              Os créditos correspondentes serão deduzidos.
+              {isLeafFailedRetry ? (
+                <>
+                  A campanha <strong>&quot;{campaign.name}&quot;</strong> será reenviada
+                  apenas para{" "}
+                  <strong>{failedRetryCount.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s) que falharam. Quem já recebeu{" "}
+                  <strong>não</strong> será reenviado. Os créditos correspondentes
+                  serão deduzidos só desse reenvio.
+                </>
+              ) : (
+                <>
+                  A campanha <strong>&quot;{campaign.name}&quot;</strong> será enviada para{" "}
+                  <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
+                  destinatário(s) ativo(s).
+                  {campaign.status === "sent"
+                    ? " Campanhas já enviadas geram um novo dispatch sem alterar o histórico anterior."
+                    : null}{" "}
+                  Os créditos correspondentes serão deduzidos.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -213,9 +272,15 @@ function CampaignActionsMenu({
                 event.preventDefault()
                 void handleSendConfirm()
               }}
-              disabled={sending}
+              disabled={sending || (isLeafFailedRetry && failedRetryCount <= 0)}
             >
-              {sending ? "Disparando..." : "Sim, disparar"}
+              {sending
+                ? isLeafFailedRetry
+                  ? "Reenviando falhas..."
+                  : "Disparando..."
+                : isLeafFailedRetry
+                  ? "Sim, reenviar apenas falhas"
+                  : "Sim, disparar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -303,11 +368,10 @@ function CampaignActionsMenu({
 export function CampaignList({
   onOpenAnalytics,
 }: {
-  onOpenAnalytics: (campaign: Campaign) => void
+  onOpenAnalytics: (campaign: Campaign, defaultTab?: "metrics" | "logs") => void
 }) {
   const { tz } = useTimezone()
-  const { isBeta } = useFeatureAccess()
-  const { readOnly } = useStudioEmailRuntime()
+  const { readOnly, skipBetaGate } = useStudioEmailRuntime()
   const {
     campaigns,
     total,
@@ -327,18 +391,19 @@ export function CampaignList({
     handlePageSizeChange,
     openWizard,
     openView,
-    openEdit,
+    openEditWizard,
+    openDuplicateWizard,
     credits,
   } = useCampanhasContext()
-  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
+  // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
-    !!credits?.hasSubscription || isCampaignsBetaAccess || !!credits?.isBetaExempt
+    !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
 
   function getSendBlockReason(campaign: Campaign): string | undefined {
     return getCampaignSendBlockReason({
       campaign,
       credits,
-      isCampaignsBetaAccess,
+      bypassPlanGate: skipBetaGate,
     })
   }
 
@@ -418,7 +483,7 @@ export function CampaignList({
                           status={isSending ? "sending" : campaign.status}
                           scheduledAt={campaign.scheduledAt}
                         />
-                        {campaign.status === "failed" && campaign.errorMessage ? (
+                        {(campaign.status === "failed" || campaign.status === "partially_sent") && campaign.errorMessage ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Badge
@@ -464,7 +529,8 @@ export function CampaignList({
                             archivingId={archivingId}
                             readOnly={readOnly}
                             openView={openView}
-                            openEdit={openEdit}
+                            openEditWizard={openEditWizard}
+                            openDuplicateWizard={openDuplicateWizard}
                             handleSend={handleSend}
                             handleCancel={handleCancel}
                             handleDeleteDraft={handleDeleteDraft}

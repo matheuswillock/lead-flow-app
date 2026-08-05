@@ -6,10 +6,47 @@ export type RadarProfileListItem = {
   displayPhone: string | null
   primaryEmail: string | null
   lastSeenAt: string | null
+  engagementScore?: number | null
+  engagementBand?: string | null
   primarySegment?: string | null
   primarySegmentName?: string | null
   consents: Array<{ channel: string; status: RadarConsentStatus; reason: string | null }>
   sourceLinks: Array<{ sourceType: string }>
+}
+
+/** Breakdown de score de formulário no engajamento (D19-C). */
+export type FormSubmissionScoreBreakdown = {
+  submissionId: string
+  formId: string
+  formTitle: string
+  submittedAt: string
+  scorePercent: number
+  scoreBandLabel: string | null
+  answers: Array<{
+    questionLabel: string
+    chosenOptionLabel: string
+    chosenOptionScore: number
+    chosenOptionPolarity: "positive" | "negative"
+    questionWeight: number
+    contribution: number
+  }>
+  temperatureMultiplier: number
+  baseWeight: number
+  finalWeight: number
+}
+
+/** D19-D: resposta de `GET .../profiles/by-lead/:leadId/engagement` (quando encontrado). */
+export type LeadRadarEngagement = {
+  notFound?: false
+  profileId: string
+  score: number
+  band: string
+  topEvents: Array<{
+    eventType: string
+    occurredAt: string
+    contribution: number
+  }>
+  formSubmissions?: FormSubmissionScoreBreakdown[]
 }
 
 export type RadarSegment = {
@@ -39,6 +76,8 @@ export type RadarEventCondition = {
   eventType: string
   occurrence: "occurred" | "not_occurred"
   windowDays?: number
+  /** Filtra eventos de e-mail por `metadata.campaignId`. */
+  campaignId?: string
 }
 
 export type RadarLeadCustomFieldCondition = {
@@ -51,6 +90,11 @@ export type RadarLeadCustomFieldCondition = {
 export type RadarLeadStatusCondition = {
   kind: "lead_status"
   statuses: string[]
+}
+
+export type RadarEngagementBandCondition = {
+  kind: "engagement_band"
+  bands: Array<"hot" | "warm" | "lukewarm" | "cold">
 }
 
 export type RadarLeadFieldCondition = {
@@ -71,13 +115,33 @@ export type RadarLeadFieldCondition = {
   value?: unknown
 }
 
+/** D13: colunas de LeadPortfolio (contrato atual) e LeadFinalized (histórico). */
+export type RadarPortfolioFieldCondition = {
+  kind: "portfolio_field"
+  fieldKey:
+    | "portfolioStatus"
+    | "renewalStatus"
+    | "renewalAmount"
+    | "source"
+    | "lastContactAt"
+    | "finalizedDateAt"
+    | "amount"
+    | "contractType"
+    | "operadora"
+    | "productName"
+  operator: string
+  value?: unknown
+}
+
 export type RadarSegmentCondition =
   | RadarProfileFieldCondition
   | RadarConsentCondition
   | RadarEventCondition
   | RadarLeadCustomFieldCondition
   | RadarLeadStatusCondition
+  | RadarEngagementBandCondition
   | RadarLeadFieldCondition
+  | RadarPortfolioFieldCondition
 
 export type RadarSegmentRules = {
   match: "all" | "any"
@@ -112,10 +176,18 @@ export type RadarMetrics = {
   engaged: number
 }
 
+export type RadarProfileAssignee = {
+  leadId: string
+  leadCode: string
+  assignedTo: { id: string; name: string | null } | null
+  closer: { id: string; name: string | null } | null
+}
+
 export type RadarProfileDetail = RadarProfileListItem & {
   normalizedName: string
   normalizedPhone: string | null
   primaryDocument: string | null
+  profileData?: Record<string, unknown> | null
   identities: Array<{
     id: string
     type: string
@@ -146,6 +218,8 @@ export type RadarProfileDetail = RadarProfileListItem & {
     occurredAt: string
     metadata: unknown
   }>
+  /** D17: SDR/Closer dos leads associados, com nome resolvido. */
+  assignees?: RadarProfileAssignee[]
 }
 
 export type RadarSyncResult = {
@@ -153,4 +227,67 @@ export type RadarSyncResult = {
   enriched: number
   skipped: number
   errors: string[]
+}
+
+export type RadarTouchpointChannel = {
+  channel: string
+  count: number
+  firstEventAt: string
+  lastEventAt: string
+}
+
+export type RadarProfileTouchpoints = {
+  total: number
+  breakdown: RadarTouchpointChannel[]
+}
+
+export type RadarContractHolder = {
+  id: string
+  name: string
+  razaoSocial: string | null
+  birthDate: string
+  document: string
+  cnpj: string | null
+}
+
+export type RadarContractDependent = {
+  id: string
+  name: string
+  birthDate: string
+  parentesco: string
+  document: string | null
+}
+
+export type RadarPortfolioContract = {
+  id: string
+  leadId: string
+  portfolioStatus: string
+  renewalStatus: string
+  renewalAmount: number | null
+  source: string
+  note: string | null
+  lastContactAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type RadarFinalizedContract = {
+  id: string
+  leadId: string
+  finalizedDateAt: string
+  startDateAt: string
+  amount: number
+  contractType: string
+  operadora: string | null
+  productName: string | null
+  notes: string | null
+  createdAt: string
+  holder: RadarContractHolder | null
+  dependents: RadarContractDependent[]
+}
+
+/** D13: contratos atuais + histórico do perfil via identidades lead_id / portfolio_id. */
+export type RadarProfileContracts = {
+  portfolios: RadarPortfolioContract[]
+  finalized: RadarFinalizedContract[]
 }

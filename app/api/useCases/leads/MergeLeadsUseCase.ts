@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import type { ILeadRepository, LeadMergeRecord } from "@/app/api/infra/data/repositories/lead/ILeadRepository";
+import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository";
 import type { IMergeLeadsUseCase, MergeLeadsInput } from "./IMergeLeadsUseCase";
 
 const FILLABLE_SCALAR_FIELDS = [
@@ -23,6 +24,19 @@ const FILLABLE_SCALAR_FIELDS = [
   "meetingLink",
   "meetingType",
 ] as const;
+
+export type RadarMergeDeps = {
+  findProfileByIdentity: (
+    teamId: string,
+    type: "lead_id",
+    normalizedValue: string
+  ) => Promise<{ profileId: string } | null>;
+  mergeProfiles: (
+    teamId: string,
+    losingProfileId: string,
+    winningProfileId: string
+  ) => Promise<void>;
+};
 
 function isEmptyValue(value: unknown): boolean {
   return value === null || value === undefined || value === "";
@@ -53,7 +67,10 @@ function buildFillPatch(target: LeadMergeRecord, source: LeadMergeRecord): Prism
 }
 
 export class MergeLeadsUseCase implements IMergeLeadsUseCase {
-  constructor(private readonly repository: ILeadRepository = leadRepository) {}
+  constructor(
+    private readonly repository: ILeadRepository = leadRepository,
+    private readonly radar: RadarMergeDeps = radarRepository
+  ) {}
 
   async execute(access: TeamAccess, input: MergeLeadsInput): Promise<Output> {
     if (input.targetLeadId === input.sourceLeadId) {
@@ -131,6 +148,29 @@ export class MergeLeadsUseCase implements IMergeLeadsUseCase {
     } catch (error) {
       console.error("[MergeLeadsUseCase][execute]", error);
       return new Output(false, [], ["Não foi possível concluir a mesclagem dos leads"], null);
+    }
+
+    // E3b: identidades lead_id sobrevivem à exclusão do lead CRM — funde
+    // perfis Radar distintos pelo mesmo caminho do auto-merge (mergeProfiles).
+    try {
+      const [targetIdentity, sourceIdentity] = await Promise.all([
+        this.radar.findProfileByIdentity(access.teamId, "lead_id", targetLead.id),
+        this.radar.findProfileByIdentity(access.teamId, "lead_id", sourceLead.id),
+      ]);
+
+      if (
+        targetIdentity &&
+        sourceIdentity &&
+        targetIdentity.profileId !== sourceIdentity.profileId
+      ) {
+        await this.radar.mergeProfiles(
+          access.teamId,
+          sourceIdentity.profileId,
+          targetIdentity.profileId
+        );
+      }
+    } catch (error) {
+      console.error("[MergeLeadsUseCase][execute][radarMerge]", error);
     }
 
     return new Output(

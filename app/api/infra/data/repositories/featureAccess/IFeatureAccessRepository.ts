@@ -68,7 +68,6 @@ export interface IFeatureAccessRepository {
   listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]>
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
-  resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>
   findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null>
 }

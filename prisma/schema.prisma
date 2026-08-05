@@ -770,6 +770,7 @@ enum EmailCampaignStatus {
   scheduled
   sending
   sent
+  partially_sent
   canceled
   failed
   archived
@@ -929,6 +930,8 @@ model Profile {
   createdTeamStatusRules                   TeamStatusRule[]                             @relation("TeamStatusRuleCreator")
   createdTeamAutomationRules               TeamAutomationRule[]                         @relation("TeamAutomationRuleCreator")
   createdTeamRadarSegments                 TeamRadarSegment[]                           @relation("TeamRadarSegmentCreator")
+  createdTeamRadarFieldDefinitions         TeamRadarFieldDefinition[]                   @relation("TeamRadarFieldDefinitionCreator")
+  requestedRadarImportJobs                 RadarImportJob[]                             @relation("RadarImportJobRequester")
   createdLeadCustomFieldDefinitions        LeadCustomFieldDefinition[]                  @relation("LeadCustomFieldDefinitionCreator")
   updatedLeadStatusTransitionFieldRules    BackofficeLeadStatusTransitionFieldRule[]    @relation("BackofficeLeadStatusTransitionFieldRuleUpdater")
   updatedLeadStatusTransitionGates         BackofficeLeadStatusTransitionGate[]         @relation("BackofficeLeadStatusTransitionGateUpdater")
@@ -967,6 +970,8 @@ model Profile {
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
+  subscriptionChangeLogs       SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
+  subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
 
   // User type (Comum / Member PRO)
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
@@ -1490,6 +1495,11 @@ model BackofficeAdhesion {
   asaasCustomerId                   String?                        @map("asaasCustomerId") @db.Text
   asaasPaymentId                    String?                        @unique @map("asaasPaymentId") @db.Text
   asaasInstallmentId                String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
+  discountPercent                   Decimal?                       @map("discountPercent") @db.Decimal(5, 2)
+  discountStatus                    String?                        @map("discountStatus") @db.Text
+  discountApprovedByProfileId       String?                        @map("discountApprovedByProfileId") @db.Uuid
+  discountApprovedAt                DateTime?                      @map("discountApprovedAt") @db.Timestamptz(6)
+  negotiatedTotalAmount             Decimal?                       @map("negotiatedTotalAmount") @db.Decimal(12, 2)
   installmentCount                  Int?                           @map("installmentCount")
   billingType                       String?                        @map("billingType") @db.Text
   paymentDueDate                    DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
@@ -2362,6 +2372,7 @@ model Team {
   leadCustomFieldDefinitions LeadCustomFieldDefinition[]
   publicForms                PublicForm[]
   publicFormSettings         PublicFormSettings?
+  publicFormTemplates        PublicFormTemplate[]
   transferRoutesFrom         TeamTransferRoute[]           @relation("TeamTransferRouteFrom")
   transferRoutesTo           TeamTransferRoute[]           @relation("TeamTransferRouteTo")
   outboundLeadTransfers      LeadTransfer[]                @relation("LeadTransferFromTeam")
@@ -2408,6 +2419,8 @@ model Team {
   radarEvents           RadarEvent[]
   radarChannelConsents  RadarChannelConsent[]
   radarSegments         TeamRadarSegment[]
+  radarFieldDefinitions TeamRadarFieldDefinition[]
+  radarImportJobs       RadarImportJob[]
   backofficeBotSessions BackofficeBotSession[]
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
@@ -3101,12 +3114,14 @@ model EmailCampaign {
   createdBy                 String              @db.Uuid
   managedByBackofficeUserId String?             @db.Uuid
   name                      String              @db.Text
+  description               String?             @db.Text
   templateId                String              @db.Uuid
   contactListId             String?             @db.Uuid
   radarSegmentSlug          String?             @db.Text
   parentCampaignId          String?             @db.Uuid
   subCampaignIndex          Int?
   audienceContactIds        String[]            @default([]) @db.Uuid
+  sourceContactListIds      String[]            @default([]) @db.Uuid @map("source_contact_list_ids")
   status                    EmailCampaignStatus @default(draft)
   scheduledAt               DateTime?           @db.Timestamptz(6)
   sentAt                    DateTime?           @db.Timestamptz(6)
@@ -3451,6 +3466,55 @@ model BackofficeCrmLeadStatusTransitionGate {
   @@map("backoffice_crm_lead_status_transition_gates")
 }
 
+/// D19: pesos globais de engajamento Radar (somente backoffice).
+model BackofficeRadarEngagementWeight {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType   String   @db.Text
+  weight      Int
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([eventType])
+  @@index([isActive])
+  @@map("backoffice_radar_engagement_weights")
+}
+
+/// D19: config global de decaimento e thresholds de banda (singleton).
+model BackofficeRadarEngagementConfig {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  windowRecentDays  Int      @default(7)
+  windowMidDays     Int      @default(30)
+  windowOldDays     Int      @default(90)
+  recentMultiplier  Float    @default(2.0)
+  oldMultiplier     Float    @default(0.2)
+  hotThreshold      Int      @default(60)
+  warmThreshold     Int      @default(30)
+  lukewarmThreshold Int      @default(10)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("backoffice_radar_engagement_configs")
+}
+
+/// D19-B-bis: mapeia score% da submissão de formulário → multiplicador do peso form.completed.
+model BackofficeFormEngagementScoreRule {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  minPercent Int
+  maxPercent Int
+  multiplier Float
+  label      String   @db.Text
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([minPercent, maxPercent])
+  @@index([isActive])
+  @@map("backoffice_form_engagement_score_rules")
+}
+
 model BackofficeCrmLeadStatusTransitionFieldRule {
   id                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   targetStatus       BackofficeLeadStatus
@@ -3522,6 +3586,25 @@ model ProfileSubscription {
   @@index([productId], map: "profile_subscriptions_product_id_idx")
   @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
   @@map("corretor_studio_profile_subscriptions")
+}
+
+model SubscriptionChangeLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId      String   @db.Uuid
+  source         String   @db.Text
+  actorProfileId String?  @db.Uuid
+  changeType     String   @db.Text
+  before         Json?
+  after          Json?
+  metadata       Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  profile Profile  @relation("SubscriptionChangeLogProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  actor   Profile? @relation("SubscriptionChangeLogActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([profileId], map: "subscription_change_logs_profile_id_idx")
+  @@index([createdAt], map: "subscription_change_logs_created_at_idx")
+  @@map("corretor_studio_subscription_change_logs")
 }
 
 model ProfileSubscriptionCapacity {
@@ -4336,6 +4419,8 @@ enum RadarIdentityType {
   portfolio_id
   whatsapp_contact_id
   visitor_session
+  contract_holder
+  contract_dependent
 
   @@map("radar_identity_type")
 }
@@ -4346,7 +4431,9 @@ enum RadarSourceType {
   email_contact
   email_campaign
   whatsapp_contact
+  base_import
   pixel_hit
+  lead_finalized
 
   @@map("radar_source_type")
 }
@@ -4398,6 +4485,8 @@ model RadarProfile {
   normalizedPrimaryDocument String?   @db.Text
   lastSeenAt                DateTime? @db.Timestamptz(6)
   profileData               Json?
+  engagementScore           Int?      @db.SmallInt
+  engagementBand            String?   @db.Text
   createdAt                 DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @db.Timestamptz(6)
 
@@ -4411,6 +4500,8 @@ model RadarProfile {
   @@index([teamId, normalizedPrimaryEmail])
   @@index([teamId, normalizedPrimaryDocument])
   @@index([teamId, lastSeenAt(sort: Desc)])
+  @@index([teamId, engagementBand])
+  @@index([teamId, engagementScore(sort: Desc)])
   @@map("corretor_studio_radar_profiles")
 }
 
@@ -4512,6 +4603,58 @@ model TeamRadarSegment {
   @@unique([teamId, name])
   @@index([teamId, isActive])
   @@map("corretor_studio_radar_segments")
+}
+
+model TeamRadarFieldDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  key         String   @db.Text
+  label       String   @db.Text
+  valueType   String   @db.Text
+  createdBy   String   @db.Uuid
+  importJobId String?  @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team      Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator   Profile         @relation("TeamRadarFieldDefinitionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  importJob RadarImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, key])
+  @@index([teamId, isActive])
+  @@map("corretor_studio_team_radar_field_definitions")
+}
+
+model RadarImportJob {
+  id            String   @id @default(uuid()) @db.Uuid
+  importId      String   @unique @db.Text
+  teamId        String   @db.Uuid
+  requestedBy   String   @db.Uuid
+  baseName      String   @db.Text
+  sourceFormat  String   @db.Text
+  storagePath   String   @db.Text
+  fieldMapping  Json
+  status        String   @default("pending") @db.Text
+  totalRows     Int      @default(0)
+  processedRows Int      @default(0)
+  createdCount  Int      @default(0)
+  enrichedCount Int      @default(0)
+  skippedCount  Int      @default(0)
+  deferredCount Int      @default(0)
+  skippedIssues Json?
+  failedBatches Json?
+  batchSize     Int      @default(500)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  team              Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  requester         Profile                    @relation("RadarImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  fieldDefinitions  TeamRadarFieldDefinition[]
+
+  @@index([teamId, status])
+  @@index([status, createdAt])
+  @@map("corretor_studio_radar_import_jobs")
 }
 
 // ==============================
@@ -5175,6 +5318,8 @@ model PublicForm {
   meetingDurationMinutes    Int                        @default(30)
   schedulingMessage         String?                    @db.Text
   formKind                  String                     @default("standard") @db.VarChar(40)
+  /// Aceita `cs_el` (EmailLog.id) em links de campanha e atribui abertura/preenchimento ao destinatário.
+  emailCampaignTrackingEnabled Boolean                 @default(true)
   reviewComment             String?                    @db.Text
   reviewedAt                DateTime?                  @db.Timestamptz(6)
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(6)
@@ -5449,6 +5594,39 @@ model ShortLink {
   @@map("short_links")
 }
 
+model BackofficeCnae {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("backoffice_cnaes")
+}
+
+/// Catálogo de templates de formulário público (globais ou por time).
+/// `teamId` nulo = disponível para todos os times.
+model PublicFormTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.Text
+  description String?  @db.Text
+  formKind    String   @default("standard") @db.VarChar(40)
+  /// Snapshot completo do draft (`PublicFormDraftInput`).
+  draft       Json
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  teamId      String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  team        Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, sortOrder])
+  @@index([teamId, isActive, sortOrder])
+  @@map("corretor_studio_public_form_templates")
+}
+
 // ==============================
 // LEAD TAGS
 // ==============================
@@ -5497,39 +5675,41 @@ enum LeadDocumentRequestStatus {
 }
 
 model LeadDocumentRequest {
-  id              String                     @id @default(uuid()) @db.Uuid
-  leadId          String                     @db.Uuid
-  teamId          String                     @db.Uuid
-  createdByProfileId String                  @db.Uuid
-  publicToken     String                     @unique @db.Text
-  message         String?                    @db.Text
-  status          LeadDocumentRequestStatus  @default(pending)
-  lastEmailSentAt DateTime?                  @db.Timestamptz(6)
-  completedAt     DateTime?                  @db.Timestamptz(6)
-  createdAt       DateTime                   @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                   @updatedAt @db.Timestamptz(6)
+  id                 String                    @id @default(uuid()) @db.Uuid
+  leadId             String                    @db.Uuid
+  teamId             String                    @db.Uuid
+  createdByProfileId String                    @db.Uuid
+  publicToken        String                    @unique @db.Text
+  message            String?                   @db.Text
+  status             LeadDocumentRequestStatus @default(pending)
+  lastEmailSentAt    DateTime?                 @db.Timestamptz(6)
+  expiresAt          DateTime                  @db.Timestamptz(6)
+  completedAt        DateTime?                 @db.Timestamptz(6)
+  createdAt          DateTime                  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                  @updatedAt @db.Timestamptz(6)
 
-  lead      Lead                        @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  createdBy Profile                     @relation("LeadDocumentRequestCreator", fields: [createdByProfileId], references: [id], onDelete: Cascade)
+  lead      Lead                      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy Profile                   @relation("LeadDocumentRequestCreator", fields: [createdByProfileId], references: [id], onDelete: Cascade)
   items     LeadDocumentRequestItem[]
 
   @@index([leadId])
   @@index([teamId])
   @@index([publicToken])
   @@index([status, lastEmailSentAt])
+  @@index([expiresAt])
   @@map("corretor_studio_lead_document_requests")
 }
 
 model LeadDocumentRequestItem {
-  id          String    @id @default(uuid()) @db.Uuid
-  requestId   String    @db.Uuid
-  name        String    @db.Text
-  description String?   @db.Text
-  isRequired  Boolean   @default(true)
-  attachmentId String?  @db.Uuid
-  uploadedAt  DateTime? @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  id           String    @id @default(uuid()) @db.Uuid
+  requestId    String    @db.Uuid
+  name         String    @db.Text
+  description  String?   @db.Text
+  isRequired   Boolean   @default(true)
+  attachmentId String?   @db.Uuid
+  uploadedAt   DateTime? @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
 
   request    LeadDocumentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   attachment LeadAttachment?     @relation("DocumentRequestItemAttachment", fields: [attachmentId], references: [id], onDelete: SetNull)

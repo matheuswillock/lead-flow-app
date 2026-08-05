@@ -1,22 +1,38 @@
-import type { LeadExtractionFiltersForm, LeadExtractionResultItem } from "../services/IBackofficeLeadExtractionService"
+import type {
+  CnaeOption,
+  LeadExtractionFiltersForm,
+  LeadExtractionResultItem,
+  SocioFiltersForm,
+  SocioResultItem,
+} from "../services/IBackofficeLeadExtractionService"
 
 export const EMPTY_FILTERS: LeadExtractionFiltersForm = {
   mainCnae: "",
-  sideCnae: true,
-  state: "",
+  states: [],
   municipalityCode: "",
-  statusId: "",
-  natureId: "",
-  sizeId: "",
+  statusIds: [],
+  natureIds: [],
+  sizeIds: [],
   simplesOptant: "",
   simeiOptant: "",
   foundedGte: "",
   foundedLte: "",
   hasPhone: false,
   hasEmail: false,
+  removeContadores: true,
+}
+
+export const EMPTY_SOCIO_FILTERS: SocioFiltersForm = {
+  names: "",
+  types: [],
+  ageRanges: [],
 }
 
 export interface BackofficeLeadExtractionContextValue {
+  // tab
+  activeTab: "empresas" | "socios"
+  setActiveTab: React.Dispatch<React.SetStateAction<"empresas" | "socios">>
+  // empresas
   filters: LeadExtractionFiltersForm
   setFilters: React.Dispatch<React.SetStateAction<LeadExtractionFiltersForm>>
   results: LeadExtractionResultItem[]
@@ -24,8 +40,16 @@ export interface BackofficeLeadExtractionContextValue {
   extractionId: string | null
   isSearching: boolean
   hasSearched: boolean
-  removeContadores: boolean
-  setRemoveContadores: (v: boolean) => void
   handleSearch: () => Promise<void>
   clearFilters: () => void
+  searchCnaes: (q?: string) => Promise<CnaeOption[]>
+  // socios
+  socioFilters: SocioFiltersForm
+  setSocioFilters: React.Dispatch<React.SetStateAction<SocioFiltersForm>>
+  socioResults: SocioResultItem[]
+  socioTotalCount: number
+  isSocioSearching: boolean
+  hasSearchedSocios: boolean
+  handleSocioSearch: () => Promise<void>
+  clearSocioFilters: () => void
 }

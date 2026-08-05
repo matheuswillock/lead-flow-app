@@ -25,6 +25,7 @@ import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { useBillingSlots } from "@/app/hooks/useBillingSlots";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -83,7 +84,6 @@ export function ManagerUsersContainer({
     updateUser,
     deleteUser,
     resendInvite,
-    togglePermanentSubscription,
     refreshData,
     
     // Controle de UI
@@ -129,7 +129,7 @@ export function ManagerUsersContainer({
     setPendingPaymentLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}`);
+      const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}`);
       const result = await response.json();
       if (!response.ok || !result?.isValid || !result?.result) {
         throw new Error(result?.errorMessages?.[0] || "Falha ao carregar dados do pagamento");
@@ -158,7 +158,7 @@ export function ManagerUsersContainer({
 
     setPendingPaymentSubmitting(true);
     try {
-      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/billing-type`, {
+      const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/billing-type`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ billingType: pendingPaymentBillingType }),
@@ -193,7 +193,7 @@ export function ManagerUsersContainer({
     const loadingToast = toast.loading('Deletando operador pendente...');
 
     try {
-      const response = await fetch(`/api/v1/operators/pending/${pendingOperatorToDelete.pendingPayment.id}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/operators/pending/${pendingOperatorToDelete.pendingPayment.id}`, {
         method: 'DELETE',
       });
 
@@ -260,7 +260,6 @@ export function ManagerUsersContainer({
     onViewPendingCheckout: handleViewPendingCheckout,
     onEditPendingPayment: handleOpenEditPendingPayment,
     onResendInvite: resendInvite,
-    onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster: resolvedIsMaster,
     canDelete: canDeleteUser,
     canManagePendingPayments,

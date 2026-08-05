@@ -82,6 +82,16 @@ export function nextWithSession(
   return nextResponse;
 }
 
+export function rewriteWithSession(
+  sessionResponse: NextResponse,
+  url: URL | string,
+  init?: Parameters<typeof NextResponse.rewrite>[1],
+): NextResponse {
+  const rewriteResponse = NextResponse.rewrite(url, init);
+  copySessionCookies(sessionResponse, rewriteResponse);
+  return rewriteResponse;
+}
+
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next()
   const isDev = process.env.NODE_ENV === "development"

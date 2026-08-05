@@ -1,3 +1,7 @@
+/**
+ * @deprecated Estágio 6 — preferir `resolvePrice()` via catálogo.
+ * Mantido só como fallback temporário até cutover D13 concluir e literais saírem de `app/`.
+ */
 export const BILLING_PRICES = {
   base: 59.9,
   extraTeam: 29.9,

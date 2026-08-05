@@ -17,7 +17,7 @@ import {
   type EmailTemplateVariableDefinition,
 } from "@/lib/email/interpolate"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
-import { featureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
+import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import {
   CUSTOM_RADAR_SEGMENT_PREFIX,
@@ -55,20 +55,48 @@ import {
 import { notifyCampaignDispatchFailure } from "@/lib/email/notify-campaign-dispatch-failure"
 import { resolveTeamEmailCampaignLimits } from "@/lib/email/resolve-team-email-campaign-limits"
 import {
-  buildSubCampaignScheduledAts,
-  chunkContactIdsForSubCampaigns,
   requiresSubCampaignSplit,
 } from "@/lib/email/campaign-sub-campaigns"
+import {
+  buildCampaignPlan,
+  buildCampaignPlanFromContactIds,
+  mergeListAndSegmentContacts,
+  normalizeContactListIds,
+  resolveListStrategy,
+  validateCampaignPlanSchedules,
+  type CombinedAudienceContact,
+  type ListAudienceSlice,
+  type ListStrategy,
+  type SubCampaignScheduleInput,
+} from "@/lib/email/campaign-plan"
+import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
+import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
+import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
+import {
+  CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+  CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+  CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+  selectFailedRecipientEmailsForRetry,
+} from "@/lib/email/campaign-failed-recipients"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
 const ORPHAN_RESUME_MIN_AGE_MS = 2 * 60 * 1000
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
-const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed"] as const
+const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
 const MANUAL_DISPATCH_STATUS_SET = new Set<EmailCampaignStatus>(MANUAL_DISPATCH_STATUSES)
+const RETRY_FAILED_ONLY_STATUSES = new Set<EmailCampaignStatus>(["failed", "partially_sent"])
+
+export type ManualDispatchOptions = {
+  /** Quando true (ou status failed/partially_sent), envia só destinatários com falha elegíveis. */
+  retryFailedOnly?: boolean
+}
 
 export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
+  NO_FAILED_RECIPIENTS:
+    "Não há destinatários com falha para reenviar. Quem já recebeu não será reenviado.",
   NO_HTML: "Template sem HTML. Edite o template antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
@@ -81,11 +109,30 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
 
 export interface CreateCampaignInput {
   name: string
+  description?: string | null
   templateId: string
   contactListId?: string
+  contactListIds?: string[]
+  listStrategy?: ListStrategy
   radarSegmentSlug?: string
+  /** Na revisão: clonar regras do segmento custom selecionado em um novo TeamRadarSegment. */
+  saveAsRadarSegment?: boolean
+  saveAsRadarSegmentName?: string | null
   scheduledAt?: string | null
   scheduleIntervalDays?: number | null
+  uniformSchedule?: boolean
+  subCampaignSchedules?: SubCampaignScheduleInput[]
+}
+
+export type SubCampaignUpdateInput = {
+  id: string
+  name?: string
+  scheduledAt?: string | null
+  contactListId?: string
+}
+
+export type UpdateCampaignInput = Partial<CreateCampaignInput> & {
+  subCampaignUpdates?: SubCampaignUpdateInput[]
 }
 
 export type ManualDispatchJob = {
@@ -105,6 +152,7 @@ export type ManualDispatchJob = {
   templateVariables: EmailTemplateVariableDefinition[]
   logIdsByEmail: Array<{ email: string; logId: string }>
   totalRecipients: number
+  retryFailedOnly: boolean
   status: "sending"
 }
 
@@ -190,6 +238,323 @@ export class EmailCampaignUseCase {
     return recipients.length
   }
 
+  private async loadListAudiences(
+    teamId: string,
+    contactListIds: string[]
+  ): Promise<{ slices: ListAudienceSlice[]; error?: string }> {
+    if (contactListIds.length === 0) {
+      return { slices: [], error: "Selecione ao menos uma lista de contatos" }
+    }
+
+    const lists = await prisma.emailContactList.findMany({
+      where: { id: { in: contactListIds }, teamId, isArchived: false },
+      select: { id: true, name: true },
+    })
+
+    if (lists.length !== contactListIds.length) {
+      return { slices: [], error: "Uma ou mais listas não foram encontradas ou não pertencem ao time" }
+    }
+
+    const listsById = new Map(lists.map((list) => [list.id, list]))
+    const slices: ListAudienceSlice[] = []
+
+    for (const listId of contactListIds) {
+      const list = listsById.get(listId)
+      if (!list) continue
+      const recipients = await this.recipientService.listActiveRecipients(teamId, listId)
+      slices.push({
+        listId: list.id,
+        listName: list.name,
+        contacts: recipients
+          .filter((recipient) => recipient.contactId)
+          .map((recipient) => ({
+            contactId: recipient.contactId as string,
+            email: recipient.email,
+          })),
+      })
+    }
+
+    return { slices }
+  }
+
+  /**
+   * União lista(s) + segmento: dedupe por e-mail.
+   * Contatos só-de-segmento ficam sem contactId até materialização no create.
+   */
+  private async resolveCombinedAudience(
+    teamId: string,
+    contactListIds: string[],
+    radarSegmentSlug: string | undefined
+  ): Promise<{ contacts: CombinedAudienceContact[]; error?: string }> {
+    let listContacts: Array<{ contactId: string; email: string }> = []
+
+    if (contactListIds.length > 0) {
+      const { slices, error } = await this.loadListAudiences(teamId, contactListIds)
+      if (error) return { contacts: [], error }
+      listContacts = slices.flatMap((slice) => slice.contacts)
+    }
+
+    const segmentRecipients = radarSegmentSlug
+      ? await listRadarSegmentEmailRecipients(teamId, radarSegmentSlug)
+      : []
+
+    return {
+      contacts: mergeListAndSegmentContacts({
+        listContacts,
+        segmentRecipients,
+      }),
+    }
+  }
+
+  /**
+   * Garante EmailContact IDs para e-mails só-de-segmento (snapshot em lista dedicada).
+   * Necessário para freeze em audienceContactIds e split de sub-campanhas (DA11).
+   */
+  private async materializeMissingContactIds(params: {
+    teamId: string
+    profileId: string
+    campaignName: string
+    contacts: CombinedAudienceContact[]
+  }): Promise<{ contactIds: string[]; snapshotListId: string | null; error?: string }> {
+    const withIds = params.contacts.filter(
+      (contact): contact is CombinedAudienceContact & { contactId: string } =>
+        Boolean(contact.contactId)
+    )
+    const withoutIds = params.contacts.filter((contact) => !contact.contactId)
+
+    if (withoutIds.length === 0) {
+      return {
+        contactIds: withIds.map((contact) => contact.contactId),
+        snapshotListId: null,
+      }
+    }
+
+    const timestamp = new Date().toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    const listName = `Campanha: ${params.campaignName.trim()} — segmento (${timestamp})`
+
+    const list = await emailContactListRepository.createList({
+      teamId: params.teamId,
+      createdBy: params.profileId,
+      name: listName,
+    })
+
+    const BATCH_SIZE = 500
+    for (let i = 0; i < withoutIds.length; i += BATCH_SIZE) {
+      const batch = withoutIds.slice(i, i + BATCH_SIZE)
+      await emailContactListRepository.createContacts(
+        list.id,
+        batch.map((contact) => ({ email: contact.email, name: contact.name ?? null }))
+      )
+    }
+
+    const created = await prisma.emailContact.findMany({
+      where: { listId: list.id },
+      select: { id: true },
+    })
+
+    await emailContactListRepository.updateContactCount(list.id, created.length)
+
+    return {
+      contactIds: [...withIds.map((contact) => contact.contactId), ...created.map((row) => row.id)],
+      snapshotListId: list.id,
+    }
+  }
+
+  /**
+   * Clona regras de um segmento custom em novo TeamRadarSegment (revisão do wizard).
+   * Segmentos de sistema não têm DSL — não inventa regras.
+   */
+  private async maybeSaveAsRadarSegment(
+    teamId: string,
+    profileId: string,
+    data: CreateCampaignInput
+  ): Promise<{ radarSegmentSlug: string | undefined; error?: string }> {
+    const currentSlug = data.radarSegmentSlug?.trim() || undefined
+    if (!data.saveAsRadarSegment) {
+      return { radarSegmentSlug: currentSlug }
+    }
+
+    if (!currentSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)) {
+      return {
+        radarSegmentSlug: currentSlug,
+        error:
+          "Salvar como segmento Radar só é possível a partir de um segmento custom com regras DSL (não a partir de listas ou segmentos do sistema)",
+      }
+    }
+
+    const segmentId = currentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+    const existing = await teamRadarSegmentService.findById(teamId, segmentId)
+    if (!existing?.isActive) {
+      return { radarSegmentSlug: currentSlug, error: "Segmento Radar inválido" }
+    }
+
+    const name =
+      data.saveAsRadarSegmentName?.trim() ||
+      `${data.name.trim()} — segmento` ||
+      existing.name
+
+    try {
+      const rules = parseRadarSegmentRules(existing.rulesJson)
+      const created = await teamRadarSegmentService.create(teamId, profileId, {
+        name,
+        description: existing.description,
+        rules,
+      })
+      return { radarSegmentSlug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${created.id}` }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar segmento Radar"
+      return { radarSegmentSlug: currentSlug, error: message }
+    }
+  }
+
+  private parseScheduleInput(data: CreateCampaignInput) {
+    return {
+      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
+      scheduleIntervalDays: data.scheduleIntervalDays ?? null,
+      uniformSchedule: data.uniformSchedule !== false,
+      subCampaignSchedules: data.subCampaignSchedules,
+    }
+  }
+
+  async previewPlan(data: CreateCampaignInput, ctx: TeamContext): Promise<Output> {
+    try {
+      if (!data.name?.trim()) {
+        return new Output(false, [], ["Nome da campanha é obrigatório"], null)
+      }
+
+      const contactListIds = normalizeContactListIds(data)
+      const hasLists = contactListIds.length > 0
+      const hasRadar = Boolean(data.radarSegmentSlug)
+
+      if (!hasLists && !hasRadar) {
+        return new Output(false, [], ["Selecione uma lista de contatos ou um segmento Radar"], null)
+      }
+
+      if (hasRadar && data.radarSegmentSlug && !(await isValidRadarSegmentAudience(ctx.teamId, data.radarSegmentSlug))) {
+        return new Output(false, [], ["Segmento Radar inválido"], null)
+      }
+
+      if (hasRadar && hasLists && data.listStrategy === "per_list") {
+        return new Output(
+          false,
+          [],
+          ["Estratégia por lista não é compatível com segmento Radar. Use juntar listas (merge)"],
+          null
+        )
+      }
+
+      const schedule = this.parseScheduleInput(data)
+      const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
+      const maxPerSub = teamLimits.maxRecipientsPerSub
+
+      // Somente segmento: rejeita acima do limite (DA11 — sem split)
+      if (hasRadar && !hasLists) {
+        const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
+          radarSegmentSlug: data.radarSegmentSlug,
+        })
+        if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+          const limitLabel =
+            maxPerSub?.toLocaleString("pt-BR") ??
+            EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
+          return new Output(
+            false,
+            [],
+            [
+              `Audiência excede o limite de ${limitLabel} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos (listas podem usar sub-campanhas)`,
+            ],
+            null
+          )
+        }
+        return new Output(true, [], [], {
+          subCampaigns: [
+            {
+              index: 1,
+              name: data.name.trim(),
+              totalRecipients,
+              scheduledAt: schedule.scheduledAt?.toISOString() ?? null,
+            },
+          ],
+          needsSplit: false,
+          totalRecipients,
+          listStrategy: "single",
+          sourceContactListIds: [],
+          isParentCampaign: false,
+          audienceMode: "segment_only",
+        })
+      }
+
+      // Lista(s) ou segmento+lista: união com dedupe; split permitido (audiência materializável)
+      if (hasRadar && hasLists) {
+        const { contacts, error } = await this.resolveCombinedAudience(
+          ctx.teamId,
+          contactListIds,
+          data.radarSegmentSlug
+        )
+        if (error) return new Output(false, [], [error], null)
+
+        // Preview: IDs reais das listas + placeholders estáveis para e-mails só-de-segmento
+        const previewIds = contacts.map((contact, index) =>
+          contact.contactId ?? `preview-segment-${index}`
+        )
+        const plan = buildCampaignPlanFromContactIds({
+          campaignName: data.name,
+          contactIds: previewIds,
+          sourceContactListIds: contactListIds,
+          maxRecipientsPerSub: maxPerSub,
+          ...schedule,
+        })
+
+        const scheduleError = validateCampaignPlanSchedules(plan, schedule)
+        if (scheduleError) {
+          return new Output(false, [], [scheduleError], null)
+        }
+
+        return new Output(true, [], [], {
+          ...plan,
+          audienceMode: "combined",
+          // Não vaza placeholders no payload — create materializa de verdade
+          subCampaigns: plan.subCampaigns.map((sub) => ({
+            ...sub,
+            audienceContactIds: undefined,
+          })),
+        })
+      }
+
+      const listStrategy = resolveListStrategy(data)
+      if (contactListIds.length > 1 && data.listStrategy !== "merge" && data.listStrategy !== "per_list") {
+        return new Output(false, [], ["Selecione a estratégia de uso das listas (merge ou per_list)"], null)
+      }
+
+      const { slices, error } = await this.loadListAudiences(ctx.teamId, contactListIds)
+      if (error) return new Output(false, [], [error], null)
+
+      const plan = buildCampaignPlan({
+        campaignName: data.name,
+        listStrategy,
+        sourceContactListIds: listStrategy === "merge" ? contactListIds : contactListIds,
+        listAudiences: slices,
+        maxRecipientsPerSub: maxPerSub,
+        ...schedule,
+      })
+
+      const scheduleError = validateCampaignPlanSchedules(plan, schedule)
+      if (scheduleError) {
+        return new Output(false, [], [scheduleError], null)
+      }
+
+      return new Output(true, [], [], { ...plan, audienceMode: "list_only" })
+    } catch (error) {
+      console.error("[EmailCampaignUseCase][previewPlan]", error)
+      return new Output(false, [], ["Erro ao calcular plano da campanha"], null)
+    }
+  }
+
   async list(ctx: TeamContext, options: { status?: string | string[]; page: number; pageSize: number; name?: string; createdAtFrom?: string; createdAtTo?: string }): Promise<Output> {
     try {
       const statuses = Array.isArray(options.status)
@@ -233,6 +598,7 @@ export class EmailCampaignUseCase {
             templateId: true,
             contactListId: true,
             radarSegmentSlug: true,
+            audienceContactIds: true,
             errorMessage: true,
             _count: { select: { subCampaigns: true } },
           },
@@ -288,12 +654,15 @@ export class EmailCampaignUseCase {
         childAggregates.map((row) => [row.parentCampaignId as string, row._sum])
       )
 
+      // Campanhas com audienceContactIds congelado (ex.: segmento+lista) mantêm totalRecipients
+      // persistido — countActiveRecipients prioriza só o segmento Radar e ignora a união.
       const dynamicRecipientCounts = new Map(
         await Promise.all(
           campaigns
             .filter(
               (campaign) =>
                 campaign._count.subCampaigns === 0 &&
+                campaign.audienceContactIds.length === 0 &&
                 ["draft", "scheduled", "sending"].includes(campaign.status)
             )
             .map(async (campaign) => {
@@ -314,14 +683,18 @@ export class EmailCampaignUseCase {
         campaigns: campaigns.map((campaign) => {
           const childSum = aggregatesByParent.get(campaign.id)
           const subCampaignCount = campaign._count.subCampaigns
+          const totalRecipients = dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients
+          const totalSent = childSum?.totalSent ?? campaign.totalSent
+          const isLeafRetryStatus =
+            subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
           return resolveEmailCreator({
             id: campaign.id,
             name: campaign.name,
             status: campaign.status,
             scheduledAt: campaign.scheduledAt,
             sentAt: campaign.sentAt,
-            totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
-            totalSent: childSum?.totalSent ?? campaign.totalSent,
+            totalRecipients,
+            totalSent,
             totalDelivered: childSum?.totalDelivered ?? campaign.totalDelivered,
             totalOpened: childSum?.totalOpened ?? campaign.totalOpened,
             totalClicked: childSum?.totalClicked ?? campaign.totalClicked,
@@ -336,6 +709,10 @@ export class EmailCampaignUseCase {
             subCampaignCount,
             isParentCampaign: subCampaignCount > 0,
             managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
+            // Aproximação rápida na listagem; getById calcula o valor exato pelos logs.
+            failedRetryRecipientCount: isLeafRetryStatus
+              ? Math.max(0, totalRecipients - totalSent)
+              : undefined,
           })
         }),
         total,
@@ -360,6 +737,7 @@ export class EmailCampaignUseCase {
             select: {
               id: true,
               name: true,
+              description: true,
               status: true,
               scheduledAt: true,
               sentAt: true,
@@ -370,6 +748,7 @@ export class EmailCampaignUseCase {
               totalClicked: true,
               totalBounced: true,
               subCampaignIndex: true,
+              contactListId: true,
               errorMessage: true,
             },
             orderBy: { subCampaignIndex: "asc" },
@@ -410,15 +789,56 @@ export class EmailCampaignUseCase {
           )
         : null
 
+      const sourceContactListIds =
+        campaign.sourceContactListIds.length > 0
+          ? campaign.sourceContactListIds
+          : isParent
+            ? Array.from(
+                new Set(
+                  campaign.subCampaigns
+                    .map((child) => child.contactListId)
+                    .filter((id): id is string => Boolean(id))
+                )
+              )
+            : []
+
+      const linkedForm = await detectLinkedFormFromTemplateHtml(
+        ctx.teamId,
+        (
+          await prisma.emailTemplate.findFirst({
+            where: { id: campaign.templateId, teamId: ctx.teamId },
+            select: { html: true },
+          })
+        )?.html ?? null
+      )
+
+      const failedRetryRecipientCount =
+        !isParent && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+          ? (await this.resolveFailedRetryRecipientEmails(campaign.id)).length
+          : undefined
+
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
+        sourceContactListIds,
+        linkedForm,
         totalRecipients: ["draft", "scheduled", "sending"].includes(campaign.status)
           ? activeRecipientCount
           : campaign.totalRecipients,
+        failedRetryRecipientCount,
+        partiallySentCount: isParent
+          ? campaign.subCampaigns.filter((sub) => sub.status === "sent").length
+          : undefined,
+        partiallySentTotal: isParent ? campaign.subCampaigns.length : undefined,
         ...(childTotals ?? {}),
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
         managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
+        subCampaigns: campaign.subCampaigns.map((sub) => ({
+          ...sub,
+          failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
+            ? Math.max(0, sub.totalRecipients - sub.totalSent)
+            : undefined,
+        })),
       }))
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
@@ -443,22 +863,26 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Seu perfil não tem permissão para criar campanhas"], null)
       }
 
-      if (!data.contactListId && !data.radarSegmentSlug) {
+      const contactListIds = normalizeContactListIds(data)
+      const hasLists = contactListIds.length > 0
+      const hasRadar = Boolean(data.radarSegmentSlug)
+
+      if (!hasLists && !hasRadar) {
         return new Output(false, [], ["Selecione uma lista de contatos ou um segmento Radar"], null)
-      }
-      if (data.contactListId && data.radarSegmentSlug) {
-        return new Output(false, [], ["Use apenas lista de contatos ou segmento Radar, não ambos"], null)
       }
       if (data.radarSegmentSlug && !(await isValidRadarSegmentAudience(ctx.teamId, data.radarSegmentSlug))) {
         return new Output(false, [], ["Segmento Radar inválido"], null)
       }
+      if (hasRadar && hasLists && data.listStrategy === "per_list") {
+        return new Output(
+          false,
+          [],
+          ["Estratégia por lista não é compatível com segmento Radar. Use juntar listas (merge)"],
+          null
+        )
+      }
 
       const template = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
-      const contactList = data.contactListId
-        ? await prisma.emailContactList.findFirst({
-            where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false },
-          })
-        : null
 
       if (!template) {
         return new Output(
@@ -468,23 +892,186 @@ export class EmailCampaignUseCase {
           null
         )
       }
-      if (data.contactListId && !contactList) {
-        return new Output(false, [], ["Lista de contatos não encontrada ou não pertence ao time"], null)
-      }
 
-      const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null
-      if (scheduledAt && scheduledAt <= new Date()) {
-        return new Output(false, [], ["Data de agendamento deve ser no futuro"], null)
+      const savedSegment = await this.maybeSaveAsRadarSegment(ctx.teamId, ctx.profileId, data)
+      if (savedSegment.error) {
+        return new Output(false, [], [savedSegment.error], null)
       }
+      const effectiveRadarSlug = savedSegment.radarSegmentSlug
 
+      const schedule = this.parseScheduleInput(data)
       const trimmedName = data.name.trim()
       const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const maxPerSub = teamLimits.maxRecipientsPerSub
 
-      if (data.radarSegmentSlug || !data.contactListId) {
+      // Segmento + lista(s): união dedupe → valida schedule → materializa e-mails só-de-segmento → split
+      if (hasRadar && hasLists) {
+        const { contacts, error: resolveError } = await this.resolveCombinedAudience(
+          ctx.teamId,
+          contactListIds,
+          effectiveRadarSlug
+        )
+        if (resolveError) return new Output(false, [], [resolveError], null)
+        if (contacts.length === 0) {
+          return new Output(false, [], ["Nenhum destinatário na audiência combinada"], null)
+        }
+
+        // Valida agendamento antes de materializar — evita lista/contatos órfãos em schedule inválido
+        const previewIds = contacts.map((contact, index) =>
+          contact.contactId ?? `preview-segment-${index}`
+        )
+        const schedulePreviewPlan = buildCampaignPlanFromContactIds({
+          campaignName: trimmedName,
+          contactIds: previewIds,
+          sourceContactListIds: contactListIds,
+          maxRecipientsPerSub: maxPerSub,
+          contactListId: contactListIds.length === 1 ? contactListIds[0] : null,
+          ...schedule,
+        })
+        const scheduleError = validateCampaignPlanSchedules(schedulePreviewPlan, schedule)
+        if (scheduleError) {
+          return new Output(false, [], [scheduleError], null)
+        }
+
+        const materialized = await this.materializeMissingContactIds({
+          teamId: ctx.teamId,
+          profileId: ctx.profileId,
+          campaignName: trimmedName,
+          contacts,
+        })
+        if (materialized.error) return new Output(false, [], [materialized.error], null)
+
+        const plan = buildCampaignPlanFromContactIds({
+          campaignName: trimmedName,
+          contactIds: materialized.contactIds,
+          sourceContactListIds: contactListIds,
+          maxRecipientsPerSub: maxPerSub,
+          contactListId: contactListIds.length === 1 ? contactListIds[0] : null,
+          ...schedule,
+        })
+
+        const customSegmentId = effectiveRadarSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
+          ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+          : null
+
+        const createCombinedInDb = async (db: Prisma.TransactionClient | typeof prisma) => {
+          if (!plan.isParentCampaign) {
+            const single = plan.subCampaigns[0]
+            return db.emailCampaign.create({
+              data: {
+                id: randomUUID(),
+                teamId: ctx.teamId,
+                createdBy: ctx.profileId,
+                name: trimmedName,
+                description: data.description?.trim() ? data.description.trim() : null,
+                templateId: data.templateId,
+                contactListId:
+                  single?.contactListId ??
+                  (contactListIds.length === 1 ? contactListIds[0] ?? null : null),
+                radarSegmentSlug: effectiveRadarSlug ?? null,
+                audienceContactIds: single?.audienceContactIds ?? materialized.contactIds,
+                sourceContactListIds: contactListIds,
+                status: single?.scheduledAt ? "scheduled" : "draft",
+                scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
+                totalRecipients: plan.totalRecipients,
+              },
+            })
+          }
+
+          const parentId = randomUUID()
+          const parentStatus: EmailCampaignStatus = plan.subCampaigns.some((sub) => sub.scheduledAt)
+            ? "scheduled"
+            : "draft"
+
+          const parent = await db.emailCampaign.create({
+            data: {
+              id: parentId,
+              teamId: ctx.teamId,
+              createdBy: ctx.profileId,
+              name: trimmedName,
+              description: data.description?.trim() ? data.description.trim() : null,
+              templateId: data.templateId,
+              contactListId: contactListIds.length === 1 ? contactListIds[0] ?? null : null,
+              radarSegmentSlug: effectiveRadarSlug ?? null,
+              sourceContactListIds: contactListIds,
+              status: parentStatus,
+              scheduledAt: null,
+              totalRecipients: plan.totalRecipients,
+            },
+          })
+
+          const subCampaigns = []
+          for (const sub of plan.subCampaigns) {
+            const child = await db.emailCampaign.create({
+              data: {
+                id: randomUUID(),
+                teamId: ctx.teamId,
+                createdBy: ctx.profileId,
+                name: sub.name,
+                description: data.description?.trim() ? data.description.trim() : null,
+                templateId: data.templateId,
+                contactListId: sub.contactListId ?? null,
+                parentCampaignId: parentId,
+                subCampaignIndex: sub.index,
+                audienceContactIds: sub.audienceContactIds ?? [],
+                status: sub.scheduledAt ? "scheduled" : "draft",
+                scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
+                totalRecipients: sub.totalRecipients,
+              },
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                subCampaignIndex: true,
+                scheduledAt: true,
+                totalRecipients: true,
+                status: true,
+              },
+            })
+            subCampaigns.push(child)
+          }
+
+          return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
+        }
+
+        const createCombined = async () => {
+          if (!plan.isParentCampaign) {
+            return createCombinedInDb(prisma)
+          }
+          return prisma.$transaction(async (tx) => createCombinedInDb(tx))
+        }
+
+        if (!customSegmentId) {
+          const result = await createCombined()
+          const message = plan.isParentCampaign
+            ? "Campanha criada com sub-campanhas"
+            : "Campanha criada com sucesso"
+          return new Output(true, [message], [], result)
+        }
+
+        // Mantém o advisory lock até a campanha existir (evita remoção concorrente do segmento)
+        const created = await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
+          const stillActive = await tx.teamRadarSegment.findFirst({
+            where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
+          })
+          if (!stillActive) return null
+          return createCombinedInDb(tx)
+        })
+        if (!created) {
+          return new Output(false, [], ["Segmento Radar inválido"], null)
+        }
+
+        const message = plan.isParentCampaign
+          ? "Campanha criada com sub-campanhas"
+          : "Campanha criada com sucesso"
+        return new Output(true, [message], [], created)
+      }
+
+      // Somente segmento: rejeita acima do limite (DA11 — sem split)
+      if (hasRadar) {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
-          contactListId: data.contactListId,
-          radarSegmentSlug: data.radarSegmentSlug,
+          radarSegmentSlug: effectiveRadarSlug,
         })
         if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
           const limitLabel =
@@ -494,26 +1081,30 @@ export class EmailCampaignUseCase {
             false,
             [],
             [
-              `Segmentos Radar com mais de ${limitLabel} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Audiência excede o limite de ${limitLabel} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos (listas podem usar sub-campanhas)`,
             ],
             null
           )
+        }
+        if (schedule.scheduledAt && schedule.scheduledAt <= new Date()) {
+          return new Output(false, [], ["Data de agendamento deve ser no futuro"], null)
         }
         const campaignData = {
           id: randomUUID(),
           teamId: ctx.teamId,
           createdBy: ctx.profileId,
           name: trimmedName,
+          description: data.description?.trim() ? data.description.trim() : null,
           templateId: data.templateId,
-          contactListId: data.contactListId ?? null,
-          radarSegmentSlug: data.radarSegmentSlug ?? null,
-          status: (scheduledAt ? "scheduled" : "draft") as EmailCampaignStatus,
-          scheduledAt,
+          contactListId: null,
+          radarSegmentSlug: effectiveRadarSlug ?? null,
+          status: (schedule.scheduledAt ? "scheduled" : "draft") as EmailCampaignStatus,
+          scheduledAt: schedule.scheduledAt,
           totalRecipients,
         }
 
-        const customSegmentId = data.radarSegmentSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
-          ? data.radarSegmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+        const customSegmentId = effectiveRadarSlug?.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)
+          ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
           : null
 
         if (!customSegmentId) {
@@ -521,9 +1112,6 @@ export class EmailCampaignUseCase {
           return new Output(true, ["Campanha criada com sucesso"], [], campaign)
         }
 
-        // Serializa contra TeamRadarSegmentRepository.removeWithLock: sem o
-        // lock, o segmento poderia ser excluído entre a validação acima e
-        // este insert, deixando a campanha com um custom:{id} órfão.
         const campaign = await prisma.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
 
@@ -541,64 +1129,53 @@ export class EmailCampaignUseCase {
         return new Output(true, ["Campanha criada com sucesso"], [], campaign)
       }
 
-      const recipients = await this.recipientService.listActiveRecipients(ctx.teamId, data.contactListId)
-      const contactIds = recipients
-        .map((recipient) => recipient.contactId)
-        .filter((contactId): contactId is string => Boolean(contactId))
-      const totalRecipients = contactIds.length
+      const listStrategy = resolveListStrategy(data)
+      if (contactListIds.length > 1 && data.listStrategy !== "merge" && data.listStrategy !== "per_list") {
+        return new Output(false, [], ["Selecione a estratégia de uso das listas (merge ou per_list)"], null)
+      }
 
-      if (!requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+      const { slices, error } = await this.loadListAudiences(ctx.teamId, contactListIds)
+      if (error) return new Output(false, [], [error], null)
+
+      const plan = buildCampaignPlan({
+        campaignName: trimmedName,
+        listStrategy,
+        sourceContactListIds: listStrategy === "merge" ? contactListIds : contactListIds,
+        listAudiences: slices,
+        maxRecipientsPerSub: maxPerSub,
+        ...schedule,
+      })
+
+      const scheduleError = validateCampaignPlanSchedules(plan, schedule)
+      if (scheduleError) {
+        return new Output(false, [], [scheduleError], null)
+      }
+
+      if (!plan.isParentCampaign) {
+        const single = plan.subCampaigns[0]
         const campaign = await prisma.emailCampaign.create({
           data: {
             id: randomUUID(),
             teamId: ctx.teamId,
             createdBy: ctx.profileId,
             name: trimmedName,
+            description: data.description?.trim() ? data.description.trim() : null,
             templateId: data.templateId,
-            contactListId: data.contactListId,
-            status: scheduledAt ? "scheduled" : "draft",
-            scheduledAt,
-            totalRecipients,
+            contactListId: single?.contactListId ?? (listStrategy === "single" ? (contactListIds[0] ?? null) : null),
+            audienceContactIds: single?.audienceContactIds ?? [],
+            sourceContactListIds: listStrategy === "merge" ? contactListIds : [],
+            status: single?.scheduledAt ? "scheduled" : "draft",
+            scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
+            totalRecipients: plan.totalRecipients,
           },
         })
         return new Output(true, ["Campanha criada com sucesso"], [], campaign)
       }
 
-      if (!scheduledAt) {
-        const limitLabel =
-          maxPerSub?.toLocaleString("pt-BR") ??
-          EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
-        return new Output(
-          false,
-          [],
-          [
-            `Listas com mais de ${limitLabel} contatos exigem agendamento com intervalo em dias`,
-          ],
-          null
-        )
-      }
-
-      const scheduleIntervalDays = data.scheduleIntervalDays ?? null
-      if (
-        scheduleIntervalDays == null ||
-        !Number.isInteger(scheduleIntervalDays) ||
-        scheduleIntervalDays < 1
-      ) {
-        return new Output(
-          false,
-          [],
-          ["Informe o intervalo em dias (mínimo 1) entre as sub-campanhas"],
-          null
-        )
-      }
-
-      const chunks = chunkContactIdsForSubCampaigns(contactIds, maxPerSub)
-      const scheduledAts = buildSubCampaignScheduledAts(
-        scheduledAt,
-        chunks.length,
-        scheduleIntervalDays
-      )
       const parentId = randomUUID()
+      const parentStatus: EmailCampaignStatus = plan.subCampaigns.some((sub) => sub.scheduledAt)
+        ? "scheduled"
+        : "draft"
 
       const result = await prisma.$transaction(async (tx) => {
         const parent = await tx.emailCampaign.create({
@@ -607,35 +1184,38 @@ export class EmailCampaignUseCase {
             teamId: ctx.teamId,
             createdBy: ctx.profileId,
             name: trimmedName,
+            description: data.description?.trim() ? data.description.trim() : null,
             templateId: data.templateId,
-            contactListId: data.contactListId,
-            status: "scheduled",
+            contactListId: listStrategy === "single" ? contactListIds[0] ?? null : null,
+            sourceContactListIds: listStrategy === "merge" ? contactListIds : [],
+            status: parentStatus,
             scheduledAt: null,
-            totalRecipients,
+            totalRecipients: plan.totalRecipients,
           },
         })
 
         const subCampaigns = []
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i]
+        for (const sub of plan.subCampaigns) {
           const child = await tx.emailCampaign.create({
             data: {
               id: randomUUID(),
               teamId: ctx.teamId,
               createdBy: ctx.profileId,
-              name: `${trimmedName} (parte ${chunk.index}/${chunks.length})`,
+              name: sub.name,
+              description: data.description?.trim() ? data.description.trim() : null,
               templateId: data.templateId,
-              contactListId: data.contactListId,
+              contactListId: sub.contactListId ?? (listStrategy === "single" ? contactListIds[0] ?? null : null),
               parentCampaignId: parentId,
-              subCampaignIndex: chunk.index,
-              audienceContactIds: chunk.contactIds,
-              status: "scheduled",
-              scheduledAt: scheduledAts[i],
-              totalRecipients: chunk.size,
+              subCampaignIndex: sub.index,
+              audienceContactIds: sub.audienceContactIds ?? [],
+              status: sub.scheduledAt ? "scheduled" : "draft",
+              scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
+              totalRecipients: sub.totalRecipients,
             },
             select: {
               id: true,
               name: true,
+              description: true,
               subCampaignIndex: true,
               scheduledAt: true,
               totalRecipients: true,
@@ -655,9 +1235,9 @@ export class EmailCampaignUseCase {
     }
   }
 
-  async update(id: string, data: Partial<CreateCampaignInput>, ctx: TeamContext): Promise<Output> {
+  async update(id: string, data: UpdateCampaignInput, ctx: TeamContext): Promise<Output> {
     try {
-      const editableStatuses = ["draft", "scheduled", "sent", "failed"] as const
+      const editableStatuses = ["draft", "scheduled"] as const
       const existing = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: [...editableStatuses] } },
       })
@@ -707,7 +1287,13 @@ export class EmailCampaignUseCase {
       }
 
       let totalRecipients: number | undefined
-      if (data.contactListId !== undefined || data.radarSegmentSlug !== undefined) {
+      const audienceTouched =
+        data.contactListId !== undefined ||
+        data.contactListIds !== undefined ||
+        data.radarSegmentSlug !== undefined ||
+        data.listStrategy !== undefined
+
+      if (audienceTouched) {
         if (existing.audienceContactIds.length > 0 || isParentCampaign) {
           return new Output(
             false,
@@ -723,7 +1309,8 @@ export class EmailCampaignUseCase {
           contactListId: nextContactListId,
           radarSegmentSlug: nextSegmentSlug,
         })
-        if (nextSegmentSlug && requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
+        // Só rejeita por limite de segmento quando NÃO há lista (DA11). Com lista, união materializa.
+        if (nextSegmentSlug && !nextContactListId && requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
           const limitLabel =
             maxPerSub?.toLocaleString("pt-BR") ??
             EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR")
@@ -731,10 +1318,68 @@ export class EmailCampaignUseCase {
             false,
             [],
             [
-              `Segmentos Radar com mais de ${limitLabel} destinatários não são suportados. Use uma lista de contatos (com sub-campanhas) ou reduza o segmento`,
+              `Audiência excede o limite de ${limitLabel} destinatários por campanha de segmento. Refine as condições ou materialize em lista de contatos (listas podem usar sub-campanhas)`,
             ],
             null
           )
+        }
+      }
+
+      if (data.subCampaignUpdates?.length) {
+        if (!isParentCampaign) {
+          return new Output(false, [], ["Campanha não possui sub-campanhas para atualizar"], null)
+        }
+
+        for (const subUpdate of data.subCampaignUpdates) {
+          const child = await prisma.emailCampaign.findFirst({
+            where: {
+              id: subUpdate.id,
+              parentCampaignId: id,
+              teamId: ctx.teamId,
+              status: { in: ["draft", "scheduled"] },
+            },
+          })
+          if (!child) {
+            return new Output(false, [], ["Sub-campanha não encontrada ou não pode ser editada"], null)
+          }
+
+          if (subUpdate.scheduledAt !== undefined) {
+            const nextScheduledAt = subUpdate.scheduledAt ? new Date(subUpdate.scheduledAt) : null
+            if (nextScheduledAt) {
+              const siblingConflict = await this.hasSiblingDailyCapConflict({
+                teamId: ctx.teamId,
+                parentCampaignId: id,
+                campaignId: subUpdate.id,
+                scheduledAt: nextScheduledAt,
+                totalRecipients: child.totalRecipients,
+              })
+              if (siblingConflict) {
+                return new Output(
+                  false,
+                  [],
+                  [
+                    `O agendamento ultrapassa o limite de ${EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB} e-mails por dia com outras sub-campanhas`,
+                  ],
+                  null
+                )
+              }
+            }
+          }
+
+          await prisma.emailCampaign.update({
+            where: { id: subUpdate.id },
+            data: {
+              ...(subUpdate.name !== undefined && { name: subUpdate.name.trim() }),
+              ...(subUpdate.scheduledAt !== undefined && {
+                scheduledAt: subUpdate.scheduledAt ? new Date(subUpdate.scheduledAt) : null,
+                status: subUpdate.scheduledAt ? "scheduled" : "draft",
+              }),
+              ...(subUpdate.contactListId !== undefined &&
+                child.audienceContactIds.length === 0 && {
+                  contactListId: subUpdate.contactListId,
+                }),
+            },
+          })
         }
       }
 
@@ -771,15 +1416,14 @@ export class EmailCampaignUseCase {
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
+          ...(data.description !== undefined && {
+            description: data.description?.trim() ? data.description.trim() : null,
+          }),
           ...(data.templateId !== undefined && { templateId: data.templateId }),
           ...(data.contactListId !== undefined && { contactListId: data.contactListId }),
           ...(data.radarSegmentSlug !== undefined && {
             radarSegmentSlug: data.radarSegmentSlug,
-            ...(data.radarSegmentSlug ? { contactListId: null } : {}),
           }),
-          ...(data.contactListId !== undefined && data.contactListId
-            ? { radarSegmentSlug: null }
-            : {}),
           ...(totalRecipients !== undefined && { totalRecipients }),
           ...(canChangeSchedule && data.scheduledAt !== undefined && {
             scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
@@ -795,7 +1439,7 @@ export class EmailCampaignUseCase {
 
       return new Output(true, ["Campanha atualizada com sucesso"], [], {
         ...campaign,
-        totalRecipients: ["draft", "scheduled", "sending", "sent", "failed"].includes(campaign.status)
+        totalRecipients: ["draft", "scheduled", "sending", "sent", "failed", "partially_sent"].includes(campaign.status)
           ? resolvedRecipientCount
           : campaign.totalRecipients,
       })
@@ -850,15 +1494,17 @@ export class EmailCampaignUseCase {
   private buildDispatchFailureDetail(providerErrors: DispatchProviderError[]): string | null {
     if (providerErrors.length === 0) return null
 
-    const parts = providerErrors.slice(0, 3).map((error) =>
-      formatProviderBatchFailureMessage({
+    const parts = providerErrors.slice(0, 3).map((error) => {
+      const technical = formatProviderBatchFailureMessage({
         message: error.message,
         statusCode: error.statusCode,
         emails: error.emails,
       })
-    )
+      console.error("[EmailCampaignUseCase][buildDispatchFailureDetail] erro técnico:", technical)
+      return technical
+    })
     const remaining = providerErrors.length - parts.length
-    return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} erro(s)` : parts.join(" | ")
+    return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} lote(s) com falha` : parts.join(" | ")
   }
 
   private recordDispatchLeadActivities(params: {
@@ -942,7 +1588,42 @@ export class EmailCampaignUseCase {
     }
   }
 
-  async startManualDispatch(id: string, ctx: TeamContext): Promise<Output> {
+  /**
+   * Lista e-mails da campanha elegíveis para "Redisparar falhas".
+   * Ver critério em `lib/email/campaign-failed-recipients.ts`.
+   */
+  private async resolveFailedRetryRecipientEmails(campaignId: string): Promise<string[]> {
+    const logs = await prisma.emailLog.findMany({
+      where: {
+        campaignId,
+        status: {
+          in: [
+            CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+            ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+            ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+          ],
+        },
+      },
+      select: { recipientEmail: true, status: true },
+    })
+
+    return selectFailedRecipientEmailsForRetry(logs)
+  }
+
+  async countFailedRetryRecipients(campaignId: string, ctx: TeamContext): Promise<number> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: campaignId, teamId: ctx.teamId },
+      select: { id: true },
+    })
+    if (!campaign) return 0
+    return (await this.resolveFailedRetryRecipientEmails(campaignId)).length
+  }
+
+  async startManualDispatch(
+    id: string,
+    ctx: TeamContext,
+    options?: ManualDispatchOptions
+  ): Promise<Output> {
     let previousStatus: EmailCampaignStatus | null = null
     let reservedCredits = 0
     let hasCampaignsBetaAccess = false
@@ -1003,7 +1684,7 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-      hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
+      hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
         profileId: ctx.profileId,
         managerId: ctx.managerId,
         isMaster: ctx.isMaster,
@@ -1044,14 +1725,35 @@ export class EmailCampaignUseCase {
         masterTimezone: campaign.team.master.timezone,
       })
 
-      if (dispatchInput.recipients.length === 0) {
+      // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
+      // Evita reenviar a lista inteira e duplicar quem já chegou ao provedor.
+      const retryFailedOnly =
+        options?.retryFailedOnly === true || RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+
+      let recipientsForDispatch = dispatchInput.recipients
+      if (retryFailedOnly) {
+        const failedEmails = new Set(await this.resolveFailedRetryRecipientEmails(campaign.id))
+        recipientsForDispatch = dispatchInput.recipients.filter((recipient) =>
+          failedEmails.has(recipient.email.trim().toLowerCase())
+        )
+        console.info("[EmailCampaignUseCase][startManualDispatch] retryFailedOnly", {
+          campaignId: campaign.id,
+          previousStatus: campaign.status,
+          fullAudienceCount: dispatchInput.recipients.length,
+          failedOnlyCount: recipientsForDispatch.length,
+        })
+      }
+
+      if (recipientsForDispatch.length === 0) {
         return new Output(
           false,
           [],
           [
-            campaign.radarSegmentSlug
-              ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
-              : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST,
+            retryFailedOnly
+              ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_FAILED_RECIPIENTS
+              : campaign.radarSegmentSlug
+                ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
+                : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST,
           ],
           null
         )
@@ -1062,7 +1764,7 @@ export class EmailCampaignUseCase {
         teamId: ctx.teamId,
         timezone: ownerTz,
         now: new Date(),
-        additionalRecipients: dispatchInput.recipients.length,
+        additionalRecipients: recipientsForDispatch.length,
       })
       if (dailyCap.exceeded && dailyCap.limit != null) {
         return new Output(
@@ -1076,7 +1778,7 @@ export class EmailCampaignUseCase {
       const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
         subject: dispatchInput.subject,
         html: dispatchInput.html,
-        recipients: dispatchInput.recipients,
+        recipients: recipientsForDispatch,
         globalDefaults: dispatchInput.globalDefaults,
         templateVariables: dispatchInput.templateVariables,
       })
@@ -1099,7 +1801,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
       }
 
-      const recipientsList = dispatchInput.recipients
+      const recipientsList = recipientsForDispatch
       const creditsToReserve = recipientsList.length
 
       const creditReservation = await this.reserveTeamCreditsForDispatch(
@@ -1132,7 +1834,7 @@ export class EmailCampaignUseCase {
           contactListName: campaign.contactList?.name ?? null,
           radarSegmentSlug: campaign.radarSegmentSlug,
           triggeredBy: ctx.profileId,
-          totalRecipients: dispatchInput.recipients.length,
+          totalRecipients: recipientsList.length,
           status: "sending",
         },
       })
@@ -1168,10 +1870,20 @@ export class EmailCampaignUseCase {
         templateVariables,
         logIdsByEmail: createdLogs.map(({ email, logId }) => ({ email, logId })),
         totalRecipients: recipientsList.length,
+        retryFailedOnly,
         status: "sending",
       }
 
-      return new Output(true, ["Disparo iniciado em segundo plano"], [], job)
+      return new Output(
+        true,
+        [
+          retryFailedOnly
+            ? `Reenvio das falhas iniciado em segundo plano (${recipientsList.length} destinatário(s))`
+            : "Disparo iniciado em segundo plano",
+        ],
+        [],
+        job
+      )
     } catch (error) {
       console.error("[EmailCampaignUseCase][startManualDispatch]", error)
 
@@ -1256,9 +1968,11 @@ export class EmailCampaignUseCase {
                 html: job.html,
                 campaignId: job.campaignId,
                 teamId: job.teamId,
+                dispatchId: job.dispatchId,
                 dispatchNumber: job.dispatchNumber,
                 globalDefaults: job.globalDefaults,
                 templateVariables: job.templateVariables,
+                logIdByEmail: logIdsByEmail,
                 onChunkDispatched: async (chunkDispatched) => {
                   const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
                     const logId = logIdsByEmail.get(email)
@@ -1576,8 +2290,8 @@ export class EmailCampaignUseCase {
   }
 
   /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
-  async send(id: string, ctx: TeamContext): Promise<Output> {
-    const started = await this.startManualDispatch(id, ctx)
+  async send(id: string, ctx: TeamContext, options?: ManualDispatchOptions): Promise<Output> {
+    const started = await this.startManualDispatch(id, ctx, options)
     if (!started.isValid || !started.result) {
       return started
     }
@@ -1743,6 +2457,7 @@ export class EmailCampaignUseCase {
             logId: log.id,
           })),
           totalRecipients: dispatch.totalRecipients,
+          retryFailedOnly: false,
           status: "sending",
         }
 
@@ -1927,7 +2642,7 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        const hasCampaignsBetaAccess = await featureAccessRepository.resolveEmailBetaAccess({
+        const hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
           profileId: masterId,
           managerId: masterId,
           isMaster: true,
@@ -2073,9 +2788,11 @@ export class EmailCampaignUseCase {
                 html: dispatchInput.html,
                 campaignId: campaign.id,
                 teamId: campaign.teamId,
+                dispatchId: dispatchRecord.id,
                 dispatchNumber,
                 globalDefaults: dispatchInput.globalDefaults,
                 templateVariables: dispatchInput.templateVariables,
+                logIdByEmail: logIdsByEmail,
                 onChunkDispatched: async (chunkDispatched) => {
                   const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
                     const logId = logIdsByEmail.get(email)
@@ -2255,9 +2972,11 @@ export class EmailCampaignUseCase {
       parentStatus = "scheduled"
     } else if ([...statuses].every((status) => status === "canceled")) {
       parentStatus = "canceled"
-    } else if (statuses.has("failed") && !statuses.has("sent")) {
+    } else if (statuses.has("failed") && !statuses.has("sent") && !statuses.has("partially_sent")) {
       parentStatus = "failed"
-    } else if (statuses.has("sent") || statuses.has("failed") || statuses.has("canceled")) {
+    } else if (statuses.has("failed") && (statuses.has("sent") || statuses.has("partially_sent"))) {
+      parentStatus = "partially_sent"
+    } else if (statuses.has("sent") || statuses.has("partially_sent") || statuses.has("canceled")) {
       parentStatus = "sent"
     }
 
@@ -2364,7 +3083,7 @@ export class EmailCampaignUseCase {
   async archive(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed"] } },
+        where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed", "partially_sent"] } },
       })
 
       if (!existing) {

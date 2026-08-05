@@ -4,18 +4,18 @@ export type { BackofficeCompanyType }
 
 export interface LeadExtractionFilters {
   mainCnae?: string
-  sideCnae?: string
-  state?: string
+  states?: string[]
   municipalityCode?: number
-  statusId?: string
-  natureId?: string
-  sizeId?: string
+  statusIds?: string[]
+  natureIds?: string[]
+  sizeIds?: string[]
   simplesOptant?: boolean
   simeiOptant?: boolean
   foundedGte?: string
   foundedLte?: string
   hasPhone?: boolean
   hasEmail?: boolean
+  removeContadores?: boolean
 }
 
 export interface LeadExtractionResultData {

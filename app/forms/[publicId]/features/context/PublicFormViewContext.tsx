@@ -9,11 +9,14 @@ const PublicFormViewContext = createContext<PublicFormViewState | null>(null)
 export function PublicFormViewProvider({
   publicId,
   children,
+  initialSnapshot,
 }: {
   publicId: string
   children: ReactNode
+  /** Snapshot pré-carregado pelo Server Component — evita requisição visível no Network. */
+  initialSnapshot?: import("@/lib/public-forms/types").PublicFormSnapshot | null
 }) {
-  const value = usePublicFormView(publicId)
+  const value = usePublicFormView(publicId, initialSnapshot)
   return <PublicFormViewContext.Provider value={value}>{children}</PublicFormViewContext.Provider>
 }
 
