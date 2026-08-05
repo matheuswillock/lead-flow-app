@@ -2354,6 +2354,7 @@ model Team {
   leadCustomFieldDefinitions LeadCustomFieldDefinition[]
   publicForms                PublicForm[]
   publicFormSettings         PublicFormSettings?
+  publicFormTemplates        PublicFormTemplate[]
   transferRoutesFrom         TeamTransferRoute[]           @relation("TeamTransferRouteFrom")
   transferRoutesTo           TeamTransferRoute[]           @relation("TeamTransferRouteTo")
   outboundLeadTransfers      LeadTransfer[]                @relation("LeadTransferFromTeam")
@@ -5581,4 +5582,26 @@ model BackofficeCnae {
   updatedAt DateTime @updatedAt
 
   @@map("backoffice_cnaes")
+}
+
+/// Catálogo de templates de formulário público (globais ou por time).
+/// `teamId` nulo = disponível para todos os times.
+model PublicFormTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.Text
+  description String?  @db.Text
+  formKind    String   @default("standard") @db.VarChar(40)
+  /// Snapshot completo do draft (`PublicFormDraftInput`).
+  draft       Json
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  teamId      String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  team        Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, sortOrder])
+  @@index([teamId, isActive, sortOrder])
+  @@map("corretor_studio_public_form_templates")
 }

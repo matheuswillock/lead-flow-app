@@ -379,6 +379,12 @@
       "type": "default",
       "enabled": true,
       "description": "Identidade visitor_session do Radar — query ?vs= no hit público do pixel"
+    },
+    {
+      "key": "publicFormTemplateSlug",
+      "value": "health_plan_simulator",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment"

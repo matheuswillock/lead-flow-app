@@ -35,7 +35,13 @@ export class BackofficeLeadExtractionUseCase {
       if (extractionId) {
         await this.repo.updateStatus(extractionId, "ERROR").catch(() => null)
       }
-      return new Output(false, [], ["Erro ao realizar extração de leads"], null)
+      const msg = error instanceof Error ? error.message : ""
+      const userMessage = msg.toLowerCase().includes("not enough credits")
+        ? "Créditos insuficientes na conta CNPJá. Recarregue os créditos e tente novamente."
+        : msg.toLowerCase().includes("rate limit")
+        ? "Limite de requisições CNPJá atingido. Aguarde alguns minutos e tente novamente."
+        : "Erro ao realizar extração de leads"
+      return new Output(false, [], [userMessage], null)
     }
   }
 

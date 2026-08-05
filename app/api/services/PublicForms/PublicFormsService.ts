@@ -22,6 +22,8 @@ import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
+import { instantiatePublicFormTemplateDraft } from "@/lib/public-forms/instantiate-template-draft"
+import { publicFormDraftSchema } from "@/lib/public-forms/validation"
 import type { IPublicFormsService } from "./IPublicFormsService"
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -208,6 +210,32 @@ async function validateTeamAssignees(teamId: string, input: PublicFormDraftInput
 export class PublicFormsService implements IPublicFormsService {
   listPublishedOptions(teamId: string) {
     return publicFormsRepository.listPublishedOptions(teamId)
+  }
+
+  listTemplates(teamId: string) {
+    return publicFormsRepository.listTemplatesForTeam(teamId)
+  }
+
+  async getTemplate(teamId: string, slug: string) {
+    const template = await publicFormsRepository.findTemplateForTeam(teamId, slug)
+    if (!template) return null
+    const parsed = publicFormDraftSchema.safeParse(template.draft)
+    if (!parsed.success) {
+      console.error(
+        `[PublicFormsService][getTemplate] draft inválido para slug=${slug}`,
+        parsed.error.issues,
+      )
+      return null
+    }
+    return {
+      id: template.id,
+      slug: template.slug,
+      name: template.name,
+      description: template.description,
+      formKind: template.formKind,
+      sortOrder: template.sortOrder,
+      draft: instantiatePublicFormTemplateDraft(parsed.data),
+    }
   }
 
   list(teamId: string, filters: PublicFormListFilters) {

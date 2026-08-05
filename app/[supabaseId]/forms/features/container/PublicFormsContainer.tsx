@@ -69,10 +69,6 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  PUBLIC_FORM_TEMPLATE_IDS,
-  isTeamAllowedForPublicFormTemplate,
-} from "@/lib/public-forms/templates-access"
 import { usePublicForms } from "../context/PublicFormsContext"
 import type {
   PublicFormListItem,
@@ -161,29 +157,18 @@ export function PublicFormsContainer() {
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Link
-              href={`/${params.supabaseId}/forms/new?template=${PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR}`}
-              className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
-            >
-              <span className="font-medium">Simulador de Redução</span>
-              <span className="text-xs text-muted-foreground">
-                Modelo com capa, perguntas, cálculo de economia e agendamento.
-              </span>
-            </Link>
-            {isTeamAllowedForPublicFormTemplate(
-              PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN,
-              forms.ids?.teamId,
-            ) ? (
+            {forms.templates.map((template) => (
               <Link
-                href={`/${params.supabaseId}/forms/new?template=${PUBLIC_FORM_TEMPLATE_IDS.PROFESSION_HEALTH_PLAN}`}
+                key={template.id}
+                href={`/${params.supabaseId}/forms/new?template=${template.slug}`}
                 className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40"
               >
-                <span className="font-medium">Formulário básico</span>
+                <span className="font-medium">{template.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  Modelo exclusivo com capa, qualificação e captura de leads.
+                  {template.description || "Modelo pronto para personalizar."}
                 </span>
               </Link>
-            ) : null}
+            ))}
           </div>
         </section>
       ) : null}

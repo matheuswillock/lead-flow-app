@@ -11083,6 +11083,40 @@
                     },
                     "description": "Salva progresso parcial do formulário público (status inicial/parcial, upsert de lead quando há identidade)."
                   }
+                },
+                {
+                  "name": "GET Public Form Templates",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}"
+                      },
+                      {
+                        "key": "x-team-id",
+                        "value": "{{teamId}}"
+                      }
+                    ],
+                    "url": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/templates"
+                  }
+                },
+                {
+                  "name": "GET Public Form Template By Slug",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "x-supabase-user-id",
+                        "value": "{{supabaseUserId}}"
+                      },
+                      {
+                        "key": "x-team-id",
+                        "value": "{{teamId}}"
+                      }
+                    ],
+                    "url": "{{baseUrl}}/api/v1/teams/{{teamId}}/public-forms/templates/{{publicFormTemplateSlug}}"
+                  }
                 }
               ]
             }
@@ -14417,6 +14451,66 @@
               }
             }
           ]
+        },
+        {
+          "name": "POST Extração de Leads — Pesquisar Empresas",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mainCnae\": \"6550200\",\n  \"states\": [\n    \"SP\",\n    \"RJ\"\n  ],\n  \"statusIds\": [\n    \"2\"\n  ],\n  \"hasPhone\": true,\n  \"hasEmail\": false,\n  \"removeContadores\": true,\n  \"limit\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/backoffice/extracao-leads",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "extracao-leads"
+              ]
+            },
+            "description": "Pesquisa empresas pelo CNPJá com filtros de CNAE, UF, situação cadastral e outras características."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Extração de Leads — Pesquisar Sócios",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"names\": [\n    \"Jo\\u00e3o Silva\",\n    \"Maria Souza\"\n  ],\n  \"types\": [\n    \"NATURAL\"\n  ],\n  \"ageRanges\": [\n    \"31-40\",\n    \"41-50\"\n  ],\n  \"limit\": 50\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/backoffice/socios",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "socios"
+              ]
+            },
+            "description": "Pesquisa pessoas (sócios) pelo CNPJá com filtros de nome, tipo e faixa etária. Retorna vínculos empresariais de cada pessoa encontrada."
+          },
+          "response": []
         }
       ]
     },
