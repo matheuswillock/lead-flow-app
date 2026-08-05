@@ -1,7 +1,8 @@
 /**
  * Stable public form template slugs.
- * Visibility is resolved from `PublicFormTemplate` in the database
- * (`teamId` null = global / every team).
+ * Visibility is resolved from `PublicFormTemplate` in the database:
+ * - `teamId` null = global (every team)
+ * - `teamId` set = exclusive to that team (e.g. profession_health_plan → Kathrein)
  */
 
 export const PUBLIC_FORM_TEMPLATE_IDS = {
