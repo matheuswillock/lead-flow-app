@@ -1,8 +1,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.4.0
-**Last Updated:** 2026-05-06
+**Version:** 2.5.0
+**Last Updated:** 2026-08-05
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -32,6 +32,30 @@ This document defines the implementation governance for AI agents in this reposi
 - Before deleting any record, check for FK constraints in the schema.
 - **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
+
+## Git Branch & Pull Request Workflow (MUST)
+
+The repository has three fully CI-automated PR flows. Agents **MUST** rely on them instead of acting manually:
+
+| Push to | Workflow | What it does |
+|---------|----------|---------------|
+| `feature/*`, `bugfix/*` (and `cursor/*`, `claude/*`) | `ci-feature.yml` / `ci-bugfix.yml` / `ci-cursor.yml` / `ci-claude.yml` → `ci-branch-reusable.yml` (`auto-pr` job) | Creates/updates the PR into `develop` automatically. |
+| `develop` | `ci-develop.yml` (`auto-pr-develop-to-main` job) | Resets/force-pushes the `release/develop-to-main` branch from the validated `develop` commit and creates/updates the PR into `main`. |
+| `main` | `ci-sync-develop.yml` | Creates/updates the sync-back PR (`features/sync-main-to-develop` → `develop`). |
+
+### Before starting new work (MUST)
+
+Before creating or starting work on a `feature/*` or `bugfix/*` branch, agents **MUST** update the local branch from `develop` first (e.g. `git fetch origin develop && git checkout -b <branch> origin/develop`, or `git pull origin develop` if the branch already exists) to avoid a stale base and avoidable merge conflicts.
+
+### Pull Requests are pipeline-only (MUST NOT)
+
+Agents **MUST NOT** create Pull Requests manually (via `gh pr create` or the GitHub UI) for any of the three flows above, under any circumstances. These PRs **MUST** be created exclusively by the CI jobs listed. The correct flow is: push the branch and verify the CI opened/updated the PR (`gh pr list --head <branch>`) — never open one manually.
+
+### Protected branches — no direct commits (MUST NOT)
+
+Agents **MUST NOT** commit or push directly to `main`, `develop`, or any `release/*` branch (e.g. `release/develop-to-main`), under any circumstances — not even to resolve review comments on a PR already open against one of these branches. `release/*` branches are entirely CI-managed (recreated/force-pushed from `develop` on every push); a direct commit is overwritten on the next `develop` push or creates history inconsistency.
+
+To resolve review comments on a `develop → main` PR (via `release/develop-to-main`) or a `feature/bugfix → develop` PR: make the fix on a **new** `feature/*` or `bugfix/*` branch with its own PR into `develop` (opened automatically by CI). CI then regenerates `release/develop-to-main` and updates the PR into `main` automatically. Never commit directly onto the existing review branch when that branch is `release/*`.
 
 ## Migration Policy (Supabase CLI + Prisma ORM)
 
@@ -276,7 +300,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 
 ### MUST NOT
 
-- Commit or push directly to `main` or `develop` branches under any circumstances. All changes **MUST** go through a feature, bugfix, or release branch and be merged via pull request.
+- Commit or push directly to protected branches, or create Pull Requests manually — see [Git Branch & Pull Request Workflow](#git-branch--pull-request-workflow-must).
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar).
 - Use npm or yarn (project standard is Bun).
 - Use the `Bun.*` runtime global in `app/**` or `lib/**` (production runs on Node at Vercel; Bun is only the local script runner). Use portable APIs instead (e.g. `bcryptjs`, `node:crypto`). Enforced by `governance:check`.
@@ -405,6 +429,8 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 ## Pull Request Checklist (MUST)
 
 - [ ] Seguiu `agents.md`?
+- [ ] Fez pull da `develop` antes de iniciar a branch de trabalho?
+- [ ] Confirmou que nenhum PR foi criado manualmente e que nenhum commit foi feito direto em `main`/`develop`/`release/*`?
 - [ ] Criou migration? Schema via `bun run db:migrate:from-prisma -- <name>` ou manual via `db:migrate:new`; revisou SQL e aplicou remoto somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
