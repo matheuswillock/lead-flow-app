@@ -31,6 +31,7 @@ const PIPELINE_TABLE_COLUMN_OPTIONS = [
   { key: "leadCode", label: "ID" },
   { key: "email", label: "Email" },
   { key: "phone", label: "Telefone" },
+  { key: "contacts", label: "Contatos" },
   { key: "currentHealthPlan", label: "Plano atual" },
   { key: "currentValue", label: "Valor atual" },
   { key: "status", label: "Status" },
@@ -114,6 +115,7 @@ export function PipelineContainer({
     open,
     setOpen,
     selected: lead,
+    leadDialogDefaultTab,
     refreshLeads,
     finalizeContract,
     patchLead,
@@ -279,6 +281,7 @@ export function PipelineContainer({
         refreshLeads={refreshLeads}
         finalizeContract={finalizeContract}
         patchLead={patchLead}
+        defaultTab={leadDialogDefaultTab}
       />
     </div>
   )

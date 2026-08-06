@@ -53,6 +53,7 @@ export type PipelineTableColumnKey =
   | "assignedTo"
   | "closerId"
   | "meetingDate"
+  | "contacts"
   | "createdAt";
 
 export type PipelineTableColumnVisibility = Record<PipelineTableColumnKey, boolean>;
@@ -69,6 +70,7 @@ export const DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY: PipelineTableColumnVisibi
   assignedTo: true,
   closerId: true,
   meetingDate: true,
+  contacts: false,
   createdAt: true,
 };
 
@@ -78,6 +80,7 @@ export const DEFAULT_PIPELINE_TABLE_COLUMN_ORDER: string[] = [
   "leadCode",
   "email",
   "phone",
+  "contacts",
   "currentHealthPlan",
   "currentValue",
   "status",
@@ -115,8 +118,10 @@ interface IPipelineContextState {
   setOpen: (open: boolean) => void;
   selected: Lead | null;
   setSelected: (lead: Lead | null) => void;
+  leadDialogDefaultTab: "dados" | "tags" | "contatos" | "documentos";
   clearErrors: () => void;
   handleRowClick: (lead: Lead) => void;
+  handleOpenContacts: (lead: Lead) => void;
   handleRowHover: (lead: Lead) => void;
   openNewLeadDialog: () => void;
   refreshLeads: () => Promise<void>;
@@ -208,6 +213,9 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [leadDialogDefaultTab, setLeadDialogDefaultTab] = useState<
+    "dados" | "tags" | "contatos" | "documentos"
+  >("dados");
   const [tableColumnVisibility, setTableColumnVisibility] = useState<VisibilityState>(
     DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY
   );
@@ -734,6 +742,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   };
 
   const handleRowClick = (lead: Lead) => {
+    setLeadDialogDefaultTab("dados");
+    setSelected(lead);
+    setOpen(true);
+  };
+
+  const handleOpenContacts = (lead: Lead) => {
+    setLeadDialogDefaultTab("contatos");
     setSelected(lead);
     setOpen(true);
   };
@@ -748,6 +763,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   );
 
   const openNewLeadDialog = () => {
+    setLeadDialogDefaultTab("dados");
     setSelected(null);
     setOpen(true);
   };
@@ -882,8 +898,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOpen,
     selected,
     setSelected,
+    leadDialogDefaultTab,
     clearErrors,
     handleRowClick,
+    handleOpenContacts,
     handleRowHover,
     openNewLeadDialog,
     refreshLeads: () => loadLeads({ force: true }),

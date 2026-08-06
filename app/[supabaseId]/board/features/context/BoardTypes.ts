@@ -57,6 +57,8 @@ export type Lead = {
     value: unknown;
     isRequired: boolean;
   }>;
+  tags?: Array<{ id: string; name: string; color: string }>;
+  contactCount?: number;
   manager?: {
     id: string;
     fullName: string | null;

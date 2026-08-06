@@ -302,7 +302,10 @@
       "app/api/services/teamAutomation/executors/AssignOperatorExecutor.ts",
       "app/api/services/teamAutomation/executors/CreateNotificationExecutor.ts",
       "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
-      "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts"
+      "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts",
+      "app/api/useCases/leads/LeadTagUseCase.ts",
+      "app/api/useCases/leads/LeadContactsUseCase.ts",
+      "app/api/useCases/leads/LeadDocumentRequestUseCase.ts"
     ]
   }
 }

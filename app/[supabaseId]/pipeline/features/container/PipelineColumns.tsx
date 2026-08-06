@@ -13,14 +13,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw, MessageCircle, Phone } from "lucide-react";
 import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
 import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
 import { isDraftLead } from "@/lib/lead-status";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { maskPhone } from "@/lib/masks";
+import { maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 import { formatIntimezone } from "@/lib/dates"
 
@@ -102,6 +102,7 @@ function formatMeetingDate(dateString: string | null, tz: string): string {
 interface ColumnsProps {
   statusLabels: Record<string, string>;
   onRowClick: (lead: Lead) => void;
+  onOpenContacts: (lead: Lead) => void;
   onScheduleMeeting: (lead: Lead) => void;
   onRescheduleMeeting: (lead: Lead) => void;
   onDeleteLead: (lead: Lead) => void;
@@ -113,6 +114,7 @@ interface ColumnsProps {
 export const createColumns = ({
   statusLabels,
   onRowClick,
+  onOpenContacts,
   onScheduleMeeting,
   onRescheduleMeeting,
   onDeleteLead,
@@ -217,7 +219,79 @@ export const createColumns = ({
     },
     cell: ({ row }) => {
       const phone = row.getValue("phone") as string
-      return <div>{phone ? maskPhone(phone) : "-"}</div>
+      if (!phone) return <div className="text-muted-foreground">-</div>
+
+      const normalized = normalizeLeadPhoneDigits(phone)
+      const waHref = normalized ? `https://wa.me/55${normalized}` : null
+
+      return (
+        <div className="flex items-center gap-1.5">
+          <span
+            className="cursor-pointer hover:underline"
+            onClick={() => onRowClick(row.original)}
+          >
+            {maskPhone(phone)}
+          </span>
+          {waHref ? (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-green-600 hover:text-green-700 flex-shrink-0"
+              aria-label="Abrir no WhatsApp"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
+        </div>
+      )
+    },
+  },
+  {
+    id: "contacts",
+    accessorKey: "contactCount",
+    meta: { label: "Contatos" },
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className={headerButtonClass}
+        >
+          <Phone className="mr-1 h-3.5 w-3.5" />
+          Contatos
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const count = (row.original.contactCount ?? 0)
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className="flex justify-center cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenContacts(row.original)
+              }}
+            >
+              <Badge
+                variant={count > 0 ? "secondary" : "outline"}
+                className="min-w-[1.75rem] justify-center text-xs"
+              >
+                {count}
+              </Badge>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Ver contatos</p>
+          </TooltipContent>
+        </Tooltip>
+      )
     },
   },
   {

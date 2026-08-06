@@ -145,6 +145,13 @@ const CRM_LEAD_LIST_SELECT = {
   _count: {
     select: {
       attachments: true,
+      activities: {
+        where: {
+          type: {
+            in: ["call", "whatsapp", "email", "meeting", "visit", "missed"],
+          },
+        },
+      },
     },
   },
 } satisfies Prisma.LeadSelect;
