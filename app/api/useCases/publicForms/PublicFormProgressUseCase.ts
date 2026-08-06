@@ -12,6 +12,7 @@ import {
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
+import { isValidPublicFormId } from "@/lib/public-forms/validation"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -19,6 +20,7 @@ function json(value: unknown): Prisma.InputJsonValue {
 
 export class PublicFormProgressUseCase {
   async execute(publicId: string, input: PublicFormProgressInput): Promise<Output> {
+    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot

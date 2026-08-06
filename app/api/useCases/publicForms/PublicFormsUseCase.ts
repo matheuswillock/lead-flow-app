@@ -12,6 +12,7 @@ import type {
 } from "@/lib/public-forms/types"
 import { rankTopFormsByConversion } from "@/lib/public-forms/form-ranking"
 import { validatePublicFormDraft } from "@/lib/public-forms/validate-public-form-draft"
+import { isValidPublicFormId } from "@/lib/public-forms/validation"
 
 function isManager(access: TeamAccess) {
   return access.isMaster || access.teamMember.role === "manager"
@@ -214,6 +215,7 @@ export class PublicFormsUseCase {
   }
 
   async getPublic(publicId: string) {
+    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const result = await publicFormsService.getPublic(publicId)
     return result
       ? new Output(true, [], [], result)
@@ -221,6 +223,7 @@ export class PublicFormsUseCase {
   }
 
   async getAvailabilityContext(publicId: string) {
+    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const result = await publicFormsService.getAvailabilityContext(publicId)
     return result
       ? new Output(true, [], [], result)
@@ -228,6 +231,7 @@ export class PublicFormsUseCase {
   }
 
   async recordMetric(publicId: string, input: PublicFormMetricEventInput) {
+    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const accepted = await publicFormsService.recordMetric(publicId, input)
     return accepted
       ? new Output(true, [], [], { accepted: true })
