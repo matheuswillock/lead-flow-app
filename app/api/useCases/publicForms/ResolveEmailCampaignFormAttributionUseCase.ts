@@ -15,7 +15,8 @@ import {
   parseEmailLogIdFromOrigin,
   resolveAttributionDisplayName,
 } from "@/lib/public-forms/email-campaign-attribution"
-import { isValidPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+import { normalizeLeadPhoneDigits } from "@/lib/masks"
+import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
 
 const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
 
@@ -81,22 +82,40 @@ class ResolveEmailCampaignFormAttributionUseCase {
       const name = resolveAttributionDisplayName(log.recipientName, log.recipientEmail)
       const email = log.recipientEmail.trim().toLowerCase()
       const normalizedPhone = phone ? normalizeLeadPhoneDigits(phone) : ""
+      enrichedOrigin.recipientEmail = email
 
-      const lead = await this.upsertLeadFromEmailRecipient({
-        teamId: input.teamId,
-        formId: input.formId,
-        formName: input.formName,
-        formPublicId: input.formPublicId,
-        publicationId: input.publicationId,
-        eventType: input.eventType,
-        name,
-        email,
-        phone: phone ?? "",
-        normalizedPhone,
-        campaignId: log.campaignId,
-        emailLogId: log.id,
-        origin: enrichedOrigin,
-      })
+      let lead: Lead | null = null
+      if (input.eventType === "form_started" || input.eventType === "form_completed") {
+        lead = await this.upsertLeadFromEmailRecipient({
+          teamId: input.teamId,
+          formId: input.formId,
+          formName: input.formName,
+          formPublicId: input.formPublicId,
+          publicationId: input.publicationId,
+          name,
+          email,
+          phone: phone ?? "",
+          normalizedPhone,
+          campaignId: log.campaignId,
+          emailLogId: log.id,
+          origin: enrichedOrigin,
+        })
+      } else if (input.eventType === "form_viewed") {
+        const match = await findMatchingLead(input.teamId, {
+          native: {
+            ...(name ? { name } : {}),
+            ...(email ? { email } : {}),
+            ...(phone ? { phone: phone ?? "" } : {}),
+          },
+          custom: {},
+          notes: [],
+          name,
+          email,
+          phone: phone ?? "",
+          normalizedPhone,
+        })
+        lead = match ?? null
+      }
 
       if (lead) {
         if (input.eventType === "form_started") {
@@ -114,11 +133,13 @@ class ResolveEmailCampaignFormAttributionUseCase {
           })
         }
 
-        void syncLeadToRadarUseCase
-          .execute({ leadId: lead.id, teamId: input.teamId })
-          .catch((error) => {
-            console.error("[ResolveEmailCampaignFormAttributionUseCase][syncLeadToRadar]", error)
-          })
+        if (input.eventType !== "form_viewed") {
+          void syncLeadToRadarUseCase
+            .execute({ leadId: lead.id, teamId: input.teamId })
+            .catch((error) => {
+              console.error("[ResolveEmailCampaignFormAttributionUseCase][syncLeadToRadar]", error)
+            })
+        }
       }
 
       return new Output(true, [], [], {
@@ -159,7 +180,6 @@ class ResolveEmailCampaignFormAttributionUseCase {
     formName: string
     formPublicId: string
     publicationId: string
-    eventType: ResolveEmailCampaignFormAttributionInput["eventType"]
     name: string
     email: string
     phone: string
@@ -195,14 +215,9 @@ class ResolveEmailCampaignFormAttributionUseCase {
       return publicFormsRepository.updateLead(match.id, data)
     }
 
-    // E1: form_viewed/form_started não criam Lead fantasma — só form_completed.
-    if (input.eventType !== "form_completed") {
-      return null
-    }
-
     // Regra CRM: lead só nasce com nome + telefone válidos (sem telefone → só Radar por e-mail).
     const trimmedName = input.name.trim()
-    if (trimmedName.length < 2 || !isValidPhone(input.normalizedPhone || input.phone)) {
+    if (trimmedName.length < 2 || !input.normalizedPhone) {
       console.info(
         "[ResolveEmailCampaignFormAttributionUseCase][createLead] skip: nome/telefone insuficientes",
         { emailLogId: input.emailLogId, hasName: trimmedName.length >= 2, hasPhone: Boolean(input.normalizedPhone) }
@@ -225,8 +240,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
       meetingNotes: undefined,
       meetingLink: undefined,
       notes: undefined,
-      assignedTo: form.assignedSdrId ?? undefined,
-      closerId: undefined,
+      ...resolvePublicFormLeadAssignment(form),
       status: LeadStatus.new_opportunity,
       ticket: undefined,
       contractDueDate: undefined,

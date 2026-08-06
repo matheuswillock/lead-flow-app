@@ -94,6 +94,11 @@ export function validatePublicFormDraft(
         errors.push(`As opções da pergunta “${question.title}” devem ter valores únicos`)
       }
     }
+    if (question.type === "email" && question.mappingTarget === "history") {
+      errors.push(
+        `A pergunta de e-mail “${question.title}” deve mapear ao campo nativo E-mail, não ao histórico`,
+      )
+    }
   }
 
   for (const rule of draft.rules) {

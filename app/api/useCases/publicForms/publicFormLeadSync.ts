@@ -14,6 +14,7 @@ import {
   type ExtractedLeadData,
 } from "@/lib/public-forms/lead-identity"
 import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
+import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
 import type {
   PublicFormAnswerInput,
   PublicFormSnapshot,
@@ -142,8 +143,7 @@ export async function upsertLeadFromFormAnswers(input: {
     meetingNotes: undefined,
     meetingLink: undefined,
     notes: extracted.notes.join("\n") || undefined,
-    assignedTo: input.form.assignedSdrId ?? undefined,
-    closerId: undefined,
+    ...resolvePublicFormLeadAssignment(input.form),
     status: LeadStatus.new_opportunity,
     ticket: undefined,
     contractDueDate: undefined,

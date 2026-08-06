@@ -7,9 +7,25 @@ const batchSendMock = mock(async () => ({
   error: null as null | { name: string; message: string; statusCode: number },
 }))
 
+mock.module("@/lib/email/is-retryable-resend-batch-error", () => ({
+  isRetryableResendBatchError: (error: { statusCode?: number; message?: string }) => {
+    const NON_RETRYABLE = new Set([401, 403, 422])
+    const statusCode = error.statusCode
+    if (statusCode !== undefined && NON_RETRYABLE.has(statusCode)) return false
+    if (statusCode === 409) return true
+    if (statusCode === undefined) return true
+    if (statusCode === 429 || statusCode >= 500) return true
+    return false
+  },
+  MAX_BATCH_SEND_ATTEMPTS: 3,
+  resendBatchRetryBackoffMs: () => 0,
+}))
+
 mock.module("@/lib/email", () => ({
   resend: { batch: { send: batchSendMock } },
   buildResendBatchIdempotencyKey: (type: string, id: string) => `batch-${type}/${id}`,
+  buildResendIdempotencyKeyWithVariant: (type: string, id: string, variant: string) =>
+    `batch-${type}/${id}/${variant}`,
 }))
 
 mock.module("@/lib/email/campaign-unsubscribe-footer", () => ({
@@ -118,8 +134,8 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.failed).toBe(0)
   })
 
-  it("D4 — batchResult.error set → failed += chunk.length; onChunkDispatched NÃO chamado; providerErrors preenchido", async () => {
-    batchSendMock.mockResolvedValueOnce({
+  it("D4 — batchResult.error 429 → retenta até 3× e falha; onChunkDispatched NÃO chamado", async () => {
+    batchSendMock.mockResolvedValue({
       data: null as unknown as Array<{ id?: string }>,
       error: { name: "rate_limit_exceeded", message: "Too many requests", statusCode: 429 },
     })
@@ -127,6 +143,7 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     const onChunkDispatched = mock(async () => {})
     const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
 
+    expect(batchSendMock).toHaveBeenCalledTimes(3)
     expect(result.failed).toBe(3)
     expect(result.sent).toBe(0)
     expect(onChunkDispatched).not.toHaveBeenCalled()
@@ -134,6 +151,44 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.providerErrors[0]?.statusCode).toBe(429)
     expect(result.providerErrors[0]?.message).toBe("Too many requests")
     expect(result.providerErrors[0]?.emails).toHaveLength(3)
+  })
+
+  it("D4-retry — 429 na 1ª tentativa e sucesso na 2ª", async () => {
+    batchSendMock
+      .mockResolvedValueOnce({
+        data: null as unknown as Array<{ id?: string }>,
+        error: { name: "rate_limit_exceeded", message: "Too many requests", statusCode: 429 },
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],
+        error: null,
+      })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
+
+    expect(batchSendMock).toHaveBeenCalledTimes(2)
+    expect(result.sent).toBe(3)
+    expect(result.failed).toBe(0)
+    expect(onChunkDispatched).toHaveBeenCalledTimes(1)
+  })
+
+  it("D4-no-retry — 403 não retenta", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: null as unknown as Array<{ id?: string }>,
+      error: {
+        name: "forbidden",
+        message: "The corretorstudio.com.br domain is not verified",
+        statusCode: 403,
+      },
+    })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
+
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+    expect(result.failed).toBe(3)
+    expect(onChunkDispatched).not.toHaveBeenCalled()
   })
 
   it("D10 — destinatário com e-mail inválido não vai ao Resend e entra em providerErrors", async () => {
@@ -248,7 +303,7 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect((onChunkDispatched.mock.calls[0] as unknown[][])[0]).toHaveLength(2)
   })
 
-  it("D7 — resend.batch.send lança exceção → failed += chunk.length; dispatchBatch resolve", async () => {
+  it("D7 — resend.batch.send lança exceção → retenta e falha após 3 tentativas", async () => {
     batchSendMock.mockImplementation(async () => {
       throw new Error("network timeout")
     })
@@ -256,6 +311,7 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     const onChunkDispatched = mock(async () => {})
     const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
 
+    expect(batchSendMock).toHaveBeenCalledTimes(3)
     expect(result.failed).toBe(3)
     expect(result.sent).toBe(0)
     expect(onChunkDispatched).not.toHaveBeenCalled()
