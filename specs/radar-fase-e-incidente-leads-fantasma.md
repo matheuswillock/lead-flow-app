@@ -80,7 +80,15 @@ Todos criados no mesmo dia do deploy do recurso de atribuição — sem históri
 
 ## Correções propostas
 
-### E1 — Só criar `Lead` quando o formulário é de fato completado
+### E1 — Política revisada: lead em `form_started`, não em `form_viewed`
+
+`form_viewed` **não** cria lead no CRM. `form_started` cria com dados do `EmailLog`. `form_completed` faz upsert/enriquecimento. Radar resolve perfil por `recipientEmail` quando não há `leadId`.
+
+### Atribuição SDR/closer (campanha de e-mail)
+
+Leads via campanha chegam **sem SDR (`assignedTo`) e sem closer (`closerId`)**, exceto quando o formulário define `assignedSdrId`. Campanha nunca atribui remetente, dispatch ou contato da lista como SDR. Helper: `lib/public-forms/resolve-public-form-lead-assignment.ts`.
+
+### E1 original (histórico) — Só criar `Lead` quando o formulário é de fato completado
 
 Em `upsertLeadFromEmailRecipient`, restringir o bloco de criação (`leadUseCase.createLead(...)`) para rodar só quando `eventType === "form_completed"`. `findMatchingLead` continua rodando sempre (mesmo em `form_viewed`) — se já existir um lead real, ele é encontrado e atualizado normalmente; só a **criação** de um lead novo fica restrita à conclusão real.
 

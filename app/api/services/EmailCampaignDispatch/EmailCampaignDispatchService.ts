@@ -8,7 +8,16 @@ import {
   templateIncludesManualUnsubscribeLink,
 } from "@/lib/email/unsubscribe-link-embed"
 import { appendEmailLogIdToFormUrls } from "@/lib/email/append-email-log-to-form-urls"
-import { buildResendBatchIdempotencyKey, resend } from "@/lib/email"
+import {
+  buildResendBatchIdempotencyKey,
+  buildResendIdempotencyKeyWithVariant,
+  resend,
+} from "@/lib/email"
+import {
+  isRetryableResendBatchError,
+  MAX_BATCH_SEND_ATTEMPTS,
+  resendBatchRetryBackoffMs,
+} from "@/lib/email/is-retryable-resend-batch-error"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
   interpolateEmailTemplate,
@@ -112,8 +121,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       // aceite do chunk não pode ser engolida como "falha de batch" (sent sem resendEmailId).
       let chunkDispatched: Array<{ email: string; resendId: string }> = []
 
-      try {
-        const batchPayload = chunk.map((recipient) => {
+      const batchPayload = chunk.map((recipient) => {
           const unsubscribeUrl = recipient.contactId
             ? buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId)
             : ""
@@ -164,30 +172,58 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           }
         })
 
-        const batchResult = await resend.batch.send(batchPayload, {
-          idempotencyKey: buildResendBatchIdempotencyKey(
-            "campaign",
-            `${params.dispatchId}/${chunkIndex}`
-          ),
-        })
+      let chunkAccepted = false
+      for (let attempt = 0; attempt < MAX_BATCH_SEND_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, resendBatchRetryBackoffMs(attempt)))
+        }
 
-        if (batchResult.error) {
-          console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
-          result.failed += chunk.length
-          const errorStatusCode =
-            typeof batchResult.error.statusCode === "number"
-              ? batchResult.error.statusCode
-              : undefined
-          const errorMessage = resolveResendBatchErrorMessage(
-            batchResult.error.message || "Erro no envio via Resend",
-            errorStatusCode
-          )
-          result.providerErrors.push({
-            message: errorMessage,
-            statusCode: errorStatusCode,
-            emails: chunk.map((recipient) => recipient.email),
-          })
-        } else {
+        try {
+          const idempotencyKey =
+            attempt === 0
+              ? buildResendBatchIdempotencyKey("campaign", `${params.dispatchId}/${chunkIndex}`)
+              : buildResendIdempotencyKeyWithVariant(
+                  "batch-campaign",
+                  `${params.dispatchId}/${chunkIndex}`,
+                  `attempt-${attempt}`,
+                )
+
+          const batchResult = await resend.batch.send(batchPayload, { idempotencyKey })
+
+          if (batchResult.error) {
+            console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
+            const errorStatusCode =
+              typeof batchResult.error.statusCode === "number"
+                ? batchResult.error.statusCode
+                : undefined
+            const errorMessage = resolveResendBatchErrorMessage(
+              batchResult.error.message || "Erro no envio via Resend",
+              errorStatusCode
+            )
+            console.info("[EmailCampaignDispatchService][dispatchBatch] tentativa de lote", {
+              campaignId: params.campaignId,
+              dispatchId: params.dispatchId,
+              chunkIndex,
+              attempt: attempt + 1,
+              statusCode: errorStatusCode,
+            })
+            const retryable = isRetryableResendBatchError({
+              statusCode: errorStatusCode,
+              message: errorMessage,
+            })
+            if (!retryable || attempt === MAX_BATCH_SEND_ATTEMPTS - 1) {
+              result.failed += chunk.length
+              result.providerErrors.push({
+                message: errorMessage,
+                statusCode: errorStatusCode,
+                emails: chunk.map((recipient) => recipient.email),
+              })
+              chunkDispatched = []
+              break
+            }
+            continue
+          }
+
           const items = parseResendBatchSendItems(batchResult.data)
           if (items.length === 0 && chunk.length > 0) {
             console.error(
@@ -195,6 +231,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               { campaignId: params.campaignId, chunkIndex, chunkSize: chunk.length }
             )
           }
+          chunkDispatched = []
           items.forEach((item, idx) => {
             const recipient = chunk[idx]
             if (!recipient) return
@@ -220,15 +257,31 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
               })
             }
           }
+          chunkAccepted = true
+          break
+        } catch (error) {
+          console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)
+          const message = error instanceof Error ? error.message : "Erro no envio via Resend"
+          console.info("[EmailCampaignDispatchService][dispatchBatch] tentativa de lote (exceção)", {
+            campaignId: params.campaignId,
+            dispatchId: params.dispatchId,
+            chunkIndex,
+            attempt: attempt + 1,
+          })
+          const retryable = isRetryableResendBatchError({ message })
+          if (!retryable || attempt === MAX_BATCH_SEND_ATTEMPTS - 1) {
+            result.failed += chunk.length
+            result.providerErrors.push({
+              message,
+              emails: chunk.map((recipient) => recipient.email),
+            })
+            chunkDispatched = []
+            break
+          }
         }
-      } catch (error) {
-        console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)
-        result.failed += chunk.length
-        result.providerErrors.push({
-          message: error instanceof Error ? error.message : "Erro no envio via Resend",
-          emails: chunk.map((recipient) => recipient.email),
-        })
-        chunkDispatched = []
+      }
+
+      if (!chunkAccepted && chunkDispatched.length === 0) {
         continue
       }
 

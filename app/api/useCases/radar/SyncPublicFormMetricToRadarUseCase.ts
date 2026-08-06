@@ -7,6 +7,7 @@ import {
   mapPublicFormMetricToRadarEventType,
   PUBLIC_FORM_RADAR_SOURCE_TYPE,
 } from "@/lib/radar/map-public-form-metric-to-radar-event"
+import { normalizeRadarEmail, normalizeRadarName } from "@/lib/radar/normalization"
 
 export type SyncPublicFormMetricToRadarInput = {
   teamId: string
@@ -73,6 +74,13 @@ class SyncPublicFormMetricToRadarUseCase {
     }
   }
 
+  private extractRecipientEmail(origin: unknown): string | null {
+    if (!origin || typeof origin !== "object") return null
+    const raw = (origin as Record<string, unknown>).recipientEmail
+    if (typeof raw !== "string" || !raw.trim()) return null
+    return raw.trim().toLowerCase()
+  }
+
   private async resolveProfileId(input: SyncPublicFormMetricToRadarInput): Promise<string | null> {
     const leadId = input.leadId?.trim() || null
     // Com atribuição e-mail→form, qualquer métrica com leadId conhecido usa o mesmo perfil Radar.
@@ -83,6 +91,23 @@ class SyncPublicFormMetricToRadarUseCase {
         identity = await radarRepository.findProfileByIdentity(input.teamId, "lead_id", leadId)
       }
       if (identity) return identity.profileId
+    }
+
+    const recipientEmail = this.extractRecipientEmail(input.origin)
+    if (recipientEmail) {
+      const normalizedEmail = normalizeRadarEmail(recipientEmail)
+      if (normalizedEmail) {
+        const { profile } = await radarRepository.resolveProfileForEmail({
+          teamId: input.teamId,
+          normalizedEmail,
+          emailValue: recipientEmail,
+          displayName: null,
+          normalizedName: normalizeRadarName(recipientEmail.split("@")[0]),
+          emailSource: "email_campaign_form",
+          lastSeenAt: input.occurredAt ?? new Date(),
+        })
+        return profile.id
+      }
     }
 
     const { profile } = await radarRepository.resolveProfileForVisitorSession({

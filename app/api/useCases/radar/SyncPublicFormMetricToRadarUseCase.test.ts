@@ -21,6 +21,16 @@ const resolveProfileForVisitorSession = mock(
     wasExisting: false,
   })
 )
+const resolveProfileForEmail = mock(
+  async (_input: {
+    teamId: string
+    normalizedEmail: string
+    emailValue: string
+  }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
+    profile: { id: "email-profile-1" },
+    wasExisting: true,
+  })
+)
 const appendEventIfNewBySourceKey = mock(
   async (_input: AppendArg): Promise<{ id: string } | null> => ({ id: "event-1" })
 )
@@ -32,6 +42,7 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
   radarRepository: {
     findProfileByIdentity,
     resolveProfileForVisitorSession,
+    resolveProfileForEmail,
     appendEventIfNewBySourceKey,
   },
 }))
@@ -86,6 +97,7 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
   beforeEach(() => {
     findProfileByIdentity.mockReset()
     resolveProfileForVisitorSession.mockReset()
+    resolveProfileForEmail.mockReset()
     appendEventIfNewBySourceKey.mockReset()
     syncLeadExecute.mockReset()
 
@@ -93,6 +105,10 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     resolveProfileForVisitorSession.mockImplementation(async () => ({
       profile: { id: "anon-profile-1" },
       wasExisting: false,
+    }))
+    resolveProfileForEmail.mockImplementation(async () => ({
+      profile: { id: "email-profile-1" },
+      wasExisting: true,
     }))
     appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
     syncLeadExecute.mockImplementation(async () => ({ isValid: true }))
@@ -125,6 +141,20 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(appendArg.eventType).toBe(expectedType)
     expect(appendArg.sourceType).toBe(PUBLIC_FORM_RADAR_SOURCE_TYPE)
     expect(appendArg.sourceId).toBe(`vs-abc:${eventType}:form`)
+  })
+
+  it("form_viewed com recipientEmail (campanha) → perfil por e-mail", async () => {
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+      eventKey: "vs-abc:form_viewed:form",
+      origin: { recipientEmail: "lead@campanha.com", emailLogId: "log-1" },
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(resolveProfileForEmail).toHaveBeenCalledTimes(1)
+    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
+    expect(lastAppendArg().profileId).toBe("email-profile-1")
   })
 
   it("form_viewed com leadId (atribuição e-mail) → identidade lead_id", async () => {

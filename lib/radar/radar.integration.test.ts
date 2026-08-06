@@ -204,7 +204,11 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
             eventType: expectedEventType,
           },
         })
-        expect(milestoneEvent).not.toBeNull()
+        if (status === "new_opportunity") {
+          expect(milestoneEvent).toBeNull()
+        } else {
+          expect(milestoneEvent).not.toBeNull()
+        }
       } finally {
         await prisma.radarEvent.deleteMany({
           where: { profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(phone) } },

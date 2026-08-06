@@ -8,8 +8,14 @@ import {
 export function buildLeadIdentityAlerts(extracted: ExtractedLeadData): string[] {
   const alerts: string[] = []
   if (!extracted.name.trim()) alerts.push("Nome ausente")
-  if (!extracted.email.trim()) alerts.push("E-mail ausente")
-  if (!extracted.normalizedPhone) alerts.push("Telefone ausente")
+  const hasPhone = Boolean(extracted.normalizedPhone)
+  const hasEmail = Boolean(extracted.email.trim())
+  if (!hasEmail && !hasPhone) {
+    alerts.push("E-mail ausente")
+  } else if (!hasEmail && hasPhone) {
+    alerts.push("E-mail não informado (lead criado com telefone)")
+  }
+  if (!hasPhone) alerts.push("Telefone ausente")
   return alerts
 }
 

@@ -1,9 +1,10 @@
-import type {
-  RadarConsentReason,
-  RadarConsentStatus,
-  EmailEventType,
-  Prisma,
-  RenewalStatus,
+import {
+  LeadStatus,
+  type RadarConsentReason,
+  type RadarConsentStatus,
+  type EmailEventType,
+  type Prisma,
+  type RenewalStatus,
 } from "@prisma/client"
 import {
   RadarRepository,
@@ -42,7 +43,6 @@ import {
   normalizeRadarName,
   normalizeRadarPhone,
 } from "@/lib/radar/normalization"
-import type { LeadStatus } from "@prisma/client"
 
 function toSegmentLeadStatusMap(raw: Map<string, LeadStatus | null>): Map<string, string> {
   return new Map(
@@ -147,7 +147,7 @@ export class RadarService {
   private async appendLeadStatusEvents(
     scope: RadarTeamScope,
     profileId: string,
-    lead: { id: string; status: LeadStatus | null; statusEnteredAt: Date }
+    lead: { id: string; status: LeadStatus | null; statusEnteredAt: Date; createdAt: Date }
   ): Promise<void> {
     if (!lead.status) return
 
@@ -163,15 +163,20 @@ export class RadarService {
 
     const milestoneEventType = LEAD_STATUS_MILESTONE_EVENT_TYPE[lead.status]
     if (milestoneEventType) {
-      await this.repo.appendEventIfNew({
-        profileId,
-        teamId: scope.teamId,
-        eventType: milestoneEventType,
-        sourceType: "crm_lead",
-        sourceId: `${lead.id}:${lead.status}:milestone`,
-        occurredAt: lead.statusEnteredAt,
-        metadata: { status: lead.status },
-      })
+      const bornInNewOpportunity =
+        lead.status === LeadStatus.new_opportunity &&
+        lead.createdAt.getTime() === lead.statusEnteredAt.getTime()
+      if (!bornInNewOpportunity) {
+        await this.repo.appendEventIfNew({
+          profileId,
+          teamId: scope.teamId,
+          eventType: milestoneEventType,
+          sourceType: "crm_lead",
+          sourceId: `${lead.id}:${lead.status}:milestone`,
+          occurredAt: lead.statusEnteredAt,
+          metadata: { status: lead.status },
+        })
+      }
     }
   }
 
