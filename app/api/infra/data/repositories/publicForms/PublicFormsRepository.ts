@@ -468,12 +468,64 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return form?.publications ?? null
   }
 
-  groupMetricEvents(formId: string, where: Prisma.PublicFormMetricEventWhereInput) {
-    return prisma.publicFormMetricEvent.groupBy({
-      by: ["eventType", "publicationId", "questionId"],
+  async groupMetricEvents(formId: string, where: Prisma.PublicFormMetricEventWhereInput) {
+    const rows = await prisma.publicFormMetricEvent.findMany({
       where: { formId, ...where },
-      _count: { _all: true },
+      select: {
+        eventType: true,
+        publicationId: true,
+        questionId: true,
+        visitorSessionId: true,
+      },
     })
+
+    const buckets = new Map<
+      string,
+      {
+        eventType: (typeof rows)[number]["eventType"]
+        publicationId: string
+        questionId: string | null
+        sessions: Set<string>
+      }
+    >()
+
+    for (const row of rows) {
+      const key = `${row.eventType}\0${row.publicationId}\0${row.questionId ?? ""}`
+      const bucket = buckets.get(key) ?? {
+        eventType: row.eventType,
+        publicationId: row.publicationId,
+        questionId: row.questionId,
+        sessions: new Set<string>(),
+      }
+      bucket.sessions.add(row.visitorSessionId)
+      buckets.set(key, bucket)
+    }
+
+    return Array.from(buckets.values()).map((bucket) => ({
+      eventType: bucket.eventType,
+      publicationId: bucket.publicationId,
+      questionId: bucket.questionId,
+      _count: { _all: bucket.sessions.size },
+    }))
+  }
+
+  async countDistinctSessionsByEventType(
+    formId: string,
+    where: Prisma.PublicFormMetricEventWhereInput,
+  ) {
+    const rows = await prisma.publicFormMetricEvent.findMany({
+      where: { formId, ...where },
+      select: { eventType: true, visitorSessionId: true },
+    })
+    const byType = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const sessions = byType.get(row.eventType) ?? new Set<string>()
+      sessions.add(row.visitorSessionId)
+      byType.set(row.eventType, sessions)
+    }
+    return Object.fromEntries(
+      Array.from(byType, ([eventType, sessions]) => [eventType, sessions.size]),
+    ) as Record<string, number>
   }
 
   listFormViewOrigins(where: Prisma.PublicFormMetricEventWhereInput) {
@@ -483,6 +535,31 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async countDistinctCompletedLeads(
+    formId: string,
+    options?: { publicationId?: string; from?: Date; to?: Date },
+  ) {
+    const rows = await prisma.publicFormSubmission.findMany({
+      where: {
+        formId,
+        status: "completed",
+        leadId: { not: null },
+        ...(options?.publicationId ? { publicationId: options.publicationId } : {}),
+        ...(options?.from || options?.to
+          ? {
+              submittedAt: {
+                ...(options.from ? { gte: options.from } : {}),
+                ...(options.to ? { lte: options.to } : {}),
+              },
+            }
+          : {}),
+      },
+      select: { leadId: true },
+      distinct: ["leadId"],
+    })
+    return rows.length
+  }
+
   async listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {
     const forms = await prisma.publicForm.findMany({
       where: { teamId },
@@ -490,6 +567,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
     if (forms.length === 0) return []
 
+    const formIds = forms.map((form) => form.id)
     const dateFilter =
       options?.from || options?.to
         ? {
@@ -500,25 +578,44 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           }
         : {}
 
-    const grouped = await prisma.publicFormMetricEvent.groupBy({
-      by: ["formId", "eventType"],
+    const rows = await prisma.publicFormMetricEvent.findMany({
       where: {
-        formId: { in: forms.map((form) => form.id) },
+        formId: { in: formIds },
         eventType: { in: ["form_viewed", "form_completed"] },
         ...dateFilter,
       },
-      _count: { _all: true },
+      select: {
+        formId: true,
+        eventType: true,
+        visitorSessionId: true,
+      },
     })
 
-    const byForm = new Map(forms.map((form) => [form.id, { formId: form.id, name: form.name, viewed: 0, completed: 0 }]))
-    for (const row of grouped) {
+    const byForm = new Map(
+      forms.map((form) => [
+        form.id,
+        {
+          formId: form.id,
+          name: form.name,
+          viewedSessions: new Set<string>(),
+          completedSessions: new Set<string>(),
+        },
+      ]),
+    )
+
+    for (const row of rows) {
       const entry = byForm.get(row.formId)
       if (!entry) continue
-      if (row.eventType === "form_viewed") entry.viewed = row._count._all
-      if (row.eventType === "form_completed") entry.completed = row._count._all
+      if (row.eventType === "form_viewed") entry.viewedSessions.add(row.visitorSessionId)
+      if (row.eventType === "form_completed") entry.completedSessions.add(row.visitorSessionId)
     }
 
-    return Array.from(byForm.values())
+    return Array.from(byForm.values()).map((entry) => ({
+      formId: entry.formId,
+      name: entry.name,
+      viewed: entry.viewedSessions.size,
+      completed: entry.completedSessions.size,
+    }))
   }
 
   listLeadSubmissions(teamId: string, leadId: string) {
@@ -559,6 +656,17 @@ export class PublicFormsRepository implements IPublicFormsRepository {
 
   findSubmissionByRequestKey(requestKey: string) {
     return prisma.publicFormSubmission.findUnique({ where: { requestKey } })
+  }
+
+  findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
+    return prisma.publicFormSubmission.findFirst({
+      where: {
+        publicationId,
+        visitorSessionId,
+        status: "completed",
+      },
+      orderBy: { submittedAt: "desc" },
+    })
   }
 
   findProgressSubmission(publicationId: string, visitorSessionId: string) {

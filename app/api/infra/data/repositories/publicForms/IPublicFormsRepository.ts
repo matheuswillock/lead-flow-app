@@ -253,6 +253,14 @@ export interface IPublicFormsRepository {
       _count: { _all: number }
     }>
   >
+  countDistinctSessionsByEventType(
+    formId: string,
+    where: Prisma.PublicFormMetricEventWhereInput,
+  ): Promise<Record<string, number>>
+  countDistinctCompletedLeads(
+    formId: string,
+    options?: { publicationId?: string; from?: Date; to?: Date },
+  ): Promise<number>
   listFormViewOrigins(
     where: Prisma.PublicFormMetricEventWhereInput,
   ): Promise<Array<{ origin: Prisma.JsonValue | null; visitorSessionId: string }>>
@@ -262,6 +270,10 @@ export interface IPublicFormsRepository {
   ): Promise<Array<{ formId: string; name: string; viewed: number; completed: number }>>
   listLeadSubmissions(teamId: string, leadId: string): Promise<unknown[]>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
+  findCompletedSubmissionBySession(
+    publicationId: string,
+    visitorSessionId: string,
+  ): Promise<PublicFormSubmission | null>
   findProgressSubmission(
     publicationId: string,
     visitorSessionId: string,
