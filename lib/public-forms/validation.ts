@@ -4,6 +4,11 @@ import { normalizeThankYouPages } from "./thank-you-pages"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
 import type { PublicFormDraftInput } from "./types"
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function isValidPublicFormId(value: string): boolean {
+  return UUID_RE.test(value)
+}
+
 const uuid = z.string().uuid("Identificador inválido"),
   color = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor inválida"),
   text = z.string().trim().max(2000).nullable().optional()
