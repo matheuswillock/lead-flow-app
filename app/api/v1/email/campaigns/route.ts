@@ -29,6 +29,14 @@ const createSchema = z
         })
       )
       .optional(),
+    subCampaignTemplates: z
+      .array(
+        z.object({
+          index: z.number().int().min(1),
+          templateId: z.string().uuid(),
+        })
+      )
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const hasList = Boolean(data.contactListId) || (data.contactListIds?.length ?? 0) > 0

@@ -122,6 +122,7 @@ export interface CreateCampaignInput {
   scheduleIntervalDays?: number | null
   uniformSchedule?: boolean
   subCampaignSchedules?: SubCampaignScheduleInput[]
+  subCampaignTemplates?: Array<{ index: number; templateId: string }>
 }
 
 export type SubCampaignUpdateInput = {
@@ -1196,6 +1197,9 @@ export class EmailCampaignUseCase {
 
         const subCampaigns = []
         for (const sub of plan.subCampaigns) {
+          const subTemplateId =
+            data.subCampaignTemplates?.find((t) => t.index === sub.index)?.templateId ??
+            data.templateId
           const child = await tx.emailCampaign.create({
             data: {
               id: randomUUID(),
@@ -1203,7 +1207,7 @@ export class EmailCampaignUseCase {
               createdBy: ctx.profileId,
               name: sub.name,
               description: data.description?.trim() ? data.description.trim() : null,
-              templateId: data.templateId,
+              templateId: subTemplateId,
               contactListId: sub.contactListId ?? (listStrategy === "single" ? contactListIds[0] ?? null : null),
               parentCampaignId: parentId,
               subCampaignIndex: sub.index,
