@@ -3730,8 +3730,14 @@ enum WhatsAppProvider {
   EVOLUTION
 }
 
+enum WhatsAppEngine {
+  OPENWA
+  META
+}
+
 enum WhatsAppConnectionStatus {
   PENDING
+  INITIALIZING
   QR_READY
   CONNECTED
   DISCONNECTED
@@ -3915,6 +3921,7 @@ model TeamWhatsAppConfig {
   id                           String                    @id @default(uuid()) @db.Uuid
   teamId                       String                    @unique @db.Uuid
   provider                     WhatsAppProvider          @default(EVOLUTION)
+  engine                       WhatsAppEngine            @default(OPENWA)
   instanceName                 String                    @db.Text
   instanceId                   String?                   @db.Text
   phoneNumber                  String?                   @db.Text

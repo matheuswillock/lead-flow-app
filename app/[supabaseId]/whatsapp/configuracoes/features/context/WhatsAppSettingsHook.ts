@@ -11,7 +11,7 @@ import type { WhatsAppConfig, WhatsAppSettingsContextValue, WhatsAppUsage, Reusa
 
 const buildRequestKey = (teamId: string): string => `whatsapp-settings:${teamId}`
 
-const QR_POLL_INTERVAL_MS = 3000
+const QR_POLL_INTERVAL_MS = 5000
 const QR_POLL_MAX_TICKS = 30
 const QR_GEN_MAX_ATTEMPTS = 5
 const QR_GEN_BASE_DELAY_MS = 3000
@@ -148,7 +148,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
 
   const status = config?.status
   useEffect(() => {
-    const shouldPollForQr = status === 'QR_READY' || status === 'PENDING'
+    const shouldPollForQr = status === 'QR_READY' || status === 'PENDING' || status === 'INITIALIZING'
 
     if (!shouldPollForQr) return
 
@@ -221,7 +221,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
     prevStatusRef.current = current
 
     if (!activeTeamId) return
-    if (!prev || (prev !== 'QR_READY' && prev !== 'PENDING')) return
+    if (!prev || (prev !== 'QR_READY' && prev !== 'PENDING' && prev !== 'INITIALIZING')) return
     if (current !== 'CONNECTED') return
 
     toast.success('WhatsApp conectado com sucesso')

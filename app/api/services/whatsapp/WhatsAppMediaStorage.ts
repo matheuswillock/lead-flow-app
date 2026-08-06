@@ -206,7 +206,7 @@ export async function validateStoredMediaObject(input: {
   return { mediaSha256, mediaSizeBytes: buffer.byteLength }
 }
 
-/** Server-only Evolution bridge. Never log or persist the returned Base64. */
+/** Server-only provider media bridge. Never log or persist the returned Base64. */
 export async function readMediaAsBase64ForProvider(storagePath: string): Promise<string> {
   const buffer = await downloadWhatsAppMediaBuffer(storagePath)
   if (!buffer) {

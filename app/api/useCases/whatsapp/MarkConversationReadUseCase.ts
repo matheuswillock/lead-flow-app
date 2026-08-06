@@ -10,7 +10,7 @@ import type {
   WhatsAppInboundReadReceiptCandidate,
 } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import type { IWhatsAppProvider } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
-import { evolutionWhatsAppProvider } from "@/app/api/services/whatsapp/provider/EvolutionWhatsAppProvider"
+import { WhatsAppEngineFactory } from "@/lib/whatsapp/WhatsAppEngineFactory"
 
 function extractMessageKey(rawPayload: unknown): Record<string, unknown> | null {
   if (typeof rawPayload !== "object" || rawPayload === null) return null
@@ -54,7 +54,7 @@ function buildReadReceiptPayload(
 class MarkConversationReadUseCase {
   constructor(
     private readonly repository: IWhatsAppRepository = whatsAppRepository,
-    private readonly provider: IWhatsAppProvider = evolutionWhatsAppProvider
+    private readonly providerOverride?: IWhatsAppProvider
   ) {}
 
   async execute(conversationId: string, access: TeamAccess): Promise<Output> {
@@ -101,7 +101,9 @@ class MarkConversationReadUseCase {
       }
 
       try {
-        await this.provider.markMessagesAsRead({
+        const provider =
+          this.providerOverride ?? (await WhatsAppEngineFactory.forTeam(access.teamId))
+        await provider.markMessagesAsRead({
           instanceName: effectiveConfig.instanceName,
           readMessages,
         })
