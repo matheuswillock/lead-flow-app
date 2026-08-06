@@ -14,6 +14,15 @@ import type {
 import type { ILeadDocumentRequestService } from "@/app/api/services/leadDocumentRequest/ILeadDocumentRequestService";
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+function addThirtyDays(from: Date = new Date()): Date {
+  return new Date(from.getTime() + THIRTY_DAYS_MS);
+}
+
+function isRequestExpired(expiresAt: Date): boolean {
+  return expiresAt < new Date();
+}
 
 const itemSelectFields = {
   id: true,
@@ -50,6 +59,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
         message: true,
         status: true,
         lastEmailSentAt: true,
+        expiresAt: true,
         completedAt: true,
         createdAt: true,
         updatedAt: true,
@@ -88,6 +98,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
     });
 
     const publicToken = randomUUID();
+    const expiresAt = addThirtyDays();
 
     const request = await prisma.$transaction(async (tx) => {
       const created = await tx.leadDocumentRequest.create({
@@ -97,6 +108,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
           createdByProfileId: profileId,
           publicToken,
           message: message ?? null,
+          expiresAt,
           items: {
             create: documents.map((name) => ({
               name,
@@ -111,6 +123,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
           publicToken: true,
           message: true,
           status: true,
+          expiresAt: true,
           createdAt: true,
           updatedAt: true,
           items: { select: itemSelectFields },
@@ -186,7 +199,10 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
 
     await prisma.leadDocumentRequest.update({
       where: { id: requestId },
-      data: { lastEmailSentAt: new Date() },
+      data: {
+        lastEmailSentAt: new Date(),
+        expiresAt: addThirtyDays(),
+      },
     });
 
     return new Output(true, ["E-mail reenviado com sucesso."], [], null);
@@ -200,6 +216,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
         publicToken: true,
         message: true,
         status: true,
+        expiresAt: true,
         createdAt: true,
         items: {
           select: {
@@ -218,6 +235,15 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
 
     if (!request) {
       return new Output(false, [], ["Solicitação não encontrada ou link inválido."], null);
+    }
+
+    if (isRequestExpired(request.expiresAt)) {
+      return new Output(
+        false,
+        [],
+        ["Esta solicitação de documentos expirou. Solicite um novo link ao corretor."],
+        null
+      );
     }
 
     return new Output(true, [], [], request);
@@ -241,6 +267,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
             leadId: true,
             createdByProfileId: true,
             status: true,
+            expiresAt: true,
             items: { select: { id: true, attachmentId: true } },
           },
         },
@@ -249,6 +276,15 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
 
     if (!item || item.request.publicToken !== publicToken) {
       return new Output(false, [], ["Item não encontrado ou link inválido."], null);
+    }
+
+    if (isRequestExpired(item.request.expiresAt)) {
+      return new Output(
+        false,
+        [],
+        ["Esta solicitação de documentos expirou. Solicite um novo link ao corretor."],
+        null
+      );
     }
 
     if (item.uploadedAt) {
@@ -328,21 +364,22 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
       const [closer, lead] = await Promise.all([
         prisma.profile.findUnique({
           where: { id: item.request.createdByProfileId },
-          select: { email: true, fullName: true },
+          select: { email: true, fullName: true, supabaseId: true },
         }),
         prisma.lead.findUnique({
           where: { id: item.request.leadId },
-          select: { name: true },
+          select: { name: true, leadCode: true },
         }),
       ]);
 
-      if (closer?.email && lead) {
+      if (closer?.email && closer.supabaseId && lead?.leadCode) {
         const appUrl = getAppUrl();
         await this.service.sendUploadNotificationEmail(closer.email, {
           closerName: closer.fullName ?? "Corretor",
           leadName: lead.name,
           documentName: file.fileName,
-          leadId: item.request.leadId,
+          leadCode: lead.leadCode,
+          supabaseId: closer.supabaseId,
           appUrl,
         });
       }
@@ -358,11 +395,13 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
 
   async processReminders(): Promise<Output> {
     const cutoffDate = new Date(Date.now() - TWO_DAYS_MS);
+    const now = new Date();
 
     const pendingRequests = await prisma.leadDocumentRequest.findMany({
       where: {
         status: { in: ["pending", "partially_filled"] },
-        lastEmailSentAt: { lt: cutoffDate },
+        expiresAt: { gt: now },
+        OR: [{ lastEmailSentAt: null }, { lastEmailSentAt: { lt: cutoffDate } }],
       },
       select: {
         id: true,

@@ -46,7 +46,8 @@ export class LeadDocumentRequestService implements ILeadDocumentRequestService {
         closerName: data.closerName,
         leadName: data.leadName,
         documentName: data.documentName,
-        leadId: data.leadId,
+        leadCode: data.leadCode,
+        supabaseId: data.supabaseId,
         appUrl: data.appUrl,
       })
     );

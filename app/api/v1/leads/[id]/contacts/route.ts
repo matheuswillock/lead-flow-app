@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
 import { leadContactsUseCase } from "@/app/api/useCases/leads/LeadContactsUseCase";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
@@ -57,6 +57,15 @@ export async function POST(
     const teamAccess = await getTeamAccess(request);
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+    if (!hasLeadActivityAccess(teamAccess.access.teamMember)) {
+      const output = new Output(
+        false,
+        [],
+        ["Acesso negado: função SDR ou CLOSER necessária para registrar contatos."],
+        null
+      );
+      return NextResponse.json(output, { status: 403 });
     }
 
     const { id: leadId } = await params;

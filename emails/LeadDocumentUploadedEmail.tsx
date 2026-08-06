@@ -16,7 +16,8 @@ export type LeadDocumentUploadedEmailProps = {
   closerName: string;
   leadName: string;
   documentName: string;
-  leadId: string;
+  leadCode: string;
+  supabaseId: string;
   appUrl: string;
 };
 
@@ -24,10 +25,12 @@ export function LeadDocumentUploadedEmail({
   closerName,
   leadName,
   documentName,
-  leadId,
+  leadCode,
+  supabaseId,
   appUrl,
 }: LeadDocumentUploadedEmailProps) {
-  const crmUrl = `${appUrl}/crm?leadId=${leadId}`;
+  const baseUrl = appUrl.replace(/\/$/, "");
+  const crmUrl = `${baseUrl}/${supabaseId}/crm?leadCode=${encodeURIComponent(leadCode)}`;
 
   return (
     <Html lang="pt-BR">

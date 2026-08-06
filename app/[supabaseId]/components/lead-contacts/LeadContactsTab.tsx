@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type ContactType = "call" | "whatsapp" | "email" | "meeting" | "visit" | "missed";
 
@@ -181,7 +182,7 @@ export function LeadContactsTab({ leadId, teamId, supabaseId }: LeadContactsTabP
     requestKeyRef.current = key;
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/v1/leads/${leadId}/contacts`, { headers });
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/contacts`, { headers });
       if (!res.ok) throw new Error("Falha ao carregar contatos");
       const data = await res.json();
       const result = data?.result ?? data;
@@ -242,7 +243,7 @@ export function LeadContactsTab({ leadId, teamId, supabaseId }: LeadContactsTabP
       if (type !== "missed" && outcome) payload.outcome = outcome;
       if (showDuration && duration) payload.duration = Number(duration);
 
-      const res = await fetch(`/api/v1/leads/${leadId}/contacts`, {
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/contacts`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),

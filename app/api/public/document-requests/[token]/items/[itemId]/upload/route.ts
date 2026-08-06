@@ -5,6 +5,21 @@ import { leadDocumentRequestUseCase } from "@/app/api/useCases/leads/leadDocumen
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+const ALLOWED_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+]);
+
+const ALLOWED_EXTENSIONS = new Set([".pdf", ".jpg", ".jpeg", ".png"]);
+
+function isAllowedUploadFile(fileName: string, mimeType: string): boolean {
+  const extension = fileName.includes(".")
+    ? `.${fileName.split(".").pop()?.toLowerCase() ?? ""}`
+    : "";
+  return ALLOWED_MIME_TYPES.has(mimeType) && ALLOWED_EXTENSIONS.has(extension);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ token: string; itemId: string }> }
@@ -32,6 +47,16 @@ export async function POST(
 
     if (file.size > MAX_FILE_SIZE) {
       const output = new Output(false, [], ["Arquivo excede o tamanho máximo de 10 MB"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
+    if (!isAllowedUploadFile(file.name, file.type)) {
+      const output = new Output(
+        false,
+        [],
+        ["Tipo de arquivo não permitido. Envie PDF, JPEG ou PNG."],
+        null
+      );
       return NextResponse.json(output, { status: 400 });
     }
 

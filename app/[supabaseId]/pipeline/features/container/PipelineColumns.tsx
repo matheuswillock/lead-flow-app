@@ -20,7 +20,7 @@ import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndic
 import { isDraftLead } from "@/lib/lead-status";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { maskPhone } from "@/lib/masks";
+import { maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 import { formatIntimezone } from "@/lib/dates"
 
@@ -221,8 +221,8 @@ export const createColumns = ({
       const phone = row.getValue("phone") as string
       if (!phone) return <div className="text-muted-foreground">-</div>
 
-      const digits = phone.replace(/\D/g, "")
-      const waHref = `https://wa.me/55${digits}`
+      const normalized = normalizeLeadPhoneDigits(phone)
+      const waHref = normalized ? `https://wa.me/55${normalized}` : null
 
       return (
         <div className="flex items-center gap-1.5">
@@ -232,16 +232,18 @@ export const createColumns = ({
           >
             {maskPhone(phone)}
           </span>
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="text-green-600 hover:text-green-700 flex-shrink-0"
-            aria-label="Abrir no WhatsApp"
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-          </a>
+          {waHref ? (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-green-600 hover:text-green-700 flex-shrink-0"
+              aria-label="Abrir no WhatsApp"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
         </div>
       )
     },

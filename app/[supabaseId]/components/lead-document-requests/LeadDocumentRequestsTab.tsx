@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type DocumentRequestItem = {
   id: string;
@@ -85,7 +86,7 @@ export function LeadDocumentRequestsTab({
     requestKeyRef.current = key;
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/v1/leads/${leadId}/document-requests`, { headers });
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/document-requests`, { headers });
       if (!res.ok) throw new Error("Falha ao carregar solicitações");
       const data = await res.json();
       const list = data?.result ?? data;
@@ -129,7 +130,7 @@ export function LeadDocumentRequestsTab({
     }
     setIsCreating(true);
     try {
-      const res = await fetch(`/api/v1/leads/${leadId}/document-requests`, {
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/document-requests`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -159,7 +160,7 @@ export function LeadDocumentRequestsTab({
     setResendingId(requestId);
     try {
       const res = await fetch(
-        `/api/v1/leads/${leadId}/document-requests/${requestId}/resend`,
+        `${API_CLIENT_BASE}/leads/${leadId}/document-requests/${requestId}/resend`,
         { method: "POST", headers }
       );
       const data = await res.json();

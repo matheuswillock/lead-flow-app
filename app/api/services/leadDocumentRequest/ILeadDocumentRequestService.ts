@@ -10,7 +10,8 @@ export type SendUploadNotificationEmailData = {
   closerName: string;
   leadName: string;
   documentName: string;
-  leadId: string;
+  leadCode: string;
+  supabaseId: string;
   appUrl: string;
 };
 

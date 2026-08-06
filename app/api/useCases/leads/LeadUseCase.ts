@@ -2460,7 +2460,7 @@ export class LeadUseCase implements ILeadUseCase {
       tags: lead.tagAssignments
         ? lead.tagAssignments.map((ta: any) => ({ id: ta.tag.id, name: ta.tag.name, color: ta.tag.color }))
         : undefined,
-      contactCount: lead._count?.activities ?? undefined,
+      contactCount: lead._count?.activities ?? 0,
       ...(lead.manager && {
         manager: {
           id: lead.manager.id,

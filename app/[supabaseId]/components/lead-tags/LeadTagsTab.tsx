@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type LeadTag = {
   id: string;
@@ -75,8 +76,8 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
     setIsLoading(true);
     try {
       const [appliedRes, teamRes] = await Promise.all([
-        fetch(`/api/v1/leads/${leadId}/tags`, { headers }),
-        fetch("/api/v1/leads/tags", { headers }),
+        fetch(`${API_CLIENT_BASE}/leads/${leadId}/tags`, { headers }),
+        fetch(`${API_CLIENT_BASE}/leads/tags`, { headers }),
       ]);
       if (!appliedRes.ok || !teamRes.ok) {
         throw new Error("Falha ao carregar tags");
@@ -108,7 +109,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
     if (pendingTagId) return;
     setPendingTagId(tagId);
     try {
-      const res = await fetch(`/api/v1/leads/${leadId}/tags`, {
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/tags`, {
         method: "POST",
         headers,
         body: JSON.stringify({ tagId }),
@@ -130,7 +131,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
     if (pendingTagId) return;
     setPendingTagId(tagId);
     try {
-      const res = await fetch(`/api/v1/leads/${leadId}/tags/${tagId}`, {
+      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/tags/${tagId}`, {
         method: "DELETE",
         headers,
       });
@@ -152,7 +153,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
     if (!name || isCreating) return;
     setIsCreating(true);
     try {
-      const createRes = await fetch("/api/v1/leads/tags", {
+      const createRes = await fetch(`${API_CLIENT_BASE}/leads/tags`, {
         method: "POST",
         headers,
         body: JSON.stringify({ name, color: newTagColor }),
@@ -162,7 +163,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
         throw new Error(err?.errorMessages?.[0] ?? "Falha ao criar tag");
       }
       const created = (await createRes.json()) as LeadTag;
-      const applyRes = await fetch(`/api/v1/leads/${leadId}/tags`, {
+      const applyRes = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/tags`, {
         method: "POST",
         headers,
         body: JSON.stringify({ tagId: created.id }),
