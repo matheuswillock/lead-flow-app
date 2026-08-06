@@ -25,11 +25,6 @@ const ORPHAN_BACKFILL_EVENTS = new Set([
   "email.bounced",
   "email.suppressed",
 ])
-const LOG_LOOKUP_RETRY_MS = 400
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 export type HandleResendWebhookInput = {
   event: ResendWebhookPayload
@@ -76,7 +71,6 @@ export class ResendWebhookUseCase {
       let log = await emailLogRepository.findByResendEmailId(resendEmailId)
 
       if (!log) {
-        await sleep(LOG_LOOKUP_RETRY_MS)
         log = await emailLogRepository.findByResendEmailId(resendEmailId)
       }
 
