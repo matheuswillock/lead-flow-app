@@ -129,7 +129,7 @@ export function prefetchLeadDetails(
   teamId: string,
   leadId: string
 ): void {
-  void loadLeadDetailsWithDedupe(supabaseId, teamId, leadId);
+  void loadLeadDetailsWithDedupe(supabaseId, teamId, leadId).catch(() => undefined);
 }
 
 /**
