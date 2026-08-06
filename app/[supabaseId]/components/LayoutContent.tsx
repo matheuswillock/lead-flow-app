@@ -12,7 +12,8 @@ import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { getFeatureSlugsForAppPath, isAssociadosAppPath } from "@/lib/features/feature-route-access"
-import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext";
+import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext"
+import { CampaignDispatchIndicator } from "./CampaignDispatchIndicator";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -102,6 +103,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
       <SidebarInset>
         <SiteHeader />
         <WhatsNewModal supabaseId={supabaseId} enabled={canShowWhatsNewModal} />
+        <CampaignDispatchIndicator />
         <div className="flex min-h-0 flex-1 flex-col h-[calc(100dvh-var(--header-height))] overflow-auto">
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
             {shouldShowNoTeamsMessage ? (

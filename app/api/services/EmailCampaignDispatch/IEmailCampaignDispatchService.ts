@@ -11,6 +11,7 @@ export interface DispatchBatchResult {
   failed: number
   dispatched: Array<{ email: string; resendId: string }>
   providerErrors: DispatchProviderError[]
+  abortedReason?: "domain_not_verified"
 }
 
 export interface IEmailCampaignDispatchService {
