@@ -2457,6 +2457,10 @@ export class LeadUseCase implements ILeadUseCase {
       isLeadTimeBreached: lead.isLeadTimeBreached ?? false,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
       proposalReviewStatus: lead.proposalReview?.status ?? null,
+      tags: lead.tagAssignments
+        ? lead.tagAssignments.map((ta: any) => ({ id: ta.tag.id, name: ta.tag.name, color: ta.tag.color }))
+        : undefined,
+      contactCount: lead._count?.activities ?? 0,
       ...(lead.manager && {
         manager: {
           id: lead.manager.id,
@@ -2487,6 +2491,10 @@ export class LeadUseCase implements ILeadUseCase {
           body: activity.body,
           payload: activity.payload,
           createdAt: activity.createdAt.toISOString(),
+          outcome: activity.outcome ?? null,
+          duration: activity.duration ?? null,
+          contactDate: activity.contactDate ? activity.contactDate.toISOString().split('T')[0] : null,
+          contactTime: activity.contactTime ?? null,
           reactions: this.aggregateActivityReactions(activity.reactions, viewerProfileId),
           ...((activity.author
             ? {

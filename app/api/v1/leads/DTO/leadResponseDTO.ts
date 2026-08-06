@@ -1,5 +1,11 @@
 import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
+export interface LeadTagDTO {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface LeadResponseDTO {
   id: string;
   leadCode: string;
@@ -51,6 +57,8 @@ export interface LeadResponseDTO {
   attachmentCount?: number;
   proposalReviewStatus?: LeadProposalReviewStatus | null;
   customFields?: LeadCustomFieldValueResponseDTO[];
+  tags?: LeadTagDTO[];
+  contactCount?: number;
   manager?: {
     id: string;
     fullName: string | null;
@@ -85,6 +93,11 @@ export interface LeadActivityResponseDTO {
   body: string | null;
   payload: any;
   createdAt: string;
+  // Contact-specific fields
+  outcome?: string | null;
+  duration?: number | null;
+  contactDate?: string | null;
+  contactTime?: string | null;
   reactions?: LeadActivityReactionSummary[];
   author?: {
     id: string;
