@@ -4,7 +4,7 @@ import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/W
 import { getWhatsAppWebhookRetryAt, WHATSAPP_WEBHOOK_MAX_ATTEMPTS } from "./whatsappWebhookRetry"
 import { emitWhatsAppSloMetric } from "@/lib/whatsapp/slo-metrics"
 
-const OUTBOX_CONCURRENCY = 10
+const OUTBOX_CONCURRENCY = 2
 
 class ProcessWhatsAppWebhookOutboxUseCase {
   async process(eventId: string): Promise<Output> {
