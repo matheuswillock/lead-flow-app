@@ -15,6 +15,7 @@ import type {
 } from "./CampanhasTypes"
 import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
+import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
 
 const DEFAULT_PAGE_SIZE = 10
 const defaultService = new CampanhasService()
@@ -242,6 +243,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     bypassCreditsCheck,
     skipBetaGate,
   } = useStudioEmailRuntime()
+  const { sendingCampaigns: realtimeSendingCampaigns } = useCampaignDispatchRealtime()
   const service = host?.services.campanhas ?? defaultService
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
@@ -632,7 +634,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     void refreshSubCampaignStatus()
     const intervalId = window.setInterval(() => {
       void refreshSubCampaignStatus()
-    }, 4000)
+    }, 15000)
     return () => window.clearInterval(intervalId)
   }, [
     activeTeamId,
@@ -648,9 +650,24 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     supabaseId,
   ])
 
+  // Realtime-driven refresh: when the layout-level dispatch context signals a status change
+  // (campaign leaves or enters "sending"), refresh the campaign list immediately.
+  const realtimeSendingIdsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     if (!sendingId) return
     if (sendingSubCampaignParentIdRef.current) return
+
+    const currentIds = new Set(realtimeSendingCampaigns.map((c) => c.id))
+    const prev = realtimeSendingIdsRef.current
+
+    const hasChange =
+      currentIds.size !== prev.size ||
+      [...currentIds].some((id) => !prev.has(id)) ||
+      [...prev].some((id) => !currentIds.has(id))
+
+    realtimeSendingIdsRef.current = currentIds
+
+    if (!hasChange) return
 
     const pollStatus =
       statusFilter.includes("sending") || statusFilter.length === 0
@@ -659,12 +676,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
           : statusFilter
         : ["sending"]
 
-    const intervalId = window.setInterval(() => {
-      lastCampaignsKeyRef.current = ""
-      void fetchCampaigns(1, pollStatus, pageSize, nameFilter, dateFrom, dateTo)
-    }, 4000)
-    return () => window.clearInterval(intervalId)
-  }, [sendingId, statusFilter, fetchCampaigns, pageSize, nameFilter, dateFrom, dateTo])
+    lastCampaignsKeyRef.current = ""
+    void fetchCampaigns(1, pollStatus, pageSize, nameFilter, dateFrom, dateTo)
+  }, [realtimeSendingCampaigns])
 
   // Ao voltar à página com campanha já em envio, acompanha no banner/poll
   useEffect(() => {
