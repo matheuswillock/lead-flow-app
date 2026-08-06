@@ -2,12 +2,12 @@ import type { PublicFormMetricType, Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
+import { normalizeRadarEmail, normalizeRadarName } from "@/lib/radar/normalization"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
   mapPublicFormMetricToRadarEventType,
   PUBLIC_FORM_RADAR_SOURCE_TYPE,
 } from "@/lib/radar/map-public-form-metric-to-radar-event"
-import { normalizeRadarEmail, normalizeRadarName } from "@/lib/radar/normalization"
 
 export type SyncPublicFormMetricToRadarInput = {
   teamId: string

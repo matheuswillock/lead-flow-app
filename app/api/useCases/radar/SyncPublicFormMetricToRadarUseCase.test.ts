@@ -26,9 +26,13 @@ const resolveProfileForEmail = mock(
     teamId: string
     normalizedEmail: string
     emailValue: string
+    displayName: string | null
+    normalizedName: string | null
+    emailSource: string
+    lastSeenAt?: Date
   }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
     profile: { id: "email-profile-1" },
-    wasExisting: true,
+    wasExisting: false,
   })
 )
 const appendEventIfNewBySourceKey = mock(
@@ -108,7 +112,7 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     }))
     resolveProfileForEmail.mockImplementation(async () => ({
       profile: { id: "email-profile-1" },
-      wasExisting: true,
+      wasExisting: false,
     }))
     appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
     syncLeadExecute.mockImplementation(async () => ({ isValid: true }))
@@ -276,5 +280,57 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
       lastSeenAt: expect.any(Date),
     })
     expect(output.result).toMatchObject({ profileId: "fresh-anon", created: true })
+  })
+
+  it("E1: form_viewed sem leadId com recipientEmail → resolveProfileForEmail (não sessão anônima)", async () => {
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+      eventKey: "vs-abc:form_viewed:form",
+      leadId: null,
+      origin: {
+        emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        recipientEmail: "destinatario@exemplo.com",
+      },
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(resolveProfileForEmail).toHaveBeenCalledWith({
+      teamId: "team-1",
+      normalizedEmail: "destinatario@exemplo.com",
+      emailValue: "destinatario@exemplo.com",
+      displayName: null,
+      normalizedName: null,
+      emailSource: "email_log",
+      lastSeenAt: expect.any(Date),
+    })
+    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
+    expect(findProfileByIdentity).not.toHaveBeenCalled()
+    expect(lastAppendArg().profileId).toBe("email-profile-1")
+  })
+
+  it("E1: form_viewed e form_completed com mesmo recipientEmail → mesmo perfil Radar", async () => {
+    resolveProfileForEmail.mockImplementation(async () => ({
+      profile: { id: "shared-email-profile" },
+      wasExisting: true,
+    }))
+
+    const viewed = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+      eventKey: "vs-abc:form_viewed:form",
+      origin: { recipientEmail: "mesmo@exemplo.com" },
+    })
+    const completed = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "form_completed",
+      eventKey: "vs-abc:form_completed:form",
+      origin: { recipientEmail: "mesmo@exemplo.com" },
+    })
+
+    expect(viewed.result).toMatchObject({ profileId: "shared-email-profile" })
+    expect(completed.result).toMatchObject({ profileId: "shared-email-profile" })
+    expect(resolveProfileForEmail).toHaveBeenCalledTimes(2)
+    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
   })
 })

@@ -159,4 +159,29 @@ describe("ResendWebhookService.processEmailLogWebhook", () => {
     const input = (applyWebhookEventMock.mock.calls[0] as [{ eventType: string }])[0]
     expect(input.eventType).toBe("bounced")
   })
+
+  it("E5 — webhook duplicado (mesmo logId+type+occurredAt): applyWebhookEvent não lança; retorna true (HTTP 200)", async () => {
+    const occurredAt = new Date("2026-08-05T12:00:00.000Z")
+    const payload = {
+      log: makeLog(),
+      eventType: "delivered" as const,
+      occurredAt,
+      metadata: {},
+      resendEventType: "email.delivered",
+      svixId: null,
+    }
+
+    // Primeira entrega grava o evento.
+    const first = await service.processEmailLogWebhook(payload)
+    expect(first).toBe(true)
+
+    // Race / reentrega Resend: hasDuplicateEvent ainda false, mas upsert no repo é no-op sem throw.
+    hasDuplicateEventMock.mockResolvedValueOnce(false)
+    applyWebhookEventMock.mockImplementation(async () => {
+      // Simula EmailLogRepository.applyWebhookEvent com upsert update: {} — sem P2002.
+    })
+
+    await expect(service.processEmailLogWebhook(payload)).resolves.toBe(true)
+    expect(applyWebhookEventMock).toHaveBeenCalled()
+  })
 })

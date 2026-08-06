@@ -37,10 +37,18 @@ const BATCH_SIZE = 100
 
 /** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
 function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
+  if (statusCode === 403 && isDomainNotVerifiedError(rawMessage)) {
+    return "Domínio de envio não verificado. Verifique os registros DNS nas configurações de e-mail."
+  }
   if (statusCode === 409 && rawMessage.toLowerCase().includes("idempotency")) {
-    return "Falha no envio da campanha. Entre em contato com o suporte se o problema persistir."
+    return "Campanha já foi processada anteriormente. Se o problema persistir, entre em contato com o suporte."
   }
   return rawMessage
+}
+
+function isDomainNotVerifiedError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("not verified") || (lower.includes("domain") && lower.includes("verif"))
 }
 
 /** Extrai IDs de e-mails da resposta do Resend batch (SDK v6). */

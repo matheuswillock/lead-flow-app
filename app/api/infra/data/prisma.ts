@@ -37,7 +37,7 @@ export function getImportCronPrisma(): PrismaClient {
   return importCronPrismaClient;
 }
 
-const transientPrismaErrors = new Set(["P1017", "P1001", "P1002", "P1008"]);
+const transientPrismaErrors = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"]);
 
 export async function withPrismaRetry<T>(
   operation: () => Promise<T>,

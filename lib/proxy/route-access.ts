@@ -21,6 +21,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/backoffice-agendamento",
   "/addon-checkout",
   "/sentry-example-page",
+  "/documentos",
 ] as const
 
 /** Prefixos públicos (match por startsWith). */
@@ -33,6 +34,7 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/addon-checkout/",
   "/oferta/",
   "/adesao/",
+  "/documentos/",
 ] as const
 
 export const TENANT_ROUTE_PREFIXES = [

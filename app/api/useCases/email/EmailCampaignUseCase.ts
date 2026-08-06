@@ -1492,20 +1492,33 @@ export class EmailCampaignUseCase {
     return byEmail
   }
 
-  private buildDispatchFailureDetail(providerErrors: DispatchProviderError[]): string | null {
+  private buildDispatchFailureDetail(
+    providerErrors: DispatchProviderError[],
+    abortedReason?: "domain_not_verified"
+  ): string | null {
     if (providerErrors.length === 0) return null
 
-    const parts = providerErrors.slice(0, 3).map((error) => {
+    for (const error of providerErrors) {
       const technical = formatProviderBatchFailureMessage({
         message: error.message,
         statusCode: error.statusCode,
         emails: error.emails,
       })
       console.error("[EmailCampaignUseCase][buildDispatchFailureDetail] erro técnico:", technical)
-      return technical
-    })
-    const remaining = providerErrors.length - parts.length
-    return remaining > 0 ? `${parts.join(" | ")} | e mais ${remaining} lote(s) com falha` : parts.join(" | ")
+    }
+
+    if (abortedReason === "domain_not_verified") {
+      return "Domínio de envio não verificado. Verifique os registros DNS nas configurações de e-mail."
+    }
+
+    const totalFailed = providerErrors.reduce((sum, e) => sum + e.emails.length, 0)
+    const has409 = providerErrors.some((e) => e.statusCode === 409)
+
+    if (has409) {
+      return "Campanha já foi processada anteriormente. Se o problema persistir, entre em contato com o suporte."
+    }
+
+    return `Falha no envio. ${totalFailed} destinatário(s) não foram enviados.`
   }
 
   private recordDispatchLeadActivities(params: {
@@ -2023,6 +2036,7 @@ export class EmailCampaignUseCase {
                   ),
                   emails: [recipient.email],
                 })),
+                abortedReason: undefined as "domain_not_verified" | undefined,
               }
 
         sentCount = dispatchResult.sent
@@ -2061,7 +2075,7 @@ export class EmailCampaignUseCase {
           }
         )
 
-        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors)
+        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors, dispatchResult.abortedReason)
         const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent, failureDetail)
         const totalFailed = job.recipients.length - dispatchResult.sent
 
@@ -2843,6 +2857,7 @@ export class EmailCampaignUseCase {
                   ),
                   emails: [recipient.email],
                 })),
+                abortedReason: undefined as "domain_not_verified" | undefined,
               }
 
         sentCount = dispatchResult.sent
@@ -2881,7 +2896,7 @@ export class EmailCampaignUseCase {
           }
         )
 
-        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors)
+        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors, dispatchResult.abortedReason)
         const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent, failureDetail)
 
         // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)

@@ -91,6 +91,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   const { 
     filtered, 
     handleRowClick,
+    handleOpenContacts,
     handleRowHover,
     statusLabels, 
     isLoading,
@@ -303,6 +304,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
       createColumns({
         statusLabels,
         onRowClick: handleRowClick,
+        onOpenContacts: handleOpenContacts,
         onScheduleMeeting: handleScheduleMeeting,
         onRescheduleMeeting: handleRescheduleMeeting,
         onDeleteLead: handleDeleteLead,
@@ -314,6 +316,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
       handleChangeStatus,
       handleDeleteLead,
       handleFinalizeContract,
+      handleOpenContacts,
       handleRescheduleMeeting,
       handleRowClick,
       handleScheduleMeeting,

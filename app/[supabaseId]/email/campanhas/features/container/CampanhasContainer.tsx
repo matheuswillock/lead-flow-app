@@ -11,7 +11,6 @@ import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/Le
 import { useCampanhasContext } from "../context/CampanhasContext"
 import type { DateRange } from "react-day-picker"
 import { format } from "date-fns"
-import { CampaignDispatchProgressBanner } from "../components/CampaignDispatchProgressBanner"
 import { CampaignList } from "../components/CampaignList"
 import { CampaignWizardDialog } from "../components/CampaignWizardDialog"
 import type { ComponentType } from "react"
@@ -122,8 +121,6 @@ export function CampanhasContainer({
           </Button>
         </div>
       </div>
-
-      <CampaignDispatchProgressBanner />
 
       <CampaignsOverviewPanel />
 

@@ -79,7 +79,12 @@ export async function proxy(request: NextRequest) {
     // Rota pública embedável: não depende de sessão. Early-return antes do
     // updateSession evita o round-trip de refresh do Supabase no caminho
     // quente do formulário (os headers de embed vêm do next.config.ts).
-    if (pathname.startsWith("/lead-form") || pathname.startsWith("/backoffice-lead-form") || pathname.startsWith("/forms/")) {
+    if (
+      pathname.startsWith("/lead-form") ||
+      pathname.startsWith("/backoffice-lead-form") ||
+      pathname.startsWith("/forms/") ||
+      pathname.startsWith("/documentos")
+    ) {
       return NextResponse.next()
     }
 

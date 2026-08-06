@@ -159,15 +159,20 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     expect(second.created).toBe(0)
   })
 
-  it("syncFromCrm grava lead.milestone.* junto com lead.status_changed para os 4 status de marco (D5)", async () => {
-    const milestoneCases: Array<{ status: string; expectedEventType: string }> = [
-      { status: "new_opportunity", expectedEventType: "lead.milestone.new_opportunity" },
-      { status: "invoicePayment", expectedEventType: "lead.milestone.invoice_payment" },
-      { status: "future_sale", expectedEventType: "lead.milestone.future_sale" },
-      { status: "contract_finalized", expectedEventType: "lead.milestone.contract_finalized" },
+  it("syncFromCrm grava lead.milestone.* junto com lead.status_changed para os 4 status de marco (D5/E2)", async () => {
+    // E2: nascimento em new_opportunity NÃO emite milestone; os outros 3 marcos
+    // emitem no nascimento; transição real para new_opportunity emite.
+    const birthCases: Array<{
+      status: string
+      expectedMilestone: string | null
+    }> = [
+      { status: "new_opportunity", expectedMilestone: null },
+      { status: "invoicePayment", expectedMilestone: "lead.milestone.invoice_payment" },
+      { status: "future_sale", expectedMilestone: "lead.milestone.future_sale" },
+      { status: "contract_finalized", expectedMilestone: "lead.milestone.contract_finalized" },
     ]
 
-    for (const [index, { status, expectedEventType }] of milestoneCases.entries()) {
+    for (const [index, { status, expectedMilestone }] of birthCases.entries()) {
       const suffix = randomUUID().slice(0, 8)
       const phone = `1199${index}${String(Date.now()).slice(-6)}`
       const milestoneLead = await prisma.lead.create({
@@ -201,10 +206,10 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
             teamId: scope.teamId,
             sourceType: "crm_lead",
             sourceId: `${milestoneLead.id}:${status}:milestone`,
-            eventType: expectedEventType,
+            eventType: expectedMilestone ?? "lead.milestone.new_opportunity",
           },
         })
-        if (status === "new_opportunity") {
+        if (expectedMilestone === null) {
           expect(milestoneEvent).toBeNull()
         } else {
           expect(milestoneEvent).not.toBeNull()
@@ -224,6 +229,77 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
         })
         await prisma.lead.delete({ where: { id: milestoneLead.id } })
       }
+    }
+
+    // Transição real: lead nasce em outro status e depois vai para new_opportunity.
+    const transitionSuffix = randomUUID().slice(0, 8)
+    const transitionPhone = `11995${String(Date.now()).slice(-6)}`
+    const bornAt = new Date("2026-08-01T12:00:00.000Z")
+    const enteredNewOpportunityAt = new Date("2026-08-05T15:00:00.000Z")
+    const transitionLead = await prisma.lead.create({
+      data: {
+        id: randomUUID(),
+        leadCode: `Radar-milestone-transition-${transitionSuffix}`,
+        managerId: scope.ctx.profileId,
+        teamId: scope.teamId,
+        name: "Lead Marco Transicao",
+        phone: transitionPhone,
+        email: `milestone-transition-${transitionSuffix}@example.com`,
+        status: "scheduled",
+        createdAt: bornAt,
+        statusEnteredAt: bornAt,
+      },
+    })
+
+    try {
+      await prisma.lead.update({
+        where: { id: transitionLead.id },
+        data: {
+          status: "new_opportunity",
+          statusEnteredAt: enteredNewOpportunityAt,
+        },
+      })
+      await radarService.syncFromCrm(scope, { leadId: transitionLead.id })
+
+      const statusChangedEvent = await prisma.radarEvent.findFirst({
+        where: {
+          teamId: scope.teamId,
+          sourceType: "crm_lead",
+          sourceId: `${transitionLead.id}:new_opportunity`,
+          eventType: "lead.status_changed",
+        },
+      })
+      expect(statusChangedEvent).not.toBeNull()
+
+      const milestoneEvent = await prisma.radarEvent.findFirst({
+        where: {
+          teamId: scope.teamId,
+          sourceType: "crm_lead",
+          sourceId: `${transitionLead.id}:new_opportunity:milestone`,
+          eventType: "lead.milestone.new_opportunity",
+        },
+      })
+      expect(milestoneEvent).not.toBeNull()
+    } finally {
+      await prisma.radarEvent.deleteMany({
+        where: {
+          profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transitionPhone) },
+        },
+      })
+      await prisma.radarIdentity.deleteMany({
+        where: {
+          profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transitionPhone) },
+        },
+      })
+      await prisma.radarSourceLink.deleteMany({
+        where: {
+          profile: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transitionPhone) },
+        },
+      })
+      await prisma.radarProfile.deleteMany({
+        where: { teamId: scope.teamId, normalizedPhone: normalizeRadarPhone(transitionPhone) },
+      })
+      await prisma.lead.delete({ where: { id: transitionLead.id } })
     }
   })
 

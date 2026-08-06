@@ -11,6 +11,7 @@ import { NotificationFaviconBadge } from "./notifications/features/components/No
 import { WebPushConsentPrompt } from "./notifications/features/components/WebPushConsentPrompt"
 import { NO_INDEX_METADATA } from "@/lib/metadata/policies"
 import { getAuthenticatedLayoutBootstrapData } from "@/lib/bootstrap/getAuthenticatedLayoutBootstrapData"
+import { CampaignDispatchRealtimeProvider } from "./email/campanhas/features/context/CampaignDispatchRealtimeContext"
 
 export const metadata: Metadata = NO_INDEX_METADATA
 
@@ -50,11 +51,13 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
           <OperationalAccessProvider initialAccess={bootstrap?.operationalAccess ?? null}>
             <NotificationsProvider supabaseId={supabaseId}>
               <InAppNotificationProvider>
-                <NotificationFaviconBadge />
-                <WebPushConsentPrompt supabaseId={supabaseId} />
-                <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
-                  {children}
-                </LayoutContent>
+                <CampaignDispatchRealtimeProvider supabaseId={supabaseId}>
+                  <NotificationFaviconBadge />
+                  <WebPushConsentPrompt supabaseId={supabaseId} />
+                  <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
+                    {children}
+                  </LayoutContent>
+                </CampaignDispatchRealtimeProvider>
               </InAppNotificationProvider>
             </NotificationsProvider>
           </OperationalAccessProvider>

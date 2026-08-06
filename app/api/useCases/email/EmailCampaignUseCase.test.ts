@@ -468,9 +468,8 @@ describe("EmailCampaignUseCase.send", () => {
     const output = await uc.send("camp-1", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toContain("422")
-    expect(output.errorMessages[0]).toContain("Invalid `to` field")
-    expect(output.errorMessages[0]).toContain("r0@test.com")
+    // Mensagem ao usuário é sanitizada (sem e-mails nem detalhe técnico do provedor).
+    expect(output.errorMessages[0]).toBe("Falha no envio. 10 destinatário(s) não foram enviados.")
     expect(markTeamEmailLogFailedMock).toHaveBeenCalled()
     const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
       (call) => (call as unknown as [string, string])[1]
@@ -511,8 +510,8 @@ describe("EmailCampaignUseCase.send", () => {
     expect(output.isValid).toBe(false)
     expect(dispatchBatchMock).not.toHaveBeenCalled()
     expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(2)
-    expect(output.errorMessages[0]).toContain("carol.ocipriani@gmail.com|hugopoli@gmail.com")
-    expect(output.errorMessages[0]).toContain("múltiplos endereços")
+    // Mensagem ao usuário é sanitizada (sem e-mails nem motivo técnico).
+    expect(output.errorMessages[0]).toBe("Falha no envio. 2 destinatário(s) não foram enviados.")
 
     const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
       (call) => (call as unknown as [string, string])[1]
