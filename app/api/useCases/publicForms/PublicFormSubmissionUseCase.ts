@@ -21,6 +21,9 @@ import {
 } from "./publicFormLeadSync"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import { FORM_COMPLETE_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
+import {
+  buildPublicFormMetricEventKey,
+} from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -97,6 +100,19 @@ export class PublicFormSubmissionUseCase {
         submissionId: existing.id,
         alreadyProcessed: true,
       })
+    }
+
+    if (input.visitorSessionId) {
+      const completedBySession = await publicFormsRepository.findCompletedSubmissionBySession(
+        current.publicationId,
+        input.visitorSessionId,
+      )
+      if (completedBySession) {
+        return new Output(true, ["Respostas já recebidas"], [], {
+          submissionId: completedBySession.id,
+          alreadyProcessed: true,
+        })
+      }
     }
 
     const { snapshot } = current
@@ -299,7 +315,7 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId,
           eventType: "form_completed",
-          eventKey: `${job.requestKey}:form_completed`,
+          eventKey: buildPublicFormMetricEventKey(visitorSessionId, "form_completed"),
           origin: formCompletedOrigin,
           radarOrigin: withFormCompletedScoreOrigin(origin, job.score, job.scoreBandLabel),
         },
@@ -314,7 +330,7 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId,
           eventType,
-          eventKey: `${job.requestKey}:${eventType}`,
+          eventKey: buildPublicFormMetricEventKey(visitorSessionId, eventType),
           origin: metricOrigin,
         })
       }
@@ -325,7 +341,7 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId,
           eventType: "meeting_scheduled",
-          eventKey: `${job.requestKey}:meeting_scheduled`,
+          eventKey: buildPublicFormMetricEventKey(visitorSessionId, "meeting_scheduled"),
           origin: metricOrigin,
         })
       }
@@ -386,7 +402,7 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId: fallbackVisitorSessionId,
           eventType: "form_completed" as const,
-          eventKey: `${job.requestKey}:form_completed`,
+          eventKey: buildPublicFormMetricEventKey(fallbackVisitorSessionId, "form_completed"),
           origin: fallbackOrigin as Prisma.InputJsonValue,
         },
       ]

@@ -31,6 +31,9 @@ import type {
   PublicFormSuccessAction,
   PublicFormThemeColors,
 } from "@/lib/public-forms/types"
+import {
+  buildPublicFormSubmitRequestKey,
+} from "@/lib/public-forms/metric-keys"
 import { cn } from "@/lib/utils"
 
 type PublicQuestion = PublicFormSnapshot["questions"][number]
@@ -125,6 +128,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   const [phase, setPhase] = useState<"form" | "loading" | "result" | "agenda">("form")
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
   const previousVisibleIds = useRef<string[]>([])
+  const submitLockRef = useRef(false)
 
   const answerList = useMemo(
     () => Object.entries(answers).map(([questionId, value]) => ({ questionId, value })),
@@ -347,6 +351,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       return
     }
     if (!publicId || !session) return
+    if (sending || done || submitLockRef.current) return
+    submitLockRef.current = true
     const scheduleAnswer = snapshot.questions
       .filter((item) => item.type === "scheduling")
       .map((item) => answers[item.id] as SchedulingAnswer | undefined)
@@ -360,7 +366,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          requestKey: `${session}:${crypto.randomUUID()}`,
+          requestKey: buildPublicFormSubmitRequestKey(session),
           answers: answerList,
           origin: getOrigin(),
           visitorSessionId: session,
@@ -376,6 +382,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       }
       setDone(true)
     } catch (submitError) {
+      submitLockRef.current = false
       setError(
         submitError instanceof Error
           ? submitError.message
