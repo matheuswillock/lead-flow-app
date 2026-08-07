@@ -15,7 +15,7 @@ import {
   parseEmailLogIdFromOrigin,
   resolveAttributionDisplayName,
 } from "@/lib/public-forms/email-campaign-attribution"
-import { isValidPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
 
 const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
@@ -92,7 +92,6 @@ class ResolveEmailCampaignFormAttributionUseCase {
           formName: input.formName,
           formPublicId: input.formPublicId,
           publicationId: input.publicationId,
-          eventType: input.eventType,
           name,
           email,
           phone: phone ?? "",
@@ -181,7 +180,6 @@ class ResolveEmailCampaignFormAttributionUseCase {
     formName: string
     formPublicId: string
     publicationId: string
-    eventType: ResolveEmailCampaignFormAttributionInput["eventType"]
     name: string
     email: string
     phone: string
@@ -217,14 +215,9 @@ class ResolveEmailCampaignFormAttributionUseCase {
       return publicFormsRepository.updateLead(match.id, data)
     }
 
-    // E1: form_viewed/form_started não criam Lead fantasma — só form_completed.
-    if (input.eventType !== "form_completed") {
-      return null
-    }
-
     // Regra CRM: lead só nasce com nome + telefone válidos (sem telefone → só Radar por e-mail).
     const trimmedName = input.name.trim()
-    if (trimmedName.length < 2 || !isValidPhone(input.normalizedPhone || input.phone)) {
+    if (trimmedName.length < 2 || !input.normalizedPhone) {
       console.info(
         "[ResolveEmailCampaignFormAttributionUseCase][createLead] skip: nome/telefone insuficientes",
         { emailLogId: input.emailLogId, hasName: trimmedName.length >= 2, hasPhone: Boolean(input.normalizedPhone) }

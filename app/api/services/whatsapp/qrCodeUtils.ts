@@ -1,6 +1,6 @@
 import type { WhatsAppConnectionStatus } from "@prisma/client"
 
-/** Evolution returns base64 with or without a data-URL prefix. */
+/** QR payloads may include a data-URL prefix or raw base64. */
 export function toQrCodeImageUrl(base64OrDataUrl: string): string {
   let trimmed = base64OrDataUrl.trim()
   const duplicatePrefix = "data:image/png;base64,data:"
@@ -13,11 +13,16 @@ export function toQrCodeImageUrl(base64OrDataUrl: string): string {
   return `data:image/png;base64,${trimmed}`
 }
 
-export function resolveConfigStatusFromEvo(
-  evoStatus: "open" | "connecting" | "close",
+/** Provider connection state → TeamWhatsAppConfig status. */
+export function resolveConfigStatusFromProvider(
+  providerStatus: "open" | "connecting" | "close",
   hasQrImage: boolean
 ): WhatsAppConnectionStatus {
-  if (hasQrImage || evoStatus === "connecting") return "QR_READY"
-  if (evoStatus === "open") return "CONNECTED"
+  if (hasQrImage) return "QR_READY"
+  if (providerStatus === "connecting") return "INITIALIZING"
+  if (providerStatus === "open") return "CONNECTED"
   return "PENDING"
 }
+
+/** @deprecated Use resolveConfigStatusFromProvider */
+export const resolveConfigStatusFromEvo = resolveConfigStatusFromProvider

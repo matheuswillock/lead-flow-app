@@ -33,7 +33,13 @@ export async function confirmUnsubscribeAction(
     return { success: false, errorMessage: UNSUBSCRIBE_RATE_LIMIT_MESSAGE };
   }
 
-  const output = await emailUnsubscribeUseCase.unsubscribe(token, scope);
+  let output;
+  try {
+    output = await emailUnsubscribeUseCase.unsubscribe(token, scope);
+  } catch (error) {
+    console.error("[confirmUnsubscribeAction] unsubscribe failed:", error);
+    return { success: false, errorMessage: "Tente novamente em instantes" };
+  }
 
   if (!output.isValid) {
     return {

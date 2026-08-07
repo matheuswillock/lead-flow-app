@@ -6,8 +6,9 @@ import {
   WhatsAppAccessDeniedError,
 } from "@/app/api/services/whatsapp/WhatsAppConversationAccessService"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { evolutionWhatsAppProvider } from "@/app/api/services/whatsapp/provider/EvolutionWhatsAppProvider"
+import type { IWhatsAppProvider } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
 import { WhatsAppProviderCapabilityError } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
+import { WhatsAppEngineFactory } from "@/lib/whatsapp/WhatsAppEngineFactory"
 import { whatsappError } from "@/lib/whatsapp/api-error"
 import { emitWhatsAppSloMetric } from "@/lib/whatsapp/slo-metrics"
 
@@ -76,6 +77,12 @@ type MessageActionsStateResult = {
 }
 
 class MessageActionUseCase {
+  constructor(private readonly providerOverride?: IWhatsAppProvider) {}
+
+  private async resolveProvider(teamId: string): Promise<IWhatsAppProvider> {
+    return this.providerOverride ?? WhatsAppEngineFactory.forTeam(teamId)
+  }
+
   async execute(input: MessageActionInput): Promise<Output> {
     try {
       const message = await whatsAppRepository.findMessageByIdForTeam(input.teamId, input.messageId)
@@ -95,7 +102,8 @@ class MessageActionUseCase {
       }
 
       const action = input.action
-      const caps = evolutionWhatsAppProvider.getMessageActionCapabilities()
+      const provider = await this.resolveProvider(input.teamId)
+      const caps = provider.getMessageActionCapabilities()
       const profileId = input.access.profileId
 
       if (action.kind === "REACT" || action.kind === "UNREACT" || action.kind === "DELETE_FOR_EVERYONE") {
@@ -175,7 +183,7 @@ class MessageActionUseCase {
 
         try {
           if (action.kind === "REACT") {
-            await evolutionWhatsAppProvider.reactToMessage({
+            await provider.reactToMessage?.({
               instanceName: config.instanceName,
               remoteJid: conversation.externalChatId,
               providerMessageId: message.providerMessageId,
@@ -183,7 +191,7 @@ class MessageActionUseCase {
               emoji: action.emoji.trim(),
             })
           } else if (action.kind === "UNREACT") {
-            await evolutionWhatsAppProvider.unreactToMessage({
+            await provider.unreactToMessage?.({
               instanceName: config.instanceName,
               remoteJid: conversation.externalChatId,
               providerMessageId: message.providerMessageId,
@@ -191,7 +199,7 @@ class MessageActionUseCase {
               emoji: action.emoji.trim(),
             })
           } else {
-            await evolutionWhatsAppProvider.deleteForEveryone({
+            await provider.deleteForEveryone?.({
               instanceName: config.instanceName,
               remoteJid: conversation.externalChatId,
               providerMessageId: message.providerMessageId,
@@ -348,7 +356,7 @@ class MessageActionUseCase {
         return new Output(false, [], ["Mensagem não encontrada"], whatsappError("VALIDATION_ERROR"))
       }
 
-      const caps = evolutionWhatsAppProvider.getMessageActionCapabilities()
+      const caps = (await this.resolveProvider(input.teamId)).getMessageActionCapabilities()
       const result: MessageActionsStateResult = {
         messageId: message.id,
         capabilities: {

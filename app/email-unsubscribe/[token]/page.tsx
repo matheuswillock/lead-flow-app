@@ -11,9 +11,15 @@ export default async function EmailUnsubscribePage({
   const { token } = await params;
 
   const useCase = new EmailUnsubscribeUseCase();
-  const output = await useCase.getInfo(token);
-  const initialInfo: EmailUnsubscribeInfo | null =
-    output.isValid && output.result ? (output.result as EmailUnsubscribeInfo) : null;
+  let initialInfo: EmailUnsubscribeInfo | null = null;
+  try {
+    const output = await useCase.getInfo(token);
+    if (output.isValid && output.result) {
+      initialInfo = output.result as EmailUnsubscribeInfo;
+    }
+  } catch (error) {
+    console.error("[EmailUnsubscribePage] getInfo failed:", error);
+  }
 
   return (
     <EmailUnsubscribeProvider token={token} initialInfo={initialInfo}>

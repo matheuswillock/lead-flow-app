@@ -1,10 +1,10 @@
 import type { WhatsAppMessageType } from "@prisma/client"
-import type { WhatsAppProviderMessageContent } from "../provider/IWhatsAppProvider"
+import type { WhatsAppProviderMessageContent } from "./provider/IWhatsAppProvider"
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 
-export type ParsedEvoMessageContent = WhatsAppProviderMessageContent
+export type ParsedMessageContent = WhatsAppProviderMessageContent
 
-const EMPTY_CONTENT: ParsedEvoMessageContent = {
+const EMPTY_CONTENT: ParsedMessageContent = {
   messageType: "UNKNOWN",
   contentText: null,
   mediaUrl: null,
@@ -88,7 +88,7 @@ function fromMediaMessage(
   messageType: WhatsAppMessageType,
   media: Record<string, unknown>,
   quotedProviderMessageId: string | null
-): ParsedEvoMessageContent {
+): ParsedMessageContent {
   return {
     messageType,
     contentText: null,
@@ -116,7 +116,7 @@ function extractThumbnailUrl(extended: Record<string, unknown>): string | null {
   return null
 }
 
-function parseLinkPreview(extended: Record<string, unknown>): ParsedEvoMessageContent["linkPreview"] {
+function parseLinkPreview(extended: Record<string, unknown>): ParsedMessageContent["linkPreview"] {
   const title = stripHtmlTags(typeof extended["title"] === "string" ? extended["title"] : null)
   const description = stripHtmlTags(typeof extended["description"] === "string" ? extended["description"] : null)
   const matchedText = typeof extended["matchedText"] === "string" ? extended["matchedText"] : null
@@ -127,7 +127,7 @@ function parseLinkPreview(extended: Record<string, unknown>): ParsedEvoMessageCo
   return { title, description, imageUrl, url }
 }
 
-export function parseEvoMessageContent(messageData: unknown): ParsedEvoMessageContent {
+export function parseMessageContent(messageData: unknown): ParsedMessageContent {
   const message = asRecord(messageData)
   if (!message) return EMPTY_CONTENT
 

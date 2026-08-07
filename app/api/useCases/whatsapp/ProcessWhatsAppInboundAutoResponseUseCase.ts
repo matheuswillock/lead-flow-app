@@ -153,7 +153,7 @@ class ProcessWhatsAppInboundAutoResponseUseCase {
       // Reivindica o log ANTES de enviar: a unique constraint em
       // (conversationId, ruleType, inboundMessageId) impede que a mesma
       // mensagem inbound (redelivery de webhook ou corrida no
-      // ProcessEvoWebhookUseCase) dispare a mesma regra duas vezes.
+      // ProcessOpenWaWebhookUseCase) dispare a mesma regra duas vezes.
       let claimedLog: { id: string }
       try {
         claimedLog = await whatsAppAutoResponseRepository.createLog({

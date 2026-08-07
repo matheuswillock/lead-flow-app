@@ -30,6 +30,7 @@ export default [
       '.windsurf/**',
       '.zencoder/**',
       'skills/**',
+      'deploy/openwa-gateway/**',
     ],
   },
   // Regras base TypeScript (sem type-aware para manter velocidade)

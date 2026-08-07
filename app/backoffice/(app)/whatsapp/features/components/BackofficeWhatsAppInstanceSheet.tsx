@@ -115,8 +115,16 @@ export function BackofficeWhatsAppInstanceSheet() {
                     {selectedDetail.team.name}
                   </span>
                   <span>
+                    <span className="text-muted-foreground">Motor: </span>
+                    {selectedDetail.engine || "OPENWA"}
+                  </span>
+                  <span>
                     <span className="text-muted-foreground">Instância: </span>
                     {selectedDetail.instanceName}
+                  </span>
+                  <span>
+                    <span className="text-muted-foreground">Motor: </span>
+                    {selectedDetail.engine}
                   </span>
                   <span>
                     <span className="text-muted-foreground">Telefone: </span>
@@ -237,7 +245,7 @@ export function BackofficeWhatsAppInstanceSheet() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Desconectar instância?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      A sessão WhatsApp será encerrada na Evolution. O cliente precisará escanear o
+                      A sessão WhatsApp será encerrada no OpenWA Gateway. O cliente precisará escanear o
                       QR novamente para reconectar.
                     </AlertDialogDescription>
                   </AlertDialogHeader>

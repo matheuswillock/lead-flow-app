@@ -1,5 +1,6 @@
 export type WhatsAppConnectionStatus =
   | "PENDING"
+  | "INITIALIZING"
   | "QR_READY"
   | "CONNECTED"
   | "DISCONNECTED"
@@ -23,6 +24,7 @@ export interface BackofficeWhatsAppInstanceListItem {
   id: string
   teamId: string
   provider: string
+  engine: string
   instanceName: string
   instanceId: string | null
   phoneNumber: string | null
@@ -67,6 +69,7 @@ export interface BackofficeWhatsAppTeamWithoutInstance {
 export interface BackofficeWhatsAppInstancesFilters {
   q: string
   status: WhatsAppConnectionStatus | "all"
+  engine?: string | "all"
 }
 
 export interface BackofficeWhatsAppInstancesPagination {
