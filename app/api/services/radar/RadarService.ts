@@ -147,12 +147,7 @@ export class RadarService {
   private async appendLeadStatusEvents(
     scope: RadarTeamScope,
     profileId: string,
-    lead: {
-      id: string
-      status: LeadStatus | null
-      createdAt: Date
-      statusEnteredAt: Date
-    }
+    lead: { id: string; status: LeadStatus | null; statusEnteredAt: Date; createdAt: Date }
   ): Promise<void> {
     if (!lead.status) return
 

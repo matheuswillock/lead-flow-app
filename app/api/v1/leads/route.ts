@@ -1,4 +1,4 @@
-import { after, NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse, connection } from "next/server";
 import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { LeadUseCase } from "../../useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "../../useCases/profiles/ProfileUseCase";
@@ -78,6 +78,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     console.info('[LeadsRoute][GET] Received GET request');
 

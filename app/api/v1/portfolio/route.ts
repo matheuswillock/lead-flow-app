@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from 'zod';
 import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
@@ -108,6 +108,8 @@ function parseDateBound(value: string | undefined, bound: 'start' | 'end'): Date
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   console.info('[PortfolioRoute][GET] Received request');
 
   const teamAccess = await getTeamAccess(request);

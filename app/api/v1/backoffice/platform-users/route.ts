@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeFeatureUseCase } from "@/app/api/useCases/backofficeFeature/BackofficeFeatureUseCase"
@@ -10,6 +10,8 @@ function parsePositiveInt(value: string | null, fallback: number): number {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const result = await getBackofficeAccess(request)
     if (result.error) {

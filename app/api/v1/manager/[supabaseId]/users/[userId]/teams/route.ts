@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
@@ -22,6 +22,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string; userId: string }> }
 ) {
+  await connection();
+
   try {
     const requesterId = request.headers.get("x-supabase-user-id");
     const { supabaseId, userId } = await params;

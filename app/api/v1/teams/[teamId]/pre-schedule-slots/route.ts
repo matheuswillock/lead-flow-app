@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { preScheduleSlotUseCase } from "@/app/api/useCases/preSchedule/PreScheduleSlotUseCase"
@@ -12,6 +12,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request)
     if ("error" in teamAccess) {

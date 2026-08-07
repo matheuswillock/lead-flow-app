@@ -40,21 +40,27 @@ export async function consumePublicFormRateLimit(
   const now = new Date()
   const resetAt = new Date(now.getTime() + options.windowMs)
 
-  const rows = await prisma.$queryRaw<Array<{ count: number; resetAt: Date }>>`
-    INSERT INTO "corretor_studio_public_form_rate_limits" ("key", "count", "resetAt", "updatedAt")
-    VALUES (${key}, 1, ${resetAt}, ${now})
-    ON CONFLICT ("key") DO UPDATE SET
-      "count" = CASE
-        WHEN "corretor_studio_public_form_rate_limits"."resetAt" <= ${now} THEN 1
-        ELSE "corretor_studio_public_form_rate_limits"."count" + 1
-      END,
-      "resetAt" = CASE
-        WHEN "corretor_studio_public_form_rate_limits"."resetAt" <= ${now} THEN ${resetAt}
-        ELSE "corretor_studio_public_form_rate_limits"."resetAt"
-      END,
-      "updatedAt" = ${now}
-    RETURNING "count", "resetAt"
-  `
+  let rows: Array<{ count: number; resetAt: Date }>
+  try {
+    rows = await prisma.$queryRaw<Array<{ count: number; resetAt: Date }>>`
+      INSERT INTO "corretor_studio_public_form_rate_limits" ("key", "count", "resetAt", "updatedAt")
+      VALUES (${key}, 1, ${resetAt}, ${now})
+      ON CONFLICT ("key") DO UPDATE SET
+        "count" = CASE
+          WHEN "corretor_studio_public_form_rate_limits"."resetAt" <= ${now} THEN 1
+          ELSE "corretor_studio_public_form_rate_limits"."count" + 1
+        END,
+        "resetAt" = CASE
+          WHEN "corretor_studio_public_form_rate_limits"."resetAt" <= ${now} THEN ${resetAt}
+          ELSE "corretor_studio_public_form_rate_limits"."resetAt"
+        END,
+        "updatedAt" = ${now}
+      RETURNING "count", "resetAt"
+    `
+  } catch (error) {
+    console.error("[consumePublicFormRateLimit] DB error, failing open:", error)
+    return { allowed: true, retryAfterSeconds: 0 }
+  }
 
   const row = rows[0]
   if (!row) {

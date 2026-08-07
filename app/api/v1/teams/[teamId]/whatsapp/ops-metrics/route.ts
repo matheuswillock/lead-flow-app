@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { getWhatsAppOpsMetricsUseCase } from "@/app/api/useCases/whatsapp/GetWhatsAppOpsMetricsUseCase"
@@ -8,6 +8,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
+  await connection();
+
   const { teamId } = await params
   const teamAccess = await getTeamAccess(request)
   if ("error" in teamAccess) {

@@ -1,7 +1,7 @@
 import { Output } from "@/lib/output"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
-import { evolutionWhatsAppProvider } from "@/app/api/services/whatsapp/provider/EvolutionWhatsAppProvider"
 import type { IWhatsAppProvider } from "@/app/api/services/whatsapp/provider/IWhatsAppProvider"
+import { WhatsAppEngineFactory } from "@/lib/whatsapp/WhatsAppEngineFactory"
 import { uploadWhatsAppMediaBuffer, fetchRemoteMediaBuffer } from "@/app/api/services/whatsapp/WhatsAppMediaStorage"
 import { emitWhatsAppSloMetric } from "@/lib/whatsapp/slo-metrics"
 
@@ -23,7 +23,7 @@ function isExpiredOriginError(error: unknown): boolean {
 }
 
 class ProcessWhatsAppMediaIngestUseCase {
-  constructor(private readonly provider: IWhatsAppProvider = evolutionWhatsAppProvider) {}
+  constructor(private readonly providerOverride?: IWhatsAppProvider) {}
 
   async execute(limit = 20): Promise<Output> {
     const claimed = await whatsAppRepository.claimMediaIngestBatch(limit)
@@ -52,7 +52,9 @@ class ProcessWhatsAppMediaIngestUseCase {
         let mimeType = message.mediaMimeType ?? "application/octet-stream"
 
         if (messageKey) {
-          const media = await this.provider.resolveMediaBase64({
+          const provider =
+            this.providerOverride ?? (await WhatsAppEngineFactory.forTeam(message.teamId))
+          const media = await provider.resolveMediaBase64({
             instanceName: effectiveConfig.instanceName,
             messageKey,
           })

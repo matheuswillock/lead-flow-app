@@ -12,6 +12,7 @@ export interface CreateWhatsAppConfigInput {
 export interface ConfigOutput {
   teamId: string
   provider: string
+  engine: string
   status: string
   instanceName: string
   phoneNumber: string | null

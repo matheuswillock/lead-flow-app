@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { getSubscriptionBySupabaseIdUseCase } from "@/app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
@@ -11,6 +11,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
+  await connection();
+
   try {
     const { supabaseId } = await params;
     const output = await getSubscriptionBySupabaseIdUseCase.execute(supabaseId);

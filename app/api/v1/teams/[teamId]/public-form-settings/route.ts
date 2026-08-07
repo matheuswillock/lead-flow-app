@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, connection } from "next/server";
 import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase"
 import { publicFormSettingsSchema } from "@/lib/public-forms/validation"
 import { Output } from "@/lib/output"
@@ -8,6 +8,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> },
 ) {
+  await connection();
+
   const resolved = await resolvePublicFormsAccess(request, params)
   if ("response" in resolved) return resolved.response
   return outputResponse(await publicFormsUseCase.getSettings(resolved.access))

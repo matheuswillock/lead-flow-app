@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { radarPixelHitUseCase } from "@/app/api/useCases/radar/RadarPixelHitUseCase"
 import { radarPixelRequestFingerprint } from "@/lib/radar/pixel-rate-limit"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
@@ -7,6 +7,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ publicToken: string }> },
 ) {
+  await connection();
+
   const { publicToken } = await params
   return handlePixelHit(request, publicToken, "pixel.pageview")
 }

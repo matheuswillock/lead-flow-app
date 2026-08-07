@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { studioWebhookIntegrationUseCase } from "@/app/api/useCases/integrations/StudioWebhookIntegrationUseCase";
@@ -7,6 +7,8 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 const routePrefix = "[StudioWebhookLogsRoute]";
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const accessResult = await getTeamAccess(request);
     if ("error" in accessResult) {

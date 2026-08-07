@@ -205,48 +205,32 @@ export class FeatureAccessService implements IFeatureAccessService {
       return resolveEffectiveFeature(parent.id, visited) ?? feature
     }
 
-    const hasBetaParentInHierarchy = (featureId: string): boolean => {
+    // Sobe a mesma cadeia de herança usada por resolveEffectiveFeature (respeitando
+    // inheritParentSettings), em vez da cadeia crua de parentId — do contrário, uma
+    // feature com inheritParentSettings = false herdaria o beta de um ancestral com
+    // quem ela não tem mais nenhuma relação de configuração.
+    const getEffectiveAncestorChain = (featureId: string): string[] => {
+      const chain: string[] = []
       const visited = new Set<string>()
       let current = featureById.get(featureId)
 
-      while (current?.parentId) {
+      while (current?.inheritParentSettings && current.parentId) {
+        if (visited.has(current.parentId)) break
         const parent = featureById.get(current.parentId)
-        if (!parent || visited.has(parent.id)) {
-          return false
-        }
-        if (parent.betaEnabled) {
-          return true
-        }
+        if (!parent) break
+        chain.push(parent.id)
         visited.add(parent.id)
         current = parent
       }
 
-      return false
-    }
-
-    const getAncestorFeatureIds = (featureId: string): string[] => {
-      const ancestorIds: string[] = []
-      const visited = new Set<string>()
-      let current = featureById.get(featureId)
-
-      while (current?.parentId) {
-        const parent = featureById.get(current.parentId)
-        if (!parent || visited.has(parent.id)) {
-          break
-        }
-        ancestorIds.push(parent.id)
-        visited.add(parent.id)
-        current = parent
-      }
-
-      return ancestorIds
+      return chain
     }
 
     const isBetaEligibleForFeature = (featureId: string, effectiveFeatureId: string): boolean => {
       const candidateIds = new Set([
         featureId,
         effectiveFeatureId,
-        ...getAncestorFeatureIds(featureId),
+        ...getEffectiveAncestorChain(featureId),
       ])
 
       for (const candidateId of candidateIds) {
@@ -261,8 +245,7 @@ export class FeatureAccessService implements IFeatureAccessService {
     const betaSlugs = features
       .filter((feature) => {
         const effectiveFeature = resolveEffectiveFeature(feature.id)
-        const isBetaFeature =
-          effectiveFeature?.betaEnabled === true || hasBetaParentInHierarchy(feature.id)
+        const isBetaFeature = effectiveFeature?.betaEnabled === true
         if (!isBetaFeature) return false
 
         return isBetaEligibleForFeature(feature.id, effectiveFeature?.id ?? feature.id)
@@ -326,8 +309,7 @@ export class FeatureAccessService implements IFeatureAccessService {
     const betaLabelSlugs = features
       .filter((feature) => {
         const effectiveFeature = resolveEffectiveFeature(feature.id)
-        const isBetaFeature =
-          effectiveFeature?.betaEnabled === true || hasBetaParentInHierarchy(feature.id)
+        const isBetaFeature = effectiveFeature?.betaEnabled === true
         return isBetaFeature && allowedSlugs.has(feature.slug)
       })
       .map((feature) => feature.slug)

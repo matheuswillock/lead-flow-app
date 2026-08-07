@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
@@ -7,6 +7,8 @@ import { emailAnalyticsUseCase } from "@/app/api/useCases/email/EmailAnalyticsUs
 type RouteContext = { params: Promise<{ id: string; dispatchId: string }> }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request)
     if (teamAccess.error) {

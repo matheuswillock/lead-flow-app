@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, connection } from "next/server";
 import {
   handleFilterPresetsCreate,
   handleFilterPresetsList,
@@ -11,6 +11,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
+  await connection();
+
   return handleFilterPresetsList(request, params, SCOPE, ROUTE_LABEL);
 }
 

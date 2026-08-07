@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { canAccessPerformanceManagerView } from '@/app/api/v1/performance/utils/canAccessPerformanceManagerView';
@@ -7,6 +7,8 @@ import { performanceMeetingsHeldUseCase } from '@/app/api/useCases/performance/P
 import { endOfDayInTz, parseDateKeyToUtc } from '@/lib/dates';
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   console.info('[PerformanceMeetingsHeldRoute][GET] Received request');
 
   const teamAccess = await getTeamAccess(request);

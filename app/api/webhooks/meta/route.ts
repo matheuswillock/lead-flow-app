@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { metaLeadUseCase } from '@/app/api/useCases/metaLeads/MetaLeadUseCase';
 import { metaLeadService } from '@/app/api/services/MetaLeadService';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
@@ -10,6 +10,8 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
  * para validar que o endpoint está ativo e responde corretamente.
  */
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const { searchParams } = new URL(request.url);
 

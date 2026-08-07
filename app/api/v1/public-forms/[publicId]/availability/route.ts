@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase"
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase"
 import { parseDateKeyAndTimeToUtc } from "@/lib/dates"
@@ -9,6 +9,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ publicId: string }> },
 ) {
+  await connection();
+
   const { publicId } = await params
   const date = request.nextUrl.searchParams.get("date")
   if (!date) {

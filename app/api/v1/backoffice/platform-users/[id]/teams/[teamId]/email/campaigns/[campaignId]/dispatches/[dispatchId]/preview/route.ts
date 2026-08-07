@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server"
+import { type NextRequest, connection } from "next/server";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { backofficeStudioEmailUseCase } from "@/app/api/useCases/backofficeStudioEmail/BackofficeStudioEmailUseCase"
 import {
@@ -13,6 +13,8 @@ type RouteContext = {
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
+  await connection();
+
   try {
     const all = await params
     const resolved = await resolveStudioEmailActor(request, Promise.resolve(all), {

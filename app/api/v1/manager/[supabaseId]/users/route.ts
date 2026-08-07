@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import {
   CreateUserSchema,
@@ -607,6 +607,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
+  await connection();
+
   try {
     const requesterId = request.headers.get("x-supabase-user-id");
     const { supabaseId } = await params;

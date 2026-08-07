@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, connection } from "next/server";
 
 const responseBody = {
   isValid: false,
@@ -15,6 +15,8 @@ const responseOptions = {
 };
 
 export async function GET() {
+  await connection();
+
   return NextResponse.json(responseBody, responseOptions);
 }
 

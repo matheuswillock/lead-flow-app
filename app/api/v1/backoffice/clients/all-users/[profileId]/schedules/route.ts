@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import type { ScheduleMeetingStatus } from "@/lib/lead-meeting"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
@@ -53,6 +53,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ profileId: string }> }
 ) {
+  await connection();
+
   try {
     console.info("[BackofficeAllUsersSchedulesRoute][GET] iniciado")
 

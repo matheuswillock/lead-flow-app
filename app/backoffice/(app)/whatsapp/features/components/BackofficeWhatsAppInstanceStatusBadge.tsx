@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 
 const STATUS_LABELS: Record<WhatsAppConnectionStatus, string> = {
   PENDING: "Pendente",
+  INITIALIZING: "Iniciando",
   QR_READY: "Aguardando QR",
   CONNECTED: "Conectado",
   DISCONNECTED: "Desconectado",
@@ -15,7 +16,14 @@ function getVariant(
   status: WhatsAppConnectionStatus
 ): "default" | "secondary" | "destructive" | "outline" {
   if (status === "CONNECTED") return "default"
-  if (status === "QR_READY" || status === "DISCONNECTED" || status === "PENDING") return "secondary"
+  if (
+    status === "QR_READY" ||
+    status === "DISCONNECTED" ||
+    status === "PENDING" ||
+    status === "INITIALIZING"
+  ) {
+    return "secondary"
+  }
   return "destructive"
 }
 

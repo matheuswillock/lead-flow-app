@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { asaasFetch } from '@/lib/asaas';
 import { Output } from '@/lib/output';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
@@ -7,6 +7,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ paymentId: string }> }
 ) {
+  await connection();
+
   try {
     const { paymentId } = await params;
 

@@ -7,7 +7,7 @@ export default async function TemplateEditorPage({ params }: Props) {
   const { supabaseId, id } = await params;
 
   return (
-    <TemplateEditorProvider supabaseId={supabaseId} templateId={id}>
+    <TemplateEditorProvider key={id} supabaseId={supabaseId} templateId={id}>
       <EditorContainer />
     </TemplateEditorProvider>
   );

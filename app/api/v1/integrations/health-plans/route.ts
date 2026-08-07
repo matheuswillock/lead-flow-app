@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { listCachedHealthPlanOptions } from "@/app/api/useCases/healthPlans/HealthPlanUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET() {
+  await connection();
+
   try {
     const options = await listCachedHealthPlanOptions();
 

@@ -83,6 +83,7 @@ export function useTemplateEditor(
   const initialDraftRef = useRef<TemplateEditorDraft>(EMPTY_DRAFT);
 
   const isFetchingRef = useRef(false);
+  const requestIdRef = useRef(0);
 
   const isDirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current),
@@ -118,6 +119,7 @@ export function useTemplateEditor(
 
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -126,18 +128,23 @@ export function useTemplateEditor(
         loadApprovalSettings(),
         service.listVersions(supabaseId, templateId, activeTeamId).catch(() => ({ versions: [] })),
       ]);
+      // Ignora a resposta se uma chamada mais recente (outro templateId/time) já a sucedeu.
+      if (requestIdRef.current !== requestId) return;
       const nextDraft = createDraftFromTemplate(nextTemplate);
       setTemplate(nextTemplate);
       setDraft(nextDraft);
       setVersions(versionsResult.versions);
       initialDraftRef.current = nextDraft;
     } catch (err) {
+      if (requestIdRef.current !== requestId) return;
       const message = err instanceof Error ? err.message : "Erro ao carregar template";
       console.error("[useTemplateEditor] Failed to load template", err);
       setError(message);
       toast.error("Erro ao carregar template", { description: message });
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        setLoading(false);
+      }
       isFetchingRef.current = false;
     }
   }, [activeTeamId, isNewTemplate, supabaseId, teamLoading, templateId]);

@@ -1,4 +1,4 @@
-import { after, NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse, connection } from "next/server";
 import { LeadRepository } from "../../../infra/data/repositories/lead/LeadRepository";
 import { LeadUseCase } from "../../../useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "../../../useCases/profiles/ProfileUseCase";
@@ -18,6 +18,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection();
+
   try {
     const supabaseId = request.headers.get('x-supabase-user-id');
     const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');

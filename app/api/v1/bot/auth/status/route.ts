@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { backofficeBotAuthUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotAuthUseCase";
 import { verifyStudioBotSignature } from "@/lib/studio-bot/hmac";
@@ -6,6 +6,8 @@ import { resolveStudioBotWebhookSecretAsync } from "@/lib/studio-bot/resolve-hos
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const secret = await resolveStudioBotWebhookSecretAsync();
     if (!secret) {

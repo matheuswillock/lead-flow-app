@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { sanitizeDocumentDigits } from "@/lib/masks";
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   const teamAccess = await getTeamAccess(request);
   if (teamAccess.error) {
     return NextResponse.json(teamAccess.error, { status: teamAccess.status });

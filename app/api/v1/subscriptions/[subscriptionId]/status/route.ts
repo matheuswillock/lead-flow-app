@@ -1,5 +1,5 @@
 // app/api/v1/subscriptions/[subscriptionId]/status/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { subscriptionStatusUseCase } from '@/app/api/useCases/subscriptions/SubscriptionStatusUseCase';
 
 /**
@@ -14,6 +14,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ subscriptionId: string }> }
 ) {
+  await connection();
+
   try {
     // Aguardar params (Next.js 15)
     const { subscriptionId } = await params;
