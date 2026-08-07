@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { processWebhookOutboxUseCase } from "@/app/api/useCases/integrations/webhooks/ProcessWebhookOutboxUseCase";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit";
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback";
 
 const routePrefix = "[TeamWebhookOutboxCron]";
 
@@ -13,7 +15,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 });
     }
 
-    const output = await processWebhookOutboxUseCase.execute();
+    const output = await withCronAudit(
+      {
+        cronKey: "webhook-outbox",
+        cronPath: "/api/v1/integrations/webhooks/cron/process-outbox",
+      },
+      () => processWebhookOutboxUseCase.execute(),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    );
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

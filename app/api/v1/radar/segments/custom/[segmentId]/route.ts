@@ -4,6 +4,7 @@ import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/u
 import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 import { updateTeamRadarSegmentSchema } from "@/lib/radar/segment-request-schemas"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { invalidateRadarSegmentsCache } from "@/lib/cache/invalidation"
 
 type RouteParams = { params: Promise<{ segmentId: string }> }
 
@@ -31,6 +32,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       parsed.data
     )
 
+    if (result.isValid) {
+      invalidateRadarSegmentsCache({ teamId: radarAccess.access.teamId })
+    }
+
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
@@ -55,6 +60,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       teamContextFromRadarAccess(radarAccess.access),
       segmentId
     )
+
+    if (result.isValid) {
+      invalidateRadarSegmentsCache({ teamId: radarAccess.access.teamId })
+    }
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 })
   } catch (error) {

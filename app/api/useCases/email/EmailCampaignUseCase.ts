@@ -3065,9 +3065,10 @@ export class EmailCampaignUseCase {
   async cancel(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: "scheduled" },
+        where: { id, teamId: ctx.teamId, status: { in: ["scheduled", "sending"] } },
         select: {
           id: true,
+          status: true,
           parentCampaignId: true,
           _count: { select: { subCampaigns: true } },
         },
@@ -3077,32 +3078,108 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser cancelada"], null)
       }
 
-      if (existing._count.subCampaigns > 0) {
-        await prisma.$transaction([
-          prisma.emailCampaign.updateMany({
-            where: {
-              parentCampaignId: id,
-              teamId: ctx.teamId,
-              status: "scheduled",
-            },
-            data: { status: "canceled" },
-          }),
-          prisma.emailCampaign.update({
+      if (existing.status === "scheduled") {
+        if (existing._count.subCampaigns > 0) {
+          await prisma.$transaction([
+            prisma.emailCampaign.updateMany({
+              where: {
+                parentCampaignId: id,
+                teamId: ctx.teamId,
+                status: "scheduled",
+              },
+              data: { status: "canceled" },
+            }),
+            prisma.emailCampaign.update({
+              where: { id },
+              data: { status: "canceled" },
+            }),
+          ])
+        } else {
+          await prisma.emailCampaign.update({
             where: { id },
             data: { status: "canceled" },
-          }),
-        ])
-      } else {
-        await prisma.emailCampaign.update({
-          where: { id },
-          data: { status: "canceled" },
-        })
-        if (existing.parentCampaignId) {
-          await this.refreshParentCampaignStatus(existing.parentCampaignId)
+          })
+          if (existing.parentCampaignId) {
+            await this.refreshParentCampaignStatus(existing.parentCampaignId)
+          }
         }
+
+        return new Output(true, ["Campanha cancelada com sucesso"], [], null)
       }
 
-      return new Output(true, ["Campanha cancelada com sucesso"], [], null)
+      // Status: "sending" - cancelar logs pendentes e dispatches em andamento
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Cancelar logs pendentes (queued)
+        const canceledLogs = await tx.emailLog.updateMany({
+          where: {
+            campaignId: id,
+            teamId: ctx.teamId,
+            status: "queued",
+          },
+          data: {
+            status: "failed",
+          },
+        })
+
+        // 2. Marcar dispatches incompletos como failed
+        await tx.emailCampaignDispatch.updateMany({
+          where: {
+            campaignId: id,
+            teamId: ctx.teamId,
+            status: "sending",
+          },
+          data: {
+            status: "failed",
+            errorMessage: "Cancelado pelo usuário",
+          },
+        })
+
+        // 3. Contar logs para determinar status final da campanha
+        const logStats = await tx.emailLog.groupBy({
+          by: ["status"],
+          where: {
+            campaignId: id,
+            teamId: ctx.teamId,
+          },
+          _count: true,
+        })
+
+        const sentCount = logStats.find((s) => s.status === "sent")?._count ?? 0
+        const deliveredCount = logStats.find((s) => s.status === "delivered")?._count ?? 0
+        const totalSent = sentCount + deliveredCount
+
+        // 4. Atualizar status da campanha
+        let newStatus: "canceled" | "partially_sent"
+        if (totalSent === 0) {
+          newStatus = "canceled"
+        } else {
+          newStatus = "partially_sent"
+        }
+
+        await tx.emailCampaign.update({
+          where: { id },
+          data: { status: newStatus },
+        })
+
+        return {
+          canceledCount: canceledLogs.count,
+          sentCount: totalSent,
+          newStatus,
+        }
+      })
+
+      const message =
+        result.canceledCount > 0
+          ? `${result.canceledCount} e-mail(s) cancelado(s). ${result.sentCount} já haviam sido enviados.`
+          : result.sentCount > 0
+            ? "Todos os e-mails já foram enviados. Nenhum e-mail pendente para cancelar."
+            : "Campanha cancelada."
+
+      return new Output(true, [message], [], {
+        canceledCount: result.canceledCount,
+        sentCount: result.sentCount,
+        status: result.newStatus,
+      })
     } catch (error) {
       console.error("[EmailCampaignUseCase][cancel]", error)
       return new Output(false, [], ["Erro ao cancelar campanha"], null)

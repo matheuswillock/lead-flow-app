@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { BarChart3, Copy, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
+import { BarChart3, CalendarX, Copy, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -360,14 +360,17 @@ export function CampaignDetailSheet({
     detailCampaign,
     closeDetail,
     sendingId,
+    cancelingId,
     credits,
     openEditWizard,
     openDuplicateWizard,
     openEditById,
     handleSend,
+    handleCancel,
   } = useCampanhasContext()
   const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
   const [leafSending, setLeafSending] = useState(false)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
     !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
@@ -384,6 +387,10 @@ export function CampaignDetailSheet({
     detailCampaign &&
     !isParentCampaign &&
     ["draft", "scheduled"].includes(detailCampaign.status)
+  const canCancel =
+    detailCampaign &&
+    !isParentCampaign &&
+    (detailCampaign.status === "scheduled" || detailCampaign.status === "sending")
   const canSendByStatus =
     !isParentCampaign &&
     detailCampaign != null &&
@@ -436,6 +443,12 @@ export function CampaignDetailSheet({
       setLeafSending(false)
       setLeafSendConfirmOpen(false)
     }
+  }
+
+  async function handleCancelConfirm() {
+    if (!detailCampaign) return
+    await handleCancel(detailCampaign.id)
+    setCancelConfirmOpen(false)
   }
 
   return (
@@ -663,6 +676,20 @@ export function CampaignDetailSheet({
                 <Button variant="outline" onClick={closeDetail}>
                   Fechar
                 </Button>
+                {canCancel && !readOnly ? (
+                  <Button
+                    variant="destructive"
+                    onClick={() => setCancelConfirmOpen(true)}
+                    disabled={cancelingId === detailCampaign.id}
+                  >
+                    <CalendarX data-icon="inline-start" />
+                    {cancelingId === detailCampaign.id
+                      ? "Cancelando..."
+                      : detailCampaign.status === "sending"
+                        ? "Cancelar envio"
+                        : "Cancelar agendamento"}
+                  </Button>
+                ) : null}
                 {!readOnly ? (
                   <Button
                     variant="secondary"
@@ -737,6 +764,45 @@ export function CampaignDetailSheet({
                   </Button>
                 ) : null}
               </SheetFooter>
+
+              <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {detailCampaign.status === "sending" ? "Cancelar envio?" : "Cancelar agendamento?"}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {detailCampaign.status === "sending" ? (
+                        <>
+                          O envio da campanha <strong>"{detailCampaign.name}"</strong> será interrompido
+                          imediatamente. E-mails que ainda não foram enviados serão cancelados. E-mails já
+                          enviados não serão afetados.
+                        </>
+                      ) : (
+                        <>
+                          A campanha <strong>"{detailCampaign.name}"</strong> voltará para rascunho e não será
+                          disparada no horário agendado.
+                        </>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={cancelingId === detailCampaign.id}>
+                      {detailCampaign.status === "sending" ? "Continuar enviando" : "Manter agendamento"}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(event) => {
+                        event.preventDefault()
+                        void handleCancelConfirm()
+                      }}
+                      disabled={cancelingId === detailCampaign.id}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {cancelingId === detailCampaign.id ? "Cancelando..." : "Sim, cancelar"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
 
               <AlertDialog open={leafSendConfirmOpen} onOpenChange={setLeafSendConfirmOpen}>
                 <AlertDialogContent>
