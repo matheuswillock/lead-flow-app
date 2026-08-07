@@ -103,18 +103,43 @@ function CampaignActionsMenu({
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const [canceling, setCanceling] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   const canSend = canManage && ["draft", "scheduled", "sent", "failed"].includes(campaign.status)
   const canCancel = canManage && campaign.status === "scheduled"
   const canArchive = canManage && ["sent", "failed"].includes(campaign.status)
 
   async function handleSendConfirm() {
+    if (sending || sendingId === campaign.id) return
     setSending(true)
     try {
       await onSend()
       setSendConfirmOpen(false)
     } finally {
       setSending(false)
+    }
+  }
+
+  async function handleCancelConfirm() {
+    if (canceling || cancelingId === campaign.id) return
+    setCanceling(true)
+    try {
+      await onCancel()
+      setCancelConfirmOpen(false)
+    } finally {
+      setCanceling(false)
+    }
+  }
+
+  async function handleArchiveConfirm() {
+    if (archiving || archivingId === campaign.id) return
+    setArchiving(true)
+    try {
+      await onArchive()
+      setArchiveConfirmOpen(false)
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -198,17 +223,18 @@ function CampaignActionsMenu({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelingId === campaign.id}>Voltar</AlertDialogCancel>
+            <AlertDialogCancel disabled={canceling || cancelingId === campaign.id}>
+              Voltar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
-                void onCancel()
-                setCancelConfirmOpen(false)
+                void handleCancelConfirm()
               }}
-              disabled={cancelingId === campaign.id}
+              disabled={canceling || cancelingId === campaign.id}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {cancelingId === campaign.id ? "Cancelando..." : "Sim, cancelar"}
+              {canceling || cancelingId === campaign.id ? "Cancelando..." : "Sim, cancelar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -223,16 +249,17 @@ function CampaignActionsMenu({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={archivingId === campaign.id}>Voltar</AlertDialogCancel>
+            <AlertDialogCancel disabled={archiving || archivingId === campaign.id}>
+              Voltar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
-                void onArchive()
-                setArchiveConfirmOpen(false)
+                void handleArchiveConfirm()
               }}
-              disabled={archivingId === campaign.id}
+              disabled={archiving || archivingId === campaign.id}
             >
-              {archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
+              {archiving || archivingId === campaign.id ? "Arquivando..." : "Arquivar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -25,7 +25,7 @@ import type {
 import { listRadarFieldCatalog } from "@/lib/radar/field-catalog"
 import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
 import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
-import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
+import { parseRadarSegmentRules, type RadarSegmentRules, type RadarSegmentCondition } from "@/lib/radar/segment-dsl"
 import {
   CUSTOM_RADAR_SEGMENT_PREFIX,
   parseCampaignRadarSegmentSlug,
@@ -547,7 +547,7 @@ export class RadarUseCase {
 
   async listCustomSegments(teamId: string, ctx: TeamContext) {
     try {
-      const segments = await this.segmentService.listByTeam(teamId)
+      const segments = await this.segmentService.listWithHierarchy(teamId)
       const scope = this.scope(teamId, ctx)
       const items = await Promise.all(
         segments.map(async (segment) => ({
@@ -627,6 +627,101 @@ export class RadarUseCase {
     } catch (error) {
       console.error("[RadarUseCase][previewCustomSegmentCount]", error)
       const message = error instanceof Error ? error.message : "Regras de segmento inválidas"
+      return new Output(false, [], [message], null)
+    }
+  }
+
+  /**
+   * D14: Preview com suporte a hierarquia — aceita rules diretas, parentSegmentId ou campaignId.
+   * Mescla condições e retorna contagem + primeiros 10 perfis.
+   */
+  async previewSegmentWithHierarchy(
+    teamId: string,
+    ctx: TeamContext,
+    input: {
+      rules?: unknown
+      parentSegmentId?: string
+      campaignId?: string
+    }
+  ) {
+    try {
+      const { emailCampaignRepository } = await import(
+        "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
+      )
+      const { RADAR_SEGMENT_MAX_CONDITIONS } = await import("@/lib/radar/segment-dsl")
+
+      let finalRules: RadarSegmentRules
+
+      if (input.campaignId) {
+        const campaign = await emailCampaignRepository.findForSegmentGeneration(teamId, input.campaignId)
+        if (!campaign) {
+          return new Output(false, [], ["Campanha não encontrada"], null)
+        }
+        if (campaign.status !== "sent" && campaign.status !== "partially_sent") {
+          return new Output(false, [], ["Apenas campanhas enviadas podem ser usadas"], null)
+        }
+
+        const campaignConditions: RadarSegmentCondition[] = campaign.sentAt
+          ? [
+              {
+                kind: "event",
+                eventType: "email.opened",
+                occurrence: "occurred",
+                windowDays: Math.max(30, Math.ceil((Date.now() - campaign.sentAt.getTime()) / (1000 * 60 * 60 * 24)) + 7),
+                campaignId: campaign.id,
+              },
+              {
+                kind: "event",
+                eventType: "email.clicked",
+                occurrence: "occurred",
+                windowDays: Math.max(30, Math.ceil((Date.now() - campaign.sentAt.getTime()) / (1000 * 60 * 60 * 24)) + 7),
+                campaignId: campaign.id,
+              },
+            ]
+          : []
+
+        const additionalRules = input.rules ? parseRadarSegmentRules(input.rules) : { match: "all" as const, conditions: [] }
+        const mergedConditions = [...campaignConditions, ...additionalRules.conditions]
+        if (mergedConditions.length > RADAR_SEGMENT_MAX_CONDITIONS) {
+          return new Output(false, [], [`Limite de ${RADAR_SEGMENT_MAX_CONDITIONS} condições excedido`], null)
+        }
+        finalRules = { match: "all", conditions: mergedConditions }
+      } else if (input.parentSegmentId) {
+        const parentSegment = await this.segmentService.findById(teamId, input.parentSegmentId)
+        if (!parentSegment || !parentSegment.isActive) {
+          return new Output(false, [], ["Segmento pai não encontrado ou inativo"], null)
+        }
+        const parentRules = parseRadarSegmentRules(parentSegment.rulesJson)
+        const childRules = input.rules ? parseRadarSegmentRules(input.rules) : { match: "all" as const, conditions: [] }
+        const mergedConditions = [...parentRules.conditions, ...childRules.conditions]
+        if (mergedConditions.length > RADAR_SEGMENT_MAX_CONDITIONS) {
+          return new Output(false, [], [`Limite de ${RADAR_SEGMENT_MAX_CONDITIONS} condições excedido`], null)
+        }
+        finalRules = { match: "all", conditions: mergedConditions }
+      } else if (input.rules) {
+        finalRules = parseRadarSegmentRules(input.rules)
+      } else {
+        return new Output(false, [], ["Informe rules, parentSegmentId ou campaignId"], null)
+      }
+
+      const scope = this.scope(teamId, ctx)
+      const [count, profileIds] = await Promise.all([
+        this.segmentQueryService.countProfiles(scope, finalRules),
+        this.segmentQueryService.listProfileIds(scope, finalRules, { skip: 0, take: 10 }),
+      ])
+
+      const profiles = await Promise.all(
+        profileIds.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
+      )
+
+      return new Output(true, [], [], {
+        count,
+        totalConditions: finalRules.conditions.length,
+        previewProfiles: profiles.filter(Boolean),
+      })
+    } catch (error) {
+      console.error("[RadarUseCase][previewSegmentWithHierarchy]", error)
+      const message = error instanceof Error ? error.message : "Erro ao processar preview"
       return new Output(false, [], [message], null)
     }
   }

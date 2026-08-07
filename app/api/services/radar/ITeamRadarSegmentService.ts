@@ -14,8 +14,15 @@ export type TeamRadarSegmentUpdateInput = {
   isActive?: boolean
 }
 
+export type TeamRadarSegmentWithHierarchy = TeamRadarSegmentSelect & {
+  parent: { id: string; name: string } | null
+  children: Array<{ id: string; name: string }>
+  sourceCampaign: { id: string; name: string } | null
+}
+
 export interface ITeamRadarSegmentService {
   listByTeam(teamId: string, options?: { onlyActive?: boolean }): Promise<TeamRadarSegmentSelect[]>
+  listWithHierarchy(teamId: string, options?: { onlyActive?: boolean }): Promise<TeamRadarSegmentWithHierarchy[]>
   findById(teamId: string, segmentId: string): Promise<TeamRadarSegmentSelect | null>
   create(teamId: string, createdBy: string, input: TeamRadarSegmentInput): Promise<TeamRadarSegmentSelect>
   update(

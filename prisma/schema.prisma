@@ -3171,6 +3171,7 @@ model EmailCampaign {
   contactList             EmailContactList?       @relation(fields: [contactListId], references: [id], onDelete: Restrict)
   parentCampaign          EmailCampaign?          @relation("EmailCampaignSubCampaigns", fields: [parentCampaignId], references: [id], onDelete: Cascade)
   subCampaigns            EmailCampaign[]         @relation("EmailCampaignSubCampaigns")
+  generatedSegments       TeamRadarSegment[]      @relation("SegmentFromCampaign")
   logs                    EmailLog[]
   dispatches              EmailCampaignDispatch[]
 
@@ -4617,25 +4618,41 @@ model RadarChannelConsent {
   @@map("corretor_studio_radar_channel_consents")
 }
 
-model TeamRadarSegment {
-  id          String   @id @default(uuid()) @db.Uuid
-  teamId      String   @db.Uuid
-  createdBy   String   @db.Uuid
-  name        String   @db.Text
-  description String?  @db.Text
-  rulesJson   Json
-  isSystem    Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+enum SegmentSourceType {
+  manual
+  campaign
+  child
 
-  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  creator Profile @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  @@map("segment_source_type")
+}
+
+model TeamRadarSegment {
+  id                String              @id @default(uuid()) @db.Uuid
+  teamId            String              @db.Uuid
+  createdBy         String              @db.Uuid
+  name              String              @db.Text
+  description       String?             @db.Text
+  rulesJson         Json
+  isSystem          Boolean             @default(false)
+  isActive          Boolean             @default(true)
+  parentId          String?             @db.Uuid
+  sourceType        SegmentSourceType   @default(manual)
+  sourceCampaignId  String?             @db.Uuid
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(6)
+
+  team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator         Profile           @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  parent          TeamRadarSegment? @relation("SegmentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children        TeamRadarSegment[] @relation("SegmentHierarchy")
+  sourceCampaign  EmailCampaign?    @relation("SegmentFromCampaign", fields: [sourceCampaignId], references: [id], onDelete: SetNull)
 
   emailContactLists EmailContactList[]
 
   @@unique([teamId, name])
   @@index([teamId, isActive])
+  @@index([parentId])
+  @@index([sourceCampaignId])
   @@map("corretor_studio_radar_segments")
 }
 
