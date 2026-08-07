@@ -1,6 +1,7 @@
 "use client"
 
 import { Eye, MoreHorizontal } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -20,6 +21,7 @@ import {
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
+import type { BackofficeWhatsAppInstanceListItem } from "../context/BackofficeWhatsAppInstancesTypes"
 import { useBackofficeWhatsAppInstances } from "../context/BackofficeWhatsAppInstancesHook"
 import { BackofficeWhatsAppInstanceStatusBadge } from "./BackofficeWhatsAppInstanceStatusBadge"
 
@@ -28,11 +30,25 @@ function formatDate(value: string | null, tz: string) {
   return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", tz)
 }
 
-export function BackofficeWhatsAppInstancesTable() {
-  const { tz } = useTimezone()
-  const { instances, isLoading, openDetail } = useBackofficeWhatsAppInstances()
+interface Props {
+  instances?: BackofficeWhatsAppInstanceListItem[]
+}
 
-  if (isLoading) {
+export function BackofficeWhatsAppInstancesTable({ instances: instancesProp }: Props) {
+  const { tz } = useTimezone()
+  const {
+    instances: contextInstances,
+    isLoading,
+    openDetail,
+    filters,
+  } = useBackofficeWhatsAppInstances()
+  const source = instancesProp ?? contextInstances
+  const instances =
+    !filters.engine || filters.engine === "all"
+      ? source
+      : source.filter((item) => item.engine === filters.engine)
+
+  if (isLoading && !instancesProp) {
     return (
       <div className="flex flex-col gap-2">
         {Array.from({ length: 5 }).map((_, index) => (
@@ -59,6 +75,7 @@ export function BackofficeWhatsAppInstancesTable() {
             <TableHead>Time</TableHead>
             <TableHead>Telefone</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Motor</TableHead>
             <TableHead>Limite mensal</TableHead>
             <TableHead>Última conexão</TableHead>
             <TableHead className="w-12" />
@@ -83,6 +100,9 @@ export function BackofficeWhatsAppInstancesTable() {
               </TableCell>
               <TableCell>
                 <BackofficeWhatsAppInstanceStatusBadge status={instance.status} />
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline">{instance.engine || "OPENWA"}</Badge>
               </TableCell>
               <TableCell>{instance.usageLimitMonthly.toLocaleString("pt-BR")}</TableCell>
               <TableCell>{formatDate(instance.lastConnectedAt, tz)}</TableCell>

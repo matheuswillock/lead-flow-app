@@ -171,6 +171,34 @@
       "description": "ID da configuração WhatsApp (team_whatsapp_configs) para endpoints backoffice /api/v1/backoffice/whatsapp/instances/:configId"
     },
     {
+      "key": "openwaGatewayUrl",
+      "value": "http://127.0.0.1:3333",
+      "type": "default",
+      "enabled": true,
+      "description": "URL base do OpenWA Gateway na VPS (header apikey obrigatório)"
+    },
+    {
+      "key": "openwaApiKey",
+      "value": "leadflow-local-openwa-key-change-me-32b",
+      "type": "default",
+      "enabled": true,
+      "description": "Chave OPENWA_API_KEY — mesmo valor no Gateway e no Corretor Studio"
+    },
+    {
+      "key": "openwaInstanceName",
+      "value": "team_example",
+      "type": "default",
+      "enabled": true,
+      "description": "Nome da instância OpenWA (team_whatsapp_configs.instanceName)"
+    },
+    {
+      "key": "whatsappWebhookSecret",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "team_whatsapp_configs.webhookSecret — usado como :teamToken no webhook inbound OpenWA"
+    },
+    {
       "key": "senderId",
       "value": "",
       "type": "default",

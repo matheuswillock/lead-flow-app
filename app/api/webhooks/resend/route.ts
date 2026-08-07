@@ -42,12 +42,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (inFlight >= MAX_CONCURRENT) {
-      console.info("[ResendWebhookRoute][POST] Semáforo cheio, descartando evento:", event.type)
-      return NextResponse.json({ received: true }, { status: 200 })
+      console.info("[ResendWebhookRoute][POST] Semáforo cheio:", event.type, svixId)
+      return NextResponse.json({ received: false }, { status: 503 })
     }
 
+    inFlight++
     after(async () => {
-      inFlight++
       try {
         await resendWebhookUseCase.handle({ event, svixId })
       } catch (error) {

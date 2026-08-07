@@ -25,6 +25,7 @@ import {
   buildPublicFormMetricEventKey,
 } from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
+import { isValidPublicFormId } from "@/lib/public-forms/validation"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -79,6 +80,7 @@ function withFormCompletedScoreOrigin(
 
 export class PublicFormSubmissionUseCase {
   async accept(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
+    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot

@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 
 const ROOT = resolve(import.meta.dir, "..");
 const N8N_ENV = resolve(ROOT, ".env.n8n");
-const EVO_ENV = resolve(ROOT, ".env.evolution");
+const OPENWA_ENV = resolve(ROOT, ".env.openwa");
 const COMPOSE_FILE = resolve(ROOT, "docker-compose.vps.yml");
 
 function loadEnvFile(path: string): void {
@@ -36,8 +36,8 @@ function main(): void {
     process.exit(1);
   }
 
-  if (!existsSync(EVO_ENV)) {
-    console.error(`Arquivo ausente: ${EVO_ENV}`);
+  if (!existsSync(OPENWA_ENV)) {
+    console.error(`Arquivo ausente: ${OPENWA_ENV}`);
     process.exit(1);
   }
   if (!existsSync(N8N_ENV)) {
@@ -46,6 +46,7 @@ function main(): void {
   }
 
   loadEnvFile(N8N_ENV);
+  loadEnvFile(OPENWA_ENV);
 
   const result = spawnSync(
     "docker",
@@ -54,9 +55,9 @@ function main(): void {
       "-f",
       COMPOSE_FILE,
       "--env-file",
-      EVO_ENV,
-      "--env-file",
       N8N_ENV,
+      "--env-file",
+      OPENWA_ENV,
       ...args,
     ],
     { stdio: "inherit", env: process.env, shell: false },

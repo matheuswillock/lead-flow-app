@@ -209,7 +209,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
             eventType: expectedMilestone ?? "lead.milestone.new_opportunity",
           },
         })
-        if (expectedMilestone === null) {
+        if (status === "new_opportunity") {
           expect(milestoneEvent).toBeNull()
         } else {
           expect(milestoneEvent).not.toBeNull()

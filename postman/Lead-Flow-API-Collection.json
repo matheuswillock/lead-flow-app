@@ -13488,7 +13488,7 @@
                     "disconnect"
                   ]
                 },
-                "description": "Desconecta a sessão na Evolution."
+                "description": "Desconecta a sessão no OpenWA Gateway."
               }
             },
             {
@@ -13578,7 +13578,7 @@
                     "resync-webhooks"
                   ]
                 },
-                "description": "Prévia (confirm:false) ou aplica (confirm:true) webhooks Evolution das instâncias primárias do produto."
+                "description": "Prévia (confirm:false) ou aplica (confirm:true) webhooks OpenWA das instâncias primárias do produto."
               }
             }
           ]
@@ -16644,7 +16644,7 @@
                 "config"
               ]
             },
-            "description": "Cria a configuração do módulo WhatsApp para o time. Cria instância na Evolution API e retorna QR code."
+            "description": "Cria a configuração do módulo WhatsApp para o time. Cria sessão no OpenWA Gateway e retorna QR code."
           },
           "response": []
         },
@@ -16796,7 +16796,7 @@
                 "disconnect"
               ]
             },
-            "description": "Encerra a sessão na Evolution API e marca a configuração como desconectada."
+            "description": "Encerra a sessão no OpenWA Gateway e marca a configuração como desconectada."
           },
           "response": []
         },
@@ -16834,7 +16834,7 @@
                 "sync-history"
               ]
             },
-            "description": "Importa conversas e mensagens dos últimos 30 dias da Evolution API."
+            "description": "Importa conversas e mensagens dos últimos 30 dias via OpenWA Gateway."
           },
           "response": []
         },
@@ -16876,7 +16876,7 @@
                 "sync-contacts"
               ]
             },
-            "description": "Sincroniza agenda Evolution para o diretório de contatos do time e atualiza nomes nas conversas. Apenas master do time."
+            "description": "Sincroniza agenda via OpenWA Gateway para o diretório de contatos do time e atualiza nomes nas conversas. Apenas master do time."
           },
           "response": []
         },
@@ -16998,7 +16998,7 @@
                 "media"
               ]
             },
-            "description": "Proxy para baixar mídia inbound via Evolution API (imagem, documento, áudio)."
+            "description": "Proxy para baixar mídia inbound via OpenWA Gateway (imagem, documento, áudio)."
           },
           "response": []
         },
@@ -17320,7 +17320,7 @@
                 "actions"
               ]
             },
-            "description": "Ações locais (PIN/FAVORITE/DELETE_FOR_ME) ou externas (REACT/DELETE_FOR_EVERYONE). Externas retornam 409 CAPABILITY_UNAVAILABLE até homologação Evolution."
+            "description": "Ações locais (PIN/FAVORITE/DELETE_FOR_ME) ou externas (REACT/DELETE_FOR_EVERYONE). Externas retornam 409 CAPABILITY_UNAVAILABLE até homologação no Gateway."
           },
           "response": []
         },
@@ -17975,7 +17975,7 @@
                 "conversation-read"
               ]
             },
-            "description": "Marca a conversa como lida (zera unreadCount) e envia confirmação de leitura (read receipt) ao contato via Evolution API quando a instância está CONNECTED."
+            "description": "Marca a conversa como lida (zera unreadCount) e envia confirmação de leitura (read receipt) ao contato via OpenWA Gateway quando a instância está CONNECTED."
           },
           "response": []
         },
@@ -20639,6 +20639,178 @@
             },
             "description": "Pesos e regras de bridge para preview de temperatura no builder (team auth)."
           }
+        }
+      ]
+    },
+    {
+      "name": "whatsapp-openwa",
+      "item": [
+        {
+          "name": "Gateway REST (VPS)",
+          "item": [
+            {
+              "name": "GET /health",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/health",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["health"]
+                },
+                "description": "Healthcheck do OpenWA Gateway na VPS."
+              },
+              "response": []
+            },
+            {
+              "name": "POST /session/start/:instance",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"webhookUrl\": \"{{baseUrl}}/api/webhooks/whatsapp/openwa/{{whatsappWebhookSecret}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/session/start/{{openwaInstanceName}}",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["session", "start", "{{openwaInstanceName}}"]
+                },
+                "description": "Inicia sessão whatsapp-web.js e registra webhook inbound do Corretor Studio."
+              },
+              "response": []
+            },
+            {
+              "name": "GET /session/status/:instance",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "apikey", "value": "{{openwaApiKey}}" }],
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/session/status/{{openwaInstanceName}}",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["session", "status", "{{openwaInstanceName}}"]
+                },
+                "description": "Estado da sessão: INITIALIZING | QR_READY | CONNECTED | DISCONNECTED."
+              },
+              "response": []
+            },
+            {
+              "name": "DELETE /session/delete/:instance",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "apikey", "value": "{{openwaApiKey}}" }],
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/session/delete/{{openwaInstanceName}}",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["session", "delete", "{{openwaInstanceName}}"]
+                },
+                "description": "Encerra sessão e remove ZIP RemoteAuth do Supabase Storage."
+              },
+              "response": []
+            },
+            {
+              "name": "POST /client/sendMessage/:instance",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"to\": \"5511999999999\",\n  \"text\": \"Teste via Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/client/sendMessage/{{openwaInstanceName}}",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["client", "sendMessage", "{{openwaInstanceName}}"]
+                },
+                "description": "Envia texto via Gateway (instância CONNECTED)."
+              },
+              "response": []
+            },
+            {
+              "name": "POST /client/sendMedia/:instance",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"to\": \"5511999999999\",\n  \"base64\": \"<base64>\",\n  \"mimetype\": \"image/jpeg\",\n  \"filename\": \"foto.jpg\",\n  \"caption\": \"Legenda opcional\"\n}"
+                },
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/client/sendMedia/{{openwaInstanceName}}",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["client", "sendMedia", "{{openwaInstanceName}}"]
+                },
+                "description": "Envia mídia base64 via Gateway."
+              },
+              "response": []
+            },
+            {
+              "name": "POST /client/markChatSeen/:instance",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"chatId\": \"5511999999999@c.us\"\n}"
+                },
+                "url": {
+                  "raw": "{{openwaGatewayUrl}}/client/markChatSeen/{{openwaInstanceName}}",
+                  "host": ["{{openwaGatewayUrl}}"],
+                  "path": ["client", "markChatSeen", "{{openwaInstanceName}}"]
+                },
+                "description": "Marca chat como lido (read receipt)."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "POST /api/webhooks/whatsapp/openwa/:teamToken",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-openwa-signature",
+                "value": "sha256={{openwaWebhookSignature}}",
+                "description": "HMAC-SHA256 do raw body com OPENWA_WEBHOOK_SECRET"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instance\": \"team_example\",\n  \"event\": \"ready\",\n  \"data\": {},\n  \"timestamp\": 1700000000000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/whatsapp/openwa/{{whatsappWebhookSecret}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "whatsapp",
+                "openwa",
+                "{{whatsappWebhookSecret}}"
+              ]
+            },
+            "description": "Webhook inbound OpenWA Gateway (Spec 01). Requer HMAC válido. Eventos: qr, ready, disconnected, message, message_ack."
+          },
+          "response": []
         }
       ]
     }

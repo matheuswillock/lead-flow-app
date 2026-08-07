@@ -25,6 +25,7 @@ import type {
 const DEFAULT_FILTERS: BackofficeWhatsAppInstancesFilters = {
   q: "",
   status: "all",
+  engine: "all",
 }
 
 const DEFAULT_PAGINATION: BackofficeWhatsAppInstancesPagination = {

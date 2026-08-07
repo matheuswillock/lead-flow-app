@@ -53,11 +53,11 @@ export function BackofficeWhatsAppOpsUpdatesPanel() {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Reaplicar webhooks Evolution</CardTitle>
+          <CardTitle>Reaplicar webhooks OpenWA</CardTitle>
           <CardDescription>
-            Atualiza o webhook de todas as instâncias primárias do produto para a URL do app com
-            header <code className="text-xs">apikey</code>. Equivalente ao script{" "}
-            <code className="text-xs">resync-whatsapp-webhook-headers.ts --confirm</code>.
+            Reaplica a URL de webhook de todas as instâncias primárias do produto (OpenWA Gateway).
+            No OpenWA o webhook é configurado em <code className="text-xs">startSession</code> — esta
+            ação tenta <code className="text-xs">setWebhook</code> e ignora capability errors esperados.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -86,7 +86,7 @@ export function BackofficeWhatsAppOpsUpdatesPanel() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Confirmar reaplicação</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Serão atualizados {webhookResyncResult?.total ?? 0} webhook(s) na Evolution.
+                      Serão atualizados {webhookResyncResult?.total ?? 0} webhook(s) no OpenWA Gateway.
                       Continuar?
                     </AlertDialogDescription>
                   </AlertDialogHeader>

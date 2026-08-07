@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
-    "deploy/hostinger/studio-bot-ops"
+    "deploy/hostinger/studio-bot-ops",
+    "deploy/openwa-gateway"
   ]
 }
