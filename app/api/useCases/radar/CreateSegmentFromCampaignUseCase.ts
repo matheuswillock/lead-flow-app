@@ -18,12 +18,6 @@ type CreateFromCampaignInput = {
   additionalRules?: RadarSegmentRules
 }
 
-type CreateFromCampaignResult = {
-  segmentId: string
-  name: string
-  totalConditions: number
-}
-
 /**
  * D14: Cria segmento a partir de campanha de e-mail, extraindo condições
  * de evento (opened, clicked) automaticamente e mesclando com condições
@@ -46,14 +40,14 @@ export class CreateSegmentFromCampaignUseCase {
     return [
       {
         kind: "event",
-        eventType: "email_opened",
+        eventType: "email.opened",
         occurrence: "occurred",
         windowDays,
         campaignId,
       },
       {
         kind: "event",
-        eventType: "email_clicked",
+        eventType: "email.clicked",
         occurrence: "occurred",
         windowDays,
         campaignId,
@@ -87,7 +81,7 @@ export class CreateSegmentFromCampaignUseCase {
     }
   }
 
-  async execute(input: CreateFromCampaignInput): Promise<Output<CreateFromCampaignResult>> {
+  async execute(input: CreateFromCampaignInput): Promise<Output> {
     try {
       const campaign = await emailCampaignRepository.findForSegmentGeneration(
         input.ctx.teamId,

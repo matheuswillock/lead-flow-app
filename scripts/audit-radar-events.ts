@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// @ts-nocheck — one-off investigation script; schema fields may drift
 /* eslint-disable no-console */
 /**
  * Script de Auditoria: Eventos Radar (3 Times)

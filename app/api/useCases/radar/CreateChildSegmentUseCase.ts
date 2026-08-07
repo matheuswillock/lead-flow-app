@@ -16,13 +16,6 @@ type CreateChildSegmentInput = {
   childRules: RadarSegmentRules
 }
 
-type CreateChildSegmentResult = {
-  segmentId: string
-  name: string
-  parentName: string
-  totalConditions: number
-}
-
 /**
  * D14: Cria segmento filho que herda as condições do pai (AND).
  * Valida limite de 10 condições após merge.
@@ -52,7 +45,7 @@ export class CreateChildSegmentUseCase {
     }
   }
 
-  async execute(input: CreateChildSegmentInput): Promise<Output<CreateChildSegmentResult>> {
+  async execute(input: CreateChildSegmentInput): Promise<Output> {
     try {
       const parentSegment = await teamRadarSegmentRepository.findById(
         input.ctx.teamId,
