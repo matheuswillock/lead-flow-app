@@ -3122,7 +3122,7 @@ export class EmailCampaignUseCase {
         })
 
         // 2. Marcar dispatches incompletos como failed
-        const failedDispatches = await tx.emailCampaignDispatch.updateMany({
+        await tx.emailCampaignDispatch.updateMany({
           where: {
             campaignId: id,
             teamId: ctx.teamId,
@@ -3146,7 +3146,6 @@ export class EmailCampaignUseCase {
 
         const sentCount = logStats.find((s) => s.status === "sent")?._count ?? 0
         const deliveredCount = logStats.find((s) => s.status === "delivered")?._count ?? 0
-        const failedCount = logStats.find((s) => s.status === "failed")?._count ?? 0
         const totalSent = sentCount + deliveredCount
 
         // 4. Atualizar status da campanha
