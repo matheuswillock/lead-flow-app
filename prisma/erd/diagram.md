@@ -169,6 +169,14 @@ indeterminate indeterminate
     
 
 
+        backoffice_cron_status {
+            running running
+success success
+failed failed
+        }
+    
+
+
         filter_preset_scope {
             crm crm
 performance performance
@@ -1828,6 +1836,22 @@ completed completed
     Json responsePayload "❓"
     String errorMessage "❓"
     DateTime createdAt 
+    }
+  
+
+  "backoffice_cron_executions" {
+    String id "🗝️"
+    String cronKey 
+    String cronPath 
+    BackofficeCronStatus status 
+    DateTime startedAt 
+    DateTime finishedAt "❓"
+    Int durationMs "❓"
+    String errorSummary "❓"
+    String errorDetail "❓"
+    Json metadata "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -3974,6 +3998,7 @@ completed completed
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookTokenExpiryMode" : "enum:expiryMode"
     "backoffice_webhook_tokens" }o--|| backoffice_users : "generatedBy"
     "backoffice_webhook_request_logs" |o--|| "BackofficeWebhookSource" : "enum:source"
+    "backoffice_cron_executions" |o--|| "BackofficeCronStatus" : "enum:status"
     "backoffice_email_contact_lists" }o--|o backoffice_users : "createdBy"
     "backoffice_email_contacts" }o--|| backoffice_email_contact_lists : "list"
     "backoffice_email_contacts" }o--|o backoffice_leads : "lead"

@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
 
 export const maxDuration = 60
 
@@ -15,9 +17,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
     }
 
-    const useCase = new EmailCampaignUseCase()
-    await useCase.resumeOrphanSendingDispatches({ now: new Date() })
-    const result = await useCase.dispatchScheduledCampaigns()
+    const result = await withCronAudit(
+      {
+        cronKey: "dispatch-scheduled",
+        cronPath: "/api/v1/email/cron/dispatch-scheduled",
+      },
+      async () => {
+        const useCase = new EmailCampaignUseCase()
+        await useCase.resumeOrphanSendingDispatches({ now: new Date() })
+        return useCase.dispatchScheduledCampaigns()
+      },
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    )
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 500 })
   } catch (error) {

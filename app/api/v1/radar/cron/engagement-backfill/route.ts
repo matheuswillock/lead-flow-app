@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { radarEngagementBackfillUseCase } from "@/app/api/useCases/radar/RadarEngagementBackfillUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
 
 export const maxDuration = 300
 
@@ -13,7 +15,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
     }
 
-    const result = await radarEngagementBackfillUseCase.execute()
+    const result = await withCronAudit(
+      {
+        cronKey: "engagement-backfill",
+        cronPath: "/api/v1/radar/cron/engagement-backfill",
+      },
+      () => radarEngagementBackfillUseCase.execute(),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    )
     return NextResponse.json(result, { status: result.isValid ? 200 : 500 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)

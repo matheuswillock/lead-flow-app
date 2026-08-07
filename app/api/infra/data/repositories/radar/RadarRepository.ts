@@ -2322,6 +2322,189 @@ export class RadarRepository {
       orderBy: { finalizedDateAt: "desc" },
     })
   }
+
+  /**
+   * Fase 2: calcula as 8 contagens de segmentos fixos do Radar com agregação
+   * SQL nativa (Postgres) usando CTEs, substituindo varredura em memória.
+   * Retorna Map<slug, count> para preservar compatibilidade com o fluxo existente.
+   */
+  async countFixedSegmentsSQL(
+    teamId: string,
+    recentWindowDays: number = 30
+  ): Promise<Map<string, number>> {
+    const recentWindowMs = recentWindowDays * 24 * 60 * 60 * 1000
+    const recentThreshold = new Date(Date.now() - recentWindowMs)
+
+    const result = await this.db.$queryRaw<
+      Array<{
+        email_marketable: bigint
+        email_blocked: bigint
+        opened_not_clicked: bigint
+        clicked_not_closed: bigint
+        portfolio_renewal_due: bigint
+        inactive_recent_campaign: bigint
+        portfolio_clients: bigint
+        crm_clients: bigint
+      }>
+    >`
+      WITH profile_base AS (
+        SELECT
+          p.id,
+          p."normalizedPrimaryEmail",
+          EXISTS(
+            SELECT 1 FROM "RadarConsent" c
+            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}
+              AND c."channel" = 'email' AND c."status" = 'blocked'
+          ) AS has_blocked_consent,
+          EXISTS(
+            SELECT 1 FROM "RadarConsent" c
+            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}
+              AND c."channel" = 'email' AND c."status" = 'allowed'
+          ) AS has_allowed_consent,
+          EXISTS(
+            SELECT 1 FROM "RadarSourceLink" sl
+            WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
+              AND sl."sourceType" = 'portfolio'
+          ) AS has_portfolio,
+          EXISTS(
+            SELECT 1 FROM "RadarIdentity" i
+            WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
+              AND i."type" = 'lead_id'
+          ) AS has_lead_id,
+          EXISTS(
+            SELECT 1 FROM "RadarEvent" e
+            WHERE e."profileId" = p.id AND e."teamId" = ${teamId}
+              AND e."eventType" = 'email.sent'
+              AND e."occurredAt" >= ${recentThreshold}
+          ) AS has_recent_sent
+        FROM "RadarProfile" p
+        WHERE p."teamId" = ${teamId}
+      ),
+      email_events AS (
+        SELECT
+          e."profileId",
+          e."eventType",
+          e."occurredAt",
+          e."metadata"
+        FROM "RadarEvent" e
+        WHERE e."teamId" = ${teamId}
+          AND e."eventType" IN ('email.opened', 'email.clicked')
+          AND e."occurredAt" >= ${recentThreshold}
+      ),
+      campaign_opens AS (
+        SELECT DISTINCT
+          ee."profileId",
+          ee."metadata"->>'campaignId' AS campaign_id
+        FROM email_events ee
+        WHERE ee."eventType" = 'email.opened'
+          AND ee."metadata"->>'campaignId' IS NOT NULL
+      ),
+      campaign_clicks AS (
+        SELECT DISTINCT
+          ee."profileId",
+          ee."metadata"->>'campaignId' AS campaign_id
+        FROM email_events ee
+        WHERE ee."eventType" = 'email.clicked'
+          AND ee."metadata"->>'campaignId' IS NOT NULL
+      ),
+      opened_not_clicked_profiles AS (
+        SELECT DISTINCT co."profileId"
+        FROM campaign_opens co
+        LEFT JOIN campaign_clicks cc
+          ON co."profileId" = cc."profileId"
+          AND co.campaign_id = cc.campaign_id
+        WHERE cc."profileId" IS NULL
+      ),
+      clicked_profiles AS (
+        SELECT DISTINCT ee."profileId"
+        FROM email_events ee
+        WHERE ee."eventType" = 'email.clicked'
+          AND ee."metadata"->>'campaignId' IS NOT NULL
+      ),
+      closed_profiles AS (
+        SELECT p.id
+        FROM "RadarProfile" p
+        WHERE p."teamId" = ${teamId}
+          AND (
+            EXISTS(
+              SELECT 1 FROM "RadarSourceLink" sl
+              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
+                AND sl."sourceType" = 'portfolio'
+            )
+            OR EXISTS(
+              SELECT 1 FROM "RadarIdentity" i
+              INNER JOIN "Lead" l ON i."normalizedValue" = l.id
+              WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
+                AND i."type" = 'lead_id'
+                AND l."teamId" = ${teamId}
+                AND l."status" IN ('WON', 'PAID')
+            )
+          )
+      ),
+      clicked_not_closed_profiles AS (
+        SELECT cp."profileId"
+        FROM clicked_profiles cp
+        LEFT JOIN closed_profiles clp ON cp."profileId" = clp.id
+        WHERE clp.id IS NULL
+      ),
+      renewal_due_profiles AS (
+        SELECT DISTINCT p.id
+        FROM "RadarProfile" p
+        WHERE p."teamId" = ${teamId}
+          AND (
+            EXISTS(
+              SELECT 1 FROM "RadarEvent" e
+              WHERE e."profileId" = p.id AND e."teamId" = ${teamId}
+                AND e."eventType" = 'portfolio.renewal_due'
+            )
+            OR EXISTS(
+              SELECT 1 FROM "RadarSourceLink" sl
+              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
+                AND sl."sourceType" = 'portfolio'
+                AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
+            )
+          )
+      )
+      SELECT
+        COUNT(*) FILTER (
+          WHERE pb."normalizedPrimaryEmail" IS NOT NULL
+            AND pb."normalizedPrimaryEmail" != ''
+            AND (NOT pb.has_blocked_consent)
+            AND (pb.has_allowed_consent OR NOT EXISTS(
+              SELECT 1 FROM "RadarConsent" c
+              WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}
+                AND c."channel" = 'email'
+            ))
+        ) AS email_marketable,
+        COUNT(*) FILTER (WHERE pb.has_blocked_consent) AS email_blocked,
+        COUNT(oncp."profileId") AS opened_not_clicked,
+        COUNT(cncp."profileId") AS clicked_not_closed,
+        COUNT(rdp.id) AS portfolio_renewal_due,
+        COUNT(*) FILTER (WHERE NOT pb.has_recent_sent) AS inactive_recent_campaign,
+        COUNT(*) FILTER (WHERE pb.has_portfolio) AS portfolio_clients,
+        COUNT(*) FILTER (WHERE pb.has_lead_id) AS crm_clients
+      FROM profile_base pb
+      LEFT JOIN opened_not_clicked_profiles oncp ON pb.id = oncp."profileId"
+      LEFT JOIN clicked_not_closed_profiles cncp ON pb.id = cncp."profileId"
+      LEFT JOIN renewal_due_profiles rdp ON pb.id = rdp.id
+    `
+
+    const row = result[0]
+    if (!row) {
+      return new Map()
+    }
+
+    return new Map([
+      ["email_marketable", Number(row.email_marketable)],
+      ["email_blocked", Number(row.email_blocked)],
+      ["opened_not_clicked", Number(row.opened_not_clicked)],
+      ["clicked_not_closed", Number(row.clicked_not_closed)],
+      ["portfolio_renewal_due", Number(row.portfolio_renewal_due)],
+      ["inactive_recent_campaign", Number(row.inactive_recent_campaign)],
+      ["portfolio_clients", Number(row.portfolio_clients)],
+      ["crm_clients", Number(row.crm_clients)],
+    ])
+  }
 }
 
 export const radarRepository = new RadarRepository()

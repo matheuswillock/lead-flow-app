@@ -134,3 +134,6 @@ export function invalidateNotificationsCache(input: { recipientProfileIds: strin
   );
 }
 
+export function invalidateRadarSegmentsCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.radarSegments(input.teamId)]);
+}

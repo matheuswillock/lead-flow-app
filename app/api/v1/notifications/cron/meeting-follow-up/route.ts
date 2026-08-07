@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { meetingFollowUpUseCase } from "@/app/api/useCases/notifications/MeetingFollowUpUseCase";
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit";
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback";
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -13,7 +15,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 });
     }
 
-    const output = await meetingFollowUpUseCase.processDigests();
+    const output = await withCronAudit(
+      {
+        cronKey: "meeting-follow-up",
+        cronPath: "/api/v1/notifications/cron/meeting-follow-up",
+      },
+      () => meetingFollowUpUseCase.processDigests(),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    );
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

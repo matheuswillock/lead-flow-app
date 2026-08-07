@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/utils/getRadarAccess"
 import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { invalidateRadarSegmentsCache } from "@/lib/cache/invalidation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +15,10 @@ export async function POST(request: NextRequest) {
       radarAccess.access.teamId,
       teamContextFromRadarAccess(radarAccess.access)
     )
+
+    if (result.isValid) {
+      invalidateRadarSegmentsCache({ teamId: radarAccess.access.teamId })
+    }
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 })
   } catch (error) {
