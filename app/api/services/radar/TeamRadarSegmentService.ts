@@ -25,6 +25,10 @@ export class TeamRadarSegmentService implements ITeamRadarSegmentService {
     return teamRadarSegmentRepository.listByTeam(teamId, options)
   }
 
+  async listWithHierarchy(teamId: string, options?: { onlyActive?: boolean }) {
+    return teamRadarSegmentRepository.listWithHierarchy(teamId, options)
+  }
+
   async findById(teamId: string, segmentId: string) {
     return teamRadarSegmentRepository.findById(teamId, segmentId)
   }

@@ -29,6 +29,7 @@ import {
 import { useRadarContext } from "../context/RadarContext"
 import type { RadarCustomSegmentListItem, RadarSegment } from "../context/RadarTypes"
 import type { RadarSegmentProfilesTarget } from "../context/useRadarHook"
+import type { RadarSegmentRules } from "../context/RadarTypes"
 import { RadarEmptyState } from "../components/RadarEmptyState"
 import { RadarProfileFilters } from "../components/RadarProfileFilters"
 import { RadarProfileSheet } from "../components/RadarProfileSheet"
@@ -37,6 +38,7 @@ import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDial
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
 import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
 import { RadarImportButton } from "../components/radar-import/RadarImportButton"
+import { GenerateSegmentDialog } from "../components/GenerateSegmentDialog"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -103,6 +105,8 @@ export function RadarContainer() {
   const [contactListPreviewCount, setContactListPreviewCount] = useState<number | null>(null)
   const [isPreviewingContactList, setIsPreviewingContactList] = useState(false)
   const [isCreatingContactList, setIsCreatingContactList] = useState(false)
+  const [generateSegmentOpen, setGenerateSegmentOpen] = useState(false)
+  const [generateSegmentSource, setGenerateSegmentSource] = useState<{ type: "segment"; name: string; rules: RadarSegmentRules } | null>(null)
 
   const handleOpenContactListDialog = useCallback(
     async (target: RadarSegmentProfilesTarget) => {
@@ -127,6 +131,15 @@ export function RadarContainer() {
       setIsCreatingContactList(false)
     }
   }, [contactListPreviewTarget, materializeSegmentToContactList])
+
+  const handleOpenGenerateSegment = useCallback((segment: RadarCustomSegmentListItem) => {
+    setGenerateSegmentSource({
+      type: "segment",
+      name: segment.name,
+      rules: segment.rulesJson,
+    })
+    setGenerateSegmentOpen(true)
+  }, [])
 
   const systemSegments = useMemo(() => {
     const base = segments.filter((segment: RadarSegment) => segment.isSystem)
@@ -323,44 +336,90 @@ export function RadarContainer() {
                   {isLoading
                     ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
                     : customSegments.map((segment) => (
-                        <RadarSegmentCard
-                          key={segment.id}
-                          name={segment.name}
-                          description={segment.description}
-                          count={segment.count}
-                          variant="custom"
-                          isInactive={!segment.isActive}
-                          mutationLock={mutationLock}
-                          onViewProfiles={
-                            segment.isActive
-                              ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
-                              : undefined
-                          }
-                          onExport={
-                            segment.isActive
-                              ? (format) =>
-                                  void exportSegmentMembers(
-                                    { kind: "custom", slugOrId: segment.id, name: segment.name },
-                                    format
-                                  )
-                              : undefined
-                          }
-                          onCreateContactList={
-                            segment.isActive
-                              ? () =>
-                                  void handleOpenContactListDialog({
-                                    kind: "custom",
-                                    slugOrId: segment.id,
-                                    name: segment.name,
-                                  })
-                              : undefined
-                          }
-                          onEdit={() => {
-                            setEditingSegment(segment)
-                            setBuilderOpen(true)
-                          }}
-                          onDelete={() => setDeleteTarget(segment)}
-                        />
+                        <div key={segment.id} className="flex flex-col gap-2">
+                          {segment.description?.toLowerCase().includes("campanha") ? (
+                            <div className="flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-1 text-xs text-blue-700 dark:text-blue-300">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <rect width="20" height="16" x="2" y="4" rx="2" />
+                                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                              </svg>
+                              <span>Origem: Campanha</span>
+                            </div>
+                          ) : segment.description?.toLowerCase().includes("derivado") ||
+                            segment.description?.toLowerCase().includes("filho") ? (
+                            <div className="flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-1 text-xs text-purple-700 dark:text-purple-300">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <line x1="6" x2="6" y1="3" y2="15" />
+                                <circle cx="18" cy="6" r="3" />
+                                <circle cx="6" cy="18" r="3" />
+                                <path d="M18 9a9 9 0 0 1-9 9" />
+                              </svg>
+                              <span>Segmento derivado</span>
+                            </div>
+                          ) : null}
+                          <RadarSegmentCard
+                            name={segment.name}
+                            description={segment.description}
+                            count={segment.count}
+                            variant="custom"
+                            isInactive={!segment.isActive}
+                            mutationLock={mutationLock}
+                            onViewProfiles={
+                              segment.isActive
+                                ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                                : undefined
+                            }
+                            onExport={
+                              segment.isActive
+                                ? (format) =>
+                                    void exportSegmentMembers(
+                                      { kind: "custom", slugOrId: segment.id, name: segment.name },
+                                      format
+                                    )
+                                : undefined
+                            }
+                            onCreateContactList={
+                              segment.isActive
+                                ? () =>
+                                    void handleOpenContactListDialog({
+                                      kind: "custom",
+                                      slugOrId: segment.id,
+                                      name: segment.name,
+                                    })
+                                : undefined
+                            }
+                            onEdit={() => {
+                              setEditingSegment(segment)
+                              setBuilderOpen(true)
+                            }}
+                            onDelete={() => setDeleteTarget(segment)}
+                            onGenerateChild={
+                              segment.isActive
+                                ? () => handleOpenGenerateSegment(segment)
+                                : undefined
+                            }
+                          />
+                        </div>
                       ))}
                 </div>
               )}
@@ -460,6 +519,19 @@ export function RadarContainer() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {generateSegmentSource ? (
+          <GenerateSegmentDialog
+            open={generateSegmentOpen}
+            onOpenChange={(open) => {
+              setGenerateSegmentOpen(open)
+              if (!open) setGenerateSegmentSource(null)
+            }}
+            sourceType="segment"
+            sourceName={generateSegmentSource.name}
+            initialRules={generateSegmentSource.rules}
+          />
+        ) : null}
       </div>
     </TooltipProvider>
   )
