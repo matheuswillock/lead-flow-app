@@ -17,7 +17,7 @@ import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { AttachmentList } from "../ui/attachment-list";
 import { SaveWithDraftButton } from "./SaveWithDraftButton";
-import { BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Loader2, Mail, Share2 } from "lucide-react";
+import { BadgeCheck, Badge as BadgeIcon, CalendarArrowUp, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink, Loader2, Mail, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -250,7 +250,9 @@ export function LeadForm({
         ? isPreSchedule
             ? "Editar pré-agendamento"
             : "Editar agendamento"
-        : "Agendar lead";
+        : isPreSchedule
+          ? "Pré-agendar lead"
+          : "Agendar lead";
     const canResendScheduleInvite =
         !!onResendScheduleInvite &&
         !!scheduleSummary?.meetingDate &&
@@ -579,6 +581,11 @@ export function LeadForm({
                             {scheduleSummary?.meetingDate ? (
                                 <>
                                     <CalendarSync data-icon="inline-start" />
+                                    {manageScheduleLabel}
+                                </>
+                            ) : isPreSchedule ? (
+                                <>
+                                    <CalendarArrowUp data-icon="inline-start" />
                                     {manageScheduleLabel}
                                 </>
                             ) : (

@@ -94,6 +94,7 @@ function buildCampaignPayload(params: {
   uniformSchedule: boolean
   scheduleIntervalDays: number
   subCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
+  subCampaignTemplates?: Array<{ index: number; templateId: string }>
 }): CampaignWritePayload {
   const payload: CampaignWritePayload = {
     name: params.name.trim(),
@@ -112,6 +113,9 @@ function buildCampaignPayload(params: {
             scheduledAt: entry.scheduledAt.toISOString(),
           })),
         }
+      : {}),
+    ...(params.subCampaignTemplates && params.subCampaignTemplates.length > 0
+      ? { subCampaignTemplates: params.subCampaignTemplates }
       : {}),
     ...(params.saveAsRadarSegment
       ? {
@@ -173,9 +177,11 @@ export type CampanhasActions = {
   setWizardScheduledAt: (v: Date | undefined) => void
   setWizardUniformSchedule: (v: boolean) => void
   setWizardScheduleIntervalDays: (v: number) => void
+  setWizardUniformTemplate: (v: boolean) => void
   setWizardSubCampaignSchedule: (index: number, date: Date | undefined) => void
   setWizardSubCampaignListId: (index: number, listId: string | undefined) => void
   setWizardSubCampaignName: (index: number, name: string) => void
+  setWizardSubCampaignTemplateId: (index: number, templateId: string) => void
   refreshWizardPreviewPlan: () => Promise<void>
   handleSaveCampaign: () => Promise<void>
   handleMaterializeRadarSegment: () => Promise<void>
@@ -218,9 +224,11 @@ export type CampanhasHookReturn = {
   wizardScheduledAt: Date | undefined
   wizardUniformSchedule: boolean
   wizardScheduleIntervalDays: number
+  wizardUniformTemplate: boolean
   wizardSubCampaignSchedules: Array<{ index: number; scheduledAt: Date }>
   wizardSubCampaignListIds: Record<number, string>
   wizardSubCampaignNames: Record<number, string>
+  wizardSubCampaignTemplateIds: Record<number, string>
   wizardPreviewPlan: CampaignPreviewPlan | null
   wizardPreviewLoading: boolean
   wizardLinkedForm: { id: string; name: string; publicId: string } | null
@@ -277,11 +285,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardSaveAsRadarSegment, setWizardSaveAsRadarSegment] = useState(false)
   const [wizardSaveAsRadarSegmentName, setWizardSaveAsRadarSegmentName] = useState("")
   const [wizardScheduledAt, setWizardScheduledAt] = useState<Date | undefined>(undefined)
-  const [wizardUniformSchedule, setWizardUniformScheduleState] = useState(true)
+  const [wizardUniformSchedule, setWizardUniformScheduleState] = useState(false)
   const [wizardScheduleIntervalDays, setWizardScheduleIntervalDays] = useState(1)
   const [wizardSubCampaignSchedules, setWizardSubCampaignSchedules] = useState<WizardSubCampaignSchedule[]>([])
   const [wizardSubCampaignListIds, setWizardSubCampaignListIds] = useState<Record<number, string>>({})
   const [wizardSubCampaignNames, setWizardSubCampaignNames] = useState<Record<number, string>>({})
+  const [wizardUniformTemplate, setWizardUniformTemplateState] = useState(true)
+  const [wizardSubCampaignTemplateIds, setWizardSubCampaignTemplateIds] = useState<Record<number, string>>({})
   const [wizardPreviewPlan, setWizardPreviewPlan] = useState<CampaignPreviewPlan | null>(null)
   const wizardPreviewPlanRef = useRef<CampaignPreviewPlan | null>(null)
   const wizardScheduledAtRef = useRef<Date | undefined>(undefined)
@@ -770,11 +780,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardSaveAsRadarSegment(false)
     setWizardSaveAsRadarSegmentName("")
     setWizardScheduledAt(undefined)
-    setWizardUniformScheduleState(true)
+    setWizardUniformScheduleState(false)
     setWizardScheduleIntervalDays(1)
     setWizardSubCampaignSchedules([])
     setWizardSubCampaignListIds({})
     setWizardSubCampaignNames({})
+    setWizardUniformTemplateState(true)
+    setWizardSubCampaignTemplateIds({})
     setWizardPreviewPlan(null)
     setWizardLinkedForm(null)
     setWizardHydrating(false)
@@ -893,7 +905,6 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
     const MS_PER_DAY = 24 * 60 * 60 * 1000
     let intervalDays = 1
-    let uniform = true
     if (subSchedules.length > 1) {
       const deltas: number[] = []
       let allExactWholeDayGaps = true
@@ -913,15 +924,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         }
         deltas.push(days)
       }
-      if (
-        allExactWholeDayGaps &&
-        deltas.length > 0 &&
-        deltas.every((day) => day === deltas[0])
-      ) {
+      if (allExactWholeDayGaps && deltas.length > 0 && deltas.every((day) => day === deltas[0])) {
         intervalDays = deltas[0]
-        uniform = true
-      } else {
-        uniform = false
       }
     }
 
@@ -956,9 +960,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource(campaign.radarSegmentSlug ? "radar_segment" : "contact_list")
     setWizardRadarSegmentSlug(campaign.radarSegmentSlug ?? "")
     setWizardScheduledAt(firstScheduled)
-    setWizardUniformScheduleState(uniform)
+    setWizardUniformScheduleState(false)
     setWizardScheduleIntervalDays(intervalDays)
-    setWizardSubCampaignSchedules(uniform ? [] : subSchedules)
+    setWizardSubCampaignSchedules(subSchedules)
     setWizardSubCampaignListIds(subListIds)
     setWizardSubCampaignNames(subNames)
     setWizardLinkedForm(campaign.linkedForm ?? null)
@@ -1079,6 +1083,15 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardSubCampaignNames((prev) => ({ ...prev, [index]: name }))
   }, [])
 
+  const setWizardUniformTemplate = useCallback((uniform: boolean) => {
+    setWizardUniformTemplateState(uniform)
+    if (uniform) setWizardSubCampaignTemplateIds({})
+  }, [])
+
+  const setWizardSubCampaignTemplateId = useCallback((index: number, templateId: string) => {
+    setWizardSubCampaignTemplateIds((prev) => ({ ...prev, [index]: templateId }))
+  }, [])
+
   const refreshWizardPreviewPlan = useCallback(async () => {
     if (!wizardName.trim() || !wizardTemplateId) {
       setWizardPreviewPlan(null)
@@ -1101,7 +1114,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         listStrategy: wizardListStrategy,
         radarSegmentSlug: wizardRadarSegmentSlug,
         scheduledAt: wizardScheduledAt,
-        uniformSchedule: wizardUniformSchedule,
+        uniformSchedule: false,
         scheduleIntervalDays: wizardScheduleIntervalDays,
         subCampaignSchedules: wizardSubCampaignSchedules,
       })
@@ -1144,6 +1157,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const handleSaveCampaign = useCallback(async () => {
     setWizardSaving(true)
     try {
+      const subCampaignTemplates = !wizardUniformTemplate
+        ? Object.entries(wizardSubCampaignTemplateIds).map(([index, templateId]) => ({
+            index: Number(index),
+            templateId,
+          }))
+        : undefined
       const payload = buildCampaignPayload({
         name: wizardName,
         description: wizardDescription,
@@ -1154,9 +1173,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         saveAsRadarSegment: wizardSaveAsRadarSegment,
         saveAsRadarSegmentName: wizardSaveAsRadarSegmentName,
         scheduledAt: wizardScheduledAt,
-        uniformSchedule: wizardUniformSchedule,
+        uniformSchedule: false,
         scheduleIntervalDays: wizardScheduleIntervalDays,
         subCampaignSchedules: wizardSubCampaignSchedules,
+        subCampaignTemplates,
       })
 
       if (wizardMode === "edit" && wizardCampaignId) {
@@ -1354,9 +1374,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardScheduledAt,
     wizardUniformSchedule,
     wizardScheduleIntervalDays,
+    wizardUniformTemplate,
     wizardSubCampaignSchedules,
     wizardSubCampaignListIds,
     wizardSubCampaignNames,
+    wizardSubCampaignTemplateIds,
     wizardPreviewPlan,
     wizardPreviewLoading,
     wizardLinkedForm,
@@ -1395,9 +1417,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardScheduledAt,
     setWizardUniformSchedule,
     setWizardScheduleIntervalDays,
+    setWizardUniformTemplate,
     setWizardSubCampaignSchedule,
     setWizardSubCampaignListId,
     setWizardSubCampaignName,
+    setWizardSubCampaignTemplateId,
     refreshWizardPreviewPlan,
     handleSaveCampaign,
     handleMaterializeRadarSegment,
