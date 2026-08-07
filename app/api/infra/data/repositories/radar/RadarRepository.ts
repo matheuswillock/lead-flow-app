@@ -8,6 +8,7 @@ import type {
   Prisma,
 } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
@@ -105,8 +106,9 @@ const profileListSelect = {
 } as const
 
 export class RadarRepository {
+  constructor(private readonly db: PrismaClient = prisma) {}
   async upsertProfile(input: UpsertProfileInput) {
-    const existing = await prisma.radarProfile.findUnique({
+    const existing = await this.db.radarProfile.findUnique({
       where: {
         teamId_normalizedPhone_normalizedName: {
           teamId: input.teamId,
@@ -123,7 +125,7 @@ export class RadarRepository {
       },
     })
 
-    return prisma.radarProfile.upsert({
+    return this.db.radarProfile.upsert({
       where: {
         teamId_normalizedPhone_normalizedName: {
           teamId: input.teamId,
@@ -164,7 +166,7 @@ export class RadarRepository {
    * pode ser ambíguo quando dois perfis compartilham o mesmo e-mail).
    */
   async findProfileByIdentity(teamId: string, type: RadarIdentityType, normalizedValue: string) {
-    return prisma.radarIdentity.findUnique({
+    return this.db.radarIdentity.findUnique({
       where: {
         teamId_type_normalizedValue: { teamId, type, normalizedValue },
       },
@@ -331,7 +333,7 @@ export class RadarRepository {
   }) {
     let mergedWinningProfileId: string | null = null
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedPhone}))`
 
       // D4: quando um e-mail acompanha o telefone, também trava o lock por
@@ -578,7 +580,7 @@ export class RadarRepository {
     emailSource: string
     lastSeenAt?: Date
   }) {
-    return prisma.$transaction(async (tx) => {
+    return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedEmail}))`
 
       const existingByIdentity = await tx.radarIdentity.findUnique({
@@ -652,7 +654,7 @@ export class RadarRepository {
     visitorSession: string
     lastSeenAt?: Date
   }) {
-    return prisma.$transaction(async (tx) => {
+    return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':vs:' || ${input.visitorSession}))`
 
       const existingByIdentity = await tx.radarIdentity.findUnique({
@@ -728,7 +730,7 @@ export class RadarRepository {
     documentSource: string
     lastSeenAt?: Date
   }) {
-    return prisma.$transaction(async (tx) => {
+    return this.db.$transaction(async (tx) => {
       const lockKey = `${input.teamId}:${input.identityType}:${input.normalizedDocument}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
@@ -798,7 +800,7 @@ export class RadarRepository {
   }
 
   async upsertIdentity(input: UpsertIdentityInput) {
-    return prisma.radarIdentity.upsert({
+    return this.db.radarIdentity.upsert({
       where: {
         teamId_type_normalizedValue: {
           teamId: input.teamId,
@@ -825,7 +827,7 @@ export class RadarRepository {
   }
 
   async upsertSourceLink(input: UpsertSourceLinkInput) {
-    return prisma.radarSourceLink.upsert({
+    return this.db.radarSourceLink.upsert({
       where: {
         teamId_sourceType_sourceId: {
           teamId: input.teamId,
@@ -858,7 +860,7 @@ export class RadarRepository {
     occurredAt: Date
   ) {
     if (!sourceId) return false
-    const duplicate = await prisma.radarEvent.findFirst({
+    const duplicate = await this.db.radarEvent.findFirst({
       where: { teamId, sourceType, sourceId, eventType, occurredAt },
       select: { id: true },
     })
@@ -876,7 +878,7 @@ export class RadarRepository {
    * mais se repete.
    */
   async hasEventEverOccurredForSource(teamId: string, sourceType: string, sourceId: string, eventType: string) {
-    const existing = await prisma.radarEvent.findFirst({
+    const existing = await this.db.radarEvent.findFirst({
       where: { teamId, sourceType, sourceId, eventType },
       select: { id: true },
     })
@@ -898,7 +900,7 @@ export class RadarRepository {
     }
 
     try {
-      const created = await prisma.radarEvent.create({
+      const created = await this.db.radarEvent.create({
         data: {
           profileId: input.profileId,
           teamId: input.teamId,
@@ -932,7 +934,7 @@ export class RadarRepository {
   async appendEventIfNewBySourceKey(input: AppendEventInput) {
     if (!input.sourceId) {
       try {
-        const created = await prisma.radarEvent.create({
+        const created = await this.db.radarEvent.create({
           data: {
             profileId: input.profileId,
             teamId: input.teamId,
@@ -953,7 +955,7 @@ export class RadarRepository {
     }
 
     const sourceId = input.sourceId
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await this.db.$transaction(async (tx) => {
       const lockKey = `${input.teamId}:evt:${input.sourceType}:${sourceId}:${input.eventType}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
@@ -1002,7 +1004,7 @@ export class RadarRepository {
     const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
 
     const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
-    const events = await prisma.radarEvent.findMany({
+    const events = await this.db.radarEvent.findMany({
       where: {
         profileId,
         teamId,
@@ -1017,7 +1019,7 @@ export class RadarRepository {
 
     const { score, band } = computeEngagementScore(events, weights, config, new Date(), formRules)
 
-    await prisma.radarProfile.updateMany({
+    await this.db.radarProfile.updateMany({
       where: { id: profileId, teamId },
       data: {
         engagementScore: score,
@@ -1037,7 +1039,7 @@ export class RadarRepository {
       return { notFound: true as const }
     }
 
-    const profile = await prisma.radarProfile.findFirst({
+    const profile = await this.db.radarProfile.findFirst({
       where: { id: identity.profileId, teamId: scope.teamId },
       select: {
         id: true,
@@ -1051,7 +1053,7 @@ export class RadarRepository {
 
     const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
     const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
-    const events = await prisma.radarEvent.findMany({
+    const events = await this.db.radarEvent.findMany({
       where: {
         profileId: profile.id,
         teamId: scope.teamId,
@@ -1097,7 +1099,7 @@ export class RadarRepository {
     take: number
     cursorId?: string | null
   }): Promise<Array<{ id: string; teamId: string }>> {
-    return prisma.radarProfile.findMany({
+    return this.db.radarProfile.findMany({
       where: params.cursorId ? { id: { gt: params.cursorId } } : undefined,
       select: { id: true, teamId: true },
       orderBy: { id: "asc" },
@@ -1120,11 +1122,11 @@ export class RadarRepository {
     }
 
     const [weightRows, configRow, formRuleRows] = await Promise.all([
-      prisma.backofficeRadarEngagementWeight.findMany({
+      this.db.backofficeRadarEngagementWeight.findMany({
         where: { isActive: true },
         select: { eventType: true, weight: true },
       }),
-      prisma.backofficeRadarEngagementConfig.findFirst({
+      this.db.backofficeRadarEngagementConfig.findFirst({
         where: { isActive: true },
         select: {
           windowRecentDays: true,
@@ -1138,7 +1140,7 @@ export class RadarRepository {
         },
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.backofficeFormEngagementScoreRule.findMany({
+      this.db.backofficeFormEngagementScoreRule.findMany({
         where: { isActive: true },
         select: {
           minPercent: true,
@@ -1191,7 +1193,7 @@ export class RadarRepository {
   }
 
   async upsertConsent(input: UpsertConsentInput) {
-    return prisma.radarChannelConsent.upsert({
+    return this.db.radarChannelConsent.upsert({
       where: {
         profileId_channel: {
           profileId: input.profileId,
@@ -1245,7 +1247,7 @@ export class RadarRepository {
     const sortOrder = params.order === "asc" ? "asc" : "desc"
 
     const [items, total] = await Promise.all([
-      prisma.radarProfile.findMany({
+      this.db.radarProfile.findMany({
         where,
         select: {
           ...profileListSelect,
@@ -1262,7 +1264,7 @@ export class RadarRepository {
         skip: params.skip,
         take: params.take,
       }),
-      prisma.radarProfile.count({ where }),
+      this.db.radarProfile.count({ where }),
     ])
 
     return { items, total }
@@ -1355,13 +1357,13 @@ export class RadarRepository {
     const where = this.buildListProfilesWhere(scope, params)
 
     const [items, total] = await Promise.all([
-      prisma.radarProfile.findMany({
+      this.db.radarProfile.findMany({
         where,
         select: this.exportProfileSelect,
         orderBy: { lastSeenAt: "desc" },
         take: RADAR_EXPORT_MAX_ROWS,
       }),
-      prisma.radarProfile.count({ where }),
+      this.db.radarProfile.count({ where }),
     ])
 
     return { items, total }
@@ -1374,7 +1376,7 @@ export class RadarRepository {
     if (profileIds.length === 0) return []
 
     const cappedIds = profileIds.slice(0, RADAR_EXPORT_MAX_ROWS)
-    const items = await prisma.radarProfile.findMany({
+    const items = await this.db.radarProfile.findMany({
       where: { teamId: scope.teamId, id: { in: cappedIds } },
       select: this.exportProfileSelect,
     })
@@ -1384,7 +1386,7 @@ export class RadarRepository {
   }
 
   async getProfileDetailWithCtx(scope: RadarTeamScope, profileId: string) {
-    return prisma.radarProfile.findFirst({
+    return this.db.radarProfile.findFirst({
       where: { id: profileId, teamId: scope.teamId },
       select: {
         ...profileListSelect,
@@ -1415,19 +1417,19 @@ export class RadarRepository {
   ) {
     const where = { profileId, teamId: scope.teamId }
     const [items, total] = await Promise.all([
-      prisma.radarEvent.findMany({
+      this.db.radarEvent.findMany({
         where,
         orderBy: { occurredAt: "desc" },
         skip,
         take,
       }),
-      prisma.radarEvent.count({ where }),
+      this.db.radarEvent.count({ where }),
     ])
     return { items, total }
   }
 
   async countProfiles(scope: RadarTeamScope) {
-    return prisma.radarProfile.count({ where: { teamId: scope.teamId } })
+    return this.db.radarProfile.count({ where: { teamId: scope.teamId } })
   }
 
   /**
@@ -1435,7 +1437,7 @@ export class RadarRepository {
    * Usado antes de agrupar eventos para distinguir "perfil inexistente" de "perfil sem eventos".
    */
   async profileExistsInScope(scope: RadarTeamScope, profileId: string): Promise<boolean> {
-    const row = await prisma.radarProfile.findFirst({
+    const row = await this.db.radarProfile.findFirst({
       where: { id: profileId, teamId: scope.teamId },
       select: { id: true },
     })
@@ -1447,7 +1449,7 @@ export class RadarRepository {
    * como pares distintos canal × dia calendário no use case.
    */
   async listProfileTouchpointEventMarkers(scope: RadarTeamScope, profileId: string) {
-    return prisma.radarEvent.findMany({
+    return this.db.radarEvent.findMany({
       where: { profileId, teamId: scope.teamId },
       select: { eventType: true, occurredAt: true },
       orderBy: { occurredAt: "asc" },
@@ -1456,7 +1458,7 @@ export class RadarRepository {
 
   /** D17: `SELECT DISTINCT eventType` escopado pelo time, ordenado alfabeticamente. */
   async listDistinctEventTypes(scope: RadarTeamScope): Promise<string[]> {
-    const rows = await prisma.radarEvent.findMany({
+    const rows = await this.db.radarEvent.findMany({
       where: { teamId: scope.teamId },
       distinct: ["eventType"],
       select: { eventType: true },
@@ -1470,7 +1472,7 @@ export class RadarRepository {
    * com a campanha (audiência virtual `campaign:{id}`).
    */
   async findProfileIdsByEmailCampaign(teamId: string, campaignId: string): Promise<string[]> {
-    const rows = await prisma.radarEvent.findMany({
+    const rows = await this.db.radarEvent.findMany({
       where: {
         teamId,
         eventType: { startsWith: "email." },
@@ -1483,7 +1485,7 @@ export class RadarRepository {
   }
 
   async findEmailCampaignName(teamId: string, campaignId: string): Promise<string | null> {
-    const campaign = await prisma.emailCampaign.findFirst({
+    const campaign = await this.db.emailCampaign.findFirst({
       where: { id: campaignId, teamId },
       select: { name: true },
     })
@@ -1492,7 +1494,7 @@ export class RadarRepository {
 
   /** Campanhas do time para o Select do builder (id + nome). */
   async listEmailCampaignOptions(teamId: string): Promise<Array<{ id: string; name: string }>> {
-    return prisma.emailCampaign.findMany({
+    return this.db.emailCampaign.findMany({
       where: { teamId },
       select: { id: true, name: true },
       orderBy: { updatedAt: "desc" },
@@ -1507,7 +1509,7 @@ export class RadarRepository {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return []
 
-    return prisma.lead.findMany({
+    return this.db.lead.findMany({
       where: { teamId, id: { in: unique } },
       select: {
         id: true,
@@ -1521,7 +1523,7 @@ export class RadarRepository {
   }
 
   async findLeadsForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
-    return prisma.lead.findMany({
+    return this.db.lead.findMany({
       where: {
         teamId,
         ...(filters.leadId ? { id: filters.leadId } : {}),
@@ -1542,7 +1544,7 @@ export class RadarRepository {
   }
 
   async findPortfoliosForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
-    return prisma.leadPortfolio.findMany({
+    return this.db.leadPortfolio.findMany({
       where: {
         teamId,
         ...(filters.leadId ? { leadId: filters.leadId } : {}),
@@ -1574,7 +1576,7 @@ export class RadarRepository {
   }
 
   async findFinalizedForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
-    return prisma.leadFinalized.findMany({
+    return this.db.leadFinalized.findMany({
       where: {
         lead: { teamId },
         ...(filters.finalizedId ? { id: filters.finalizedId } : {}),
@@ -1615,14 +1617,14 @@ export class RadarRepository {
   }
 
   async findEmailContactLists(teamId: string) {
-    return prisma.emailContactList.findMany({
+    return this.db.emailContactList.findMany({
       where: { teamId },
       select: { id: true },
     })
   }
 
   async findEmailContacts(listId: string) {
-    return prisma.emailContact.findMany({
+    return this.db.emailContact.findMany({
       where: { listId },
       select: {
         id: true,
@@ -1638,7 +1640,7 @@ export class RadarRepository {
   }
 
   async findEmailContactById(contactId: string) {
-    return prisma.emailContact.findUnique({
+    return this.db.emailContact.findUnique({
       where: { id: contactId },
       select: {
         id: true,
@@ -1655,7 +1657,7 @@ export class RadarRepository {
   }
 
   async findEmailLogsForRadarSync(teamId: string, filters: RadarSyncFilters = {}) {
-    return prisma.emailLog.findMany({
+    return this.db.emailLog.findMany({
       where: {
         teamId,
         ...(filters.emailLogSince ? { sentAt: { gte: filters.emailLogSince } } : {}),
@@ -1675,7 +1677,7 @@ export class RadarRepository {
   }
 
   async findProfileByPrimaryKey(teamId: string, normalizedPhone: string, normalizedName: string) {
-    return prisma.radarProfile.findUnique({
+    return this.db.radarProfile.findUnique({
       where: {
         teamId_normalizedPhone_normalizedName: { teamId, normalizedPhone, normalizedName },
       },
@@ -1685,13 +1687,13 @@ export class RadarRepository {
 
   async findProfileByEmail(teamId: string, normalizedEmail: string) {
     if (!normalizedEmail) return null
-    return prisma.radarProfile.findFirst({
+    return this.db.radarProfile.findFirst({
       where: { teamId, normalizedPrimaryEmail: normalizedEmail },
     })
   }
 
   async findLeadPhoneByEmail(teamId: string, normalizedEmail: string) {
-    const lead = await prisma.lead.findFirst({
+    const lead = await this.db.lead.findFirst({
       where: { teamId, email: { equals: normalizedEmail, mode: "insensitive" } },
       select: { phone: true },
     })
@@ -1702,7 +1704,7 @@ export class RadarRepository {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map<string, LeadStatus | null>()
 
-    const leads = await prisma.lead.findMany({
+    const leads = await this.db.lead.findMany({
       where: { teamId, id: { in: unique } },
       select: { id: true, status: true },
     })
@@ -1714,14 +1716,14 @@ export class RadarRepository {
   // uses an existing composite index; consent/event relation filters seq-scan their
   // own tables, naturally bounded by profile count per team.
   async countProfilesByWhere(where: Prisma.RadarProfileWhereInput): Promise<number> {
-    return prisma.radarProfile.count({ where })
+    return this.db.radarProfile.count({ where })
   }
 
   async listProfileIdsByWhere(
     where: Prisma.RadarProfileWhereInput,
     pagination?: { skip: number; take: number }
   ): Promise<string[]> {
-    const profiles = await prisma.radarProfile.findMany({
+    const profiles = await this.db.radarProfile.findMany({
       where,
       select: { id: true },
       orderBy: { createdAt: "asc" },
@@ -1731,7 +1733,7 @@ export class RadarRepository {
   }
 
   async findLeadIdsByWhere(where: Prisma.LeadWhereInput): Promise<string[]> {
-    const leads = await prisma.lead.findMany({ where, select: { id: true } })
+    const leads = await this.db.lead.findMany({ where, select: { id: true } })
     return leads.map((lead) => lead.id)
   }
 
@@ -1742,7 +1744,7 @@ export class RadarRepository {
   async findPortfolioProfileIdsByWhere(
     where: Prisma.LeadPortfolioWhereInput
   ): Promise<{ leadIds: string[]; portfolioIds: string[] }> {
-    const rows = await prisma.leadPortfolio.findMany({ where, select: { id: true, leadId: true } })
+    const rows = await this.db.leadPortfolio.findMany({ where, select: { id: true, leadId: true } })
     return {
       leadIds: [...new Set(rows.map((row) => row.leadId))],
       portfolioIds: rows.map((row) => row.id),
@@ -1754,7 +1756,7 @@ export class RadarRepository {
    * usados para projetar perfis via identidade `lead_id`.
    */
   async findFinalizedProfileIdsByWhere(where: Prisma.LeadFinalizedWhereInput): Promise<string[]> {
-    const rows = await prisma.leadFinalized.findMany({ where, select: { leadId: true } })
+    const rows = await this.db.leadFinalized.findMany({ where, select: { leadId: true } })
     return [...new Set(rows.map((row) => row.leadId))]
   }
 
@@ -1766,7 +1768,7 @@ export class RadarRepository {
    */
   async findContractsForProfile(scope: RadarTeamScope, profileId: string) {
     const [identities, sourceLinks] = await Promise.all([
-      prisma.radarIdentity.findMany({
+      this.db.radarIdentity.findMany({
         where: {
           profileId,
           teamId: scope.teamId,
@@ -1774,7 +1776,7 @@ export class RadarRepository {
         },
         select: { type: true, normalizedValue: true },
       }),
-      prisma.radarSourceLink.findMany({
+      this.db.radarSourceLink.findMany({
         where: {
           profileId,
           teamId: scope.teamId,
@@ -1808,7 +1810,7 @@ export class RadarRepository {
     }
 
     if (contractDocuments.length > 0) {
-      const byDocument = await prisma.leadFinalized.findMany({
+      const byDocument = await this.db.leadFinalized.findMany({
         where: {
           lead: { teamId: scope.teamId },
           OR: [
@@ -1837,7 +1839,7 @@ export class RadarRepository {
           ? { teamId: scope.teamId, leadId: { in: leadIds } }
           : { teamId: scope.teamId, id: { in: portfolioIds } }
 
-    const portfolios = await prisma.leadPortfolio.findMany({
+    const portfolios = await this.db.leadPortfolio.findMany({
       where: portfolioWhere,
       select: {
         id: true,
@@ -1858,7 +1860,7 @@ export class RadarRepository {
     const finalized =
       resolvedLeadIds.length === 0
         ? []
-        : await prisma.leadFinalized.findMany({
+        : await this.db.leadFinalized.findMany({
             where: { leadId: { in: resolvedLeadIds }, lead: { teamId: scope.teamId } },
             select: {
               id: true,
@@ -1899,7 +1901,7 @@ export class RadarRepository {
   }
 
   async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {
-    const contacts = await prisma.emailContact.findMany({
+    const contacts = await this.db.emailContact.findMany({
       where: { listId: { in: listIds }, list: { teamId } },
       select: { id: true },
     })
@@ -1920,7 +1922,7 @@ export class RadarRepository {
     operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty",
     value: unknown
   ): Promise<string[]> {
-    const contacts = await prisma.emailContact.findMany({
+    const contacts = await this.db.emailContact.findMany({
       where: { list: { teamId } },
       select: { id: true, customFields: true },
     })
@@ -1953,7 +1955,7 @@ export class RadarRepository {
     const uniqueIds = [...new Set(profileIds.filter(Boolean))]
     if (uniqueIds.length === 0) return []
 
-    return prisma.radarProfile.findMany({
+    return this.db.radarProfile.findMany({
       where: { teamId, id: { in: uniqueIds } },
       select: {
         id: true,
@@ -1973,7 +1975,7 @@ export class RadarRepository {
   }
 
   async listProfilesForSegmentation(teamId: string) {
-    return prisma.radarProfile.findMany({
+    return this.db.radarProfile.findMany({
       where: { teamId },
       select: {
         id: true,
@@ -1993,7 +1995,7 @@ export class RadarRepository {
   }
 
   async listRadarEmailVariables(teamId: string) {
-    return prisma.emailTeamVariable.findMany({
+    return this.db.emailTeamVariable.findMany({
       where: { teamId, isActive: true, valueSource: "RADAR" },
       select: { key: true, radarFieldKey: true, defaultValue: true },
     })
@@ -2003,7 +2005,7 @@ export class RadarRepository {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map()
 
-    const leads = await prisma.lead.findMany({
+    const leads = await this.db.lead.findMany({
       where: { teamId, id: { in: unique } },
       select: {
         id: true,
@@ -2019,7 +2021,7 @@ export class RadarRepository {
   }
 
   async listProfilesForProfileDataSync(teamId: string) {
-    return prisma.radarProfile.findMany({
+    return this.db.radarProfile.findMany({
       where: { teamId },
       select: {
         id: true,
@@ -2036,7 +2038,7 @@ export class RadarRepository {
   }
 
   async updateProfileData(profileId: string, teamId: string, profileData: Prisma.InputJsonValue) {
-    return prisma.radarProfile.updateMany({
+    return this.db.radarProfile.updateMany({
       where: { id: profileId, teamId },
       data: { profileData },
     })
@@ -2046,7 +2048,7 @@ export class RadarRepository {
     const unique = [...new Set(normalizedEmails.filter(Boolean))]
     if (unique.length === 0) return []
 
-    return prisma.radarProfile.findMany({
+    return this.db.radarProfile.findMany({
       where: { teamId, normalizedPrimaryEmail: { in: unique } },
       select: {
         normalizedPrimaryEmail: true,
@@ -2066,7 +2068,7 @@ export class RadarRepository {
     const unique = [...new Set(normalizedEmails.filter(Boolean))]
     if (unique.length === 0) return new Map<string, Record<string, string>>()
 
-    const profiles = await prisma.radarProfile.findMany({
+    const profiles = await this.db.radarProfile.findMany({
       where: { teamId, normalizedPrimaryEmail: { in: unique } },
       select: { normalizedPrimaryEmail: true, profileData: true },
     })
@@ -2088,21 +2090,21 @@ export class RadarRepository {
   }
 
   async findRadarVariableFallbacks(teamId: string) {
-    return prisma.emailTeamVariable.findMany({
+    return this.db.emailTeamVariable.findMany({
       where: { teamId, isActive: true, valueSource: "RADAR", defaultValue: { not: null } },
       select: { key: true, defaultValue: true },
     })
   }
 
   async findPixelConfigByTeamId(teamId: string) {
-    return prisma.teamRadarPixelConfig.findUnique({
+    return this.db.teamRadarPixelConfig.findUnique({
       where: { teamId },
       select: { publicToken: true, allowedOrigins: true, lastUsedAt: true },
     })
   }
 
   async upsertPixelConfig(teamId: string, profileId: string, data: { publicToken: string; allowedOrigins: string[] }) {
-    return prisma.teamRadarPixelConfig.upsert({
+    return this.db.teamRadarPixelConfig.upsert({
       where: { teamId },
       create: { teamId, publicToken: data.publicToken, allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
       update: { allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
@@ -2111,11 +2113,11 @@ export class RadarRepository {
   }
 
   async deletePixelConfig(teamId: string) {
-    await prisma.teamRadarPixelConfig.deleteMany({ where: { teamId } })
+    await this.db.teamRadarPixelConfig.deleteMany({ where: { teamId } })
   }
 
   async findPixelHitLogs(teamId: string, limit: number) {
-    return prisma.teamRadarPixelHitLog.findMany({
+    return this.db.teamRadarPixelHitLog.findMany({
       where: { teamId },
       orderBy: { createdAt: "desc" },
       take: limit,
@@ -2124,14 +2126,14 @@ export class RadarRepository {
   }
 
   async findPixelConfigByPublicToken(publicToken: string): Promise<{ teamId: string; allowedOrigins: string[] } | null> {
-    return prisma.teamRadarPixelConfig.findUnique({
+    return this.db.teamRadarPixelConfig.findUnique({
       where: { publicToken },
       select: { teamId: true, allowedOrigins: true },
     })
   }
 
   async touchPixelLastUsed(teamId: string) {
-    await prisma.teamRadarPixelConfig.update({ where: { teamId }, data: { lastUsedAt: new Date() } })
+    await this.db.teamRadarPixelConfig.update({ where: { teamId }, data: { lastUsedAt: new Date() } })
   }
 
   async logPixelHit(input: {
@@ -2142,7 +2144,7 @@ export class RadarRepository {
     userAgent: string | null
     metadata?: object
   }) {
-    await prisma.teamRadarPixelHitLog.create({
+    await this.db.teamRadarPixelHitLog.create({
       data: {
         teamId: input.teamId,
         eventType: input.eventType,
@@ -2159,7 +2161,7 @@ export class RadarRepository {
     sourceType: RadarSourceType
     sourceId: string
   }) {
-    return prisma.radarSourceLink.findUnique({
+    return this.db.radarSourceLink.findUnique({
       where: {
         teamId_sourceType_sourceId: {
           teamId: input.teamId,
@@ -2172,7 +2174,7 @@ export class RadarRepository {
   }
 
   async deleteSourceLinkById(id: string) {
-    await prisma.radarSourceLink.deleteMany({ where: { id } })
+    await this.db.radarSourceLink.deleteMany({ where: { id } })
   }
 
   /**
@@ -2186,7 +2188,7 @@ export class RadarRepository {
     identityType: Extract<RadarIdentityType, "contract_holder" | "contract_dependent">
     keepNormalizedDocument: string | null
   }) {
-    const identities = await prisma.radarIdentity.findMany({
+    const identities = await this.db.radarIdentity.findMany({
       where: {
         teamId: input.teamId,
         profileId: input.profileId,
@@ -2203,11 +2205,11 @@ export class RadarRepository {
           )
     if (obsolete.length === 0) return { removed: 0 }
 
-    await prisma.radarIdentity.deleteMany({
+    await this.db.radarIdentity.deleteMany({
       where: { id: { in: obsolete.map((identity) => identity.id) } },
     })
 
-    const profile = await prisma.radarProfile.findUnique({
+    const profile = await this.db.radarProfile.findUnique({
       where: { id: input.profileId },
       select: { normalizedPrimaryDocument: true },
     })
@@ -2215,7 +2217,7 @@ export class RadarRepository {
       profile?.normalizedPrimaryDocument &&
       obsolete.some((identity) => identity.normalizedValue === profile.normalizedPrimaryDocument)
     ) {
-      await prisma.radarProfile.update({
+      await this.db.radarProfile.update({
         where: { id: input.profileId },
         data: { primaryDocument: null, normalizedPrimaryDocument: null },
       })
@@ -2229,7 +2231,7 @@ export class RadarRepository {
    * restam identidades nem source links (preserva perfis ainda referenciados).
    */
   async deleteOrphanRadarProfileIfEmpty(input: { teamId: string; profileId: string }) {
-    const profile = await prisma.radarProfile.findFirst({
+    const profile = await this.db.radarProfile.findFirst({
       where: { id: input.profileId, teamId: input.teamId },
       select: {
         id: true,
@@ -2241,7 +2243,7 @@ export class RadarRepository {
       return { deleted: false }
     }
 
-    await prisma.radarProfile.delete({ where: { id: profile.id } })
+    await this.db.radarProfile.delete({ where: { id: profile.id } })
     return { deleted: true }
   }
 
@@ -2249,7 +2251,7 @@ export class RadarRepository {
     teamId: string,
     profileId: string
   ): Promise<{ found: false } | { found: true; doc: string | null }> {
-    const profile = await prisma.radarProfile.findFirst({
+    const profile = await this.db.radarProfile.findFirst({
       where: { id: profileId, teamId },
       select: { normalizedPrimaryDocument: true },
     })
@@ -2262,7 +2264,7 @@ export class RadarRepository {
    * Perfis `contract_dependent` têm o doc em LeadFinalizedDependent, não no holder.
    */
   async findFinalizedContractsByNormalizedDocument(teamId: string, doc: string) {
-    return prisma.leadFinalized.findMany({
+    return this.db.leadFinalized.findMany({
       where: {
         lead: { teamId },
         OR: [

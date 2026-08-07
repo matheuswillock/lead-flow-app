@@ -1,12 +1,10 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 /**
- * Diagnóstico read-only (nenhuma escrita) para leads criados pelo
- * ResolveEmailCampaignFormAttributionUseCase a partir de um simples
- * `form_viewed` (carregamento de página / prefetch de scanner de e-mail),
- * sem nenhuma PublicFormSubmission real correspondente.
+ * Diagnóstico read-only: leads de atribuição campanha sem submissão real,
+ * e métricas form_viewed recentes que ainda criariam fantasmas (E1).
  *
  * Critério: originMetadata.attribution === "email_campaign" E nenhuma
  * linha em PublicFormSubmission aponta para esse leadId.
@@ -134,50 +132,65 @@ async function main() {
       phone: true,
       status: true,
       createdAt: true,
-      statusEnteredAt: true,
       teamId: true,
       team: { select: { name: true } },
       originMetadata: true,
     },
     orderBy: { createdAt: "desc" },
-  });
+  })
 
-  console.info(`[audit-fake-email-attribution-leads] ${affected.length} leads afetados encontrados`);
+  console.info(`[audit-fake-email-attribution-leads] ${affected.length} leads campanha sem submissão`)
 
-  const byTeam = new Map<string, number>();
+  const formViewedSince = window?.fromInclusive ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const recentFormViewed = await prisma.publicFormMetricEvent.count({
+    where: {
+      eventType: "form_viewed",
+      createdAt: { gte: formViewedSince },
+    },
+  })
+
+  const formStartedWithoutLead = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count
+    FROM corretor_studio_public_form_metric_events e
+    WHERE e."eventType" = 'form_started'
+      AND e."createdAt" >= ${formViewedSince}
+      AND (e.origin->>'emailLogId') IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM corretor_studio_leads l
+        WHERE l."teamId" = (
+          SELECT f."teamId" FROM corretor_studio_public_forms f WHERE f.id = e."formId"
+        )
+        AND l.email IS NOT NULL
+        AND lower(l.email) = lower(
+          (SELECT el."recipientEmail" FROM corretor_studio_email_logs el
+           WHERE el.id::text = e.origin->>'emailLogId' LIMIT 1)
+        )
+      )
+  `
+
+  console.info(`[audit-fake-email-attribution-leads] form_viewed (7d ou --day): ${recentFormViewed}`)
+  console.info(
+    `[audit-fake-email-attribution-leads] form_started sem lead CRM: ${Number(formStartedWithoutLead[0]?.count ?? 0)}`,
+  )
+
   for (const lead of affected) {
-    const teamName = lead.team?.name ?? lead.teamId ?? "—";
-    byTeam.set(teamName, (byTeam.get(teamName) ?? 0) + 1);
-  }
-
-  console.info("\nPor time:");
-  for (const [teamName, count] of [...byTeam.entries()].sort((a, b) => b[1] - a[1])) {
-    console.info(`  ${teamName}: ${count}`);
-  }
-
-  console.info("\nDetalhe:");
-  console.info("id,teamName,name,email,phone,status,createdAt,campaignId,emailLogId");
-  for (const lead of affected) {
-    const meta = (lead.originMetadata ?? {}) as Record<string, unknown>;
+    const meta = (lead.originMetadata ?? {}) as Record<string, unknown>
     console.info(
       [
         lead.id,
-        lead.team?.name ?? lead.teamId ?? "—",
-        JSON.stringify(lead.name ?? ""),
+        lead.team?.name ?? lead.teamId,
         lead.email ?? "",
-        lead.phone ?? "",
-        lead.status,
         lead.createdAt.toISOString(),
-        (meta.campaignId as string) ?? "",
-        (meta.emailLogId as string) ?? "",
+        meta.campaignId ?? "",
+        meta.emailLogId ?? "",
       ].join(","),
-    );
+    )
   }
 }
 
 main()
   .catch((error) => {
-    console.error("[audit-fake-email-attribution-leads]", error);
-    process.exitCode = 1;
+    console.error("[audit-fake-email-attribution-leads]", error)
+    process.exitCode = 1
   })
-  .finally(() => prisma.$disconnect());
+  .finally(() => prisma.$disconnect())

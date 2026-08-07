@@ -44,6 +44,7 @@ import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-r
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
   formatCampaignFromHeader,
+  isEmailAllowedForTeamDomain,
   resolveCampaignFrom,
 } from "@/lib/email/resolve-campaign-from"
 import { wouldExceedDailyEmailCap } from "@/lib/email/campaign-daily-dispatch-guard"
@@ -1741,6 +1742,34 @@ export class EmailCampaignUseCase {
         defaultSender,
         masterTimezone: campaign.team.master.timezone,
       })
+
+      const dispatchFromResolved = resolveCampaignFrom({
+        domainName: teamSettings?.resendDomainName,
+        defaultSender,
+        legacyFromName: teamSettings?.fromName,
+        legacyFromEmail: teamSettings?.fromEmail,
+      })
+      if (teamSettings?.resendDomainName && teamSettings.resendDomainStatus !== "verified") {
+        return new Output(
+          false,
+          [],
+          [
+            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar.",
+          ],
+          null
+        )
+      }
+      if (
+        teamSettings?.resendDomainName &&
+        !isEmailAllowedForTeamDomain(dispatchFromResolved.fromEmail, teamSettings.resendDomainName)
+      ) {
+        return new Output(
+          false,
+          [],
+          ["O remetente da campanha não pertence ao domínio verificado no Resend."],
+          null
+        )
+      }
 
       // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
       // Evita reenviar a lista inteira e duplicar quem já chegou ao provedor.

@@ -84,6 +84,8 @@
     "prisma:backfill-subscription-capacities": "bunx tsx scripts/backfill-subscription-capacities.ts",
     "prisma:backfill-waive-pending-add-user": "bunx tsx scripts/backfill-waive-pending-add-user.ts",
     "audit:fake-email-attribution-leads": "bunx tsx scripts/audit-fake-email-attribution-leads.ts",
+    "reprocess:public-form-submissions": "bunx tsx scripts/reprocess-public-form-submissions.ts",
+    "recover:campaign-attribution-leads": "bunx tsx scripts/recover-campaign-attribution-leads.ts",
     "cleanup:fake-email-attribution-leads": "bunx tsx scripts/cleanup-fake-email-attribution-leads.ts",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "bunx prisma studio",

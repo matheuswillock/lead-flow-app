@@ -76,6 +76,12 @@ export function extractLeadDataFromSnapshot(
         notes.push(`${firstLine}\n${continuation}`)
       }
     }
+    if (question.type === "email" && value !== undefined && value !== null && value !== "") {
+      const emailText = valueText(value).trim().toLowerCase()
+      if (emailText.includes("@") && !native.email) {
+        native.email = emailText
+      }
+    }
   }
 
   const name = typeof native.name === "string" ? native.name.trim() : ""
