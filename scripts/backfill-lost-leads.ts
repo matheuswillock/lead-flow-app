@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
-// @ts-nocheck — one-off investigation script; schema fields may drift
+/* eslint-disable @typescript-eslint/ban-ts-comment -- one-off investigation script; schema fields may drift */
+// @ts-nocheck
 /* eslint-disable no-console */
 /**
  * Script de Backfill: Leads Perdidos
