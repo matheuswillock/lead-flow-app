@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { getEmailService } from "@/lib/services/EmailService";
 import { Output } from "@/lib/output";
 
@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  await connection();
+
   const examples = {
     welcome: {
       type: "welcome",

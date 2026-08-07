@@ -3,7 +3,7 @@ import { DashboardInfosService } from '@/app/api/services/DashboardInfos/Dashboa
 import type { TeamContext } from '@/app/api/infra/data/repositories/metrics/IMetricsRepository';
 import { IMetricsUseCase } from '@/app/api/useCases';
 import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
@@ -18,6 +18,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
+  await connection();
+
   try {
     const { supabaseId: _supabaseId } = await params;
     const teamAccess = await getTeamAccess(request);

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { getMessageMediaUseCase } from "@/app/api/useCases/whatsapp/GetMessageMediaUseCase"
@@ -7,6 +7,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string; messageId: string }> }
 ) {
+  await connection();
+
   const { teamId, messageId } = await params
   const teamAccess = await getTeamAccess(request)
   if ("error" in teamAccess) {

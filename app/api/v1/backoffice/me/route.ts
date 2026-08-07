@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeAccountUseCase } from "@/app/api/useCases/backofficeAccount/BackofficeAccountUseCase"
@@ -6,6 +6,8 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 
 // Deprecated: prefer GET /api/v1/backoffice/current-user
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const result = await getBackofficeAccess(request)
     if (result.error) {

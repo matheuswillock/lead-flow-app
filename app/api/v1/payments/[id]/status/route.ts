@@ -1,5 +1,5 @@
 // app/api/v1/payments/[id]/status/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { asaasFetch, asaasApi } from '@/lib/asaas';
 
 /**
@@ -10,6 +10,8 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  await connection();
+
   try {
     const { id } = await context.params;
 

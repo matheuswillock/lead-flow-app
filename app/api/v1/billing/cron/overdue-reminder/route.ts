@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { overdueReminderUseCase } from "@/app/api/useCases/billing/OverdueReminderUseCase";
@@ -9,6 +9,8 @@ import { overdueReminderUseCase } from "@/app/api/useCases/billing/OverdueRemind
  * Auth: Authorization: Bearer CRON_SECRET
  */
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const authHeader = request.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;

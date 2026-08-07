@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess";
 import { backofficeBotAiMetricsUseCase } from "@/app/api/useCases/backofficeBotAi/BackofficeBotAiUseCases";
@@ -7,6 +7,8 @@ import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-i
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  await connection();
+
   try {
     const accessResult = await getBackofficeAccess(request);
     if (accessResult.error) {

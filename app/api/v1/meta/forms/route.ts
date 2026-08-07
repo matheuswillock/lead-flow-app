@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { metaLeadService } from '@/app/api/services/MetaLeadService';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -8,6 +8,8 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
  * Lista todos os formulários de uma página do Facebook
  */
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const { searchParams } = new URL(request.url);
     const pageId = searchParams.get('pageId');

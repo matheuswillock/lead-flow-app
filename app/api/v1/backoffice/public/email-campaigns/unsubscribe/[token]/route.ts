@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { backofficeEmailCampaignUnsubscribeUseCase } from "@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignUnsubscribeUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { getClientIpFromRequest } from "@/lib/http/get-client-ip"
@@ -11,6 +11,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  await connection();
+
   try {
     const ip = getClientIpFromRequest(request)
     const rateLimit = checkAndRegisterBackofficeUnsubscribeRateLimit(ip)

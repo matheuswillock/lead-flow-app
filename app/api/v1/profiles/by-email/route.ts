@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
@@ -12,6 +12,8 @@ const useCase = new RegisterNewUserProfile();
  * Usado pelo auth callback para evitar criação de usuário órfão no Supabase.
  */
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const email = request.nextUrl.searchParams.get("email");
 

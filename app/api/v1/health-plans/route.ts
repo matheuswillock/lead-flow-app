@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { invalidateHealthPlansCache } from "@/lib/cache/invalidation";
@@ -13,6 +13,8 @@ const createHealthPlanBodySchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const supabaseId = request.headers.get("x-supabase-user-id") || "";
     const output = await healthPlanUseCase.listHealthPlans(supabaseId);

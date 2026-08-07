@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { validateUpdateProfileRequest } from "../DTO/requestToUpdateProfile";
 import { Output } from "@/lib/output";
@@ -18,6 +18,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
+  await connection();
+
   try {
     const { supabaseId } = await params;
 
