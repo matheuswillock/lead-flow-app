@@ -19,10 +19,18 @@ const BATCH_SIZE = 50
 
 /** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
 function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
+  if (statusCode === 403 && isDomainNotVerifiedError(rawMessage)) {
+    return "Domínio de envio não verificado. Verifique os registros DNS nas configurações de e-mail."
+  }
   if (statusCode === 409 && rawMessage.toLowerCase().includes("idempotency")) {
-    return "Falha no envio da campanha. Entre em contato com o suporte se o problema persistir."
+    return "Campanha já foi processada anteriormente. Se o problema persistir, entre em contato com o suporte."
   }
   return rawMessage
+}
+
+function isDomainNotVerifiedError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes("not verified") || (lower.includes("domain") && lower.includes("verif"))
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -105,6 +113,16 @@ export class BackofficeEmailCampaignDispatchService implements IBackofficeEmailC
             )
           )
           result.failed += chunk.length
+
+          if (errorStatusCode === 403 && isDomainNotVerifiedError(batchResult.error.message ?? "")) {
+            const remainingChunks = chunks.slice(chunkIndex + 1)
+            const remainingCount = remainingChunks.reduce((sum, c) => sum + c.length, 0)
+            result.failed += remainingCount
+            console.error(
+              `[BackofficeEmailCampaignDispatchService][dispatchBatch] Circuit breaker: domínio não verificado. Abortando ${remainingCount} destinatários restantes.`
+            )
+            return result
+          }
           continue
         }
 

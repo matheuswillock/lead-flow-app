@@ -1,9 +1,12 @@
 // Webhook URL canônica (sem redirect): https://www.corretorstudio.com/api/webhooks/resend
-import { NextResponse, type NextRequest } from "next/server"
+import { after, NextResponse, type NextRequest } from "next/server"
 import { Webhook } from "svix"
 import { resendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+
+const MAX_CONCURRENT = 5
+let inFlight = 0
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +41,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 })
     }
 
-    await resendWebhookUseCase.handle({ event, svixId })
+    if (inFlight >= MAX_CONCURRENT) {
+      console.info("[ResendWebhookRoute][POST] Semáforo cheio, descartando evento:", event.type)
+      return NextResponse.json({ received: true }, { status: 200 })
+    }
+
+    after(async () => {
+      inFlight++
+      try {
+        await resendWebhookUseCase.handle({ event, svixId })
+      } catch (error) {
+        console.error("[ResendWebhookRoute][POST][after]", error)
+      } finally {
+        inFlight--
+      }
+    })
 
     return NextResponse.json({ received: true }, { status: 200 })
   } catch (error) {
