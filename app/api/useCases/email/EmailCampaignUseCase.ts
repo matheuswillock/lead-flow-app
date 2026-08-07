@@ -2348,6 +2348,43 @@ export class EmailCampaignUseCase {
   async recoverStuckSendingCampaigns(now = new Date()): Promise<number> {
     const threshold = new Date(now.getTime() - STUCK_SENDING_THRESHOLD_MS)
 
+    // Primeiro, recuperar campanhas órfãs (em "sending" sem dispatch)
+    // Essas devem ser revertidas para o estado anterior, não marcadas como failed
+    const orphanCampaigns = await prisma.emailCampaign.findMany({
+      where: {
+        status: "sending",
+        updatedAt: { lt: threshold },
+      },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { dispatches: true } },
+      },
+    })
+
+    const orphanCampaignsWithoutDispatches = orphanCampaigns.filter(
+      (c) => c._count.dispatches === 0
+    )
+
+    if (orphanCampaignsWithoutDispatches.length > 0) {
+      console.error(
+        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] ${orphanCampaignsWithoutDispatches.length} campanha(s) órfã(s) detectada(s) (sem dispatch). Revertendo para 'draft'.`,
+        orphanCampaignsWithoutDispatches.map((c) => ({ id: c.id, name: c.name }))
+      )
+
+      await prisma.emailCampaign.updateMany({
+        where: {
+          id: { in: orphanCampaignsWithoutDispatches.map((c) => c.id) },
+        },
+        data: {
+          status: "draft",
+          errorMessage:
+            "Disparo interrompido antes de criar o registro de envio. A campanha foi revertida para rascunho.",
+        },
+      })
+    }
+
+    // Agora marcar como failed apenas campanhas com dispatch travado
     const [campaigns, dispatches] = await prisma.$transaction([
       prisma.emailCampaign.updateMany({
         where: { status: "sending", updatedAt: { lt: threshold } },
@@ -2365,13 +2402,13 @@ export class EmailCampaignUseCase {
       }),
     ])
 
-    if (campaigns.count > 0) {
+    if (campaigns.count > 0 || orphanCampaignsWithoutDispatches.length > 0) {
       console.error(
-        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] ${campaigns.count} campanha(s) marcada(s) como failed (timeout 30 min); ${dispatches.count} dispatch(es) atualizado(s)`
+        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] Recovery concluído: ${orphanCampaignsWithoutDispatches.length} órfã(s) revertida(s), ${campaigns.count} campanha(s) marcada(s) como failed (timeout 30 min); ${dispatches.count} dispatch(es) atualizado(s)`
       )
     }
 
-    return campaigns.count
+    return campaigns.count + orphanCampaignsWithoutDispatches.length
   }
 
   /**
