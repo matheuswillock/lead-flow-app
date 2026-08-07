@@ -231,7 +231,8 @@
       "app/api/services/teamAutomation/executors/SendEmailExecutor.ts",
       "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
       "app/api/services/teamAutomation/TeamAutomationDispatcherService.ts",
-      "app/api/useCases/leads/LeadUseCase.ts"
+      "app/api/useCases/leads/LeadUseCase.ts",
+      "app/api/lib/cron/cronSlackCallback.ts"
     ],
     "clientApiPathMaskingAllowlist": [
       "app/[supabaseId]/components/LeadDialog.tsx",

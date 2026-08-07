@@ -181,6 +181,14 @@ enum BackofficeWebhookTokenExpiryMode {
   @@map("backoffice_webhook_token_expiry_mode")
 }
 
+enum BackofficeCronStatus {
+  running
+  success
+  failed
+
+  @@map("backoffice_cron_status")
+}
+
 enum FilterPresetScope {
   crm
   performance
@@ -1685,6 +1693,25 @@ model BackofficeWebhookRequestLog {
   @@index([source, createdAt(sort: Desc)], map: "backoffice_webhook_request_logs_source_created_at_idx")
   @@index([statusCode], map: "backoffice_webhook_request_logs_status_code_idx")
   @@map("backoffice_webhook_request_logs")
+}
+
+model BackofficeCronExecution {
+  id           String                  @id @default(cuid())
+  cronKey      String                  @map("cronKey") @db.Text
+  cronPath     String                  @map("cronPath") @db.Text
+  status       BackofficeCronStatus    @default(running)
+  startedAt    DateTime                @default(now()) @map("startedAt") @db.Timestamptz(6)
+  finishedAt   DateTime?               @map("finishedAt") @db.Timestamptz(6)
+  durationMs   Int?                    @map("durationMs")
+  errorSummary String?                 @map("errorSummary") @db.Text
+  errorDetail  String?                 @map("errorDetail") @db.Text
+  metadata     Json?
+  createdAt    DateTime                @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt    DateTime                @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  @@index([cronKey, status], map: "backoffice_cron_executions_cron_key_status_idx")
+  @@index([startedAt], map: "backoffice_cron_executions_started_at_idx")
+  @@map("backoffice_cron_executions")
 }
 
 // -----------------------------

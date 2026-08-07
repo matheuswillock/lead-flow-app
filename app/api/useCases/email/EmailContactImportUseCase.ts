@@ -20,7 +20,7 @@ const DEFAULT_LIST_NAME = "Todos contatos"
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
-const RADAR_SYNC_CONCURRENCY = 5
+const RADAR_SYNC_CONCURRENCY = 2
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
 const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000
 
@@ -572,10 +572,14 @@ export class EmailContactImportUseCase {
                       `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
                       syncResult.errorMessages
                     )
-                  } else if ((syncResult.result as { errors?: number } | null)?.errors) {
-                    console.error(
-                      `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${(syncResult.result as { errors?: number }).errors} erro(s)`
-                    )
+                  } else {
+                    const syncErrors = (syncResult.result as { errors?: string[] } | null)?.errors
+                    if (Array.isArray(syncErrors) && syncErrors.length > 0) {
+                      console.error(
+                        `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${syncErrors.length} erro(s)`,
+                        syncErrors
+                      )
+                    }
                   }
                 })
               )
