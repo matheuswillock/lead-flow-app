@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
@@ -12,6 +12,8 @@ const listSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   console.info("[MultiskillTransferTargetsRoute][GET] iniciado");
 
   try {

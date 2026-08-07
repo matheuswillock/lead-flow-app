@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { searchWhatsAppInboxUseCase } from "@/app/api/useCases/whatsapp/SearchWhatsAppInboxUseCase"
 import { isWhatsAppV3Enabled } from "@/lib/whatsapp/v3-flags"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ teamId: string }> }) {
+  await connection();
+
   const { teamId } = await params
   const teamAccess = await getTeamAccess(request)
   if ("error" in teamAccess) return NextResponse.json(teamAccess.error, { status: teamAccess.status })

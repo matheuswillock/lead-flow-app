@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/utils/getRadarAccess"
 import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
@@ -7,6 +7,8 @@ import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-i
 type RouteParams = { params: Promise<{ segmentId: string }> }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  await connection();
+
   try {
     const radarAccess = await getRadarAccess(request)
     if (radarAccess.error) {

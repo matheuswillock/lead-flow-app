@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
@@ -117,6 +117,8 @@ async function createTeamForAccount(args: {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const supabaseIdHeader = request.headers.get("x-supabase-user-id");
     const supabaseIdLegacy = request.headers.get("supabaseid");

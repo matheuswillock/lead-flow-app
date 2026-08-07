@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getAssociateBackofficeAccess } from "@/app/api/v1/associates/utils/getAssociateBackofficeAccess";
@@ -23,6 +23,8 @@ function parseDate(value?: string): Date | undefined {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const accessResult = await getAssociateBackofficeAccess(request);
     if (accessResult.error) {

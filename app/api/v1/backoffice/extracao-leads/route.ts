@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeLeadExtractionUseCase } from "@/app/api/useCases/backofficeLeadExtraction/BackofficeLeadExtractionUseCase"
@@ -6,6 +6,8 @@ import type { LeadExtractionFilters } from "@/app/api/useCases/backofficeLeadExt
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const result = await getBackofficeAccess(request)
     if (result.error) {

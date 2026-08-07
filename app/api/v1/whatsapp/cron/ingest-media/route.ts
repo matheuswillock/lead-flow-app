@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { processWhatsAppMediaIngestUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppMediaIngestUseCase"
 import { isWhatsAppGloballyEnabled } from "@/lib/whatsapp/whatsapp-globally-enabled"
@@ -15,6 +15,8 @@ async function handle(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   return handle(request)
 }
 

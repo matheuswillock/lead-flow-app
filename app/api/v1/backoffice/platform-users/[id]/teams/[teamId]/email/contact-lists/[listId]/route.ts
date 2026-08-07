@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server"
+import { type NextRequest, connection } from "next/server";
 import { z } from "zod"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
@@ -18,6 +18,8 @@ const updateSchema = z.object({
 type RouteContext = { params: Promise<StudioEmailRouteParams & { listId: string }> }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
+  await connection();
+
   try {
     const all = await params
     const resolved = await resolveStudioEmailActor(request, Promise.resolve(all), {

@@ -1,6 +1,6 @@
 // app/api/v1/subscriptions/[subscriptionId]/notify-payment/route.ts
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from '@/app/api/infra/data/prisma';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -64,6 +64,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ subscriptionId: string }> }
 ) {
+  await connection();
+
   try {
     const { subscriptionId } = await params;
 

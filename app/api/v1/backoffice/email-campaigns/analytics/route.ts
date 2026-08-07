@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
@@ -12,6 +12,8 @@ function getDefaultFrom(): Date {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const result = await getBackofficeAccess(request)
     if (result.error) {

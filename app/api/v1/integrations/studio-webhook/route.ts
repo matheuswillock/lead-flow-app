@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
@@ -41,6 +41,8 @@ const resolveAppUrl = (request: NextRequest): string => {
 };
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const accessResult = await getTeamAccess(request);
     if ("error" in accessResult) {

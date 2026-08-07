@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
@@ -10,6 +10,8 @@ function getDefaultFrom(tz: string): Date {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request)
     if (teamAccess.error) {

@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { backofficeBotNotificationPreferenceUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotNotificationPreferenceUseCase";
@@ -36,6 +36,8 @@ async function resolveProfileId(request: NextRequest): Promise<
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const hmac = request.headers.get("x-studio-bot-signature");
     if (hmac) {

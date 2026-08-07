@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
@@ -9,6 +9,8 @@ type RouteContext = { params: Promise<{ id: string }> }
 const useCase = new EmailTemplateUseCase()
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request)
     if (teamAccess.error) {

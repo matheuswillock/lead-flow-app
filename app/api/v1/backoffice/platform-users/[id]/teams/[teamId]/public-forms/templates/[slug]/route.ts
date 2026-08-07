@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server"
+import { type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { backofficeStudioPublicFormsUseCase } from "@/app/api/useCases/backofficeStudioPublicForms/BackofficeStudioPublicFormsUseCase"
@@ -13,6 +13,8 @@ type RouteContext = {
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
+  await connection();
+
   try {
     const resolvedParams = await params
     const resolved = await resolveStudioPublicFormsActor(

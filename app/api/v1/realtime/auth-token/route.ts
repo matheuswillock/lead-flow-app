@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, connection } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET() {
+  await connection();
+
   try {
     const supabase = await createSupabaseServer();
     if (!supabase) {

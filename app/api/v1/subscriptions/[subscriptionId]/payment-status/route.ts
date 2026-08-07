@@ -1,5 +1,5 @@
 // app/api/v1/subscriptions/[subscriptionId]/payment-status/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 
 /**
  * GET /api/v1/subscriptions/[subscriptionId]/payment-status
@@ -13,6 +13,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ subscriptionId: string }> }
 ) {
+  await connection();
+
   try {
     const { subscriptionId } = await params;
 

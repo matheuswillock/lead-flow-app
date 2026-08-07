@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Output } from "@/lib/output"
 import { isValidTimezone } from "@/lib/dates"
@@ -12,6 +12,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
+  await connection();
+
   try {
     const { supabaseId } = await params
     const profile = await prisma.profile.findUnique({
