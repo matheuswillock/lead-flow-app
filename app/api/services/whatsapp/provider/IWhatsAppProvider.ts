@@ -1,6 +1,6 @@
 // Contrato vendor-neutral do provedor de WhatsApp (WHATSAPP_SPEC.md, Estágio 5 / D4).
 // Camadas de domínio (WhatsAppService, use cases) dependem apenas desta
-// interface; Evolution API é uma implementação em EvolutionWhatsAppProvider.
+// interface; OpenWA Gateway é a implementação em OpenWaWhatsAppProvider.
 // Um segundo provedor (ex.: Meta Cloud API) implementa esta interface sem
 // tocar no domínio.
 

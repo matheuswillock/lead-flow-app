@@ -73,6 +73,7 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
     id: "config-1",
     teamId: TEAM_ID,
     provider: "EVOLUTION",
+    engine: "OPENWA",
     instanceName: "team_instance",
     instanceId: "inst-1",
     phoneNumber: null,

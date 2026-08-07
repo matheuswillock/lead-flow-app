@@ -26,13 +26,9 @@ const resolveProfileForEmail = mock(
     teamId: string
     normalizedEmail: string
     emailValue: string
-    displayName: string | null
-    normalizedName: string | null
-    emailSource: string
-    lastSeenAt?: Date
   }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
     profile: { id: "email-profile-1" },
-    wasExisting: false,
+    wasExisting: true,
   })
 )
 const appendEventIfNewBySourceKey = mock(
@@ -112,7 +108,7 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     }))
     resolveProfileForEmail.mockImplementation(async () => ({
       profile: { id: "email-profile-1" },
-      wasExisting: false,
+      wasExisting: true,
     }))
     appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
     syncLeadExecute.mockImplementation(async () => ({ isValid: true }))
@@ -300,8 +296,8 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
       normalizedEmail: "destinatario@exemplo.com",
       emailValue: "destinatario@exemplo.com",
       displayName: null,
-      normalizedName: null,
-      emailSource: "email_log",
+      normalizedName: expect.any(String),
+      emailSource: "email_campaign_form",
       lastSeenAt: expect.any(Date),
     })
     expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()

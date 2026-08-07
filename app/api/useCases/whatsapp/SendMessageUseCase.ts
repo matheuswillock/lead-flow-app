@@ -136,7 +136,7 @@ class SendMessageUseCase {
       if (!durable.messageId) {
         return new Output(false, [], ["Não foi possível registrar a intenção de envio."], whatsappError("INTERNAL_ERROR"))
       }
-      // A unique command is the claim to call Evolution. If a concurrent
+      // A unique command is the claim to call the provider. If a concurrent
       // request won the transaction, returning its durable state prevents a
       // second delivery for the same clientMessageId. A claimed retry already
       // owns the PENDING command, so createPending returns created:false and

@@ -4,6 +4,7 @@ export interface WhatsAppConfigSelect {
   id: string
   teamId: string
   provider: string
+  engine: string
   instanceName: string
   instanceId: string | null
   phoneNumber: string | null

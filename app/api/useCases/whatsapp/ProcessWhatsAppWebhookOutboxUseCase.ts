@@ -1,10 +1,10 @@
 import { Output } from "@/lib/output"
-import { processEvoWebhookUseCase } from "./ProcessEvoWebhookUseCase"
+import { processOpenWaWebhookUseCase } from "./ProcessOpenWaWebhookUseCase"
 import { whatsAppRepository } from "@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository"
 import { getWhatsAppWebhookRetryAt, WHATSAPP_WEBHOOK_MAX_ATTEMPTS } from "./whatsappWebhookRetry"
 import { emitWhatsAppSloMetric } from "@/lib/whatsapp/slo-metrics"
 
-const OUTBOX_CONCURRENCY = 10
+const OUTBOX_CONCURRENCY = 2
 
 class ProcessWhatsAppWebhookOutboxUseCase {
   async process(eventId: string): Promise<Output> {
@@ -13,11 +13,13 @@ class ProcessWhatsAppWebhookOutboxUseCase {
     if (!event) {
       return new Output(true, [], [], { skipped: true })
     }
-    const output = await processEvoWebhookUseCase.execute({
+
+    const output = await processOpenWaWebhookUseCase.execute({
       teamId: event.teamId,
       configId: event.configId,
       rawEvent: event.payload,
     })
+
     const nextStatus = output.isValid
       ? "PROCESSED"
       : event.attemptCount >= WHATSAPP_WEBHOOK_MAX_ATTEMPTS
@@ -53,7 +55,7 @@ class ProcessWhatsAppWebhookOutboxUseCase {
     const results: Output[] = []
     for (let start = 0; start < eventIds.length; start += OUTBOX_CONCURRENCY) {
       const batch = eventIds.slice(start, start + OUTBOX_CONCURRENCY)
-      results.push(...await Promise.all(batch.map((eventId) => this.process(eventId))))
+      results.push(...await Promise.all(batch.map((id) => this.process(id))))
     }
     const reconciledOutbound = await whatsAppRepository.reconcileStaleOutboundCommands()
     return new Output(true, ["Outbox processada"], [], {
