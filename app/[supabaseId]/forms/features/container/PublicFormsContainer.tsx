@@ -741,13 +741,17 @@ function AnalyticsDialog({
       ),
     [data, publicationId],
   )
-  const count = (type: string) =>
-    events
-      .filter((event) => event.eventType === type)
-      .reduce((sum, event) => sum + event._count._all, 0)
-  const views = count("form_viewed")
-  const starts = count("form_started")
-  const completions = count("form_completed")
+  const views = data?.totals.views ?? 0
+  const starts = data?.totals.starts ?? 0
+  const completions = data?.totals.completions ?? 0
+  const leadCreated = data?.totals.leadCreatedSessions ?? 0
+  const leadAttached = data?.totals.leadAttachedSessions ?? 0
+  const meetings = data?.totals.meetings ?? 0
+  const uniqueLeads = data?.totals.uniqueLeads ?? 0
+  const conversionLabel = views ? `${((completions / views) * 100).toFixed(1)}%` : "0%"
+  const startToCompletionLabel = starts
+    ? `${((completions / starts) * 100).toFixed(1)}%`
+    : "0%"
   const questions = useMemo(
     () =>
       (data?.publications ?? [])
@@ -807,18 +811,29 @@ function AnalyticsDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               {[
                 ["Visualizações", views],
                 ["Inícios", starts],
                 ["Conclusões", completions],
-                ["Conversão", views ? `${((completions / views) * 100).toFixed(1)}%` : "0%"],
-                ["Leads", count("lead_created") + count("lead_attached")],
-                ["Agendamentos", count("meeting_scheduled")],
+                ["Conversão", conversionLabel],
+                ["Leads novos", leadCreated],
+                ["Leads vinculados", leadAttached],
+                ["Agendamentos", meetings],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg border p-4">
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="mt-2 text-2xl font-semibold">{value}</p>
+                  {label === "Conversão" ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Conclusões ÷ visualizações (sessões)
+                    </p>
+                  ) : null}
+                  {label === "Leads vinculados" ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {uniqueLeads} {uniqueLeads === 1 ? "lead único" : "leads únicos"} no CRM
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -842,8 +857,9 @@ function AnalyticsDialog({
                         ["Visualizações", views],
                         ["Inícios", starts],
                         ["Conclusões", completions],
-                        ["Leads", count("lead_created") + count("lead_attached")],
-                        ["Agendamentos", count("meeting_scheduled")],
+                        ["Leads novos", leadCreated],
+                        ["Leads vinculados", leadAttached],
+                        ["Agendamentos", meetings],
                       ].map(([label, value]) => {
                         const numeric = Number(value)
                         const width = views > 0 ? Math.max(4, Math.round((numeric / views) * 100)) : 0
@@ -865,15 +881,14 @@ function AnalyticsDialog({
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div className="rounded-lg border p-3">
                           <p className="text-xs text-muted-foreground">Conversão (conclusão)</p>
-                          <p className="mt-1 text-lg font-semibold">
-                            {views ? `${((completions / views) * 100).toFixed(1)}%` : "0%"}
+                          <p className="mt-1 text-lg font-semibold">{conversionLabel}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Conclusões ÷ visualizações (sessões)
                           </p>
                         </div>
                         <div className="rounded-lg border p-3">
                           <p className="text-xs text-muted-foreground">Início → conclusão</p>
-                          <p className="mt-1 text-lg font-semibold">
-                            {starts ? `${((completions / starts) * 100).toFixed(1)}%` : "0%"}
-                          </p>
+                          <p className="mt-1 text-lg font-semibold">{startToCompletionLabel}</p>
                         </div>
                       </div>
                     </div>
@@ -913,7 +928,8 @@ function AnalyticsDialog({
                   </>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  O resumo considera sessões e eventos anônimos da publicação selecionada.
+                  Contagens por sessão única. Reenvios na mesma visita não somam de novo. O resumo
+                  considera sessões e eventos anônimos da publicação selecionada.
                 </p>
               </TabsContent>
               <TabsContent value="funnel" className="space-y-2">

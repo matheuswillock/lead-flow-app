@@ -43,7 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatIntimezone } from "@/lib/dates"
+
 import {
   buildCampaignWizardSubmitSchema,
   campaignWizardAgendamentoSchema,
@@ -183,9 +183,11 @@ export function CampaignWizardDialog() {
     wizardScheduledAt,
     wizardUniformSchedule,
     wizardScheduleIntervalDays,
+    wizardUniformTemplate,
     wizardSubCampaignSchedules,
     wizardSubCampaignListIds,
     wizardSubCampaignNames,
+    wizardSubCampaignTemplateIds,
     wizardPreviewPlan,
     wizardPreviewLoading,
     wizardLinkedForm,
@@ -206,11 +208,11 @@ export function CampaignWizardDialog() {
     setWizardSaveAsRadarSegment,
     setWizardSaveAsRadarSegmentName,
     setWizardScheduledAt,
-    setWizardUniformSchedule,
-    setWizardScheduleIntervalDays,
+    setWizardUniformTemplate,
     setWizardSubCampaignSchedule,
     setWizardSubCampaignListId,
     setWizardSubCampaignName,
+    setWizardSubCampaignTemplateId,
     handleSaveCampaign,
     refreshWizardPreviewPlan,
     handleMaterializeRadarSegment,
@@ -272,7 +274,6 @@ export function CampaignWizardDialog() {
         hasRadarSegment,
         hasContactLists,
         needsSplit,
-        uniformSchedule: wizardUniformSchedule,
         subCampaignCount: previewSubCount,
       }),
     [
@@ -281,7 +282,6 @@ export function CampaignWizardDialog() {
       hasRadarSegment,
       hasContactLists,
       needsSplit,
-      wizardUniformSchedule,
       previewSubCount,
     ]
   )
@@ -301,14 +301,16 @@ export function CampaignWizardDialog() {
     subCampaignSchedules: wizardSubCampaignSchedules,
   })
 
+  const allSubTemplatesFilled =
+    wizardUniformTemplate ||
+    previewSubCount <= 1 ||
+    Object.keys(wizardSubCampaignTemplateIds).length === previewSubCount
+
   const subcampanhasParseSuccess =
     templateParse.success &&
     agendamentoParse.success &&
-    !(
-      previewSubCount > 1 &&
-      !wizardUniformSchedule &&
-      wizardSubCampaignSchedules.length !== previewSubCount
-    )
+    !(previewSubCount > 1 && wizardSubCampaignSchedules.length !== previewSubCount) &&
+    allSubTemplatesFilled
 
   const lockedTabs = useMemo<WizardTabId[]>(() => {
     const locked: WizardTabId[] = []
@@ -664,59 +666,32 @@ export function CampaignWizardDialog() {
                       </FieldDescription>
                     </Field>
 
-                    {previewSubCount <= 1 || wizardUniformSchedule ? (
-                      <Field>
-                        <DateTimePicker
-                          date={wizardScheduledAt}
-                          onDateChange={setWizardScheduledAt}
-                          label={
-                            needsSplit || previewSubCount > 1
-                              ? "Início do agendamento *"
-                              : "Agendamento (opcional)"
-                          }
-                          disabled={formDisabled}
-                          disablePastDates
-                          tz={tz}
-                        />
-                      </Field>
-                    ) : null}
                     {previewSubCount > 1 ? (
                       <Field>
                         <label className="flex items-center gap-2 text-sm">
                           <Checkbox
-                            checked={wizardUniformSchedule}
-                            onCheckedChange={(value) => setWizardUniformSchedule(value === true)}
+                            checked={wizardUniformTemplate}
+                            onCheckedChange={(value) => setWizardUniformTemplate(value === true)}
                             disabled={formDisabled}
                           />
-                          Mesmo intervalo para todas as sub-campanhas
+                          Mesmo template para todas as sub-campanhas
                         </label>
                         <FieldDescription>
-                          Marque para calcular as datas automaticamente a partir do início e do
-                          intervalo em dias. Desmarque para definir data e hora em cada
-                          sub-campanha na tabela abaixo.
+                          Desmarque para definir um template diferente em cada sub-campanha na
+                          tabela abaixo.
                         </FieldDescription>
                       </Field>
                     ) : null}
-                    {wizardUniformSchedule && previewSubCount > 1 ? (
+                    {previewSubCount <= 1 ? (
                       <Field>
-                        <FieldLabel htmlFor="wizard-interval-days">
-                          Intervalo entre sub-campanhas (dias) *
-                        </FieldLabel>
-                        <Input
-                          id="wizard-interval-days"
-                          type="number"
-                          min={1}
-                          value={wizardScheduleIntervalDays}
-                          onChange={(event) => {
-                            const next = Number.parseInt(event.target.value, 10)
-                            setWizardScheduleIntervalDays(Number.isFinite(next) ? next : 1)
-                          }}
+                        <DateTimePicker
+                          date={wizardScheduledAt}
+                          onDateChange={setWizardScheduledAt}
+                          label="Agendamento (opcional)"
                           disabled={formDisabled}
+                          disablePastDates
+                          tz={tz}
                         />
-                        <FieldDescription>
-                          Cada sub-campanha será agendada {wizardScheduleIntervalDays}{" "}
-                          {wizardScheduleIntervalDays === 1 ? "dia" : "dias"} após a anterior.
-                        </FieldDescription>
                       </Field>
                     ) : null}
 
@@ -736,9 +711,10 @@ export function CampaignWizardDialog() {
                             {wizardListStrategy === "per_list" ? (
                               <TableHead>Lista</TableHead>
                             ) : null}
-                            <TableHead>
-                              {wizardUniformSchedule ? "Agendamento" : "Agendamento *"}
-                            </TableHead>
+                            {!wizardUniformTemplate ? (
+                              <TableHead>Template *</TableHead>
+                            ) : null}
+                            <TableHead>Agendamento *</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -794,31 +770,43 @@ export function CampaignWizardDialog() {
                                   </Select>
                                 </TableCell>
                               ) : null}
-                              <TableCell>
-                                {!wizardUniformSchedule ? (
-                                  <DateTimePicker
-                                    date={
-                                      wizardSubCampaignSchedules.find(
-                                        (entry) => entry.index === sub.index
-                                      )?.scheduledAt
-                                    }
-                                    onDateChange={(date) =>
-                                      setWizardSubCampaignSchedule(sub.index, date)
-                                    }
-                                    label=""
+                              {!wizardUniformTemplate ? (
+                                <TableCell className="max-w-52">
+                                  <Select
+                                    value={wizardSubCampaignTemplateIds[sub.index] ?? ""}
+                                    onValueChange={(v) => setWizardSubCampaignTemplateId(sub.index, v)}
                                     disabled={formDisabled}
-                                    disablePastDates
-                                    tz={tz}
-                                  />
-                                ) : sub.scheduledAt ? (
-                                  formatIntimezone(
-                                    new Date(sub.scheduledAt),
-                                    "dd/MM/yyyy HH:mm",
-                                    tz
-                                  )
-                                ) : (
-                                  "—"
-                                )}
+                                  >
+                                    <SelectTrigger className="w-44">
+                                      <SelectValue placeholder="Selecione..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {templates.map((template) => (
+                                          <SelectItem key={template.id} value={template.id}>
+                                            {template.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                              ) : null}
+                              <TableCell>
+                                <DateTimePicker
+                                  date={
+                                    wizardSubCampaignSchedules.find(
+                                      (entry) => entry.index === sub.index
+                                    )?.scheduledAt
+                                  }
+                                  onDateChange={(date) =>
+                                    setWizardSubCampaignSchedule(sub.index, date)
+                                  }
+                                  label=""
+                                  disabled={formDisabled}
+                                  disablePastDates
+                                  tz={tz}
+                                />
                               </TableCell>
                             </TableRow>
                             )
@@ -830,9 +818,7 @@ export function CampaignWizardDialog() {
                         Nenhuma sub-campanha necessária para a configuração atual.
                       </p>
                     )}
-                    {!wizardUniformSchedule &&
-                    wizardPreviewPlan &&
-                    wizardPreviewPlan.subCampaigns.length > 1 ? (
+                    {wizardPreviewPlan && wizardPreviewPlan.subCampaigns.length > 1 ? (
                       <FieldDescription>
                         Informe data e hora de envio para cada sub-campanha. Todas as datas são
                         obrigatórias.

@@ -69,7 +69,6 @@ export function buildCampaignWizardSubmitSchema(params: {
   hasRadarSegment: boolean
   hasContactLists: boolean
   needsSplit: boolean
-  uniformSchedule: boolean
   subCampaignCount: number
 }) {
   const radarOnlyExceedsLimit =
@@ -150,35 +149,6 @@ export function buildCampaignWizardSubmitSchema(params: {
             code: z.ZodIssueCode.custom,
             message: "Data de agendamento deve ser no futuro",
             path: ["scheduledAt"],
-          })
-        }
-        return
-      }
-
-      if (data.uniformSchedule) {
-        if (!data.scheduledAt) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Agendamento inicial é obrigatório para campanhas com sub-campanhas",
-            path: ["scheduledAt"],
-          })
-        } else if (data.scheduledAt <= new Date()) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Data de agendamento deve ser no futuro",
-            path: ["scheduledAt"],
-          })
-        }
-
-        if (
-          data.scheduleIntervalDays == null ||
-          !Number.isInteger(data.scheduleIntervalDays) ||
-          data.scheduleIntervalDays < 1
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Informe o intervalo em dias (mínimo 1)",
-            path: ["scheduleIntervalDays"],
           })
         }
         return

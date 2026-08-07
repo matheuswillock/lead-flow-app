@@ -31,7 +31,7 @@ describe("buildLeadSyncAlerts", () => {
       extracted({ name: "Maria", phone: "(11) 99999-9999", normalizedPhone: "11999999999" }),
       undefined,
     )
-    expect(alerts).toEqual(["E-mail ausente"])
+    expect(alerts).toEqual(["E-mail não informado (lead criado com telefone)"])
   })
 
   it("exige telefone ou e-mail para atualizar lead existente", () => {

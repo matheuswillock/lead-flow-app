@@ -2,8 +2,7 @@ import type { PublicFormMetricType, Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
-import { parseRecipientEmailFromOrigin } from "@/lib/public-forms/email-campaign-attribution"
-import { normalizeRadarEmail } from "@/lib/radar/normalization"
+import { normalizeRadarEmail, normalizeRadarName } from "@/lib/radar/normalization"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
   mapPublicFormMetricToRadarEventType,
@@ -75,6 +74,13 @@ class SyncPublicFormMetricToRadarUseCase {
     }
   }
 
+  private extractRecipientEmail(origin: unknown): string | null {
+    if (!origin || typeof origin !== "object") return null
+    const raw = (origin as Record<string, unknown>).recipientEmail
+    if (typeof raw !== "string" || !raw.trim()) return null
+    return raw.trim().toLowerCase()
+  }
+
   private async resolveProfileId(input: SyncPublicFormMetricToRadarInput): Promise<string | null> {
     const leadId = input.leadId?.trim() || null
     // Com atribuição e-mail→form, qualquer métrica com leadId conhecido usa o mesmo perfil Radar.
@@ -87,13 +93,7 @@ class SyncPublicFormMetricToRadarUseCase {
       if (identity) return identity.profileId
     }
 
-    // E1: form_viewed/started sem Lead — resolve pelo destinatário do EmailLog
-    // (mesmo caminho de syncFromEmail / handleEmailWebhookEvent desde D4).
-    const recipientEmail = parseRecipientEmailFromOrigin(
-      input.origin && typeof input.origin === "object" && input.origin !== null
-        ? (input.origin as Record<string, unknown>)
-        : null
-    )
+    const recipientEmail = this.extractRecipientEmail(input.origin)
     if (recipientEmail) {
       const normalizedEmail = normalizeRadarEmail(recipientEmail)
       if (normalizedEmail) {
@@ -102,8 +102,8 @@ class SyncPublicFormMetricToRadarUseCase {
           normalizedEmail,
           emailValue: recipientEmail,
           displayName: null,
-          normalizedName: null,
-          emailSource: "email_log",
+          normalizedName: normalizeRadarName(recipientEmail.split("@")[0]),
+          emailSource: "email_campaign_form",
           lastSeenAt: input.occurredAt ?? new Date(),
         })
         return profile.id

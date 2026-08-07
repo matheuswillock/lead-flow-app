@@ -15,6 +15,7 @@ export type CampaignWritePayload = {
   scheduleIntervalDays?: number
   uniformSchedule?: boolean
   subCampaignSchedules?: Array<{ index: number; scheduledAt: string }>
+  subCampaignTemplates?: Array<{ index: number; templateId: string }>
 }
 
 export interface ICampanhasService {

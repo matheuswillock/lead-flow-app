@@ -58,25 +58,28 @@ const transactionMock = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
   return fn(tx)
 })
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    $transaction: transactionMock,
-    emailImportJob: {
-      update: jobUpdateMock,
-      updateMany: updateManyMock,
-    },
-    emailContactList: {
-      findFirst: emailContactListFindFirstMock,
-      update: emailContactListUpdateMock,
-      create: mock(async () => ({ id: "default-list" })),
-    },
-    emailContact: {
-      findMany: emailContactFindManyMock,
-      createMany: emailContactCreateManyMock,
-      update: emailContactUpdateMock,
-      count: emailContactCountMock,
-    },
+const prismaStub = {
+  $transaction: transactionMock,
+  emailImportJob: {
+    update: jobUpdateMock,
+    updateMany: updateManyMock,
   },
+  emailContactList: {
+    findFirst: emailContactListFindFirstMock,
+    update: emailContactListUpdateMock,
+    create: mock(async () => ({ id: "default-list" })),
+  },
+  emailContact: {
+    findMany: emailContactFindManyMock,
+    createMany: emailContactCreateManyMock,
+    update: emailContactUpdateMock,
+    count: emailContactCountMock,
+  },
+}
+
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: prismaStub,
+  getImportCronPrisma: () => prismaStub,
 }))
 
 mock.module("@/app/api/services/notifications/NotificationService", () => ({

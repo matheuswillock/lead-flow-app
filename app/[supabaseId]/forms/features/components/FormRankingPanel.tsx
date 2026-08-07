@@ -23,7 +23,8 @@ export function FormRankingPanel({
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Top 3 formulários</h2>
           <p className="text-xs text-muted-foreground">
-            Ranking por taxa de conversão (conclusões ÷ visualizações) nos últimos 30 dias.
+            Ranking por taxa de conversão (conclusões ÷ visualizações, sessões únicas) nos últimos
+            30 dias.
           </p>
         </div>
       </div>
