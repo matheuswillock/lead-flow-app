@@ -34,7 +34,13 @@ export interface ICampanhasService {
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   update(supabaseId: string, teamId: string | null | undefined, id: string, data: Partial<CampaignWritePayload> & {
-    subCampaignUpdates?: Array<{ id: string; name?: string; scheduledAt?: string | null }>
+    subCampaignUpdates?: Array<{
+      id: string
+      name?: string
+      scheduledAt?: string | null
+      contactListId?: string
+      templateId?: string
+    }>
   }): Promise<Campaign>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
@@ -141,7 +147,13 @@ export class CampanhasService implements ICampanhasService {
   }
 
   async update(supabaseId: string, teamId: string | null | undefined, id: string, data: Partial<CampaignWritePayload> & {
-    subCampaignUpdates?: Array<{ id: string; name?: string; scheduledAt?: string | null }>
+    subCampaignUpdates?: Array<{
+      id: string
+      name?: string
+      scheduledAt?: string | null
+      contactListId?: string
+      templateId?: string
+    }>
   }) {
     const res = await fetch(`${this.baseUrl}/campaigns/${id}`, {
       method: 'PATCH',
