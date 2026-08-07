@@ -168,7 +168,7 @@ async function main() {
       )
   `
 
-  console.info(`[audit-fake-email-attribution-leads] form_viewed (7d ou --since): ${recentFormViewed}`)
+  console.info(`[audit-fake-email-attribution-leads] form_viewed (7d ou --day): ${recentFormViewed}`)
   console.info(
     `[audit-fake-email-attribution-leads] form_started sem lead CRM: ${Number(formStartedWithoutLead[0]?.count ?? 0)}`,
   )

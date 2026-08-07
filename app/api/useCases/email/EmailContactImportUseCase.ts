@@ -527,6 +527,8 @@ export class EmailContactImportUseCase {
             // D6: sync síncrono (não fire-and-forget) — "já deve constar na
             // lista de segmentos assim que for importado" exige que o job só
             // marque o import como concluído depois que os perfis existirem.
+            // I3: processedRows só avança após o sync Radar do lote (ou skip
+            // quando feature off) — timeout mid-sync reprocessa o lote inteiro.
             const batchContacts = await this.db.emailContact.findMany({
               where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
               select: { id: true },
