@@ -87,8 +87,6 @@
     "reprocess:public-form-submissions": "bunx tsx scripts/reprocess-public-form-submissions.ts",
     "recover:campaign-attribution-leads": "bunx tsx scripts/recover-campaign-attribution-leads.ts",
     "cleanup:fake-email-attribution-leads": "bunx tsx scripts/cleanup-fake-email-attribution-leads.ts",
-    "reprocess:public-form-submissions": "bunx tsx scripts/reprocess-public-form-submissions.ts",
-    "recover:campaign-attribution-leads": "bunx tsx scripts/recover-campaign-attribution-leads.ts",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "bunx prisma studio",
     "prisma:generate": "bunx prisma generate",
