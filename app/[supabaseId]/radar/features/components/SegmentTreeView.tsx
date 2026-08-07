@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, Mail, GitBranch } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { RadarSegmentCard } from "./RadarSegmentCard"
@@ -9,8 +10,7 @@ import type { RadarCustomSegmentListItem } from "../context/RadarTypes"
 import type { RadarExportFormat } from "@/lib/radar/exportRadarProfiles"
 
 type SegmentNode = RadarCustomSegmentListItem & {
-  children?: SegmentNode[]
-  sourceType?: "campaign" | "derived" | "manual"
+  childNodes: SegmentNode[]
 }
 
 type SegmentTreeViewProps = {
@@ -22,6 +22,29 @@ type SegmentTreeViewProps = {
   onEdit: (segment: RadarCustomSegmentListItem) => void
   onDelete: (segment: RadarCustomSegmentListItem) => void
   onGenerateChild: (segment: RadarCustomSegmentListItem) => void
+}
+
+function buildSegmentTree(segments: RadarCustomSegmentListItem[]): SegmentNode[] {
+  const byId = new Map<string, SegmentNode>()
+  for (const segment of segments) {
+    byId.set(segment.id, { ...segment, childNodes: [] })
+  }
+
+  const roots: SegmentNode[] = []
+  for (const node of byId.values()) {
+    if (node.parentId && byId.has(node.parentId)) {
+      byId.get(node.parentId)!.childNodes.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  const sortNodes = (nodes: SegmentNode[]) => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    for (const node of nodes) sortNodes(node.childNodes)
+  }
+  sortNodes(roots)
+  return roots
 }
 
 function SegmentTreeNode({
@@ -46,10 +69,10 @@ function SegmentTreeNode({
   onGenerateChild: (segment: RadarCustomSegmentListItem) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
-  const hasChildren = node.children && node.children.length > 0
+  const hasChildren = node.childNodes.length > 0
 
   return (
-    <div className={cn("flex flex-col gap-2", level > 0 && "ml-8")}>
+    <div className={cn("flex flex-col gap-2", level > 0 && "ml-6 border-l border-border pl-4")}>
       <div className="flex items-start gap-2">
         {hasChildren ? (
           <Button
@@ -57,26 +80,25 @@ function SegmentTreeNode({
             size="icon"
             className="mt-4 size-6"
             onClick={() => setIsExpanded(!isExpanded)}
+            aria-label={isExpanded ? "Recolher filhos" : "Expandir filhos"}
           >
-            {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+            {isExpanded ? <ChevronDown /> : <ChevronRight />}
           </Button>
         ) : (
           <div className="mt-4 size-6" />
         )}
-        <div className="flex-1">
-          <div className="mb-1 flex items-center gap-1.5">
-            {node.sourceType === "campaign" ? (
-              <div className="flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-700 dark:text-blue-300">
-                <Mail className="size-3" />
-                <span>Campanha</span>
-              </div>
-            ) : node.sourceType === "derived" ? (
-              <div className="flex items-center gap-1 rounded-md bg-purple-500/10 px-1.5 py-0.5 text-xs text-purple-700 dark:text-purple-300">
-                <GitBranch className="size-3" />
-                <span>Derivado</span>
-              </div>
-            ) : null}
-          </div>
+        <div className="flex flex-1 flex-col gap-2">
+          {node.sourceType === "campaign" ? (
+            <Badge variant="secondary" className="w-fit gap-1">
+              <Mail data-icon="inline-start" />
+              Campanha
+            </Badge>
+          ) : node.sourceType === "child" ? (
+            <Badge variant="secondary" className="w-fit gap-1">
+              <GitBranch data-icon="inline-start" />
+              Derivado
+            </Badge>
+          ) : null}
           <RadarSegmentCard
             name={node.name}
             description={node.description}
@@ -95,7 +117,7 @@ function SegmentTreeNode({
       </div>
       {hasChildren && isExpanded ? (
         <div className="flex flex-col gap-2">
-          {node.children?.map((child) => (
+          {node.childNodes.map((child) => (
             <SegmentTreeNode
               key={child.id}
               node={child}
@@ -125,19 +147,11 @@ export function SegmentTreeView({
   onDelete,
   onGenerateChild,
 }: SegmentTreeViewProps) {
-  const segmentNodes: SegmentNode[] = segments.map((segment) => ({
-    ...segment,
-    sourceType: segment.description?.toLowerCase().includes("campanha")
-      ? "campaign"
-      : segment.description?.toLowerCase().includes("derivado") || segment.description?.toLowerCase().includes("filho")
-        ? "derived"
-        : "manual",
-    children: [],
-  }))
+  const roots = useMemo(() => buildSegmentTree(segments), [segments])
 
   return (
     <div className="flex flex-col gap-4">
-      {segmentNodes.map((node) => (
+      {roots.map((node) => (
         <SegmentTreeNode
           key={node.id}
           node={node}

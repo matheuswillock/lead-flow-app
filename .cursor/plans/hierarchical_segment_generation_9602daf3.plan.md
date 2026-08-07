@@ -4,40 +4,40 @@ overview: Implement hierarchical segment generation system allowing campaigns an
 todos:
   - id: db-migration
     content: Create and apply database migration adding parentId, sourceType, sourceCampaignId to TeamRadarSegment
-    status: in_progress
+    status: completed
   - id: prisma-schema
     content: Update Prisma schema with hierarchy relations and SegmentSourceType enum
-    status: in_progress
+    status: completed
   - id: campaign-usecase
     content: Implement CreateSegmentFromCampaignUseCase with event condition merging
-    status: pending
+    status: completed
   - id: child-usecase
     content: Implement CreateChildSegmentUseCase with parent condition inheritance
-    status: pending
+    status: completed
   - id: preview-endpoint
     content: Enhance preview endpoint to support parentSegmentId and campaignId base
-    status: pending
+    status: completed
   - id: hierarchy-service
     content: Add listWithHierarchy method to TeamRadarSegmentService
-    status: pending
+    status: completed
   - id: generate-dialog
     content: Create GenerateSegmentDialog component with condition builder and preview
-    status: pending
+    status: completed
   - id: campaign-integration
     content: Add generate segment button to campaign detail page
-    status: pending
+    status: completed
   - id: segment-integration
     content: Add generate child segment action to segment cards
-    status: pending
+    status: completed
   - id: hierarchical-ui
     content: Implement tree view for segment list with expand/collapse
-    status: pending
+    status: completed
   - id: api-routes
     content: Create API routes for /from-campaign and /child segment endpoints
-    status: pending
+    status: completed
   - id: testing
     content: Write unit and integration tests for segment generation flows
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -49,11 +49,11 @@ Allow any campaign or segment to generate child segments by adding additional fi
 
 ## Current State
 
-- **Segments**: [`TeamRadarSegment`](prisma/schema.prisma) with flat `rulesJson` DSL (no hierarchy)
+- **Segments**: `[TeamRadarSegment](prisma/schema.prisma)` with flat `rulesJson` DSL (no hierarchy)
 - **Campaigns**: Use segments via `radarSegmentSlug` (`system`, `custom:{id}`, `campaign:{id}`)
 - **Virtual segments**: `campaign:{id}` queries profiles with campaign events dynamically
-- **Condition DSL**: [`lib/radar/segment-dsl.ts`](lib/radar/segment-dsl.ts) - max 10 conditions, `match: all|any`
-- **UI**: [`RadarSegmentBuilderDialog`](app/(app)/radar/container/components/RadarSegmentBuilderDialog.tsx) for flat segment creation
+- **Condition DSL**: `[lib/radar/segment-dsl.ts](lib/radar/segment-dsl.ts)` - max 10 conditions, `match: all|any`
+- **UI**: `[RadarSegmentBuilderDialog](app/(app)`/radar/container/components/RadarSegmentBuilderDialog.tsx) for flat segment creation
 
 ```mermaid
 graph TD
@@ -68,6 +68,8 @@ graph TD
     style Segment fill:#fff4e1
     style Profiles fill:#e8f5e9
 ```
+
+
 
 ## Target State
 
@@ -90,6 +92,8 @@ graph TD
     style ChildSegment2 fill:#ffe1f5
     style GrandchildSegment fill:#f5e1ff
 ```
+
+
 
 ## Database Schema Changes
 
@@ -121,7 +125,7 @@ COMMENT ON COLUMN corretor_studio_radar_segments."sourceType" IS 'manual | campa
 
 ### Update Prisma Schema
 
-**File**: [`prisma/schema.prisma`](prisma/schema.prisma)
+**File**: `[prisma/schema.prisma](prisma/schema.prisma)`
 
 Add to `TeamRadarSegment`:
 
@@ -778,24 +782,28 @@ export async function POST(req: NextRequest) {
 
 ### New Condition Types
 
-Add to [`lib/radar/segment-dsl.ts`](lib/radar/segment-dsl.ts) and [`RadarSegmentQueryService`](app/api/services/radar/RadarSegmentQueryService.ts):
+Add to `[lib/radar/segment-dsl.ts](lib/radar/segment-dsl.ts)` and `[RadarSegmentQueryService](app/api/services/radar/RadarSegmentQueryService.ts)`:
 
 1. **Profile name filter**:
+
 ```typescript
 { kind: 'profile_field', field: 'name', operator: 'contains', value: 'Silva' }
 ```
 
-2. **Phone filter**:
+1. **Phone filter**:
+
 ```typescript
 { kind: 'profile_field', field: 'phone', operator: 'is_empty' | 'not_empty' }
 ```
 
-3. **Engagement score range**:
+1. **Engagement score range**:
+
 ```typescript
 { kind: 'engagement_score', operator: 'between', min: 60, max: 100 }
 ```
 
-4. **Source type filter**:
+1. **Source type filter**:
+
 ```typescript
 { kind: 'source_type', sourceTypes: ['crm_lead', 'email_contact'] }
 ```
@@ -818,10 +826,10 @@ Add to [`lib/radar/segment-dsl.ts`](lib/radar/segment-dsl.ts) and [`RadarSegment
 2. **Integration tests**: API endpoints with mock data
 3. **E2E tests**: Full flow from campaign/segment detail to child segment creation
 4. **Edge cases**:
-   - Maximum depth (prevent infinite nesting)
-   - Circular references (A → B → A)
-   - Condition limit overflow (parent + child > 10)
-   - Orphan segments (parent deleted)
+  - Maximum depth (prevent infinite nesting)
+  - Circular references (A → B → A)
+  - Condition limit overflow (parent + child > 10)
+  - Orphan segments (parent deleted)
 
 ## Deployment Plan
 
@@ -835,6 +843,7 @@ Add to [`lib/radar/segment-dsl.ts`](lib/radar/segment-dsl.ts) and [`RadarSegment
 ## Validation
 
 After implementation, verify:
+
 - [ ] Can create segment from campaign with additional filters
 - [ ] Can create child segment from existing segment
 - [ ] Preview shows correct count and profiles

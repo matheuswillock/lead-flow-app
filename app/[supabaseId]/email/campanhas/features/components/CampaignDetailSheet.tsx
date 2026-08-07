@@ -868,17 +868,7 @@ export function CampaignDetailSheet({
                 onOpenChange={setGenerateSegmentOpen}
                 sourceType="campaign"
                 sourceName={detailCampaign.name}
-                initialRules={{
-                  match: "all",
-                  conditions: [
-                    {
-                      kind: "event",
-                      eventType: "email.sent",
-                      occurrence: "occurred",
-                      campaignId: detailCampaign.id,
-                    },
-                  ],
-                }}
+                campaignId={detailCampaign.id}
               />
           </div>
         ) : null}

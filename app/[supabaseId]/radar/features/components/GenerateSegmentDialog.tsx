@@ -43,7 +43,7 @@ import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
 import { LEAD_FIELD_CATALOG, PORTFOLIO_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useParams } from "next/navigation"
-import { useRadarContext } from "../context/RadarContext"
+import { toast } from "sonner"
 import type {
   RadarLeadCustomFieldCondition,
   RadarLeadFieldCondition,
@@ -726,7 +726,10 @@ type GenerateSegmentDialogProps = {
   onOpenChange: (open: boolean) => void
   sourceType: "campaign" | "segment"
   sourceName: string
+  campaignId?: string
+  parentSegmentId?: string
   initialRules?: RadarSegmentRules
+  onSuccess?: () => void | Promise<void>
 }
 
 export function GenerateSegmentDialog({
@@ -734,12 +737,11 @@ export function GenerateSegmentDialog({
   onOpenChange,
   sourceType,
   sourceName,
+  campaignId,
+  parentSegmentId,
   initialRules,
+  onSuccess,
 }: GenerateSegmentDialogProps) {
-  const {
-    createCustomSegment,
-    mutationLock,
-  } = useRadarContext()
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const { activeTeamId } = useTeamContext()
@@ -751,6 +753,7 @@ export function GenerateSegmentDialog({
   const [previewCount, setPreviewCount] = useState<number | null>(null)
   const [previewProfiles, setPreviewProfiles] = useState<RadarProfileListItem[]>([])
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [mutationLock, setMutationLock] = useState(false)
   const keyCounterRef = useRef(0)
   const [conditionKeys, setConditionKeys] = useState<string[]>(() =>
     (initialRules?.conditions ?? [defaultConditionForKind("profile_field")]).map(() => `cond-${keyCounterRef.current++}`)
@@ -765,6 +768,7 @@ export function GenerateSegmentDialog({
     setConditionKeys((initialRules?.conditions ?? [defaultConditionForKind("profile_field")]).map(() => `cond-${keyCounterRef.current++}`))
     setPreviewCount(null)
     setPreviewProfiles([])
+    setMutationLock(false)
   }, [open, initialRules])
 
   const updateCondition = (index: number, next: RadarSegmentCondition) => {
@@ -792,7 +796,7 @@ export function GenerateSegmentDialog({
   }
 
   useEffect(() => {
-    if (!open || !isRulesValidForSave(rules)) return
+    if (!open || !isRulesValidForSave(rules) || !activeTeamId) return
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
@@ -800,17 +804,29 @@ export function GenerateSegmentDialog({
 
     debounceTimerRef.current = setTimeout(() => {
       setIsLoadingPreview(true)
-      Promise.all([
-        radarFrontendService.previewCustomSegmentCount(supabaseId, activeTeamId ?? "", rules),
-        radarFrontendService.listProfiles(supabaseId, activeTeamId ?? "", {
-          page: 1,
-          pageSize: 10,
-          segment: undefined,
-        }),
-      ])
-        .then(([countResult, profilesResult]) => {
-          setPreviewCount(countResult.count)
-          setPreviewProfiles(profilesResult.items.slice(0, 10))
+      radarFrontendService
+        .previewSegmentWithHierarchy(supabaseId, activeTeamId, {
+          rules,
+          ...(sourceType === "campaign" && campaignId ? { campaignId } : {}),
+          ...(sourceType === "segment" && parentSegmentId ? { parentSegmentId } : {}),
+        })
+        .then((result) => {
+          setPreviewCount(result.count)
+          setPreviewProfiles(
+            (result.previewProfiles ?? []).map((profile) => ({
+              id: profile.id,
+              displayName: profile.displayName,
+              displayPhone: profile.displayPhone,
+              primaryEmail: profile.primaryEmail,
+              lastSeenAt: profile.lastSeenAt,
+              engagementScore: profile.engagementScore,
+              engagementBand: profile.engagementBand,
+              primarySegment: profile.primarySegment,
+              primarySegmentName: profile.primarySegmentName,
+              consents: profile.consents,
+              sourceLinks: profile.sourceLinks,
+            }))
+          )
         })
         .catch((error) => {
           console.error("[GenerateSegmentDialog] Preview error:", error)
@@ -827,15 +843,48 @@ export function GenerateSegmentDialog({
         clearTimeout(debounceTimerRef.current)
       }
     }
-  }, [open, rules, supabaseId, activeTeamId])
+  }, [open, rules, supabaseId, activeTeamId, sourceType, campaignId, parentSegmentId])
 
   const handleSubmit = async () => {
-    const input = { name, description: description || null, rules }
-    const ok = await createCustomSegment(input)
-    if (ok) onOpenChange(false)
+    if (!activeTeamId || mutationLock) return
+    if (sourceType === "campaign" && !campaignId) return
+    if (sourceType === "segment" && !parentSegmentId) return
+
+    setMutationLock(true)
+    try {
+      if (sourceType === "campaign" && campaignId) {
+        await radarFrontendService.createSegmentFromCampaign(supabaseId, activeTeamId, {
+          campaignId,
+          name: name.trim(),
+          description: description.trim() || null,
+          additionalRules: rules,
+        })
+      } else if (sourceType === "segment" && parentSegmentId) {
+        await radarFrontendService.createChildSegment(supabaseId, activeTeamId, {
+          parentSegmentId,
+          name: name.trim(),
+          description: description.trim() || null,
+          childRules: rules,
+        })
+      }
+      toast.success("Segmento criado com sucesso")
+      await onSuccess?.()
+      onOpenChange(false)
+    } catch (error) {
+      console.error("[GenerateSegmentDialog][handleSubmit]", error)
+      toast.error(error instanceof Error ? error.message : "Não foi possível criar o segmento.")
+    } finally {
+      setMutationLock(false)
+    }
   }
 
-  const canSave = name.trim().length > 0 && isRulesValidForSave(rules) && previewCount !== null && previewCount > 0 && !mutationLock
+  const canSave =
+    name.trim().length > 0 &&
+    isRulesValidForSave(rules) &&
+    previewCount !== null &&
+    previewCount > 0 &&
+    !mutationLock &&
+    (sourceType === "campaign" ? Boolean(campaignId) : Boolean(parentSegmentId))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -866,7 +915,7 @@ export function GenerateSegmentDialog({
           <Separator />
 
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">Condições</p>
+            <p className="text-sm font-medium">Condições adicionais</p>
             <ToggleGroup
               type="single"
               value={rules.match}
