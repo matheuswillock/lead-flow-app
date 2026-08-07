@@ -32,6 +32,15 @@ export interface PublicFormAnalytics {
     questionId: string | null
     _count: { _all: number }
   }>
+  totals: {
+    views: number
+    starts: number
+    completions: number
+    leadCreatedSessions: number
+    leadAttachedSessions: number
+    meetings: number
+    uniqueLeads: number
+  }
   origins: Array<{ source: string; sessions: number }>
 }
 

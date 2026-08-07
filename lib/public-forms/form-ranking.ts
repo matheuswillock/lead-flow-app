@@ -20,7 +20,7 @@ function hasEnoughData(row: FormConversionTotalsInput): boolean {
 }
 
 /**
- * Rankeia formulários por taxa de conversão (form_completed / form_viewed).
+ * Rankeia formulários por taxa de conversão (sessões form_completed / form_viewed).
  * Empate: maior número de conclusões, depois nome.
  * Sem visualizações suficientes: excluído.
  */

@@ -466,6 +466,12 @@ export class PublicFormsService implements IPublicFormsService {
       ...(from || to ? { createdAt: { gte: from, lte: to } } : {}),
     }
     const events = await publicFormsRepository.groupMetricEvents(id, where)
+    const sessionsByType = await publicFormsRepository.countDistinctSessionsByEventType(id, where)
+    const uniqueLeads = await publicFormsRepository.countDistinctCompletedLeads(id, {
+      publicationId,
+      from,
+      to,
+    })
     const originEvents = await publicFormsRepository.listFormViewOrigins({ formId: id, ...where })
     const origins = new Map<string, Set<string>>()
     for (const event of originEvents) {
@@ -479,6 +485,7 @@ export class PublicFormsService implements IPublicFormsService {
       sessions.add(event.visitorSessionId)
       origins.set(label, sessions)
     }
+
     return {
       publications: publications.map((publication) => {
         const snapshot = publication.snapshot as unknown as PublicFormSnapshot
@@ -495,6 +502,15 @@ export class PublicFormsService implements IPublicFormsService {
         }
       }),
       events,
+      totals: {
+        views: sessionsByType.form_viewed ?? 0,
+        starts: sessionsByType.form_started ?? 0,
+        completions: sessionsByType.form_completed ?? 0,
+        leadCreatedSessions: sessionsByType.lead_created ?? 0,
+        leadAttachedSessions: sessionsByType.lead_attached ?? 0,
+        meetings: sessionsByType.meeting_scheduled ?? 0,
+        uniqueLeads,
+      },
       origins: Array.from(origins, ([source, sessions]) => ({
         source,
         sessions: sessions.size,
