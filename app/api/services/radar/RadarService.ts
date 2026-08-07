@@ -977,6 +977,24 @@ export class RadarService {
   }
 
   async countSegments(scope: RadarTeamScope): Promise<SegmentCount[]> {
+    // Fase 2: usa agregação SQL em vez de varredura em memória
+    const sqlCounts = await this.repo.countFixedSegmentsSQL(
+      scope.teamId,
+      RECENT_CAMPAIGN_WINDOW_DAYS
+    )
+
+    return (Object.keys(SEGMENT_META) as RadarSegmentSlug[]).map((slug) => ({
+      slug,
+      ...SEGMENT_META[slug],
+      count: sqlCounts.get(slug) ?? 0,
+    }))
+  }
+
+  /**
+   * Contagem legada em memória — mantida temporariamente para validação
+   * comparativa. Remove após validar equivalência dos números em produção.
+   */
+  async countSegmentsLegacy(scope: RadarTeamScope): Promise<SegmentCount[]> {
     const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
 
     const rawLeadStatuses = await this.repo.findLeadStatuses(
@@ -1043,10 +1061,10 @@ export class RadarService {
     return this.repo.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
-  async getMetrics(scope: RadarTeamScope) {
+  async getMetrics(scope: RadarTeamScope, precomputedSegments?: SegmentCount[]) {
     const [totalProfiles, segments] = await Promise.all([
       this.repo.countProfiles(scope),
-      this.countSegments(scope),
+      precomputedSegments ? Promise.resolve(precomputedSegments) : this.countSegments(scope),
     ])
 
     const marketable = segments.find((s) => s.slug === "email_marketable")?.count ?? 0

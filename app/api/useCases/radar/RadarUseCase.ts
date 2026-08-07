@@ -1,4 +1,6 @@
 import { Output } from "@/lib/output"
+import { cacheLife, cacheTag } from "next/cache"
+import { cacheTags } from "@/lib/cache/cacheTags"
 import { DEFAULT_TZ } from "@/lib/dates/DEFAULT_TZ"
 import { formatLocalDateValue } from "@/lib/dates/parse"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
@@ -44,6 +46,50 @@ const SEGMENT_LABELS: Record<string, string> = {
   inactive_recent_campaign: "Sem campanha recente",
   portfolio_clients: "Carteira",
   crm_clients: "CRM",
+}
+
+/**
+ * Fase 3: função cacheada para listSegments do Radar.
+ * Aceita apenas primitivos para garantir estabilidade do cache.
+ */
+async function getCachedRadarSegments(
+  teamId: string,
+  profileId: string,
+  role: string,
+  functionsKey: string
+) {
+  "use cache"
+  cacheTag(cacheTags.radarSegments(teamId))
+  cacheLife({ stale: 30, revalidate: 60 })
+
+  const ctx: TeamContext = {
+    profileId,
+    teamMember: { role, functions: functionsKey ? functionsKey.split(",") : [] },
+  }
+  const scope = { teamId, ctx }
+
+  const fixedSegments = await radarService.countSegments(scope)
+  const metrics = await radarService.getMetrics(scope, fixedSegments)
+
+  const customSegments = await teamRadarSegmentService.listByTeam(teamId, { onlyActive: true })
+  const customSegmentCounts = await Promise.all(
+    customSegments.map((segment) =>
+      radarSegmentQueryService.countProfiles(scope, parseRadarSegmentRules(segment.rulesJson))
+    )
+  )
+
+  const segments = [
+    ...fixedSegments.map((segment) => ({ ...segment, isSystem: true })),
+    ...customSegments.map((segment, index) => ({
+      slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
+      name: segment.name,
+      description: segment.description,
+      count: customSegmentCounts[index] ?? 0,
+      isSystem: false,
+    })),
+  ]
+
+  return new Output(true, [], [], { segments, metrics })
 }
 
 export type RadarListProfilesInput = {
@@ -446,29 +492,9 @@ export class RadarUseCase {
   }
 
   async listSegments(teamId: string, ctx: TeamContext) {
-    const scope = this.scope(teamId, ctx)
-    const fixedSegments = await this.service.countSegments(scope)
-    const metrics = await this.service.getMetrics(scope)
-
-    const customSegments = await this.segmentService.listByTeam(teamId, { onlyActive: true })
-    const customSegmentCounts = await Promise.all(
-      customSegments.map((segment) =>
-        this.segmentQueryService.countProfiles(scope, parseRadarSegmentRules(segment.rulesJson))
-      )
-    )
-
-    const segments = [
-      ...fixedSegments.map((segment) => ({ ...segment, isSystem: true })),
-      ...customSegments.map((segment, index) => ({
-        slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
-        name: segment.name,
-        description: segment.description,
-        count: customSegmentCounts[index] ?? 0,
-        isSystem: false,
-      })),
-    ]
-
-    return new Output(true, [], [], { segments, metrics })
+    const role = ctx.teamMember.role
+    const functionsKey = ctx.teamMember.functions.join(",")
+    return getCachedRadarSegments(teamId, ctx.profileId, role, functionsKey)
   }
 
   async listSegmentProfiles(
