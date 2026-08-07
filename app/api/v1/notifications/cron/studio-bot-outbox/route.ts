@@ -3,6 +3,8 @@ import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { backofficeBotEventOutboxUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotEventOutboxUseCase";
 import { alertStudioBotOutboxFailRate } from "@/lib/studio-bot/outbox-fail-rate-alert";
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit";
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback";
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -14,7 +16,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 });
     }
 
-    const output = await backofficeBotEventOutboxUseCase.dispatchPending(50);
+    const output = await withCronAudit(
+      {
+        cronKey: "studio-bot-outbox",
+        cronPath: "/api/v1/notifications/cron/studio-bot-outbox",
+      },
+      () => backofficeBotEventOutboxUseCase.dispatchPending(50),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    )
+    
     const result = output.result as { dispatched?: number; failed?: number } | null;
     if (
       output.isValid &&

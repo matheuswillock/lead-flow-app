@@ -30,6 +30,7 @@ import {
   ChevronRight,
   SearchCheck,
   Activity,
+  Clock,
 } from "lucide-react"
 import {
   Sidebar,
@@ -177,6 +178,7 @@ const navigationItems: NavItem[] = [
   { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
   { title: "Aprovações", url: "/backoffice/approvals", icon: ShieldCheck },
   { title: "Backups", url: "/backoffice/backups", icon: Database },
+  { title: "Crons", url: "/backoffice/cron-executions", icon: Clock },
 ]
 
 function isItemActive(item: NavItem, pathname: string) {

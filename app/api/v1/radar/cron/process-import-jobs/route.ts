@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { radarBaseImportUseCase } from "@/app/api/useCases/radar/RadarBaseImportUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
 
 export const maxDuration = 60
 
@@ -15,7 +17,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
     }
 
-    const result = await radarBaseImportUseCase.processPendingJobs()
+    const result = await withCronAudit(
+      {
+        cronKey: "radar-import",
+        cronPath: "/api/v1/radar/cron/process-import-jobs",
+      },
+      () => radarBaseImportUseCase.processPendingJobs(),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    )
     return NextResponse.json(result, { status: result.isValid ? 200 : 500 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)

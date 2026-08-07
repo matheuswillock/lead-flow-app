@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { cleanupOrphanWhatsAppMediaUseCase } from "@/app/api/useCases/whatsapp/CleanupOrphanWhatsAppMediaUseCase"
 import { isWhatsAppGloballyEnabled } from "@/lib/whatsapp/whatsapp-globally-enabled"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
 
 async function handle(request: NextRequest) {
   if (!process.env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -10,7 +12,18 @@ async function handle(request: NextRequest) {
   if (!(await isWhatsAppGloballyEnabled())) {
     return NextResponse.json({ skipped: true }, { status: 200 })
   }
-  const output = await cleanupOrphanWhatsAppMediaUseCase.execute()
+  
+  const output = await withCronAudit(
+    {
+      cronKey: "cleanup-orphan-media",
+      cronPath: "/api/v1/whatsapp/cron/cleanup-orphan-media",
+    },
+    () => cleanupOrphanWhatsAppMediaUseCase.execute(),
+    {
+      onFailure: getDefaultCronSlackCallback(),
+    }
+  )
+  
   return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
 }
 

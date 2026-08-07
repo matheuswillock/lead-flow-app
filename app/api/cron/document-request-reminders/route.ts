@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { leadDocumentRequestUseCase } from "@/app/api/useCases/leads/leadDocumentRequestUseCaseFactory";
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit";
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback";
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -16,7 +18,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const output = await leadDocumentRequestUseCase.processReminders();
+    const output = await withCronAudit(
+      {
+        cronKey: "document-request-reminders",
+        cronPath: "/api/cron/document-request-reminders",
+      },
+      () => leadDocumentRequestUseCase.processReminders(),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    );
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

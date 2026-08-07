@@ -4,6 +4,7 @@ import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/u
 import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 import { createTeamRadarSegmentSchema } from "@/lib/radar/segment-request-schemas"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { invalidateRadarSegmentsCache } from "@/lib/cache/invalidation"
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -51,6 +52,10 @@ export async function POST(request: NextRequest) {
       teamContextFromRadarAccess(radarAccess.access),
       parsed.data
     )
+
+    if (result.isValid) {
+      invalidateRadarSegmentsCache({ teamId: radarAccess.access.teamId })
+    }
 
     return NextResponse.json(result, { status: result.isValid ? 201 : 400 })
   } catch (error) {
