@@ -16,6 +16,7 @@ type SummarySubCampaign = {
   name: string
   totalRecipients: number
   scheduledAt?: string | null
+  templateName?: string
 }
 
 type CampaignWizardSummaryPanelProps = {
@@ -28,6 +29,7 @@ type CampaignWizardSummaryPanelProps = {
   totalRecipients: number
   listStrategy?: "single" | "merge" | "per_list"
   subCampaigns?: SummarySubCampaign[]
+  uniformTemplate?: boolean
   tz: string
 }
 
@@ -47,6 +49,7 @@ export function CampaignWizardSummaryPanel({
   totalRecipients,
   listStrategy,
   subCampaigns = [],
+  uniformTemplate = true,
   tz,
 }: CampaignWizardSummaryPanelProps) {
   const hasAudience =
@@ -67,14 +70,24 @@ export function CampaignWizardSummaryPanel({
       <Separator />
 
       <div className="flex flex-col gap-1">
-        <span className="text-muted-foreground">Template</span>
-        <span>{template?.name ?? "Não selecionado"}</span>
-        {template?.subject ? (
-          <span className="text-muted-foreground">Assunto: {template.subject}</span>
-        ) : null}
         <span className="text-muted-foreground">
-          Formulário: {linkedForm ? linkedForm.name : "Nenhum formulário detectado"}
+          {uniformTemplate || subCampaigns.length <= 1 ? "Template" : "Templates"}
         </span>
+        {uniformTemplate || subCampaigns.length <= 1 ? (
+          <>
+            <span>{template?.name ?? "Não selecionado"}</span>
+            {template?.subject ? (
+              <span className="text-muted-foreground">Assunto: {template.subject}</span>
+            ) : null}
+            <span className="text-muted-foreground">
+              Formulário: {linkedForm ? linkedForm.name : "Nenhum formulário detectado"}
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">
+            Definido por sub-campanha (veja a lista abaixo)
+          </span>
+        )}
       </div>
 
       <Separator />
@@ -109,11 +122,13 @@ export function CampaignWizardSummaryPanel({
           <div className="flex flex-col gap-2">
             <span className="text-muted-foreground">
               Sub-campanhas ({subCampaigns.length})
+              {uniformTemplate ? " · mesmo template e agendamento" : " · configuradas individualmente"}
             </span>
             <div className="flex flex-col gap-1">
               {subCampaigns.map((sub) => (
                 <span key={sub.index}>
                   #{sub.index} {sub.name} — {sub.totalRecipients.toLocaleString("pt-BR")}
+                  {!uniformTemplate && sub.templateName ? ` — ${sub.templateName}` : null}
                   {sub.scheduledAt
                     ? ` — ${formatIntimezone(new Date(sub.scheduledAt), "dd/MM HH:mm", tz)}`
                     : null}

@@ -30,6 +30,8 @@ const updateSchema = z.object({
         id: z.string().uuid(),
         name: z.string().min(1).optional(),
         scheduledAt: z.string().datetime().nullable().optional(),
+        contactListId: z.string().uuid().optional(),
+        templateId: z.string().uuid().optional(),
       })
     )
     .optional(),
