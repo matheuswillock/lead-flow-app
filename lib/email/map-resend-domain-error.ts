@@ -1,4 +1,9 @@
-export type ResendDomainErrorContext = "connect" | "disconnect" | "verify" | "records"
+export type ResendDomainErrorContext =
+  | "connect"
+  | "disconnect"
+  | "verify"
+  | "records"
+  | "tracking"
 
 const CONTEXT_FALLBACKS: Record<ResendDomainErrorContext, string> = {
   connect:
@@ -9,6 +14,8 @@ const CONTEXT_FALLBACKS: Record<ResendDomainErrorContext, string> = {
     "Não foi possível iniciar a verificação do domínio. Tente novamente em alguns instantes.",
   records:
     "Não foi possível carregar os registros DNS. Tente novamente em alguns instantes.",
+  tracking:
+    "Não foi possível configurar as métricas de tracking. Tente novamente em alguns instantes.",
 }
 
 function isRegisteredToAnotherTeam(message: string): boolean {

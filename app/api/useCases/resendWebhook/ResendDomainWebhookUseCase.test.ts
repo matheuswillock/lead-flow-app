@@ -21,6 +21,7 @@ describe("ResendDomainWebhookUseCase", () => {
         region: "sa-east-1",
         openTracking: true,
         clickTracking: true,
+        trackingSubdomain: "links",
       }),
     }
 

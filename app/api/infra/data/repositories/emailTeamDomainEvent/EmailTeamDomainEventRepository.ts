@@ -25,6 +25,8 @@ export type ResendDomainSnapshot = {
   click_tracking?: boolean
   openTracking?: boolean
   clickTracking?: boolean
+  tracking_subdomain?: string | null
+  trackingSubdomain?: string | null
 }
 
 export interface IEmailTeamDomainEventRepository {
@@ -58,6 +60,7 @@ export interface IEmailTeamDomainEventRepository {
     region: string | null
     openTracking: boolean
     clickTracking: boolean
+    trackingSubdomain: string | null
   }>
 }
 
@@ -149,6 +152,10 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
     const region = domain.region ?? null
     const openTracking = Boolean(domain.openTracking ?? domain.open_tracking)
     const clickTracking = Boolean(domain.clickTracking ?? domain.click_tracking)
+    const trackingSubdomain =
+      domain.trackingSubdomain?.trim() ||
+      domain.tracking_subdomain?.trim() ||
+      null
 
     await this.updateDomainTracking(teamId, { status, region, openTracking, clickTracking })
 
@@ -178,7 +185,7 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
       })
     }
 
-    return { status, region, openTracking, clickTracking }
+    return { status, region, openTracking, clickTracking, trackingSubdomain }
   }
 }
 

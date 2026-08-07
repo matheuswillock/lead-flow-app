@@ -28,9 +28,13 @@ export function useBackofficeSettings(
   const [domainName, setDomainName] = useState<string | null>(null)
   const [domainStatus, setDomainStatus] = useState<StudioEmailResendDomainStatus | null>(null)
   const [domainRecords, setDomainRecords] = useState<StudioEmailDomainConnectResult["records"]>([])
+  const [domainOpenTracking, setDomainOpenTracking] = useState(false)
+  const [domainClickTracking, setDomainClickTracking] = useState(false)
+  const [domainTrackingSubdomain, setDomainTrackingSubdomain] = useState<string | null>(null)
   const [connectingDomain, setConnectingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
   const [loadingRecords, setLoadingRecords] = useState(false)
+  const [configuringDomainTracking, setConfiguringDomainTracking] = useState(false)
 
   const [creatingSender, setCreatingSender] = useState(false)
   const [updatingSenderId, setUpdatingSenderId] = useState<string | null>(null)
@@ -60,10 +64,16 @@ export function useBackofficeSettings(
         setDomainStatus(domainResult.status)
         setDomainRecords(domainResult.records)
         setDomainInput(domainResult.domainName)
+        setDomainOpenTracking(domainResult.openTracking ?? false)
+        setDomainClickTracking(domainResult.clickTracking ?? false)
+        setDomainTrackingSubdomain(domainResult.trackingSubdomain ?? null)
       } else {
         setDomainName(null)
         setDomainStatus(null)
         setDomainRecords([])
+        setDomainOpenTracking(false)
+        setDomainClickTracking(false)
+        setDomainTrackingSubdomain(null)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar configurações")
@@ -86,6 +96,9 @@ export function useBackofficeSettings(
       setDomainName(result.domainName)
       setDomainStatus(result.status)
       setDomainRecords(result.records)
+      setDomainOpenTracking(result.openTracking ?? true)
+      setDomainClickTracking(result.clickTracking ?? true)
+      setDomainTrackingSubdomain(result.trackingSubdomain ?? "links")
       toast.success("Domínio configurado")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao conectar domínio")
@@ -117,12 +130,38 @@ export function useBackofficeSettings(
       setDomainName(result.domainName)
       setDomainStatus(result.status)
       setDomainRecords(result.records)
+      setDomainOpenTracking(result.openTracking ?? false)
+      setDomainClickTracking(result.clickTracking ?? false)
+      setDomainTrackingSubdomain(result.trackingSubdomain ?? null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar registros DNS")
     } finally {
       setLoadingRecords(false)
     }
   }, [loadingRecords, masterId, teamId])
+
+  const handleConfigureDomainTracking = useCallback(async () => {
+    if (!teamId || configuringDomainTracking || !domainName) return
+    setConfiguringDomainTracking(true)
+    try {
+      const result = await backofficeStudioEmailService.configureDomainTracking(masterId, teamId, {
+        trackingSubdomain: domainTrackingSubdomain?.trim() || "links",
+        openTracking: true,
+        clickTracking: true,
+      })
+      setDomainName(result.domainName)
+      setDomainStatus(result.status)
+      setDomainRecords(result.records)
+      setDomainOpenTracking(result.openTracking ?? true)
+      setDomainClickTracking(result.clickTracking ?? true)
+      setDomainTrackingSubdomain(result.trackingSubdomain ?? "links")
+      toast.success("Tracking configurado. Adicione o DNS de Tracking e re-verifique.")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao configurar tracking")
+    } finally {
+      setConfiguringDomainTracking(false)
+    }
+  }, [configuringDomainTracking, domainName, domainTrackingSubdomain, masterId, teamId])
 
   const handleCreateSender = useCallback(
     async (data: UpsertStudioEmailSenderData) => {
@@ -266,9 +305,13 @@ export function useBackofficeSettings(
     domainName,
     domainStatus,
     domainRecords,
+    domainOpenTracking,
+    domainClickTracking,
+    domainTrackingSubdomain,
     connectingDomain,
     verifyingDomain,
     loadingRecords,
+    configuringDomainTracking,
     creatingSender,
     updatingSenderId,
     deletingSenderId,
@@ -279,6 +322,7 @@ export function useBackofficeSettings(
     handleConnectDomain,
     handleVerifyDomain,
     handleLoadDomainRecords,
+    handleConfigureDomainTracking,
     handleCreateSender,
     handleUpdateSender,
     handleDeleteSender,
