@@ -294,7 +294,7 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
     expect(output.isValid).toBe(true)
     expect(syncExecuteMock).toHaveBeenCalledTimes(12)
-    expect(maxInFlight).toBe(5)
+    expect(maxInFlight).toBe(2)
   })
 
   it("em timeout mid-sync não avança processedRows do lote incompleto (I2+I3)", async () => {
@@ -321,8 +321,8 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     let syncCalls = 0
     syncExecuteMock.mockImplementation(async () => {
       syncCalls += 1
-      // Após o 1º chunk (5 contatos), estoura o budget no check do próximo chunk
-      if (syncCalls >= 5) {
+      // Após o 2º chunk (4 contatos), estoura o budget no check do próximo chunk
+      if (syncCalls >= 4) {
         fakeNow += 50_000
       }
       return {
@@ -339,7 +339,7 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
       expect(output.isValid).toBe(true)
       expect(output.successMessages).toContain("Job re-enfileirado por tempo")
-      expect(syncCalls).toBe(5)
+      expect(syncCalls).toBe(4)
 
       const requeueUpdate = (
         jobUpdateMock.mock.calls as unknown as Array<

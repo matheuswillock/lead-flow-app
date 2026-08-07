@@ -131,6 +131,7 @@ export type SubCampaignUpdateInput = {
   name?: string
   scheduledAt?: string | null
   contactListId?: string
+  templateId?: string
 }
 
 export type UpdateCampaignInput = Partial<CreateCampaignInput> & {
@@ -751,6 +752,7 @@ export class EmailCampaignUseCase {
               totalBounced: true,
               subCampaignIndex: true,
               contactListId: true,
+              templateId: true,
               errorMessage: true,
             },
             orderBy: { subCampaignIndex: "asc" },
@@ -1371,6 +1373,15 @@ export class EmailCampaignUseCase {
             }
           }
 
+          let nextTemplateId: string | undefined
+          if (subUpdate.templateId !== undefined) {
+            const template = await this.findCurrentPublishedTemplate(subUpdate.templateId, ctx.teamId)
+            if (!template) {
+              return new Output(false, [], ["Template da sub-campanha não encontrado ou não publicado"], null)
+            }
+            nextTemplateId = template.id
+          }
+
           await prisma.emailCampaign.update({
             where: { id: subUpdate.id },
             data: {
@@ -1383,6 +1394,7 @@ export class EmailCampaignUseCase {
                 child.audienceContactIds.length === 0 && {
                   contactListId: subUpdate.contactListId,
                 }),
+              ...(nextTemplateId !== undefined && { templateId: nextTemplateId }),
             },
           })
         }
