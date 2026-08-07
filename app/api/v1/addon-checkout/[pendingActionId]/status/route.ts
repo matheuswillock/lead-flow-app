@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { addOnCheckoutUseCase } from "@/app/api/useCases/addOnCheckout/AddOnCheckoutUseCase";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ pendingActionId: string }> }
 ) {
+  await connection();
+
   try {
     const { pendingActionId } = await params;
 

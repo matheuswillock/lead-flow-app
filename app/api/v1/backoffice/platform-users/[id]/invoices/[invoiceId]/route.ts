@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
@@ -14,6 +14,8 @@ export async function GET(
     params: Promise<{ id: string; invoiceId: string }>
   }
 ) {
+  await connection();
+
   try {
     const result = await getBackofficeAccess(request)
     if (result.error) {

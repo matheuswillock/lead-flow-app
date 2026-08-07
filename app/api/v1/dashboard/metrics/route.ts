@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import type { MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase';
 import type { TeamContext } from '@/app/api/infra/data/repositories/metrics/IMetricsRepository';
 import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
@@ -10,6 +10,8 @@ import {
 } from '@/app/api/v1/utils/dashboardTeamScope';
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request);
     if (teamAccess.error) {

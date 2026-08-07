@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { getScheduleAttendeesUseCase } from "@/app/api/useCases/scheduleAttendees/GetScheduleAttendeesUseCase";
@@ -19,6 +19,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request);
     if (teamAccess.error) {

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { leadDocumentRequestUseCase } from "@/app/api/useCases/leads/leadDocumentRequestUseCaseFactory";
@@ -7,6 +7,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  await connection();
+
   try {
     const { token } = await params;
     if (!token) {

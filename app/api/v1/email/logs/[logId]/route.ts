@@ -1,10 +1,12 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ logId: string }> }) {
+  await connection();
+
   try {
     const { logId } = await params
     const teamAccess = await getTeamAccess(request)

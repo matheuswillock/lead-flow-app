@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess";
@@ -11,6 +11,8 @@ const querySchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const accessResult = await getBackofficeAccess(request);
     if (accessResult.error) {

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server"
-import { NextResponse } from "next/server"
+import { NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { createSupabaseServer } from "@/lib/supabase/server"
 import { getMyGoogleScopesUseCase } from "@/app/api/useCases/google/GetMyGoogleScopesUseCase"
@@ -7,6 +7,8 @@ import { getMyGoogleScopesUseCase } from "@/app/api/useCases/google/GetMyGoogleS
 const LOG_PREFIX = "[GoogleScopesRoute][GET]"
 
 export async function GET(_request: NextRequest) {
+  await connection();
+
   const supabase = await createSupabaseServer()
   if (!supabase) {
     console.error(`${LOG_PREFIX} Falha ao criar cliente Supabase`)

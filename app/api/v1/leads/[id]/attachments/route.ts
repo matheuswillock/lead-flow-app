@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
@@ -9,6 +9,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection();
+
   try {
     const { id: leadId } = await params;
 

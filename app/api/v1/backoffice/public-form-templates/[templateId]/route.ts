@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { z } from "zod"
 import { Output } from "@/lib/output"
 import type { PublicFormDraftInput } from "@/lib/public-forms/types"
@@ -18,6 +18,8 @@ const updateSchema = z.object({
 })
 
 export async function GET(_request: NextRequest, { params }: RouteContext) {
+  await connection();
+
   try {
     const access = await getBackofficeAccess(_request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })

@@ -1,10 +1,12 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { backofficeBotEventOutboxUseCase } from "@/app/api/useCases/backofficeBot/BackofficeBotEventOutboxUseCase";
 import { alertStudioBotOutboxFailRate } from "@/lib/studio-bot/outbox-fail-rate-alert";
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const authHeader = request.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;

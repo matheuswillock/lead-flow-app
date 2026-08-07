@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { backofficeScheduleShareUseCase } from "@/app/api/useCases/backofficeScheduleShare/BackofficeScheduleShareUseCase"
@@ -7,6 +7,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  await connection();
+
   try {
     const { token } = await params
     if (!token?.trim()) {

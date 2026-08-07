@@ -1,9 +1,11 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeCnaeUseCase } from "@/app/api/useCases/backofficeLeadExtraction/BackofficeCnaeUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const access = await getBackofficeAccess(request)
     if (access.error) {

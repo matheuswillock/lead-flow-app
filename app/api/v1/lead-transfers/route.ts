@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
@@ -73,6 +73,8 @@ function parseDateBound(value: string | undefined, bound: "start" | "end"): Date
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request);
     if (teamAccess.error) {

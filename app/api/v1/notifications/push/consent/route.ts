@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { webPushConsentUseCase } from "@/app/api/useCases/notifications/WebPushConsentUseCase";
 import type { WebPushConsentSource } from "@/lib/web-push/types";
@@ -12,6 +12,8 @@ type RecordConsentBody = {
 };
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request);
     if (teamAccess.error) {

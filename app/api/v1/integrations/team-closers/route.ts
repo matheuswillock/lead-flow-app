@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const url = new URL(request.url);
     const supabaseId = url.searchParams.get("supabaseId");

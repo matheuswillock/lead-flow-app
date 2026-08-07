@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
@@ -73,6 +73,8 @@ const requireManager = async (request: NextRequest) => {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  await connection();
+
   try {
     const auth = await requireManager(request);
     if ("errorResponse" in auth) return auth.errorResponse;

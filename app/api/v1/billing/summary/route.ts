@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const supabaseId = request.headers.get("x-supabase-user-id");
     if (!supabaseId) {

@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
@@ -11,6 +11,8 @@ function parsePositiveInt(value: string | null, fallback: number): number {
 }
 
 export async function GET(request: NextRequest) {
+  await connection();
+
   try {
     const teamAccess = await getTeamAccess(request)
     if (teamAccess.error) {

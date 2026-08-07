@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from "next/server";
 import { metaLeadService } from '@/app/api/services/MetaLeadService';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -11,6 +11,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ formId: string }> }
 ) {
+  await connection();
+
   try {
     const { formId } = await params;
     const { searchParams } = new URL(request.url);

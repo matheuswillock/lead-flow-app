@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 
@@ -10,6 +10,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ paymentId: string }> }
 ) {
+  await connection();
+
   try {
     const { paymentId } = await params;
 
