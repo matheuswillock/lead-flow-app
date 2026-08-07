@@ -10,6 +10,9 @@ export type TeamRadarSegmentSelect = {
   rulesJson: Prisma.JsonValue
   isSystem: boolean
   isActive: boolean
+  parentId: string | null
+  sourceType: "manual" | "campaign" | "child"
+  sourceCampaignId: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -23,6 +26,9 @@ const segmentSelect = {
   rulesJson: true,
   isSystem: true,
   isActive: true,
+  parentId: true,
+  sourceType: true,
+  sourceCampaignId: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.TeamRadarSegmentSelect
@@ -73,6 +79,9 @@ export class TeamRadarSegmentRepository implements ITeamRadarSegmentRepository {
       rulesJson: segment.rulesJson,
       isSystem: segment.isSystem,
       isActive: segment.isActive,
+      parentId: segment.parentId,
+      sourceType: segment.sourceType,
+      sourceCampaignId: segment.sourceCampaignId,
       createdAt: segment.createdAt,
       updatedAt: segment.updatedAt,
       parent: segment.parent,

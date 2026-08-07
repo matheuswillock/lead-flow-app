@@ -547,7 +547,7 @@ export class RadarUseCase {
 
   async listCustomSegments(teamId: string, ctx: TeamContext) {
     try {
-      const segments = await this.segmentService.listByTeam(teamId)
+      const segments = await this.segmentService.listWithHierarchy(teamId)
       const scope = this.scope(teamId, ctx)
       const items = await Promise.all(
         segments.map(async (segment) => ({
@@ -665,14 +665,14 @@ export class RadarUseCase {
           ? [
               {
                 kind: "event",
-                eventType: "email_opened",
+                eventType: "email.opened",
                 occurrence: "occurred",
                 windowDays: Math.max(30, Math.ceil((Date.now() - campaign.sentAt.getTime()) / (1000 * 60 * 60 * 24)) + 7),
                 campaignId: campaign.id,
               },
               {
                 kind: "event",
-                eventType: "email_clicked",
+                eventType: "email.clicked",
                 occurrence: "occurred",
                 windowDays: Math.max(30, Math.ceil((Date.now() - campaign.sentAt.getTime()) / (1000 * 60 * 60 * 24)) + 7),
                 campaignId: campaign.id,
