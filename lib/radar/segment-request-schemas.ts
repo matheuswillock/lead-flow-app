@@ -14,6 +14,12 @@ export const updateTeamRadarSegmentSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-export const previewCustomSegmentRulesSchema = z.object({
-  rules: radarSegmentRulesSchema,
-})
+export const previewCustomSegmentRulesSchema = z
+  .object({
+    rules: radarSegmentRulesSchema.optional(),
+    parentSegmentId: z.string().uuid("parentSegmentId deve ser um UUID válido").optional(),
+    campaignId: z.string().uuid("campaignId deve ser um UUID válido").optional(),
+  })
+  .refine((data) => data.rules || data.parentSegmentId || data.campaignId, {
+    message: "Informe rules, parentSegmentId ou campaignId",
+  })

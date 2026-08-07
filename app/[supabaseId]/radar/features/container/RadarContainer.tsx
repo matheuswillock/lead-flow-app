@@ -37,6 +37,8 @@ import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDial
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
 import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
 import { RadarImportButton } from "../components/radar-import/RadarImportButton"
+import { GenerateSegmentDialog } from "../components/GenerateSegmentDialog"
+import { SegmentTreeView } from "../components/SegmentTreeView"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -103,6 +105,12 @@ export function RadarContainer() {
   const [contactListPreviewCount, setContactListPreviewCount] = useState<number | null>(null)
   const [isPreviewingContactList, setIsPreviewingContactList] = useState(false)
   const [isCreatingContactList, setIsCreatingContactList] = useState(false)
+  const [generateSegmentOpen, setGenerateSegmentOpen] = useState(false)
+  const [generateSegmentSource, setGenerateSegmentSource] = useState<{
+    type: "segment"
+    id: string
+    name: string
+  } | null>(null)
 
   const handleOpenContactListDialog = useCallback(
     async (target: RadarSegmentProfilesTarget) => {
@@ -127,6 +135,15 @@ export function RadarContainer() {
       setIsCreatingContactList(false)
     }
   }, [contactListPreviewTarget, materializeSegmentToContactList])
+
+  const handleOpenGenerateSegment = useCallback((segment: RadarCustomSegmentListItem) => {
+    setGenerateSegmentSource({
+      type: "segment",
+      id: segment.id,
+      name: segment.name,
+    })
+    setGenerateSegmentOpen(true)
+  }, [])
 
   const systemSegments = useMemo(() => {
     const base = segments.filter((segment: RadarSegment) => segment.isSystem)
@@ -318,51 +335,39 @@ export function RadarContainer() {
                     setBuilderOpen(true)
                   }}
                 />
-              ) : (
+              ) : isLoading ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {isLoading
-                    ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
-                    : customSegments.map((segment) => (
-                        <RadarSegmentCard
-                          key={segment.id}
-                          name={segment.name}
-                          description={segment.description}
-                          count={segment.count}
-                          variant="custom"
-                          isInactive={!segment.isActive}
-                          mutationLock={mutationLock}
-                          onViewProfiles={
-                            segment.isActive
-                              ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
-                              : undefined
-                          }
-                          onExport={
-                            segment.isActive
-                              ? (format) =>
-                                  void exportSegmentMembers(
-                                    { kind: "custom", slugOrId: segment.id, name: segment.name },
-                                    format
-                                  )
-                              : undefined
-                          }
-                          onCreateContactList={
-                            segment.isActive
-                              ? () =>
-                                  void handleOpenContactListDialog({
-                                    kind: "custom",
-                                    slugOrId: segment.id,
-                                    name: segment.name,
-                                  })
-                              : undefined
-                          }
-                          onEdit={() => {
-                            setEditingSegment(segment)
-                            setBuilderOpen(true)
-                          }}
-                          onDelete={() => setDeleteTarget(segment)}
-                        />
-                      ))}
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-32 rounded-xl" />
+                  ))}
                 </div>
+              ) : (
+                <SegmentTreeView
+                  segments={customSegments}
+                  mutationLock={mutationLock}
+                  onViewProfiles={(segment) =>
+                    openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                  }
+                  onExport={(segment, format) =>
+                    void exportSegmentMembers(
+                      { kind: "custom", slugOrId: segment.id, name: segment.name },
+                      format
+                    )
+                  }
+                  onCreateContactList={(segment) =>
+                    void handleOpenContactListDialog({
+                      kind: "custom",
+                      slugOrId: segment.id,
+                      name: segment.name,
+                    })
+                  }
+                  onEdit={(segment) => {
+                    setEditingSegment(segment)
+                    setBuilderOpen(true)
+                  }}
+                  onDelete={(segment) => setDeleteTarget(segment)}
+                  onGenerateChild={handleOpenGenerateSegment}
+                />
               )}
             </div>
           </TabsContent>
@@ -460,6 +465,20 @@ export function RadarContainer() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {generateSegmentSource ? (
+          <GenerateSegmentDialog
+            open={generateSegmentOpen}
+            onOpenChange={(open) => {
+              setGenerateSegmentOpen(open)
+              if (!open) setGenerateSegmentSource(null)
+            }}
+            sourceType="segment"
+            sourceName={generateSegmentSource.name}
+            parentSegmentId={generateSegmentSource.id}
+            onSuccess={() => void reload()}
+          />
+        ) : null}
       </div>
     </TooltipProvider>
   )

@@ -357,6 +357,68 @@ export class RadarFrontendService implements IRadarService {
     return parseOutput<{ count: number }>(res)
   }
 
+  async previewSegmentWithHierarchy(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      rules?: RadarSegmentRules
+      parentSegmentId?: string
+      campaignId?: string
+    }
+  ): Promise<{ count: number; totalConditions: number; previewProfiles: RadarProfileDetail[] }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/preview`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<{ count: number; totalConditions: number; previewProfiles: RadarProfileDetail[] }>(res)
+  }
+
+  async createSegmentFromCampaign(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      campaignId: string
+      name: string
+      description?: string | null
+      additionalRules?: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; totalConditions: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/from-campaign`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<{ segmentId: string; name: string; totalConditions: number }>(res)
+  }
+
+  async createChildSegment(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      parentSegmentId: string
+      name: string
+      description?: string | null
+      childRules: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; parentName: string; totalConditions: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/child`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<{ segmentId: string; name: string; parentName: string; totalConditions: number }>(res)
+  }
+
   async getProfileTouchpoints(
     supabaseId: string,
     teamId: string,
