@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Download, GitBranch, ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,7 @@ type RadarSegmentCardProps = {
   onExport?: (format: RadarExportFormat) => void
   onEdit?: () => void
   onDelete?: () => void
+  onGenerateChild?: () => void
 }
 
 export function RadarSegmentCard({
@@ -38,6 +39,7 @@ export function RadarSegmentCard({
   onExport,
   onEdit,
   onDelete,
+  onGenerateChild,
 }: RadarSegmentCardProps) {
   const isSystem = variant === "system"
 
@@ -66,6 +68,12 @@ export function RadarSegmentCard({
                 <Pencil data-icon="inline-start" />
                 Editar
               </DropdownMenuItem>
+              {onGenerateChild ? (
+                <DropdownMenuItem onClick={onGenerateChild}>
+                  <GitBranch data-icon="inline-start" />
+                  Gerar segmento filho
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem className="text-destructive" onClick={onDelete}>
                 <Trash2 data-icon="inline-start" />
                 Excluir

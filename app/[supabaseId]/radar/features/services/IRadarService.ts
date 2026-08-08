@@ -151,6 +151,35 @@ export interface IRadarService {
     teamId: string,
     rules: RadarSegmentRules
   ): Promise<{ count: number }>
+  previewSegmentWithHierarchy(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      rules?: RadarSegmentRules
+      parentSegmentId?: string
+      campaignId?: string
+    }
+  ): Promise<{ count: number; totalConditions: number; previewProfiles: RadarProfileDetail[] }>
+  createSegmentFromCampaign(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      campaignId: string
+      name: string
+      description?: string | null
+      additionalRules?: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; totalConditions: number }>
+  createChildSegment(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      parentSegmentId: string
+      name: string
+      description?: string | null
+      childRules: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; parentName: string; totalConditions: number }>
   getProfileTouchpoints(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileTouchpoints>
   getProfileContracts(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileContracts>
   materializeContactList(
