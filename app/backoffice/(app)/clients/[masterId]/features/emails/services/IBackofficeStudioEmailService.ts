@@ -157,6 +157,7 @@ export type StudioEmailDomain = {
   connectedAt?: string | null
   openTracking?: boolean
   clickTracking?: boolean
+  trackingSubdomain?: string | null
 }
 
 export type StudioEmailDomainConnectResult = StudioEmailDomain & {
@@ -533,6 +534,16 @@ export interface IBackofficeStudioEmailService {
   ): Promise<{ status: StudioEmailResendDomainStatus }>
 
   getDomainRecords(masterId: string, teamId: string): Promise<StudioEmailDomainConnectResult>
+
+  configureDomainTracking(
+    masterId: string,
+    teamId: string,
+    data: {
+      trackingSubdomain: string
+      openTracking: boolean
+      clickTracking: boolean
+    }
+  ): Promise<StudioEmailDomainConnectResult>
 
   listVariables(masterId: string, teamId: string): Promise<StudioEmailVariable[]>
 

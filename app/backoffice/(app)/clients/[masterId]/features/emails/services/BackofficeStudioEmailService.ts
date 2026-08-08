@@ -632,6 +632,23 @@ export class BackofficeStudioEmailService implements IBackofficeStudioEmailServi
     return parseOutput(response)
   }
 
+  async configureDomainTracking(
+    masterId: string,
+    teamId: string,
+    data: {
+      trackingSubdomain: string
+      openTracking: boolean
+      clickTracking: boolean
+    }
+  ): Promise<StudioEmailDomainConnectResult> {
+    const response = await fetch(`${basePath(masterId, teamId)}/settings/domain/tracking`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    return parseOutput(response)
+  }
+
   async listVariables(masterId: string, teamId: string): Promise<StudioEmailVariable[]> {
     const response = await fetch(`${basePath(masterId, teamId)}/settings/variables`, {
       method: "GET",

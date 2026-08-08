@@ -235,6 +235,12 @@ export type StudioEmailUpsertVariableData = {
   radarFieldKey?: string | null
 }
 
+export type StudioEmailConfigureDomainTrackingData = {
+  trackingSubdomain: string
+  openTracking: boolean
+  clickTracking: boolean
+}
+
 export interface StudioEmailSettingsService {
   get(): Promise<EmailSettings>
   update(data: StudioEmailUpdateSettingsData): Promise<EmailSettings>
@@ -247,6 +253,9 @@ export interface StudioEmailSettingsService {
   disconnectDomain(): Promise<void>
   verifyDomain(): Promise<{ status: ResendDomainStatus }>
   getDomainRecords(): Promise<DomainConnectResult>
+  configureDomainTracking(
+    data: StudioEmailConfigureDomainTrackingData
+  ): Promise<DomainConnectResult>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>

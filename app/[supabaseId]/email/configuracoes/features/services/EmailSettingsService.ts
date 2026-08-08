@@ -5,6 +5,7 @@ import type {
   UpdateEmailSettingsData,
   UpsertEmailSenderData,
   UpsertEmailVariableData,
+  ConfigureDomainTrackingData,
 } from "./IEmailSettingsService"
 import type { EmailGlobalVariable, EmailSender, EmailSettings } from "../context/EmailSettingsTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map";
@@ -111,6 +112,21 @@ export class EmailSettingsService implements IEmailSettingsService {
 
   async getDomainRecords(): Promise<DomainConnectResult> {
     const res = await fetch(`${this.base}/domain/records`)
+    const json = await res.json()
+    if (!res.ok || !json.isValid) {
+      throw new Error(json.errorMessages?.join(", ") ?? `HTTP ${res.status}`)
+    }
+    return json.result as DomainConnectResult
+  }
+
+  async configureDomainTracking(
+    data: ConfigureDomainTrackingData
+  ): Promise<DomainConnectResult> {
+    const res = await fetch(`${this.base}/domain/tracking`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
     const json = await res.json()
     if (!res.ok || !json.isValid) {
       throw new Error(json.errorMessages?.join(", ") ?? `HTTP ${res.status}`)

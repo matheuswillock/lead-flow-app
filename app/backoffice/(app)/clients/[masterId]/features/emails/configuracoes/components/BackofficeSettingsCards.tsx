@@ -27,12 +27,17 @@ function DomainCard({
   domainName,
   domainStatus,
   domainRecords,
+  domainOpenTracking,
+  domainClickTracking,
+  domainTrackingSubdomain,
   connectingDomain,
   verifyingDomain,
   loadingRecords,
+  configuringDomainTracking,
   onConnect,
   onVerify,
   onLoadRecords,
+  onConfigureTracking,
 }: {
   loading: boolean
   domainInput: string
@@ -40,12 +45,17 @@ function DomainCard({
   domainName: string | null
   domainStatus: SettingsState["domainStatus"]
   domainRecords: SettingsState["domainRecords"]
+  domainOpenTracking: boolean
+  domainClickTracking: boolean
+  domainTrackingSubdomain: string | null
   connectingDomain: boolean
   verifyingDomain: boolean
   loadingRecords: boolean
+  configuringDomainTracking: boolean
   onConnect: () => Promise<void>
   onVerify: () => Promise<void>
   onLoadRecords: () => Promise<void>
+  onConfigureTracking: () => Promise<void>
 }) {
   return (
     <Card>
@@ -94,13 +104,44 @@ function DomainCard({
                   >
                     Atualizar registros DNS
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void onConfigureTracking()}
+                    disabled={configuringDomainTracking}
+                  >
+                    {configuringDomainTracking ? (
+                      <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                    ) : null}
+                    {domainTrackingSubdomain ? "Reconfigurar tracking" : "Configurar tracking"}
+                  </Button>
                 </>
               ) : null}
             </div>
             {domainName ? (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Status:</span>
-                <Badge variant="outline">{domainStatus ?? "—"}</Badge>
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted-foreground">Status:</span>
+                  <Badge variant="outline">{domainStatus ?? "—"}</Badge>
+                  <Badge variant="outline">
+                    Abertura: {domainOpenTracking ? "Habilitado" : "Desabilitado"}
+                  </Badge>
+                  <Badge variant="outline">
+                    Cliques: {domainClickTracking ? "Habilitado" : "Desabilitado"}
+                  </Badge>
+                </div>
+                {domainTrackingSubdomain ? (
+                  <p className="text-muted-foreground">
+                    Tracking:{" "}
+                    <span className="font-mono text-xs text-foreground">
+                      {domainTrackingSubdomain}.{domainName}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">
+                    Tracking ainda não configurado. Use Configurar tracking para gerar o CNAME.
+                  </p>
+                )}
               </div>
             ) : null}
             {domainRecords.length > 0 ? (
@@ -339,12 +380,17 @@ export function BackofficeSettingsCards(settings: SettingsState) {
         domainName={settings.domainName}
         domainStatus={settings.domainStatus}
         domainRecords={settings.domainRecords}
+        domainOpenTracking={settings.domainOpenTracking}
+        domainClickTracking={settings.domainClickTracking}
+        domainTrackingSubdomain={settings.domainTrackingSubdomain}
         connectingDomain={settings.connectingDomain}
         verifyingDomain={settings.verifyingDomain}
         loadingRecords={settings.loadingRecords}
+        configuringDomainTracking={settings.configuringDomainTracking}
         onConnect={settings.handleConnectDomain}
         onVerify={settings.handleVerifyDomain}
         onLoadRecords={settings.handleLoadDomainRecords}
+        onConfigureTracking={settings.handleConfigureDomainTracking}
       />
       <SendersCard
         loading={settings.loading}
