@@ -10,6 +10,7 @@ import { EmailTeamVariablesUseCase } from "./EmailTeamVariablesUseCase"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { buildResendTrackingTags, mergeResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
+import { resolveCampaignFrom } from "@/lib/email/resolve-campaign-from"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import {
   type EmailTemplateFunctionDefinition,
@@ -630,13 +631,43 @@ export class EmailTemplateUseCase {
 
       const requestId = randomUUID()
 
+      const [teamSettings, defaultSender] = await Promise.all([
+        prisma.emailTeamSettings.findUnique({
+          where: { teamId: ctx.teamId },
+          select: {
+            fromName: true,
+            fromEmail: true,
+            replyTo: true,
+            resendDomainName: true,
+          },
+        }),
+        prisma.emailTeamSender.findFirst({
+          where: { teamId: ctx.teamId, isDefault: true },
+          select: { name: true, email: true, replyTo: true },
+        }),
+      ])
+
+      const resolvedFrom = resolveCampaignFrom({
+        domainName: teamSettings?.resendDomainName,
+        defaultSender: defaultSender
+          ? { name: defaultSender.name, email: defaultSender.email }
+          : null,
+        legacyFromName: teamSettings?.fromName,
+        legacyFromEmail: teamSettings?.fromEmail,
+      })
+      const replyTo =
+        defaultSender?.replyTo?.trim() ||
+        teamSettings?.replyTo?.trim() ||
+        undefined
+
       const resend = assertResend()
       const { error } = await resend.emails.send(
         {
-          from: "Corretor Studio <no-reply@corretorstudio.com>",
+          from: `${resolvedFrom.fromName} <${resolvedFrom.fromEmail}>`,
           to: recipientEmail,
           subject: renderedSubject,
           html: renderedHtml,
+          ...(replyTo ? { replyTo } : {}),
           tags: mergeResendTrackingTags(
             buildResendTrackingTags({
               teamId: ctx.teamId,

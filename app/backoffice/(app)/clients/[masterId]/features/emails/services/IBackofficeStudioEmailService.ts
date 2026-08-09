@@ -138,6 +138,8 @@ export type StudioEmailResendDomainStatus =
   | "verified"
   | "failed"
   | "temporary_failure"
+  | "partially_verified"
+  | "partially_failed"
 
 export type StudioEmailDomainRecord = {
   record?: string

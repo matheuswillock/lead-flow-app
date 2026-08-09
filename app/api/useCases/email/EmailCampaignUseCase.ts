@@ -29,6 +29,7 @@ import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
   checkDispatchWindow,
+  isResendDomainSendCapable,
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
@@ -1761,7 +1762,10 @@ export class EmailCampaignUseCase {
         legacyFromName: teamSettings?.fromName,
         legacyFromEmail: teamSettings?.fromEmail,
       })
-      if (teamSettings?.resendDomainName && teamSettings.resendDomainStatus !== "verified") {
+      if (
+        teamSettings?.resendDomainName &&
+        !isResendDomainSendCapable(teamSettings.resendDomainStatus)
+      ) {
         return new Output(
           false,
           [],

@@ -2,6 +2,15 @@ import { formatLocalDateValue, getMinutesInTz } from "@/lib/dates"
 
 export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: string }
 
+/**
+ * Statuses that allow campaign dispatch with a custom Resend domain.
+ * `partially_verified` means sending DNS is ok while tracking (or another
+ * record) is still pending — teams must keep sending in that state.
+ */
+export function isResendDomainSendCapable(status: string | null | undefined): boolean {
+  return status === "verified" || status === "partially_verified"
+}
+
 export type DispatchWindowCheckResult =
   | { blocked: false }
   | { blocked: true; reason: string; defer: boolean }
