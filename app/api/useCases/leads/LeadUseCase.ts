@@ -1,7 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { after } from "next/server";
 import { cacheTags } from "@/lib/cache/cacheTags";
-import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService";
+import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository";
 import { ILeadUseCase } from "./ILeadUseCase";
 import type {
   LeadCreateOptions,
@@ -2157,7 +2157,7 @@ export class LeadUseCase implements ILeadUseCase {
       });
 
       try {
-        await publicFormsService.copyLeadSubmissionsOnTeamTransfer({
+        await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
           leadId: transferredLead.id,
           sourceTeamId: lead.teamId!,
           targetTeamId: data.targetTeamId,
