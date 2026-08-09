@@ -525,6 +525,10 @@ export class PublicFormsService implements IPublicFormsService {
   listLeadSubmissions(teamId: string, leadId: string) {
     return publicFormsRepository.listLeadSubmissions(teamId, leadId)
   }
+
+  copyLeadSubmissionsOnTeamTransfer(params: { leadId: string; sourceTeamId: string; targetTeamId: string }) {
+    return publicFormsRepository.copyLeadSubmissionsOnTeamTransfer(params)
+  }
 }
 
 export const publicFormsService = new PublicFormsService()

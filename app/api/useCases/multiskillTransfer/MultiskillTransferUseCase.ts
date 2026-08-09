@@ -6,6 +6,7 @@ import {
   type MultiskillTransferRepository,
 } from "@/app/api/infra/data/repositories/multiskillTransfer/MultiskillTransferRepository";
 import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
+import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService";
 import type { IMultiskillTransferService } from "@/app/api/services/multiskillTransfer/IMultiskillTransferService";
 import { multiskillTransferService } from "@/app/api/services/multiskillTransfer/MultiskillTransferService";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
@@ -226,6 +227,19 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
         transferTagUsed: lead.isTransfer === true,
         preScheduledAt: lead.meetingDate ?? null,
       });
+
+      try {
+        await publicFormsService.copyLeadSubmissionsOnTeamTransfer({
+          leadId: transferredLead.id,
+          sourceTeamId: lead.teamId,
+          targetTeamId: defaultTeam.id,
+        });
+      } catch (copyError) {
+        console.error(
+          "[MultiskillTransferUseCase][transferLead] Erro ao copiar respostas de formulário para o time destino:",
+          copyError
+        );
+      }
 
       const finalLead = await leadRepository.findById(transferredLead.id);
       if (!finalLead) {
