@@ -157,12 +157,20 @@ export type RadarCustomSegment = {
   rulesJson: RadarSegmentRules
   isSystem: boolean
   isActive: boolean
+  parentId?: string | null
+  sourceType?: "manual" | "campaign" | "child"
+  sourceCampaignId?: string | null
   createdAt: string
   updatedAt: string
 }
 
 /** `GET .../segments/custom` includes `count`; create/update responses don't. */
-export type RadarCustomSegmentListItem = RadarCustomSegment & { count: number }
+export type RadarCustomSegmentListItem = RadarCustomSegment & {
+  count: number
+  parent?: { id: string; name: string } | null
+  children?: Array<{ id: string; name: string }>
+  sourceCampaign?: { id: string; name: string } | null
+}
 
 export type RadarSegmentDeleteResult = {
   id: string

@@ -1109,6 +1109,14 @@ RADAR RADAR
     
 
 
+        segment_source_type {
+            manual manual
+campaign campaign
+child child
+        }
+    
+
+
         backoffice_bot_channel_type {
             whatsapp whatsapp
         }
@@ -3360,6 +3368,7 @@ completed completed
     Json rulesJson 
     Boolean isSystem 
     Boolean isActive 
+    SegmentSourceType sourceType 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4333,8 +4342,11 @@ completed completed
     "corretor_studio_radar_channel_consents" |o--|o "RadarConsentReason" : "enum:reason"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_segments" |o--|| "SegmentSourceType" : "enum:sourceType"
     "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_radar_segments" |o--|o corretor_studio_radar_segments : "parent"
+    "corretor_studio_radar_segments" }o--|o corretor_studio_email_campaigns : "sourceCampaign"
     "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_team_radar_field_definitions" }o--|o corretor_studio_radar_import_jobs : "importJob"
