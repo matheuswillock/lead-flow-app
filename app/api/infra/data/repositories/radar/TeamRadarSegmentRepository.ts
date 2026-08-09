@@ -10,6 +10,9 @@ export type TeamRadarSegmentSelect = {
   rulesJson: Prisma.JsonValue
   isSystem: boolean
   isActive: boolean
+  parentId: string | null
+  sourceType: "manual" | "campaign" | "child"
+  sourceCampaignId: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -23,12 +26,22 @@ const segmentSelect = {
   rulesJson: true,
   isSystem: true,
   isActive: true,
+  parentId: true,
+  sourceType: true,
+  sourceCampaignId: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.TeamRadarSegmentSelect
 
+export type TeamRadarSegmentWithHierarchy = TeamRadarSegmentSelect & {
+  parent: { id: string; name: string } | null
+  children: Array<{ id: string; name: string }>
+  sourceCampaign: { id: string; name: string } | null
+}
+
 export interface ITeamRadarSegmentRepository {
   listByTeam(teamId: string, options?: { onlyActive?: boolean }): Promise<TeamRadarSegmentSelect[]>
+  listWithHierarchy(teamId: string, options?: { onlyActive?: boolean }): Promise<TeamRadarSegmentWithHierarchy[]>
   findById(teamId: string, segmentId: string): Promise<TeamRadarSegmentSelect | null>
   create(data: Prisma.TeamRadarSegmentCreateInput): Promise<TeamRadarSegmentSelect>
   update(segmentId: string, data: Prisma.TeamRadarSegmentUpdateInput): Promise<TeamRadarSegmentSelect>
@@ -43,6 +56,38 @@ export class TeamRadarSegmentRepository implements ITeamRadarSegmentRepository {
       select: segmentSelect,
       orderBy: { createdAt: "desc" },
     })
+  }
+
+  async listWithHierarchy(teamId: string, options?: { onlyActive?: boolean }) {
+    const segments = await prisma.teamRadarSegment.findMany({
+      where: { teamId, ...(options?.onlyActive ? { isActive: true } : {}) },
+      select: {
+        ...segmentSelect,
+        parent: { select: { id: true, name: true } },
+        children: { select: { id: true, name: true }, orderBy: { createdAt: "desc" } },
+        sourceCampaign: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    return segments.map((segment) => ({
+      id: segment.id,
+      teamId: segment.teamId,
+      createdBy: segment.createdBy,
+      name: segment.name,
+      description: segment.description,
+      rulesJson: segment.rulesJson,
+      isSystem: segment.isSystem,
+      isActive: segment.isActive,
+      parentId: segment.parentId,
+      sourceType: segment.sourceType,
+      sourceCampaignId: segment.sourceCampaignId,
+      createdAt: segment.createdAt,
+      updatedAt: segment.updatedAt,
+      parent: segment.parent,
+      children: segment.children,
+      sourceCampaign: segment.sourceCampaign,
+    }))
   }
 
   async findById(teamId: string, segmentId: string) {

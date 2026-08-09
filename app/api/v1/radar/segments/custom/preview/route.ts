@@ -21,10 +21,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await customerDataPlatformUseCase.previewCustomSegmentCount(
+    const result = await customerDataPlatformUseCase.previewSegmentWithHierarchy(
       radarAccess.access.teamId,
       teamContextFromRadarAccess(radarAccess.access),
-      parsed.data.rules
+      {
+        rules: parsed.data.rules,
+        parentSegmentId: parsed.data.parentSegmentId,
+        campaignId: parsed.data.campaignId,
+      }
     )
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 })

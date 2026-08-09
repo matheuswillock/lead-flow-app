@@ -41,6 +41,7 @@ export type DomainConnectResult = {
   connectedAt?: string | null
   openTracking?: boolean
   clickTracking?: boolean
+  trackingSubdomain?: string | null
   records: DomainRecord[]
   events?: DomainEvent[]
 }

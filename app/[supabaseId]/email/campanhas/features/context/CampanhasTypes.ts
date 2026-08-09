@@ -26,6 +26,7 @@ export type SubCampaignSummary = {
   totalBounced: number
   subCampaignIndex: number | null
   contactListId?: string | null
+  templateId?: string
   errorMessage?: string | null
   failedRetryRecipientCount?: number
 }

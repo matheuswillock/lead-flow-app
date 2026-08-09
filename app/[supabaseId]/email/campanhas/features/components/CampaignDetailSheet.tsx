@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { BarChart3, CalendarX, Copy, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
+import { BarChart3, CalendarX, Copy, GitBranch, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -51,6 +51,7 @@ import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
+import { GenerateSegmentDialog } from "@/app/[supabaseId]/radar/features/components/GenerateSegmentDialog"
 
 type CampaignAnalyticsTarget = {
   id: string
@@ -371,6 +372,7 @@ export function CampaignDetailSheet({
   const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
   const [leafSending, setLeafSending] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [generateSegmentOpen, setGenerateSegmentOpen] = useState(false)
   // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
     !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
@@ -755,6 +757,13 @@ export function CampaignDetailSheet({
                   <BarChart3 data-icon="inline-start" />
                   Analytics
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setGenerateSegmentOpen(true)}
+                >
+                  <GitBranch data-icon="inline-start" />
+                  Gerar segmento
+                </Button>
                 {radarHref ? (
                   <Button variant="outline" asChild>
                     <Link href={radarHref}>
@@ -853,6 +862,14 @@ export function CampaignDetailSheet({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+
+              <GenerateSegmentDialog
+                open={generateSegmentOpen}
+                onOpenChange={setGenerateSegmentOpen}
+                sourceType="campaign"
+                sourceName={detailCampaign.name}
+                campaignId={detailCampaign.id}
+              />
           </div>
         ) : null}
       </SheetContent>

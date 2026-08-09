@@ -96,6 +96,19 @@ export class BackofficeEmailSettingsService implements StudioEmailSettingsServic
     return parseStudioEmailOutput<DomainConnectResult>(response)
   }
 
+  async configureDomainTracking(data: {
+    trackingSubdomain: string
+    openTracking: boolean
+    clickTracking: boolean
+  }): Promise<DomainConnectResult> {
+    const response = await fetch(`${this.base()}/domain/tracking`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    return parseStudioEmailOutput<DomainConnectResult>(response)
+  }
+
   async getVariables(): Promise<EmailGlobalVariable[]> {
     const response = await fetch(`${this.base()}/variables`)
     return parseStudioEmailOutput<EmailGlobalVariable[]>(response)

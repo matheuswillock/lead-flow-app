@@ -39,6 +39,12 @@ export interface UpsertEmailSenderData {
   replyTo?: string | null
 }
 
+export interface ConfigureDomainTrackingData {
+  trackingSubdomain: string
+  openTracking: boolean
+  clickTracking: boolean
+}
+
 export interface IEmailSettingsService {
   get(): Promise<EmailSettings>
   update(data: UpdateEmailSettingsData): Promise<EmailSettings>
@@ -51,6 +57,7 @@ export interface IEmailSettingsService {
   disconnectDomain(): Promise<void>
   verifyDomain(): Promise<{ status: ResendDomainStatus }>
   getDomainRecords(): Promise<DomainConnectResult>
+  configureDomainTracking(data: ConfigureDomainTrackingData): Promise<DomainConnectResult>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: UpsertEmailVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: UpsertEmailVariableData): Promise<EmailGlobalVariable>
