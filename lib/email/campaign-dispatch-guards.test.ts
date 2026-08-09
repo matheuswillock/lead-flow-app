@@ -1,5 +1,26 @@
 import { describe, expect, it } from "bun:test"
-import { checkDispatchWindow, resolveCampaignStatusAfterDispatch } from "./campaign-dispatch-guards"
+import {
+  checkDispatchWindow,
+  isResendDomainSendCapable,
+  resolveCampaignStatusAfterDispatch,
+} from "./campaign-dispatch-guards"
+
+describe("isResendDomainSendCapable", () => {
+  it("permite verified e partially_verified", () => {
+    expect(isResendDomainSendCapable("verified")).toBe(true)
+    expect(isResendDomainSendCapable("partially_verified")).toBe(true)
+  })
+
+  it("bloqueia status pendente ou falho", () => {
+    expect(isResendDomainSendCapable("pending")).toBe(false)
+    expect(isResendDomainSendCapable("not_started")).toBe(false)
+    expect(isResendDomainSendCapable("failed")).toBe(false)
+    expect(isResendDomainSendCapable("temporary_failure")).toBe(false)
+    expect(isResendDomainSendCapable("partially_failed")).toBe(false)
+    expect(isResendDomainSendCapable(null)).toBe(false)
+    expect(isResendDomainSendCapable(undefined)).toBe(false)
+  })
+})
 
 describe("checkDispatchWindow", () => {
   it("permite disparo dentro da janela no fuso America/Sao_Paulo", () => {
