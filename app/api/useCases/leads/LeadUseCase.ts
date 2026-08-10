@@ -2156,18 +2156,11 @@ export class LeadUseCase implements ILeadUseCase {
         },
       });
 
-      try {
-        await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
+      await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
           leadId: transferredLead.id,
           sourceTeamId: lead.teamId!,
           targetTeamId: data.targetTeamId,
         });
-      } catch (copyError) {
-        console.error(
-          "[transferLeadBetweenTeams] Erro ao copiar respostas de formulário para o time destino:",
-          copyError
-        );
-      }
 
       const finalLead = await this.leadRepository.findById(transferredLead.id);
       const result: TransferLeadBetweenTeamsResult = {

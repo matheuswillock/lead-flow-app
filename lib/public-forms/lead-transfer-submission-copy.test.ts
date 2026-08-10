@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { buildLeadTransferCopyOrigin, buildLeadTransferCopyRequestKey } from "./lead-transfer-submission-copy"
+import {
+  buildLeadTransferCopyOrigin,
+  buildLeadTransferCopyRequestKey,
+  resolveLeadTransferCopySourceSubmissionId,
+} from "./lead-transfer-submission-copy"
 
 describe("buildLeadTransferCopyRequestKey", () => {
   it("é determinístico por submission de origem + time destino (idempotência)", () => {
@@ -11,6 +15,28 @@ describe("buildLeadTransferCopyRequestKey", () => {
   it("gera chaves diferentes para times de destino diferentes", () => {
     expect(buildLeadTransferCopyRequestKey("sub-1", "team-a")).not.toBe(
       buildLeadTransferCopyRequestKey("sub-1", "team-b"),
+    )
+  })
+})
+
+describe("resolveLeadTransferCopySourceSubmissionId", () => {
+  it("usa a submission raiz quando a origem já é uma cópia de transferência", () => {
+    const origin = buildLeadTransferCopyOrigin({
+      sourceOrigin: null,
+      sourceSubmissionId: "sub-root",
+      sourceFormId: "form-1",
+      sourceFormName: "Form",
+      sourceTeamId: "team-a",
+      targetTeamId: "team-b",
+      copiedAt: new Date("2026-08-10T00:00:00.000Z"),
+    })
+
+    expect(resolveLeadTransferCopySourceSubmissionId(origin, "sub-copy-b")).toBe("sub-root")
+  })
+
+  it("mantém o id da submission quando não há metadata de cópia", () => {
+    expect(resolveLeadTransferCopySourceSubmissionId({ source: "web" }, "sub-original")).toBe(
+      "sub-original",
     )
   })
 })

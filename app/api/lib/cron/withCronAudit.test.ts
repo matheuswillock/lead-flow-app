@@ -82,4 +82,39 @@ describe("withCronAudit", () => {
 
     expect(markSuccess).toHaveBeenCalledTimes(1)
   })
+
+  it("marca falha quando handler retorna Output inválido", async () => {
+    const handler = mock(async () => ({
+      isValid: false,
+      successMessages: [],
+      errorMessages: ["backfill failed"],
+      result: null,
+    }))
+    const markSuccess = mock(async () => makeExecution())
+    const markFailed = mock(async () => makeExecution())
+    const onFailure = mock(async () => undefined)
+
+    const repository: IBackofficeCronExecutionRepository = {
+      create: async () => makeExecution("exec-invalid"),
+      findMany: async () => [],
+      markSuccess,
+      markFailed,
+    }
+
+    const result = await withCronAudit(
+      { cronKey: "test", cronPath: "/test" },
+      handler,
+      { repository, onFailure }
+    )
+
+    expect(result).toEqual({
+      isValid: false,
+      successMessages: [],
+      errorMessages: ["backfill failed"],
+      result: null,
+    })
+    expect(markSuccess).not.toHaveBeenCalled()
+    expect(markFailed).toHaveBeenCalledTimes(1)
+    expect(onFailure).toHaveBeenCalledTimes(1)
+  })
 })

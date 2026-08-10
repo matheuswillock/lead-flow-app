@@ -7,6 +7,7 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
   buildLeadTransferCopyOrigin,
   buildLeadTransferCopyRequestKey,
+  resolveLeadTransferCopySourceSubmissionId,
   SYSTEM_LEAD_TRANSFER_FORM_DESCRIPTION,
   SYSTEM_LEAD_TRANSFER_FORM_KIND,
   SYSTEM_LEAD_TRANSFER_FORM_NAME,
@@ -666,11 +667,35 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       return scoped
     }
 
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { teamId: true },
+    })
+    if (!lead) {
+      return []
+    }
+
+    const inboundTransfers = await prisma.leadTransfer.findMany({
+      where: { leadId, toTeamId: teamId },
+      select: { fromTeamId: true },
+      distinct: ["fromTeamId"],
+    })
+
+    const authorized = lead.teamId === teamId || inboundTransfers.length > 0
+    if (!authorized) {
+      return []
+    }
+
+    if (inboundTransfers.length === 0) {
+      return []
+    }
+
     // Leads transferidos antes da cópia automática (ver copyLeadSubmissionsOnTeamTransfer)
-    // não têm submission própria neste time ainda. Em vez de esconder o histórico até o
-    // backfill rodar, caímos para a submission original do time de origem.
+    // não têm submission própria neste time ainda. Caímos apenas para times de origem
+    // com transferência verificada para este time — nunca para um leadId arbitrário.
+    const sourceTeamIds = inboundTransfers.map((transfer) => transfer.fromTeamId)
     return prisma.publicFormSubmission.findMany({
-      where: { leadId },
+      where: { leadId, form: { teamId: { in: sourceTeamIds } } },
       orderBy: { createdAt: "desc" },
       select: leadSubmissionSelect,
     })
@@ -710,57 +735,67 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       return { copied: 0, skipped: sourceSubmissions.length }
     }
 
-    let copied = 0
-    let skipped = 0
+    return prisma.$transaction(async (tx) => {
+      const carrier = await this.ensureLeadTransferCarrierForm(
+        targetTeamId,
+        targetTeam.masterId,
+        tx,
+      )
 
-    for (const submission of sourceSubmissions) {
-      const requestKey = buildLeadTransferCopyRequestKey(submission.id, targetTeamId)
-      const existing = await prisma.publicFormSubmission.findUnique({
-        where: { requestKey },
-        select: { id: true },
-      })
-      if (existing) {
-        skipped += 1
-        continue
+      let copied = 0
+      let skipped = 0
+
+      for (const submission of sourceSubmissions) {
+        const sourceSubmissionId = resolveLeadTransferCopySourceSubmissionId(
+          submission.origin,
+          submission.id,
+        )
+        const requestKey = buildLeadTransferCopyRequestKey(sourceSubmissionId, targetTeamId)
+        const existing = await tx.publicFormSubmission.findUnique({
+          where: { requestKey },
+          select: { id: true },
+        })
+        if (existing) {
+          skipped += 1
+          continue
+        }
+
+        await tx.publicFormSubmission.create({
+          data: {
+            formId: carrier.formId,
+            publicationId: carrier.publicationId,
+            leadId,
+            requestKey,
+            completionStatus: submission.completionStatus,
+            status: submission.status,
+            score: submission.score,
+            scoreBandLabel: submission.scoreBandLabel,
+            submittedAt: submission.submittedAt,
+            origin: json(
+              buildLeadTransferCopyOrigin({
+                sourceOrigin: submission.origin,
+                sourceSubmissionId,
+                sourceFormId: submission.form.id,
+                sourceFormName: submission.form.name,
+                sourceTeamId,
+                targetTeamId,
+                copiedAt: new Date(),
+              }),
+            ),
+            answers: {
+              create: submission.answers.map((answer) => ({
+                questionId: null,
+                value: json(answer.value),
+                questionSnapshot: json(answer.questionSnapshot),
+              })),
+            },
+          },
+        })
+        copied += 1
       }
 
-      const carrier = await this.ensureLeadTransferCarrierForm(targetTeamId, targetTeam.masterId)
-
-      await prisma.publicFormSubmission.create({
-        data: {
-          formId: carrier.formId,
-          publicationId: carrier.publicationId,
-          leadId,
-          requestKey,
-          completionStatus: submission.completionStatus,
-          status: submission.status,
-          score: submission.score,
-          scoreBandLabel: submission.scoreBandLabel,
-          submittedAt: submission.submittedAt,
-          origin: json(
-            buildLeadTransferCopyOrigin({
-              sourceOrigin: submission.origin,
-              sourceSubmissionId: submission.id,
-              sourceFormId: submission.form.id,
-              sourceFormName: submission.form.name,
-              sourceTeamId,
-              targetTeamId,
-              copiedAt: new Date(),
-            }),
-          ),
-          answers: {
-            create: submission.answers.map((answer) => ({
-              questionId: null,
-              value: json(answer.value),
-              questionSnapshot: json(answer.questionSnapshot),
-            })),
-          },
-        },
-      })
-      copied += 1
-    }
-
-    return { copied, skipped }
+      return { copied, skipped }
+    })
   }
 
   /**
@@ -774,8 +809,12 @@ export class PublicFormsRepository implements IPublicFormsRepository {
    * benigna — dados corretos, só duas linhas de "formulário sistema" em vez de uma — e
    * evitar isso exigiria uma migration nova, fora de escopo deste fix.
    */
-  private async ensureLeadTransferCarrierForm(teamId: string, masterProfileId: string) {
-    const existing = await prisma.publicForm.findFirst({
+  private async ensureLeadTransferCarrierForm(
+    teamId: string,
+    masterProfileId: string,
+    db: Prisma.TransactionClient | typeof prisma = prisma,
+  ) {
+    const existing = await db.publicForm.findFirst({
       where: { teamId, formKind: SYSTEM_LEAD_TRANSFER_FORM_KIND },
       select: {
         id: true,
@@ -786,7 +825,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       return { formId: existing.id, publicationId: existing.publications[0].id }
     }
     if (existing) {
-      const publication = await prisma.publicFormPublication.create({
+      const publication = await db.publicFormPublication.create({
         data: {
           formId: existing.id,
           publishedById: masterProfileId,
@@ -798,7 +837,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       return { formId: existing.id, publicationId: publication.id }
     }
 
-    const form = await prisma.publicForm.create({
+    const form = await db.publicForm.create({
       data: {
         teamId,
         createdById: masterProfileId,
@@ -810,7 +849,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
       select: { id: true },
     })
-    const publication = await prisma.publicFormPublication.create({
+    const publication = await db.publicFormPublication.create({
       data: {
         formId: form.id,
         publishedById: masterProfileId,

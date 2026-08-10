@@ -21,6 +21,23 @@ export function buildLeadTransferCopyRequestKey(sourceSubmissionId: string, targ
   return `lead-transfer-copy:${sourceSubmissionId}:${targetTeamId}`
 }
 
+/** Idempotência em transferências encadeadas (B→A→B): sempre usa a submission raiz. */
+export function resolveLeadTransferCopySourceSubmissionId(
+  origin: unknown,
+  submissionId: string,
+): string {
+  if (origin && typeof origin === "object" && !Array.isArray(origin)) {
+    const copyMeta = (origin as Record<string, unknown>).leadTransferCopy
+    if (copyMeta && typeof copyMeta === "object" && !Array.isArray(copyMeta)) {
+      const rootId = (copyMeta as { sourceSubmissionId?: unknown }).sourceSubmissionId
+      if (typeof rootId === "string" && rootId.length > 0) {
+        return rootId
+      }
+    }
+  }
+  return submissionId
+}
+
 export type LeadTransferCopyOriginParams = {
   sourceOrigin: unknown
   sourceSubmissionId: string

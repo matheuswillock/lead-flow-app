@@ -228,18 +228,11 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
         preScheduledAt: lead.meetingDate ?? null,
       });
 
-      try {
-        await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
+      await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
           leadId: transferredLead.id,
           sourceTeamId: lead.teamId,
           targetTeamId: defaultTeam.id,
         });
-      } catch (copyError) {
-        console.error(
-          "[MultiskillTransferUseCase][transferLead] Erro ao copiar respostas de formulário para o time destino:",
-          copyError
-        );
-      }
 
       const finalLead = await leadRepository.findById(transferredLead.id);
       if (!finalLead) {
