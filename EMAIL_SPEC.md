@@ -1,8 +1,8 @@
 # Spec: Evolução do Módulo de E-mail — Créditos por Time, Conformidade e Robustez de Disparo
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (Estágios 10–11 implementados nesta branch; review D12 — aviso `partially_verified`, wire de tracking em analytics/settings; item 3 D12 follow-up em ticket de reconciliação)
-**Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1–11 **implementados** (9 via PR #735; 10–11 nesta branch `feature/email-resend-webhook-retry`, incl. reconciliação periódica de domínio D12 item 3).
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (Estágios 10–11 via PR #736 mergeado; D13/Estágio 12 spec PR #737; review Codex — retry 409 variantes, risco duplicata Opção A, escopo "Reenviar apenas falhas" corrigido)
+**Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9/§10). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
+**Status:** Estágios 1–11 **implementados** (9 via PR #735; 10–11 via PR #736). Estágio 4 item 1 implementado; item 2 via Estágio 10. **Estágio 12 (D13) aprovado/pronto para implementação** — spec neste PR #737.
 
 ## Status de execução
 
@@ -16,9 +16,10 @@
 | 6 — Importação de contatos em background | D4 | **implementado** — sync Radar desacoplado via outbox (Estágio 8) | `lib/email/email-contact-import-use-case.test.ts` |
 | 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 8 — Fila desacoplada de sync Radar do import | D9 | **implementado** — `EmailContactRadarSyncOutbox` + cron `/api/v1/radar/cron/sync-email-contacts` | testes de outbox + import |
-| 9 — Reconcile resiliente do disparo manual | D10 | **implementado** (PR #735) | `lib/email/dispatch-reconcile-resilience.test.ts` |
-| 10 — Retry de falhas de processamento do webhook Resend | D11 | **implementado** (nesta branch, PR #736) | `ResendWebhookProcessingFailure` + `/api/v1/email/cron/retry-resend-webhook-failures` |
-| 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **implementado** | `campaign-dispatch-guards.ts`, cron `reconcile-resend-domain-status` (`0 */6 * * *`) |
+| 9 — Reconcile resiliente do disparo manual | D10 | **implementado (PR #735)** — `withDispatchTerminalCommitRetry` + fallback `totalSent`; script `reconcile-historical-dispatch-totals.ts` já rodado com `--apply` em produção (4 dispatches corrigidos) | `lib/email/dispatch-reconcile-resilience.test.ts` |
+| 10 — Retry de falhas de processamento do webhook Resend | D11 | **implementado (PR #736)** | `ResendWebhookProcessingFailure` + `/api/v1/email/cron/retry-resend-webhook-failures` |
+| 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **implementado (PR #736)** | `campaign-dispatch-guards.ts`, cron `reconcile-resend-domain-status` (`0 */6 * * *`) |
+| 12 — Colisão de idempotency key na retomada de dispatch travado | D13 | **proposto, não implementado** | achado E4, `EMAIL_AUDIT.md` §10 — dispatch original travado em erro terminal após esgotar variantes de idempotency na retomada (time Kathrein Antunes) |
 
 **Não coberto por nenhum estágio (non-goal desde julho):** cobrança real via Asaas — ver `Open questions` item 3.
 
@@ -182,6 +183,21 @@ Consequências normativas:
 **Disparo agendado (cron):** avisos de tracking degradado vão para `console.info` apenas — não há consumidor HTTP; comportamento intencional (contraste com disparo manual que retorna `warnings[]` no 202).
 
 **Achado relacionado — resolvido via cron:** reconciliação periódica (`/api/v1/email/cron/reconcile-resend-domain-status`, `0 */6 * * *`) poll Resend API → `syncFromResendDomain` quando `resendDomainStatus` diverge. Webhook `domain.updated` continua sendo o caminho primário.
+
+### D13 — Idempotency key de lote de disparo passa a incluir uma "geração de retomada", não só `chunkIndex` posicional (achado E4, `EMAIL_AUDIT.md` §10)
+
+**Motivo:** a chave `campaign/{dispatchId}/{chunkIndex}` (`EmailCampaignDispatchService.ts:188-192`) assume que a composição de destinatários de um determinado `chunkIndex` é estável para aquele `dispatchId` — mas `resumeOrphanSendingDispatches` (`EmailCampaignUseCase.ts:2518+`) retoma um dispatch preso reconstruindo a lista de destinatários só com quem ainda está `queued` (um subconjunto menor) e refatia em `chunkIndex` **do zero**. O `chunkIndex 0` da retomada contém destinatários **diferentes** do `chunkIndex 0` da tentativa original, mas reutiliza o mesmo espaço de chaves posicionais — após esgotar as variantes de retry interno (ver abaixo), o dispatch termina em `Campanha já foi processada anteriormente`.
+
+**Nota sobre "Reenviar apenas falhas":** o primeiro clique no botão **não** colide com o dispatch antigo — `startManualDispatch(retryFailedOnly)` cria um **`dispatchId` novo** (`randomUUID()`). Campanhas em `failed`/`partially_sent` permanecem elegíveis. O erro visível na UI (ex. campanha Maternidade) vem do **dispatch original** que falhou na retomada automática. O mesmo padrão de colisão só reaparece se o **novo** dispatch de reenvio também ficar preso em `sending` e cair em `resumeOrphanSendingDispatches`.
+
+**Correção:** a chave não pode depender só da **posição** do lote (`chunkIndex`) quando a composição do lote muda entre tentativas. Duas opções:
+
+- **Opção A (`resumeCount` no dispatch):** contador incrementado em cada retomada; chave `campaign/{dispatchId}/resume-{resumeCount}/{chunkIndex}`. **Risco (review PR #737):** se o Resend **já aceitou** um lote mas `onChunkDispatched` falhou antes de marcar os logs como enviados, rotacionar só a geração **reenvia** e-mails já aceitos pelo provedor. **Mitigação obrigatória no Estágio 12:** reconciliar logs `queued` cujo lote já foi aceito (persistir estado por lote) **ou** combinar com identidade estável do conteúdo do lote (Opção B).
+- **Opção B (recomendada após review PR #737):** derivar a chave do **conteúdo** do lote — hash curto dos e-mails ordenados do lote, `campaign/{dispatchId}/{hash}`. Mesma composição → mesma chave (retry seguro); composição diferente na retomada → chave nova, sem colidir com o `chunkIndex 0` original. Perde legibilidade de "chunk N" nos logs do Resend, mas evita duplicata por rotação cega de geração.
+
+Recomendação revisada: **Opção B** como chave primária; se Opção A for usada, só com reconciliação de aceite do provedor antes de reenviar.
+
+**Retry interno já existente:** `isRetryableResendBatchError` trata `409` com `idempotency` na mensagem como retryable; `dispatchBatch` tenta até `MAX_BATCH_SEND_ATTEMPTS` (3) com chaves variantes `attempt-1`/`attempt-2` na mesma posição. A colisão posicional na retomada **não** falha imediatamente no primeiro `409` — o erro terminal aparece quando **todas** as variantes daquele chunk esgotam sem sucesso (ou quando o payload divergente persiste em todas). D13 corrige a causa raiz (identidade do lote), não só o sintoma do último retry.
 
 ---
 
@@ -691,6 +707,57 @@ Rode a validação completa.
 **Aceite:** time com domínio `partially_failed` ou `partially_verified` consegue disparar campanha com aviso; time com domínio `failed`/`pending`/`not_started` continua bloqueado; `isResendDomainTrackingCapable` wired em analytics e settings; teste de todos os status do Resend passando pelo guard correto.
 **Validação manual:** conferir no ambiente local/staging que o time `backstageclub.com.br` (ou um time de teste com o mesmo status forçado) consegue disparar uma campanha de teste; métricas exibem alerta quando tracking degradado.
 
+### Estágio 12 — Idempotency key com geração de retomada (D13 — achado E4, `EMAIL_AUDIT.md` §10)
+
+**Prompt (copy-paste):**
+
+```text
+Leia EMAIL_AUDIT.md (seção 10, achado E4) e a decisão D13 registrada em
+EMAIL_SPEC.md. Bug ativo em produção: campanhas retomadas por
+resumeOrphanSendingDispatches após ficarem presas em "sending" colidem com a
+idempotency key posicional da tentativa original no Resend — após esgotar as
+variantes attempt-1/attempt-2 do retry interno, terminam em 409 com mensagem
+"Campanha já foi processada anteriormente". O botão "Reenviar apenas falhas"
+cria dispatchId novo no primeiro clique (não colide com o dispatch antigo); o
+fix cobre retomadas de qualquer dispatch, inclusive um reenvio de falhas que
+também ficar preso em sending. Modo TDD, sem exceção:
+
+1. Escreva primeiro um teste de integração/unit que reproduza a colisão:
+   simule um dispatch com alguns EmailLog já sent e outros ainda queued
+   (estado que resumeOrphanSendingDispatches encontra), chame o fluxo de
+   retomada, e confirme que a idempotencyKey gerada para o primeiro chunk da
+   retomada é IGUAL à do primeiro chunk da tentativa original (mockando
+   resend.batch.send para capturar as chaves usadas nas duas chamadas). Veja
+   o teste falhar (as chaves são de fato iguais hoje) antes de corrigir.
+2. Schema (bun run db:migrate:from-prisma -- email-campaign-dispatch-resume-count):
+   adicione resumeCount Int @default(0) a EmailCampaignDispatch **somente se
+   Opção A for escolhida**; para Opção B (hash do lote) migration pode ser
+   desnecessária. NÃO aplique no remoto sem autorização do owner.
+3. Escolha Opção B (hash do conteúdo do lote) como implementação padrão, ou
+   Opção A com reconciliação obrigatória de logs queued cujo lote o Resend já
+   aceitou (evitar reenvio duplicado — review PR #737 P1).
+4. resumeOrphanSendingDispatches (EmailCampaignUseCase.ts): se Opção A,
+   incremente resumeCount antes de reconstruir o job e propague resumeGeneration;
+   se Opção B, passe hash por chunk para dispatchBatch.
+5. EmailCampaignDispatchService.dispatchBatch: idempotencyKey deixa de ser só
+   posicional — Opção B: campaign/{dispatchId}/{hash(recipients)}; Opção A:
+   campaign/{dispatchId}/resume-{resumeGeneration}/{chunkIndex}.
+6. Teste de regressão: retomada com subconjunto queued gera chaves distintas da
+   tentativa original; **mesmo** subconjunto de e-mails reutiliza a mesma chave
+   (sem duplicata se Resend já aceitou). Teste adicional: esgotamento de
+   variantes attempt-1/attempt-2 documentado no teste (3 tentativas).
+7. "Reenviar apenas falhas": confirmar dispatchId novo no primeiro envio; aceite
+   não exige que o botão deixe de funcionar — exige que retomadas futuras do
+   novo dispatch também não travem.
+Rode a validação completa (typecheck/lint/governance:check/
+governance:check-api-masking/lint:pt-br).
+```
+
+**Não tocar:** lógica de seleção de destinatários para retomada (`rebuildRecipientsForOrphanResume`) ou para "Reenviar apenas falhas" (`resolveFailedRetryRecipientEmails`) — o bug é só na chave, não em quem é selecionado.
+
+**Aceite:** teste prova que retomadas com composição de lote diferente nunca reusam a chave posicional da geração anterior; mesma composição reutiliza chave (sem duplicata); nenhum dispatch trava em "Campanha já foi processada anteriormente" após esgotar variantes de retry por colisão posicional na retomada.
+**Validação manual:** no time Kathrein Antunes, campanha Maternidade — confirmar que "Reenviar apenas falhas" inicia novo dispatch; após deploy, simular retomada de dispatch preso em `sending` e confirmar que não termina no erro de idempotency.
+
 ---
 
 ## Edge cases & error handling (transversais)
@@ -742,5 +809,6 @@ Rode a validação completa.
 - 2026-08-10 — **Review automatizado no PR #731 (Codex) — 2 comentários, ambos aceitos.** A correção da recuperação de claim travado (do PR #729) tinha uma lacuna: (1) P1 — não incrementava `generation` na própria recuperação, então um worker apenas *lento* (não morto) ainda podia sobrescrever o resultado do worker que reivindicou a linha recuperada, porque o `generation` capturado por ambos seria o mesmo; corrigido incrementando `generation` também na recuperação, não só no reimport; (2) P2 — não incrementava `attemptCount` na recuperação, então uma linha que só falha por timeout (nunca por exceção explícita) nunca chegava ao teto de tentativas e ficava recuperada para sempre; corrigido incrementando `attemptCount` na recuperação também, com `failed` direto se o teto for atingido ali.
 - 2026-08-10 — **Estágio 8 concluído (D9, PR #732):** sync Radar desacoplado do import via `EmailContactRadarSyncOutbox` + cron `radar-sync-email-contacts` (`*/5`). Import enfileira outbox por upsert (reativa sent/failed/processing com `generation`), `processedRows` avança sem sync síncrono; notificação inclui `pendingRadarSync` escopado por `emailImportJobId`. RLS deny-all para JWT; `markSent`/`markFailedWithRetry` condicionais em `generation`; recuperação de claim travado incrementa `generation` e `attemptCount`.
 - 2026-08-10 — **Estágio 9 concluído (D10, PR #735):** `withDispatchTerminalCommitRetry` separa P1001 (reconnect + retry) de P1017 (verifyAlreadyCommitted antes de re-executar); `commitDispatchTerminalState` idempotente via checagem de dispatch terminal + `verifyAlreadyCommitted`; fallback `persistDispatchTerminalFallback` persiste status terminal além de `totalSent`; contagem de reconcile via `sentAt IS NOT NULL`. Script `scripts/reconcile-historical-dispatch-totals.ts` executado com `--apply` em produção (autorizado pelo owner): corrigiu 4 dispatches históricos (`totalSent` → 1.400, 2.900, 914, 3.370); os 4 permanecem com `status: failed` intencionalmente — escopo do script é só `totalSent`, nunca status.
-- 2026-08-10 — **Estágio 10 concluído (D11, branch `feature/email-resend-webhook-retry`, PR #736):** outbox `ResendWebhookProcessingFailure`, upsert no catch do webhook Resend, cron `retry-resend-webhook-failures` (`*/5`), recuperação de claims `processing` travados (lease 10 min, espelha radar outbox).
-- 2026-08-10 — **Estágio 11 concluído (D12, mesma branch):** guard aceita `partially_failed`; aviso não-bloqueante para `partially_verified` e `partially_failed`; `isResendDomainTrackingCapable` wired em analytics/settings/UI; cron agendado loga aviso (sem payload HTTP). Item 3: cron `reconcile-resend-domain-status` (`0 */6 * * *`) poll Resend → `syncFromResendDomain`.
+- 2026-08-10 — **Estágio 10 concluído (D11, PR #736 mergeado):** outbox `ResendWebhookProcessingFailure`, upsert no catch do webhook Resend, cron `retry-resend-webhook-failures` (`*/5`), recuperação de claims `processing` travados (lease 10 min, espelha radar outbox).
+- 2026-08-10 — **Estágio 11 concluído (D12, PR #736 mergeado):** guard aceita `partially_failed`; aviso não-bloqueante para `partially_verified` e `partially_failed`; `isResendDomainTrackingCapable` wired em analytics/settings/UI; cron `reconcile-resend-domain-status` (`0 */6 * * *`) poll Resend → `syncFromResendDomain`.
+- 2026-08-10 — **Novo achado E4 (`EMAIL_AUDIT.md` §10) a partir de screenshots do time Kathrein Antunes:** campanha "Maternidade" mostrava `Campanha já foi processada anteriormente` — dispatch original falhou na retomada automática após esgotar variantes de idempotency (`attempt-0`…`attempt-2`). Causa raiz: `resumeOrphanSendingDispatches` refatia `chunkIndex` do zero com destinatários diferentes, colidindo com chaves posicionais já consumidas. Registrado como D13/Estágio 12. **Correção review PR #737:** "Reenviar apenas falhas" no primeiro clique usa `dispatchId` novo e não está bloqueado por esse erro; o fix cobre retomadas de qualquer dispatch. Opção B (hash do lote) preferida sobre `resumeCount` cego (risco de duplicata se Resend aceitou mas DB não persistiu).
