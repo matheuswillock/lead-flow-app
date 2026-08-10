@@ -8,6 +8,7 @@ import {
   buildLeadTransferCopyOrigin,
   buildLeadTransferCopyRequestKey,
   resolveLeadTransferCopySourceSubmissionId,
+  shouldSkipLeadTransferCopyForRootInTarget,
   SYSTEM_LEAD_TRANSFER_FORM_DESCRIPTION,
   SYSTEM_LEAD_TRANSFER_FORM_KIND,
   SYSTEM_LEAD_TRANSFER_FORM_NAME,
@@ -663,16 +664,13 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       orderBy: { createdAt: "desc" },
       select: leadSubmissionSelect,
     })
-    if (scoped.length > 0) {
-      return scoped
-    }
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       select: { teamId: true },
     })
     if (!lead) {
-      return []
+      return scoped
     }
 
     const inboundTransfers = await prisma.leadTransfer.findMany({
@@ -682,23 +680,29 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
 
     const authorized = lead.teamId === teamId || inboundTransfers.length > 0
-    if (!authorized) {
-      return []
+    if (!authorized || inboundTransfers.length === 0) {
+      return scoped
     }
 
-    if (inboundTransfers.length === 0) {
-      return []
-    }
-
-    // Leads transferidos antes da cópia automática (ver copyLeadSubmissionsOnTeamTransfer)
-    // não têm submission própria neste time ainda. Caímos apenas para times de origem
-    // com transferência verificada para este time — nunca para um leadId arbitrário.
+    // Merge submissions do time atual com histórico legado dos times de origem
+    // (leads transferidos antes da cópia automática, ou origem ainda só no time A).
     const sourceTeamIds = inboundTransfers.map((transfer) => transfer.fromTeamId)
-    return prisma.publicFormSubmission.findMany({
+    const legacy = await prisma.publicFormSubmission.findMany({
       where: { leadId, form: { teamId: { in: sourceTeamIds } } },
       orderBy: { createdAt: "desc" },
       select: leadSubmissionSelect,
     })
+
+    const byId = new Map<string, (typeof scoped)[number]>()
+    for (const row of [...scoped, ...legacy]) {
+      if (!byId.has(row.id)) {
+        byId.set(row.id, row)
+      }
+    }
+
+    return Array.from(byId.values()).sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    )
   }
 
   async copyLeadSubmissionsOnTeamTransfer(params: {
@@ -756,6 +760,20 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           select: { id: true },
         })
         if (existing) {
+          skipped += 1
+          continue
+        }
+
+        const rootSubmission = await tx.publicFormSubmission.findUnique({
+          where: { id: sourceSubmissionId },
+          select: { form: { select: { teamId: true } } },
+        })
+        if (
+          shouldSkipLeadTransferCopyForRootInTarget({
+            rootSubmissionTeamId: rootSubmission?.form.teamId,
+            targetTeamId,
+          })
+        ) {
           skipped += 1
           continue
         }

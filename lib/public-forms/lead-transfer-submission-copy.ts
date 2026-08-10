@@ -21,6 +21,18 @@ export function buildLeadTransferCopyRequestKey(sourceSubmissionId: string, targ
   return `lead-transfer-copy:${sourceSubmissionId}:${targetTeamId}`
 }
 
+/**
+ * Em A→B→A a submission raiz já vive no time A; o requestKey sintético
+ * `lead-transfer-copy:<root>:A` não bate com a chave original — trate a raiz
+ * como já presente quando o form dela pertence ao time destino.
+ */
+export function shouldSkipLeadTransferCopyForRootInTarget(params: {
+  rootSubmissionTeamId: string | null | undefined
+  targetTeamId: string
+}): boolean {
+  return params.rootSubmissionTeamId === params.targetTeamId
+}
+
 /** Idempotência em transferências encadeadas (B→A→B): sempre usa a submission raiz. */
 export function resolveLeadTransferCopySourceSubmissionId(
   origin: unknown,

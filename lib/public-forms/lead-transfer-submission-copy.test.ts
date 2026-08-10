@@ -3,6 +3,7 @@ import {
   buildLeadTransferCopyOrigin,
   buildLeadTransferCopyRequestKey,
   resolveLeadTransferCopySourceSubmissionId,
+  shouldSkipLeadTransferCopyForRootInTarget,
 } from "./lead-transfer-submission-copy"
 
 describe("buildLeadTransferCopyRequestKey", () => {
@@ -16,6 +17,26 @@ describe("buildLeadTransferCopyRequestKey", () => {
     expect(buildLeadTransferCopyRequestKey("sub-1", "team-a")).not.toBe(
       buildLeadTransferCopyRequestKey("sub-1", "team-b"),
     )
+  })
+})
+
+describe("shouldSkipLeadTransferCopyForRootInTarget", () => {
+  it("pula cópia quando a submission raiz já está no time destino (A→B→A)", () => {
+    expect(
+      shouldSkipLeadTransferCopyForRootInTarget({
+        rootSubmissionTeamId: "team-a",
+        targetTeamId: "team-a",
+      }),
+    ).toBe(true)
+  })
+
+  it("não pula quando a raiz está em outro time", () => {
+    expect(
+      shouldSkipLeadTransferCopyForRootInTarget({
+        rootSubmissionTeamId: "team-a",
+        targetTeamId: "team-b",
+      }),
+    ).toBe(false)
   })
 })
 
