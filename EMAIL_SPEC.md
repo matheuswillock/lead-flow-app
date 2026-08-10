@@ -1,6 +1,6 @@
 # Spec: Evolução do Módulo de E-mail — Créditos por Time, Conformidade e Robustez de Disparo
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (review PR #728 — 2 achados de fato corrigidos, 1 correção indevida revertida; Estágio 11/D12 adicionado)
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (review PR #728 — 2 achados de fato corrigidos, 1 correção indevida revertida; Estágio 11/D12 adicionado; review PR #729 — corrida de reativação e recuperação de claim travado no outbox do D9/Estágio 8)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
 **Status:** Estágios 1, 2, 5, 6, 7 **implementados em produção**; Estágio 3 **parcial** (1 caminho de produto sem tags — ver linha da tabela). Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 8, 9, 10 e 11 aprovados/prontos para implementação** — nenhuma decisão de produto pendente resta (D9 confirmado; D12 é correção técnica, não decisão de produto).
 
@@ -145,9 +145,9 @@ Consequências normativas:
 
 **Desenho recomendado (segue o padrão de outbox já usado no repo — `TeamWebhookOutbox`, `prisma/schema.prisma:2739-2759`):**
 
-1. Novo model `EmailContactRadarSyncOutbox`: `id`, `emailContactId`, `teamId`, `emailImportJobId` (FK opcional para `EmailImportJob`, nulo quando o gatilho não é um import em lote — ex. contato criado via API), `status` (`pending|processing|sent|failed`), `attemptCount Int @default(0)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índices `[status, nextAttemptAt]`, `[emailImportJobId, status]` e `[emailContactId]` (unique — um contato tem no máximo uma linha de outbox por vez).
-2. `EmailContactImportUseCase.processPendingJobs()` **para de chamar o Radar diretamente**: após `upsertContactsBatch`, faz um **upsert** (não `createMany`/`skipDuplicates`) por `emailContactId` no outbox — contato novo cria a linha `pending`; contato já existente (reimport, atualização de `name`/`customFields`) **volta para `pending`** com `attemptCount: 0` e `emailImportJobId` atualizado para o job atual, mesmo que a linha anterior estivesse `sent`/`failed`. `createMany`/`skipDuplicates` deixaria uma linha `sent` de um import anterior parada para sempre e o Radar nunca receberia a atualização. `processedRows` avança imediatamente após o upsert — sem esperar Radar. Isso, sozinho, já reduz um job de horas para segundos (upsert de 500 linhas é rápido; o gargalo era só o Radar).
-3. Novo cron `/api/v1/radar/cron/sync-email-contacts` (registrar em `vercel.json`, `*/5 * * * *`, `withCronAudit`): reivindica um lote de outbox (`updateMany` `pending→processing`, mesmo padrão de claim atômico do resto da stack), processa com concorrência limitada (ex. 5-10, não 2 sequenciais) via `RADAR_SYNC_CONCURRENCY` maior já que agora está isolado, marca `sent`/`failed` por linha com `attemptCount`/`lastError`; falha definitiva após N tentativas fica `failed` (visível, não trava nada).
+1. Novo model `EmailContactRadarSyncOutbox`: `id`, `emailContactId`, `teamId`, `emailImportJobId` (FK opcional para `EmailImportJob`, nulo quando o gatilho não é um import em lote — ex. contato criado via API), `status` (`pending|processing|sent|failed`), `generation Int @default(0)` (lease/versão — ver correções do review PR #729 abaixo), `attemptCount Int @default(0)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índices `[status, nextAttemptAt]`, `[emailImportJobId, status]` e `[emailContactId]` (unique — um contato tem no máximo uma linha de outbox por vez).
+2. `EmailContactImportUseCase.processPendingJobs()` **para de chamar o Radar diretamente**: após `upsertContactsBatch`, faz um **upsert** (não `createMany`/`skipDuplicates`) por `emailContactId` no outbox — contato novo cria a linha `pending` com `generation: 0`; contato já existente (reimport, atualização de `name`/`customFields`) **volta para `pending`** com `attemptCount: 0`, `emailImportJobId` atualizado para o job atual e **`generation: { increment: 1 }`**, mesmo que a linha anterior estivesse `sent`/`failed`/`processing`. `createMany`/`skipDuplicates` deixaria uma linha `sent` de um import anterior parada para sempre e o Radar nunca receberia a atualização. `processedRows` avança imediatamente após o upsert — sem esperar Radar. Isso, sozinho, já reduz um job de horas para segundos (upsert de 500 linhas é rápido; o gargalo era só o Radar).
+3. Novo cron `/api/v1/radar/cron/sync-email-contacts` (registrar em `vercel.json`, `*/5 * * * *`, `withCronAudit`): **antes de reivindicar lotes novos**, recupera linhas presas em `processing` cujo `updatedAt` é mais antigo que um teto (ex. 10 min — cron caiu/estourou o tempo no meio de um lote) revertendo-as para `pending` com `nextAttemptAt: now()`, exatamente como `TeamWebhookOutboxRepository.claimDue` já faz (`app/api/infra/data/repositories/teamWebhook/TeamWebhookOutboxRepository.ts:26-41`) — reaproveitar esse padrão, não reinventar. Em seguida reivindica um lote (`updateMany` `pending→processing`, capturando o `generation` de cada linha no momento do claim), processa com concorrência limitada (ex. 5-10, não 2 sequenciais) via `RADAR_SYNC_CONCURRENCY` maior já que agora está isolado. Ao finalizar cada contato, o `UPDATE` que marca `sent`/`failed` **é condicional em `generation = <generation capturado no claim>`** — se `rowCount === 0`, a linha foi reativada por um reimport concorrente enquanto este worker processava; **não finalize** (deixe `processing`, o próximo tick do claim vai recuperá-la já com o `generation` novo e reprocessar do zero). Isso evita a corrida: reimport durante processamento não pode ser "confirmado" por um worker que carregou dados antigos. Falha definitiva após N tentativas fica `failed` (visível, não trava nada).
 4. `finalizeJob`/notificação de import concluído passam a informar quantos contatos **deste job** (`emailImportJobId = job.id`, não a lista inteira — um import anterior da mesma lista pode ter linhas pendentes independentes) aguardam sync do Radar; não bloqueia a notificação por isso.
 
 **Alternativa (se o owner rejeitar o trade-off de latência):** manter síncrono, mas eliminar o N+1 — carregar `loadEngagementWeightsAndConfig` **uma vez por lote** (não por contato) e trocar os 5 round-trips sequenciais de `processEmailContactForRadar` por operações em lote (`createMany`/`upsertMany` quando o Prisma permitir, ou ao menos `Promise.all` com concorrência maior). Reduz a duração do lote mas não elimina o acoplamento — se a lista tiver múltiplos milhares de contatos, ainda pode estourar o orçamento de um cron. **Não recomendada como solução única**, mas pode ser aplicada em conjunto com D9 para o próprio consumidor do outbox.
@@ -503,26 +503,38 @@ confirmada pelo owner em 2026-08-10 — import conclui antes do sync Radar exist
 1. Schema (bun run db:migrate:from-prisma -- email-contact-radar-sync-outbox):
    model EmailContactRadarSyncOutbox conforme desenhado em D9 (id, emailContactId,
    teamId, emailImportJobId String? com relation para EmailImportJob, status
-   pending|processing|sent|failed, attemptCount, nextAttemptAt, lastError,
-   createdAt/updatedAt), unique em emailContactId, índices [status, nextAttemptAt]
-   e [emailImportJobId, status]. NÃO aplique no remoto sem autorização do owner.
+   pending|processing|sent|failed, generation Int @default(0), attemptCount,
+   nextAttemptAt, lastError, createdAt/updatedAt), unique em emailContactId,
+   índices [status, nextAttemptAt] e [emailImportJobId, status]. NÃO aplique no
+   remoto sem autorização do owner.
 2. EmailContactImportUseCase.processPendingJobs: remova o laço de sync do Radar
    (linhas 526-586 hoje) de dentro do processamento de lote. Após upsertContactsBatch,
    faça upsert (NÃO createMany/skipDuplicates) por emailContactId no outbox para os
-   contatos do lote (só quando teamHasRadarFeature): contato novo cria pending;
-   contato já existente (reimport/atualização) volta para pending com attemptCount
-   zerado e emailImportJobId apontando para o job atual — nunca deixe uma linha
-   sent/failed de um import anterior impedir a criação/reativação. processedRows
-   avança logo após o upsert de contatos.
+   contatos do lote (só quando teamHasRadarFeature): contato novo cria pending com
+   generation 0; contato já existente (reimport/atualização, INCLUSIVE se a linha
+   estiver processing no momento) volta para pending com attemptCount zerado,
+   emailImportJobId apontando para o job atual e generation incrementado
+   ({ increment: 1 }) — nunca deixe uma linha sent/failed/processing de um import
+   anterior impedir a criação/reativação. processedRows avança logo após o upsert
+   de contatos.
 3. Novo endpoint app/api/v1/radar/cron/sync-email-contacts/route.ts, registrado em
    vercel.json (*/5 * * * *), usando withCronAudit (padrão de
    CRON_OBSERVABILITY_SPEC.md — nunca gatear a execução na criação do registro de
-   auditoria). Reivindica um lote do outbox via updateMany atômico
-   (pending->processing, count check), processa com concorrência limitada
-   (Promise.all em chunks, ex. 5-10 simultâneos — reaproveite
-   syncEmailContactToRadarUseCase por contato), marca sent ou incrementa
-   attemptCount/lastError e volta pending (backoff simples) até um teto (ex. 5
-   tentativas), aí marca failed definitivo.
+   auditoria). ANTES de reivindicar lotes novos, recupere claims travados: reverta
+   para pending (com nextAttemptAt: now()) toda linha processing cujo updatedAt é
+   mais antigo que um teto (ex. 10 min) — copie o padrão de
+   TeamWebhookOutboxRepository.claimDue
+   (app/api/infra/data/repositories/teamWebhook/TeamWebhookOutboxRepository.ts:26-41),
+   não reimplemente do zero. Em seguida reivindica um lote via updateMany atômico
+   (pending->processing, count check), capturando o generation de cada linha no
+   momento do claim. Processa com concorrência limitada (Promise.all em chunks, ex.
+   5-10 simultâneos — reaproveite syncEmailContactToRadarUseCase por contato). Ao
+   finalizar, o UPDATE que marca sent/failed é condicional em
+   generation = <generation capturado no claim> (WHERE id = ... AND generation =
+   ...); se afetar 0 linhas, a linha foi reativada por um reimport concorrente —
+   NÃO finalize, deixe processing (o próximo claim recupera com o generation novo).
+   Falha real (exceção do sync) incrementa attemptCount/lastError e volta pending
+   (backoff simples) até um teto (ex. 5 tentativas), aí marca failed definitivo.
 4. Notificação EMAIL_IMPORT_COMPLETED (finalizeJob): inclua quantos contatos DESTE
    job (contagem do outbox filtrada por emailImportJobId = job.id, nunca por listId
    inteira — um import anterior da mesma lista pode ter linhas pendentes próprias)
@@ -530,16 +542,22 @@ confirmada pelo owner em 2026-08-10 — import conclui antes do sync Radar exist
 5. Testes: import de 1500 contatos conclui e notifica sem tocar no Radar
    síncronamente (mock do outbox); cron do outbox processa em lotes, respeita
    concorrência, retenta com backoff e marca failed após o teto; reimportar um
-   contato cuja linha de outbox já está sent/failed reativa a mesma linha para
-   pending (não fica parada); contagem da notificação reflete só o job atual quando
-   há outbox pendente de um import anterior da mesma lista.
+   contato cuja linha de outbox já está sent/failed/processing reativa a mesma
+   linha para pending com generation incrementado; TESTE DE CORRIDA: contato é
+   reimportado (generation vira 1) ENQUANTO um worker antigo ainda está processando
+   a linha com generation 0 — o UPDATE final desse worker antigo afeta 0 linhas e
+   NÃO marca sent, a linha permanece processing/pending para reprocessar com os
+   dados novos; TESTE DE CLAIM TRAVADO: linha processing com updatedAt antigo (>10
+   min) é recuperada para pending pelo próximo tick do cron; contagem da
+   notificação reflete só o job atual quando há outbox pendente de um import
+   anterior da mesma lista.
 Atualize vercel.json e a validação completa (typecheck/lint/governance:check/
 governance:check-api-masking/lint:pt-br).
 ```
 
 **Não tocar:** `RadarService.syncFromEmail`/`processEmailContactForRadar` (lógica de sync em si, só muda quem chama e quando); `RadarEngagementBackfillUseCase` (achado B4 do Radar, já tratado à parte); demais crons de e-mail.
 
-**Aceite:** import de uma lista de 4.000+ contatos com Radar habilitado conclui em segundos, não horas (medir contra os ~9h observados no incidente); fila de 49 jobs pendentes (estado do incidente) esvazia sem um job lento bloquear os demais; outbox nunca cresce sem limite — falha definitiva vira `failed` visível, não retry infinito; teste de concorrência do claim do outbox verde.
+**Aceite:** import de uma lista de 4.000+ contatos com Radar habilitado conclui em segundos, não horas (medir contra os ~9h observados no incidente); fila de 49 jobs pendentes (estado do incidente) esvazia sem um job lento bloquear os demais; outbox nunca cresce sem limite — falha definitiva vira `failed` visível, não retry infinito; teste de concorrência do claim do outbox verde; teste de corrida reimport-durante-processing verde (nenhuma finalização "sent" com dados stale); claim travado por crash do cron é recuperado automaticamente pelo próximo tick, nenhum contato fica sincronizado nunca.
 **Validação manual:** reproduzir localmente um import de lista grande com Radar habilitado; conferir que a lista sai de "Importando" rapidamente e que os perfis Radar aparecem no outbox e depois em `RadarProfile` nos minutos seguintes.
 
 ### Estágio 9 — Resiliência do reconcile de disparo manual ⚠️ depende de D10
@@ -686,8 +704,8 @@ Rode a validação completa.
 2. **D2 — nível de acesso do operator (O1/O2/O3)** — recomendação O1; aguarda owner.
 3. Cobrança real (assinatura + overage no Asaas): quando entrar, define se overage volta a ser permitido com teto ou permanece bloqueio rígido.
 4. ~~Resultado das queries MCP~~ **Resolvida (2026-07-06)**: investigação MCP executada (audit seção 6). Não há campanhas `scheduled` vencidas hoje, mas confirmou-se que o cron **mata silenciosamente** toda campanha agendada que vence (0 assinaturas ativas + bypass beta ausente no cron). O Estágio 1 é hotfix prioritário — a correção do gate de créditos do cron foi incorporada ao prompt do estágio.
-5. **D9 — trade-off de latência do sync Radar (import conclui antes do perfil Radar existir)** — aguarda confirmação do owner antes do Estágio 8. A alternativa (otimizar mantendo síncrono) está registrada em D9 caso o trade-off seja rejeitado.
-6. Origem das decisões "D6"/"I3" citadas no comentário de `EmailContactImportUseCase.ts:526-531` não foi localizada em nenhum spec vigente (grep em `*.md`/`specs/*.md`) — tratado como requisito real encontrado no código, não como spec formal; D9 propõe supersedê-lo explicitamente mediante confirmação do owner.
+5. ~~D9 — trade-off de latência do sync Radar~~ **Resolvida (2026-08-10):** owner confirmou o trade-off (import conclui antes do perfil Radar existir). **Nota de escopo (review PR #729):** essa decisão bloqueia especificamente o **Estágio 8**. O Estágio 9 (reconcile de disparo manual) depende de **D10**, não de D9, e não fica bloqueado por nada relativo ao Radar — os dois estágios foram tratados juntos em alguns registros históricos do Decisions log só porque foram propostos na mesma rodada de incidente, não porque compartilham a mesma dependência.
+6. Origem das decisões "D6"/"I3" citadas no comentário de `EmailContactImportUseCase.ts:526-531` não foi localizada em nenhum spec vigente (grep em `*.md`/`specs/*.md`) — tratado como requisito real encontrado no código, não como spec formal; D9 supersede isso explicitamente (confirmado pelo owner).
 
 ## Decisions log
 
@@ -699,3 +717,4 @@ Rode a validação completa.
 - 2026-08-10 — **Decisão do owner sobre o Estágio 4 item 2: precisamos de retry para as falhas.** Registrada como D11 — em vez de reverter para `500` síncrono (o que a própria documentação do Resend desaconselha para eventos válidos processados async), o desenho escolhido é retry **interno** via outbox (`ResendWebhookProcessingFailure` + cron `retry-resend-webhook-failures`), mesmo padrão já usado no repo. Novo Estágio 10 adicionado, pronto para implementar (não depende de mais nenhuma decisão do owner).
 - 2026-08-10 — **Decisão do owner sobre D9: trade-off de latência aceito.** O import de contatos passa a concluir/notificar antes de os perfis Radar existirem (atraso de minutos via cron), em troca de resolver a fila travada. Estágio 8 promovido de "proposto" para "aprovado, pronto para implementar" — junto com os Estágios 9 e 10, nenhum dos três depende mais de decisão de produto.
 - 2026-08-10 — **Review automatizado no PR #728 (Codex) — 3 comentários, todos verificados no código antes de aceitar/rejeitar.** Dois achados reais aceitos: (1) `LeadDocumentRequestService.ts:26,55` envia sem tags de rastreio, reabrindo parcialmente o Estágio 3 (não é mais "implementado", é "parcial"); (2) `isResendDomainSendCapable` bloqueia disparo de campanha para domínios `partially_failed`, não só o tracking — confirmado em produção (`teamId 7b577c22-…`, domínio `backstageclub.com.br`, disparo bloqueado agora) — nova decisão D12 e Estágio 11. Uma correção da reavaliação anterior (§0) estava **errada e foi revertida**: a "janela de disparo por horário" não foi removida, está implementada corretamente em `lib/email/campaign-dispatch-guards.ts`/`EmailCampaignUseCase.ts:2721-2735` — a busca anterior usou identificadores que nunca existiram no código.
+- 2026-08-10 — **Review automatizado no PR #729 (Codex, na release develop→main) — 3 comentários, verificados antes do fix.** Dois achados P1 reais no desenho do outbox de D9/Estágio 8 (implementação ainda não tinha começado, corrigido antes do primeiro código ser escrito): (1) corrida entre reimport e um worker antigo — reimport durante `processing` reativava a linha para `pending`, mas o worker antigo em voo podia terminar depois e marcar `sent` com dados obsoletos, apagando a reativação; corrigido com um campo `generation` (lease/versão) — o `UPDATE` final só marca `sent`/`failed` se `generation` ainda bater com o capturado no claim; (2) claim travado por cron que crasha/estoura o tempo no meio do lote nunca era recuperado — nenhum caminho reenfileirava linhas presas em `processing`; corrigido reaproveitando o mesmo padrão de `TeamWebhookOutboxRepository.claimDue` (recupera linhas `processing` com `updatedAt` velho antes de reivindicar lotes novos). Um achado P2 aceito: a nota de "Open questions" item 5 estava desatualizada (não refletia a confirmação de D9) e conflava a dependência do Estágio 9 com D9 quando na real é D10 — corrigido.
