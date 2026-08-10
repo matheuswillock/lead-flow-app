@@ -868,6 +868,15 @@ boolean boolean
     
 
 
+        email_contact_radar_sync_outbox_status {
+            pending pending
+processing processing
+sent sent
+failed failed
+        }
+    
+
+
         email_orphan_event_status {
             pending pending
 processed processed
@@ -2607,6 +2616,17 @@ completed completed
     }
   
 
+  "corretor_studio_email_contact_radar_sync_outbox" {
+    String id "🗝️"
+    EmailContactRadarSyncOutboxStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
@@ -4175,6 +4195,10 @@ completed completed
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "corretor_studio_email_import_jobs" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
+    "corretor_studio_email_contact_radar_sync_outbox" |o--|| "EmailContactRadarSyncOutboxStatus" : "enum:status"
+    "corretor_studio_email_contact_radar_sync_outbox" |o--|| corretor_studio_email_contacts : "emailContact"
+    "corretor_studio_email_contact_radar_sync_outbox" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_contact_radar_sync_outbox" }o--|o corretor_studio_email_import_jobs : "emailImportJob"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"

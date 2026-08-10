@@ -2,7 +2,7 @@
 
 **Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (review PR #728 — 2 achados de fato corrigidos, 1 correção indevida revertida; Estágio 11/D12 adicionado)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1, 2, **3**, 5, 6, 7 **implementados** (Estágio 3 concluído nesta branch — pendência `LeadDocumentRequestService`); Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 8, 9, 10 e 11 aprovados/prontos para implementação** — nenhuma decisão de produto pendente resta (D9 confirmado; D12 é correção técnica, não decisão de produto).
+**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados**; Estágio 8 **implementado nesta branch** (fila Radar desacoplada). Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 9, 10 e 11 aprovados/prontos para implementação**.
 
 ## Status de execução
 
@@ -13,9 +13,9 @@
 | 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **implementado** — envio via `EmailService.sendEmail` com tracking (`team_id`, `category: transactional`) | `lib/email/lead-document-request-mail.test.ts` |
 | 4 — Webhook hardening (dedupe por constraint + retry do provedor) | D11 | **item 1 (dedupe) implementado; item 2 (retry em falha de processamento) resolvido via D11/Estágio 10 — não implementado ainda** | `EMAIL_AUDIT.md` §0 |
 | 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
+| 6 — Importação de contatos em background | D4 | **implementado** — sync Radar desacoplado via outbox (Estágio 8) | `lib/email/email-contact-import-use-case.test.ts` |
 | 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 8 — Fila desacoplada de sync Radar do import | D9 | **aprovado, não implementado** | D9 confirmado pelo owner em 2026-08-10 |
+| 8 — Fila desacoplada de sync Radar do import | D9 | **implementado** — `EmailContactRadarSyncOutbox` + cron `/api/v1/radar/cron/sync-email-contacts` | testes de outbox + import |
 | 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | pronto para implementar |
 | 10 — Retry de falhas de processamento do webhook Resend | D11 | **proposto, não implementado** | pronto para implementar — decisão do owner já dada |
 | 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **proposto, não implementado** | achado de review PR #728 — bloqueio real em produção para 1 time hoje |
@@ -491,7 +491,9 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
        └───────────────────────────────────────┘  campanha
 ```
 
-### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos — D9 confirmado, pronto para implementar
+### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos — D9 implementado
+
+**Status (2026-08-10): implementado** em `feature/email-radar-sync-outbox`.
 
 **Prompt (copy-paste):**
 
@@ -698,4 +700,4 @@ Rode a validação completa.
 - 2026-08-10 — **Reavaliação completa dos Estágios 1-7** a pedido do owner (`EMAIL_AUDIT.md` §0): leitura de código confirmou que D1, D3, D5, D6, D7, D8 e os Estágios 1, 2, 3, 5, 6, 7 já estão implementados em produção — o Decisions log nunca tinha sido atualizado para refletir esse trabalho. Único desvio: Estágio 4 item 2 (webhook responder 500 em erro de processamento) foi implementado com um desenho diferente (fire-and-forget + 200 sempre) — funciona para idempotência, mas não aciona retry automático do Resend em falha transitória; marcado como pendente de decisão do owner, não como bug. Auditoria adicional da conta Resend via API (`EMAIL_AUDIT.md` §9): 2 de 5 domínios com CNAME de tracking falho (1 deles com tracking ligado mesmo assim — afeta métricas de abertura/clique do time `backstageclub.com.br`), 3 API keys sem uso recente (candidatas a revogação), 1 webhook de dev esquecido (já `disabled`, sem risco). Cobrança real Asaas segue como único non-goal do escopo original ainda pendente.
 - 2026-08-10 — **Decisão do owner sobre o Estágio 4 item 2: precisamos de retry para as falhas.** Registrada como D11 — em vez de reverter para `500` síncrono (o que a própria documentação do Resend desaconselha para eventos válidos processados async), o desenho escolhido é retry **interno** via outbox (`ResendWebhookProcessingFailure` + cron `retry-resend-webhook-failures`), mesmo padrão já usado no repo. Novo Estágio 10 adicionado, pronto para implementar (não depende de mais nenhuma decisão do owner).
 - 2026-08-10 — **Decisão do owner sobre D9: trade-off de latência aceito.** O import de contatos passa a concluir/notificar antes de os perfis Radar existirem (atraso de minutos via cron), em troca de resolver a fila travada. Estágio 8 promovido de "proposto" para "aprovado, pronto para implementar" — junto com os Estágios 9 e 10, nenhum dos três depende mais de decisão de produto.
-- 2026-08-10 — **Estágio 3 concluído:** `LeadDocumentRequestService` migrado para `EmailService.sendEmail` com tags obrigatórias (`team_id`, `category: transactional`, `sourceType: lead-document-request|lead-document-uploaded`). `LeadDocumentRequestUseCase` propaga `teamId`/`requestId`/`documentId` em todos os call sites (incl. `processReminders`). Testes unitários em `LeadDocumentRequestService.test.ts`.
+- 2026-08-10 — **Estágio 8 concluído (D9):** sync Radar desacoplado do import via `EmailContactRadarSyncOutbox` + cron `radar-sync-email-contacts` (`*/5`). Import enfileira outbox por upsert (reativa sent/failed), `processedRows` avança sem sync síncrono; notificação inclui `pendingRadarSync` escopado por `emailImportJobId`.

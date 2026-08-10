@@ -2410,6 +2410,7 @@ model Team {
   emailTemplates          EmailTemplate[]          @relation("TeamEmailTemplates")
   emailContactLists       EmailContactList[]       @relation("TeamEmailContactLists")
   emailImportJobs         EmailImportJob[]         @relation("TeamEmailImportJobs")
+  emailContactRadarSyncOutbox EmailContactRadarSyncOutbox[] @relation("TeamEmailContactRadarSyncOutbox")
   emailCampaigns          EmailCampaign[]          @relation("TeamEmailCampaigns")
   emailCampaignDispatches EmailCampaignDispatch[]  @relation("TeamEmailCampaignDispatches")
   emailLogs               EmailLog[]               @relation("TeamEmailLogs")
@@ -3108,6 +3109,7 @@ model EmailImportJob {
   list                    EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
   requester               Profile          @relation("EmailImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
   managedByBackofficeUser BackofficeUser?  @relation("EmailImportJobManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
+  radarSyncOutboxEntries  EmailContactRadarSyncOutbox[]
 
   @@index([teamId, status])
   @@index([status, createdAt])
@@ -3128,11 +3130,42 @@ model EmailContact {
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 
   list EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  radarSyncOutbox EmailContactRadarSyncOutbox?
 
   @@unique([listId, email])
   @@index([listId, isUnsubscribed])
   @@index([listId, isBounced])
   @@map("corretor_studio_email_contacts")
+}
+
+enum EmailContactRadarSyncOutboxStatus {
+  pending
+  processing
+  sent
+  failed
+
+  @@map("email_contact_radar_sync_outbox_status")
+}
+
+model EmailContactRadarSyncOutbox {
+  id               String                            @id @default(uuid()) @db.Uuid
+  emailContactId   String                            @unique @db.Uuid
+  teamId           String                            @db.Uuid
+  emailImportJobId String?                           @db.Uuid
+  status           EmailContactRadarSyncOutboxStatus @default(pending)
+  attemptCount     Int                               @default(0)
+  nextAttemptAt    DateTime                          @default(now()) @db.Timestamptz(6)
+  lastError        String?                           @db.Text
+  createdAt        DateTime                          @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime                          @updatedAt @db.Timestamptz(6)
+
+  emailContact   EmailContact    @relation(fields: [emailContactId], references: [id], onDelete: Cascade)
+  team           Team            @relation("TeamEmailContactRadarSyncOutbox", fields: [teamId], references: [id], onDelete: Cascade)
+  emailImportJob EmailImportJob? @relation(fields: [emailImportJobId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([emailImportJobId, status])
+  @@map("corretor_studio_email_contact_radar_sync_outbox")
 }
 
 model EmailCampaign {
