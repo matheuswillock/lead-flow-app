@@ -593,3 +593,51 @@ Cada estágio = 1 worktree/branch/PR a partir de `develop` (mesma convenção de
 **Critério de sucesso “formulário público alimenta o Radar por evento”:** atendido via bridge D8. UI sem botão de sync manual (D10).
 
 **Invariantes preservados:** audiência de segmento ≤ `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`; teto diário via `wouldExceedDailyEmailCap`; sem CDP externa; sem segundo store de timeline além de `LeadActivity` × `RadarEvent`.
+
+---
+
+## Fase E — Hotfix de produção 2026-08-10 (B5, `RADAR_AUDIT.md` §10)
+
+### Estágio E1 — Cast `::uuid` em `countFixedSegmentsSQL` + isolamento de falha na rota de segmentos
+
+**Prompt (copy-paste):**
+
+```text
+Leia RADAR_AUDIT.md (seção 10, achado B5). Bug ativo em produção: TODAS as chamadas
+a /api/v1/radar/segments falham com "operator does not exist: uuid = text" porque
+countFixedSegmentsSQL (app/api/infra/data/repositories/radar/RadarRepository.ts:2373-2545)
+compara colunas uuid com o parâmetro teamId sem cast, e o Prisma $queryRaw envia
+esse parâmetro como bind tipado text. Modo TDD, sem exceção:
+
+1. Escreva primeiro um teste de INTEGRAÇÃO contra Postgres real (não mockar
+   $queryRaw — use o banco de teste/local já configurado no projeto, mesmo padrão
+   usado para validar outras queries raw do repositório). O teste deve chamar
+   countFixedSegmentsSQL com um teamId real e falhar HOJE com o erro 42883.
+   Rode o teste e confirme que ele falha antes de tocar na implementação.
+2. Só então corrija: adicione ::uuid em todas as 14 comparações de ${teamId}
+   (e confira cada comparação de coluna uuid contra parâmetro no restante do
+   método — não deixe nenhuma sem cast). Rode o teste de novo e confirme que
+   passa.
+3. app/api/useCases/radar/RadarUseCase.ts (getCachedRadarSegments, linhas
+   55-90): envolva a chamada a radarService.countSegments em try/catch. Se
+   falhar, logue console.error com o teamId e siga para getMetrics/segmentos
+   customizados com fixedSegments = [] (ou os SEGMENT_META com count 0 e um
+   campo de erro), em vez de derrubar a resposta inteira da rota — hoje uma
+   falha nos segmentos fixos também derruba os segmentos customizados do time,
+   que não dependem dessa query. Retorne também um indicador (ex.
+   fixedSegmentsError: boolean) no Output para o frontend poder mostrar um
+   aviso em vez de simplesmente exibir zero sem explicação.
+4. Teste de regressão do isolamento: mock de countSegments lançando erro deve
+   permitir que customSegments ainda apareçam na resposta.
+5. Confirme (grep) que não existe nenhum outro método de RadarRepository com o
+   mesmo padrão de comparação sem cast — se houver, corrija também e cite no
+   PR.
+Rode a validação completa (typecheck/lint/governance:check/lint:pt-br). Não é
+migration (é código puro), mas se algum teste precisar de fixture nova no banco
+de teste local, documente.
+```
+
+**Não tocar:** nomes de tabela física (já corretos, achado B1 fechado); demais métodos de `countSegments`/`countSegmentsLegacy` além do isolamento de erro do item 3; UI do Radar (a menos que o campo `fixedSegmentsError` do item 3 precise de um indicador visual simples — nesse caso, `Badge`/tooltip shadcn, sem redesenho).
+
+**Aceite:** teste de integração contra Postgres real prova que a query funciona sem erro `42883` para qualquer `teamId`; falha simulada em `countSegments` não derruba os segmentos customizados; nenhuma outra query raw do módulo Radar tem o mesmo gap de cast.
+**Validação manual:** chamar `/api/v1/radar/segments` localmente/staging para um time real e conferir que retorna `200` com contagens reais (não mais `500`); conferir no dashboard `/radar` que os cards de segmento voltam a mostrar números.

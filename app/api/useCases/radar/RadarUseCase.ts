@@ -68,7 +68,14 @@ async function getCachedRadarSegments(
   }
   const scope = { teamId, ctx }
 
-  const fixedSegments = await radarService.countSegments(scope)
+  let fixedSegments: Awaited<ReturnType<typeof radarService.countSegments>> = []
+  let fixedSegmentsError = false
+  try {
+    fixedSegments = await radarService.countSegments(scope)
+  } catch (error) {
+    fixedSegmentsError = true
+    console.error(`[RadarUseCase][getCachedRadarSegments] Falha ao contar segmentos fixos (teamId=${teamId})`, error)
+  }
   const metrics = await radarService.getMetrics(scope, fixedSegments)
 
   const customSegments = await teamRadarSegmentService.listByTeam(teamId, { onlyActive: true })
@@ -89,7 +96,7 @@ async function getCachedRadarSegments(
     })),
   ]
 
-  return new Output(true, [], [], { segments, metrics })
+  return new Output(true, [], [], { segments, metrics, fixedSegmentsError })
 }
 
 export type RadarListProfilesInput = {
