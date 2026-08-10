@@ -1,8 +1,24 @@
 # Spec: Evolução do Módulo de E-mail — Créditos por Time, Conformidade e Robustez de Disparo
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (Estágios 8/9 — incidente de produção, `EMAIL_AUDIT.md` §8)
-**Base:** `EMAIL_AUDIT.md` (mesma rodada + §8). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** proposta — aguarda decisões D1/D2 do owner antes do Estágio 2; Estágios 8/9 aguardam decisão D9 (trade-off de latência do Radar) antes de implementar.
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (reavaliação `EMAIL_AUDIT.md` §0 — Estágios 1-7 majoritariamente já implementados; Estágios 8/9 propostos a partir do incidente §8; auditoria da conta Resend §9)
+**Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
+**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados em produção** (confirmado por leitura de código em 2026-08-10 — ver `EMAIL_AUDIT.md` §0; nenhum destes tinha sido marcado como concluído no Decisions log até agora). Estágio 4 **implementado com desenho diferente do proposto** (item 2 — ver nota). Estágios 8/9 **propostos, não implementados** — aguardam decisão D9 (trade-off de latência do Radar) e autorização para D10 (correção de dados históricos).
+
+## Status de execução
+
+| Estágio | Decisão(ões) | Estado real (2026-08-10) | Evidência |
+|---|---|---|---|
+| 1 — Fundação (cron unificado, estados terminais, bug CDP/Radar, timezone) | D7 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 2 — Créditos por Time (migration + saldo atômico) | D1, D3, D8 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 4 — Webhook hardening (dedupe por constraint + retry do provedor) | — | **item 1 (dedupe) implementado; item 2 (500 em erro de processamento) NÃO — webhook usa fire-and-forget com 200 sempre** | `EMAIL_AUDIT.md` §0 — decisão do owner pendente sobre aceitar o desenho atual ou ajustar |
+| 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
+| 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 8 — Fila desacoplada de sync Radar do import | D9 | **proposto, não implementado** | aguarda confirmação do trade-off de latência |
+| 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | aguarda autorização para corrigir dados históricos |
+
+**Não coberto por nenhum estágio (non-goal desde julho):** cobrança real via Asaas — ver `Open questions` item 3.
 
 ---
 
@@ -580,3 +596,4 @@ Rode a validação completa.
 - 2026-07-06 — Investigação MCP executada (Supabase produção + Vercel + export de logs 24h). Confirmados em produção: kill silencioso de campanhas agendadas pelo gate de créditos do cron (sem bypass beta), billing com `creditsUsed = 0` acumulado, 3 campanhas `sent` com 0 envios, 2 dispatches presos em `sending`, 545 logs `queued` órfãos, 124 dispatch IDs órfãos/24h, 429 também no caminho de envio. Estágio 1 promovido a hotfix prioritário e prompt atualizado com o fix do gate de créditos + log obrigatório de kill.
 - 2026-07-06 — **Decisão do owner (D8):** funcionalidade com tag **Beta habilitada** = isenção total — não gera nenhuma cobrança e não valida créditos, em todos os caminhos de disparo. Substituída a proposta anterior do Estágio 2 de "contabilizar sem bloquear" para beta: agora beta não escreve nada em `EmailCreditUsage`. Prompt do Estágio 2 e critérios de aceite atualizados.
 - 2026-08-10 — Incidente de produção investigado via Vercel/Sentry/Supabase MCP (`EMAIL_AUDIT.md` §8, pós-deploy do `CRON_OBSERVABILITY_SPEC.md`). Confirmados: fila de import com 49 jobs/48.378 linhas travados há 16h+ atrás de um único job lento (causa: sync Radar síncrono dentro do lote sem checkpoint nem circuit breaker — D9/Estágio 8 propostos); cota mensal do Resend esgotada explicando 179/250 erros pós-deploy (operacional, não código); 3 dispatches históricos com `totalSent: 0` gravado apesar de 795-2.279 e-mails realmente enviados, por falha silenciosa do reconcile de erro transitório (D10/Estágio 9 propostos). Estágios 8/9 aguardam confirmação do owner (D9 tem trade-off de produto; D10 inclui correção de dados históricos que só roda com autorização).
+- 2026-08-10 — **Reavaliação completa dos Estágios 1-7** a pedido do owner (`EMAIL_AUDIT.md` §0): leitura de código confirmou que D1, D3, D5, D6, D7, D8 e os Estágios 1, 2, 3, 5, 6, 7 já estão implementados em produção — o Decisions log nunca tinha sido atualizado para refletir esse trabalho. Único desvio: Estágio 4 item 2 (webhook responder 500 em erro de processamento) foi implementado com um desenho diferente (fire-and-forget + 200 sempre) — funciona para idempotência, mas não aciona retry automático do Resend em falha transitória; marcado como pendente de decisão do owner, não como bug. Auditoria adicional da conta Resend via API (`EMAIL_AUDIT.md` §9): 2 de 5 domínios com CNAME de tracking falho (1 deles com tracking ligado mesmo assim — afeta métricas de abertura/clique do time `backstageclub.com.br`), 3 API keys sem uso recente (candidatas a revogação), 1 webhook de dev esquecido (já `disabled`, sem risco). Cobrança real Asaas segue como único non-goal do escopo original ainda pendente.

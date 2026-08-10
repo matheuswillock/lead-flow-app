@@ -1,9 +1,40 @@
 # EMAIL_AUDIT.md — Auditoria do Módulo de E-mail (Corretor Studio)
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (incidente de produção — fila de import travada + reconcile de disparo)
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (incidente de produção §8 + reavaliação §0 dos Estágios 1-7 + auditoria da conta Resend §9)
 **Escopo:** Email Campaigns, Email Template Editor, crons (`dispatch-scheduled`, `reset-credits`, `process-import-jobs`), webhook Resend, créditos/billing, listas de contato, supressão e conformidade.
-**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos + investigação MCP (Supabase produção, Vercel runtime logs, export de logs 04–05/07 e 10/08).
-**Rodada somente-leitura:** nenhum código de produção foi alterado.
+**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos + investigação MCP (Supabase produção, Vercel runtime logs, export de logs 04–05/07 e 10/08) + API do Resend (domínios, chaves, webhooks).
+**Rodada somente-leitura:** nenhum código de produção foi alterado; as chamadas à API do Resend foram todas `GET` (leitura).
+
+---
+
+## 0. Reavaliação 2026-08-10 — a maior parte dos Estágios 1-7 do `EMAIL_SPEC.md` já foi implementada
+
+O usuário pediu para reauditar os Estágios 1-7 antes de tratá-los como "propostos, não implementados" (resposta anterior errada deste assistente). Comparando o código atual (branch `develop`) contra cada decisão arquitetural (D1-D8) e cada estágio da spec de julho, a maior parte **já está em produção** — só não foi refletida de volta no `EMAIL_SPEC.md` (nenhuma entrada no Decisions log desde 2026-07-06). Provavelmente implementado numa rodada de trabalho não documentada nos specs entre julho e agosto.
+
+| Decisão/Estágio | O que a spec pedia | Estado real encontrado no código (2026-08-10) | Veredito |
+|---|---|---|---|
+| D1 — créditos por Time | `EmailCreditSubscription.teamId @unique` | `prisma/schema.prisma:2936` — `teamId String @unique`. ✅ | **implementado** |
+| D3 — reserva atômica com guard de saldo | `UPDATE ... WHERE creditsUsed + amount <= monthlyCredits` | `EmailCreditService.ts:83-116` — `reserveCredits`/`releaseCredits` via `$executeRaw` exatamente nesse desenho; `rowCount === 0` ⇒ sem saldo. ✅ | **implementado** |
+| D7 — cron unificado no UseCase | Rota fina, delega para `EmailCampaignUseCase` | `app/api/v1/email/cron/dispatch-scheduled/route.ts` caiu de 288 para **41 linhas**; chama `useCase.dispatchScheduledCampaigns()`. ✅ | **implementado** |
+| Estágio 1 — bug CDP/Radar no cron | Repassar `radarSegmentSlug` ao build de destinatários | `EmailCampaignUseCase.ts:236-302` — `radarSegmentSlug` propagado (renomeado de `cdpSegmentSlug` no rename CDP→Radar). ✅ | **implementado** |
+| Estágio 1 — janela de disparo em UTC | Avaliar no timezone do master | `EmailCampaignUseCase.ts:1701,1824,2704` — `resolveTimezone(campaign.team.master.timezone)`. ✅ | **implementado** |
+| Estágio 1 — recuperação de `sending` travado | Campanha presa >30 min é retomada/marcada `failed` | `STUCK_SENDING_THRESHOLD_MS = 30 min`, `recoverStuckSendingCampaigns` (`EmailCampaignUseCase.ts:86,2364`). ✅ | **implementado** |
+| Estágio 1 — fora da janela vira `failed` indevidamente | Deveria permanecer `scheduled` | Nenhuma lógica de "janela de horário" encontrada no código atual (`grep` por `dispatchWindow`/`windowStart` sem resultado) — o conceito parece ter sido **removido**, não corrigido; o bug fica moot (não há mais como acontecer). | **não aplicável (feature removida)** |
+| D5 — descadastro público por Time | Rota + página + link no e-mail | `app/email-unsubscribe/[token]/**` (página, `features/` completo), `app/api/v1/email/public/unsubscribe/**`, mais a variante `app/backoffice-email-unsubscribe/**` para o módulo backoffice (isolamento respeitado). ✅ | **implementado** |
+| D6 — editor HTML-only default | `editorMode` default `"html"` | `prisma/schema.prisma:2994` — `editorMode String @default("html")`. ✅ | **implementado** |
+| D2 — RBAC via `dispatchAllowedRoles` | Rotas consultam `EmailTeamSettings`, fim da letra morta | `EmailCampaignUseCase.ts:860-868` — `canDispatchEmail(ctx, teamSettings)` lê `dispatchAllowedRoles` antes de criar/disparar campanha. ✅ | **implementado** |
+| Estágio 3 — tags `team_id` obrigatórias | `tracking` obrigatório em `EmailService.send` de produto | `lib/services/EmailService.ts:44-46` — tipo `tracking: EmailTrackingMeta` obrigatório, comentário explícito "exige tracking com team_id"; `EmailTemplateUseCase.ts:671` (teste de template) e o restante dos callers de produto usam `buildResendTrackingTags`/`mergeResendTrackingTags`. ✅ | **implementado** |
+| Estágio 3 — backfill de órfãos em lote, não síncrono no webhook | Tabela `email_orphan_events` + processamento em lote | `model EmailOrphanEvent` (`prisma/schema.prisma:3286`) existe, e o equivalente do módulo backoffice (`BackofficeEmailOrphanEvent`, isolamento respeitado). ✅ | **implementado** |
+| Estágio 4 — dedupe de `EmailEvent` por constraint, não check-then-act | `@@unique([logId, type, occurredAt])` + captura de `P2002` | Constraint existe (`schema.prisma:3272`) e `EmailLogRepository.ts:170-180` captura `P2002` dentro da transação e ignora como duplicata. ✅ | **implementado** |
+| Estágio 4 — webhook responde 500 em erro interno (retry do provedor) | Diferenciar erro de assinatura (401) de erro de processamento (500) | `app/api/webhooks/resend/route.ts` foi para um desenho **diferente** do proposto: assinatura verificada de forma síncrona (401 se inválida), mas o processamento do evento roda em `after()` fire-and-forget com semáforo de concorrência (`MAX_CONCURRENT = 5`) e a rota **sempre responde 200** antes de saber se o processamento deu certo — erro de processamento vira só `console.error`, não gera retry do Resend. | **implementado com desenho diferente — divergência a decidir** |
+| D4/Estágio 6 — import assíncrono | Tabela + cron, claim atômico, retry por lote | `EmailImportJob` + `EmailContactImportUseCase` implementados — é justamente o código que travou no incidente §8.1 (o desenho existe, mas tem um bug de performance dentro dele, não ausência de implementação). ✅ (com o bug do §8.1 pendente de correção) | **implementado (com bug ativo, ver §8.1/D9)** |
+| Estágio 7 — `reset-credits` com try/catch por assinatura | Falha de uma assinatura não aborta o loop | `app/api/v1/email/cron/reset-credits/route.ts:50-85` — `for (const subscription of ...)` com `try/catch` por item. ✅ | **implementado** |
+
+**O que isso muda:**
+
+1. O `EMAIL_AUDIT.md`/`EMAIL_SPEC.md` de julho descrevia um estado de código que **não existe mais** — quase todo o débito técnico levantado em 3.1-3.4, 3.6-3.8 e 4.x foi pago. O único item do escopo original de julho que segue confirmadamente **sem implementação** é a cobrança real via Asaas (non-goal declarado desde o início, `Open questions` item 3).
+2. Único item que precisa de **decisão do owner**, não é código faltando: o webhook (Estágio 4, item 2) foi implementado com um desenho diferente do proposto (fire-and-forget + 200 sempre, em vez de 500 em erro de processamento). Funciona (idempotência garantida pela constraint), mas **perde o retry automático do Resend em caso de erro transitório de processamento** — falha vira só um log, não uma nova tentativa de entrega do webhook. Vale decidir se isso é aceitável ou se merece ajuste.
+3. O `EMAIL_SPEC.md` será atualizado (seção "Status de execução" nova, seguindo o padrão do `CRON_OBSERVABILITY_SPEC.md`) para não reapresentar como "proposta" algo que já está em produção.
 
 ---
 
@@ -400,3 +431,42 @@ O campo `updatedCount` cresce muito além de `totalRows` (ex.: job `6073743f`, 4
 ### 8.4 `url.parse()` DeprecationWarning — cosmético, baixa prioridade
 
 `(node:N) [DEP0169] DeprecationWarning: url.parse()...` aparece 1x por cold-start em rotas sem relação entre si (`lead-form`, `leads`, `campaigns`, vários crons) — sinal de origem em processo/dependência carregada globalmente, não em código próprio (`grep "url.parse("` no repo não encontra ocorrência). Não causa nenhuma falha observada; não é bloqueante.
+
+---
+
+## 9. Auditoria da conta Resend (2026-08-10)
+
+Consulta direta à API do Resend (`GET /domains`, `GET /api-keys`, `GET /webhooks`) usando a `RESEND_API_KEY` de produção do ambiente — só leitura, nenhuma alteração.
+
+### 9.1 Domínios — 2 de 5 com registro de tracking falho 🟡
+
+| Domínio | Região | Status | DKIM | SPF | Tracking (CNAME) | `open_tracking`/`click_tracking` |
+|---|---|---|---|---|---|---|
+| `corretorstudio.com` | sa-east-1 | `verified` | ok | ok | ok | — |
+| `corretorstudio.com.br` | sa-east-1 | `verified` | ok | ok | ok | — |
+| `perttoconsultoria.com.br` | us-east-1 | `verified` | ok | ok | ok | — |
+| `mail.libercorretora.com.br` | sa-east-1 | **`partially_failed`** | ok | ok | **`failed`** | desligado (`false`/`false`) — inofensivo |
+| `backstageclub.com.br` | sa-east-1 | **`partially_failed`** | ok | ok | **`failed`** | **ligado** (`true`/`true`) 🔴 |
+
+**Achado:** em ambos os domínios "partially_failed", DKIM e SPF estão verificados — **o envio funciona normalmente**, não é a causa dos erros de disparo investigados nas seções 1-8. O único registro que falha é o `CNAME` de tracking (`links.<domínio>` → `links1.resend-dns.com`), provavelmente porque o DNS nunca foi criado no provedor do cliente. Para `backstageclub.com.br`, como `open_tracking`/`click_tracking` estão **ligados** apesar do CNAME falho, qualquer link de clique/pixel de abertura desse domínio aponta para um host que não resolve — abertura/clique não são rastreados para esse time, e dependendo do client de e-mail o link de clique pode nem funcionar. Ação: desligar tracking até o CNAME ser criado, ou orientar o cliente a criar o registro.
+
+### 9.2 API keys — 6 chaves, metade sem uso recente 🟡 (higiene)
+
+| Nome | Criada em | Último uso |
+|---|---|---|
+| `API key - Production` | 2026-07-21 | hoje (ativa) |
+| `API Key - development` | 2026-07-21 | hoje (ativa) |
+| `Corretor-Studio-AI-Integration` | 2026-06-03 | 2026-07-04 (>1 mês parada) |
+| `Vercel - production` | 2026-07-20 | 2026-07-21 (não usada desde então) |
+| `Vercel-production-2026-07-21` | 2026-07-21 | **nunca usada** |
+| `Vercel - Homol` | 2026-07-20 | **nunca usada** |
+
+**Achado:** duas chaves nomeadas "produção" (`Vercel - production` e `Vercel-production-2026-07-21`) não estão em uso — sugere rotação de chave feita sem revogar a anterior. Nenhum incidente decorre disso hoje, mas cada chave sem uso é superfície de risco desnecessária (se vazar, ainda funciona). Recomendação: revogar as 3 chaves sem uso recente (`Corretor-Studio-AI-Integration`, `Vercel - production`, `Vercel-production-2026-07-21`, `Vercel - Homol`) após confirmar com o dono que nenhum ambiente externo depende delas.
+
+### 9.3 Webhooks — configuração de produção correta; 1 endpoint de dev esquecido ligado como `disabled` (ok)
+
+Webhook de produção (`https://www.corretorstudio.com/api/webhooks/resend`) está `enabled`, assinando todos os eventos relevantes — incluindo `email.suppressed`, que a seção 3.5 do audit original cobra como parte da supressão. Existe um segundo endpoint apontando para um túnel `ngrok` de desenvolvimento, mas está `disabled` — não representa risco, só é lixo de configuração que pode ser removido.
+
+### 9.4 Cota/uso mensal — não exposto pela API pública do Resend
+
+Não existe endpoint público do Resend para consultar quota/uso restante — essa informação só está disponível no dashboard. A evidência de cota esgotada (achado 8.2) veio dos erros `429 monthly_quota_exceeded` observados nos logs de produção, não de uma consulta direta de saldo. Recomendação operacional: verificar o uso atual em `resend.com/settings/billing` e decidir sobre upgrade de plano — segue como decisão do dono (mesma nota do achado 8.2).
