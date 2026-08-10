@@ -3,16 +3,16 @@
 **Versão:** 1.1 (Estágio 5 + open question dos órfãos resolvida na investigação 2026-08-09)
 **Data:** 2026-08-09
 **Base factual:** `CRON_OBSERVABILITY_AUDIT.md` (leitura obrigatória antes de qualquer estágio).
-**Status:** Concluído (código) — Estágio 4 aguarda deploy/autorização do dono.
+**Status:** Concluído em produção (`main` @ `da27817c`, v0.202.1, PR #721, deploy `dpl_3pjV7WFPZoHycPdLqoZSmd2bPFih` às 2026-08-10T03:10:47Z). Estágio 4 validado com evidência direta de Vercel/Sentry/Supabase — ver seção abaixo.
 
 ## Status de execução
 
 | ID | Agente | Branch | PR | Estado | Revisado em | Notas |
 |----|--------|--------|-----|--------|-------------|-------|
-| Estágio 1+2 | CronP0 | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | migration + withCronAudit TDD |
-| Estágio 3 | Governance | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | check em governance:check |
-| Estágio 5 | CronScheduler | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | vercel.json + GET backfill |
-| Estágio 4 | ProdOps | — | — | pending | — | aguarda autorização dono `db:migrate:push` |
+| Estágio 1+2 | CronP0 | `main` | #714/#721 | **completed** | 2026-08-10 | migration aplicada remoto + withCronAudit em produção; 8 cronKeys confirmados `success` via SQL |
+| Estágio 3 | Governance | `main` | #714/#721 | **completed** | 2026-08-10 | check em governance:check |
+| Estágio 5 | CronScheduler | `main` | #714/#721 | **completed** | 2026-08-10 | vercel.json + GET backfill; `radar-import` já executando (1 timeout de catch-up + 2 success) |
+| Estágio 4 | ProdOps | — | — | **completed** | 2026-08-10 | validado com Vercel/Sentry/Supabase (ver runbook) — 2 itens residuais não bloqueantes (backup diário e 3 crons ainda não atingiram o próximo horário agendado) |
 
 ---
 
@@ -92,19 +92,23 @@ Adicionar um script/step (`bun run governance:check-migrations` ou equivalente, 
 
 ### Runbook (orquestrador + dono)
 
-**Pré-deploy (Estágio 1+2):**
-1. `bun run db:migrate:push:dry-run` — revisar SQL de `create-backoffice-cron-executions`
-2. Autorização explícita do dono para `bun run db:migrate:push`
-3. Deploy da aplicação com `withCronAudit` corrigido
+**Pré-deploy (Estágio 1+2) — ✅ concluído:**
+1. ~~`bun run db:migrate:push:dry-run`~~ — feito
+2. ~~Autorização explícita do dono para `bun run db:migrate:push`~~ — dado e aplicado (CI `Migration Status` confirma histórico remoto == local desde a run `31351654697` no push a `main`)
+3. ~~Deploy da aplicação com `withCronAudit` corrigido~~ — `Deploy Vercel (Production)` verde na mesma run; produção em v0.202.1 (`da27817c`, deploy `dpl_3pjV7WFPZoHycPdLqoZSmd2bPFih`, live desde 2026-08-10T03:10:47Z)
 
-**Pós-deploy (24h):**
-1. Logs: zero `Invalid prisma.backofficeCronExecution.create()` / `relation "backoffice_cron_executions" does not exist`
-2. Dashboard `/backoffice/cron-executions`: execuções `running` → `success` para crons agendados
-3. `database-backup`: dono decide se dispara backup manual para janela 2026-08-07→deploy
+**Pós-deploy — ✅ validado com evidência direta (Vercel/Sentry/Supabase, 2026-08-10):**
+1. **Zero recorrência dos erros do incidente desde o deploy:**
+   - Vercel `get_runtime_errors` (janela pós-deploy): nenhuma ocorrência nova de `Invalid prisma.backofficeCronExecution.create()` (P2021) nem de `relation "backoffice_cron_executions" does not exist` — todos os grupos de erro têm `lastDeployment` apontando para o deploy **anterior** (`dpl_BFE2gFAnt9VGVVfy3fAAtiFWE8T8`, PR #715), nenhum no `dpl_3pjV7...` (PR #721).
+   - Sentry `search_issues` com `lastSeen:-2h`: 0 issues não resolvidas com atividade desde o deploy.
+2. **`backoffice_cron_executions` populando em produção** (consulta SQL direta via MCP Supabase, projeto `wcnxwdcoambpfwxwubka`, janela de 2h): 8 `cronKey`s antes quebrados agora com **status `success`** — `dispatch-scheduled` (14), `email-import` (15), `backoffice-email-import` (14), `meeting-reminders` (14), `studio-bot-outbox` (14), `dispatch-email-campaigns` (4), `evaluate-idle` (4), `lead-status-batch` (4).
+3. **`database-backup`:** próxima execução agendada é 08:00 UTC; deploy aconteceu às 03:10 UTC, então a execução de hoje ainda **não passou** desde o fix — não há necessidade de backup manual para cobrir o dia de hoje. Gap histórico de ~3 dias (2026-08-07 → 2026-08-10) continua como decisão do dono (não executado nesta sessão — requer autorização explícita para qualquer ação em produção).
 
-**Crons de intervalo curto (5–15 min):** próxima execução natural reprocessa fila pendente — sem replay manual salvo exceção documentada.
+**Achado incidental do Estágio 5 (não bloqueante):** `radar-import` (cron órfão recém-agendado, `*/5 * * * *`) teve **1 timeout de 60s** na sua primeira execução (`Vercel Runtime Timeout Error`, `dpl_3pjV7...`, 03:15:34Z) — esperado, processando o backlog acumulado desde que ficou órfão (2026-08-07). Confirmado que o cursor de retomada (`RadarBaseImportUseCase`, lotes de 500) funciona: as 2 execuções seguintes (03:20, 03:25) já retornaram `success`, consistente com a previsão do runbook de que "crons de intervalo curto reprocessam a fila pendente sem replay manual". Efeito colateral cosmético: a execução que sofreu timeout ficou com `status = 'running'` presa no banco (a function foi encerrada pela plataforma antes do `catch`/`finally` rodar) — não afeta o funcionamento do cron, mas é candidato a um job de limpeza de execuções órfãs (`running` há mais de N minutos → `failed`) em um SPEC futuro de observabilidade, fora de escopo aqui.
 
-**Status:** aguardando autorização do dono para `db:migrate:push` remoto.
+**Crons ainda não avaliáveis:** `overdue-reminder` (07:00 UTC), `studio-bot-ai-rollup` (`15 */6 * * *`) e `engagement-backfill` (04:00 UTC) ainda não atingiram o próximo horário agendado no momento desta validação (~03:27 UTC) — vão disparar automaticamente nas próximas horas; não é uma falha.
+
+**Status:** Estágio 4 fechado. Único item residual é uma decisão do dono (backfill do backup manual do gap histórico), documentada acima e não bloqueante para considerar o SPEC concluído.
 
 **Objetivo:** avaliar, para cada rota afetada, se há trabalho perdido que vale reprocessar manualmente uma vez (não é um mecanismo automático permanente).
 
