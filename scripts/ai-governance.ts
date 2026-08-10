@@ -1411,25 +1411,17 @@ function printAllowlistWarnings(
 
 function tableHasCreateStatement(sql: string, table: string): boolean {
   const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  const headerPattern = new RegExp(
-    `^(?:\\s+IF\\s+NOT\\s+EXISTS\\s+)?(?:(?:public|"public")\\.)?"?${escaped}"?\\s*\\(`,
+  // Somente o identificador alvo do CREATE TABLE (não menções em FK/ALTER posteriores).
+  const createTarget = new RegExp(
+    `\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:(?:public|"public")\\.)?"?${escaped}"?\\s*\\(`,
     "i",
   )
-  if (
-    sql
-      .split(/\bCREATE\s+TABLE\b/i)
-      .slice(1)
-      .some((block) => headerPattern.test(block))
-  ) {
+  if (createTarget.test(sql)) {
     return true
   }
 
-  const renamePattern = new RegExp(`RENAME\\s+TO\\s+"${escaped}"`, "i")
+  const renamePattern = new RegExp(`RENAME\\s+TO\\s+"?${escaped}"?\\b`, "i")
   if (renamePattern.test(sql)) {
-    return true
-  }
-
-  if (sql.includes(`"${table}"`) && /\b(?:RENAME\s+TO|ALTER\s+TABLE)\b/i.test(sql)) {
     return true
   }
 
@@ -1441,9 +1433,7 @@ function tableHasCreateStatement(sql: string, table: string): boolean {
     return true
   }
 
-  // Legado: só dentro do mesmo arquivo (evita falso positivo entre migrations concatenadas).
-  const legacyPattern = new RegExp(`CREATE\\s+TABLE[\\s\\S]*"?${escaped}"?`, "i")
-  return legacyPattern.test(sql)
+  return false
 }
 
 async function validatePrismaModelTableMigrations(issues: string[]): Promise<void> {

@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test"
 import {
   buildLeadTransferCopyOrigin,
   buildLeadTransferCopyRequestKey,
+  mergeLeadTransferListSubmissions,
   resolveLeadTransferCopySourceSubmissionId,
+  shouldSkipLeadTransferCopyForRootInTarget,
 } from "./lead-transfer-submission-copy"
 
 describe("buildLeadTransferCopyRequestKey", () => {
@@ -16,6 +18,82 @@ describe("buildLeadTransferCopyRequestKey", () => {
     expect(buildLeadTransferCopyRequestKey("sub-1", "team-a")).not.toBe(
       buildLeadTransferCopyRequestKey("sub-1", "team-b"),
     )
+  })
+})
+
+describe("shouldSkipLeadTransferCopyForRootInTarget", () => {
+  it("pula cópia quando a submission raiz já está no time destino (A→B→A)", () => {
+    expect(
+      shouldSkipLeadTransferCopyForRootInTarget({
+        rootSubmissionTeamId: "team-a",
+        targetTeamId: "team-a",
+      }),
+    ).toBe(true)
+  })
+
+  it("não pula quando a raiz está em outro time", () => {
+    expect(
+      shouldSkipLeadTransferCopyForRootInTarget({
+        rootSubmissionTeamId: "team-a",
+        targetTeamId: "team-b",
+      }),
+    ).toBe(false)
+  })
+})
+
+describe("mergeLeadTransferListSubmissions", () => {
+  it("prefere a cópia scoped e omite a submission raiz duplicada do legado", () => {
+    const copyOrigin = buildLeadTransferCopyOrigin({
+      sourceOrigin: null,
+      sourceSubmissionId: "sub-root",
+      sourceFormId: "form-a",
+      sourceFormName: "Form A",
+      sourceTeamId: "team-a",
+      targetTeamId: "team-b",
+      copiedAt: new Date("2026-08-10T12:00:00.000Z"),
+    })
+
+    const scoped = [
+      {
+        id: "sub-copy-b",
+        origin: copyOrigin,
+        createdAt: new Date("2026-08-10T12:00:00.000Z"),
+        label: "copy",
+      },
+    ]
+    const legacy = [
+      {
+        id: "sub-root",
+        origin: { source: "web" },
+        createdAt: new Date("2026-08-09T12:00:00.000Z"),
+        label: "root",
+      },
+    ]
+
+    const merged = mergeLeadTransferListSubmissions(scoped, legacy)
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.id).toBe("sub-copy-b")
+    expect(merged[0]?.label).toBe("copy")
+  })
+
+  it("mantém submissions legado sem cópia correspondente no time atual", () => {
+    const scoped = [
+      {
+        id: "sub-local",
+        origin: { source: "local" },
+        createdAt: new Date("2026-08-10T15:00:00.000Z"),
+      },
+    ]
+    const legacy = [
+      {
+        id: "sub-old",
+        origin: { source: "web" },
+        createdAt: new Date("2026-08-08T12:00:00.000Z"),
+      },
+    ]
+
+    const merged = mergeLeadTransferListSubmissions(scoped, legacy)
+    expect(merged.map((row) => row.id)).toEqual(["sub-local", "sub-old"])
   })
 })
 

@@ -2479,7 +2479,7 @@ export class RadarRepository {
               WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
                 AND i."type" = 'lead_id'
                 AND l."teamId" = ${teamId}
-                AND l."status" IN ('WON', 'PAID')
+                AND l."status" IN ('contract_finalized')
             )
           )
       ),

@@ -2156,11 +2156,24 @@ export class LeadUseCase implements ILeadUseCase {
         },
       });
 
-      await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
+      try {
+        await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
           leadId: transferredLead.id,
           sourceTeamId: lead.teamId!,
           targetTeamId: data.targetTeamId,
         });
+      } catch (copyError) {
+        // Transferência já commitada — cópia é best-effort para não reportar falha em lead já movido.
+        console.error(
+          "[transferLeadBetweenTeams] Falha ao copiar submissions após transferência (best-effort):",
+          {
+            leadId: transferredLead.id,
+            sourceTeamId: lead.teamId,
+            targetTeamId: data.targetTeamId,
+            error: copyError,
+          },
+        );
+      }
 
       const finalLead = await this.leadRepository.findById(transferredLead.id);
       const result: TransferLeadBetweenTeamsResult = {

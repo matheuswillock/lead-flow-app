@@ -21,6 +21,18 @@ export function buildLeadTransferCopyRequestKey(sourceSubmissionId: string, targ
   return `lead-transfer-copy:${sourceSubmissionId}:${targetTeamId}`
 }
 
+/**
+ * Em A→B→A a submission raiz já vive no time A; o requestKey sintético
+ * `lead-transfer-copy:<root>:A` não bate com a chave original — trate a raiz
+ * como já presente quando o form dela pertence ao time destino.
+ */
+export function shouldSkipLeadTransferCopyForRootInTarget(params: {
+  rootSubmissionTeamId: string | null | undefined
+  targetTeamId: string
+}): boolean {
+  return params.rootSubmissionTeamId === params.targetTeamId
+}
+
 /** Idempotência em transferências encadeadas (B→A→B): sempre usa a submission raiz. */
 export function resolveLeadTransferCopySourceSubmissionId(
   origin: unknown,
@@ -36,6 +48,39 @@ export function resolveLeadTransferCopySourceSubmissionId(
     }
   }
   return submissionId
+}
+
+export type LeadTransferListSubmission = {
+  id: string
+  origin: unknown
+  createdAt: Date
+}
+
+/**
+ * Ao listar no time destino, scoped (cópia) e legacy (raiz) têm IDs diferentes.
+ * Deduplica pela submission raiz e prefere as linhas de `preferred` (scoped).
+ */
+export function mergeLeadTransferListSubmissions<T extends LeadTransferListSubmission>(
+  preferred: T[],
+  legacy: T[],
+): T[] {
+  const byRootId = new Map<string, T>()
+
+  for (const row of preferred) {
+    const rootId = resolveLeadTransferCopySourceSubmissionId(row.origin, row.id)
+    byRootId.set(rootId, row)
+  }
+
+  for (const row of legacy) {
+    const rootId = resolveLeadTransferCopySourceSubmissionId(row.origin, row.id)
+    if (!byRootId.has(rootId)) {
+      byRootId.set(rootId, row)
+    }
+  }
+
+  return Array.from(byRootId.values()).sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  )
 }
 
 export type LeadTransferCopyOriginParams = {

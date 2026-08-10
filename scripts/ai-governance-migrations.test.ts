@@ -14,25 +14,17 @@ function extractMappedTables(schema: string): string[] {
 
 function tableHasCreateStatement(sql: string, table: string): boolean {
   const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  const headerPattern = new RegExp(
-    `^(?:\\s+IF\\s+NOT\\s+EXISTS\\s+)?(?:(?:public|"public")\\.)?"?${escaped}"?\\s*\\(`,
+  // Somente o identificador alvo do CREATE TABLE (não menções em FK/ALTER posteriores).
+  const createTarget = new RegExp(
+    `\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:(?:public|"public")\\.)?"?${escaped}"?\\s*\\(`,
     "i",
   )
-  if (
-    sql
-      .split(/\bCREATE\s+TABLE\b/i)
-      .slice(1)
-      .some((block) => headerPattern.test(block))
-  ) {
+  if (createTarget.test(sql)) {
     return true
   }
 
-  const renamePattern = new RegExp(`RENAME\\s+TO\\s+"${escaped}"`, "i")
+  const renamePattern = new RegExp(`RENAME\\s+TO\\s+"?${escaped}"?\\b`, "i")
   if (renamePattern.test(sql)) {
-    return true
-  }
-
-  if (sql.includes(`"${table}"`) && /\b(?:RENAME\s+TO|ALTER\s+TABLE)\b/i.test(sql)) {
     return true
   }
 
@@ -44,8 +36,7 @@ function tableHasCreateStatement(sql: string, table: string): boolean {
     return true
   }
 
-  const legacyPattern = new RegExp(`CREATE\\s+TABLE[\\s\\S]*"?${escaped}"?`, "i")
-  return legacyPattern.test(sql)
+  return false
 }
 
 function loadMigrationContents(): string[] {
@@ -54,6 +45,37 @@ function loadMigrationContents(): string[] {
     .filter((file) => file.endsWith(".sql"))
     .map((file) => readFileSync(path.join(migrationsDir, file), "utf8"))
 }
+
+describe("tableHasCreateStatement", () => {
+  it("reconhece CREATE TABLE cujo alvo é a tabela", () => {
+    const sql = `CREATE TABLE "public"."my_table" (\n  id uuid\n);`
+    expect(tableHasCreateStatement(sql, "my_table")).toBe(true)
+  })
+
+  it("reconhece RENAME TO da tabela alvo", () => {
+    const sql = `ALTER TABLE "old_name" RENAME TO "my_table";`
+    expect(tableHasCreateStatement(sql, "my_table")).toBe(true)
+  })
+
+  it("não conta menção em FK/ALTER de outra tabela", () => {
+    const sql = `
+CREATE TABLE "other_table" (
+  id uuid,
+  "my_table_id" uuid REFERENCES "my_table"("id")
+);
+ALTER TABLE "other_table" ADD COLUMN "note" text;
+`
+    expect(tableHasCreateStatement(sql, "my_table")).toBe(false)
+  })
+
+  it("não conta ALTER TABLE de outra tabela só porque o nome aparece no arquivo", () => {
+    const sql = `
+-- comment mentioning "my_table"
+ALTER TABLE "other_table" RENAME TO "renamed_other";
+`
+    expect(tableHasCreateStatement(sql, "my_table")).toBe(false)
+  })
+})
 
 describe("governance prisma model migrations", () => {
   it("cada @@map de model tem CREATE TABLE correspondente nas migrations", () => {
