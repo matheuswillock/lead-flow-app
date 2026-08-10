@@ -322,6 +322,18 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - **Supabase Auth:** Session refresh enforced in `middleware.ts` via `updateSession(request)`.
 - **Asaas:** Webhook entrypoint `app/api/webhooks/asaas/route.ts`; token header `asaas-access-token` **MUST** match `ASAAS_WEBHOOK_TOKEN`.
 
+### Webhook Handler Policy (FOR NEW FEATURES)
+
+All webhook handlers **MUST** follow the pattern: **respond with HTTP 200 immediately, process asynchronously, retry on failure**. This protects the application from blocking on external provider requests and ensures no events are silently lost.
+
+1. **Always respond 200 quickly** — `{ received: true }, { status: 200 }` **BEFORE** any processing. Providers like Resend only retry non-2xx responses, so a 200 response acts as an acknowledgment. Do not return `500` for processing failures; the provider has no context to retry a failure that originated in our code.
+2. **Process in background** — Use `after()` (Next.js 15.1+) or a fire-and-forget async block, never synchronous processing in the handler. Webhook signature verification happens before this point (401 if invalid); processing errors happen after (safe to hide from the provider).
+3. **Persist failures to an outbox table** — When processing throws, create a row in a `*Outbox` table (`EventOutbox`, `WebhookProcessingFailure`, etc.) with the original event payload, status `pending`, and attempt metadata.
+4. **Implement a retry cron** — Poll the outbox every 5 minutes via a dedicated cron handler (`/api/v1/cron/retry-*-failures`). Claim `pending` rows atomically, reprocess with exponential backoff, mark `resolved` or `failed` (dead-letter) after max attempts. **Retry failures must be observable and never infinite.**
+5. **Dedupe on idempotency keys** — Use database constraints (e.g. `@@unique([webhookId, eventType, occurredAt])`) to prevent duplicate processing if the provider retries or we accidentally reprocess the same event.
+
+**Example:** `app/api/webhooks/resend/route.ts` (status 200 → verify signature → queue in `after()`) + `app/api/v1/email/cron/retry-resend-webhook-failures/route.ts` (poll `ResendWebhookProcessingFailure`, retry with backoff). See `EMAIL_SPEC.md` Estágio 10 / D11 for the full spec.
+
 ## Project Rules
 
 ### MUST NOT

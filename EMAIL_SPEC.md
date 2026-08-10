@@ -1,8 +1,26 @@
 # Spec: Evolução do Módulo de E-mail — Créditos por Time, Conformidade e Robustez de Disparo
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (Estágios 8/9 — incidente de produção, `EMAIL_AUDIT.md` §8)
-**Base:** `EMAIL_AUDIT.md` (mesma rodada + §8). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** proposta — aguarda decisões D1/D2 do owner antes do Estágio 2; Estágios 8/9 aguardam decisão D9 (trade-off de latência do Radar) antes de implementar.
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (review PR #728 — 2 achados de fato corrigidos, 1 correção indevida revertida; Estágio 11/D12 adicionado)
+**Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
+**Status:** Estágios 1, 2, 5, 6, 7 **implementados em produção**; Estágio 3 **parcial** (1 caminho de produto sem tags — ver linha da tabela). Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 8, 9, 10 e 11 aprovados/prontos para implementação** — nenhuma decisão de produto pendente resta (D9 confirmado; D12 é correção técnica, não decisão de produto).
+
+## Status de execução
+
+| Estágio | Decisão(ões) | Estado real (2026-08-10) | Evidência |
+|---|---|---|---|
+| 1 — Fundação (cron unificado, estados terminais, bug CDP/Radar, timezone, janela de disparo) | D7 | **implementado** (inclui a janela de disparo por horário — correção do review PR #728, estava marcado como "removido" por erro de busca) | `EMAIL_AUDIT.md` §0 |
+| 2 — Créditos por Time (migration + saldo atômico) | D1, D3, D8 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **parcial** — `LeadDocumentRequestService.ts:26,55` ainda envia sem tags via `resend.emails.send` direto (não `EmailService.send`) | `EMAIL_AUDIT.md` §0 (achado real do review PR #728) |
+| 4 — Webhook hardening (dedupe por constraint + retry do provedor) | D11 | **item 1 (dedupe) implementado; item 2 (retry em falha de processamento) resolvido via D11/Estágio 10 — não implementado ainda** | `EMAIL_AUDIT.md` §0 |
+| 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
+| 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
+| 8 — Fila desacoplada de sync Radar do import | D9 | **aprovado, não implementado** | D9 confirmado pelo owner em 2026-08-10 |
+| 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | pronto para implementar |
+| 10 — Retry de falhas de processamento do webhook Resend | D11 | **proposto, não implementado** | pronto para implementar — decisão do owner já dada |
+| 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **proposto, não implementado** | achado de review PR #728 — bloqueio real em produção para 1 time hoje |
+
+**Não coberto por nenhum estágio (non-goal desde julho):** cobrança real via Asaas — ver `Open questions` item 3.
 
 ---
 
@@ -119,11 +137,11 @@ Consequências normativas:
 5. **UI:** Time beta não vê barra de saldo nem CTA de assinatura (comportamento atual do `CreditBalanceBar` é mantido); `EmailCreditUseCase.subscribe` continua recusando assinatura de usuário beta (comportamento atual).
 6. Ao **desligar** o beta da feature, os Times voltam imediatamente para a regra padrão (sem assinatura ativa = disparo bloqueado) — comunicar antes de desligar.
 
-### D9 — Sync do Radar no import de contatos vira fila desacoplada (outbox), fire-and-forget do lote ⚠️ decisão do owner
+### D9 — Sync do Radar no import de contatos vira fila desacoplada (outbox), fire-and-forget do lote — decisão do owner: **confirmado** (2026-08-10)
 
 **Motivo:** achado E1 (`EMAIL_AUDIT.md` §8.1) — sincronizar cada contato com o Radar dentro do próprio laço de import é a causa raiz da fila travada (um job pode levar de 25 min a 9h; hoje há 49 jobs de múltiplos times esperando há 16h+ atrás de um único job lento). O código atual tem um comentário justificando o desenho síncrono atual (`EmailContactImportUseCase.ts:526-531`, referências a decisões "D6"/"I3" não localizadas em nenhum spec vigente): *"já deve constar na lista de segmentos assim que for importado" exige que o job só marque o import como concluído depois que os perfis existirem*.
 
-**Trade-off que esta decisão reverte (⚠️ requer confirmação explícita do owner, não é escolha técnica):** com a fila desacoplada, o import de contatos passa a concluir (e notificar) **antes** de os perfis Radar existirem — o contato aparece em segmentos do Radar com um atraso de até alguns minutos (ciclo do novo cron), não instantaneamente.
+**Trade-off que esta decisão reverte — confirmado pelo owner em 2026-08-10:** com a fila desacoplada, o import de contatos passa a concluir (e notificar) **antes** de os perfis Radar existirem — o contato aparece em segmentos do Radar com um atraso de até alguns minutos (ciclo do novo cron), não instantaneamente. Aceito como trade-off correto dado o estado do incidente (49 jobs/48k contatos travados).
 
 **Desenho recomendado (segue o padrão de outbox já usado no repo — `TeamWebhookOutbox`, `prisma/schema.prisma:2739-2759`):**
 
@@ -141,6 +159,27 @@ Consequências normativas:
 1. `commitDispatchTerminalState` (`ts:2237`) passa a envolver a operação com `withPrismaRetry` (já existe em `app/api/infra/data/prisma.ts`, usado em `ProfileRepository`/`public-stats.ts`) além do `withDeadlockRetry` atual — cobrindo `P1001`/`P2024`/erros de conexão transitórios, não só deadlock.
 2. Se, mesmo com retry, o reconcile falhar, o fallback genérico (`ts:2185-2213`) passa a tentar **uma leitura simples e isolada** de `emailLog.count(status in sucesso)` (sem transação, sem `$transaction`) só para popular `totalSent` corretamente antes de marcar `failed` — nunca gravar `totalSent: 0` quando existe log de sucesso para aquele `dispatchId`.
 3. **Correção dos 3 registros históricos já incorretos** (`EMAIL_AUDIT.md` §8.3 — Rede D'Or . 001, LISTA FRIA - BRUNO parte 12/12, 17.07): script one-off (`bun run` local, não migration) que recalcula `totalSent`/`status` desses 3 dispatches a partir do `EmailLog` real. **Só roda com autorização explícita do owner** (escreve em produção) — reportar antes de executar.
+
+### D11 — Retry de falhas de processamento do webhook Resend via fila interna (não via HTTP 500) — decisão do owner: **sim, precisamos de retry** (2026-08-10)
+
+**Motivo:** achado `EMAIL_AUDIT.md` §0, linha do Estágio 4 item 2 — o webhook (`app/api/webhooks/resend/route.ts`) verifica a assinatura de forma síncrona (401 se inválida) mas processa o evento em `after()` fire-and-forget, sempre respondendo `200` antes de saber se o processamento deu certo. Se `resendWebhookUseCase.handle()` falhar por um erro transitório (timeout de pool, por exemplo — mesma classe de erro do achado B2/E3), o evento é perdido: só vira um `console.error`, e como já respondemos `200`, o Resend nunca tenta de novo.
+
+**Por que NÃO simplesmente trocar para `500` em erro de processamento (reverter para o desenho original do Estágio 4):** a própria documentação do Resend recomenda o oposto — "Always return 200 quickly, then process asynchronously if needed" e lista "Returning non-200 status for valid webhooks" como erro comum a evitar. Responder `500` para um webhook que **foi recebido e é válido** (só falhou no nosso processamento interno) sujeita o endpoint ao retry automático do Resend (7 tentativas em até 10h, agendamento fixo, fora do nosso controle) e pode fazer o Resend nos marcar como endpoint problemático se isso acontecer com frequência (ex.: durante uma janela real de sobrecarga de banco, toda a fila de eventos daquele período entraria no retry schedule do Resend simultaneamente).
+
+**Desenho recomendado (mesmo padrão de outbox já usado no repo — `TeamWebhookOutbox`, `BackofficeEmailOrphanEvent`, e o outbox proposto no D9):** retry **interno**, não dependente do Resend re-entregar.
+
+1. Novo model `ResendWebhookProcessingFailure`: `id`, `svixId String @unique` (idempotência — uma falha por entrega, mesmo que o `after()` rode mais de uma vez), `eventType String`, `payload Json` (o evento já verificado, para reprocessar sem depender do Resend reenviar), `status` (`pending|processing|resolved|failed`), `attemptCount Int @default(1)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índice `[status, nextAttemptAt]`.
+2. `app/api/webhooks/resend/route.ts`: no `catch` do `after()` (hoje só `console.error`), fazer upsert por `svixId` em `ResendWebhookProcessingFailure` com o payload já verificado e o erro.
+3. Novo cron `/api/v1/email/cron/retry-resend-webhook-failures` (registrar em `vercel.json`, `*/5 * * * *`, `withCronAudit`): reivindica um lote `pending` (`updateMany` atômico), chama `resendWebhookUseCase.handle({ event: JSON.parse(payload) as ResendWebhookPayload, svixId })` de novo — seguro porque o dedupe por `EmailEvent.@@unique([logId, type, occurredAt])` já garante idempotência mesmo se parte do processamento anterior tiver aplicado antes de falhar. Sucesso → `resolved` (ou apaga a linha); falha → incrementa `attemptCount`/`lastError`, backoff simples, até um teto (ex. 5 tentativas) → `failed` (dead-letter visível, não trava nada).
+4. Sem mudança no contrato HTTP do webhook: continua sempre `200` para evento válido (mantendo a recomendação do Resend), `401` para assinatura inválida, `400` para headers ausentes, `503` quando o semáforo de concorrência está cheio (o Resend já retenta `503` pelo próprio retry schedule — esse caso não precisa do outbox).
+
+### D12 — Guard de domínio Resend deve distinguir "não pode enviar" de "tracking degradado" (achado de review, PR #728, `EMAIL_AUDIT.md` §9.1)
+
+**Motivo:** `isResendDomainSendCapable` (`lib/email/campaign-dispatch-guards.ts:10-12`) só considera `"verified"`/`"partially_verified"` como aptos a disparar. Um domínio `"partially_failed"` no Resend — que ocorre quando DKIM/SPF estão ok mas só o CNAME de tracking falhou — é tratado exatamente igual a um domínio genuinamente não verificado: `EmailCampaignUseCase.ts:1765-1776` bloqueia o disparo manual inteiro com "Domínio de e-mail não verificado no Resend". Confirmado em produção: o time do domínio `backstageclub.com.br` (`teamId 7b577c22-…`) tem `resendDomainStatus: "partially_failed"` persistido e **está bloqueado de disparar campanha agora**, apesar de DKIM/SPF verificados e do envio funcionar normalmente no Resend — só o tracking de clique/abertura é que não funciona.
+
+**Correção:** `isResendDomainSendCapable` passa a aceitar `"partially_failed"` como apto a **enviar** (retorna `true`), mas o chamador (`EmailCampaignUseCase`/UI de configurações) passa a exibir um aviso separado e não-bloqueante ("tracking de abertura/clique indisponível neste domínio — configure o registro CNAME") quando o status for `"partially_failed"`. Introduzir uma segunda função `isResendDomainTrackingCapable(status)` (só `"verified"`) para essa distinção, em vez de sobrecarregar o significado da função existente.
+
+**Achado relacionado a corrigir na mesma frente:** o `resendDomainStatus` persistido pode ficar dessincronizado do Resend (o time `mail.libercorretora.com.br` mostra `"verified"` no banco enquanto o Resend já reporta `"partially_failed"` — a sincronização de status do domínio não está pegando essa transição). Vale conferir o mecanismo que atualiza `resendDomainStatus` (provavelmente webhook `domain.updated` ou poll manual) e garantir que ele reflita o estado real do Resend.
 
 ---
 
@@ -249,35 +288,33 @@ DEPOIS ┌ Campanhas ───────────────────�
 
 ### Estágio 3 — Tags obrigatórias + fim do 429 (órfãos na origem)
 
+**Status (2026-08-10, review PR #728): reaberto parcialmente.** Os itens 2-5 abaixo já estão implementados (ver `EMAIL_AUDIT.md` §0). Falta só o item 1a abaixo — `LeadDocumentRequestService.ts` chama `resend.emails.send` diretamente, sem passar por `EmailService.send` e sem tags.
+
 **Prompt (copy-paste):**
 
 ```text
-Leia EMAIL_AUDIT.md (seção 4). Correção na origem dos e-mails órfãos e do 429:
+Leia EMAIL_AUDIT.md (seção 4 e seção 0 — ressalva do Estágio 3). Pendência única:
 
-1. lib/services/EmailService.ts: torne o parâmetro tracking obrigatório no tipo de
-   options para chamadas de produto (crie uma sobrecarga explícita untracked() para os
-   raros envios intencionalmente sem time, com comentário justificando). Corrija TODOS
-   os callers que hoje não passam tracking — mapeie-os com grep antes.
-2. EmailTemplateUseCase.sendTest: incluir buildResendTrackingTags({ teamId: ctx.teamId,
-   category: "transactional", sourceType: "template-test", sourceId: id }) preservando
-   as tags atuais.
-3. BackofficeLeadScheduleInviteService: anexar tags equivalentes do módulo backoffice
-   (sem team_id de produto — usar as tags que o BackofficeEmailDispatch já sabe ler),
-   mantendo o isolamento de módulos do agents.md.
-4. ResendEmailEnrichmentService: remova a chamada síncrona resend.emails.get do fluxo
-   do webhook. O backfill de órfãos legados vira best-effort fora do handler: se o
-   evento não tem tags e o log não existe, registre em uma tabela
-   email_orphan_events (migration via db:migrate:new) e processe em lote no cron de
-   5 min existente com no máximo 8 req/s e backoff exponencial em 429.
-5. Testes: unit para cada caminho de envio garantindo presença de team_id nas tags
-   (asserção no payload passado ao Resend mockado); teste do backfill com 429 simulado.
-Rode a validação completa. Atualize Postman se criar rota.
+1a. app/api/services/leadDocumentRequest/LeadDocumentRequestService.ts (linhas 26 e
+    55): os dois métodos (sendRequestEmail, sendUploadNotificationEmail) chamam
+    resend.emails.send diretamente. Migre ambos para EmailService.send com tracking
+    obrigatório (teamId, category: "transactional", sourceType:
+    "lead-document-request"/"lead-document-uploaded", sourceId: requestId ou
+    documentId). LeadDocumentRequestUseCase.ts já tem teamId disponível em todos os
+    call sites — propague até o service (mude a assinatura dos métodos do
+    ILeadDocumentRequestService para receber teamId, ou um objeto tracking pronto).
+2. Testes: unit garantindo que ambos os métodos passam tracking com team_id
+   correto ao EmailService.send mockado; teste de regressão confirmando que o
+   e-mail continua sendo enviado (from/subject/html preservados).
+Rode a validação completa.
 ```
 
-**Não tocar:** fluxo de campanha (`EmailCampaignDispatchService` já anexa tags corretas); schema de EmailLog; webhook signature/dedupe (Estágio 4).
+Itens 2-5 originais (mantidos aqui como registro, já implementados): `EmailTemplateUseCase.sendTest` com `buildResendTrackingTags`; tags equivalentes no módulo backoffice para `BackofficeLeadScheduleInviteService`; `ResendEmailEnrichmentService` sem chamada síncrona `resend.emails.get` no webhook, backfill via `EmailOrphanEvent` em lote com backoff.
 
-**Aceite:** grep de `resend.emails.send`/`batch.send` no repo → 100% dos call sites de produto com `team_id`; webhook nunca chama `emails.get` inline; zero `[ResendEmailEnrichmentService] Falha ao buscar e-mail: 429` em teste de rajada (50 eventos simultâneos mockados).
-**Validação manual:** enviar teste de template local e conferir tags no dashboard do Resend (ou mock); disparar rajada de webhooks assinados contra o handler local.
+**Não tocar:** fluxo de campanha (`EmailCampaignDispatchService` já anexa tags corretas); schema de EmailLog; webhook signature/dedupe (Estágio 4); o restante dos callers de produto (já corrigidos).
+
+**Aceite:** grep de `resend.emails.send`/`batch.send` no repo → 100% dos call sites de produto com `team_id`, incluindo `LeadDocumentRequestService`; teste de regressão do envio de documento continua verde.
+**Validação manual:** solicitar documento de um lead local e conferir tags no dashboard do Resend (ou mock).
 
 ### Estágio 4 — Webhook hardening (idempotência garantida + retry do provedor)
 
@@ -454,14 +491,14 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
        └───────────────────────────────────────┘  campanha
 ```
 
-### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos ⚠️ depende de D9
+### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos — D9 confirmado, pronto para implementar
 
 **Prompt (copy-paste):**
 
 ```text
-Leia EMAIL_AUDIT.md (seção 8.1) e a decisão D9 registrada em EMAIL_SPEC.md. Confirme
-com o dono do projeto o trade-off de latência do D9 antes de implementar (import
-conclui antes do sync Radar existir). Então:
+Leia EMAIL_AUDIT.md (seção 8.1) e a decisão D9 registrada em EMAIL_SPEC.md (já
+confirmada pelo owner em 2026-08-10 — import conclui antes do sync Radar existir
+é aceito). Então:
 
 1. Schema (bun run db:migrate:from-prisma -- email-contact-radar-sync-outbox):
    model EmailContactRadarSyncOutbox conforme desenhado em D9 (id, emailContactId,
@@ -538,6 +575,84 @@ Rode a validação completa.
 **Aceite:** teste de timeout simulado prova que `totalSent` nunca perde a contagem real; os 3 dispatches históricos corrigidos (após autorização) refletem o `EmailLog` real.
 **Validação manual:** conferir no Supabase que os 3 dispatches citados no audit passam a ter `totalSent` correspondente aos `EmailLog` reais.
 
+### Estágio 10 — Retry de falhas de processamento do webhook Resend (D11 — decisão do owner já dada: sim)
+
+**Prompt (copy-paste):**
+
+```text
+Leia EMAIL_AUDIT.md (seção 0, linha do Estágio 4) e a decisão D11 registrada em
+EMAIL_SPEC.md. Implemente o retry interno de falhas do webhook do Resend:
+
+1. Schema (bun run db:migrate:from-prisma -- resend-webhook-processing-failure):
+   model ResendWebhookProcessingFailure conforme desenhado em D11 (id, svixId
+   @unique, eventType, payload Json, status pending|processing|resolved|failed,
+   attemptCount, nextAttemptAt, lastError, createdAt/updatedAt), índice
+   [status, nextAttemptAt]. NÃO aplique no remoto sem autorização do owner.
+2. app/api/webhooks/resend/route.ts: NÃO mude o contrato HTTP (continua 200 para
+   evento válido, 401/400/503 como hoje). No catch do after() (hoje só
+   console.error), faça upsert por svixId em ResendWebhookProcessingFailure com o
+   payload do evento já verificado e a mensagem de erro.
+3. Novo endpoint app/api/v1/email/cron/retry-resend-webhook-failures/route.ts,
+   registrado em vercel.json (*/5 * * * *), usando withCronAudit. Reivindica um
+   lote pending (updateMany atômico pending->processing, count check), chama
+   resendWebhookUseCase.handle({ event: JSON.parse(payload), svixId }) de novo
+   por linha — o dedupe existente em EmailEvent (@@unique([logId, type,
+   occurredAt])) garante que reprocessar não duplica efeito mesmo se parte do
+   processamento anterior já tiver sido aplicada. Sucesso: status resolved (ou
+   apaga a linha). Falha: incrementa attemptCount/lastError, backoff simples até
+   um teto (ex. 5 tentativas), aí marca failed (dead-letter, visível em logs, não
+   trava nada).
+4. Testes: simular resendWebhookUseCase.handle lançando erro transitório — a
+   linha do outbox é criada; simular sucesso na retentativa — vira resolved;
+   simular N falhas seguidas — vira failed após o teto, sem loop infinito.
+Atualize vercel.json e a validação completa.
+```
+
+**Não tocar:** verificação de assinatura svix (já correta); contrato HTTP de resposta do webhook (200/401/400/503 continuam como estão — só o `catch` interno do processamento ganha o outbox).
+
+**Aceite:** falha transitória de processamento de um evento válido é reprocessada automaticamente em até 5 min, sem depender do Resend reentregar; falha permanente (ex. evento malformado) não fica retentando para sempre; nenhuma duplicação de efeito em `EmailEvent`/contadores de campanha quando o retry reprocessa um evento parcialmente aplicado.
+**Validação manual:** simular localmente um erro no `resendWebhookUseCase.handle` (mock de exceção), confirmar que a linha aparece em `ResendWebhookProcessingFailure` e que o cron a resolve na tentativa seguinte.
+
+### Estágio 11 — Guard de domínio Resend não deve bloquear disparo por causa de tracking degradado (D12 — achado de review PR #728)
+
+**Prompt (copy-paste):**
+
+```text
+Leia EMAIL_AUDIT.md (seção 9.1) e a decisão D12 registrada em EMAIL_SPEC.md.
+Corrija o guard de capacidade de envio do domínio Resend:
+
+1. lib/email/campaign-dispatch-guards.ts: isResendDomainSendCapable passa a
+   aceitar também "partially_failed" (hoje só aceita "verified" e
+   "partially_verified"). Adicione uma nova função
+   isResendDomainTrackingCapable(status) que retorna true só para "verified" —
+   use-a onde o código hoje precisa saber especificamente se tracking funciona
+   (se não houver esse caso ainda, só exporte a função para uso futuro/testes).
+2. EmailCampaignUseCase.ts (linhas ~1765-1776 e o trecho equivalente do cron
+   unificado): ao detectar status "partially_failed", NÃO bloqueie o disparo —
+   prossiga normalmente. Se o fluxo tiver como devolver avisos não-bloqueantes
+   junto com sucesso (verificar Output/result), inclua um aviso do tipo
+   "Tracking de abertura/clique indisponível neste domínio (CNAME pendente)".
+   Se não houver esse mecanismo hoje, adicione um campo simples (ex.
+   warnings?: string[] no result) sem quebrar consumidores existentes.
+3. Investigue o mecanismo que persiste resendDomainStatus em EmailTeamSettings
+   (sync com a API do Resend — webhook domain.updated ou rotina de poll) e
+   confirme que ele reflete corretamente as 4 transições de status do Resend
+   (not_started, pending, verified, partially_verified, partially_failed,
+   failed, temporary_failure). Se houver dessincronia (ex. time cujo status no
+   banco não bate com o Resend), corrija a causa raiz do sync, não só o valor
+   pontual.
+4. Testes: unit para isResendDomainSendCapable/isResendDomainTrackingCapable
+   cobrindo todos os status; teste de integração confirmando que um time com
+   status partially_failed consegue disparar campanha (e um time failed/
+   pending continua bloqueado).
+Rode a validação completa.
+```
+
+**Não tocar:** fluxo de verificação/criação de domínio no Resend (só o guard de leitura do status); UI de configurações de e-mail (a menos que o aviso não-bloqueante do item 2 precise de um lugar para aparecer — nesse caso, componente shadcn simples, sem novo endpoint).
+
+**Aceite:** time com domínio `partially_failed` consegue disparar campanha; time com domínio `failed`/`pending`/`not_started` continua bloqueado; teste de todos os status do Resend passando pelo guard correto.
+**Validação manual:** conferir no ambiente local/staging que o time `backstageclub.com.br` (ou um time de teste com o mesmo status forçado) consegue disparar uma campanha de teste.
+
 ---
 
 ## Edge cases & error handling (transversais)
@@ -580,3 +695,7 @@ Rode a validação completa.
 - 2026-07-06 — Investigação MCP executada (Supabase produção + Vercel + export de logs 24h). Confirmados em produção: kill silencioso de campanhas agendadas pelo gate de créditos do cron (sem bypass beta), billing com `creditsUsed = 0` acumulado, 3 campanhas `sent` com 0 envios, 2 dispatches presos em `sending`, 545 logs `queued` órfãos, 124 dispatch IDs órfãos/24h, 429 também no caminho de envio. Estágio 1 promovido a hotfix prioritário e prompt atualizado com o fix do gate de créditos + log obrigatório de kill.
 - 2026-07-06 — **Decisão do owner (D8):** funcionalidade com tag **Beta habilitada** = isenção total — não gera nenhuma cobrança e não valida créditos, em todos os caminhos de disparo. Substituída a proposta anterior do Estágio 2 de "contabilizar sem bloquear" para beta: agora beta não escreve nada em `EmailCreditUsage`. Prompt do Estágio 2 e critérios de aceite atualizados.
 - 2026-08-10 — Incidente de produção investigado via Vercel/Sentry/Supabase MCP (`EMAIL_AUDIT.md` §8, pós-deploy do `CRON_OBSERVABILITY_SPEC.md`). Confirmados: fila de import com 49 jobs/48.378 linhas travados há 16h+ atrás de um único job lento (causa: sync Radar síncrono dentro do lote sem checkpoint nem circuit breaker — D9/Estágio 8 propostos); cota mensal do Resend esgotada explicando 179/250 erros pós-deploy (operacional, não código); 3 dispatches históricos com `totalSent: 0` gravado apesar de 795-2.279 e-mails realmente enviados, por falha silenciosa do reconcile de erro transitório (D10/Estágio 9 propostos). Estágios 8/9 aguardam confirmação do owner (D9 tem trade-off de produto; D10 inclui correção de dados históricos que só roda com autorização).
+- 2026-08-10 — **Reavaliação completa dos Estágios 1-7** a pedido do owner (`EMAIL_AUDIT.md` §0): leitura de código confirmou que D1, D3, D5, D6, D7, D8 e os Estágios 1, 2, 3, 5, 6, 7 já estão implementados em produção — o Decisions log nunca tinha sido atualizado para refletir esse trabalho. Único desvio: Estágio 4 item 2 (webhook responder 500 em erro de processamento) foi implementado com um desenho diferente (fire-and-forget + 200 sempre) — funciona para idempotência, mas não aciona retry automático do Resend em falha transitória; marcado como pendente de decisão do owner, não como bug. Auditoria adicional da conta Resend via API (`EMAIL_AUDIT.md` §9): 2 de 5 domínios com CNAME de tracking falho (1 deles com tracking ligado mesmo assim — afeta métricas de abertura/clique do time `backstageclub.com.br`), 3 API keys sem uso recente (candidatas a revogação), 1 webhook de dev esquecido (já `disabled`, sem risco). Cobrança real Asaas segue como único non-goal do escopo original ainda pendente.
+- 2026-08-10 — **Decisão do owner sobre o Estágio 4 item 2: precisamos de retry para as falhas.** Registrada como D11 — em vez de reverter para `500` síncrono (o que a própria documentação do Resend desaconselha para eventos válidos processados async), o desenho escolhido é retry **interno** via outbox (`ResendWebhookProcessingFailure` + cron `retry-resend-webhook-failures`), mesmo padrão já usado no repo. Novo Estágio 10 adicionado, pronto para implementar (não depende de mais nenhuma decisão do owner).
+- 2026-08-10 — **Decisão do owner sobre D9: trade-off de latência aceito.** O import de contatos passa a concluir/notificar antes de os perfis Radar existirem (atraso de minutos via cron), em troca de resolver a fila travada. Estágio 8 promovido de "proposto" para "aprovado, pronto para implementar" — junto com os Estágios 9 e 10, nenhum dos três depende mais de decisão de produto.
+- 2026-08-10 — **Review automatizado no PR #728 (Codex) — 3 comentários, todos verificados no código antes de aceitar/rejeitar.** Dois achados reais aceitos: (1) `LeadDocumentRequestService.ts:26,55` envia sem tags de rastreio, reabrindo parcialmente o Estágio 3 (não é mais "implementado", é "parcial"); (2) `isResendDomainSendCapable` bloqueia disparo de campanha para domínios `partially_failed`, não só o tracking — confirmado em produção (`teamId 7b577c22-…`, domínio `backstageclub.com.br`, disparo bloqueado agora) — nova decisão D12 e Estágio 11. Uma correção da reavaliação anterior (§0) estava **errada e foi revertida**: a "janela de disparo por horário" não foi removida, está implementada corretamente em `lib/email/campaign-dispatch-guards.ts`/`EmailCampaignUseCase.ts:2721-2735` — a busca anterior usou identificadores que nunca existiram no código.
