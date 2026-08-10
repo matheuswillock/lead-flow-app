@@ -756,12 +756,62 @@ export class EmailTeamSettingsUseCase {
 
       const { error } = await resend.domains.update(updatePayload)
 
-      const trackingConflict =
+      const maybeTrackingConflict =
         Boolean(error) &&
         (error?.statusCode === 409 || isTrackingSubdomainAlreadyExists(error?.message))
 
-      if (error && !trackingConflict) {
+      if (error && !maybeTrackingConflict) {
         console.error("[EmailTeamSettingsUseCase][configureDomainTracking] Resend error", error)
+        return new Output(
+          false,
+          [],
+          [
+            mapResendDomainError(
+              error.message,
+              "tracking",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
+          null
+        )
+      }
+
+      const { data: domainData, error: getError } = await resend.domains.get(
+        settings.resendDomainId
+      )
+      if (getError || !domainData) {
+        console.error(
+          "[EmailTeamSettingsUseCase][configureDomainTracking] Resend get error",
+          getError
+        )
+        return new Output(
+          false,
+          [],
+          [mapResendDomainError(getError?.message, "tracking", settings.resendDomainName ?? undefined)],
+          null
+        )
+      }
+
+      const syncedTrackingSubdomain =
+        domainData.tracking_subdomain?.trim().toLowerCase() || null
+      // Idempotent only when THIS domain already owns the requested subdomain.
+      // Unrelated 409s (e.g. subdomain on another domain) must surface as errors.
+      const trackingConflict =
+        maybeTrackingConflict &&
+        (existingTrackingSubdomain === trackingSubdomain ||
+          syncedTrackingSubdomain === trackingSubdomain)
+
+      if (error && !trackingConflict) {
+        console.error(
+          "[EmailTeamSettingsUseCase][configureDomainTracking] Resend conflict not owned by domain",
+          {
+            domainId: settings.resendDomainId,
+            trackingSubdomain,
+            existingTrackingSubdomain,
+            syncedTrackingSubdomain,
+            error,
+          }
+        )
         return new Output(
           false,
           [],
@@ -780,22 +830,6 @@ export class EmailTeamSettingsUseCase {
         console.info(
           "[EmailTeamSettingsUseCase][configureDomainTracking] Tracking subdomain already exists; syncing current domain state",
           { domainId: settings.resendDomainId, trackingSubdomain }
-        )
-      }
-
-      const { data: domainData, error: getError } = await resend.domains.get(
-        settings.resendDomainId
-      )
-      if (getError || !domainData) {
-        console.error(
-          "[EmailTeamSettingsUseCase][configureDomainTracking] Resend get error",
-          getError
-        )
-        return new Output(
-          false,
-          [],
-          [mapResendDomainError(getError?.message, "tracking", settings.resendDomainName ?? undefined)],
-          null
         )
       }
 

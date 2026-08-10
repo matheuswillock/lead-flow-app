@@ -63,7 +63,7 @@ export function mapResendDomainError(
   }
 
   if (context === "tracking" && isTrackingSubdomainAlreadyExists(message)) {
-    return "Este subdomínio de tracking já está configurado no Resend. Sincronizamos o status atual — adicione o DNS de Tracking e re-verifique, se ainda estiver pendente."
+    return "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
   }
 
   if (isAlreadyRegistered(message) && context !== "tracking") {
