@@ -56,11 +56,26 @@ export class ReconcileResendDomainStatusUseCase {
       errors,
     })
 
+    const summary = { scanned, synced, inSync, errors }
+
+    if (errors > 0) {
+      return new Output(
+        false,
+        synced > 0
+          ? [`${synced} domínio(s) reconciliado(s) de ${scanned} verificado(s)`]
+          : [],
+        [
+          `${errors} erro(s) ao reconciliar domínio(s) Resend (${synced} reconciliado(s), ${inSync} já alinhado(s))`,
+        ],
+        summary
+      )
+    }
+
     return new Output(
       true,
       [`${synced} domínio(s) reconciliado(s) de ${scanned} verificado(s)`],
       [],
-      { scanned, synced, inSync, errors }
+      summary
     )
   }
 

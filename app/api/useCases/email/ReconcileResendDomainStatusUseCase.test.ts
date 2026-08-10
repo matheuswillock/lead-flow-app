@@ -108,7 +108,43 @@ describe("ReconcileResendDomainStatusUseCase", () => {
     )
     const result = await useCase.execute()
 
+    expect(result.isValid).toBe(false)
     expect(result.result.errors).toBe(1)
+    expect(result.errorMessages[0]).toContain("1 erro(s) ao reconciliar")
     expect(syncFromResendDomainMock).not.toHaveBeenCalled()
+  })
+
+  it("retorna inválido quando há erros parciais mas também sincronizações", async () => {
+    listConnectedDomainsMock.mockImplementation(async () => [
+      {
+        teamId: "team-1",
+        resendDomainId: "dom-1",
+        resendDomainName: "ok.example.com",
+        resendDomainStatus: "verified",
+      },
+      {
+        teamId: "team-2",
+        resendDomainId: "dom-2",
+        resendDomainName: "fail.example.com",
+        resendDomainStatus: "verified",
+      },
+    ])
+    fetchDomainMock.mockImplementation(async (domainId) => {
+      if (domainId === "dom-2") {
+        return { data: null, error: "rate limit" }
+      }
+      return { data: { id: domainId, status: "partially_failed" }, error: null }
+    })
+
+    const useCase = new ReconcileResendDomainStatusUseCase(
+      buildRepository(),
+      fetchDomainMock
+    )
+    const result = await useCase.execute()
+
+    expect(result.isValid).toBe(false)
+    expect(result.result.synced).toBe(1)
+    expect(result.result.errors).toBe(1)
+    expect(result.successMessages[0]).toContain("1 domínio(s) reconciliado(s)")
   })
 })
