@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client"
 import { backofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/BackofficeCronExecutionRepository"
 import type { IBackofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/IBackofficeCronExecutionRepository"
+import type { BackofficeCronExecution } from "@prisma/client"
 
 type CronConfig = {
   cronKey: string
@@ -41,12 +42,21 @@ export async function withCronAudit<T>(
   dependencies?: CronDependencies
 ): Promise<T> {
   const repository = dependencies?.repository ?? backofficeCronExecutionRepository
-  
-  const execution = await repository.create({
-    cronKey: config.cronKey,
-    cronPath: config.cronPath,
-    status: "running",
-  })
+
+  let execution: BackofficeCronExecution | null = null
+
+  try {
+    execution = await repository.create({
+      cronKey: config.cronKey,
+      cronPath: config.cronPath,
+      status: "running",
+    })
+  } catch (error) {
+    console.error(
+      `[CronAudit] Falha ao registrar início do cron ${config.cronKey}:`,
+      error
+    )
+  }
 
   const start = Date.now()
 
@@ -54,39 +64,49 @@ export async function withCronAudit<T>(
     const result = await handler()
     const duration = Date.now() - start
 
-    let metadata: Prisma.InputJsonValue | undefined
-    if (result && typeof result === "object" && "result" in result) {
-      metadata = result.result as Prisma.InputJsonValue
-    }
+    if (execution) {
+      let metadata: Prisma.InputJsonValue | undefined
+      if (result && typeof result === "object" && "result" in result) {
+        metadata = result.result as Prisma.InputJsonValue
+      }
 
-    await repository.markSuccess(
-      execution.id,
-      duration,
-      metadata
-    )
+      try {
+        await repository.markSuccess(execution.id, duration, metadata)
+      } catch (markError) {
+        console.error(
+          `[CronAudit] Falha ao marcar sucesso do cron ${config.cronKey}:`,
+          markError
+        )
+      }
+    }
 
     return result
   } catch (error) {
     const duration = Date.now() - start
     const errorObj = error instanceof Error ? error : new Error(String(error))
 
-    await repository.markFailed(
-      execution.id,
-      errorObj,
-      duration
-    )
-
-    if (dependencies?.onFailure) {
+    if (execution) {
       try {
-        await dependencies.onFailure({
-          cronKey: config.cronKey,
-          cronPath: config.cronPath,
-          durationMs: duration,
-          error: errorObj.message,
-          executionId: execution.id,
-        })
-      } catch (notificationError) {
-        console.error("[CronAudit] Falha ao executar callback de notificação:", notificationError)
+        await repository.markFailed(execution.id, errorObj, duration)
+      } catch (markError) {
+        console.error(
+          `[CronAudit] Falha ao marcar falha do cron ${config.cronKey}:`,
+          markError
+        )
+      }
+
+      if (dependencies?.onFailure) {
+        try {
+          await dependencies.onFailure({
+            cronKey: config.cronKey,
+            cronPath: config.cronPath,
+            durationMs: duration,
+            error: errorObj.message,
+            executionId: execution.id,
+          })
+        } catch (notificationError) {
+          console.error("[CronAudit] Falha ao executar callback de notificação:", notificationError)
+        }
       }
     }
 

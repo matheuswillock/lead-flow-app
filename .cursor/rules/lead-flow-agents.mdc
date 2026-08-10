@@ -392,7 +392,7 @@ Deviations allowed only if explicitly listed in `.governance/ai-governance.confi
 
 CI **MUST** fail when governance checks fail.
 
-- Check: `bun run governance:check`
+- Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**`)
 - Client API masking (CI step dedicado): `bun run governance:check-api-masking`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 

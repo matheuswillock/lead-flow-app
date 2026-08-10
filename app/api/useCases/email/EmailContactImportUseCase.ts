@@ -576,8 +576,7 @@ export class EmailContactImportUseCase {
                     const syncErrors = (syncResult.result as { errors?: string[] } | null)?.errors
                     if (Array.isArray(syncErrors) && syncErrors.length > 0) {
                       console.error(
-                        `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${syncErrors.length} erro(s)`,
-                        syncErrors
+                        `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${syncErrors.join("; ")}`
                       )
                     }
                   }

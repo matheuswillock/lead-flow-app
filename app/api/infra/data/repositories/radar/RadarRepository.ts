@@ -7,7 +7,7 @@ import type {
   LeadStatus,
   Prisma,
 } from "@prisma/client"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma"
 import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
@@ -1121,37 +1121,41 @@ export class RadarRepository {
       }
     }
 
-    const [weightRows, configRow, formRuleRows] = await Promise.all([
-      this.db.backofficeRadarEngagementWeight.findMany({
-        where: { isActive: true },
-        select: { eventType: true, weight: true },
-      }),
-      this.db.backofficeRadarEngagementConfig.findFirst({
-        where: { isActive: true },
-        select: {
-          windowRecentDays: true,
-          windowMidDays: true,
-          windowOldDays: true,
-          recentMultiplier: true,
-          oldMultiplier: true,
-          hotThreshold: true,
-          warmThreshold: true,
-          lukewarmThreshold: true,
-        },
-        orderBy: { updatedAt: "desc" },
-      }),
-      this.db.backofficeFormEngagementScoreRule.findMany({
-        where: { isActive: true },
-        select: {
-          minPercent: true,
-          maxPercent: true,
-          multiplier: true,
-          label: true,
-          isActive: true,
-        },
-        orderBy: { minPercent: "asc" },
-      }),
-    ])
+    const [weightRows, configRow, formRuleRows] = await withPrismaRetry(
+      () =>
+        Promise.all([
+          this.db.backofficeRadarEngagementWeight.findMany({
+            where: { isActive: true },
+            select: { eventType: true, weight: true },
+          }),
+          this.db.backofficeRadarEngagementConfig.findFirst({
+            where: { isActive: true },
+            select: {
+              windowRecentDays: true,
+              windowMidDays: true,
+              windowOldDays: true,
+              recentMultiplier: true,
+              oldMultiplier: true,
+              hotThreshold: true,
+              warmThreshold: true,
+              lukewarmThreshold: true,
+            },
+            orderBy: { updatedAt: "desc" },
+          }),
+          this.db.backofficeFormEngagementScoreRule.findMany({
+            where: { isActive: true },
+            select: {
+              minPercent: true,
+              maxPercent: true,
+              multiplier: true,
+              label: true,
+              isActive: true,
+            },
+            orderBy: { minPercent: "asc" },
+          }),
+        ]),
+      { label: "loadEngagementWeightsAndConfig", retries: 2 }
+    )
 
     const weights: WeightMap = {}
     for (const row of weightRows) {
@@ -2352,32 +2356,32 @@ export class RadarRepository {
           p.id,
           p."normalizedPrimaryEmail",
           EXISTS(
-            SELECT 1 FROM "RadarConsent" c
+            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
             WHERE c."profileId" = p.id AND c."teamId" = ${teamId}
               AND c."channel" = 'email' AND c."status" = 'blocked'
           ) AS has_blocked_consent,
           EXISTS(
-            SELECT 1 FROM "RadarConsent" c
+            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
             WHERE c."profileId" = p.id AND c."teamId" = ${teamId}
               AND c."channel" = 'email' AND c."status" = 'allowed'
           ) AS has_allowed_consent,
           EXISTS(
-            SELECT 1 FROM "RadarSourceLink" sl
+            SELECT 1 FROM "corretor_studio_radar_source_links" sl
             WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
               AND sl."sourceType" = 'portfolio'
           ) AS has_portfolio,
           EXISTS(
-            SELECT 1 FROM "RadarIdentity" i
+            SELECT 1 FROM "corretor_studio_radar_identities" i
             WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
               AND i."type" = 'lead_id'
           ) AS has_lead_id,
           EXISTS(
-            SELECT 1 FROM "RadarEvent" e
+            SELECT 1 FROM "corretor_studio_radar_events" e
             WHERE e."profileId" = p.id AND e."teamId" = ${teamId}
               AND e."eventType" = 'email.sent'
               AND e."occurredAt" >= ${recentThreshold}
           ) AS has_recent_sent
-        FROM "RadarProfile" p
+        FROM "corretor_studio_radar_profiles" p
         WHERE p."teamId" = ${teamId}
       ),
       email_events AS (
@@ -2386,7 +2390,7 @@ export class RadarRepository {
           e."eventType",
           e."occurredAt",
           e."metadata"
-        FROM "RadarEvent" e
+        FROM "corretor_studio_radar_events" e
         WHERE e."teamId" = ${teamId}
           AND e."eventType" IN ('email.opened', 'email.clicked')
           AND e."occurredAt" >= ${recentThreshold}
@@ -2423,17 +2427,17 @@ export class RadarRepository {
       ),
       closed_profiles AS (
         SELECT p.id
-        FROM "RadarProfile" p
+        FROM "corretor_studio_radar_profiles" p
         WHERE p."teamId" = ${teamId}
           AND (
             EXISTS(
-              SELECT 1 FROM "RadarSourceLink" sl
+              SELECT 1 FROM "corretor_studio_radar_source_links" sl
               WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
                 AND sl."sourceType" = 'portfolio'
             )
             OR EXISTS(
-              SELECT 1 FROM "RadarIdentity" i
-              INNER JOIN "Lead" l ON i."normalizedValue" = l.id
+              SELECT 1 FROM "corretor_studio_radar_identities" i
+              INNER JOIN "corretor_studio_leads" l ON i."normalizedValue" = l.id::text
               WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
                 AND i."type" = 'lead_id'
                 AND l."teamId" = ${teamId}
@@ -2449,16 +2453,16 @@ export class RadarRepository {
       ),
       renewal_due_profiles AS (
         SELECT DISTINCT p.id
-        FROM "RadarProfile" p
+        FROM "corretor_studio_radar_profiles" p
         WHERE p."teamId" = ${teamId}
           AND (
             EXISTS(
-              SELECT 1 FROM "RadarEvent" e
+              SELECT 1 FROM "corretor_studio_radar_events" e
               WHERE e."profileId" = p.id AND e."teamId" = ${teamId}
                 AND e."eventType" = 'portfolio.renewal_due'
             )
             OR EXISTS(
-              SELECT 1 FROM "RadarSourceLink" sl
+              SELECT 1 FROM "corretor_studio_radar_source_links" sl
               WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
                 AND sl."sourceType" = 'portfolio'
                 AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
@@ -2471,7 +2475,7 @@ export class RadarRepository {
             AND pb."normalizedPrimaryEmail" != ''
             AND (NOT pb.has_blocked_consent)
             AND (pb.has_allowed_consent OR NOT EXISTS(
-              SELECT 1 FROM "RadarConsent" c
+              SELECT 1 FROM "corretor_studio_radar_channel_consents" c
               WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}
                 AND c."channel" = 'email'
             ))

@@ -3,7 +3,16 @@
 **Versão:** 1.1 (Estágio 5 + open question dos órfãos resolvida na investigação 2026-08-09)
 **Data:** 2026-08-09
 **Base factual:** `CRON_OBSERVABILITY_AUDIT.md` (leitura obrigatória antes de qualquer estágio).
-**Status:** Não iniciado (Estágios 1–4). Achado dos crons órfãos **investigado** — ver Estágio 5. Bug A confirmado ativo em `origin/main` (release v0.200.0) na data deste documento.
+**Status:** Concluído (código) — Estágio 4 aguarda deploy/autorização do dono.
+
+## Status de execução
+
+| ID | Agente | Branch | PR | Estado | Revisado em | Notas |
+|----|--------|--------|-----|--------|-------------|-------|
+| Estágio 1+2 | CronP0 | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | migration + withCronAudit TDD |
+| Estágio 3 | Governance | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | check em governance:check |
+| Estágio 5 | CronScheduler | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | vercel.json + GET backfill |
+| Estágio 4 | ProdOps | — | — | pending | — | aguarda autorização dono `db:migrate:push` |
 
 ---
 
@@ -80,6 +89,22 @@ Adicionar um script/step (`bun run governance:check-migrations` ou equivalente, 
 **Critério de sucesso:** `bun run governance:check` falha se um novo model for adicionado sem migration correspondente (testável introduzindo temporariamente um model fictício sem migration num branch de teste local, depois revertendo).
 
 ## Estágio 4 — Replay/backfill do que os crons perderam (se autorizado)
+
+### Runbook (orquestrador + dono)
+
+**Pré-deploy (Estágio 1+2):**
+1. `bun run db:migrate:push:dry-run` — revisar SQL de `create-backoffice-cron-executions`
+2. Autorização explícita do dono para `bun run db:migrate:push`
+3. Deploy da aplicação com `withCronAudit` corrigido
+
+**Pós-deploy (24h):**
+1. Logs: zero `Invalid prisma.backofficeCronExecution.create()` / `relation "backoffice_cron_executions" does not exist`
+2. Dashboard `/backoffice/cron-executions`: execuções `running` → `success` para crons agendados
+3. `database-backup`: dono decide se dispara backup manual para janela 2026-08-07→deploy
+
+**Crons de intervalo curto (5–15 min):** próxima execução natural reprocessa fila pendente — sem replay manual salvo exceção documentada.
+
+**Status:** aguardando autorização do dono para `db:migrate:push` remoto.
 
 **Objetivo:** avaliar, para cada rota afetada, se há trabalho perdido que vale reprocessar manualmente uma vez (não é um mecanismo automático permanente).
 

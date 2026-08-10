@@ -1409,6 +1409,44 @@ function printAllowlistWarnings(
   }
 }
 
+async function validatePrismaModelTableMigrations(issues: string[]): Promise<void> {
+  const schemaPath = path.join(ROOT, "prisma/schema.prisma");
+  const migrationsDir = path.join(ROOT, "supabase/migrations");
+  const schema = await fs.readFile(schemaPath, "utf8");
+  const migrationFiles = (await fs.readdir(migrationsDir)).filter((file) =>
+    file.endsWith(".sql"),
+  );
+  const migrationSql = (
+    await Promise.all(
+      migrationFiles.map((file) =>
+        fs.readFile(path.join(migrationsDir, file), "utf8"),
+      ),
+    )
+  ).join("\n");
+
+  const modelBlocks = schema.split(/^model /m).slice(1);
+  const missing: string[] = [];
+
+  for (const block of modelBlocks) {
+    const mapMatch = block.match(/@@map\("([^"]+)"\)/);
+    if (!mapMatch) continue;
+    const table = mapMatch[1];
+    const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const createPattern = new RegExp(`CREATE TABLE[\\s\\S]*"?${escaped}"?`, "i");
+    if (!createPattern.test(migrationSql)) {
+      missing.push(table);
+    }
+  }
+
+  if (missing.length > 0) {
+    const preview = missing.slice(0, 10).join(", ");
+    const suffix = missing.length > 10 ? ` (+${missing.length - 10} more)` : "";
+    issues.push(
+      `Prisma @@map table(s) without CREATE TABLE in supabase/migrations: ${preview}${suffix}`,
+    );
+  }
+}
+
 async function checkGovernance(
   config: GovernanceConfig,
   canonicalText: string,
@@ -1433,6 +1471,7 @@ async function checkGovernance(
   await validateClientApiPathMasking(config, issues, warnings);
   await validateBrowserNativeDialogs(issues);
   await validateBunGlobalUsage(issues);
+  await validatePrismaModelTableMigrations(issues);
 
   if (warnings.length > 0) {
     console.warn("\n[governance:check] WARNINGS");

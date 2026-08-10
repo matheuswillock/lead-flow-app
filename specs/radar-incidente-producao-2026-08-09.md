@@ -2,7 +2,16 @@
 
 **Versão:** 1.2 (B1: prevenção de nomes físicos em migrations/SQL raw + link `agents.md` v2.5.1; B2 já revisado — pool)
 **Data:** 2026-08-09
-**Status:** Não iniciado. B1 confirmado ativo em `origin/main` (release v0.200.0). B2/B3: causa raiz confirmada (pool), correção de código não iniciada.
+**Status:** Concluído (código) — métricas em prod após deploy do Estágio 1.
+
+## Status de execução
+
+| ID | Agente | Branch | PR | Estado | Revisado em | Notas |
+|----|--------|--------|-----|--------|-------------|-------|
+| B1 | RadarSegments | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | nomes físicos em countFixedSegmentsSQL |
+| B2+B3 | RadarResilience | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | withPrismaRetry + logs correlacionáveis |
+| B4 | RadarBackfill | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | concorrência limitada no backfill |
+
 **Base factual:** `RADAR_AUDIT.md` §9 (leitura obrigatória antes de qualquer estágio).
 **Relacionado:** `CRON_OBSERVABILITY_AUDIT.md`/`CRON_OBSERVABILITY_SPEC.md` (mesmo incidente, achado transversal que derruba 21 cron jobs de toda a aplicação — tratado à parte por não ser específico do Radar).
 
