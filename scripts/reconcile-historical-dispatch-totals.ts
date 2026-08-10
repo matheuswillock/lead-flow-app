@@ -12,8 +12,6 @@
  */
 import { PrismaClient } from "@prisma/client";
 
-const SUCCESS_STATUSES = ["sent", "delivered", "opened", "clicked"] as const;
-
 const KNOWN_CAMPAIGN_NAMES = [
   "Rede D'Or . 001",
   "LISTA FRIA - BRUNO (parte 12/12)",
@@ -61,7 +59,7 @@ async function findCandidates(): Promise<ReconcileCandidate[]> {
     const actualSentCount = await prisma.emailLog.count({
       where: {
         dispatchId: dispatch.id,
-        status: { in: [...SUCCESS_STATUSES] },
+        sentAt: { not: null },
       },
     });
 

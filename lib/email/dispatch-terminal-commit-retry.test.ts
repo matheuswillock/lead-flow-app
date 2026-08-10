@@ -1,6 +1,15 @@
 import { describe, expect, it, mock } from "bun:test";
 import { Prisma } from "@prisma/client";
-import { withDispatchTerminalCommitRetry } from "./dispatch-reconcile-resilience";
+
+const connectMock = mock(async () => {});
+
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: {
+    $connect: connectMock,
+  },
+}));
+
+const { withDispatchTerminalCommitRetry } = await import("./dispatch-reconcile-resilience");
 
 describe("withDispatchTerminalCommitRetry (D10)", () => {
   it("re-tenta P1001 transitório antes de propagar erro", async () => {
@@ -17,6 +26,7 @@ describe("withDispatchTerminalCommitRetry (D10)", () => {
     const result = await withDispatchTerminalCommitRetry(operation);
     expect(result).toEqual({ committed: true });
     expect(operation).toHaveBeenCalledTimes(2);
+    expect(connectMock).toHaveBeenCalledTimes(1);
   });
 
   it("propaga erro após esgotar retries de pool timeout", async () => {
@@ -29,5 +39,28 @@ describe("withDispatchTerminalCommitRetry (D10)", () => {
 
     await expect(withDispatchTerminalCommitRetry(operation)).rejects.toThrow();
     expect(operation.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("não re-executa operação quando verifyAlreadyCommitted detecta commit anterior", async () => {
+    let operationCalls = 0;
+    const operation = mock(async () => {
+      operationCalls += 1;
+      throw new Prisma.PrismaClientKnownRequestError("Server closed connection", {
+        code: "P1017",
+        clientVersion: "test",
+      });
+    });
+    const verifyAlreadyCommitted = mock(async () => {
+      if (operationCalls === 0) return null;
+      return { parentCampaignId: null };
+    });
+
+    const result = await withDispatchTerminalCommitRetry(operation, {
+      verifyAlreadyCommitted,
+    });
+
+    expect(result).toEqual({ parentCampaignId: null });
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(verifyAlreadyCommitted).toHaveBeenCalledTimes(2);
   });
 });
