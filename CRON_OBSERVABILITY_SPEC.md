@@ -1,9 +1,9 @@
 # CRON_OBSERVABILITY_SPEC.md — Corrigir o outage transversal dos 21 cron jobs
 
-**Versão:** 1.0
+**Versão:** 1.1 (Estágio 5 + open question dos órfãos resolvida na investigação 2026-08-09)
 **Data:** 2026-08-09
 **Base factual:** `CRON_OBSERVABILITY_AUDIT.md` (leitura obrigatória antes de qualquer estágio).
-**Status:** Não iniciado. Bug confirmado ativo em `origin/main` (release v0.200.0) na data deste documento.
+**Status:** Não iniciado (Estágios 1–4). Achado dos crons órfãos **investigado** — ver Estágio 5. Bug A confirmado ativo em `origin/main` (release v0.200.0) na data deste documento.
 
 ---
 
@@ -14,8 +14,8 @@ Restaurar a execução de todos os cron jobs que hoje falham com HTTP 500 antes 
 ## Non-goals
 
 - Redesenhar o sistema de observabilidade de crons (dashboard `/backoffice/cron-executions`, notificação Slack) — a interface e o modelo de dados ficam como estão; só a ordem de execução dentro do wrapper muda.
-- Investigar/corrigir os 4 crons órfãos da configuração (`radar/cron/engagement-backfill`, `radar/cron/process-import-jobs`, `billing/cron/overdue-reminder`, `studio-bot-ai-rollup`) — achado secundário do audit, tratado como item separado (ver Open questions).
 - Reprocessar retroativamente o que os crons perderam desde 2026-08-07 (ex.: backups pulados) além do que está explicitamente no Estágio 4.
+- Alterar a lógica de negócio dos 4 crons órfãos (backfill/import/dunning/rollup) — o Estágio 5 só registra schedule + alinha método HTTP; bugs de payload ficam nos SPECs de domínio.
 
 ---
 
@@ -32,6 +32,8 @@ O `create()` inicial de `withCronAudit` deve estar dentro de um `try/catch` pró
 ### DA3 — Prevenção: novo check de governança para drift model↔migration
 
 Adicionar um script/step (`bun run governance:check-migrations` ou equivalente, integrado a `governance:check`) que, para cada `model` novo introduzido num diff de `prisma/schema.prisma`, verifica se existe pelo menos uma migration em `supabase/migrations/` contendo o nome de tabela mapeado (`@@map(...)`) via `CREATE TABLE`. Heurística simples (grep no diff + grep nas migrations), não precisa ser um parser de SQL completo — o objetivo é pegar o caso "model novo, zero migration", que foi exatamente o que aconteceu aqui.
+
+**Complemento normativo (já em `agents.md` v2.5.1):** toda migration/SQL raw **MUST** usar nomes físicos de `prisma/schema.prisma` (`@@map`/`@map`) e respeitar o boundary `app/api/infra/data/prisma.ts`. Cobre a classe de erro B1 do Radar (nome de model em `$queryRaw`/DDL) além do drift “model sem migration”.
 
 ---
 
@@ -86,11 +88,35 @@ Adicionar um script/step (`bun run governance:check-migrations` ou equivalente, 
 
 **Este estágio só avança com autorização explícita do dono do projeto**, por envolver produção (ver `CLAUDE.md`: migrations e ações em produção exigem autorização).
 
+## Estágio 5 — Registrar os 4 crons órfãos no `vercel.json` (investigação fechada)
+
+**Base factual:** `CRON_OBSERVABILITY_AUDIT.md` §4 "Achado secundário" (2026-08-09) — confirmado: **não** há fila/worker/n8n acionando essas rotas; nunca estiveram no `vercel.json`; só Postman/manual.
+
+**Objetivo:** passar a agendar pela Vercel Cron as rotas que o produto já implementou e documentou nos SPECs de domínio.
+
+**Passos:**
+1. Em `engagement-backfill`: adicionar `GET` que reutiliza o mesmo handler do `POST` (Vercel Cron só dispara GET). Manter `POST` para Postman/compat.
+2. Incluir no array `crons` de `vercel.json` (schedules **propostos** — dono pode ajustar no PR):
+
+| Path | Schedule proposto | Justificativa |
+|---|---|---|
+| `/api/v1/radar/cron/process-import-jobs` | `*/5 * * * *` | Espelha `email/cron/process-import-jobs` |
+| `/api/v1/billing/cron/overdue-reminder` | `0 7 * * *` | Dunning diário (vizinho de `member-pro-expiration` às 06:00) |
+| `/api/v1/notifications/cron/studio-bot-ai-rollup` | `15 */6 * * *` | Rollup periódico Bethânia IA (baixo volume) |
+| `/api/v1/radar/cron/engagement-backfill` | `0 4 * * *` | Backfill pesado (lotes 500); janela noturna |
+
+3. Após Estágio 1+2 em produção: validar no dashboard `/backoffice/cron-executions` que as 4 `cronKey`s passam a registrar execuções (`radar-import`, `overdue-reminder`, `studio-bot-ai-rollup`, `engagement-backfill`).
+4. Não alterar secrets: `CRON_SECRET` (padrão) e `BACKOFFICE_BETHANIA_AI_ROLLUP_CRON_SECRET` (opcional no rollup) permanecem.
+
+**Critério de sucesso:** nas 24h pós-deploy, cada uma das 4 rotas tem ≥1 execução registrada (ou skip documentado se o job for no-op por falta de trabalho), sem 401 por método HTTP errado.
+
+**Dependência:** pode ir em PR separado depois do Estágio 1+2 (senão as novas schedules também estouram no `create()` da tabela ausente). Schedules finais **MUST** ser confirmados pelo dono no review do PR.
+
 ---
 
 ## Ordem de execução e dependências
 
-Estágio 1 → Estágio 2 (podem ir no mesmo PR, já que travam o mesmo arquivo/schema) → Estágio 3 (independente, pode rodar em paralelo) → Estágio 4 (depende do Estágio 1 estar em produção).
+Estágio 1 → Estágio 2 (podem ir no mesmo PR, já que travam o mesmo arquivo/schema) → Estágio 3 (independente, pode rodar em paralelo) → Estágio 4 (depende do Estágio 1 estar em produção) → Estágio 5 (depende do Estágio 1+2 em produção; PR próprio).
 
 ## Critérios de sucesso (macro)
 
@@ -98,8 +124,10 @@ Estágio 1 → Estágio 2 (podem ir no mesmo PR, já que travam o mesmo arquivo/
 - Taxa de HTTP 500 nas 9 rotas da tabela do audit (§4/§5 do `CRON_OBSERVABILITY_AUDIT.md`) volta a zero (ou ao baseline de erros de negócio genuínos, não de infra).
 - Alertas de Slack voltam a disparar corretamente em falhas reais de cron (validável simulando uma falha controlada em ambiente local/staging).
 - `bun run governance:check` passa a barrar localmente um model de teste sem migration (Estágio 3).
+- Após Estágio 5: as 4 `cronKey`s órfãs deixam de ser “só Postman” e passam a aparecer em `BackofficeCronExecution`.
 
 ## Open questions (bloqueiam apenas o estágio indicado)
 
-1. **(Estágio 4)** Os 4 crons órfãos da configuração (`radar/cron/engagement-backfill`, `radar/cron/process-import-jobs`, `billing/cron/overdue-reminder`, `studio-bot-ai-rollup`) — são acionados por outro mecanismo (fila/worker) ou ficaram esquecidos fora do `vercel.json`? Precisa de confirmação do dono antes de decidir se entram num spec próprio.
+1. ~~**(Estágio 5 / ex-órfãos)** São acionados por outro mecanismo ou ficaram esquecidos fora do `vercel.json`?~~ **Resolvido 2026-08-09** — órfãos de schedule; sem caller alternativo no repo. Correção = Estágio 5 (schedules finais confirmados pelo dono no PR).
 2. **(Estágio 4)** Confirmar com o dono se algum backup manual precisa ser disparado para cobrir a janela sem `database-backup` desde 2026-08-07, ou se o próximo backup agendado já é suficiente.
+3. **(Estágio 5)** Confirmar/ajustar os 4 cron expressions propostos na tabela do Estágio 5 (especialmente `engagement-backfill` diário vs menos frequente).

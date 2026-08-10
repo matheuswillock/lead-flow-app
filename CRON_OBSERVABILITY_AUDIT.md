@@ -146,7 +146,22 @@ Toda rota de cron que usa `withCronAudit` (confirmado por `grep -rln "withCronAu
 
 **Demais rotas com `withCronAudit` no `vercel.json` (mesma classe de bug, sem volume suficiente na janela de 24h para aparecer isoladamente nos logs, mas com o mesmo defeito estrutural):** `/api/v1/whatsapp/cron/process-outbox` (`*/5`), `/api/v1/whatsapp/cron/sync-contacts` (`*/15`), `/api/v1/whatsapp/cron/ingest-media` (`*/2`), `/api/v1/whatsapp/cron/cleanup-orphan-media` (`0 */6 * * *`), `/api/v1/notifications/cron/task-overdue` (`0 8 * * *`), `/api/v1/notifications/cron/meeting-follow-up` (`0 11 * * *` e `0 17 * * *`), `/api/v1/billing/cron/member-pro-expiration` (`0 6 * * *`), `/api/v1/backoffice/cron/provision-live-campaign` (`0 16 * * 4`), **`/api/v1/backoffice/cron/database-backup`** (`0 8 * * *` — **o backup diário do banco não roda desde 2026-08-07**), `/api/v1/email/cron/reset-credits` (`0 3 1 * *`), `/api/cron/document-request-reminders` (`0 10 * * *`).
 
-**Achado secundário — crons órfãos da configuração:** `radar/cron/engagement-backfill`, `radar/cron/process-import-jobs`, `billing/cron/overdue-reminder` e `studio-bot-ai-rollup` usam `withCronAudit` no código mas **não aparecem no array `crons` do `vercel.json`** — não são agendadas diretamente pela Vercel Cron. Confirmar se são acionadas por outro mecanismo (fila/worker) ou se ficaram órfãs de configuração; fora do escopo de causa raiz deste incidente, mas vale investigação separada.
+### Achado secundário — crons órfãos da configuração (investigado 2026-08-09)
+
+Quatro rotas usam `withCronAudit` e auth `Bearer CRON_SECRET` (ou secret dedicado), mas **nunca** entraram no array `crons` de `vercel.json` (histórico `git log -S` nesses paths em `vercel.json` = vazio). Também **não há** caller interno (fila/worker/n8n/outro cron) no repositório — só entradas Postman e filtros do dashboard `/backoffice/cron-executions`.
+
+| Rota | Método | `cronKey` | Introduzida em | Agendada em `vercel.json`? | Outro acionador no repo? |
+|---|---|---|---|---|---|
+| `/api/v1/radar/cron/engagement-backfill` | **POST** only | `engagement-backfill` | `2563b48a` (radar D19) | Não | Não (só Postman) |
+| `/api/v1/radar/cron/process-import-jobs` | GET | `radar-import` | `4f70b7c3` (import base Radar) | Não | Não (só Postman) |
+| `/api/v1/billing/cron/overdue-reminder` | GET | `overdue-reminder` | `08b088f9` (Billing Estágio 12) | Não | Não |
+| `/api/v1/notifications/cron/studio-bot-ai-rollup` | GET | `studio-bot-ai-rollup` | `dba5d14a` (Bethânia IA) | Não | Não (`BACKOFFICE_BETHANIA_AI_ROLLUP_CRON_SECRET` opcional) |
+
+**Conclusão:** não são “crons alternativos” — são **órfãos de schedule**. Em produção só rodam se alguém chamar a rota manualmente (Postman/curl). O dunning de billing (Estágio 12), o backfill de engajamento Radar, o processador de import Radar e o rollup Bethânia IA **não disparam pela Vercel Cron hoje**.
+
+**Detalhe de implementação:** a Vercel Cron invoca **GET**. `engagement-backfill` exporta só `POST` — ao registrar no `vercel.json` será necessário expor `GET` (ou proxy GET→handler) alinhado aos demais crons, senão o schedule continua morto mesmo após o registro.
+
+**Escopo vs incidente A:** este achado **não** causa os HTTP 500 por `backoffice_cron_executions` (essas rotas quase não são invocadas). Correção = registrar schedules + alinhar método HTTP — ver `CRON_OBSERVABILITY_SPEC.md` Estágio 5.
 
 ---
 
@@ -162,7 +177,9 @@ Toda rota de cron que usa `withCronAudit` (confirmado por `grep -rln "withCronAu
 
 ## 6. Achado de governança/prevenção
 
-Não existe hoje nenhum check em `bun run governance:check` (ou equivalente em CI) que detecte "model novo em `prisma/schema.prisma` sem migration correspondente em `supabase/migrations/`". Esse é exatamente o tipo de drift que permitiu este incidente passar por `typecheck`, `lint` e `governance:check` sem ser pego — `prisma generate` só lê o schema, nunca valida contra o histórico de migrations. Ver `CRON_OBSERVABILITY_SPEC.md` §Prevenção para a proposta de check.
+Não existe hoje nenhum check em `bun run governance:check` (ou equivalente em CI) que detecte "model novo em `prisma/schema.prisma` sem migration correspondente em `supabase/migrations/`". Esse é exatamente o tipo de drift que permitiu este incidente passar por `typecheck`, `lint` e `governance:check` sem ser pego — `prisma generate` só lê o schema, nunca valida contra o histórico de migrations. Ver `CRON_OBSERVABILITY_SPEC.md` DA3 / Estágio 3.
+
+Além do drift model↔migration: SQL escrito à mão (migrations manuais e `$queryRaw`) frequentemente usa o **nome do model Prisma** em vez do nome físico `@@map` — mesma classe de erro do Radar B1 (`RADAR_AUDIT.md` §9). Mitigação normativa em `agents.md` §Migration Policy → "Physical table/column names": toda migration/SQL raw **MUST** espelhar `prisma/schema.prisma` (`@@map`/`@map`) e o boundary de client em `app/api/infra/data/prisma.ts`.
 
 ---
 

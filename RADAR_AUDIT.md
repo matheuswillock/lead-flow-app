@@ -362,6 +362,8 @@ Esses são nomes de **model** Prisma (ou, no caso de `"RadarConsent"`, nem isso)
 
 **Mitigação já existente no código:** `RadarService.ts:997` mantém um método `countSegmentsLegacy`, comentado como "mantida temporariamente para validação comparativa" — usa o Prisma Client normal (via `@@map`, portanto correto) em vez de SQL raw. Candidato a virar o caminho único até `countFixedSegmentsSQL` ser corrigido ou reescrito.
 
+**Prevenção (processo):** a mesma classe de erro ocorre quando migrations ou SQL manual usam o nome do model como tabela. A partir de `agents.md` v2.5.1, toda migration/`$queryRaw` **MUST** usar nomes físicos de `prisma/schema.prisma` (`@@map`/`@map`) e o boundary `app/api/infra/data/prisma.ts` — ver `specs/radar-incidente-producao-2026-08-09.md` §B1 e `CRON_OBSERVABILITY_AUDIT.md` §6.
+
 **Reverificado em `origin/main` (2026-08-09, release v0.200.0):** bug **continua presente**, linha a linha idêntico ao encontrado no worktree local — o release mais recente não tocou este arquivo além do que já estava no commit `88c21a4f` original.
 
 ### B2 — CORRIGIDO: não é tabela ausente — é esgotamento/instabilidade do pool de conexões (P1001/P2024)

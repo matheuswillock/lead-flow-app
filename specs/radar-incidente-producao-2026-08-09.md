@@ -1,6 +1,6 @@
 # Spec: Incidente de Produção 2026-08-09 — Performance, Banco e Aplicação do Radar
 
-**Versão:** 1.1 (B2 revisado em 2026-08-09 com MCP do Supabase autorizado — causa raiz era pool de conexões, não migration ausente)
+**Versão:** 1.2 (B1: prevenção de nomes físicos em migrations/SQL raw + link `agents.md` v2.5.1; B2 já revisado — pool)
 **Data:** 2026-08-09
 **Status:** Não iniciado. B1 confirmado ativo em `origin/main` (release v0.200.0). B2/B3: causa raiz confirmada (pool), correção de código não iniciada.
 **Base factual:** `RADAR_AUDIT.md` §9 (leitura obrigatória antes de qualquer estágio).
@@ -18,7 +18,7 @@ Auditoria de 24h de logs de produção (2026-08-08→09) identificou 3 causas ra
 
 Conteúdo completo de cada achado (B1–B4) está em `RADAR_AUDIT.md` §9 — este spec referencia por ID e foca na correção.
 
-- **B1** — `RadarRepository.countFixedSegmentsSQL` (`RadarRepository.ts:2331-2507`) usa nomes de tabela errados em `$queryRaw` (nomes de model em vez dos nomes físicos mapeados via `@@map`) — quebra `/api/v1/radar/segments` e toda UI que depende de contagem de segmentos fixos.
+- **B1** — `RadarRepository.countFixedSegmentsSQL` (`RadarRepository.ts:2331-2507`) usa nomes de tabela errados em `$queryRaw` (nomes de **model** Prisma / inventados, em vez dos nomes **físicos** de `@@map` em `prisma/schema.prisma`) — quebra `/api/v1/radar/segments` e toda UI que depende de contagem de segmentos fixos. Mesma classe de erro que aparece quando migrations/SQL manual criam ou referenciam tabelas com o nome do model (`"RadarProfile"`) em vez de `corretor_studio_radar_profiles`.
 - **B2** — **[Revisado 2026-08-09 com MCP do Supabase autorizado]** Não é tabela ausente — as 3 tabelas de engajamento existem e as migrations estão aplicadas, confirmado via `execute_sql`/`list_migrations` diretamente no projeto `wcnxwdcoambpfwxwubka`. A causa real é esgotamento/instabilidade do pool de conexões Postgres (P1001 "can't reach database server" e P2024 "timed out fetching connection from pool"), 49 ocorrências em 24h espalhadas quase toda hora do dia — não um evento pontual.
 - **B3** — `EmailContactImportUseCase` sincroniza Radar falhando ~100% das vezes (uma das causas possíveis é a mesma de B2 — pool) mas mascara a falha como sucesso HTTP 200, e o log não carrega detalhe correlacionável do erro real.
 - **B4** — N+1 em `RadarEngagementBackfillUseCase` (até 1.000 round-trips sequenciais por lote de 500 perfis).
@@ -35,6 +35,12 @@ Duas opções, em ordem de preferência:
 2. **Se SQL raw for estritamente necessário** (ganho de performance que o Prisma Client não reproduz): trocar cada identificador pelo nome físico correto — `"RadarProfile"` → `corretor_studio_radar_profiles`, `"RadarIdentity"` → `corretor_studio_radar_identities`, `"RadarSourceLink"` → `corretor_studio_radar_source_links`, `"RadarEvent"` → `corretor_studio_radar_events`, `"RadarConsent"` → `corretor_studio_radar_channel_consents` (note também o nome do model errado, não só a tabela), `"Lead"` → `corretor_studio_leads`. Adicionar um teste de integração que roda a query real contra o banco de teste (não só typecheck) — o bug atual passou por `typecheck`/`lint`/`governance:check` sem ser detectado justamente porque SQL raw é uma string, invisível para essas ferramentas.
 
 Depois da correção, remover ou manter `countSegmentsLegacy` como fallback permanente — decisão do dono do projeto; recomendação é remover quando B1 estiver corrigido e validado, para não manter dois caminhos divergentes de contagem.
+
+**Prevenção (obrigatória em qualquer PR que toque SQL/migration — já normativa em `agents.md` v2.5.1):**
+- Fonte de verdade de nomes/estrutura: `prisma/schema.prisma` (`@@map` / `@map`) + boundary de client `app/api/infra/data/prisma.ts`.
+- Agents **MUST NOT** escrever `CREATE TABLE` / `$queryRaw` / `$executeRaw` com o nome do model Prisma quando existir `@@map`.
+- Checklist de PR: revisar SQL gerado/manual contra o `@@map` do model antes do merge.
+- Preferir Prisma Client a SQL raw; se raw for inevitável, cada identificador **MUST** bater com o map do schema na mesma mudança.
 
 **Critério de sucesso:** `/api/v1/radar/segments` retorna 200 com contagens corretas para os 4 requests que hoje falham; latência p95 volta para um valor normal de leitura (não os ~14s observados, que hoje incluem tempo de erro).
 
