@@ -50,6 +50,39 @@ export function resolveLeadTransferCopySourceSubmissionId(
   return submissionId
 }
 
+export type LeadTransferListSubmission = {
+  id: string
+  origin: unknown
+  createdAt: Date
+}
+
+/**
+ * Ao listar no time destino, scoped (cópia) e legacy (raiz) têm IDs diferentes.
+ * Deduplica pela submission raiz e prefere as linhas de `preferred` (scoped).
+ */
+export function mergeLeadTransferListSubmissions<T extends LeadTransferListSubmission>(
+  preferred: T[],
+  legacy: T[],
+): T[] {
+  const byRootId = new Map<string, T>()
+
+  for (const row of preferred) {
+    const rootId = resolveLeadTransferCopySourceSubmissionId(row.origin, row.id)
+    byRootId.set(rootId, row)
+  }
+
+  for (const row of legacy) {
+    const rootId = resolveLeadTransferCopySourceSubmissionId(row.origin, row.id)
+    if (!byRootId.has(rootId)) {
+      byRootId.set(rootId, row)
+    }
+  }
+
+  return Array.from(byRootId.values()).sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  )
+}
+
 export type LeadTransferCopyOriginParams = {
   sourceOrigin: unknown
   sourceSubmissionId: string

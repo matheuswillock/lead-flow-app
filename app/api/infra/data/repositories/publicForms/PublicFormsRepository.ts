@@ -12,6 +12,7 @@ import {
   SYSTEM_LEAD_TRANSFER_FORM_DESCRIPTION,
   SYSTEM_LEAD_TRANSFER_FORM_KIND,
   SYSTEM_LEAD_TRANSFER_FORM_NAME,
+  mergeLeadTransferListSubmissions,
 } from "@/lib/public-forms/lead-transfer-submission-copy"
 import {
   type IPublicFormsRepository,
@@ -693,16 +694,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       select: leadSubmissionSelect,
     })
 
-    const byId = new Map<string, (typeof scoped)[number]>()
-    for (const row of [...scoped, ...legacy]) {
-      if (!byId.has(row.id)) {
-        byId.set(row.id, row)
-      }
-    }
-
-    return Array.from(byId.values()).sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    )
+    // Deduplica por submission raiz: cópia no time destino (scoped) prevalece sobre a origem.
+    return mergeLeadTransferListSubmissions(scoped, legacy)
   }
 
   async copyLeadSubmissionsOnTeamTransfer(params: {
