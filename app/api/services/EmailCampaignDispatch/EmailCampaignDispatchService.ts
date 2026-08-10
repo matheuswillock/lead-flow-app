@@ -13,6 +13,7 @@ import {
   buildResendIdempotencyKeyWithVariant,
   resend,
 } from "@/lib/email"
+import { buildCampaignBatchRecipientContentDigest } from "@/lib/email/resend-campaign-batch-idempotency-key"
 import {
   isRetryableResendBatchError,
   MAX_BATCH_SEND_ATTEMPTS,
@@ -187,12 +188,16 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         }
 
         try {
+          const batchContentDigest = buildCampaignBatchRecipientContentDigest(
+            chunk.map((recipient) => recipient.email)
+          )
+          const batchIdempotencyEntityId = `${params.dispatchId}/${batchContentDigest}`
           const idempotencyKey =
             attempt === 0
-              ? buildResendBatchIdempotencyKey("campaign", `${params.dispatchId}/${chunkIndex}`)
+              ? buildResendBatchIdempotencyKey("campaign", batchIdempotencyEntityId)
               : buildResendIdempotencyKeyWithVariant(
                   "batch-campaign",
-                  `${params.dispatchId}/${chunkIndex}`,
+                  batchIdempotencyEntityId,
                   `attempt-${attempt}`,
                 )
 

@@ -326,6 +326,87 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.dispatched).toHaveLength(0)
   })
 
+  it("D13 — retomada com subconjunto usa idempotencyKey distinta da tentativa original", async () => {
+    const capturedKeys: string[] = []
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return {
+        data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],
+        error: null,
+      }
+    })
+
+    await service.dispatchBatch(makeBaseParams(makeRecipients(3)))
+    const originalKey = capturedKeys[0]
+    expect(originalKey).toMatch(/^batch-campaign\/dispatch-uuid-1\//)
+    expect(originalKey).not.toBe("batch-campaign/dispatch-uuid-1/0")
+
+    capturedKeys.length = 0
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return {
+        data: [{ id: "re_0" }, { id: "re_1" }],
+        error: null,
+      }
+    })
+
+    await service.dispatchBatch({
+      ...makeBaseParams([
+        {
+          email: "r1@test.com",
+          name: "R1",
+          contactId: null,
+          customFields: null,
+        },
+        {
+          email: "r2@test.com",
+          name: "R2",
+          contactId: null,
+          customFields: null,
+        },
+      ]),
+    })
+
+    expect(capturedKeys[0]).not.toBe(originalKey)
+  })
+
+  it("D13 — mesma composição de lote reutiliza idempotencyKey na retentativa", async () => {
+    const capturedKeys: string[] = []
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return {
+        data: [{ id: "re_0" }, { id: "re_1" }],
+        error: null,
+      }
+    })
+
+    const subsetParams = makeBaseParams([
+      {
+        email: "r1@test.com",
+        name: "R1",
+        contactId: null,
+        customFields: null,
+      },
+      {
+        email: "r2@test.com",
+        name: "R2",
+        contactId: null,
+        customFields: null,
+      },
+    ])
+
+    await service.dispatchBatch(subsetParams)
+    const firstKey = capturedKeys[0]
+
+    capturedKeys.length = 0
+    await service.dispatchBatch(subsetParams)
+
+    expect(capturedKeys[0]).toBe(firstKey)
+  })
+
   it("D9 — falha em onChunkDispatched propaga (não engole como falha de batch Resend)", async () => {
     batchSendMock.mockResolvedValueOnce({
       data: [{ id: "re_1" }, { id: "re_2" }, { id: "re_3" }],

@@ -2,7 +2,7 @@
 
 **Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (Estágios 10–11 via PR #736 mergeado; D13/Estágio 12 spec PR #737; review Codex — retry 409 variantes, risco duplicata Opção A, escopo "Reenviar apenas falhas" corrigido)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9/§10). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1–11 **implementados** (9 via PR #735; 10–11 via PR #736). Estágio 4 item 1 implementado; item 2 via Estágio 10. **Estágio 12 (D13) aprovado/pronto para implementação** — spec neste PR #737.
+**Status:** Estágios 1–12 **implementados** (9 via PR #735; 10–11 via PR #736; 12 nesta branch `feature/email-dispatch-batch-idempotency-hash`, D13 Opção B). Spec D13/E4 incorporada da branch do PR #737.
 
 ## Status de execução
 
@@ -19,7 +19,7 @@
 | 9 — Reconcile resiliente do disparo manual | D10 | **implementado (PR #735)** — `withDispatchTerminalCommitRetry` + fallback `totalSent`; script `reconcile-historical-dispatch-totals.ts` já rodado com `--apply` em produção (4 dispatches corrigidos) | `lib/email/dispatch-reconcile-resilience.test.ts` |
 | 10 — Retry de falhas de processamento do webhook Resend | D11 | **implementado (PR #736)** | `ResendWebhookProcessingFailure` + `/api/v1/email/cron/retry-resend-webhook-failures` |
 | 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **implementado (PR #736)** | `campaign-dispatch-guards.ts`, cron `reconcile-resend-domain-status` (`0 */6 * * *`) |
-| 12 — Colisão de idempotency key na retomada de dispatch travado | D13 | **proposto, não implementado** | achado E4, `EMAIL_AUDIT.md` §10 — dispatch original travado em erro terminal após esgotar variantes de idempotency na retomada (time Kathrein Antunes) |
+| 12 — Colisão de idempotency key na retomada de dispatch travado | D13 | **implementado (nesta branch)** — hash do conteúdo do lote (`buildCampaignBatchRecipientContentDigest`) | `lib/email/resend-campaign-batch-idempotency-key.test.ts` |
 
 **Não coberto por nenhum estágio (non-goal desde julho):** cobrança real via Asaas — ver `Open questions` item 3.
 
@@ -812,3 +812,4 @@ governance:check-api-masking/lint:pt-br).
 - 2026-08-10 — **Estágio 10 concluído (D11, PR #736 mergeado):** outbox `ResendWebhookProcessingFailure`, upsert no catch do webhook Resend, cron `retry-resend-webhook-failures` (`*/5`), recuperação de claims `processing` travados (lease 10 min, espelha radar outbox).
 - 2026-08-10 — **Estágio 11 concluído (D12, PR #736 mergeado):** guard aceita `partially_failed`; aviso não-bloqueante para `partially_verified` e `partially_failed`; `isResendDomainTrackingCapable` wired em analytics/settings/UI; cron `reconcile-resend-domain-status` (`0 */6 * * *`) poll Resend → `syncFromResendDomain`.
 - 2026-08-10 — **Novo achado E4 (`EMAIL_AUDIT.md` §10) a partir de screenshots do time Kathrein Antunes:** campanha "Maternidade" mostrava `Campanha já foi processada anteriormente` — dispatch original falhou na retomada automática após esgotar variantes de idempotency (`attempt-0`…`attempt-2`). Causa raiz: `resumeOrphanSendingDispatches` refatia `chunkIndex` do zero com destinatários diferentes, colidindo com chaves posicionais já consumidas. Registrado como D13/Estágio 12. **Correção review PR #737:** "Reenviar apenas falhas" no primeiro clique usa `dispatchId` novo e não está bloqueado por esse erro; o fix cobre retomadas de qualquer dispatch. Opção B (hash do lote) preferida sobre `resumeCount` cego (risco de duplicata se Resend aceitou mas DB não persistiu).
+- 2026-08-10 — **Estágio 12 concluído (D13, branch `feature/email-dispatch-batch-idempotency-hash`):** `EmailCampaignDispatchService.dispatchBatch` usa idempotency key `batch-campaign/{dispatchId}/{sha256(emails ordenados)}` em vez de `chunkIndex` posicional; mesma composição reutiliza chave (retry seguro), composição diferente na retomada não colide. Testes em `resend-campaign-batch-idempotency-key.test.ts` + `EmailCampaignDispatchService.test.ts` (D13).
