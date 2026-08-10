@@ -1,12 +1,11 @@
 import type {
   RadarCustomSegment,
   RadarCustomSegmentListItem,
-  RadarMetrics,
+  RadarListSegmentsResult,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
-  RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
@@ -93,10 +92,7 @@ export interface IRadarService {
     segmentId: string
   ): Promise<RadarExportResult>
   getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
-  listSegments(
-    supabaseId: string,
-    teamId: string
-  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }>
+  listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult>
   listSegmentProfiles(
     supabaseId: string,
     teamId: string,

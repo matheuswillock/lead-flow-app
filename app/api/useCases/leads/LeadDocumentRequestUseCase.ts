@@ -138,6 +138,8 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
 
     try {
       await this.service.sendRequestEmail(lead.email, {
+        teamId,
+        requestId: request.id,
         closerName,
         leadName: lead.name,
         publicUrl,
@@ -190,6 +192,8 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
     const closerName = request.createdBy.fullName ?? "Corretor";
 
     await this.service.sendRequestEmail(request.lead.email, {
+      teamId,
+      requestId,
       closerName,
       leadName: request.lead.name,
       publicUrl,
@@ -375,6 +379,8 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
       if (closer?.email && closer.supabaseId && lead?.leadCode) {
         const appUrl = getAppUrl();
         await this.service.sendUploadNotificationEmail(closer.email, {
+          teamId: item.request.teamId,
+          documentId: itemId,
           closerName: closer.fullName ?? "Corretor",
           leadName: lead.name,
           documentName: file.fileName,
@@ -405,6 +411,7 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
       },
       select: {
         id: true,
+        teamId: true,
         publicToken: true,
         message: true,
         lead: { select: { email: true, name: true } },
@@ -431,6 +438,8 @@ export class LeadDocumentRequestUseCase implements ILeadDocumentRequestUseCase {
 
       try {
         await this.service.sendRequestEmail(req.lead.email, {
+          teamId: req.teamId,
+          requestId: req.id,
           closerName,
           leadName: req.lead.name,
           publicUrl,

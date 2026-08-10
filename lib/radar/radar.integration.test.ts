@@ -1380,6 +1380,14 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     ).toBe(true)
   })
 
+  it("countFixedSegmentsSQL não lança 'operator does not exist: uuid = text' (RADAR_AUDIT.md B5)", async () => {
+    // teamId chega como string do TypeScript; a coluna é uuid. $queryRaw envia o
+    // parâmetro como bind tipado text — sem ::uuid explícito no SQL, o Postgres
+    // rejeita a comparação com 42883 para TODO teamId, derrubando
+    // /api/v1/radar/segments para todos os times (achado B5).
+    await expect(radarRepository.countFixedSegmentsSQL(scope.teamId, 30)).resolves.toBeInstanceOf(Map)
+  })
+
   it("time B não vê perfis do time A", async () => {
     const countA = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
     const countB = await prisma.radarProfile.count({ where: { teamId: otherScope.teamId } })

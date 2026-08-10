@@ -366,6 +366,8 @@ Esses são nomes de **model** Prisma (ou, no caso de `"RadarConsent"`, nem isso)
 
 **Reverificado em `origin/main` (2026-08-09, release v0.200.0):** bug **continua presente**, linha a linha idêntico ao encontrado no worktree local — o release mais recente não tocou este arquivo além do que já estava no commit `88c21a4f` original.
 
+**CORRIGIDO (confirmado em 2026-08-10):** o commit hoje em produção (`main`, `c797e71d`) já usa os nomes físicos corretos (`corretor_studio_radar_profiles`, `corretor_studio_radar_channel_consents`, `corretor_studio_radar_source_links`, `corretor_studio_radar_identities`, `corretor_studio_radar_events`, `corretor_studio_leads`) em `countFixedSegmentsSQL`. Executei a query completa diretamente contra o Postgres de produção (Supabase MCP) e ela retorna sem erro de relação — **este achado específico (nomes de tabela) não é mais o problema**. Só que a correção introduziu um bug diferente e igualmente grave — ver B5 abaixo.
+
 ### B2 — CORRIGIDO: não é tabela ausente — é esgotamento/instabilidade do pool de conexões (P1001/P2024)
 
 **Este achado foi revisado em 2026-08-09 com evidência direta do banco (MCP do Supabase, autorizado pelo dono nesta data) e correção do texto abaixo — a hipótese original ("migration não aplicada") estava errada.** A leitura inicial dos logs se baseou numa mensagem truncada (`Invalid prisma.backofficeRadarEngagementConfig.findFirst() invocati...`) que, por semelhança superficial com o achado A (tabela do cron, esse sim ausente), foi lida como "tabela não existe". A mensagem completa nunca dizia isso.
@@ -422,3 +424,31 @@ Uma das causas possíveis é a mesma de B2 (esgotamento/instabilidade do pool fa
 ### B4 — N+1 no backfill de engajamento (achado incidental de performance)
 
 `app/api/useCases/radar/RadarEngagementBackfillUseCase.ts:17-33` — loop externo pagina perfis em lotes de 500 (`BATCH_SIZE`, conforme o próprio comentário do job: "recalcula engagementScore/engagementBand em lotes de 500 perfis"), mas o loop interno chama `updateEngagementScore` **um perfil por vez**, e cada chamada faz 2 queries sequenciais (`radarEvent.findMany` + `radarProfile.updateMany`). Resultado: até 1.000 round-trips sequenciais ao banco por lote de 500 perfis, num job cujo propósito explícito é justamente processar em lote. Candidato natural a virar uma query set-based (ou, no mínimo, `Promise.all` com concorrência limitada) no spec de correção.
+
+## 10. Incidente de produção 2026-08-10 — todos os segmentos do Radar aparecem zerados para todos os times
+
+**Gatilho:** usuário reportou que "todos os radares de todos os times estão zerados" e pediu investigação via Supabase, Vercel e Sentry MCP. Investigado com dados reais de produção — nenhuma suposição.
+
+### B5 — `countFixedSegmentsSQL` compara `uuid` com `text` sem cast — 100% das chamadas a `/api/v1/radar/segments` falham 🔴 (regressão introduzida na correção do B1)
+
+**Não é ausência de dado.** Confirmado via Supabase MCP: `corretor_studio_radar_profiles` tem 126.638 perfis reais em produção, distribuídos entre os times (o maior tem 34.389). Quando a query SQL de `countFixedSegmentsSQL` é executada diretamente contra o banco com o `teamId` escrito como literal no texto do SQL, ela retorna contagens reais e coerentes (`email_marketable: 32438`, `opened_not_clicked: 427`, `clicked_not_closed: 66`, `inactive_recent_campaign: 26944`, `crm_clients: 102` para o maior time da base). O problema é 100% na camada de aplicação.
+
+**Causa raiz confirmada nos runtime logs da Vercel (`get_runtime_logs`, ocorrendo continuamente, a cada poucos minutos, até o momento desta investigação):**
+
+```
+Raw query failed. Code: `42883`. Message: `ERROR: operator does not exist: uuid = text
+HINT: No operator matches the given name and argument types. You might need to add explicit type casts.`
+    at async l.countFixedSegmentsSQL (...RadarRepository...)
+    at async I.countSegments (...)
+    at async R (...RadarUseCase...)
+```
+
+`app/api/infra/data/repositories/radar/RadarRepository.ts:2373-2545` (mesmo método do achado B1) tem **14 comparações** do tipo `c."teamId" = ${teamId}` (e equivalentes em `sl`/`i`/`e`/`p`/`l`) sem `::uuid`. A coluna é `uuid`; o parâmetro `${teamId}` chega como `string` do TypeScript. O `$queryRaw` do Prisma envia parâmetros como **bind parameters tipados** (não literais interpolados) — nesse modo, o Postgres exige um operador `uuid = text` explícito, que não existe por padrão; só há coerção implícita quando o valor é escrito como literal solto no texto do SQL (por isso a query funcionou quando testei manualmente via Supabase MCP, mas falha sempre que chamada pela aplicação).
+
+**Por que "zera para todos os times":** `getCachedRadarSegments`/`listSegments` (`app/api/useCases/radar/RadarUseCase.ts:55,494-497`) **não tem `try/catch`** em volta da chamada a `countSegments`. A exceção sobe até a rota `app/api/v1/radar/segments/route.ts`, que devolve `HTTP 500` com `result: null`. Como a query é idêntica (mesma falta de cast) para **qualquer** `teamId`, **toda chamada de todo time falha da mesma forma** — daí a UI parecer "tudo zerado" quando na real é "toda chamada com erro".
+
+**Por que não apareceu no Sentry:** busquei por `radar`, `countFixedSegmentsSQL` e `uuid` no Sentry (organização `corretor-studio`, projeto `sentry-camel-flower`) — **nenhum resultado**. A rota só faz `console.error` no catch da rota (`[RadarSegmentsRoute][GET]`), sem captura explícita no Sentry; é uma lacuna de observabilidade adicional a registrar (não é escopo desta correção, mas vale nota para o `CRON_OBSERVABILITY_SPEC.md`/instrumentação geral: erros 500 de rota deveriam ir para o Sentry automaticamente).
+
+**Não é regressão do trabalho em andamento (Estágios 8-11 do `EMAIL_SPEC.md`):** confirmado que o commit hoje em produção (`c797e71d`) já tinha esse bug — não foi introduzido por nada relacionado ao outbox de sync do Radar (D9) nem aos demais estágios em andamento. É uma regressão **da própria correção do B1** (commit `88c21a4f`, mesma linha de trabalho, 2026-08-07) — o fix dos nomes de tabela nunca foi validado contra Postgres real (só contra Prisma mockado em teste, aparentemente), então o gap de cast nunca foi pego.
+
+**Correção:** adicionar `::uuid` em todas as 14 comparações de `${teamId}` (e revisar se `l.id::text` já usado na linha 108 tem o cast correto no sentido oposto). Adicionar também um `try/catch` em `countSegments`/`getCachedRadarSegments` para que uma falha nos segmentos fixos não derrube `getMetrics`/segmentos customizados junto — hoje qualquer erro em `countFixedSegmentsSQL` derruba a resposta inteira da rota, incluindo os segmentos customizados do time que não dependem dessa query.

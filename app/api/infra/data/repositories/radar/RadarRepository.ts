@@ -2395,32 +2395,32 @@ export class RadarRepository {
           p."normalizedPrimaryEmail",
           EXISTS(
             SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}
+            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
               AND c."channel" = 'email' AND c."status" = 'blocked'
           ) AS has_blocked_consent,
           EXISTS(
             SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}
+            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
               AND c."channel" = 'email' AND c."status" = 'allowed'
           ) AS has_allowed_consent,
           EXISTS(
             SELECT 1 FROM "corretor_studio_radar_source_links" sl
-            WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
+            WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
               AND sl."sourceType" = 'portfolio'
           ) AS has_portfolio,
           EXISTS(
             SELECT 1 FROM "corretor_studio_radar_identities" i
-            WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
+            WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
               AND i."type" = 'lead_id'
           ) AS has_lead_id,
           EXISTS(
             SELECT 1 FROM "corretor_studio_radar_events" e
-            WHERE e."profileId" = p.id AND e."teamId" = ${teamId}
+            WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
               AND e."eventType" = 'email.sent'
               AND e."occurredAt" >= ${recentThreshold}
           ) AS has_recent_sent
         FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}
+        WHERE p."teamId" = ${teamId}::uuid
       ),
       email_events AS (
         SELECT
@@ -2429,7 +2429,7 @@ export class RadarRepository {
           e."occurredAt",
           e."metadata"
         FROM "corretor_studio_radar_events" e
-        WHERE e."teamId" = ${teamId}
+        WHERE e."teamId" = ${teamId}::uuid
           AND e."eventType" IN ('email.opened', 'email.clicked')
           AND e."occurredAt" >= ${recentThreshold}
       ),
@@ -2466,19 +2466,19 @@ export class RadarRepository {
       closed_profiles AS (
         SELECT p.id
         FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}
+        WHERE p."teamId" = ${teamId}::uuid
           AND (
             EXISTS(
               SELECT 1 FROM "corretor_studio_radar_source_links" sl
-              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
+              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
                 AND sl."sourceType" = 'portfolio'
             )
             OR EXISTS(
               SELECT 1 FROM "corretor_studio_radar_identities" i
               INNER JOIN "corretor_studio_leads" l ON i."normalizedValue" = l.id::text
-              WHERE i."profileId" = p.id AND i."teamId" = ${teamId}
+              WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
                 AND i."type" = 'lead_id'
-                AND l."teamId" = ${teamId}
+                AND l."teamId" = ${teamId}::uuid
                 AND l."status" IN ('contract_finalized')
             )
           )
@@ -2492,16 +2492,16 @@ export class RadarRepository {
       renewal_due_profiles AS (
         SELECT DISTINCT p.id
         FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}
+        WHERE p."teamId" = ${teamId}::uuid
           AND (
             EXISTS(
               SELECT 1 FROM "corretor_studio_radar_events" e
-              WHERE e."profileId" = p.id AND e."teamId" = ${teamId}
+              WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
                 AND e."eventType" = 'portfolio.renewal_due'
             )
             OR EXISTS(
               SELECT 1 FROM "corretor_studio_radar_source_links" sl
-              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}
+              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
                 AND sl."sourceType" = 'portfolio'
                 AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
             )
@@ -2514,7 +2514,7 @@ export class RadarRepository {
             AND (NOT pb.has_blocked_consent)
             AND (pb.has_allowed_consent OR NOT EXISTS(
               SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-              WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}
+              WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}::uuid
                 AND c."channel" = 'email'
             ))
         ) AS email_marketable,

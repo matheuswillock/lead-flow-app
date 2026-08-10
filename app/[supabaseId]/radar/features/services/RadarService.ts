@@ -10,12 +10,11 @@ import type {
 import type {
   RadarCustomSegment,
   RadarCustomSegmentListItem,
-  RadarMetrics,
+  RadarListSegmentsResult,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
-  RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
@@ -183,15 +182,12 @@ export class RadarFrontendService implements IRadarService {
     return parseOutput<RadarProfileDetail>(res)
   }
 
-  async listSegments(
-    supabaseId: string,
-    teamId: string
-  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }> {
+  async listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult> {
     const res = await fetch(`${this.baseUrl}/segments`, {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<{ segments: RadarSegment[]; metrics: RadarMetrics }>(res)
+    return parseOutput<RadarListSegmentsResult>(res)
   }
 
   async listSegmentProfiles(

@@ -57,6 +57,13 @@ export type RadarSegment = {
   isSystem: boolean
 }
 
+export type RadarListSegmentsResult = {
+  segments: RadarSegment[]
+  metrics: RadarMetrics
+  /** true quando a contagem de segmentos fixos falhou no backend — os counts exibidos não refletem dados reais. */
+  fixedSegmentsError?: boolean
+}
+
 /** Mirrors lib/radar/segment-dsl.ts's discriminated union — kept in sync manually. */
 export type RadarProfileFieldCondition = {
   kind: "profile_field"
