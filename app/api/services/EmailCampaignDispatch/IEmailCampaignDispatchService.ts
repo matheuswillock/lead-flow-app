@@ -1,4 +1,5 @@
 import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
+import type { EmailCampaignBatchIdempotencyScheme } from "@/lib/email/resend-campaign-batch-idempotency-key"
 
 export type DispatchProviderError = {
   message: string
@@ -30,6 +31,10 @@ export interface IEmailCampaignDispatchService {
     teamId: string
     dispatchId: string
     dispatchNumber: number
+    /** positional = legado (dispatches in-flight); contentHash = D13 Opção B (novos dispatches). */
+    batchIdempotencyScheme?: EmailCampaignBatchIdempotencyScheme
+    /** Só para scheme positional: após 409 idempotency esgotar variantes, retenta com contentHash (E4). */
+    enableContentHashFallbackOnIdempotencyConflict?: boolean
     globalDefaults?: Record<string, string | null | undefined> | null
     templateVariables?: EmailTemplateVariableDefinition[] | null
     /** Map e-mail → EmailLog.id para injetar `cs_el` em links de formulário. */

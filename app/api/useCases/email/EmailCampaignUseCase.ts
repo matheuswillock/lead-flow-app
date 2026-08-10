@@ -163,6 +163,8 @@ export type ManualDispatchJob = {
   totalRecipients: number
   retryFailedOnly: boolean
   status: "sending"
+  batchIdempotencyScheme: "positional" | "contentHash"
+  enableContentHashFallbackOnIdempotencyConflict?: boolean
   warnings?: string[]
 }
 
@@ -1904,6 +1906,7 @@ export class EmailCampaignUseCase {
           triggeredBy: ctx.profileId,
           totalRecipients: recipientsList.length,
           status: "sending",
+          batchIdempotencyScheme: "contentHash",
         },
       })
 
@@ -1942,6 +1945,7 @@ export class EmailCampaignUseCase {
         totalRecipients: recipientsList.length,
         retryFailedOnly,
         status: "sending",
+        batchIdempotencyScheme: "contentHash",
         ...(dispatchWarnings.length > 0 ? { warnings: dispatchWarnings } : {}),
       }
 
@@ -2042,6 +2046,9 @@ export class EmailCampaignUseCase {
                 teamId: job.teamId,
                 dispatchId: job.dispatchId,
                 dispatchNumber: job.dispatchNumber,
+                batchIdempotencyScheme: job.batchIdempotencyScheme,
+                enableContentHashFallbackOnIdempotencyConflict:
+                  job.enableContentHashFallbackOnIdempotencyConflict ?? false,
                 globalDefaults: job.globalDefaults,
                 templateVariables: job.templateVariables,
                 logIdByEmail: logIdsByEmail,
@@ -2541,6 +2548,7 @@ export class EmailCampaignUseCase {
         campaignId: true,
         teamId: true,
         dispatchNumber: true,
+        batchIdempotencyScheme: true,
         templateHtml: true,
         templateSubject: true,
         totalRecipients: true,
@@ -2644,6 +2652,9 @@ export class EmailCampaignUseCase {
           totalRecipients: dispatch.totalRecipients,
           retryFailedOnly: false,
           status: "sending",
+          batchIdempotencyScheme: dispatch.batchIdempotencyScheme,
+          enableContentHashFallbackOnIdempotencyConflict:
+            dispatch.batchIdempotencyScheme === "positional",
         }
 
         console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando", {
@@ -2959,6 +2970,7 @@ export class EmailCampaignUseCase {
             triggeredBy: campaign.createdBy,
             totalRecipients: dispatchInput.recipients.length,
             status: "sending",
+            batchIdempotencyScheme: "contentHash",
           },
         })
 
@@ -2997,6 +3009,7 @@ export class EmailCampaignUseCase {
                 teamId: campaign.teamId,
                 dispatchId: dispatchRecord.id,
                 dispatchNumber,
+                batchIdempotencyScheme: "contentHash",
                 globalDefaults: dispatchInput.globalDefaults,
                 templateVariables: dispatchInput.templateVariables,
                 logIdByEmail: logIdsByEmail,
