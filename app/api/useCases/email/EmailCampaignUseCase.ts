@@ -33,7 +33,11 @@ import {
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
-import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry"
+import {
+  countSuccessfulDispatchLogs,
+  persistDispatchTerminalFallback,
+  withDispatchTerminalCommitRetry,
+} from "@/lib/email/dispatch-reconcile-resilience"
 import {
   formatInvalidRecipientFailureMessage,
   formatProviderBatchFailureMessage,
@@ -2187,12 +2191,17 @@ export class EmailCampaignUseCase {
         EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
       )
 
+      const sentBeforeGenericFail = await countSuccessfulDispatchLogs(job.dispatchId).catch(
+        () => 0
+      )
+
       await prisma.emailCampaignDispatch
         .update({
           where: { id: job.dispatchId },
           data: {
             status: "failed",
             errorMessage: failureMessage,
+            ...(sentBeforeGenericFail > 0 ? { totalSent: sentBeforeGenericFail } : {}),
           },
         })
         .catch(() => null)
@@ -2248,8 +2257,25 @@ export class EmailCampaignUseCase {
     const incrementDispatchCount = params.incrementDispatchCount ?? true
     const setDispatchTotalSent = params.setDispatchTotalSent ?? false
 
-    return withDeadlockRetry(
+    return withDispatchTerminalCommitRetry(
       async () => {
+        const dispatch = await prisma.emailCampaignDispatch.findUnique({
+          where: { id: params.dispatchId },
+          select: { status: true },
+        })
+        if (dispatch && dispatch.status !== "sending") {
+          const campaign = await prisma.emailCampaign.findUnique({
+            where: { id: params.campaignId },
+            select: { parentCampaignId: true },
+          })
+          if (!campaign) {
+            throw new Error(
+              `[EmailCampaignUseCase][commitDispatchTerminalState] campaign not found: ${params.campaignId}`
+            )
+          }
+          return campaign
+        }
+
         const [updatedCampaign] = await prisma.$transaction([
           prisma.emailCampaign.update({
             where: { id: params.campaignId },
@@ -2285,11 +2311,24 @@ export class EmailCampaignUseCase {
         return updatedCampaign
       },
       {
-        onRetry: (attempt, error) => {
+        onDeadlockRetry: (attempt, error) => {
           console.error(
             `[EmailCampaignUseCase][commitDispatchTerminalState] deadlock retry attempt=${attempt}`,
             error
           )
+        },
+        verifyAlreadyCommitted: async () => {
+          const dispatch = await prisma.emailCampaignDispatch.findUnique({
+            where: { id: params.dispatchId },
+            select: { status: true },
+          })
+          if (dispatch && dispatch.status !== "sending") {
+            return prisma.emailCampaign.findUnique({
+              where: { id: params.campaignId },
+              select: { parentCampaignId: true },
+            })
+          }
+          return null
         },
       }
     )
@@ -2307,49 +2346,94 @@ export class EmailCampaignUseCase {
       })
     }
 
-    const sentCount = await prisma.emailLog.count({
-      where: {
-        dispatchId: job.dispatchId,
-        status: { in: ["sent", "delivered", "opened", "clicked"] },
-      },
-    })
+    const sentCount = await countSuccessfulDispatchLogs(job.dispatchId)
     if (sentCount <= 0) {
       return null
     }
 
     const terminal = resolveCampaignStatusAfterDispatch(sentCount)
-    const updatedCampaign = await this.commitDispatchTerminalState({
-      campaignId: job.campaignId,
-      dispatchId: job.dispatchId,
-      totalRecipients: job.totalRecipients,
-      sentCount,
-      terminal,
-      incrementSent: true,
-    })
 
-    if (updatedCampaign.parentCampaignId) {
-      await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(() => null)
-    }
-
-    console.info("[EmailCampaignUseCase][completeManualDispatch] reconciled after error", {
-      campaignId: job.campaignId,
-      dispatchId: job.dispatchId,
-      sentCount,
-    })
-
-    return new Output(
-      true,
-      [`Campanha reconciliada após falha transitória: ${sentCount} e-mail(s) enviados`],
-      [],
-      {
-        sent: sentCount,
-        failed: Math.max(0, job.recipients.length - sentCount),
-        total: job.recipients.length,
+    try {
+      const updatedCampaign = await this.commitDispatchTerminalState({
+        campaignId: job.campaignId,
         dispatchId: job.dispatchId,
-        dispatchNumber: job.dispatchNumber,
-        reconciled: true,
+        totalRecipients: job.totalRecipients,
+        sentCount,
+        terminal,
+        incrementSent: true,
+      })
+
+      if (updatedCampaign.parentCampaignId) {
+        await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(() => null)
       }
-    )
+
+      console.info("[EmailCampaignUseCase][completeManualDispatch] reconciled after error", {
+        campaignId: job.campaignId,
+        dispatchId: job.dispatchId,
+        sentCount,
+      })
+
+      return new Output(
+        true,
+        [`Campanha reconciliada após falha transitória: ${sentCount} e-mail(s) enviados`],
+        [],
+        {
+          sent: sentCount,
+          failed: Math.max(0, job.recipients.length - sentCount),
+          total: job.recipients.length,
+          dispatchId: job.dispatchId,
+          dispatchNumber: job.dispatchNumber,
+          reconciled: true,
+        }
+      )
+    } catch (commitError) {
+      console.error(
+        "[EmailCampaignUseCase][reconcileManualDispatchAfterError][commit]",
+        commitError
+      )
+
+      await persistDispatchTerminalFallback({
+        campaignId: job.campaignId,
+        dispatchId: job.dispatchId,
+        sentCount,
+        terminal,
+        totalRecipients: job.totalRecipients,
+      })
+
+      const campaignAfterFallback = await prisma.emailCampaign.findUnique({
+        where: { id: job.campaignId },
+        select: { parentCampaignId: true },
+      })
+      if (campaignAfterFallback?.parentCampaignId) {
+        await this.refreshParentCampaignStatus(campaignAfterFallback.parentCampaignId).catch(
+          () => null
+        )
+      }
+
+      console.info(
+        "[EmailCampaignUseCase][completeManualDispatch] reconciled terminal state via fallback",
+        {
+          campaignId: job.campaignId,
+          dispatchId: job.dispatchId,
+          sentCount,
+        }
+      )
+
+      return new Output(
+        true,
+        [`Campanha reconciliada (estado terminal preservado): ${sentCount} e-mail(s) enviados`],
+        [],
+        {
+          sent: sentCount,
+          failed: Math.max(0, job.recipients.length - sentCount),
+          total: job.recipients.length,
+          dispatchId: job.dispatchId,
+          dispatchNumber: job.dispatchNumber,
+          reconciled: true,
+          usedFallback: true,
+        }
+      )
+    }
   }
 
   /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
@@ -2476,12 +2560,7 @@ export class EmailCampaignUseCase {
         })
 
         if (queuedLogs.length === 0) {
-          const sentCount = await prisma.emailLog.count({
-            where: {
-              dispatchId: dispatch.id,
-              status: { in: ["sent", "delivered", "opened", "clicked"] },
-            },
-          })
+          const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
           const terminal = resolveCampaignStatusAfterDispatch(sentCount)
           // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
           await this.commitDispatchTerminalState({
