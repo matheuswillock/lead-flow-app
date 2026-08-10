@@ -15,6 +15,21 @@ export function buildCampaignBatchRecipientContentDigest(emails: readonly string
   return createHash("sha256").update(normalized.join("\n")).digest("hex").slice(0, 16)
 }
 
+export type EmailCampaignBatchIdempotencyScheme = "positional" | "contentHash"
+
+/** Entity id (sem prefixo batch-campaign/) para a chave Resend do lote. */
+export function buildCampaignBatchIdempotencyEntityId(params: {
+  scheme: EmailCampaignBatchIdempotencyScheme
+  dispatchId: string
+  chunkIndex: number
+  recipientEmails: readonly string[]
+}): string {
+  if (params.scheme === "contentHash") {
+    return `${params.dispatchId}/${buildCampaignBatchRecipientContentDigest(params.recipientEmails)}`
+  }
+  return `${params.dispatchId}/${params.chunkIndex}`
+}
+
 /** D13 Opção B: idempotency key derivada do conteúdo do lote, não da posição. */
 export function buildResendCampaignBatchContentIdempotencyKey(
   dispatchId: string,

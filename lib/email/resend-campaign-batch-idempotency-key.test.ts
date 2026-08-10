@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import {
-  buildCampaignBatchRecipientContentDigest,
+  buildCampaignBatchIdempotencyEntityId,
   buildLegacyPositionalCampaignBatchIdempotencyKey,
   buildResendCampaignBatchContentIdempotencyKey,
   normalizeCampaignBatchRecipientEmails,
@@ -45,12 +45,44 @@ describe("D13 — idempotency key por conteúdo do lote (E4)", () => {
     const second = buildResendCampaignBatchContentIdempotencyKey(dispatchId, [...emails].reverse())
 
     expect(first).toBe(second)
-    expect(buildCampaignBatchRecipientContentDigest(emails)).toHaveLength(16)
+  })
+
+  it("buildCampaignBatchIdempotencyEntityId — positional vs contentHash", () => {
+    const dispatchId = "dispatch-uuid-maternidade"
+    const emails = ["alice@test.com", "bob@test.com"]
+
+    expect(
+      buildCampaignBatchIdempotencyEntityId({
+        scheme: "positional",
+        dispatchId,
+        chunkIndex: 0,
+        recipientEmails: emails,
+      })
+    ).toBe(`${dispatchId}/0`)
+
+    expect(
+      buildCampaignBatchIdempotencyEntityId({
+        scheme: "contentHash",
+        dispatchId,
+        chunkIndex: 0,
+        recipientEmails: emails,
+      })
+    ).toMatch(new RegExp(`^${dispatchId}/[a-f0-9]{16}$`))
   })
 
   it("content hash: composições diferentes geram digests diferentes", () => {
-    const digestA = buildCampaignBatchRecipientContentDigest(["a@test.com", "b@test.com"])
-    const digestB = buildCampaignBatchRecipientContentDigest(["a@test.com", "c@test.com"])
+    const digestA = buildCampaignBatchIdempotencyEntityId({
+      scheme: "contentHash",
+      dispatchId: "d1",
+      chunkIndex: 0,
+      recipientEmails: ["a@test.com", "b@test.com"],
+    })
+    const digestB = buildCampaignBatchIdempotencyEntityId({
+      scheme: "contentHash",
+      dispatchId: "d1",
+      chunkIndex: 0,
+      recipientEmails: ["a@test.com", "c@test.com"],
+    })
 
     expect(digestA).not.toBe(digestB)
   })

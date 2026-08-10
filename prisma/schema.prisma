@@ -794,6 +794,13 @@ enum EmailCampaignDispatchStatus {
   @@map("email_campaign_dispatch_status")
 }
 
+enum EmailCampaignBatchIdempotencyScheme {
+  positional
+  contentHash
+
+  @@map("email_campaign_batch_idempotency_scheme")
+}
+
 enum EmailLogStatus {
   queued
   sent
@@ -3240,6 +3247,7 @@ model EmailCampaignDispatch {
   totalBounced          Int                         @default(0)
   totalComplained       Int                         @default(0)
   status                EmailCampaignDispatchStatus @default(sending)
+  batchIdempotencyScheme EmailCampaignBatchIdempotencyScheme @default(positional)
   errorMessage          String?                     @map("errorMessage") @db.Text
   createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
   updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)
