@@ -57,6 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         totalRecipients: job.totalRecipients,
         retryFailedOnly: job.retryFailedOnly,
         status: "sending" as const,
+        ...(job.warnings?.length ? { warnings: job.warnings } : {}),
       }),
       { status: 202 }
     )

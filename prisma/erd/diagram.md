@@ -886,6 +886,15 @@ skipped skipped
     
 
 
+        resend_webhook_processing_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
+        }
+    
+
+
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
@@ -2722,6 +2731,20 @@ completed completed
     }
   
 
+  "corretor_studio_resend_webhook_processing_failures" {
+    String id "🗝️"
+    String svixId 
+    String eventType 
+    Json payload 
+    ResendWebhookProcessingFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_products" {
     String id "🗝️"
     String name 
@@ -4221,6 +4244,7 @@ completed completed
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "email_orphan_events" |o--|| "EmailOrphanEventStatus" : "enum:status"
+    "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

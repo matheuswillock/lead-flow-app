@@ -16,6 +16,7 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
     countFormCompletions: mock(async () => 0),
     findCampaignTemplateHtml: mock(async () => null),
     findCampaignNames: mock(async () => []),
+    findResendDomainStatus: mock(async () => null),
     ...overrides,
   }
 }
@@ -122,6 +123,17 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
     await uc.getAnalytics({ teamId: "t1", ...baseWindow })
 
     expect(listDispatches).not.toHaveBeenCalled()
+  })
+
+  it("A6b — expõe aviso quando domínio permite envio mas tracking não está pleno", async () => {
+    const repo = buildRepo({
+      findResendDomainStatus: mock(async () => "partially_verified"),
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.result.resendDomainTrackingCapable).toBe(false)
+    expect(output.result.trackingWarnings).toHaveLength(1)
   })
 
   it("A7 — com campaignId: rates por disparo calculadas com 'sent' como denominador", async () => {
