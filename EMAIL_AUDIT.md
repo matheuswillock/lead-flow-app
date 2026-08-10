@@ -1,8 +1,8 @@
 # EMAIL_AUDIT.md — Auditoria do Módulo de E-mail (Corretor Studio)
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-07-06 (investigação MCP executada)
-**Escopo:** Email Campaigns, Email Template Editor, crons (`dispatch-scheduled`, `reset-credits`), webhook Resend, créditos/billing, listas de contato, supressão e conformidade.
-**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos + investigação MCP (Supabase produção, Vercel runtime logs, export de logs 04–05/07).
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (incidente de produção — fila de import travada + reconcile de disparo)
+**Escopo:** Email Campaigns, Email Template Editor, crons (`dispatch-scheduled`, `reset-credits`, `process-import-jobs`), webhook Resend, créditos/billing, listas de contato, supressão e conformidade.
+**Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos + investigação MCP (Supabase produção, Vercel runtime logs, export de logs 04–05/07 e 10/08).
 **Rodada somente-leitura:** nenhum código de produção foi alterado.
 
 ---
@@ -346,3 +346,57 @@ Todo envio que já saiu, saiu por bypass beta sem contabilização. O cron `rese
 | Enrichment síncrono na API do Resend por evento | ResendEmailEnrichmentService | rate limit |
 | Dedupe de eventos sem constraint única | EmailEvent | integridade |
 | Zero testes nos fluxos de crédito/campanha/cron | módulo | qualidade |
+
+---
+
+## 8. Incidente de produção 2026-08-10 — fila de import travada + reconcile de disparo perde estado real
+
+**Gatilho:** export de log de produção (`corretor-studio-log-export-2026-08-10T13-39-42.json`, 34.980 linhas, janela 01:47→13:38 UTC de 10/08 — já pós-deploy do fix do `CRON_OBSERVABILITY_SPEC.md`) + screenshots do usuário mostrando listas de contato do time **Kathrein Antunes** presas em "Importando (lote X/Y)" com contador `0`, e campanhas ("Golden Cross", "Médicos") com falhas confusas na UI. Investigado via Vercel MCP (`get_runtime_errors`), Supabase MCP (`execute_sql` no projeto `wcnxwdcoambpfwxwubka`) e leitura de código. Nenhum destes achados é regressão do fix do cron observability — são bugs pré-existentes, agora visíveis porque os crons voltaram a rodar de verdade.
+
+### 8.1 (E1) Fila de import de e-mail travada — um job lento bloqueia todos os outros times 🔴
+
+**Evidência (SQL em produção, 2026-08-10 ~13:55 UTC):** 49 jobs em `status: pending` na tabela `corretor_studio_email_import_jobs`, somando **48.378 linhas** nunca tocadas, o mais antigo esperando desde `2026-08-09 21:17:14` (~16h30). Times afetados: Kathrein Antunes, Evous Corretora, Avalanche de Vendas Unipessoal Ltda, entre outros.
+
+**Causa raiz — fila serial + timeout sem checkpoint:**
+
+- `processPendingJobs()` reivindica **um único job por execução de cron**, o mais antigo primeiro (`app/api/useCases/email/EmailContactImportUseCase.ts:437-450`). Enquanto um job não termina, os outros 48 nem são tentados.
+- Dentro de um job, cada lote de 500 contatos sincroniza cada contato com o Radar **sequencialmente** (2 por vez, aguardando um a um — mesmo padrão N+1 do achado B4 do `RADAR_AUDIT.md` §9, agora numa segunda rotina): `EmailContactImportUseCase.ts:526-586`, chamando `syncEmailContactToRadarUseCase.execute()` → `RadarService.syncFromEmail` → `processEmailContactForRadar` (`RadarService.ts:680-734`), que faz 5+ round-trips sequenciais ao Postgres por contato (resolver perfil, 2× `upsertIdentity`, `upsertSourceLink`, `upsertConsent`).
+- Esse trabalho não cabe no orçamento de `MAX_PROCESSING_MS = 45_000` (`ts:22`). Quando o tempo estoura **no meio do laço de sync do Radar** (`ts:538-559`), o job é reagendado (`status: "pending"`) **sem persistir quais contatos daquele lote já foram sincronizados** — `processedRows` só avança em `ts:588`, depois de todo o laço de Radar do lote terminar. O próximo tick do cron refaz o lote inteiro do zero.
+- Esse caminho de timeout **não passa pelo `catch` de `ts:600-618`**, então `attemptsByBatch`/`failedBatches` nunca incrementam — confirmado no banco (`attemptsByBatch: {}`, `failedBatches: []]` nos 3 jobs consultados). **Não existe circuit breaker** para essa condição — só para exceções explícitas.
+
+**Quantificação (histórico completo de `backoffice_cron_executions`, `cronKey = 'email-import'`, 02:20→13:55 UTC de 10/08):**
+
+| Job (`importId`) | Linhas | Início→fim | Duração | Observação |
+|---|---|---|---|---|
+| `5b740d37` | 2.000 | 02:20→02:45 | 25 min | mais rápido da amostra (poucos lotes) |
+| `2ce5eb7f` | 15.000 (updated) | 02:50→05:20 | 2h30 | preso em "lote 4" por 1h35 (11 execuções seguidas sem avançar) |
+| `6073743f` | 41.000 (updated) | 03:20→12:20 | **9h00** | lote 7 sozinho levou 1h45 (09:15→11:00); lote 8, mais 1h |
+| `9e9623c5` (Kathrein / lista "Médicos", 4.000 linhas) | em andamento | desde 12:25 | **>1h30 e contando** | preso no lote 5/8 desde 13:01 (14 execuções sem avançar até o fim da amostra) |
+
+O campo `updatedCount` cresce muito além de `totalRows` (ex.: job `6073743f`, 41.000 updates para uma lista de 4.000 linhas) porque cada retomada de lote **refaz upserts que já tinham sido feitos** na tentativa anterior — trabalho de banco desperdiçado a cada 5 minutos, indefinidamente, sem nenhum limite.
+
+**Impacto:** listas de contato ficam "travadas" na UI por horas (visto pelo usuário como "0" preso em "Importando (lote 1/10)"); qualquer time cujo job entrou na fila depois de um job lento de outro time fica bloqueado sem nenhuma relação causal visível — a fila de 49 jobs pendentes hoje representa múltiplos times esperando há mais de 16h sem qualquer sinal de erro (o cron sempre reporta `success` porque tecnicamente não lança exceção, só não termina).
+
+### 8.2 (E2) Cota mensal do Resend esgotada — hoje é a maior fonte de erro de e-mail em produção 🔴 (operacional, não é bug de código)
+
+**Evidência:** 179 dos 250 erros pós-deploy do cron observability são `statusCode: 429, name: 'monthly_quota_exceeded'` — 129 em `dispatch-scheduled`, 50 em `meeting-follow-up`. Campanha "Golden Cross (parte 1/2)" (time Kathrein Antunes, `campaignId 2608daaa-45a1-4813-bd89-23c40ff54d7f`): 135 tentativas de envio entre 11:10:37 e 11:41:22, **100% rejeitadas** pelo Resend por cota; `recoverStuckSendingCampaigns` (`EmailCampaignUseCase.ts:2364`, limiar `STUCK_SENDING_THRESHOLD_MS = 30 min`) marcou a campanha como `failed` às 11:45:26 com `totalSent: 0` — mensagem correta desta vez (`STUCK_SENDING`, não a genérica `INTERNAL`).
+
+**Não é um bug a corrigir no código** — é decisão de negócio (upgrade do plano Resend ou aguardar reset do ciclo mensal). Registrado aqui porque explica a maior parte do volume de erro observado e porque lembretes de reunião reais (`meeting-follow-up`) também estão sendo bloqueados pela mesma causa.
+
+### 8.3 (E3) Reconcile de disparo manual perde o total real quando falha por erro transitório de banco 🔴
+
+**Evidência (SQL em produção, `corretor_studio_email_campaign_dispatches` join `corretor_studio_email_logs`):** 3 dispatches históricos com `status: failed`, `totalSent: 0`, `errorMessage: "Erro interno durante o disparo"` — mas os `EmailLog` reais do mesmo `dispatchId` mostram e-mails genuinamente enviados:
+
+| Campanha | Time | `totalRecipients` | `totalSent` gravado | E-mails realmente `sent`/`delivered`/… |
+|---|---|---|---|---|
+| Rede D'Or . 001 | MultiSkill | 1.998 | **0** | **1.001** |
+| LISTA FRIA - BRUNO (parte 12/12) | Meu studio | 914 | **0** | **795** |
+| 17.07 | MultiSkill | 3.570 | **0** | **2.279** |
+
+**Causa raiz:** `completeManualDispatch` (`EmailCampaignUseCase.ts:2000-2213`) chama `dispatchService.dispatchBatch(...)` de fato enviando os e-mails; se algo lançar exceção **depois** que alguns lotes já saíram (ex.: um erro transitório de conexão ao banco durante a escrita de `commitDispatchTerminalState`), o `catch` (`ts:2173`) chama `reconcileManualDispatchAfterError(job)` (`ts:2298-2353`), pensado exatamente para recuperar esse cenário contando o `EmailLog` real. O problema: essa própria função grava no banco via `commitDispatchTerminalState`, que só tem retry para deadlock/conflito de transação (`withDeadlockRetry`, `lib/email/with-deadlock-retry.ts:7-33` — cobre só `40P01`/`P2034`) — **não** para timeout de pool de conexão (`P1001`/`P2024`, a mesma classe de erro documentada no achado B2 do `RADAR_AUDIT.md` §9). Se o reconcile falhar por essa razão, a exceção é engolida silenciosamente (`.catch(() => null)`, `ts:2176-2179`) e o código cai no caminho genérico (`ts:2185-2213`) que marca `status: failed` + `errorMessage: "Erro interno durante o disparo"` **sem nunca gravar `totalSent`** — perdendo a informação de que a maior parte (ou quase tudo) já tinha sido enviado.
+
+**Mitigação de risco já existente:** o critério de elegibilidade para "Reenviar apenas as falhas" (`lib/email/campaign-failed-recipients.ts:47-81`) usa o `status` por destinatário no `EmailLog`, não o agregado `totalSent` do dispatch — então **não há risco de duplicar envio** por causa deste bug; o problema é só a contagem/mensagem enganosas na UI (usuário lê "0 enviados" quando na real >50% já recebeu).
+
+### 8.4 `url.parse()` DeprecationWarning — cosmético, baixa prioridade
+
+`(node:N) [DEP0169] DeprecationWarning: url.parse()...` aparece 1x por cold-start em rotas sem relação entre si (`lead-form`, `leads`, `campaigns`, vários crons) — sinal de origem em processo/dependência carregada globalmente, não em código próprio (`grep "url.parse("` no repo não encontra ocorrência). Não causa nenhuma falha observada; não é bloqueante.
