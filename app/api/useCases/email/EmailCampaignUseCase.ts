@@ -33,7 +33,11 @@ import {
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
-import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry"
+import {
+  countSuccessfulDispatchLogs,
+  persistDispatchTotalSentFallback,
+  withDispatchTerminalCommitRetry,
+} from "@/lib/email/dispatch-reconcile-resilience"
 import {
   formatInvalidRecipientFailureMessage,
   formatProviderBatchFailureMessage,
@@ -2187,12 +2191,17 @@ export class EmailCampaignUseCase {
         EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
       )
 
+      const sentBeforeGenericFail = await countSuccessfulDispatchLogs(job.dispatchId).catch(
+        () => 0
+      )
+
       await prisma.emailCampaignDispatch
         .update({
           where: { id: job.dispatchId },
           data: {
             status: "failed",
             errorMessage: failureMessage,
+            ...(sentBeforeGenericFail > 0 ? { totalSent: sentBeforeGenericFail } : {}),
           },
         })
         .catch(() => null)
@@ -2248,7 +2257,7 @@ export class EmailCampaignUseCase {
     const incrementDispatchCount = params.incrementDispatchCount ?? true
     const setDispatchTotalSent = params.setDispatchTotalSent ?? false
 
-    return withDeadlockRetry(
+    return withDispatchTerminalCommitRetry(
       async () => {
         const [updatedCampaign] = await prisma.$transaction([
           prisma.emailCampaign.update({
@@ -2285,7 +2294,7 @@ export class EmailCampaignUseCase {
         return updatedCampaign
       },
       {
-        onRetry: (attempt, error) => {
+        onDeadlockRetry: (attempt, error) => {
           console.error(
             `[EmailCampaignUseCase][commitDispatchTerminalState] deadlock retry attempt=${attempt}`,
             error
@@ -2307,49 +2316,82 @@ export class EmailCampaignUseCase {
       })
     }
 
-    const sentCount = await prisma.emailLog.count({
-      where: {
-        dispatchId: job.dispatchId,
-        status: { in: ["sent", "delivered", "opened", "clicked"] },
-      },
-    })
+    const sentCount = await countSuccessfulDispatchLogs(job.dispatchId)
     if (sentCount <= 0) {
       return null
     }
 
     const terminal = resolveCampaignStatusAfterDispatch(sentCount)
-    const updatedCampaign = await this.commitDispatchTerminalState({
-      campaignId: job.campaignId,
-      dispatchId: job.dispatchId,
-      totalRecipients: job.totalRecipients,
-      sentCount,
-      terminal,
-      incrementSent: true,
-    })
 
-    if (updatedCampaign.parentCampaignId) {
-      await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(() => null)
-    }
-
-    console.info("[EmailCampaignUseCase][completeManualDispatch] reconciled after error", {
-      campaignId: job.campaignId,
-      dispatchId: job.dispatchId,
-      sentCount,
-    })
-
-    return new Output(
-      true,
-      [`Campanha reconciliada após falha transitória: ${sentCount} e-mail(s) enviados`],
-      [],
-      {
-        sent: sentCount,
-        failed: Math.max(0, job.recipients.length - sentCount),
-        total: job.recipients.length,
+    try {
+      const updatedCampaign = await this.commitDispatchTerminalState({
+        campaignId: job.campaignId,
         dispatchId: job.dispatchId,
-        dispatchNumber: job.dispatchNumber,
-        reconciled: true,
+        totalRecipients: job.totalRecipients,
+        sentCount,
+        terminal,
+        incrementSent: true,
+      })
+
+      if (updatedCampaign.parentCampaignId) {
+        await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(() => null)
       }
-    )
+
+      console.info("[EmailCampaignUseCase][completeManualDispatch] reconciled after error", {
+        campaignId: job.campaignId,
+        dispatchId: job.dispatchId,
+        sentCount,
+      })
+
+      return new Output(
+        true,
+        [`Campanha reconciliada após falha transitória: ${sentCount} e-mail(s) enviados`],
+        [],
+        {
+          sent: sentCount,
+          failed: Math.max(0, job.recipients.length - sentCount),
+          total: job.recipients.length,
+          dispatchId: job.dispatchId,
+          dispatchNumber: job.dispatchNumber,
+          reconciled: true,
+        }
+      )
+    } catch (commitError) {
+      console.error(
+        "[EmailCampaignUseCase][reconcileManualDispatchAfterError][commit]",
+        commitError
+      )
+
+      await persistDispatchTotalSentFallback({
+        dispatchId: job.dispatchId,
+        sentCount,
+        errorMessage: terminal.errorMessage ?? EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL,
+      })
+
+      console.info(
+        "[EmailCampaignUseCase][completeManualDispatch] reconciled totalSent via fallback",
+        {
+          campaignId: job.campaignId,
+          dispatchId: job.dispatchId,
+          sentCount,
+        }
+      )
+
+      return new Output(
+        true,
+        [`Campanha reconciliada (totalSent preservado): ${sentCount} e-mail(s) enviados`],
+        [],
+        {
+          sent: sentCount,
+          failed: Math.max(0, job.recipients.length - sentCount),
+          total: job.recipients.length,
+          dispatchId: job.dispatchId,
+          dispatchNumber: job.dispatchNumber,
+          reconciled: true,
+          usedFallback: true,
+        }
+      )
+    }
   }
 
   /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
