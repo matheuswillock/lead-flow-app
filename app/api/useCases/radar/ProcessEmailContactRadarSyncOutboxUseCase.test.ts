@@ -6,10 +6,17 @@ const claimDueMock = mock(async () => [] as Array<{
   teamId: string;
   emailImportJobId: string | null;
   attemptCount: number;
+  syncGeneration: number;
 }>);
-const markSentMock = mock(async () => {});
+const markSentMock = mock(async () => true);
 const markFailedWithRetryMock = mock(
-  async (_id: string, _attemptCount: number, _nextAttemptAt: Date | null, _lastError: string) => {}
+  async (
+    _id: string,
+    _syncGeneration: number,
+    _attemptCount: number,
+    _nextAttemptAt: Date | null,
+    _lastError: string
+  ) => true
 );
 const requeueIfProcessingMock = mock(async () => {});
 
@@ -71,6 +78,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
         teamId: "team-1",
         emailImportJobId: "job-1",
         attemptCount: 0,
+        syncGeneration: 0,
       },
     ]);
 
@@ -79,7 +87,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
 
     expect(output.isValid).toBe(true);
     expect(syncExecuteMock).toHaveBeenCalledTimes(1);
-    expect(markSentMock).toHaveBeenCalledWith("outbox-1");
+    expect(markSentMock).toHaveBeenCalledWith("outbox-1", 0);
   });
 
   it("falha transitória reenfileira com backoff até o teto, depois marca failed", async () => {
@@ -90,6 +98,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
         teamId: "team-1",
         emailImportJobId: "job-1",
         attemptCount: 4,
+        syncGeneration: 1,
       },
     ]);
     syncExecuteMock.mockImplementation(async () => ({
@@ -105,8 +114,9 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
     expect(markFailedWithRetryMock).toHaveBeenCalledTimes(1);
     const failCall = markFailedWithRetryMock.mock.calls[0];
     expect(failCall?.[0]).toBe("outbox-fail");
-    expect(failCall?.[1]).toBe(5);
-    expect(failCall?.[2]).toBeNull();
+    expect(failCall?.[1]).toBe(1);
+    expect(failCall?.[2]).toBe(5);
+    expect(failCall?.[3]).toBeNull();
   });
 
   it("respeita concorrência máxima ao processar múltiplas linhas", async () => {
@@ -117,6 +127,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
         teamId: "team-1",
         emailImportJobId: "job-1",
         attemptCount: 0,
+        syncGeneration: 0,
       }))
     );
 

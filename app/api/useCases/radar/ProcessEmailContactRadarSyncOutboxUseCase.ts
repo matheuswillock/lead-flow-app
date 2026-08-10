@@ -100,7 +100,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
         return this.handleFailure(row, syncErrors.join("; "));
       }
 
-      await this.outboxRepository.markSent(row.id);
+      await this.outboxRepository.markSent(row.id, row.syncGeneration);
       return "sent";
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido";
@@ -116,6 +116,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
     const nextAttemptAt = computeEmailContactRadarSyncOutboxNextAttemptAt(attemptCount);
     await this.outboxRepository.markFailedWithRetry(
       row.id,
+      row.syncGeneration,
       attemptCount,
       nextAttemptAt,
       lastError

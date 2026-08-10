@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS "public"."corretor_studio_email_contact_radar_sync_ou
   "teamId" UUID NOT NULL,
   "emailImportJobId" UUID,
   "status" "public"."email_contact_radar_sync_outbox_status" NOT NULL DEFAULT 'pending',
+  "syncGeneration" INTEGER NOT NULL DEFAULT 0,
   "attemptCount" INTEGER NOT NULL DEFAULT 0,
   "nextAttemptAt" TIMESTAMPTZ(6) NOT NULL DEFAULT now(),
   "lastError" TEXT,
@@ -67,3 +68,13 @@ BEGIN
       ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- ─── RLS: operational outbox — deny-all for JWT; service_role only ───────────
+ALTER TABLE "public"."corretor_studio_email_contact_radar_sync_outbox" ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE "public"."corretor_studio_email_contact_radar_sync_outbox" FROM anon;
+REVOKE ALL ON TABLE "public"."corretor_studio_email_contact_radar_sync_outbox" FROM authenticated;
+
+GRANT ALL ON TABLE "public"."corretor_studio_email_contact_radar_sync_outbox" TO service_role;
+
+-- Intentionally no CREATE POLICY for authenticated (mirror team_webhook_outbox).
