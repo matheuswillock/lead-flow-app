@@ -2,8 +2,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry";
 
-/** Connection/pool errors where the DB may have committed before the client saw the response. */
-const AMBIGUOUS_CONNECTION_ERRORS = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"]);
+/** Pool/connection exhaustion — safe to reconnect and re-run the operation. */
+const POOL_EXHAUSTED_ERRORS = new Set(["P1001", "P1002", "P1008", "P2024"]);
+
+/** Server closed connection — commit may have succeeded; verify before re-running. */
+const SERVER_CLOSED_ERRORS = new Set(["P1017"]);
 
 export type DispatchTerminalSnapshot = {
   campaignStatus: "sent" | "failed";
@@ -11,12 +14,10 @@ export type DispatchTerminalSnapshot = {
   errorMessage: string | null;
 };
 
-function isAmbiguousConnectionError(error: unknown): boolean {
-  const code =
-    error instanceof Prisma.PrismaClientKnownRequestError
-      ? error.code
-      : (error as { code?: string } | null)?.code;
-  return !!code && AMBIGUOUS_CONNECTION_ERRORS.has(code);
+function getPrismaErrorCode(error: unknown): string | undefined {
+  return error instanceof Prisma.PrismaClientKnownRequestError
+    ? error.code
+    : (error as { code?: string } | null)?.code;
 }
 
 /** Count EmailLog rows with send evidence (sentAt), including later bounces/complaints (D10). */
@@ -79,8 +80,9 @@ export async function persistDispatchTerminalFallback(params: {
 }
 
 /**
- * Deadlock retry + guarded connection retry for commitDispatchTerminalState (D10).
- * On ambiguous connection errors, verifies terminal state before re-running increments.
+ * Deadlock retry + connection retry for commitDispatchTerminalState (D10).
+ * - P1001/P2024: reconnect via prisma.$connect() and re-run operation.
+ * - P1017 + verifyAlreadyCommitted: verify terminal state instead of blind re-run.
  */
 export async function withDispatchTerminalCommitRetry<T>(
   operation: () => Promise<T>,
@@ -89,10 +91,10 @@ export async function withDispatchTerminalCommitRetry<T>(
     verifyAlreadyCommitted?: () => Promise<T | null | undefined>;
   }
 ): Promise<T> {
-  const maxConnectionRetries = 2;
+  const maxPoolRetries = 2;
   const verify = options?.verifyAlreadyCommitted;
 
-  for (let connAttempt = 0; connAttempt <= maxConnectionRetries; connAttempt += 1) {
+  for (let attempt = 0; attempt <= maxPoolRetries; attempt += 1) {
     if (verify) {
       const already = await verify();
       if (already != null) {
@@ -105,20 +107,24 @@ export async function withDispatchTerminalCommitRetry<T>(
         onRetry: options?.onDeadlockRetry,
       });
     } catch (error) {
-      if (verify) {
+      const code = getPrismaErrorCode(error);
+
+      if (verify && code && SERVER_CLOSED_ERRORS.has(code)) {
         const already = await verify();
         if (already != null) {
           return already;
         }
       }
 
-      const hasRetriesLeft = connAttempt < maxConnectionRetries;
-      if (!isAmbiguousConnectionError(error) || !hasRetriesLeft) {
+      const isPoolRetryable = !!code && POOL_EXHAUSTED_ERRORS.has(code);
+      const hasRetriesLeft = attempt < maxPoolRetries;
+
+      if (!isPoolRetryable || !hasRetriesLeft) {
         throw error;
       }
 
       console.warn(
-        `[dispatch-reconcile] Ambiguous connection error during terminal commit. Retrying (${connAttempt + 1}/${maxConnectionRetries})...`
+        `[dispatch-reconcile] Pool/connection error (${code}) during terminal commit. Retrying (${attempt + 1}/${maxPoolRetries})...`
       );
       await new Promise((resolve) => setTimeout(resolve, 150));
       await prisma.$connect();

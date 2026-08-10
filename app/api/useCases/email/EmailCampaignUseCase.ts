@@ -2258,20 +2258,26 @@ export class EmailCampaignUseCase {
     const setDispatchTotalSent = params.setDispatchTotalSent ?? false
 
     return withDispatchTerminalCommitRetry(
-      async () =>
-        prisma.$transaction(async (tx) => {
-          const dispatch = await tx.emailCampaignDispatch.findUnique({
-            where: { id: params.dispatchId },
-            select: { status: true },
+      async () => {
+        const dispatch = await prisma.emailCampaignDispatch.findUnique({
+          where: { id: params.dispatchId },
+          select: { status: true },
+        })
+        if (dispatch && dispatch.status !== "sending") {
+          const campaign = await prisma.emailCampaign.findUnique({
+            where: { id: params.campaignId },
+            select: { parentCampaignId: true },
           })
-          if (!dispatch || dispatch.status !== "sending") {
-            return tx.emailCampaign.findUniqueOrThrow({
-              where: { id: params.campaignId },
-              select: { parentCampaignId: true },
-            })
+          if (!campaign) {
+            throw new Error(
+              `[EmailCampaignUseCase][commitDispatchTerminalState] campaign not found: ${params.campaignId}`
+            )
           }
+          return campaign
+        }
 
-          const updatedCampaign = await tx.emailCampaign.update({
+        const [updatedCampaign] = await prisma.$transaction([
+          prisma.emailCampaign.update({
             where: { id: params.campaignId },
             data: {
               status: params.terminal.campaignStatus,
@@ -2288,8 +2294,8 @@ export class EmailCampaignUseCase {
               ...(incrementDispatchCount ? { dispatchCount: { increment: 1 } } : {}),
             },
             select: { parentCampaignId: true },
-          })
-          await tx.emailCampaignDispatch.update({
+          }),
+          prisma.emailCampaignDispatch.update({
             where: { id: params.dispatchId },
             data: {
               ...(setDispatchTotalSent
@@ -2300,9 +2306,10 @@ export class EmailCampaignUseCase {
               status: params.terminal.dispatchStatus,
               errorMessage: params.terminal.errorMessage,
             },
-          })
-          return updatedCampaign
-        }),
+          }),
+        ])
+        return updatedCampaign
+      },
       {
         onDeadlockRetry: (attempt, error) => {
           console.error(
@@ -2316,7 +2323,7 @@ export class EmailCampaignUseCase {
             select: { status: true },
           })
           if (dispatch && dispatch.status !== "sending") {
-            return prisma.emailCampaign.findUniqueOrThrow({
+            return prisma.emailCampaign.findUnique({
               where: { id: params.campaignId },
               select: { parentCampaignId: true },
             })

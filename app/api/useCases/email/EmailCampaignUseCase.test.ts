@@ -57,16 +57,22 @@ mock.module("@/lib/email/team-email-dispatch-logger", () => ({
 
 // --- Prisma ---
 const emailCampaignFindFirstMock = mock(async () => makeCampaign())
-const emailCampaignFindUniqueMock = mock(async () => ({ name: "Campanha Teste" }))
+const emailCampaignFindUniqueMock = mock(async () => ({
+  name: "Campanha Teste",
+  parentCampaignId: null as string | null,
+}))
+const emailCampaignDispatchFindUniqueMock = mock(async () => ({
+  triggeredBy: "profile-1",
+  status: "sending" as const,
+}))
 const emailCampaignFindManyMock = mock(async () => [])
 const emailCampaignCountMock = mock(async () => 0)
 const emailCampaignUpdateManyMock = mock(async () => ({ count: 1 }))
-const emailCampaignUpdateMock = mock(async () => ({}))
+const emailCampaignUpdateMock = mock(async () => ({ parentCampaignId: null as string | null }))
 const emailTemplateFindFirstMock = mock(async () => null as unknown)
 const emailCampaignDispatchAggregateMock = mock(async () => ({ _max: { dispatchNumber: 0 } }))
 const emailCampaignDispatchCreateMock = mock(async () => ({ id: "dispatch-1" }))
 const emailCampaignDispatchFindFirstMock = mock(async () => ({ id: "dispatch-1" }))
-const emailCampaignDispatchFindUniqueMock = mock(async () => ({ triggeredBy: "profile-1" }))
 const emailCampaignDispatchFindManyMock = mock(async () => [])
 const emailCampaignDispatchUpdateMock = mock(async () => ({}))
 const emailCampaignDispatchUpdateManyMock = mock(async () => ({ count: 0 }))
@@ -272,7 +278,7 @@ describe("EmailCampaignUseCase.send", () => {
     // Restaurar implementações padrão após clear
     emailCampaignFindFirstMock.mockImplementation(async () => makeCampaign())
     emailCampaignUpdateManyMock.mockImplementation(async () => ({ count: 1 }))
-    emailCampaignUpdateMock.mockImplementation(async () => ({}))
+    emailCampaignUpdateMock.mockImplementation(async () => ({ parentCampaignId: null }))
     emailCampaignDispatchAggregateMock.mockImplementation(async () => ({
       _max: { dispatchNumber: 0 },
     }))
