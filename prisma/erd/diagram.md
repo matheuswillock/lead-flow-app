@@ -794,6 +794,13 @@ failed failed
     
 
 
+        email_campaign_batch_idempotency_scheme {
+            positional positional
+contentHash contentHash
+        }
+    
+
+
         email_log_status {
             queued queued
 sent sent
@@ -868,11 +875,29 @@ boolean boolean
     
 
 
+        email_contact_radar_sync_outbox_status {
+            pending pending
+processing processing
+sent sent
+failed failed
+        }
+    
+
+
         email_orphan_event_status {
             pending pending
 processed processed
 failed failed
 skipped skipped
+        }
+    
+
+
+        resend_webhook_processing_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
         }
     
 
@@ -2607,6 +2632,18 @@ completed completed
     }
   
 
+  "corretor_studio_email_contact_radar_sync_outbox" {
+    String id "🗝️"
+    EmailContactRadarSyncOutboxStatus status 
+    Int generation 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
@@ -2650,6 +2687,7 @@ completed completed
     Int totalBounced 
     Int totalComplained 
     EmailCampaignDispatchStatus status 
+    EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme 
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -2696,6 +2734,20 @@ completed completed
     Int attempts 
     String lastError "❓"
     DateTime processedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_resend_webhook_processing_failures" {
+    String id "🗝️"
+    String svixId 
+    String eventType 
+    Json payload 
+    ResendWebhookProcessingFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4175,6 +4227,10 @@ completed completed
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "corretor_studio_email_import_jobs" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
+    "corretor_studio_email_contact_radar_sync_outbox" |o--|| "EmailContactRadarSyncOutboxStatus" : "enum:status"
+    "corretor_studio_email_contact_radar_sync_outbox" |o--|| corretor_studio_email_contacts : "emailContact"
+    "corretor_studio_email_contact_radar_sync_outbox" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_contact_radar_sync_outbox" }o--|o corretor_studio_email_import_jobs : "emailImportJob"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
@@ -4183,6 +4239,7 @@ completed completed
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
     "corretor_studio_email_campaigns" |o--|o corretor_studio_email_campaigns : "parentCampaign"
     "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignDispatchStatus" : "enum:status"
+    "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignBatchIdempotencyScheme" : "enum:batchIdempotencyScheme"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_campaigns : "campaign"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_templates : "template"
@@ -4196,6 +4253,7 @@ completed completed
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "email_orphan_events" |o--|| "EmailOrphanEventStatus" : "enum:status"
+    "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

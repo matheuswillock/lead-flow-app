@@ -103,6 +103,7 @@ export interface IEmailAnalyticsRepository {
     teamId: string
     campaignIds: string[]
   }): Promise<Array<{ id: string; name: string }>>
+  findResendDomainStatus(teamId: string): Promise<string | null>
 }
 
 export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
@@ -349,6 +350,15 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       },
       select: { id: true, name: true },
     })
+  }
+
+  async findResendDomainStatus(teamId: string): Promise<string | null> {
+    const settings = await prisma.emailTeamSettings.findUnique({
+      where: { teamId },
+      select: { resendDomainName: true, resendDomainStatus: true },
+    })
+    if (!settings?.resendDomainName) return null
+    return settings.resendDomainStatus
   }
 }
 

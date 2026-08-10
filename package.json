@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.206.2",
+  "version": "0.207.1",
   "private": true,
   "engines": {
     "node": ">=24"

@@ -60,6 +60,7 @@ function makeBaseParams(recipients = makeRecipients(3)) {
     teamId: "team-1",
     dispatchId: "dispatch-uuid-1",
     dispatchNumber: 1,
+    batchIdempotencyScheme: "contentHash" as const,
     globalDefaults: null,
     templateVariables: null,
   }
@@ -324,6 +325,151 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.sent).toBe(0)
     expect(result.failed).toBe(0)
     expect(result.dispatched).toHaveLength(0)
+  })
+
+  it("D13 — retomada com subconjunto usa idempotencyKey distinta da tentativa original", async () => {
+    const capturedKeys: string[] = []
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return {
+        data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],
+        error: null,
+      }
+    })
+
+    await service.dispatchBatch(makeBaseParams(makeRecipients(3)))
+    const originalKey = capturedKeys[0]
+    expect(originalKey).toMatch(/^batch-campaign\/dispatch-uuid-1\//)
+    expect(originalKey).not.toBe("batch-campaign/dispatch-uuid-1/0")
+
+    capturedKeys.length = 0
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return {
+        data: [{ id: "re_0" }, { id: "re_1" }],
+        error: null,
+      }
+    })
+
+    await service.dispatchBatch({
+      ...makeBaseParams([
+        {
+          email: "r1@test.com",
+          name: "R1",
+          contactId: null,
+          customFields: null,
+        },
+        {
+          email: "r2@test.com",
+          name: "R2",
+          contactId: null,
+          customFields: null,
+        },
+      ]),
+    })
+
+    expect(capturedKeys[0]).not.toBe(originalKey)
+  })
+
+  it("D13 — mesma composição de lote reutiliza idempotencyKey na retentativa", async () => {
+    const capturedKeys: string[] = []
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return {
+        data: [{ id: "re_0" }, { id: "re_1" }],
+        error: null,
+      }
+    })
+
+    const subsetParams = makeBaseParams([
+      {
+        email: "r1@test.com",
+        name: "R1",
+        contactId: null,
+        customFields: null,
+      },
+      {
+        email: "r2@test.com",
+        name: "R2",
+        contactId: null,
+        customFields: null,
+      },
+    ])
+
+    await service.dispatchBatch(subsetParams)
+    const firstKey = capturedKeys[0]
+
+    capturedKeys.length = 0
+    await service.dispatchBatch(subsetParams)
+
+    expect(capturedKeys[0]).toBe(firstKey)
+  })
+
+  it("D13-P1 — scheme positional preserva chave legada dispatchId/chunkIndex", async () => {
+    const capturedKeys: string[] = []
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      return { data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }], error: null }
+    })
+
+    await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(3)),
+      batchIdempotencyScheme: "positional",
+    })
+
+    expect(capturedKeys[0]).toBe("batch-campaign/dispatch-uuid-1/0")
+  })
+
+  it("D13-P1 — positional com fallback usa contentHash após 409 idempotency esgotar variantes", async () => {
+    const capturedKeys: string[] = []
+    let callCount = 0
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const opts = args[1] as { idempotencyKey?: string } | undefined
+      capturedKeys.push(opts?.idempotencyKey ?? "")
+      callCount += 1
+      if (callCount <= 3) {
+        return {
+          data: null as unknown as Array<{ id?: string }>,
+          error: {
+            name: "idempotency_error",
+            message: "Idempotency key conflict",
+            statusCode: 409,
+          },
+        }
+      }
+      return { data: [{ id: "re_0" }, { id: "re_1" }], error: null }
+    })
+
+    const result = await service.dispatchBatch({
+      ...makeBaseParams([
+        {
+          email: "r1@test.com",
+          name: "R1",
+          contactId: null,
+          customFields: null,
+        },
+        {
+          email: "r2@test.com",
+          name: "R2",
+          contactId: null,
+          customFields: null,
+        },
+      ]),
+      batchIdempotencyScheme: "positional",
+      enableContentHashFallbackOnIdempotencyConflict: true,
+    })
+
+    expect(capturedKeys[0]).toBe("batch-campaign/dispatch-uuid-1/0")
+    expect(capturedKeys.some((key) => key.includes("attempt-1"))).toBe(true)
+    expect(capturedKeys.some((key) => key.includes("attempt-2"))).toBe(true)
+    expect(
+      capturedKeys.some((key) => key.match(/^batch-campaign\/dispatch-uuid-1\/[a-f0-9]{16}$/))
+    ).toBe(true)
+    expect(result.sent).toBe(2)
   })
 
   it("D9 — falha em onChunkDispatched propaga (não engole como falha de batch Resend)", async () => {

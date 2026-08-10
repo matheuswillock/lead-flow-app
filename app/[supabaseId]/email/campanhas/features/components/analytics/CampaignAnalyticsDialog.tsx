@@ -22,6 +22,7 @@ import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
 import { MetricsSummaryCards } from "./MetricsSummaryCards"
 import { PeriodSelector } from "./PeriodSelector"
+import { TrackingDegradedAlert } from "./TrackingDegradedAlert"
 import { useCampaignAnalytics } from "./useCampaignAnalytics"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 
@@ -71,6 +72,7 @@ export function CampaignAnalyticsDialog({
           <AlertDescription>{campaignErrorMessage}</AlertDescription>
         </Alert>
       ) : null}
+      <TrackingDegradedAlert warnings={data?.trackingWarnings} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-1">
           <PeriodSelector period={period} onPeriodChange={handlePeriodChange} />

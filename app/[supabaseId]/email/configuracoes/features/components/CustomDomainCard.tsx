@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -195,6 +196,7 @@ export function CustomDomainCard() {
     domainOpenTracking,
     domainClickTracking,
     domainTrackingSubdomain,
+    domainDispatchWarnings,
     domainEvents,
     connectingDomain,
     verifyingDomain,
@@ -266,6 +268,13 @@ export function CustomDomainCard() {
         </div>
       ) : isConnected ? (
         <>
+          {domainDispatchWarnings.length > 0 ? (
+            <Alert className="border-semantic-warning/30 bg-semantic-warning-surface text-foreground">
+              <ShieldAlert className="size-4 text-semantic-warning" />
+              <AlertTitle>Tracking de abertura/clique limitado</AlertTitle>
+              <AlertDescription>{domainDispatchWarnings.join(" ")}</AlertDescription>
+            </Alert>
+          ) : null}
           <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 flex-1 items-start gap-4">

@@ -29,11 +29,16 @@ import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
   checkDispatchWindow,
+  getResendDomainDispatchWarnings,
   isResendDomainSendCapable,
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
-import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry"
+import {
+  countSuccessfulDispatchLogs,
+  persistDispatchTerminalFallback,
+  withDispatchTerminalCommitRetry,
+} from "@/lib/email/dispatch-reconcile-resilience"
 import {
   formatInvalidRecipientFailureMessage,
   formatProviderBatchFailureMessage,
@@ -158,6 +163,9 @@ export type ManualDispatchJob = {
   totalRecipients: number
   retryFailedOnly: boolean
   status: "sending"
+  batchIdempotencyScheme: "positional" | "contentHash"
+  enableContentHashFallbackOnIdempotencyConflict?: boolean
+  warnings?: string[]
 }
 
 export class EmailCampaignUseCase {
@@ -1898,6 +1906,7 @@ export class EmailCampaignUseCase {
           triggeredBy: ctx.profileId,
           totalRecipients: recipientsList.length,
           status: "sending",
+          batchIdempotencyScheme: "contentHash",
         },
       })
 
@@ -1914,6 +1923,8 @@ export class EmailCampaignUseCase {
         sourceId: campaign.id,
       }))
       const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
+
+      const dispatchWarnings = getResendDomainDispatchWarnings(teamSettings?.resendDomainStatus)
 
       const job: ManualDispatchJob = {
         campaignId: campaign.id,
@@ -1934,6 +1945,8 @@ export class EmailCampaignUseCase {
         totalRecipients: recipientsList.length,
         retryFailedOnly,
         status: "sending",
+        batchIdempotencyScheme: "contentHash",
+        ...(dispatchWarnings.length > 0 ? { warnings: dispatchWarnings } : {}),
       }
 
       return new Output(
@@ -1942,6 +1955,7 @@ export class EmailCampaignUseCase {
           retryFailedOnly
             ? `Reenvio das falhas iniciado em segundo plano (${recipientsList.length} destinatário(s))`
             : "Disparo iniciado em segundo plano",
+          ...dispatchWarnings,
         ],
         [],
         job
@@ -2032,6 +2046,9 @@ export class EmailCampaignUseCase {
                 teamId: job.teamId,
                 dispatchId: job.dispatchId,
                 dispatchNumber: job.dispatchNumber,
+                batchIdempotencyScheme: job.batchIdempotencyScheme,
+                enableContentHashFallbackOnIdempotencyConflict:
+                  job.enableContentHashFallbackOnIdempotencyConflict ?? false,
                 globalDefaults: job.globalDefaults,
                 templateVariables: job.templateVariables,
                 logIdByEmail: logIdsByEmail,
@@ -2187,12 +2204,17 @@ export class EmailCampaignUseCase {
         EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
       )
 
+      const sentBeforeGenericFail = await countSuccessfulDispatchLogs(job.dispatchId).catch(
+        () => 0
+      )
+
       await prisma.emailCampaignDispatch
         .update({
           where: { id: job.dispatchId },
           data: {
             status: "failed",
             errorMessage: failureMessage,
+            ...(sentBeforeGenericFail > 0 ? { totalSent: sentBeforeGenericFail } : {}),
           },
         })
         .catch(() => null)
@@ -2248,8 +2270,25 @@ export class EmailCampaignUseCase {
     const incrementDispatchCount = params.incrementDispatchCount ?? true
     const setDispatchTotalSent = params.setDispatchTotalSent ?? false
 
-    return withDeadlockRetry(
+    return withDispatchTerminalCommitRetry(
       async () => {
+        const dispatch = await prisma.emailCampaignDispatch.findUnique({
+          where: { id: params.dispatchId },
+          select: { status: true },
+        })
+        if (dispatch && dispatch.status !== "sending") {
+          const campaign = await prisma.emailCampaign.findUnique({
+            where: { id: params.campaignId },
+            select: { parentCampaignId: true },
+          })
+          if (!campaign) {
+            throw new Error(
+              `[EmailCampaignUseCase][commitDispatchTerminalState] campaign not found: ${params.campaignId}`
+            )
+          }
+          return campaign
+        }
+
         const [updatedCampaign] = await prisma.$transaction([
           prisma.emailCampaign.update({
             where: { id: params.campaignId },
@@ -2285,11 +2324,24 @@ export class EmailCampaignUseCase {
         return updatedCampaign
       },
       {
-        onRetry: (attempt, error) => {
+        onDeadlockRetry: (attempt, error) => {
           console.error(
             `[EmailCampaignUseCase][commitDispatchTerminalState] deadlock retry attempt=${attempt}`,
             error
           )
+        },
+        verifyAlreadyCommitted: async () => {
+          const dispatch = await prisma.emailCampaignDispatch.findUnique({
+            where: { id: params.dispatchId },
+            select: { status: true },
+          })
+          if (dispatch && dispatch.status !== "sending") {
+            return prisma.emailCampaign.findUnique({
+              where: { id: params.campaignId },
+              select: { parentCampaignId: true },
+            })
+          }
+          return null
         },
       }
     )
@@ -2307,49 +2359,94 @@ export class EmailCampaignUseCase {
       })
     }
 
-    const sentCount = await prisma.emailLog.count({
-      where: {
-        dispatchId: job.dispatchId,
-        status: { in: ["sent", "delivered", "opened", "clicked"] },
-      },
-    })
+    const sentCount = await countSuccessfulDispatchLogs(job.dispatchId)
     if (sentCount <= 0) {
       return null
     }
 
     const terminal = resolveCampaignStatusAfterDispatch(sentCount)
-    const updatedCampaign = await this.commitDispatchTerminalState({
-      campaignId: job.campaignId,
-      dispatchId: job.dispatchId,
-      totalRecipients: job.totalRecipients,
-      sentCount,
-      terminal,
-      incrementSent: true,
-    })
 
-    if (updatedCampaign.parentCampaignId) {
-      await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(() => null)
-    }
-
-    console.info("[EmailCampaignUseCase][completeManualDispatch] reconciled after error", {
-      campaignId: job.campaignId,
-      dispatchId: job.dispatchId,
-      sentCount,
-    })
-
-    return new Output(
-      true,
-      [`Campanha reconciliada após falha transitória: ${sentCount} e-mail(s) enviados`],
-      [],
-      {
-        sent: sentCount,
-        failed: Math.max(0, job.recipients.length - sentCount),
-        total: job.recipients.length,
+    try {
+      const updatedCampaign = await this.commitDispatchTerminalState({
+        campaignId: job.campaignId,
         dispatchId: job.dispatchId,
-        dispatchNumber: job.dispatchNumber,
-        reconciled: true,
+        totalRecipients: job.totalRecipients,
+        sentCount,
+        terminal,
+        incrementSent: true,
+      })
+
+      if (updatedCampaign.parentCampaignId) {
+        await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(() => null)
       }
-    )
+
+      console.info("[EmailCampaignUseCase][completeManualDispatch] reconciled after error", {
+        campaignId: job.campaignId,
+        dispatchId: job.dispatchId,
+        sentCount,
+      })
+
+      return new Output(
+        true,
+        [`Campanha reconciliada após falha transitória: ${sentCount} e-mail(s) enviados`],
+        [],
+        {
+          sent: sentCount,
+          failed: Math.max(0, job.recipients.length - sentCount),
+          total: job.recipients.length,
+          dispatchId: job.dispatchId,
+          dispatchNumber: job.dispatchNumber,
+          reconciled: true,
+        }
+      )
+    } catch (commitError) {
+      console.error(
+        "[EmailCampaignUseCase][reconcileManualDispatchAfterError][commit]",
+        commitError
+      )
+
+      await persistDispatchTerminalFallback({
+        campaignId: job.campaignId,
+        dispatchId: job.dispatchId,
+        sentCount,
+        terminal,
+        totalRecipients: job.totalRecipients,
+      })
+
+      const campaignAfterFallback = await prisma.emailCampaign.findUnique({
+        where: { id: job.campaignId },
+        select: { parentCampaignId: true },
+      })
+      if (campaignAfterFallback?.parentCampaignId) {
+        await this.refreshParentCampaignStatus(campaignAfterFallback.parentCampaignId).catch(
+          () => null
+        )
+      }
+
+      console.info(
+        "[EmailCampaignUseCase][completeManualDispatch] reconciled terminal state via fallback",
+        {
+          campaignId: job.campaignId,
+          dispatchId: job.dispatchId,
+          sentCount,
+        }
+      )
+
+      return new Output(
+        true,
+        [`Campanha reconciliada (estado terminal preservado): ${sentCount} e-mail(s) enviados`],
+        [],
+        {
+          sent: sentCount,
+          failed: Math.max(0, job.recipients.length - sentCount),
+          total: job.recipients.length,
+          dispatchId: job.dispatchId,
+          dispatchNumber: job.dispatchNumber,
+          reconciled: true,
+          usedFallback: true,
+        }
+      )
+    }
   }
 
   /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
@@ -2451,6 +2548,7 @@ export class EmailCampaignUseCase {
         campaignId: true,
         teamId: true,
         dispatchNumber: true,
+        batchIdempotencyScheme: true,
         templateHtml: true,
         templateSubject: true,
         totalRecipients: true,
@@ -2476,12 +2574,7 @@ export class EmailCampaignUseCase {
         })
 
         if (queuedLogs.length === 0) {
-          const sentCount = await prisma.emailLog.count({
-            where: {
-              dispatchId: dispatch.id,
-              status: { in: ["sent", "delivered", "opened", "clicked"] },
-            },
-          })
+          const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
           const terminal = resolveCampaignStatusAfterDispatch(sentCount)
           // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
           await this.commitDispatchTerminalState({
@@ -2559,6 +2652,9 @@ export class EmailCampaignUseCase {
           totalRecipients: dispatch.totalRecipients,
           retryFailedOnly: false,
           status: "sending",
+          batchIdempotencyScheme: dispatch.batchIdempotencyScheme,
+          enableContentHashFallbackOnIdempotencyConflict:
+            dispatch.batchIdempotencyScheme === "positional",
         }
 
         console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando", {
@@ -2714,9 +2810,31 @@ export class EmailCampaignUseCase {
               fromEmail: true,
               replyTo: true,
               resendDomainName: true,
+              resendDomainStatus: true,
             },
           })
           .catch(() => null)
+
+        if (
+          teamSettings?.resendDomainName &&
+          !isResendDomainSendCapable(teamSettings.resendDomainStatus)
+        ) {
+          await this.markScheduledCampaignFailed(
+            campaign.id,
+            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar."
+          )
+          continue
+        }
+
+        const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
+          teamSettings?.resendDomainStatus
+        )
+        // Cron has no HTTP consumer — tracking warnings are observability-only (see EMAIL_SPEC D12).
+        if (scheduledDispatchWarnings.length > 0) {
+          console.info(
+            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} aviso: ${scheduledDispatchWarnings.join(" ")}`
+          )
+        }
 
         if (teamSettings) {
           const windowCheck = checkDispatchWindow(now, ownerTz, {
@@ -2852,6 +2970,7 @@ export class EmailCampaignUseCase {
             triggeredBy: campaign.createdBy,
             totalRecipients: dispatchInput.recipients.length,
             status: "sending",
+            batchIdempotencyScheme: "contentHash",
           },
         })
 
@@ -2890,6 +3009,7 @@ export class EmailCampaignUseCase {
                 teamId: campaign.teamId,
                 dispatchId: dispatchRecord.id,
                 dispatchNumber,
+                batchIdempotencyScheme: "contentHash",
                 globalDefaults: dispatchInput.globalDefaults,
                 templateVariables: dispatchInput.templateVariables,
                 logIdByEmail: logIdsByEmail,

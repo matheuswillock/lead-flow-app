@@ -20,6 +20,10 @@ import {
 } from "@/lib/email/template-ranking"
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
+import {
+  getResendDomainDispatchWarnings,
+  isResendDomainTrackingCapable,
+} from "@/lib/email/campaign-dispatch-guards"
 
 type PeriodSlice = {
   period: { from: Date; to: Date }
@@ -137,6 +141,14 @@ export class EmailAnalyticsUseCase {
     }
   }
 
+  private async resolveTrackingMeta(teamId: string) {
+    const resendDomainStatus = await this.repository.findResendDomainStatus(teamId)
+    return {
+      resendDomainTrackingCapable: isResendDomainTrackingCapable(resendDomainStatus),
+      trackingWarnings: getResendDomainDispatchWarnings(resendDomainStatus),
+    }
+  }
+
   async getAnalytics(options: {
     teamId: string
     from: Date
@@ -150,7 +162,7 @@ export class EmailAnalyticsUseCase {
 
       const prev = previousPeriodRange(options.from, options.to)
 
-      const [current, previous] = await Promise.all([
+      const [current, previous, trackingMeta] = await Promise.all([
         this.loadPeriodTotals({
           teamId: options.teamId,
           from: options.from,
@@ -165,9 +177,10 @@ export class EmailAnalyticsUseCase {
           campaignId: options.campaignId,
           formId: options.campaignId ? formId : undefined,
         }),
+        this.resolveTrackingMeta(options.teamId),
       ])
 
-      const base = this.withDeltas(current, previous)
+      const base = { ...this.withDeltas(current, previous), ...trackingMeta }
 
       if (!options.campaignId) {
         return new Output(true, [], [], base)
@@ -210,7 +223,7 @@ export class EmailAnalyticsUseCase {
       const tomorrowStart = startOfDayInTz(addDaysInTz(todayStart, 1, options.timezone), options.timezone)
       const yesterdayStart = startOfDayInTz(addDaysInTz(todayStart, -1, options.timezone), options.timezone)
 
-      const [current, previous, campaignRows] = await Promise.all([
+      const [current, previous, campaignRows, trackingMeta] = await Promise.all([
         this.loadPeriodTotals({
           teamId: options.teamId,
           from: todayStart,
@@ -226,12 +239,14 @@ export class EmailAnalyticsUseCase {
           from: todayStart,
           to: tomorrowStart,
         }),
+        this.resolveTrackingMeta(options.teamId),
       ])
 
       const topCampaigns = rankTopCampaigns(aggregateCampaignTotals(campaignRows), 3)
 
       return new Output(true, [], [], {
         ...this.withDeltas(current, previous),
+        ...trackingMeta,
         topCampaigns,
       })
     } catch (error) {
@@ -264,6 +279,7 @@ export class EmailAnalyticsUseCase {
       }
 
       const prev = previousPeriodRange(options.from, options.to)
+      const trackingMeta = await this.resolveTrackingMeta(options.teamId)
 
       const campaigns = await Promise.all(
         uniqueIds.map(async (campaignId) => {
@@ -296,6 +312,7 @@ export class EmailAnalyticsUseCase {
       return new Output(true, [], [], {
         period: { from: options.from, to: options.to },
         previousPeriod: prev,
+        ...trackingMeta,
         campaigns,
       })
     } catch (error) {

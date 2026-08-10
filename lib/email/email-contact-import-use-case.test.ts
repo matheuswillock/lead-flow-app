@@ -77,14 +77,31 @@ const prismaStub = {
   },
 }
 
+const upsertMock = mock(async (_args?: unknown) => ({}))
+const countMock = mock(async () => 0)
+
 mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: prismaStub,
-  getImportCronPrisma: () => prismaStub,
+  prisma: {
+    ...prismaStub,
+    emailContactRadarSyncOutbox: {
+      upsert: upsertMock,
+      count: countMock,
+    },
+  },
+  getImportCronPrisma: () => ({
+    ...prismaStub,
+    emailContactRadarSyncOutbox: {
+      upsert: upsertMock,
+      count: countMock,
+    },
+  }),
 }))
+
+const createSystemNotificationMock = mock(async (_args?: unknown) => {})
 
 mock.module("@/app/api/services/notifications/NotificationService", () => ({
   notificationService: {
-    createSystemNotification: mock(async () => {}),
+    createSystemNotification: createSystemNotificationMock,
   },
 }))
 
@@ -162,6 +179,10 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     }))
     teamHasRadarFeatureMock.mockClear()
     teamHasRadarFeatureMock.mockImplementation(async () => false)
+    upsertMock.mockClear()
+    countMock.mockClear()
+    countMock.mockImplementation(async () => 0)
+    createSystemNotificationMock.mockClear()
     downloadPayloadMock.mockClear()
     downloadPayloadMock.mockImplementation(async () =>
       JSON.stringify({ rows: [] })
@@ -200,7 +221,7 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(transactionMock).toHaveBeenCalled()
   })
 
-  it("avança processedRows só após sync Radar do lote (I3)", async () => {
+  it("com Radar habilitado enfileira outbox e não chama sync síncrono (D9)", async () => {
     const rows = makeRows(3)
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
@@ -212,7 +233,38 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
     const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}`, email: rows[i].email }))
     emailContactFindManyMock.mockImplementation(async (args) => {
-      // upsertContactsBatch: select email; radar sync: select id
+      if (args?.select?.id) {
+        return contactIds.map(({ id }) => ({ id }))
+      }
+      return []
+    })
+    emailContactCreateManyMock.mockImplementation(async () => ({ count: 3 }))
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(syncExecuteMock).not.toHaveBeenCalled()
+    expect(upsertMock).toHaveBeenCalledTimes(3)
+    const upsertCall = upsertMock.mock.calls[0]?.[0] as {
+      create: { emailImportJobId: string; teamId: string };
+    } | undefined
+    expect(upsertCall?.create.emailImportJobId).toBe("job-1")
+    expect(upsertCall?.create.teamId).toBe("team-1")
+  })
+
+  it("avança processedRows logo após upsert de contatos, sem esperar Radar (D9)", async () => {
+    const rows = makeRows(3)
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows }))
+    teamHasRadarFeatureMock.mockImplementation(async () => true)
+
+    const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}`, email: rows[i].email }))
+    emailContactFindManyMock.mockImplementation(async (args) => {
       if (args?.select?.id) {
         return contactIds.map(({ id }) => ({ id }))
       }
@@ -221,29 +273,21 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     emailContactCreateManyMock.mockImplementation(async () => ({ count: 3 }))
 
     const processedRowsSnapshots: number[] = []
-    syncExecuteMock.mockImplementation(async () => {
+    upsertMock.mockImplementation(async () => {
       const calls = jobUpdateMock.mock.calls as unknown as Array<
         [{ data?: { processedRows?: number } }]
       >
       const lastUpdate = calls.at(-1)
-      // Durante sync, processedRows ainda não deve ter avançado neste lote
       processedRowsSnapshots.push(
         lastUpdate?.[0]?.data?.processedRows ?? claimedJob!.processedRows
       )
-      return {
-        isValid: true,
-        successMessages: [],
-        errorMessages: [],
-        result: { errors: 0 },
-      }
+      return {}
     })
 
     const useCase = new EmailContactImportUseCase()
     const output = await useCase.processPendingJobs()
 
     expect(output.isValid).toBe(true)
-    expect(syncExecuteMock).toHaveBeenCalledTimes(3)
-    // Durante todo o sync, checkpoint do lote ainda em 0
     expect(processedRowsSnapshots.every((v) => v === 0)).toBe(true)
 
     const finalUpdates = (
@@ -257,8 +301,8 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(completedCheckpoint?.processedRows).toBe(3)
   })
 
-  it("sincroniza Radar em chunks de 5 via Promise.all (I2)", async () => {
-    const rows = makeRows(12)
+  it("notificação de import inclui pendingRadarSync escopado ao job atual", async () => {
+    const rows = makeRows(2)
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
       id: "list-1",
@@ -266,97 +310,29 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     }))
     downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows }))
     teamHasRadarFeatureMock.mockImplementation(async () => true)
+    countMock.mockImplementation(async (args?: { where?: { emailImportJobId?: string } }) =>
+      args?.where?.emailImportJobId === "job-1" ? 2 : 99
+    )
 
-    const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}` }))
     emailContactFindManyMock.mockImplementation(async (args) => {
-      if (args?.select?.id) return contactIds
+      if (args?.select?.id) {
+        return [{ id: "contact-1" }, { id: "contact-2" }]
+      }
       return []
     })
-    emailContactCreateManyMock.mockImplementation(async () => ({ count: 12 }))
-
-    let inFlight = 0
-    let maxInFlight = 0
-    syncExecuteMock.mockImplementation(async () => {
-      inFlight += 1
-      maxInFlight = Math.max(maxInFlight, inFlight)
-      await new Promise((r) => setTimeout(r, 20))
-      inFlight -= 1
-      return {
-        isValid: true,
-        successMessages: [],
-        errorMessages: [],
-        result: { errors: 0 },
-      }
-    })
+    emailContactCreateManyMock.mockImplementation(async () => ({ count: 2 }))
 
     const useCase = new EmailContactImportUseCase()
-    const output = await useCase.processPendingJobs()
+    await useCase.processPendingJobs()
 
-    expect(output.isValid).toBe(true)
-    expect(syncExecuteMock).toHaveBeenCalledTimes(12)
-    expect(maxInFlight).toBe(2)
+    expect(createSystemNotificationMock).toHaveBeenCalled()
+    const notifyCall = createSystemNotificationMock.mock.calls[0]?.[0] as {
+      metadata?: { pendingRadarSync?: number }
+    } | undefined
+    expect(notifyCall?.metadata?.pendingRadarSync).toBe(2)
   })
 
-  it("em timeout mid-sync não avança processedRows do lote incompleto (I2+I3)", async () => {
-    const rows = makeRows(8)
-    claimedJob = makeJob({ processedRows: 0 })
-    emailContactListFindFirstMock.mockImplementation(async () => ({
-      id: "list-1",
-      isSystemDefault: true,
-    }))
-    downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows }))
-    teamHasRadarFeatureMock.mockImplementation(async () => true)
-
-    const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}` }))
-    emailContactFindManyMock.mockImplementation(async (args) => {
-      if (args?.select?.id) return contactIds
-      return []
-    })
-    emailContactCreateManyMock.mockImplementation(async () => ({ count: 8 }))
-
-    const realNow = Date.now
-    let fakeNow = realNow()
-    Date.now = () => fakeNow
-
-    let syncCalls = 0
-    syncExecuteMock.mockImplementation(async () => {
-      syncCalls += 1
-      // Após o 2º chunk (4 contatos), estoura o budget no check do próximo chunk
-      if (syncCalls >= 4) {
-        fakeNow += 50_000
-      }
-      return {
-        isValid: true,
-        successMessages: [],
-        errorMessages: [],
-        result: { errors: 0 },
-      }
-    })
-
-    try {
-      const useCase = new EmailContactImportUseCase()
-      const output = await useCase.processPendingJobs()
-
-      expect(output.isValid).toBe(true)
-      expect(output.successMessages).toContain("Job re-enfileirado por tempo")
-      expect(syncCalls).toBe(4)
-
-      const requeueUpdate = (
-        jobUpdateMock.mock.calls as unknown as Array<
-          [{ data: { status?: string; processedRows?: number } }]
-        >
-      )
-        .map((call) => call[0].data)
-        .find((d) => d.status === "pending")
-
-      expect(requeueUpdate).toBeDefined()
-      expect(requeueUpdate?.processedRows).toBe(0)
-    } finally {
-      Date.now = realNow
-    }
-  })
-
-  it("sem feature Radar avança processedRows após upsert (skip sync)", async () => {
+  it("sem feature Radar avança processedRows após upsert (skip outbox)", async () => {
     const rows = makeRows(2)
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
@@ -373,6 +349,7 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
     expect(output.isValid).toBe(true)
     expect(syncExecuteMock).not.toHaveBeenCalled()
+    expect(upsertMock).not.toHaveBeenCalled()
 
     const checkpoint = (
       jobUpdateMock.mock.calls as unknown as Array<[{ data: { processedRows?: number } }]>
