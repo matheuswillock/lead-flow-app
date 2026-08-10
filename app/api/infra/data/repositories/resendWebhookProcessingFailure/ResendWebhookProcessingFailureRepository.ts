@@ -1,6 +1,7 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import {
   computeResendWebhookProcessingFailureNextAttemptAt,
+  RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS,
   shouldRetryResendWebhookProcessingFailure,
 } from "@/lib/email/resend-webhook-processing-failure-backoff";
 import type {
@@ -15,6 +16,9 @@ function formatProcessingError(error: unknown): string {
   }
   return String(error).slice(0, 2000);
 }
+
+/** Rows stuck in `processing` longer than this are treated as abandoned leases. */
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
 
 export class ResendWebhookProcessingFailureRepository
   implements IResendWebhookProcessingFailureRepository
@@ -52,8 +56,38 @@ export class ResendWebhookProcessingFailureRepository
     });
   }
 
+  private async recoverStaleProcessingClaims(now: Date): Promise<void> {
+    const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS);
+    const staleRows = await prisma.resendWebhookProcessingFailure.findMany({
+      where: {
+        status: "processing",
+        updatedAt: { lt: staleBefore },
+      },
+      select: { id: true, attemptCount: true },
+    });
+
+    for (const row of staleRows) {
+      const nextAttemptCount = row.attemptCount + 1;
+      const exhausted = nextAttemptCount >= RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS;
+
+      await prisma.resendWebhookProcessingFailure.updateMany({
+        where: { id: row.id, status: "processing" },
+        data: {
+          status: exhausted ? "failed" : "pending",
+          attemptCount: nextAttemptCount,
+          lastError: exhausted
+            ? "Lease de processamento expirado; tentativas esgotadas"
+            : "Lease de processamento expirado; reenfileirado",
+          nextAttemptAt: now,
+        },
+      });
+    }
+  }
+
   async claimDue(limit: number): Promise<ResendWebhookProcessingFailureClaimRow[]> {
     const now = new Date();
+    await this.recoverStaleProcessingClaims(now);
+
     const due = await prisma.resendWebhookProcessingFailure.findMany({
       where: {
         status: "pending",
