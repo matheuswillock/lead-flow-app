@@ -2,7 +2,7 @@
 
 **Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (reavaliação `EMAIL_AUDIT.md` §0 — Estágios 1-7 majoritariamente já implementados; Estágios 8/9 propostos a partir do incidente §8; auditoria da conta Resend §9)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados em produção** (confirmado por leitura de código em 2026-08-10 — ver `EMAIL_AUDIT.md` §0; nenhum destes tinha sido marcado como concluído no Decisions log até agora). Estágio 4 item 1 implementado; item 2 tinha ficado com desenho diferente do proposto — **decisão do owner (2026-08-10): precisamos de retry para as falhas** (ver D11/Estágio 10). Estágios 8/9/10 **propostos, não implementados** — 8 aguarda confirmação do trade-off de latência do Radar (D9); 9 e 10 podem seguir direto para implementação.
+**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados em produção** (confirmado por leitura de código em 2026-08-10 — ver `EMAIL_AUDIT.md` §0; nenhum destes tinha sido marcado como concluído no Decisions log até agora). Estágio 4 item 1 implementado; item 2 tinha ficado com desenho diferente do proposto — **decisão do owner (2026-08-10): precisamos de retry para as falhas** (ver D11/Estágio 10). **Estágios 8, 9 e 10 aprovados pelo owner em 2026-08-10 e prontos para implementação** — nenhuma decisão pendente resta (D9 confirmado: trade-off de latência do import/Radar aceito).
 
 ## Status de execução
 
@@ -15,7 +15,7 @@
 | 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
 | 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 8 — Fila desacoplada de sync Radar do import | D9 | **proposto, não implementado** | aguarda confirmação do trade-off de latência |
+| 8 — Fila desacoplada de sync Radar do import | D9 | **aprovado, não implementado** | D9 confirmado pelo owner em 2026-08-10 |
 | 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | pronto para implementar |
 | 10 — Retry de falhas de processamento do webhook Resend | D11 | **proposto, não implementado** | pronto para implementar — decisão do owner já dada |
 
@@ -136,11 +136,11 @@ Consequências normativas:
 5. **UI:** Time beta não vê barra de saldo nem CTA de assinatura (comportamento atual do `CreditBalanceBar` é mantido); `EmailCreditUseCase.subscribe` continua recusando assinatura de usuário beta (comportamento atual).
 6. Ao **desligar** o beta da feature, os Times voltam imediatamente para a regra padrão (sem assinatura ativa = disparo bloqueado) — comunicar antes de desligar.
 
-### D9 — Sync do Radar no import de contatos vira fila desacoplada (outbox), fire-and-forget do lote ⚠️ decisão do owner
+### D9 — Sync do Radar no import de contatos vira fila desacoplada (outbox), fire-and-forget do lote — decisão do owner: **confirmado** (2026-08-10)
 
 **Motivo:** achado E1 (`EMAIL_AUDIT.md` §8.1) — sincronizar cada contato com o Radar dentro do próprio laço de import é a causa raiz da fila travada (um job pode levar de 25 min a 9h; hoje há 49 jobs de múltiplos times esperando há 16h+ atrás de um único job lento). O código atual tem um comentário justificando o desenho síncrono atual (`EmailContactImportUseCase.ts:526-531`, referências a decisões "D6"/"I3" não localizadas em nenhum spec vigente): *"já deve constar na lista de segmentos assim que for importado" exige que o job só marque o import como concluído depois que os perfis existirem*.
 
-**Trade-off que esta decisão reverte (⚠️ requer confirmação explícita do owner, não é escolha técnica):** com a fila desacoplada, o import de contatos passa a concluir (e notificar) **antes** de os perfis Radar existirem — o contato aparece em segmentos do Radar com um atraso de até alguns minutos (ciclo do novo cron), não instantaneamente.
+**Trade-off que esta decisão reverte — confirmado pelo owner em 2026-08-10:** com a fila desacoplada, o import de contatos passa a concluir (e notificar) **antes** de os perfis Radar existirem — o contato aparece em segmentos do Radar com um atraso de até alguns minutos (ciclo do novo cron), não instantaneamente. Aceito como trade-off correto dado o estado do incidente (49 jobs/48k contatos travados).
 
 **Desenho recomendado (segue o padrão de outbox já usado no repo — `TeamWebhookOutbox`, `prisma/schema.prisma:2739-2759`):**
 
@@ -484,14 +484,14 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
        └───────────────────────────────────────┘  campanha
 ```
 
-### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos ⚠️ depende de D9
+### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos — D9 confirmado, pronto para implementar
 
 **Prompt (copy-paste):**
 
 ```text
-Leia EMAIL_AUDIT.md (seção 8.1) e a decisão D9 registrada em EMAIL_SPEC.md. Confirme
-com o dono do projeto o trade-off de latência do D9 antes de implementar (import
-conclui antes do sync Radar existir). Então:
+Leia EMAIL_AUDIT.md (seção 8.1) e a decisão D9 registrada em EMAIL_SPEC.md (já
+confirmada pelo owner em 2026-08-10 — import conclui antes do sync Radar existir
+é aceito). Então:
 
 1. Schema (bun run db:migrate:from-prisma -- email-contact-radar-sync-outbox):
    model EmailContactRadarSyncOutbox conforme desenhado em D9 (id, emailContactId,
@@ -650,3 +650,4 @@ Atualize vercel.json e a validação completa.
 - 2026-08-10 — Incidente de produção investigado via Vercel/Sentry/Supabase MCP (`EMAIL_AUDIT.md` §8, pós-deploy do `CRON_OBSERVABILITY_SPEC.md`). Confirmados: fila de import com 49 jobs/48.378 linhas travados há 16h+ atrás de um único job lento (causa: sync Radar síncrono dentro do lote sem checkpoint nem circuit breaker — D9/Estágio 8 propostos); cota mensal do Resend esgotada explicando 179/250 erros pós-deploy (operacional, não código); 3 dispatches históricos com `totalSent: 0` gravado apesar de 795-2.279 e-mails realmente enviados, por falha silenciosa do reconcile de erro transitório (D10/Estágio 9 propostos). Estágios 8/9 aguardam confirmação do owner (D9 tem trade-off de produto; D10 inclui correção de dados históricos que só roda com autorização).
 - 2026-08-10 — **Reavaliação completa dos Estágios 1-7** a pedido do owner (`EMAIL_AUDIT.md` §0): leitura de código confirmou que D1, D3, D5, D6, D7, D8 e os Estágios 1, 2, 3, 5, 6, 7 já estão implementados em produção — o Decisions log nunca tinha sido atualizado para refletir esse trabalho. Único desvio: Estágio 4 item 2 (webhook responder 500 em erro de processamento) foi implementado com um desenho diferente (fire-and-forget + 200 sempre) — funciona para idempotência, mas não aciona retry automático do Resend em falha transitória; marcado como pendente de decisão do owner, não como bug. Auditoria adicional da conta Resend via API (`EMAIL_AUDIT.md` §9): 2 de 5 domínios com CNAME de tracking falho (1 deles com tracking ligado mesmo assim — afeta métricas de abertura/clique do time `backstageclub.com.br`), 3 API keys sem uso recente (candidatas a revogação), 1 webhook de dev esquecido (já `disabled`, sem risco). Cobrança real Asaas segue como único non-goal do escopo original ainda pendente.
 - 2026-08-10 — **Decisão do owner sobre o Estágio 4 item 2: precisamos de retry para as falhas.** Registrada como D11 — em vez de reverter para `500` síncrono (o que a própria documentação do Resend desaconselha para eventos válidos processados async), o desenho escolhido é retry **interno** via outbox (`ResendWebhookProcessingFailure` + cron `retry-resend-webhook-failures`), mesmo padrão já usado no repo. Novo Estágio 10 adicionado, pronto para implementar (não depende de mais nenhuma decisão do owner).
+- 2026-08-10 — **Decisão do owner sobre D9: trade-off de latência aceito.** O import de contatos passa a concluir/notificar antes de os perfis Radar existirem (atraso de minutos via cron), em troca de resolver a fila travada. Estágio 8 promovido de "proposto" para "aprovado, pronto para implementar" — junto com os Estágios 9 e 10, nenhum dos três depende mais de decisão de produto.
