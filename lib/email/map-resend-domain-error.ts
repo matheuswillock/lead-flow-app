@@ -28,6 +28,15 @@ function isAlreadyRegistered(message: string): boolean {
   return lower.includes("already exists") || lower.includes("already registered")
 }
 
+export function isTrackingSubdomainAlreadyExists(message: string | undefined): boolean {
+  if (!message?.trim()) return false
+  const lower = message.toLowerCase()
+  return (
+    lower.includes("tracking domain") &&
+    lower.includes("already exists")
+  )
+}
+
 function isInvalidDomain(message: string): boolean {
   const lower = message.toLowerCase()
   return lower.includes("invalid domain") || lower.includes("not a valid")
@@ -53,7 +62,11 @@ export function mapResendDomainError(
     return `O domínio ${domainLabel} já está vinculado a outra conta. Entre em contato com o suporte do Corretor Studio informando o domínio para solicitar a transferência.`
   }
 
-  if (isAlreadyRegistered(message)) {
+  if (context === "tracking" && isTrackingSubdomainAlreadyExists(message)) {
+    return "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
+  }
+
+  if (isAlreadyRegistered(message) && context !== "tracking") {
     return "Este domínio já está cadastrado. Verifique se não foi conectado antes ou use outro domínio."
   }
 

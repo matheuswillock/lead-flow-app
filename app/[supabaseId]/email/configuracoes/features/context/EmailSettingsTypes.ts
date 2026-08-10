@@ -8,6 +8,8 @@ export type ResendDomainStatus =
   | "verified"
   | "failed"
   | "temporary_failure"
+  | "partially_verified"
+  | "partially_failed"
 
 export type DomainRecord = {
   record?: string

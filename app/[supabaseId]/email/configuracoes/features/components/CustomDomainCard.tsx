@@ -99,6 +99,16 @@ function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
       icon: <AlertCircle className="size-3" />,
       className: "border-semantic-warning/30 bg-semantic-warning-surface text-semantic-warning",
     },
+    partially_verified: {
+      label: "Parcialmente verificado",
+      icon: <Clock className="size-3" />,
+      className: "border-semantic-warning/30 bg-semantic-warning-surface text-semantic-warning",
+    },
+    partially_failed: {
+      label: "Falha parcial",
+      icon: <AlertCircle className="size-3" />,
+      className: "border-destructive/30 bg-destructive/10 text-destructive",
+    },
   }
 
   const config = map[status]
