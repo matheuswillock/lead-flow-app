@@ -7,7 +7,8 @@ import type {
   LeadStatus,
   Prisma,
 } from "@prisma/client"
-import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma"
+import { prisma } from "@/app/api/infra/data/prisma"
+import { withPrismaRetry } from "@/app/api/infra/data/withPrismaRetry"
 import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
