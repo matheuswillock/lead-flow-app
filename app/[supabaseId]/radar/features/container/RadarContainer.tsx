@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import { Database, Download, Plus } from "lucide-react"
+import { AlertTriangle, Database, Download, Plus } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -47,6 +48,7 @@ export function RadarContainer() {
     segments,
     customSegments,
     metrics,
+    fixedSegmentsError,
     selectedProfile,
     detailEvents,
     detailEventsTotal,
@@ -172,6 +174,17 @@ export function RadarContainer() {
           </div>
           <p className="text-sm text-muted-foreground">Perfis unificados para campanhas de e-mail</p>
         </div>
+
+        {fixedSegmentsError ? (
+          <Alert variant="destructive">
+            <AlertTriangle data-icon="inline-start" />
+            <AlertTitle>Não foi possível calcular os segmentos fixos</AlertTitle>
+            <AlertDescription>
+              Os números abaixo e os segmentos do sistema não refletem dados reais no momento. Tente
+              recarregar a página em alguns minutos.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
