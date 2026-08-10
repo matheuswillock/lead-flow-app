@@ -2,15 +2,15 @@
 
 **Versão:** 1.2 (B1: prevenção de nomes físicos em migrations/SQL raw + link `agents.md` v2.5.1; B2 já revisado — pool)
 **Data:** 2026-08-09
-**Status:** Concluído (código) — métricas em prod após deploy do Estágio 1.
+**Status:** Concluído em produção (`main` @ `da27817c`, v0.202.1, PR #721, deploy `dpl_3pjV7WFPZoHycPdLqoZSmd2bPFih` às 2026-08-10T03:10:47Z), com evidência direta pós-deploy: zero recorrência de `relation "RadarProfile" does not exist` (Vercel `get_runtime_errors` — todos os grupos desse erro têm `lastDeployment` apontando para o deploy anterior, `dpl_BFE2gFAnt9VGVVfy3fAAtiFWE8T8`/PR #715, nenhum no deploy atual; Sentry `search_issues` com `lastSeen:-2h` também não retornou issues ativas). Ver detalhe em B1 abaixo.
 
 ## Status de execução
 
 | ID | Agente | Branch | PR | Estado | Revisado em | Notas |
 |----|--------|--------|-----|--------|-------------|-------|
-| B1 | RadarSegments | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | nomes físicos em countFixedSegmentsSQL |
-| B2+B3 | RadarResilience | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | withPrismaRetry + logs correlacionáveis |
-| B4 | RadarBackfill | `feature/cron-observability-p0` | — | **completed** | 2026-08-10 | concorrência limitada no backfill |
+| B1 | RadarSegments | `main` | #714/#721 | **completed** | 2026-08-10 | nomes físicos em countFixedSegmentsSQL, em produção; zero recorrência do erro desde o deploy (Vercel/Sentry) |
+| B2+B3 | RadarResilience | `main` | #714/#721 | **completed** | 2026-08-10 | withPrismaRetry + logs correlacionáveis, em produção |
+| B4 | RadarBackfill | `main` | #714/#721 | **completed** | 2026-08-10 | concorrência limitada no backfill, em produção |
 
 **Base factual:** `RADAR_AUDIT.md` §9 (leitura obrigatória antes de qualquer estágio).
 **Relacionado:** `CRON_OBSERVABILITY_AUDIT.md`/`CRON_OBSERVABILITY_SPEC.md` (mesmo incidente, achado transversal que derruba 21 cron jobs de toda a aplicação — tratado à parte por não ser específico do Radar).
