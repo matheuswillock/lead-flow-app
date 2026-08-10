@@ -2,7 +2,7 @@
 
 **Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (reavaliação `EMAIL_AUDIT.md` §0 — Estágios 1-7 majoritariamente já implementados; Estágios 8/9 propostos a partir do incidente §8; auditoria da conta Resend §9)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados em produção** (confirmado por leitura de código em 2026-08-10 — ver `EMAIL_AUDIT.md` §0; nenhum destes tinha sido marcado como concluído no Decisions log até agora). Estágio 4 **implementado com desenho diferente do proposto** (item 2 — ver nota). Estágios 8/9 **propostos, não implementados** — aguardam decisão D9 (trade-off de latência do Radar) e autorização para D10 (correção de dados históricos).
+**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados em produção** (confirmado por leitura de código em 2026-08-10 — ver `EMAIL_AUDIT.md` §0; nenhum destes tinha sido marcado como concluído no Decisions log até agora). Estágio 4 item 1 implementado; item 2 tinha ficado com desenho diferente do proposto — **decisão do owner (2026-08-10): precisamos de retry para as falhas** (ver D11/Estágio 10). Estágios 8/9/10 **propostos, não implementados** — 8 aguarda confirmação do trade-off de latência do Radar (D9); 9 e 10 podem seguir direto para implementação.
 
 ## Status de execução
 
@@ -11,12 +11,13 @@
 | 1 — Fundação (cron unificado, estados terminais, bug CDP/Radar, timezone) | D7 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 2 — Créditos por Time (migration + saldo atômico) | D1, D3, D8 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 4 — Webhook hardening (dedupe por constraint + retry do provedor) | — | **item 1 (dedupe) implementado; item 2 (500 em erro de processamento) NÃO — webhook usa fire-and-forget com 200 sempre** | `EMAIL_AUDIT.md` §0 — decisão do owner pendente sobre aceitar o desenho atual ou ajustar |
+| 4 — Webhook hardening (dedupe por constraint + retry do provedor) | D11 | **item 1 (dedupe) implementado; item 2 (retry em falha de processamento) resolvido via D11/Estágio 10 — não implementado ainda** | `EMAIL_AUDIT.md` §0 |
 | 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
 | 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 8 — Fila desacoplada de sync Radar do import | D9 | **proposto, não implementado** | aguarda confirmação do trade-off de latência |
-| 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | aguarda autorização para corrigir dados históricos |
+| 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | pronto para implementar |
+| 10 — Retry de falhas de processamento do webhook Resend | D11 | **proposto, não implementado** | pronto para implementar — decisão do owner já dada |
 
 **Não coberto por nenhum estágio (non-goal desde julho):** cobrança real via Asaas — ver `Open questions` item 3.
 
@@ -157,6 +158,19 @@ Consequências normativas:
 1. `commitDispatchTerminalState` (`ts:2237`) passa a envolver a operação com `withPrismaRetry` (já existe em `app/api/infra/data/prisma.ts`, usado em `ProfileRepository`/`public-stats.ts`) além do `withDeadlockRetry` atual — cobrindo `P1001`/`P2024`/erros de conexão transitórios, não só deadlock.
 2. Se, mesmo com retry, o reconcile falhar, o fallback genérico (`ts:2185-2213`) passa a tentar **uma leitura simples e isolada** de `emailLog.count(status in sucesso)` (sem transação, sem `$transaction`) só para popular `totalSent` corretamente antes de marcar `failed` — nunca gravar `totalSent: 0` quando existe log de sucesso para aquele `dispatchId`.
 3. **Correção dos 3 registros históricos já incorretos** (`EMAIL_AUDIT.md` §8.3 — Rede D'Or . 001, LISTA FRIA - BRUNO parte 12/12, 17.07): script one-off (`bun run` local, não migration) que recalcula `totalSent`/`status` desses 3 dispatches a partir do `EmailLog` real. **Só roda com autorização explícita do owner** (escreve em produção) — reportar antes de executar.
+
+### D11 — Retry de falhas de processamento do webhook Resend via fila interna (não via HTTP 500) — decisão do owner: **sim, precisamos de retry** (2026-08-10)
+
+**Motivo:** achado `EMAIL_AUDIT.md` §0, linha do Estágio 4 item 2 — o webhook (`app/api/webhooks/resend/route.ts`) verifica a assinatura de forma síncrona (401 se inválida) mas processa o evento em `after()` fire-and-forget, sempre respondendo `200` antes de saber se o processamento deu certo. Se `resendWebhookUseCase.handle()` falhar por um erro transitório (timeout de pool, por exemplo — mesma classe de erro do achado B2/E3), o evento é perdido: só vira um `console.error`, e como já respondemos `200`, o Resend nunca tenta de novo.
+
+**Por que NÃO simplesmente trocar para `500` em erro de processamento (reverter para o desenho original do Estágio 4):** a própria documentação do Resend recomenda o oposto — "Always return 200 quickly, then process asynchronously if needed" e lista "Returning non-200 status for valid webhooks" como erro comum a evitar. Responder `500` para um webhook que **foi recebido e é válido** (só falhou no nosso processamento interno) sujeita o endpoint ao retry automático do Resend (7 tentativas em até 10h, agendamento fixo, fora do nosso controle) e pode fazer o Resend nos marcar como endpoint problemático se isso acontecer com frequência (ex.: durante uma janela real de sobrecarga de banco, toda a fila de eventos daquele período entraria no retry schedule do Resend simultaneamente).
+
+**Desenho recomendado (mesmo padrão de outbox já usado no repo — `TeamWebhookOutbox`, `BackofficeEmailOrphanEvent`, e o outbox proposto no D9):** retry **interno**, não dependente do Resend re-entregar.
+
+1. Novo model `ResendWebhookProcessingFailure`: `id`, `svixId String @unique` (idempotência — uma falha por entrega, mesmo que o `after()` rode mais de uma vez), `eventType String`, `payload Json` (o evento já verificado, para reprocessar sem depender do Resend reenviar), `status` (`pending|processing|resolved|failed`), `attemptCount Int @default(1)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índice `[status, nextAttemptAt]`.
+2. `app/api/webhooks/resend/route.ts`: no `catch` do `after()` (hoje só `console.error`), fazer upsert por `svixId` em `ResendWebhookProcessingFailure` com o payload já verificado e o erro.
+3. Novo cron `/api/v1/email/cron/retry-resend-webhook-failures` (registrar em `vercel.json`, `*/5 * * * *`, `withCronAudit`): reivindica um lote `pending` (`updateMany` atômico), chama `resendWebhookUseCase.handle({ event: JSON.parse(payload) as ResendWebhookPayload, svixId })` de novo — seguro porque o dedupe por `EmailEvent.@@unique([logId, type, occurredAt])` já garante idempotência mesmo se parte do processamento anterior tiver aplicado antes de falhar. Sucesso → `resolved` (ou apaga a linha); falha → incrementa `attemptCount`/`lastError`, backoff simples, até um teto (ex. 5 tentativas) → `failed` (dead-letter visível, não trava nada).
+4. Sem mudança no contrato HTTP do webhook: continua sempre `200` para evento válido (mantendo a recomendação do Resend), `401` para assinatura inválida, `400` para headers ausentes, `503` quando o semáforo de concorrência está cheio (o Resend já retenta `503` pelo próprio retry schedule — esse caso não precisa do outbox).
 
 ---
 
@@ -554,6 +568,44 @@ Rode a validação completa.
 **Aceite:** teste de timeout simulado prova que `totalSent` nunca perde a contagem real; os 3 dispatches históricos corrigidos (após autorização) refletem o `EmailLog` real.
 **Validação manual:** conferir no Supabase que os 3 dispatches citados no audit passam a ter `totalSent` correspondente aos `EmailLog` reais.
 
+### Estágio 10 — Retry de falhas de processamento do webhook Resend (D11 — decisão do owner já dada: sim)
+
+**Prompt (copy-paste):**
+
+```text
+Leia EMAIL_AUDIT.md (seção 0, linha do Estágio 4) e a decisão D11 registrada em
+EMAIL_SPEC.md. Implemente o retry interno de falhas do webhook do Resend:
+
+1. Schema (bun run db:migrate:from-prisma -- resend-webhook-processing-failure):
+   model ResendWebhookProcessingFailure conforme desenhado em D11 (id, svixId
+   @unique, eventType, payload Json, status pending|processing|resolved|failed,
+   attemptCount, nextAttemptAt, lastError, createdAt/updatedAt), índice
+   [status, nextAttemptAt]. NÃO aplique no remoto sem autorização do owner.
+2. app/api/webhooks/resend/route.ts: NÃO mude o contrato HTTP (continua 200 para
+   evento válido, 401/400/503 como hoje). No catch do after() (hoje só
+   console.error), faça upsert por svixId em ResendWebhookProcessingFailure com o
+   payload do evento já verificado e a mensagem de erro.
+3. Novo endpoint app/api/v1/email/cron/retry-resend-webhook-failures/route.ts,
+   registrado em vercel.json (*/5 * * * *), usando withCronAudit. Reivindica um
+   lote pending (updateMany atômico pending->processing, count check), chama
+   resendWebhookUseCase.handle({ event: JSON.parse(payload), svixId }) de novo
+   por linha — o dedupe existente em EmailEvent (@@unique([logId, type,
+   occurredAt])) garante que reprocessar não duplica efeito mesmo se parte do
+   processamento anterior já tiver sido aplicada. Sucesso: status resolved (ou
+   apaga a linha). Falha: incrementa attemptCount/lastError, backoff simples até
+   um teto (ex. 5 tentativas), aí marca failed (dead-letter, visível em logs, não
+   trava nada).
+4. Testes: simular resendWebhookUseCase.handle lançando erro transitório — a
+   linha do outbox é criada; simular sucesso na retentativa — vira resolved;
+   simular N falhas seguidas — vira failed após o teto, sem loop infinito.
+Atualize vercel.json e a validação completa.
+```
+
+**Não tocar:** verificação de assinatura svix (já correta); contrato HTTP de resposta do webhook (200/401/400/503 continuam como estão — só o `catch` interno do processamento ganha o outbox).
+
+**Aceite:** falha transitória de processamento de um evento válido é reprocessada automaticamente em até 5 min, sem depender do Resend reentregar; falha permanente (ex. evento malformado) não fica retentando para sempre; nenhuma duplicação de efeito em `EmailEvent`/contadores de campanha quando o retry reprocessa um evento parcialmente aplicado.
+**Validação manual:** simular localmente um erro no `resendWebhookUseCase.handle` (mock de exceção), confirmar que a linha aparece em `ResendWebhookProcessingFailure` e que o cron a resolve na tentativa seguinte.
+
 ---
 
 ## Edge cases & error handling (transversais)
@@ -597,3 +649,4 @@ Rode a validação completa.
 - 2026-07-06 — **Decisão do owner (D8):** funcionalidade com tag **Beta habilitada** = isenção total — não gera nenhuma cobrança e não valida créditos, em todos os caminhos de disparo. Substituída a proposta anterior do Estágio 2 de "contabilizar sem bloquear" para beta: agora beta não escreve nada em `EmailCreditUsage`. Prompt do Estágio 2 e critérios de aceite atualizados.
 - 2026-08-10 — Incidente de produção investigado via Vercel/Sentry/Supabase MCP (`EMAIL_AUDIT.md` §8, pós-deploy do `CRON_OBSERVABILITY_SPEC.md`). Confirmados: fila de import com 49 jobs/48.378 linhas travados há 16h+ atrás de um único job lento (causa: sync Radar síncrono dentro do lote sem checkpoint nem circuit breaker — D9/Estágio 8 propostos); cota mensal do Resend esgotada explicando 179/250 erros pós-deploy (operacional, não código); 3 dispatches históricos com `totalSent: 0` gravado apesar de 795-2.279 e-mails realmente enviados, por falha silenciosa do reconcile de erro transitório (D10/Estágio 9 propostos). Estágios 8/9 aguardam confirmação do owner (D9 tem trade-off de produto; D10 inclui correção de dados históricos que só roda com autorização).
 - 2026-08-10 — **Reavaliação completa dos Estágios 1-7** a pedido do owner (`EMAIL_AUDIT.md` §0): leitura de código confirmou que D1, D3, D5, D6, D7, D8 e os Estágios 1, 2, 3, 5, 6, 7 já estão implementados em produção — o Decisions log nunca tinha sido atualizado para refletir esse trabalho. Único desvio: Estágio 4 item 2 (webhook responder 500 em erro de processamento) foi implementado com um desenho diferente (fire-and-forget + 200 sempre) — funciona para idempotência, mas não aciona retry automático do Resend em falha transitória; marcado como pendente de decisão do owner, não como bug. Auditoria adicional da conta Resend via API (`EMAIL_AUDIT.md` §9): 2 de 5 domínios com CNAME de tracking falho (1 deles com tracking ligado mesmo assim — afeta métricas de abertura/clique do time `backstageclub.com.br`), 3 API keys sem uso recente (candidatas a revogação), 1 webhook de dev esquecido (já `disabled`, sem risco). Cobrança real Asaas segue como único non-goal do escopo original ainda pendente.
+- 2026-08-10 — **Decisão do owner sobre o Estágio 4 item 2: precisamos de retry para as falhas.** Registrada como D11 — em vez de reverter para `500` síncrono (o que a própria documentação do Resend desaconselha para eventos válidos processados async), o desenho escolhido é retry **interno** via outbox (`ResendWebhookProcessingFailure` + cron `retry-resend-webhook-failures`), mesmo padrão já usado no repo. Novo Estágio 10 adicionado, pronto para implementar (não depende de mais nenhuma decisão do owner).
