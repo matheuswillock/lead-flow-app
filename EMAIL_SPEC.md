@@ -127,10 +127,10 @@ Consequências normativas:
 
 **Desenho recomendado (segue o padrão de outbox já usado no repo — `TeamWebhookOutbox`, `prisma/schema.prisma:2739-2759`):**
 
-1. Novo model `EmailContactRadarSyncOutbox`: `id`, `emailContactId`, `teamId`, `status` (`pending|processing|sent|failed`), `attemptCount Int @default(0)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índices `[status, nextAttemptAt]` e `[emailContactId]` (unique — reimportar o mesmo contato não duplica a fila).
-2. `EmailContactImportUseCase.processPendingJobs()` **para de chamar o Radar diretamente**: após `upsertContactsBatch`, faz um `createMany` (skipDuplicates) no outbox para os contatos do lote. `processedRows` avança imediatamente após o upsert — sem esperar Radar. Isso, sozinho, já reduz um job de horas para segundos (upsert de 500 linhas é rápido; o gargalo era só o Radar).
+1. Novo model `EmailContactRadarSyncOutbox`: `id`, `emailContactId`, `teamId`, `emailImportJobId` (FK opcional para `EmailImportJob`, nulo quando o gatilho não é um import em lote — ex. contato criado via API), `status` (`pending|processing|sent|failed`), `attemptCount Int @default(0)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índices `[status, nextAttemptAt]`, `[emailImportJobId, status]` e `[emailContactId]` (unique — um contato tem no máximo uma linha de outbox por vez).
+2. `EmailContactImportUseCase.processPendingJobs()` **para de chamar o Radar diretamente**: após `upsertContactsBatch`, faz um **upsert** (não `createMany`/`skipDuplicates`) por `emailContactId` no outbox — contato novo cria a linha `pending`; contato já existente (reimport, atualização de `name`/`customFields`) **volta para `pending`** com `attemptCount: 0` e `emailImportJobId` atualizado para o job atual, mesmo que a linha anterior estivesse `sent`/`failed`. `createMany`/`skipDuplicates` deixaria uma linha `sent` de um import anterior parada para sempre e o Radar nunca receberia a atualização. `processedRows` avança imediatamente após o upsert — sem esperar Radar. Isso, sozinho, já reduz um job de horas para segundos (upsert de 500 linhas é rápido; o gargalo era só o Radar).
 3. Novo cron `/api/v1/radar/cron/sync-email-contacts` (registrar em `vercel.json`, `*/5 * * * *`, `withCronAudit`): reivindica um lote de outbox (`updateMany` `pending→processing`, mesmo padrão de claim atômico do resto da stack), processa com concorrência limitada (ex. 5-10, não 2 sequenciais) via `RADAR_SYNC_CONCURRENCY` maior já que agora está isolado, marca `sent`/`failed` por linha com `attemptCount`/`lastError`; falha definitiva após N tentativas fica `failed` (visível, não trava nada).
-4. `finalizeJob`/notificação de import concluído passam a informar quantos contatos aguardam sync do Radar (não bloqueia a notificação por isso).
+4. `finalizeJob`/notificação de import concluído passam a informar quantos contatos **deste job** (`emailImportJobId = job.id`, não a lista inteira — um import anterior da mesma lista pode ter linhas pendentes independentes) aguardam sync do Radar; não bloqueia a notificação por isso.
 
 **Alternativa (se o owner rejeitar o trade-off de latência):** manter síncrono, mas eliminar o N+1 — carregar `loadEngagementWeightsAndConfig` **uma vez por lote** (não por contato) e trocar os 5 round-trips sequenciais de `processEmailContactForRadar` por operações em lote (`createMany`/`upsertMany` quando o Prisma permitir, ou ao menos `Promise.all` com concorrência maior). Reduz a duração do lote mas não elimina o acoplamento — se a lista tiver múltiplos milhares de contatos, ainda pode estourar o orçamento de um cron. **Não recomendada como solução única**, mas pode ser aplicada em conjunto com D9 para o próprio consumidor do outbox.
 
@@ -465,13 +465,18 @@ conclui antes do sync Radar existir). Então:
 
 1. Schema (bun run db:migrate:from-prisma -- email-contact-radar-sync-outbox):
    model EmailContactRadarSyncOutbox conforme desenhado em D9 (id, emailContactId,
-   teamId, status pending|processing|sent|failed, attemptCount, nextAttemptAt,
-   lastError, createdAt/updatedAt), unique em emailContactId, índice
-   [status, nextAttemptAt]. NÃO aplique no remoto sem autorização do owner.
+   teamId, emailImportJobId String? com relation para EmailImportJob, status
+   pending|processing|sent|failed, attemptCount, nextAttemptAt, lastError,
+   createdAt/updatedAt), unique em emailContactId, índices [status, nextAttemptAt]
+   e [emailImportJobId, status]. NÃO aplique no remoto sem autorização do owner.
 2. EmailContactImportUseCase.processPendingJobs: remova o laço de sync do Radar
    (linhas 526-586 hoje) de dentro do processamento de lote. Após upsertContactsBatch,
-   crie entradas no outbox (createMany skipDuplicates) para os contatos do lote
-   (só quando teamHasRadarFeature). processedRows avança logo após o upsert.
+   faça upsert (NÃO createMany/skipDuplicates) por emailContactId no outbox para os
+   contatos do lote (só quando teamHasRadarFeature): contato novo cria pending;
+   contato já existente (reimport/atualização) volta para pending com attemptCount
+   zerado e emailImportJobId apontando para o job atual — nunca deixe uma linha
+   sent/failed de um import anterior impedir a criação/reativação. processedRows
+   avança logo após o upsert de contatos.
 3. Novo endpoint app/api/v1/radar/cron/sync-email-contacts/route.ts, registrado em
    vercel.json (*/5 * * * *), usando withCronAudit (padrão de
    CRON_OBSERVABILITY_SPEC.md — nunca gatear a execução na criação do registro de
@@ -481,13 +486,16 @@ conclui antes do sync Radar existir). Então:
    syncEmailContactToRadarUseCase por contato), marca sent ou incrementa
    attemptCount/lastError e volta pending (backoff simples) até um teto (ex. 5
    tentativas), aí marca failed definitivo.
-4. Notificação EMAIL_IMPORT_COMPLETED (finalizeJob): inclua quantos contatos do
-   import aguardam sync do Radar (contagem do outbox pending/processing daquele
-   listId), sem bloquear a notificação por isso.
+4. Notificação EMAIL_IMPORT_COMPLETED (finalizeJob): inclua quantos contatos DESTE
+   job (contagem do outbox filtrada por emailImportJobId = job.id, nunca por listId
+   inteira — um import anterior da mesma lista pode ter linhas pendentes próprias)
+   aguardam sync do Radar, sem bloquear a notificação por isso.
 5. Testes: import de 1500 contatos conclui e notifica sem tocar no Radar
    síncronamente (mock do outbox); cron do outbox processa em lotes, respeita
-   concorrência, retenta com backoff e marca failed após o teto; reimportar o
-   mesmo contato não duplica linha no outbox (unique).
+   concorrência, retenta com backoff e marca failed após o teto; reimportar um
+   contato cuja linha de outbox já está sent/failed reativa a mesma linha para
+   pending (não fica parada); contagem da notificação reflete só o job atual quando
+   há outbox pendente de um import anterior da mesma lista.
 Atualize vercel.json e a validação completa (typecheck/lint/governance:check/
 governance:check-api-masking/lint:pt-br).
 ```
