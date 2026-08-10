@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from "bun:test"
 import { Prisma } from "@prisma/client"
-import { withPrismaRetry } from "@/app/api/infra/data/withPrismaRetry"
+import { withPrismaRetry } from "@/app/api/infra/data/prisma"
 
 describe("withPrismaRetry", () => {
   it("repete operação em erro transitório P2024", async () => {

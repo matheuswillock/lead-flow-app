@@ -1,14 +1,13 @@
-import type {
-  RadarChannel,
-  RadarConsentReason,
-  RadarConsentStatus,
-  RadarIdentityType,
-  RadarSourceType,
-  LeadStatus,
+import {
   Prisma,
+  type RadarChannel,
+  type RadarConsentReason,
+  type RadarConsentStatus,
+  type RadarIdentityType,
+  type RadarSourceType,
+  type LeadStatus,
 } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
-import { withPrismaRetry } from "@/app/api/infra/data/withPrismaRetry"
 import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
@@ -25,6 +24,7 @@ import {
 } from "@/lib/radar/engagement-score"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
+const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
 
 type EngagementWeightsConfigCache = {
   weights: WeightMap
@@ -108,6 +108,43 @@ const profileListSelect = {
 
 export class RadarRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
+
+  private async runWithTransientPrismaRetry<T>(
+    operation: () => Promise<T>,
+    label: string,
+    retries = 2
+  ): Promise<T> {
+    const delayMs = 150
+    let lastError: unknown
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await operation()
+      } catch (error) {
+        lastError = error
+        const code =
+          error instanceof Prisma.PrismaClientKnownRequestError
+            ? error.code
+            : (error as { code?: string } | null)?.code
+
+        const isTransient = !!code && TRANSIENT_PRISMA_ERROR_CODES.has(code)
+        const hasRetriesLeft = attempt < retries
+
+        if (!isTransient || !hasRetriesLeft) {
+          throw error
+        }
+
+        console.warn(
+          `[RadarRepository][${label}] Transient error (${code}). Retrying (${attempt + 1}/${retries})...`
+        )
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        await this.db.$connect()
+      }
+    }
+
+    throw lastError
+  }
+
   async upsertProfile(input: UpsertProfileInput) {
     const existing = await this.db.radarProfile.findUnique({
       where: {
@@ -1122,7 +1159,7 @@ export class RadarRepository {
       }
     }
 
-    const [weightRows, configRow, formRuleRows] = await withPrismaRetry(
+    const [weightRows, configRow, formRuleRows] = await this.runWithTransientPrismaRetry(
       () =>
         Promise.all([
           this.db.backofficeRadarEngagementWeight.findMany({
@@ -1155,7 +1192,7 @@ export class RadarRepository {
             orderBy: { minPercent: "asc" },
           }),
         ]),
-      { label: "loadEngagementWeightsAndConfig", retries: 2 }
+      "loadEngagementWeightsAndConfig"
     )
 
     const weights: WeightMap = {}
