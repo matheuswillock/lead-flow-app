@@ -2,7 +2,7 @@
 
 **Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (review PR #728 — 2 achados de fato corrigidos, 1 correção indevida revertida; Estágio 11/D12 adicionado; review PR #729 — corrida de reativação e recuperação de claim travado no outbox do D9/Estágio 8; review PR #731 — generation e attemptCount também incrementados na recuperação de claim travado)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1, 2, **3**, 5, 6, 7 **implementados** (Estágio 3 concluído nesta branch — pendência `LeadDocumentRequestService`); Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 8, 9, 10 e 11 aprovados/prontos para implementação** — nenhuma decisão de produto pendente resta (D9 confirmado; D12 é correção técnica, não decisão de produto).
+**Status:** Estágios 1, 2, 3, 5, 6, 7 **implementados**; Estágio 8 **implementado nesta branch** (fila Radar desacoplada). Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 9, 10 e 11 aprovados/prontos para implementação**.
 
 ## Status de execução
 
@@ -13,9 +13,9 @@
 | 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **implementado** — envio via `EmailService.sendEmail` com tracking (`team_id`, `category: transactional`) | `lib/email/lead-document-request-mail.test.ts` |
 | 4 — Webhook hardening (dedupe por constraint + retry do provedor) | D11 | **item 1 (dedupe) implementado; item 2 (retry em falha de processamento) resolvido via D11/Estágio 10 — não implementado ainda** | `EMAIL_AUDIT.md` §0 |
 | 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
+| 6 — Importação de contatos em background | D4 | **implementado** — sync Radar desacoplado via outbox (Estágio 8) | `lib/email/email-contact-import-use-case.test.ts` |
 | 7 — RBAC efetivo + editor HTML-only + reset-credits resiliente | D2, D6 | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 8 — Fila desacoplada de sync Radar do import | D9 | **aprovado, não implementado** | D9 confirmado pelo owner em 2026-08-10 |
+| 8 — Fila desacoplada de sync Radar do import | D9 | **implementado** — `EmailContactRadarSyncOutbox` + cron `/api/v1/radar/cron/sync-email-contacts` | testes de outbox + import |
 | 9 — Reconcile resiliente do disparo manual | D10 | **proposto, não implementado** | pronto para implementar |
 | 10 — Retry de falhas de processamento do webhook Resend | D11 | **proposto, não implementado** | pronto para implementar — decisão do owner já dada |
 | 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **proposto, não implementado** | achado de review PR #728 — bloqueio real em produção para 1 time hoje |
@@ -491,7 +491,9 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
        └───────────────────────────────────────┘  campanha
 ```
 
-### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos — D9 confirmado, pronto para implementar
+### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos — D9 implementado
+
+**Status (2026-08-10): implementado** em `feature/email-radar-sync-outbox`.
 
 **Prompt (copy-paste):**
 
@@ -736,3 +738,4 @@ Rode a validação completa.
 - 2026-08-10 — **Estágio 3 concluído (PR #730):** `LeadDocumentRequestService` migrado para `EmailService.sendEmail` com tags obrigatórias (`team_id`, `category: transactional`, `sourceType: lead-document-request|lead-document-uploaded`). `LeadDocumentRequestUseCase` propaga `teamId`/`requestId`/`documentId` em todos os call sites (incl. `processReminders`). Testes unitários em `LeadDocumentRequestService.test.ts`.
 - 2026-08-10 — **Review automatizado no PR #729 (Codex, na release develop→main) — 3 comentários, verificados antes do fix.** Dois achados P1 reais no desenho do outbox de D9/Estágio 8 (implementação ainda não tinha começado, corrigido antes do primeiro código ser escrito): (1) corrida entre reimport e um worker antigo — reimport durante `processing` reativava a linha para `pending`, mas o worker antigo em voo podia terminar depois e marcar `sent` com dados obsoletos, apagando a reativação; corrigido com um campo `generation` (lease/versão) — o `UPDATE` final só marca `sent`/`failed` se `generation` ainda bater com o capturado no claim; (2) claim travado por cron que crasha/estoura o tempo no meio do lote nunca era recuperado — nenhum caminho reenfileirava linhas presas em `processing`; corrigido reaproveitando o mesmo padrão de `TeamWebhookOutboxRepository.claimDue` (recupera linhas `processing` com `updatedAt` velho antes de reivindicar lotes novos). Um achado P2 aceito: a nota de "Open questions" item 5 estava desatualizada (não refletia a confirmação de D9) e conflava a dependência do Estágio 9 com D9 quando na real é D10 — corrigido.
 - 2026-08-10 — **Review automatizado no PR #731 (Codex) — 2 comentários, ambos aceitos.** A correção da recuperação de claim travado (do PR #729) tinha uma lacuna: (1) P1 — não incrementava `generation` na própria recuperação, então um worker apenas *lento* (não morto) ainda podia sobrescrever o resultado do worker que reivindicou a linha recuperada, porque o `generation` capturado por ambos seria o mesmo; corrigido incrementando `generation` também na recuperação, não só no reimport; (2) P2 — não incrementava `attemptCount` na recuperação, então uma linha que só falha por timeout (nunca por exceção explícita) nunca chegava ao teto de tentativas e ficava recuperada para sempre; corrigido incrementando `attemptCount` na recuperação também, com `failed` direto se o teto for atingido ali.
+- 2026-08-10 — **Estágio 8 concluído (D9, PR #732):** sync Radar desacoplado do import via `EmailContactRadarSyncOutbox` + cron `radar-sync-email-contacts` (`*/5`). Import enfileira outbox por upsert (reativa sent/failed/processing com `generation`), `processedRows` avança sem sync síncrono; notificação inclui `pendingRadarSync` escopado por `emailImportJobId`. RLS deny-all para JWT; `markSent`/`markFailedWithRetry` condicionais em `generation`; recuperação de claim travado incrementa `generation` e `attemptCount`.

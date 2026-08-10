@@ -103,6 +103,10 @@
     {
       "path": "/api/v1/radar/cron/engagement-backfill",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/v1/radar/cron/sync-email-contacts",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

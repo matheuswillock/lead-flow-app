@@ -2,9 +2,8 @@ import { randomUUID } from "crypto"
 import { NotificationType, Prisma, type PrismaClient } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma, getImportCronPrisma } from "@/app/api/infra/data/prisma"
-import { RadarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
+import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { EmailContactListService } from "@/app/api/services/EmailContactList/EmailContactListService"
-import { RadarService } from "@/app/api/services/radar/RadarService"
 import { notificationService } from "@/app/api/services/notifications/NotificationService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import {
@@ -14,13 +13,11 @@ import {
 import { generateEmailImportId } from "@/lib/email/generate-import-id"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
-import { syncEmailContactToRadarUseCase } from "@/app/api/useCases/radar/SyncEmailContactToRadarUseCase"
 
 const DEFAULT_LIST_NAME = "Todos contatos"
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
-const RADAR_SYNC_CONCURRENCY = 2
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
 const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000
 
@@ -45,22 +42,11 @@ type FailedBatchEntry = {
 
 export class EmailContactImportUseCase {
   private contactListService = new EmailContactListService()
-  private readonly importRadarService: RadarService
 
-  constructor(private readonly db: PrismaClient = prisma) {
-    this.importRadarService = new RadarService(new RadarRepository(this.db))
-  }
+  constructor(private readonly db: PrismaClient = prisma) {}
 
   static forImportCron(): EmailContactImportUseCase {
     return new EmailContactImportUseCase(getImportCronPrisma())
-  }
-
-  private chunkArray<T>(items: T[], size: number): T[][] {
-    const chunks: T[][] = []
-    for (let i = 0; i < items.length; i += size) {
-      chunks.push(items.slice(i, i + size))
-    }
-    return chunks
   }
 
   private async reclaimStuckJobs(now = new Date()): Promise<number> {
@@ -372,7 +358,8 @@ export class EmailContactImportUseCase {
       failedBatches: Prisma.JsonValue | null
     },
     listIsSystemDefault: boolean,
-    ctx: TeamContext
+    ctx: TeamContext,
+    hasRadarFeature: boolean
   ): Promise<void> {
     const totalCount = await this.db.emailContact.count({ where: { listId: job.listId } })
     await this.db.emailContactList.update({
@@ -404,9 +391,17 @@ export class EmailContactImportUseCase {
     })
 
     const failedBatchCount = failedBatches.length
+    const pendingRadarSync = hasRadarFeature
+      ? await emailContactRadarSyncOutboxRepository.countPendingByImportJobId(job.id)
+      : 0
+    const radarSyncSuffix =
+      pendingRadarSync > 0
+        ? ` ${pendingRadarSync} contato(s) aguardando sincronização com o Radar.`
+        : ""
     const message =
       `Importação concluída: ${job.importedCount} importados, ${job.skippedCount} recusados, ${job.updatedCount} atualizados, ${failedBatchCount} lote(s) com falha.` +
-      this.formatSkippedNotificationSuffix(job.skippedCount, skippedIssues)
+      this.formatSkippedNotificationSuffix(job.skippedCount, skippedIssues) +
+      radarSyncSuffix
 
     await notificationService.createSystemNotification({
       recipientProfileId: job.requestedBy,
@@ -422,6 +417,7 @@ export class EmailContactImportUseCase {
         skipped: job.skippedCount,
         skippedIssues,
         failedBatches: failedBatchCount,
+        pendingRadarSync,
       },
     })
 
@@ -524,63 +520,18 @@ export class EmailContactImportUseCase {
           updatedCount += batchResult.updated
 
           if (hasRadarFeature) {
-            // D6: sync síncrono (não fire-and-forget) — "já deve constar na
-            // lista de segmentos assim que for importado" exige que o job só
-            // marque o import como concluído depois que os perfis existirem.
-            // I3: processedRows só avança após o sync Radar do lote (ou skip
-            // quando feature off) — timeout mid-sync reprocessa o lote inteiro.
             const batchContacts = await this.db.emailContact.findMany({
               where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
               select: { id: true },
             })
 
-            for (const contactChunk of this.chunkArray(batchContacts, RADAR_SYNC_CONCURRENCY)) {
-              if (Date.now() - startedAt > MAX_PROCESSING_MS) {
-                await this.db.emailImportJob.update({
-                  where: { id: claimed.id },
-                  data: {
-                    status: "pending",
-                    processedRows,
-                    importedCount,
-                    updatedCount,
-                    skippedCount,
-                    skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
-                    failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
-                    attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
-                  },
-                })
-                console.info(
-                  `[EmailContactImport][${claimed.importId}] Tempo esgotado no sync Radar do lote ${batchIndex + 1}/${totalBatches} — re-enfileirado`
-                )
-                return new Output(true, ["Job re-enfileirado por tempo"], [], {
-                  importId: claimed.importId,
-                  resumedAtBatch: batchIndex + 1,
-                })
-              }
-
-              await Promise.all(
-                contactChunk.map(async (batchContact) => {
-                  const syncResult = await syncEmailContactToRadarUseCase.execute(
-                    {
-                      emailContactId: batchContact.id,
-                      teamId: claimed.teamId,
-                    },
-                    { radarService: this.importRadarService }
-                  )
-                  if (!syncResult.isValid) {
-                    console.error(
-                      `[EmailContactImport][${claimed.importId}] Falha ao sincronizar contato ${batchContact.id} com o Radar`,
-                      syncResult.errorMessages
-                    )
-                  } else {
-                    const syncErrors = (syncResult.result as { errors?: string[] } | null)?.errors
-                    if (Array.isArray(syncErrors) && syncErrors.length > 0) {
-                      console.error(
-                        `[EmailContactImport][${claimed.importId}] Erro parcial no sync Radar do contato ${batchContact.id}: ${syncErrors.join("; ")}`
-                      )
-                    }
-                  }
-                })
+            if (batchContacts.length > 0) {
+              await emailContactRadarSyncOutboxRepository.upsertPendingForContacts(
+                batchContacts.map((batchContact) => ({
+                  emailContactId: batchContact.id,
+                  teamId: claimed.teamId,
+                  emailImportJobId: claimed.id,
+                }))
               )
             }
           }
@@ -645,7 +596,8 @@ export class EmailContactImportUseCase {
           failedBatches: failedBatches as unknown as Prisma.JsonValue,
         },
         list.isSystemDefault,
-        ctx
+        ctx,
+        hasRadarFeature
       )
 
       return new Output(true, ["Job processado"], [], {
