@@ -1,6 +1,6 @@
 # EMAIL_AUDIT.md — Auditoria do Módulo de E-mail (Corretor Studio)
 
-**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (incidente de produção §8 + reavaliação §0 dos Estágios 1-7 + auditoria da conta Resend §9)
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (incidente de produção §8 + reavaliação §0 dos Estágios 1-7 + auditoria da conta Resend §9 + colisão de idempotency key na retomada de dispatch §10)
 **Escopo:** Email Campaigns, Email Template Editor, crons (`dispatch-scheduled`, `reset-credits`, `process-import-jobs`), webhook Resend, créditos/billing, listas de contato, supressão e conformidade.
 **Método:** `/impeccable` audit + critique — leitura factual do código confrontada contra o estado-alvo de 8 requisitos + investigação MCP (Supabase produção, Vercel runtime logs, export de logs 04–05/07 e 10/08) + API do Resend (domínios, chaves, webhooks).
 **Rodada somente-leitura:** nenhum código de produção foi alterado; as chamadas à API do Resend foram todas `GET` (leitura).
@@ -479,3 +479,21 @@ Webhook de produção (`https://www.corretorstudio.com/api/webhooks/resend`) est
 ### 9.4 Cota/uso mensal — não exposto pela API pública do Resend
 
 Não existe endpoint público do Resend para consultar quota/uso restante — essa informação só está disponível no dashboard. A evidência de cota esgotada (achado 8.2) veio dos erros `429 monthly_quota_exceeded` observados nos logs de produção, não de uma consulta direta de saldo. Recomendação operacional: verificar o uso atual em `resend.com/settings/billing` e decidir sobre upgrade de plano — segue como decisão do dono (mesma nota do achado 8.2).
+
+---
+
+## 10. Incidente de produção 2026-08-10 — reenvio de falhas quebrado por colisão de idempotency key na retomada de dispatch travado
+
+**Gatilho:** usuário reportou, com screenshots da tela de campanhas do time Kathrein Antunes, que a campanha "Maternidade" (parte 4/4) mostra o erro `Campanha já foi processada anteriormente. Se o problema persistir, entre em contato com o suporte.` no lugar de `Erro interno durante o disparo`, e perguntou se isso impede o botão "Reenviar apenas falhas". Investigado por leitura de código — a mesma tela mostrava, para referência, outras duas classes de erro em campanhas do mesmo time: `Erro interno durante o disparo` (Médicos, Advogados — coberto pelo achado E3/§8.3, já corrigido no Estágio 9) e `Disparo interrompido: tempo limite de envio excedido (30 min)` (Golden Cross — mesma causa do achado 8.2, cota mensal do Resend esgotada, operacional, não é bug de código).
+
+### E4 — `resumeOrphanSendingDispatches` reindexa `chunkIndex` do zero na retomada, colidindo com a idempotency key da tentativa original 🔴
+
+**Causa raiz confirmada em código:** a chave de idempotência de cada lote de envio ao Resend é `campaign/{dispatchId}/{chunkIndex}` (`app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService.ts:188-192`), onde `chunkIndex` é a posição do lote de 100 destinatários (`BATCH_SIZE`) **dentro da lista de destinatários daquela chamada específica** de `dispatchBatch`.
+
+Quando um dispatch fica preso em `sending` por mais de 30 minutos (function do Vercel encerrada no meio do processamento), `resumeOrphanSendingDispatches` (`app/api/useCases/email/EmailCampaignUseCase.ts:2518+`) o retoma: reconstrói o `job` com **o mesmo `dispatchId`** da tentativa original, mas com uma lista de destinatários **diferente** — só os que ainda estão `EmailLog.status = "queued"` (`ts:2598-2604`, via `rebuildRecipientsForOrphanResume`), ou seja, um subconjunto menor dos originais (quem já foi processado com sucesso ou falha na tentativa anterior não entra de novo). Essa lista menor é refatiada em lotes de 100 **do zero** dentro de `dispatchBatch` — o `chunkIndex 0` da retomada contém destinatários **diferentes** do `chunkIndex 0` da tentativa original, mas usa a **mesma** idempotency key (`campaign/{dispatchId}/0`), que o Resend já tinha aceitado com o payload original.
+
+**Resultado:** o Resend detecta a mesma chave com payload diferente e responde `409` com `idempotency` na mensagem (`EmailCampaignDispatchService.ts:42-44` traduz isso para `Campanha já foi processada anteriormente. Se o problema persistir, entre em contato com o suporte.`). Esse `409` não é tratado como retryable (`is-retryable-resend-batch-error.ts` — não foi conferido neste incidente se `409` está na lista de códigos retryable, mas mesmo que estivesse, re-tentar com a mesma chave e o mesmo payload menor continuaria colidindo).
+
+**Por que "Reenviar apenas falhas" fica bloqueado, não só a retomada automática:** o botão "Reenviar apenas falhas" (`retryFailedOnly`, `EmailCampaignUseCase.ts:1792-1806`) cria um **novo** `dispatchId` (`randomUUID()`, `ts:1883-1884`) — em princípio livre de colisão. Mas a composição de destinatários do reenvio de falhas também é recalculada a cada clique (`resolveFailedRetryRecipientEmails`) e refatiada em `chunkIndex` do zero a partir de 0 — se essa lista de "falhas" também precisar ser retomada por timeout no meio do caminho (o mesmo dispatch de reenvio pode ficar `sending` e cair no mesmo `resumeOrphanSendingDispatches`), o mesmo padrão de colisão se repete dentro do **novo** dispatch. Ou seja, o bug não é exclusivo do dispatch original — qualquer dispatch (original ou de reenvio de falhas) que precise ser retomado após ficar preso em `sending` está exposto à mesma colisão.
+
+**Escopo do achado:** confirmado por leitura de código, não reproduzido em teste automatizado nesta rodada — recomenda-se cobrir com teste de integração antes de corrigir (ver `EMAIL_SPEC.md`).
