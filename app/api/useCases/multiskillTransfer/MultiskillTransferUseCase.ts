@@ -6,6 +6,7 @@ import {
   type MultiskillTransferRepository,
 } from "@/app/api/infra/data/repositories/multiskillTransfer/MultiskillTransferRepository";
 import { backofficeOperationalAccessService } from "@/app/api/services/backofficeOperationalAccess/BackofficeOperationalAccessService";
+import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository";
 import type { IMultiskillTransferService } from "@/app/api/services/multiskillTransfer/IMultiskillTransferService";
 import { multiskillTransferService } from "@/app/api/services/multiskillTransfer/MultiskillTransferService";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
@@ -226,6 +227,12 @@ export class MultiskillTransferUseCase implements IMultiskillTransferUseCase {
         transferTagUsed: lead.isTransfer === true,
         preScheduledAt: lead.meetingDate ?? null,
       });
+
+      await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
+          leadId: transferredLead.id,
+          sourceTeamId: lead.teamId,
+          targetTeamId: defaultTeam.id,
+        });
 
       const finalLead = await leadRepository.findById(transferredLead.id);
       if (!finalLead) {

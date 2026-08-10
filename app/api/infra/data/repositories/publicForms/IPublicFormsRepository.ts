@@ -269,6 +269,11 @@ export interface IPublicFormsRepository {
     options?: { from?: Date; to?: Date },
   ): Promise<Array<{ formId: string; name: string; viewed: number; completed: number }>>
   listLeadSubmissions(teamId: string, leadId: string): Promise<unknown[]>
+  copyLeadSubmissionsOnTeamTransfer(params: {
+    leadId: string
+    sourceTeamId: string
+    targetTeamId: string
+  }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
   findCompletedSubmissionBySession(
     publicationId: string,
