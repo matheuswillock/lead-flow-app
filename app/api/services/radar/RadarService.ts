@@ -724,8 +724,12 @@ export class RadarService {
         sourceId: contact.id,
       })
     } catch (error) {
-      counters.errors.push(`contact:${contact.id}`)
-      console.error("[RadarService][syncFromEmail] contact", contact.id, error)
+      const message = error instanceof Error ? error.message : String(error)
+      counters.errors.push(`contact:${contact.id}:${message}`)
+      console.error(
+        `[RadarService][syncFromEmail] contact ${contact.id} error=${message}`,
+        error
+      )
     }
   }
 

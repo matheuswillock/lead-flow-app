@@ -5,6 +5,16 @@ import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-f
 import { isThankYouRuleTarget, normalizeThankYouPages } from "@/lib/public-forms/thank-you-pages"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import {
+  buildLeadTransferCopyOrigin,
+  buildLeadTransferCopyRequestKey,
+  resolveLeadTransferCopySourceSubmissionId,
+  shouldSkipLeadTransferCopyForRootInTarget,
+  SYSTEM_LEAD_TRANSFER_FORM_DESCRIPTION,
+  SYSTEM_LEAD_TRANSFER_FORM_KIND,
+  SYSTEM_LEAD_TRANSFER_FORM_NAME,
+  mergeLeadTransferListSubmissions,
+} from "@/lib/public-forms/lead-transfer-submission-copy"
+import {
   type IPublicFormsRepository,
   type PublicFormCompleteSubmissionInput,
   type PublicFormDetailRecord,
@@ -20,6 +30,36 @@ import {
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
+
+const leadSubmissionSelect = {
+  id: true,
+  formId: true,
+  publicationId: true,
+  leadId: true,
+  requestKey: true,
+  status: true,
+  completionStatus: true,
+  visitorSessionId: true,
+  score: true,
+  scoreBandLabel: true,
+  origin: true,
+  errorMessage: true,
+  submittedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  form: { select: { id: true, name: true } },
+  publication: { select: { version: true } },
+  answers: {
+    orderBy: { createdAt: "asc" as const },
+    select: {
+      id: true,
+      questionId: true,
+      value: true,
+      questionSnapshot: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.PublicFormSubmissionSelect
 
 async function replaceDraftRelations(
   tx: Prisma.TransactionClient,
@@ -159,6 +199,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   async list(teamId: string, filters: PublicFormListFilters) {
     const where: Prisma.PublicFormWhereInput = {
       teamId,
+      formKind: { not: SYSTEM_LEAD_TRANSFER_FORM_KIND },
       ...(filters.search ? { name: { contains: filters.search, mode: "insensitive" } } : {}),
       ...(filters.status
         ? { status: Array.isArray(filters.status) ? { in: filters.status } : filters.status }
@@ -618,40 +659,217 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     }))
   }
 
-  listLeadSubmissions(teamId: string, leadId: string) {
-    return prisma.publicFormSubmission.findMany({
+  async listLeadSubmissions(teamId: string, leadId: string) {
+    const scoped = await prisma.publicFormSubmission.findMany({
       where: { leadId, form: { teamId } },
       orderBy: { createdAt: "desc" },
+      select: leadSubmissionSelect,
+    })
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { teamId: true },
+    })
+    if (!lead) {
+      return scoped
+    }
+
+    const inboundTransfers = await prisma.leadTransfer.findMany({
+      where: { leadId, toTeamId: teamId },
+      select: { fromTeamId: true },
+      distinct: ["fromTeamId"],
+    })
+
+    const authorized = lead.teamId === teamId || inboundTransfers.length > 0
+    if (!authorized || inboundTransfers.length === 0) {
+      return scoped
+    }
+
+    // Merge submissions do time atual com histórico legado dos times de origem
+    // (leads transferidos antes da cópia automática, ou origem ainda só no time A).
+    const sourceTeamIds = inboundTransfers.map((transfer) => transfer.fromTeamId)
+    const legacy = await prisma.publicFormSubmission.findMany({
+      where: { leadId, form: { teamId: { in: sourceTeamIds } } },
+      orderBy: { createdAt: "desc" },
+      select: leadSubmissionSelect,
+    })
+
+    // Deduplica por submission raiz: cópia no time destino (scoped) prevalece sobre a origem.
+    return mergeLeadTransferListSubmissions(scoped, legacy)
+  }
+
+  async copyLeadSubmissionsOnTeamTransfer(params: {
+    leadId: string
+    sourceTeamId: string
+    targetTeamId: string
+  }): Promise<{ copied: number; skipped: number }> {
+    const { leadId, sourceTeamId, targetTeamId } = params
+
+    const sourceSubmissions = await prisma.publicFormSubmission.findMany({
+      where: { leadId, form: { teamId: sourceTeamId } },
       select: {
         id: true,
-        formId: true,
-        publicationId: true,
-        leadId: true,
-        requestKey: true,
-        status: true,
+        origin: true,
         completionStatus: true,
-        visitorSessionId: true,
+        status: true,
         score: true,
         scoreBandLabel: true,
-        origin: true,
-        errorMessage: true,
         submittedAt: true,
-        createdAt: true,
-        updatedAt: true,
         form: { select: { id: true, name: true } },
-        publication: { select: { version: true } },
-        answers: {
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            questionId: true,
-            value: true,
-            questionSnapshot: true,
-            createdAt: true,
-          },
-        },
+        answers: { select: { value: true, questionSnapshot: true } },
       },
     })
+
+    if (sourceSubmissions.length === 0) {
+      return { copied: 0, skipped: 0 }
+    }
+
+    const targetTeam = await prisma.team.findUnique({
+      where: { id: targetTeamId },
+      select: { masterId: true },
+    })
+    if (!targetTeam) {
+      return { copied: 0, skipped: sourceSubmissions.length }
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const carrier = await this.ensureLeadTransferCarrierForm(
+        targetTeamId,
+        targetTeam.masterId,
+        tx,
+      )
+
+      let copied = 0
+      let skipped = 0
+
+      for (const submission of sourceSubmissions) {
+        const sourceSubmissionId = resolveLeadTransferCopySourceSubmissionId(
+          submission.origin,
+          submission.id,
+        )
+        const requestKey = buildLeadTransferCopyRequestKey(sourceSubmissionId, targetTeamId)
+        const existing = await tx.publicFormSubmission.findUnique({
+          where: { requestKey },
+          select: { id: true },
+        })
+        if (existing) {
+          skipped += 1
+          continue
+        }
+
+        const rootSubmission = await tx.publicFormSubmission.findUnique({
+          where: { id: sourceSubmissionId },
+          select: { form: { select: { teamId: true } } },
+        })
+        if (
+          shouldSkipLeadTransferCopyForRootInTarget({
+            rootSubmissionTeamId: rootSubmission?.form.teamId,
+            targetTeamId,
+          })
+        ) {
+          skipped += 1
+          continue
+        }
+
+        await tx.publicFormSubmission.create({
+          data: {
+            formId: carrier.formId,
+            publicationId: carrier.publicationId,
+            leadId,
+            requestKey,
+            completionStatus: submission.completionStatus,
+            status: submission.status,
+            score: submission.score,
+            scoreBandLabel: submission.scoreBandLabel,
+            submittedAt: submission.submittedAt,
+            origin: json(
+              buildLeadTransferCopyOrigin({
+                sourceOrigin: submission.origin,
+                sourceSubmissionId,
+                sourceFormId: submission.form.id,
+                sourceFormName: submission.form.name,
+                sourceTeamId,
+                targetTeamId,
+                copiedAt: new Date(),
+              }),
+            ),
+            answers: {
+              create: submission.answers.map((answer) => ({
+                questionId: null,
+                value: json(answer.value),
+                questionSnapshot: json(answer.questionSnapshot),
+              })),
+            },
+          },
+        })
+        copied += 1
+      }
+
+      return { copied, skipped }
+    })
+  }
+
+  /**
+   * Formulário "carregador" por time, usado só para hospedar cópias de submissions de
+   * leads transferidos de outro time. Nunca é publicado/preenchido pelo público e é
+   * filtrado da listagem normal de formulários (ver `list()`, filtro por formKind).
+   *
+   * Race condition aceita: duas transferências concorrentes para o MESMO time, sendo a
+   * primeira vez que esse time recebe uma cópia, podem criar 2 formulários carregadores
+   * em paralelo (find-then-create sem lock/unique constraint dedicado). Consequência é
+   * benigna — dados corretos, só duas linhas de "formulário sistema" em vez de uma — e
+   * evitar isso exigiria uma migration nova, fora de escopo deste fix.
+   */
+  private async ensureLeadTransferCarrierForm(
+    teamId: string,
+    masterProfileId: string,
+    db: Prisma.TransactionClient | typeof prisma = prisma,
+  ) {
+    const existing = await db.publicForm.findFirst({
+      where: { teamId, formKind: SYSTEM_LEAD_TRANSFER_FORM_KIND },
+      select: {
+        id: true,
+        publications: { orderBy: { version: "desc" }, take: 1, select: { id: true } },
+      },
+    })
+    if (existing?.publications[0]) {
+      return { formId: existing.id, publicationId: existing.publications[0].id }
+    }
+    if (existing) {
+      const publication = await db.publicFormPublication.create({
+        data: {
+          formId: existing.id,
+          publishedById: masterProfileId,
+          version: 1,
+          snapshot: { systemCarrier: true },
+        },
+        select: { id: true },
+      })
+      return { formId: existing.id, publicationId: publication.id }
+    }
+
+    const form = await db.publicForm.create({
+      data: {
+        teamId,
+        createdById: masterProfileId,
+        name: SYSTEM_LEAD_TRANSFER_FORM_NAME,
+        description: SYSTEM_LEAD_TRANSFER_FORM_DESCRIPTION,
+        status: "archived",
+        approvalStatus: "approved",
+        formKind: SYSTEM_LEAD_TRANSFER_FORM_KIND,
+      },
+      select: { id: true },
+    })
+    const publication = await db.publicFormPublication.create({
+      data: {
+        formId: form.id,
+        publishedById: masterProfileId,
+        version: 1,
+        snapshot: { systemCarrier: true },
+      },
+      select: { id: true },
+    })
+    return { formId: form.id, publicationId: publication.id }
   }
 
   findSubmissionByRequestKey(requestKey: string) {

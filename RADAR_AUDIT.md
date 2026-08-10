@@ -334,3 +334,91 @@ O `Alert` em `RadarSegmentBuilderDialog` (e o equivalente no wizard de campanhas
 - Hooks: `PublicFormsService.recordMetric`, `PublicFormSubmissionUseCase`, `PublicFormProgressUseCase`
 - Dedupe: `RadarRepository.appendEventIfNewBySourceKey` com `sourceId = eventKey`
 - Mapeamento: `lib/radar/map-public-form-metric-to-radar-event.ts`
+
+---
+
+## 9. Incidente de produção 2026-08-09 — Performance, banco e aplicação
+
+**Fonte:** 24h de logs de produção da Vercel (29.244 linhas, 2026-08-08 22:06 → 2026-08-09 22:05 UTC), anexados pelo usuário, mais leitura direta do código e reverificação contra `origin/main` (release v0.200.0, PR #708, 2026-08-09). Documento par: `specs/radar-incidente-producao-2026-08-09.md` (correção executável). O achado transversal do mesmo incidente (tabela `backoffice_cron_executions` ausente, derruba 21 cron jobs de toda a aplicação, não só o Radar) está documentado à parte em `CRON_OBSERVABILITY_AUDIT.md`/`CRON_OBSERVABILITY_SPEC.md`.
+
+### B1 — `countFixedSegmentsSQL` usa nomes de tabela errados em SQL raw — `/api/v1/radar/segments` quebrado
+
+`app/api/infra/data/repositories/radar/RadarRepository.ts`, método `countFixedSegmentsSQL` (linhas 2331–2507, introduzido no commit `88c21a4f` — *"perf(radar): otimizar carregamento de segmentos com SQL e cache"*, 2026-08-07, o mesmo PR que trouxe o cache `"use cache"` de `listSegments` já registrado no §8). O `$queryRaw` referencia identificadores entre aspas duplas como se fossem nomes de tabela físicos:
+
+```
+FROM "RadarProfile" p          -- linhas 2380, 2426, 2452
+FROM "RadarConsent" c          -- linhas 2355, 2360, 2474  (nem o nome do model é esse — é RadarChannelConsent)
+FROM "RadarSourceLink" sl      -- linhas 2365, 2430, 2461
+FROM "RadarIdentity" i         -- linhas 2370, 2435
+FROM "RadarEvent" e            -- linhas 2375, 2389, 2456
+INNER JOIN "Lead" l            -- linha 2436
+```
+
+Esses são nomes de **model** Prisma (ou, no caso de `"RadarConsent"`, nem isso), não os nomes físicos das tabelas. A migration `20260718220125_radar-rename-physical-schema.sql` (Fase R deste mesmo audit, §5) renomeou as tabelas físicas de `corretor_studio_cdp_*` para `corretor_studio_radar_*` mantendo os nomes de model estáveis **só via `@@map`** no Prisma — precisamente para que o código via Prisma Client continuasse funcionando sem alteração. SQL raw (`$queryRaw`) não passa pelo `@@map`: os identificadores citados acima não correspondem a nenhuma relação real do banco, então toda chamada lança `relation "RadarProfile" does not exist` (ou equivalente para os outros nomes).
+
+**Nomes físicos corretos** (via `@@map` em `prisma/schema.prisma:4510-4619`): `RadarProfile` → `corretor_studio_radar_profiles`; `RadarIdentity` → `corretor_studio_radar_identities`; `RadarSourceLink` → `corretor_studio_radar_source_links`; `RadarEvent` → `corretor_studio_radar_events`; `RadarChannelConsent` (não `RadarConsent`) → `corretor_studio_radar_channel_consents`; `Lead` → `corretor_studio_leads`.
+
+**Impacto observado:** 3 de 4 requisições a `/api/v1/radar/segments` na janela de 24h retornaram HTTP 500; latência p50 ~12s / p95 ~14s nas 4 requisições (inclusive as com erro) — vale investigar em separado se há uma query legada (`countSegmentsLegacy`, ver abaixo) rodando em paralelo "para validação comparativa" e inflando a latência antes mesmo do erro aparecer. Toda a UI do Radar que depende da listagem/contagem de segmentos fixos (dashboard `/radar`, cards de segmento) fica quebrada.
+
+**Mitigação já existente no código:** `RadarService.ts:997` mantém um método `countSegmentsLegacy`, comentado como "mantida temporariamente para validação comparativa" — usa o Prisma Client normal (via `@@map`, portanto correto) em vez de SQL raw. Candidato a virar o caminho único até `countFixedSegmentsSQL` ser corrigido ou reescrito.
+
+**Prevenção (processo):** a mesma classe de erro ocorre quando migrations ou SQL manual usam o nome do model como tabela. A partir de `agents.md` v2.5.1, toda migration/`$queryRaw` **MUST** usar nomes físicos de `prisma/schema.prisma` (`@@map`/`@map`) e o boundary `app/api/infra/data/prisma.ts` — ver `specs/radar-incidente-producao-2026-08-09.md` §B1 e `CRON_OBSERVABILITY_AUDIT.md` §6.
+
+**Reverificado em `origin/main` (2026-08-09, release v0.200.0):** bug **continua presente**, linha a linha idêntico ao encontrado no worktree local — o release mais recente não tocou este arquivo além do que já estava no commit `88c21a4f` original.
+
+### B2 — CORRIGIDO: não é tabela ausente — é esgotamento/instabilidade do pool de conexões (P1001/P2024)
+
+**Este achado foi revisado em 2026-08-09 com evidência direta do banco (MCP do Supabase, autorizado pelo dono nesta data) e correção do texto abaixo — a hipótese original ("migration não aplicada") estava errada.** A leitura inicial dos logs se baseou numa mensagem truncada (`Invalid prisma.backofficeRadarEngagementConfig.findFirst() invocati...`) que, por semelhança superficial com o achado A (tabela do cron, esse sim ausente), foi lida como "tabela não existe". A mensagem completa nunca dizia isso.
+
+**Confirmado via `execute_sql` no projeto `wcnxwdcoambpfwxwubka` (`corretor-studio`), consulta a `information_schema.tables`:** as três tabelas **existem**, com a contagem de colunas batendo exatamente com o schema:
+
+| Tabela | Colunas (schema espera) | Colunas (confirmado no banco) |
+|---|---|---|
+| `backoffice_radar_engagement_weights` | 7 | 7 ✅ |
+| `backoffice_radar_engagement_configs` | 12 | 12 ✅ |
+| `backoffice_form_engagement_score_rules` | 8 | 8 ✅ |
+
+E via `list_migrations` do mesmo projeto: `20260804170650_radar-d19-engagement-foundation` e `20260804194139_radar-d19b-form-engagement-score-rules` **aparecem aplicadas** no histórico do Supavisor — confirmando que, ao contrário do achado A (tabela do cron, nunca migrada em lugar nenhum), aqui schema, migration e banco remoto **batem os três**.
+
+**Causa real, com a mensagem de erro completa (truncada demais na primeira leitura):**
+
+```
+[RadarRepository][updateEngagementScore] Error [PrismaClientKnownRequestError]:
+Invalid `prisma.backofficeRadarEngagementConfig.findFirst()` invocation:
+
+Timed out fetching a new connection from the connection pool. More info: http://pris.ly/d/connection-pool
+(Current connection pool timeout: 20, connection limit: 1)
+  code: 'P2024', meta: { connection_limit: 1, timeout: 20 }
+```
+
+Quantificado nas mesmas 24h de log: **49 ocorrências** de erro em `updateEngagementScore` (não "milhares" — correção também do volume citado na primeira leitura), distribuídas em **quase todas as horas do dia** (00h–21h, sem concentração num único horário/deploy — ver tabela abaixo), sendo:
+
+| Código Prisma | Significado | Ocorrências | `connection_limit` observado |
+|---|---|---|---|
+| `P1001` | "Can't reach database server at `aws-1-sa-east-1.pooler.supabase.com:6543`" — falha de conectividade, não de pool | 26 | — |
+| `P2024` | "Timed out fetching a new connection from the connection pool" — pool esgotado | 23 | **21×** com `connection_limit: 7` (sem override — fórmula padrão do Prisma, `num_cpus×2+1`, indicando execução **sem** o `connection_limit` explícito na `DATABASE_URL`) / **2×** com `connection_limit: 1` (a config recomendada, presente no `.env.example` do projeto) |
+
+**Leitura correta do achado:** o problema não é o Radar em si — é uma instabilidade sistêmica de conectividade/pool com o Postgres via Supavisor, que atinge `updateEngagementScore` porque ele faz 3 queries em paralelo (`Promise.all`) sem retry, mas certamente atinge outras rotas também (ver §Cruzamento abaixo). A esmagadora maioria das ocorrências (21 de 23 `P2024`) rodou com `connection_limit: 7` — ou seja, **sem** a configuração `connection_limit=1&pool_timeout=20` que o `.env.example` do projeto recomenda para serverless — sugerindo que essa configuração não estava (ou não estava consistentemente) aplicada na `DATABASE_URL` de produção durante boa parte da janela de 24h analisada. As 2 ocorrências com `connection_limit: 1` mostram que, mesmo com a configuração recomendada aplicada, o pool **ainda estoura** sob a carga atual — ou seja, a mudança de env var por si só não é suficiente para eliminar o problema por completo, apenas reduz a frequência.
+
+**Cruzamento com investigação paralela do mesmo dia (fora deste worktree):** o dono do projeto identificou de forma independente, via Sentry, o mesmo padrão de `ECHECKOUTTIMEOUT`/pool timeout afetando `POST /forms/[publicId]` (54 eventos) e crons do WhatsApp (38 eventos) na mesma janela, e aplicou `connection_limit=1&pool_timeout=20` na `DATABASE_URL` de produção da Vercel como mitigação. Os dados deste achado (2 de 23 `P2024` já com `connection_limit=1`, mas ainda existindo) são consistentes com essa mitigação parcialmente aplicada durante a janela de log e **ainda insuficiente sozinha** sob a carga atual — reforça a necessidade de uma mitigação estrutural adicional (fila/outbox, não só ajuste de env var) para a classe inteira desse problema, não só para o Radar.
+
+**Efeito em runtime (comportamento observado nos logs, independente da causa ser tabela ou pool):** `RadarRepository.updateEngagementScore` (linhas 999–1031) chama `loadEngagementWeightsAndConfig()` (linhas 1110–1193 — 3 queries em `Promise.all` contra as 3 tabelas acima) sem try/catch próprio e sem usar `withPrismaRetry` (helper de retry para erros transitórios como `P2024`/`P1001`, já existente em `app/api/infra/data/prisma.ts` mas não aplicado aqui). Dependendo de quem chama:
+
+- `appendEventIfNew`/`appendEventIfNewBySourceKey` (linhas 914/948/992): fire-and-forget com `.catch(console.error)` — é a origem direta dos milhares de `[RadarRepository][updateEngagementScore] Error...` nos logs (ver B3), mas não derruba o fluxo principal do chamador.
+- `mergeProfiles` (linha 194) e o branch de merge dentro de `resolveProfileForPhone` (linha 557): `await` **sem try/catch** — a exceção propaga para cima, para `MergeLeadsUseCase` e para os fluxos de sync CRM/portfolio/finalized/WhatsApp. Raio de impacto maior do que os logs "silenciosos" de B3 sugerem.
+- `getLeadRadarEngagementWithCtx` → `GetLeadRadarEngagementUseCase` → rota `/api/v1/radar/profiles/by-lead/[leadId]/engagement`: quebra o card de temperatura do lead no CRM (`LeadRadarTemperatureCard.tsx`).
+- Tela de admin `app/backoffice/(app)/radar/engajamento/**`: depende diretamente dessas 3 tabelas para carregar e salvar configuração — provavelmente também quebrada.
+
+### B3 — Sync do Radar no `EmailContactImport` falha ~100% das vezes, mascarado como sucesso (HTTP 200)
+
+Uma das causas possíveis é a mesma de B2 (esgotamento/instabilidade do pool fazendo `updateEngagementScore` falhar), mas o comportamento do pipeline de import merece registro próprio independente da causa de fundo — é um problema de **observabilidade e mascaramento de falha**: mesmo que B2 seja corrigido, este padrão de log inutilizável para qualquer falha futura de sync continua existindo.
+
+**Log sem detalhe correlacionável:** `EmailContactImportUseCase.ts:579` loga `Erro parcial no sync Radar do contato <uuid>: N erro(s)` — mas o array `syncErrors` contém só tags opacas tipo `contact:<id>` (`RadarService.ts:727`), nunca a mensagem real do erro. O erro de verdade só aparece numa linha de log **separada e sem `importId`** (`RadarService.ts:728`), impossível de correlacionar de forma confiável em produção sem heurística de timestamp. **Recomendação para o spec:** incluir `error.message` (ou o texto completo) na mesma linha de log que já tem o `importId`.
+
+**Quantificado:** 2.559 contatos distintos tiveram o sync do Radar falhando em 10 execuções do cron de import de e-mail nas últimas 24h — cada lote processado tem ~256 contatos, e **100% deles falham** em cada lote (10 lotes × ~256 = ~2.560, bate com a contagem distinta).
+
+**Por que não gerou nenhum alerta baseado em status HTTP:** a falha do sync Radar nunca popula `failedBatches` (só falhas do `upsertContactsBatch` externo populam isso), então `finalizeJob` sempre marca o job como sucesso e a rota `app/api/v1/email/cron/process-import-jobs/route.ts:34` sempre devolve HTTP 200 — apesar de 100% de falha real na sincronização Radar da feature.
+
+### B4 — N+1 no backfill de engajamento (achado incidental de performance)
+
+`app/api/useCases/radar/RadarEngagementBackfillUseCase.ts:17-33` — loop externo pagina perfis em lotes de 500 (`BATCH_SIZE`, conforme o próprio comentário do job: "recalcula engagementScore/engagementBand em lotes de 500 perfis"), mas o loop interno chama `updateEngagementScore` **um perfil por vez**, e cada chamada faz 2 queries sequenciais (`radarEvent.findMany` + `radarProfile.updateMany`). Resultado: até 1.000 round-trips sequenciais ao banco por lote de 500 perfis, num job cujo propósito explícito é justamente processar em lote. Candidato natural a virar uma query set-based (ou, no mínimo, `Promise.all` com concorrência limitada) no spec de correção.
