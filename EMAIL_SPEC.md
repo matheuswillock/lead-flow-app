@@ -18,7 +18,7 @@
 | 8 — Fila desacoplada de sync Radar do import | D9 | **implementado** — `EmailContactRadarSyncOutbox` + cron `/api/v1/radar/cron/sync-email-contacts` | testes de outbox + import |
 | 9 — Reconcile resiliente do disparo manual | D10 | **implementado nesta branch** — `withPrismaRetry` + fallback `totalSent` | `lib/email/dispatch-reconcile-resilience.test.ts` |
 | 10 — Retry de falhas de processamento do webhook Resend | D11 | **proposto, não implementado** | pronto para implementar — decisão do owner já dada |
-| 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **proposto, não implementado** | achado de review PR #728 — bloqueio real em produção para 1 time hoje |
+| 11 — Guard de domínio Resend não deve bloquear por tracking degradado | D12 | **implementado** | achado de review PR #728 — bloqueio real em produção para 1 time hoje |
 
 **Não coberto por nenhum estágio (non-goal desde julho):** cobrança real via Asaas — ver `Open questions` item 3.
 

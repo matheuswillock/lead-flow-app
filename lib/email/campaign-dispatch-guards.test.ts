@@ -1,14 +1,28 @@
 import { describe, expect, it } from "bun:test"
 import {
   checkDispatchWindow,
+  getResendDomainDispatchWarnings,
   isResendDomainSendCapable,
+  isResendDomainTrackingCapable,
+  RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
   resolveCampaignStatusAfterDispatch,
 } from "./campaign-dispatch-guards"
 
+const ALL_RESEND_DOMAIN_STATUSES = [
+  "not_started",
+  "pending",
+  "verified",
+  "partially_verified",
+  "partially_failed",
+  "failed",
+  "temporary_failure",
+] as const
+
 describe("isResendDomainSendCapable", () => {
-  it("permite verified e partially_verified", () => {
+  it("permite verified, partially_verified e partially_failed", () => {
     expect(isResendDomainSendCapable("verified")).toBe(true)
     expect(isResendDomainSendCapable("partially_verified")).toBe(true)
+    expect(isResendDomainSendCapable("partially_failed")).toBe(true)
   })
 
   it("bloqueia status pendente ou falho", () => {
@@ -16,9 +30,34 @@ describe("isResendDomainSendCapable", () => {
     expect(isResendDomainSendCapable("not_started")).toBe(false)
     expect(isResendDomainSendCapable("failed")).toBe(false)
     expect(isResendDomainSendCapable("temporary_failure")).toBe(false)
-    expect(isResendDomainSendCapable("partially_failed")).toBe(false)
     expect(isResendDomainSendCapable(null)).toBe(false)
     expect(isResendDomainSendCapable(undefined)).toBe(false)
+  })
+
+  it("cobre todos os status conhecidos do Resend", () => {
+    const capable = new Set(["verified", "partially_verified", "partially_failed"])
+    for (const status of ALL_RESEND_DOMAIN_STATUSES) {
+      expect(isResendDomainSendCapable(status)).toBe(capable.has(status))
+    }
+  })
+})
+
+describe("isResendDomainTrackingCapable", () => {
+  it("só permite verified", () => {
+    expect(isResendDomainTrackingCapable("verified")).toBe(true)
+    expect(isResendDomainTrackingCapable("partially_verified")).toBe(false)
+    expect(isResendDomainTrackingCapable("partially_failed")).toBe(false)
+    expect(isResendDomainTrackingCapable("pending")).toBe(false)
+    expect(isResendDomainTrackingCapable(null)).toBe(false)
+  })
+})
+
+describe("getResendDomainDispatchWarnings", () => {
+  it("avisa quando tracking está degradado", () => {
+    expect(getResendDomainDispatchWarnings("partially_failed")).toEqual([
+      RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
+    ])
+    expect(getResendDomainDispatchWarnings("verified")).toEqual([])
   })
 })
 

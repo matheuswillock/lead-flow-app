@@ -2,13 +2,34 @@ import { formatLocalDateValue, getMinutesInTz } from "@/lib/dates"
 
 export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: string }
 
+export const RESEND_DOMAIN_TRACKING_DEGRADED_WARNING =
+  "Tracking de abertura/clique indisponível neste domínio (CNAME pendente)."
+
 /**
  * Statuses that allow campaign dispatch with a custom Resend domain.
- * `partially_verified` means sending DNS is ok while tracking (or another
- * record) is still pending — teams must keep sending in that state.
+ * `partially_verified` / `partially_failed` mean sending DNS (DKIM/SPF) is ok
+ * while tracking may be pending or degraded — Resend still accepts sends.
  */
 export function isResendDomainSendCapable(status: string | null | undefined): boolean {
-  return status === "verified" || status === "partially_verified"
+  return (
+    status === "verified" ||
+    status === "partially_verified" ||
+    status === "partially_failed"
+  )
+}
+
+/** Full tracking (open/click) only when every DNS record including CNAME is verified. */
+export function isResendDomainTrackingCapable(status: string | null | undefined): boolean {
+  return status === "verified"
+}
+
+export function getResendDomainDispatchWarnings(
+  status: string | null | undefined
+): string[] {
+  if (status === "partially_failed") {
+    return [RESEND_DOMAIN_TRACKING_DEGRADED_WARNING]
+  }
+  return []
 }
 
 export type DispatchWindowCheckResult =
