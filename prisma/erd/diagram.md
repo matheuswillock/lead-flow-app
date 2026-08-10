@@ -794,6 +794,13 @@ failed failed
     
 
 
+        email_campaign_batch_idempotency_scheme {
+            positional positional
+contentHash contentHash
+        }
+    
+
+
         email_log_status {
             queued queued
 sent sent
@@ -2680,6 +2687,7 @@ completed completed
     Int totalBounced 
     Int totalComplained 
     EmailCampaignDispatchStatus status 
+    EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme 
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -4231,6 +4239,7 @@ completed completed
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
     "corretor_studio_email_campaigns" |o--|o corretor_studio_email_campaigns : "parentCampaign"
     "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignDispatchStatus" : "enum:status"
+    "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignBatchIdempotencyScheme" : "enum:batchIdempotencyScheme"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_campaigns : "campaign"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_templates : "template"
