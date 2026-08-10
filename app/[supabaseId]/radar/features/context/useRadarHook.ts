@@ -42,6 +42,7 @@ export function useRadarHookFn() {
   const [segments, setSegments] = useState<RadarSegment[]>([])
   const [customSegments, setCustomSegments] = useState<RadarCustomSegmentListItem[]>([])
   const [metrics, setMetrics] = useState<RadarMetrics | null>(null)
+  const [fixedSegmentsError, setFixedSegmentsError] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<RadarProfileDetail | null>(null)
   const [detailEvents, setDetailEvents] = useState<RadarProfileDetail["events"]>([])
   const [detailEventsTotal, setDetailEventsTotal] = useState(0)
@@ -119,6 +120,7 @@ export function useRadarHookFn() {
       ])
       setSegments(segmentsResult.segments)
       setMetrics(segmentsResult.metrics)
+      setFixedSegmentsError(Boolean(segmentsResult.fixedSegmentsError))
       setProfiles(profilesResult.items)
       setTotal(profilesResult.total)
       setCustomSegments(customSegmentsResult)
@@ -688,6 +690,7 @@ export function useRadarHookFn() {
     segments,
     customSegments,
     metrics,
+    fixedSegmentsError,
     selectedProfile,
     detailEvents,
     detailEventsTotal,
