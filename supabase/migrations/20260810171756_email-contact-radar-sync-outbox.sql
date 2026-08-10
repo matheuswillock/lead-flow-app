@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS "public"."corretor_studio_email_contact_radar_sync_ou
   "teamId" UUID NOT NULL,
   "emailImportJobId" UUID,
   "status" "public"."email_contact_radar_sync_outbox_status" NOT NULL DEFAULT 'pending',
-  "syncGeneration" INTEGER NOT NULL DEFAULT 0,
+  "generation" INTEGER NOT NULL DEFAULT 0,
   "attemptCount" INTEGER NOT NULL DEFAULT 0,
   "nextAttemptAt" TIMESTAMPTZ(6) NOT NULL DEFAULT now(),
   "lastError" TEXT,

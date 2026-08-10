@@ -4,7 +4,7 @@ export type EmailContactRadarSyncOutboxClaimRow = {
   teamId: string;
   emailImportJobId: string | null;
   attemptCount: number;
-  syncGeneration: number;
+  generation: number;
 };
 
 export type UpsertRadarSyncOutboxEntry = {
@@ -17,10 +17,10 @@ export interface IEmailContactRadarSyncOutboxRepository {
   upsertPendingForContacts(entries: UpsertRadarSyncOutboxEntry[]): Promise<void>;
   claimDue(limit: number): Promise<EmailContactRadarSyncOutboxClaimRow[]>;
   requeueIfProcessing(ids: string[]): Promise<void>;
-  markSent(id: string, syncGeneration: number): Promise<boolean>;
+  markSent(id: string, generation: number): Promise<boolean>;
   markFailedWithRetry(
     id: string,
-    syncGeneration: number,
+    generation: number,
     attemptCount: number,
     nextAttemptAt: Date | null,
     lastError: string

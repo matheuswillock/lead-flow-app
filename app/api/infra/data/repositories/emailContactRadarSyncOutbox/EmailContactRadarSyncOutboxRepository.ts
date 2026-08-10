@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import { EMAIL_CONTACT_RADAR_SYNC_OUTBOX_MAX_ATTEMPTS } from "@/lib/email/email-contact-radar-sync-outbox-backoff";
 import type {
   EmailContactRadarSyncOutboxClaimRow,
   IEmailContactRadarSyncOutboxRepository,
@@ -6,7 +7,7 @@ import type {
 } from "./IEmailContactRadarSyncOutboxRepository";
 
 /** Rows stuck in `processing` longer than this are treated as abandoned leases. */
-const STALE_PROCESSING_MS = 5 * 60 * 1000;
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
 
 export class EmailContactRadarSyncOutboxRepository
   implements IEmailContactRadarSyncOutboxRepository
@@ -34,29 +35,45 @@ export class EmailContactRadarSyncOutboxRepository
             attemptCount: 0,
             nextAttemptAt: now,
             lastError: null,
-            syncGeneration: { increment: 1 },
+            generation: { increment: 1 },
           },
         })
       )
     );
   }
 
-  async claimDue(limit: number): Promise<EmailContactRadarSyncOutboxClaimRow[]> {
-    const now = new Date();
+  private async recoverStaleProcessingClaims(now: Date): Promise<void> {
     const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS);
-
-    await prisma.emailContactRadarSyncOutbox.updateMany({
+    const staleRows = await prisma.emailContactRadarSyncOutbox.findMany({
       where: {
         status: "processing",
         updatedAt: { lt: staleBefore },
       },
-      data: {
-        status: "pending",
-        syncGeneration: { increment: 1 },
-        lastError: "Lease de processamento expirado; reenfileirado",
-        nextAttemptAt: now,
-      },
+      select: { id: true, attemptCount: true },
     });
+
+    for (const row of staleRows) {
+      const nextAttemptCount = row.attemptCount + 1;
+      const exhausted = nextAttemptCount >= EMAIL_CONTACT_RADAR_SYNC_OUTBOX_MAX_ATTEMPTS;
+
+      await prisma.emailContactRadarSyncOutbox.updateMany({
+        where: { id: row.id, status: "processing" },
+        data: {
+          status: exhausted ? "failed" : "pending",
+          attemptCount: nextAttemptCount,
+          generation: { increment: 1 },
+          lastError: exhausted
+            ? "Lease de processamento expirado; tentativas esgotadas"
+            : "Lease de processamento expirado; reenfileirado",
+          nextAttemptAt: now,
+        },
+      });
+    }
+  }
+
+  async claimDue(limit: number): Promise<EmailContactRadarSyncOutboxClaimRow[]> {
+    const now = new Date();
+    await this.recoverStaleProcessingClaims(now);
 
     const due = await prisma.emailContactRadarSyncOutbox.findMany({
       where: {
@@ -71,7 +88,7 @@ export class EmailContactRadarSyncOutboxRepository
         teamId: true,
         emailImportJobId: true,
         attemptCount: true,
-        syncGeneration: true,
+        generation: true,
       },
     });
 
@@ -82,7 +99,7 @@ export class EmailContactRadarSyncOutboxRepository
     const claimed: EmailContactRadarSyncOutboxClaimRow[] = [];
     for (const row of due) {
       const updated = await prisma.emailContactRadarSyncOutbox.updateMany({
-        where: { id: row.id, status: "pending", syncGeneration: row.syncGeneration },
+        where: { id: row.id, status: "pending", generation: row.generation },
         data: { status: "processing", updatedAt: new Date() },
       });
       if (updated.count === 1) {
@@ -104,14 +121,14 @@ export class EmailContactRadarSyncOutboxRepository
         status: "pending",
         nextAttemptAt: new Date(),
         lastError: "Reenfileirado após falha no processamento do lote",
-        syncGeneration: { increment: 1 },
+        generation: { increment: 1 },
       },
     });
   }
 
-  async markSent(id: string, syncGeneration: number): Promise<boolean> {
+  async markSent(id: string, generation: number): Promise<boolean> {
     const updated = await prisma.emailContactRadarSyncOutbox.updateMany({
-      where: { id, status: "processing", syncGeneration },
+      where: { id, status: "processing", generation },
       data: { status: "sent", lastError: null },
     });
     return updated.count === 1;
@@ -119,13 +136,13 @@ export class EmailContactRadarSyncOutboxRepository
 
   async markFailedWithRetry(
     id: string,
-    syncGeneration: number,
+    generation: number,
     attemptCount: number,
     nextAttemptAt: Date | null,
     lastError: string
   ): Promise<boolean> {
     const updated = await prisma.emailContactRadarSyncOutbox.updateMany({
-      where: { id, status: "processing", syncGeneration },
+      where: { id, status: "processing", generation },
       data: {
         attemptCount,
         lastError,

@@ -6,13 +6,13 @@ const claimDueMock = mock(async () => [] as Array<{
   teamId: string;
   emailImportJobId: string | null;
   attemptCount: number;
-  syncGeneration: number;
+  generation: number;
 }>);
 const markSentMock = mock(async () => true);
 const markFailedWithRetryMock = mock(
   async (
     _id: string,
-    _syncGeneration: number,
+    _generation: number,
     _attemptCount: number,
     _nextAttemptAt: Date | null,
     _lastError: string
@@ -78,7 +78,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
         teamId: "team-1",
         emailImportJobId: "job-1",
         attemptCount: 0,
-        syncGeneration: 0,
+        generation: 0,
       },
     ]);
 
@@ -98,7 +98,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
         teamId: "team-1",
         emailImportJobId: "job-1",
         attemptCount: 4,
-        syncGeneration: 1,
+        generation: 1,
       },
     ]);
     syncExecuteMock.mockImplementation(async () => ({
@@ -127,7 +127,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
         teamId: "team-1",
         emailImportJobId: "job-1",
         attemptCount: 0,
-        syncGeneration: 0,
+        generation: 0,
       }))
     );
 

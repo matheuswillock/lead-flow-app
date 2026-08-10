@@ -2619,6 +2619,7 @@ completed completed
   "corretor_studio_email_contact_radar_sync_outbox" {
     String id "🗝️"
     EmailContactRadarSyncOutboxStatus status 
+    Int generation 
     Int attemptCount 
     DateTime nextAttemptAt 
     String lastError "❓"

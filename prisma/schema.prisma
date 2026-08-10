@@ -3153,7 +3153,7 @@ model EmailContactRadarSyncOutbox {
   teamId           String                            @db.Uuid
   emailImportJobId String?                           @db.Uuid
   status           EmailContactRadarSyncOutboxStatus @default(pending)
-  syncGeneration   Int                               @default(0)
+  generation       Int                               @default(0)
   attemptCount     Int                               @default(0)
   nextAttemptAt    DateTime                          @default(now()) @db.Timestamptz(6)
   lastError        String?                           @db.Text
