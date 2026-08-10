@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { MetricTrendIndicator } from "./MetricTrendIndicator"
+import { TrackingDegradedAlert } from "./TrackingDegradedAlert"
 import { useCampaignsOverview } from "./useCampaignsOverview"
 
 type OverviewMetricProps = {
@@ -64,6 +65,7 @@ export function CampaignsOverviewPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <TrackingDegradedAlert warnings={data.trackingWarnings} />
       <div className="grid gap-4 md:grid-cols-3">
         <OverviewMetric
           title="Entregabilidade (hoje)"

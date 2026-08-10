@@ -89,6 +89,8 @@ export type EmailSettings = {
   resendDomainConnectedAt: string | null
   resendOpenTracking: boolean
   resendClickTracking: boolean
+  resendDomainTrackingCapable: boolean
+  resendDomainDispatchWarnings: string[]
   domainEvents: DomainEvent[]
   senders: EmailSender[]
   defaultSenderId: string | null

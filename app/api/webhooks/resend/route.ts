@@ -1,8 +1,13 @@
 // Webhook URL canônica (sem redirect): https://www.corretorstudio.com/api/webhooks/resend
 import { after, NextResponse, type NextRequest } from "next/server"
 import { Webhook } from "svix"
+import type { Prisma } from "@prisma/client"
 import { resendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
+import {
+  formatProcessingError,
+  resendWebhookProcessingFailureRepository,
+} from "@/app/api/infra/data/repositories/resendWebhookProcessingFailure/ResendWebhookProcessingFailureRepository"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const MAX_CONCURRENT = 5
@@ -52,6 +57,16 @@ export async function POST(request: NextRequest) {
         await resendWebhookUseCase.handle({ event, svixId })
       } catch (error) {
         console.error("[ResendWebhookRoute][POST][after]", error)
+        try {
+          await resendWebhookProcessingFailureRepository.upsertFromProcessingFailure({
+            svixId,
+            eventType: event.type,
+            payload: event as Prisma.InputJsonValue,
+            lastError: formatProcessingError(error),
+          })
+        } catch (outboxError) {
+          console.error("[ResendWebhookRoute][POST][after][outbox]", outboxError)
+        }
       } finally {
         inFlight--
       }

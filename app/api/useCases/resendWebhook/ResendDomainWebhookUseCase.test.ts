@@ -23,6 +23,7 @@ describe("ResendDomainWebhookUseCase", () => {
         clickTracking: true,
         trackingSubdomain: "links",
       }),
+      listConnectedDomains: async () => [],
     }
 
     const useCase = new ResendDomainWebhookUseCase(repository)
@@ -37,5 +38,43 @@ describe("ResendDomainWebhookUseCase", () => {
 
     expect(result.isValid).toBe(true)
     expect(result.result).toMatchObject({ handled: true, target: "team_domain" })
+  })
+
+  it("D12 — persiste partially_failed via syncFromResendDomain", async () => {
+    let syncedStatus: string | undefined
+    const repository: IEmailTeamDomainEventRepository = {
+      listEvents: async () => [],
+      recordEventIfMissing: async () => undefined,
+      findTeamByResendDomainId: async () => ({
+        teamId: "team-1",
+        resendDomainName: "backstageclub.com.br",
+      }),
+      updateDomainTracking: async () => undefined,
+      clearDomainSettings: async () => undefined,
+      syncFromResendDomain: async (_teamId, domain) => {
+        syncedStatus = domain.status
+        return {
+          status: domain.status ?? "pending",
+          region: "sa-east-1",
+          openTracking: true,
+          clickTracking: true,
+          trackingSubdomain: "links",
+        }
+      },
+      listConnectedDomains: async () => [],
+    }
+
+    const useCase = new ResendDomainWebhookUseCase(repository)
+    const result = await useCase.handle({
+      type: "domain.updated",
+      data: {
+        id: "dom_123",
+        created_at: new Date().toISOString(),
+        status: "partially_failed",
+      },
+    })
+
+    expect(result.isValid).toBe(true)
+    expect(syncedStatus).toBe("partially_failed")
   })
 })

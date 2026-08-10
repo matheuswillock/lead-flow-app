@@ -107,6 +107,14 @@
     {
       "path": "/api/v1/radar/cron/sync-email-contacts",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/email/cron/retry-resend-webhook-failures",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/email/cron/reconcile-resend-domain-status",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

@@ -3317,6 +3317,15 @@ enum EmailOrphanEventStatus {
   @@map("email_orphan_event_status")
 }
 
+enum ResendWebhookProcessingFailureStatus {
+  pending
+  processing
+  resolved
+  failed
+
+  @@map("resend_webhook_processing_failure_status")
+}
+
 model EmailOrphanEvent {
   id              String                 @id @default(uuid()) @db.Uuid
   resendEmailId   String                 @unique @db.Text
@@ -3332,6 +3341,22 @@ model EmailOrphanEvent {
 
   @@index([status, createdAt])
   @@map("email_orphan_events")
+}
+
+model ResendWebhookProcessingFailure {
+  id           String                               @id @default(uuid()) @db.Uuid
+  svixId       String                               @unique @db.Text
+  eventType    String                               @db.Text
+  payload      Json
+  status       ResendWebhookProcessingFailureStatus @default(pending)
+  attemptCount Int                                  @default(1)
+  nextAttemptAt DateTime                            @default(now()) @db.Timestamptz(6)
+  lastError    String?                              @db.Text
+  createdAt    DateTime                             @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime                             @updatedAt @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt])
+  @@map("corretor_studio_resend_webhook_processing_failures")
 }
 
 // -----------------------------

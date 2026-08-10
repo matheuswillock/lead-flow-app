@@ -29,6 +29,7 @@ import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
   checkDispatchWindow,
+  getResendDomainDispatchWarnings,
   isResendDomainSendCapable,
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
@@ -162,6 +163,7 @@ export type ManualDispatchJob = {
   totalRecipients: number
   retryFailedOnly: boolean
   status: "sending"
+  warnings?: string[]
 }
 
 export class EmailCampaignUseCase {
@@ -1919,6 +1921,8 @@ export class EmailCampaignUseCase {
       }))
       const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
 
+      const dispatchWarnings = getResendDomainDispatchWarnings(teamSettings?.resendDomainStatus)
+
       const job: ManualDispatchJob = {
         campaignId: campaign.id,
         dispatchId: dispatchRecord.id,
@@ -1938,6 +1942,7 @@ export class EmailCampaignUseCase {
         totalRecipients: recipientsList.length,
         retryFailedOnly,
         status: "sending",
+        ...(dispatchWarnings.length > 0 ? { warnings: dispatchWarnings } : {}),
       }
 
       return new Output(
@@ -1946,6 +1951,7 @@ export class EmailCampaignUseCase {
           retryFailedOnly
             ? `Reenvio das falhas iniciado em segundo plano (${recipientsList.length} destinatário(s))`
             : "Disparo iniciado em segundo plano",
+          ...dispatchWarnings,
         ],
         [],
         job
@@ -2793,9 +2799,31 @@ export class EmailCampaignUseCase {
               fromEmail: true,
               replyTo: true,
               resendDomainName: true,
+              resendDomainStatus: true,
             },
           })
           .catch(() => null)
+
+        if (
+          teamSettings?.resendDomainName &&
+          !isResendDomainSendCapable(teamSettings.resendDomainStatus)
+        ) {
+          await this.markScheduledCampaignFailed(
+            campaign.id,
+            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar."
+          )
+          continue
+        }
+
+        const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
+          teamSettings?.resendDomainStatus
+        )
+        // Cron has no HTTP consumer — tracking warnings are observability-only (see EMAIL_SPEC D12).
+        if (scheduledDispatchWarnings.length > 0) {
+          console.info(
+            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} aviso: ${scheduledDispatchWarnings.join(" ")}`
+          )
+        }
 
         if (teamSettings) {
           const windowCheck = checkDispatchWindow(now, ownerTz, {
