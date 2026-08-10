@@ -23,6 +23,7 @@ describe("ResendDomainWebhookUseCase", () => {
         clickTracking: true,
         trackingSubdomain: "links",
       }),
+      listConnectedDomains: async () => [],
     }
 
     const useCase = new ResendDomainWebhookUseCase(repository)
@@ -60,6 +61,7 @@ describe("ResendDomainWebhookUseCase", () => {
           trackingSubdomain: "links",
         }
       },
+      listConnectedDomains: async () => [],
     }
 
     const useCase = new ResendDomainWebhookUseCase(repository)

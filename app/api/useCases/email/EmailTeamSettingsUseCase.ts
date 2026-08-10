@@ -17,6 +17,10 @@ import {
 import {
   emailTeamDomainEventRepository,
 } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
+import {
+  getResendDomainDispatchWarnings,
+  isResendDomainTrackingCapable,
+} from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
 export type BlockedDateRange =
@@ -222,6 +226,8 @@ export class EmailTeamSettingsUseCase {
       resendDomainConnectedAt: settings?.resendDomainConnectedAt?.toISOString() ?? null,
       resendOpenTracking: settings?.resendOpenTracking ?? DEFAULTS.resendOpenTracking,
       resendClickTracking: settings?.resendClickTracking ?? DEFAULTS.resendClickTracking,
+      resendDomainTrackingCapable: isResendDomainTrackingCapable(settings?.resendDomainStatus),
+      resendDomainDispatchWarnings: getResendDomainDispatchWarnings(settings?.resendDomainStatus),
       domainEvents,
       senders,
       defaultSenderId: defaultSender?.id ?? null,

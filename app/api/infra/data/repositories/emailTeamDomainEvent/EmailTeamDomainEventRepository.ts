@@ -29,6 +29,13 @@ export type ResendDomainSnapshot = {
   trackingSubdomain?: string | null
 }
 
+export type ConnectedResendDomainRow = {
+  teamId: string
+  resendDomainId: string
+  resendDomainName: string | null
+  resendDomainStatus: string | null
+}
+
 export interface IEmailTeamDomainEventRepository {
   listEvents(teamId: string): Promise<DomainEventRecord[]>
   recordEventIfMissing(
@@ -62,6 +69,7 @@ export interface IEmailTeamDomainEventRepository {
     clickTracking: boolean
     trackingSubdomain: string | null
   }>
+  listConnectedDomains(): Promise<ConnectedResendDomainRow[]>
 }
 
 export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepository {
@@ -186,6 +194,30 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
     }
 
     return { status, region, openTracking, clickTracking, trackingSubdomain }
+  }
+
+  async listConnectedDomains(): Promise<ConnectedResendDomainRow[]> {
+    const rows = await prisma.emailTeamSettings.findMany({
+      where: { resendDomainId: { not: null } },
+      select: {
+        teamId: true,
+        resendDomainId: true,
+        resendDomainName: true,
+        resendDomainStatus: true,
+      },
+    })
+
+    return rows.flatMap((row) => {
+      if (!row.resendDomainId) return []
+      return [
+        {
+          teamId: row.teamId,
+          resendDomainId: row.resendDomainId,
+          resendDomainName: row.resendDomainName,
+          resendDomainStatus: row.resendDomainStatus,
+        },
+      ]
+    })
   }
 }
 

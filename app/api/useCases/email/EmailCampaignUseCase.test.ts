@@ -796,6 +796,30 @@ describe("EmailCampaignUseCase.send", () => {
     expect(reserveCreditsMock).toHaveBeenCalled()
   })
 
+  it("D12 — domínio partially_verified → dispara com aviso de tracking degradado", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "partially_verified",
+      fromName: "Test",
+      fromEmail: "test@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.successMessages).toContain(RESEND_DOMAIN_TRACKING_DEGRADED_WARNING)
+    expect(output.result?.warnings).toEqual([RESEND_DOMAIN_TRACKING_DEGRADED_WARNING])
+  })
+
   // ---------------------------------------------------------------------------
   // D12 — domínio failed continua bloqueado
   // ---------------------------------------------------------------------------

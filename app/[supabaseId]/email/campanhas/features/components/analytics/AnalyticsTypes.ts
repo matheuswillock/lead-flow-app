@@ -42,6 +42,8 @@ export type AnalyticsData = {
     totals: Record<keyof AnalyticsTotals, MetricDelta>
   }
   dispatches?: DispatchAnalyticsItem[]
+  resendDomainTrackingCapable?: boolean
+  trackingWarnings?: string[]
 }
 
 export type DispatchAnalyticsStatus = "sending" | "completed" | "failed"
@@ -106,5 +108,7 @@ export type CompareCampaignItem = {
 export type CompareCampaignsData = {
   period: { from: string; to: string }
   previousPeriod: { from: string; to: string }
+  resendDomainTrackingCapable?: boolean
+  trackingWarnings?: string[]
   campaigns: CompareCampaignItem[]
 }

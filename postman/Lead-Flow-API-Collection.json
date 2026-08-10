@@ -16338,6 +16338,50 @@
               "response": []
             },
             {
+              "name": "Retry Falhas Webhook Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/retry-resend-webhook-failures",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "retry-resend-webhook-failures"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Reprocessa falhas do webhook Resend (D11)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reconciliar Status de Domínio Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/reconcile-resend-domain-status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "reconcile-resend-domain-status"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Poll Resend API e corrige resendDomainStatus dessincronizado (D12 item 3)."
+              },
+              "response": []
+            },
+            {
               "name": "Digest Reuniões Pendentes (+3 dias)",
               "request": {
                 "method": "GET",

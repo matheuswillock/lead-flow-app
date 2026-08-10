@@ -53,11 +53,16 @@ describe("isResendDomainTrackingCapable", () => {
 })
 
 describe("getResendDomainDispatchWarnings", () => {
-  it("avisa quando tracking está degradado", () => {
+  it("avisa quando envio é permitido mas tracking não está pleno", () => {
     expect(getResendDomainDispatchWarnings("partially_failed")).toEqual([
       RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
     ])
+    expect(getResendDomainDispatchWarnings("partially_verified")).toEqual([
+      RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
+    ])
     expect(getResendDomainDispatchWarnings("verified")).toEqual([])
+    expect(getResendDomainDispatchWarnings("pending")).toEqual([])
+    expect(getResendDomainDispatchWarnings("failed")).toEqual([])
   })
 })
 

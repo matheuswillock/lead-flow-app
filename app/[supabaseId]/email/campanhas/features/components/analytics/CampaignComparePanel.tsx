@@ -16,6 +16,7 @@ import type {
   MetricDelta,
 } from "./AnalyticsTypes"
 import { MetricTrendIndicator } from "./MetricTrendIndicator"
+import { TrackingDegradedAlert } from "./TrackingDegradedAlert"
 import { useTimezone } from "@/app/context/TimezoneContext"
 
 const service = new CampaignAnalyticsService()
@@ -184,6 +185,8 @@ export function CampaignComparePanel({
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      <TrackingDegradedAlert warnings={data?.trackingWarnings} />
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-3">

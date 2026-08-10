@@ -23,10 +23,11 @@ export function isResendDomainTrackingCapable(status: string | null | undefined)
   return status === "verified"
 }
 
+/** Non-blocking warnings when the team can send but open/click tracking is not fully verified. */
 export function getResendDomainDispatchWarnings(
   status: string | null | undefined
 ): string[] {
-  if (status === "partially_failed") {
+  if (isResendDomainSendCapable(status) && !isResendDomainTrackingCapable(status)) {
     return [RESEND_DOMAIN_TRACKING_DEGRADED_WARNING]
   }
   return []

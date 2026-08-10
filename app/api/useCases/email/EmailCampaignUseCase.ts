@@ -2818,6 +2818,7 @@ export class EmailCampaignUseCase {
         const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
           teamSettings?.resendDomainStatus
         )
+        // Cron has no HTTP consumer — tracking warnings are observability-only (see EMAIL_SPEC D12).
         if (scheduledDispatchWarnings.length > 0) {
           console.info(
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} aviso: ${scheduledDispatchWarnings.join(" ")}`
