@@ -1,8 +1,8 @@
 # Spec: Evolução do Módulo de E-mail — Créditos por Time, Conformidade e Robustez de Disparo
 
-**Data:** 2026-07-05
-**Base:** `EMAIL_AUDIT.md` (mesma rodada). Números de seção citados (ex.: 3.1) referem-se ao audit.
-**Status:** proposta — aguarda decisões D1/D2 do owner antes do Estágio 2.
+**Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (Estágios 8/9 — incidente de produção, `EMAIL_AUDIT.md` §8)
+**Base:** `EMAIL_AUDIT.md` (mesma rodada + §8). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
+**Status:** proposta — aguarda decisões D1/D2 do owner antes do Estágio 2; Estágios 8/9 aguardam decisão D9 (trade-off de latência do Radar) antes de implementar.
 
 ---
 
@@ -20,6 +20,8 @@ O módulo de e-mail mistura billing (créditos, overage, ciclo mensal) com deliv
 - 3.6 Editor HTML: praticamente pronto (frontend já força `"html"`); resta higiene de schema e tags do teste.
 - 3.7 Import: 100% síncrono, sem fila, sem retry por lote, sem notificação.
 - 4.x Órfãos/429: tags ausentes em 3 caminhos de envio + enrichment síncrono por evento.
+- 8.1 (incidente 2026-08-10) Import assíncrono (Estágio 6) já existe, mas o sync síncrono com o Radar dentro do lote não cabe no orçamento de tempo do cron — fila inteira trava atrás de um job lento, sem circuit breaker.
+- 8.3 (incidente 2026-08-10) `reconcileManualDispatchAfterError` só tem retry para deadlock, não para timeout de pool — quando falha, perde o `totalSent` real e mostra "0 enviados" com e-mails já entregues.
 
 ## Goals
 
@@ -116,6 +118,29 @@ Consequências normativas:
 4. **Ordem do gate em todo caminho de disparo:** `resolveEmailBetaAccess` primeiro; se beta ⇒ segue sem tocar no subsistema de créditos; senão ⇒ D3 (saldo + reserva atômica).
 5. **UI:** Time beta não vê barra de saldo nem CTA de assinatura (comportamento atual do `CreditBalanceBar` é mantido); `EmailCreditUseCase.subscribe` continua recusando assinatura de usuário beta (comportamento atual).
 6. Ao **desligar** o beta da feature, os Times voltam imediatamente para a regra padrão (sem assinatura ativa = disparo bloqueado) — comunicar antes de desligar.
+
+### D9 — Sync do Radar no import de contatos vira fila desacoplada (outbox), fire-and-forget do lote ⚠️ decisão do owner
+
+**Motivo:** achado E1 (`EMAIL_AUDIT.md` §8.1) — sincronizar cada contato com o Radar dentro do próprio laço de import é a causa raiz da fila travada (um job pode levar de 25 min a 9h; hoje há 49 jobs de múltiplos times esperando há 16h+ atrás de um único job lento). O código atual tem um comentário justificando o desenho síncrono atual (`EmailContactImportUseCase.ts:526-531`, referências a decisões "D6"/"I3" não localizadas em nenhum spec vigente): *"já deve constar na lista de segmentos assim que for importado" exige que o job só marque o import como concluído depois que os perfis existirem*.
+
+**Trade-off que esta decisão reverte (⚠️ requer confirmação explícita do owner, não é escolha técnica):** com a fila desacoplada, o import de contatos passa a concluir (e notificar) **antes** de os perfis Radar existirem — o contato aparece em segmentos do Radar com um atraso de até alguns minutos (ciclo do novo cron), não instantaneamente.
+
+**Desenho recomendado (segue o padrão de outbox já usado no repo — `TeamWebhookOutbox`, `prisma/schema.prisma:2739-2759`):**
+
+1. Novo model `EmailContactRadarSyncOutbox`: `id`, `emailContactId`, `teamId`, `emailImportJobId` (FK opcional para `EmailImportJob`, nulo quando o gatilho não é um import em lote — ex. contato criado via API), `status` (`pending|processing|sent|failed`), `attemptCount Int @default(0)`, `nextAttemptAt`, `lastError String?`, `createdAt`/`updatedAt`. Índices `[status, nextAttemptAt]`, `[emailImportJobId, status]` e `[emailContactId]` (unique — um contato tem no máximo uma linha de outbox por vez).
+2. `EmailContactImportUseCase.processPendingJobs()` **para de chamar o Radar diretamente**: após `upsertContactsBatch`, faz um **upsert** (não `createMany`/`skipDuplicates`) por `emailContactId` no outbox — contato novo cria a linha `pending`; contato já existente (reimport, atualização de `name`/`customFields`) **volta para `pending`** com `attemptCount: 0` e `emailImportJobId` atualizado para o job atual, mesmo que a linha anterior estivesse `sent`/`failed`. `createMany`/`skipDuplicates` deixaria uma linha `sent` de um import anterior parada para sempre e o Radar nunca receberia a atualização. `processedRows` avança imediatamente após o upsert — sem esperar Radar. Isso, sozinho, já reduz um job de horas para segundos (upsert de 500 linhas é rápido; o gargalo era só o Radar).
+3. Novo cron `/api/v1/radar/cron/sync-email-contacts` (registrar em `vercel.json`, `*/5 * * * *`, `withCronAudit`): reivindica um lote de outbox (`updateMany` `pending→processing`, mesmo padrão de claim atômico do resto da stack), processa com concorrência limitada (ex. 5-10, não 2 sequenciais) via `RADAR_SYNC_CONCURRENCY` maior já que agora está isolado, marca `sent`/`failed` por linha com `attemptCount`/`lastError`; falha definitiva após N tentativas fica `failed` (visível, não trava nada).
+4. `finalizeJob`/notificação de import concluído passam a informar quantos contatos **deste job** (`emailImportJobId = job.id`, não a lista inteira — um import anterior da mesma lista pode ter linhas pendentes independentes) aguardam sync do Radar; não bloqueia a notificação por isso.
+
+**Alternativa (se o owner rejeitar o trade-off de latência):** manter síncrono, mas eliminar o N+1 — carregar `loadEngagementWeightsAndConfig` **uma vez por lote** (não por contato) e trocar os 5 round-trips sequenciais de `processEmailContactForRadar` por operações em lote (`createMany`/`upsertMany` quando o Prisma permitir, ou ao menos `Promise.all` com concorrência maior). Reduz a duração do lote mas não elimina o acoplamento — se a lista tiver múltiplos milhares de contatos, ainda pode estourar o orçamento de um cron. **Não recomendada como solução única**, mas pode ser aplicada em conjunto com D9 para o próprio consumidor do outbox.
+
+### D10 — Reconcile de disparo manual resiliente a erro transitório de banco
+
+**Motivo:** achado E3 (`EMAIL_AUDIT.md` §8.3) — `reconcileManualDispatchAfterError` (`EmailCampaignUseCase.ts:2298`) só recupera o `totalSent` real quando sua própria escrita no banco funciona de primeira; timeout de pool de conexão durante essa escrita apaga a evidência de que os e-mails já saíram.
+
+1. `commitDispatchTerminalState` (`ts:2237`) passa a envolver a operação com `withPrismaRetry` (já existe em `app/api/infra/data/prisma.ts`, usado em `ProfileRepository`/`public-stats.ts`) além do `withDeadlockRetry` atual — cobrindo `P1001`/`P2024`/erros de conexão transitórios, não só deadlock.
+2. Se, mesmo com retry, o reconcile falhar, o fallback genérico (`ts:2185-2213`) passa a tentar **uma leitura simples e isolada** de `emailLog.count(status in sucesso)` (sem transação, sem `$transaction`) só para popular `totalSent` corretamente antes de marcar `failed` — nunca gravar `totalSent: 0` quando existe log de sucesso para aquele `dispatchId`.
+3. **Correção dos 3 registros históricos já incorretos** (`EMAIL_AUDIT.md` §8.3 — Rede D'Or . 001, LISTA FRIA - BRUNO parte 12/12, 17.07): script one-off (`bun run` local, não migration) que recalcula `totalSent`/`status` desses 3 dispatches a partir do `EmailLog` real. **Só roda com autorização explícita do owner** (escreve em produção) — reportar antes de executar.
 
 ---
 
@@ -429,6 +454,90 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
        └───────────────────────────────────────┘  campanha
 ```
 
+### Estágio 8 — Fila desacoplada de sincronização Radar do import de contatos ⚠️ depende de D9
+
+**Prompt (copy-paste):**
+
+```text
+Leia EMAIL_AUDIT.md (seção 8.1) e a decisão D9 registrada em EMAIL_SPEC.md. Confirme
+com o dono do projeto o trade-off de latência do D9 antes de implementar (import
+conclui antes do sync Radar existir). Então:
+
+1. Schema (bun run db:migrate:from-prisma -- email-contact-radar-sync-outbox):
+   model EmailContactRadarSyncOutbox conforme desenhado em D9 (id, emailContactId,
+   teamId, emailImportJobId String? com relation para EmailImportJob, status
+   pending|processing|sent|failed, attemptCount, nextAttemptAt, lastError,
+   createdAt/updatedAt), unique em emailContactId, índices [status, nextAttemptAt]
+   e [emailImportJobId, status]. NÃO aplique no remoto sem autorização do owner.
+2. EmailContactImportUseCase.processPendingJobs: remova o laço de sync do Radar
+   (linhas 526-586 hoje) de dentro do processamento de lote. Após upsertContactsBatch,
+   faça upsert (NÃO createMany/skipDuplicates) por emailContactId no outbox para os
+   contatos do lote (só quando teamHasRadarFeature): contato novo cria pending;
+   contato já existente (reimport/atualização) volta para pending com attemptCount
+   zerado e emailImportJobId apontando para o job atual — nunca deixe uma linha
+   sent/failed de um import anterior impedir a criação/reativação. processedRows
+   avança logo após o upsert de contatos.
+3. Novo endpoint app/api/v1/radar/cron/sync-email-contacts/route.ts, registrado em
+   vercel.json (*/5 * * * *), usando withCronAudit (padrão de
+   CRON_OBSERVABILITY_SPEC.md — nunca gatear a execução na criação do registro de
+   auditoria). Reivindica um lote do outbox via updateMany atômico
+   (pending->processing, count check), processa com concorrência limitada
+   (Promise.all em chunks, ex. 5-10 simultâneos — reaproveite
+   syncEmailContactToRadarUseCase por contato), marca sent ou incrementa
+   attemptCount/lastError e volta pending (backoff simples) até um teto (ex. 5
+   tentativas), aí marca failed definitivo.
+4. Notificação EMAIL_IMPORT_COMPLETED (finalizeJob): inclua quantos contatos DESTE
+   job (contagem do outbox filtrada por emailImportJobId = job.id, nunca por listId
+   inteira — um import anterior da mesma lista pode ter linhas pendentes próprias)
+   aguardam sync do Radar, sem bloquear a notificação por isso.
+5. Testes: import de 1500 contatos conclui e notifica sem tocar no Radar
+   síncronamente (mock do outbox); cron do outbox processa em lotes, respeita
+   concorrência, retenta com backoff e marca failed após o teto; reimportar um
+   contato cuja linha de outbox já está sent/failed reativa a mesma linha para
+   pending (não fica parada); contagem da notificação reflete só o job atual quando
+   há outbox pendente de um import anterior da mesma lista.
+Atualize vercel.json e a validação completa (typecheck/lint/governance:check/
+governance:check-api-masking/lint:pt-br).
+```
+
+**Não tocar:** `RadarService.syncFromEmail`/`processEmailContactForRadar` (lógica de sync em si, só muda quem chama e quando); `RadarEngagementBackfillUseCase` (achado B4 do Radar, já tratado à parte); demais crons de e-mail.
+
+**Aceite:** import de uma lista de 4.000+ contatos com Radar habilitado conclui em segundos, não horas (medir contra os ~9h observados no incidente); fila de 49 jobs pendentes (estado do incidente) esvazia sem um job lento bloquear os demais; outbox nunca cresce sem limite — falha definitiva vira `failed` visível, não retry infinito; teste de concorrência do claim do outbox verde.
+**Validação manual:** reproduzir localmente um import de lista grande com Radar habilitado; conferir que a lista sai de "Importando" rapidamente e que os perfis Radar aparecem no outbox e depois em `RadarProfile` nos minutos seguintes.
+
+### Estágio 9 — Resiliência do reconcile de disparo manual ⚠️ depende de D10
+
+**Prompt (copy-paste):**
+
+```text
+Leia EMAIL_AUDIT.md (seção 8.3) e a decisão D10 registrada em EMAIL_SPEC.md. Então:
+
+1. lib/email/with-deadlock-retry.ts (ou um novo helper ao lado): garanta que
+   commitDispatchTerminalState (EmailCampaignUseCase.ts:2237) também tenha retry
+   para erro transitório de conexão (P1001/P2024 e mensagens de pool timeout),
+   reaproveitando withPrismaRetry de app/api/infra/data/prisma.ts — não crie uma
+   segunda implementação de retry.
+2. reconcileManualDispatchAfterError (ts:2298): se a escrita via
+   commitDispatchTerminalState falhar mesmo após o retry, faça uma leitura isolada
+   (sem transação) de emailLog.count(status em sucesso) para aquele dispatchId
+   ANTES de cair no caminho genérico de failed, e grave esse totalSent real mesmo
+   que o resto do estado (campanha) não seja atualizável no momento — nunca deixe
+   totalSent em 0 quando existe log de sucesso.
+3. Testes: simular timeout de pool na escrita do commitDispatchTerminalState
+   (mock do prisma lançando erro P1001) com emailLog já tendo entradas sent;
+   asserir que o dispatch final NUNCA fica com totalSent: 0 nesse cenário.
+4. Script one-off (não migration, não roda em CI) para corrigir os 3 registros
+   históricos listados em EMAIL_AUDIT.md 8.3 recalculando totalSent a partir do
+   EmailLog real. Reporte o resultado antes de rodar contra produção — só executa
+   com autorização explícita do owner.
+Rode a validação completa.
+```
+
+**Não tocar:** critério de elegibilidade de retry (`campaign-failed-recipients.ts` já está correto — usa `EmailLog` por destinatário, não o agregado); fluxo do cron `dispatch-scheduled` (usa `STUCK_SENDING`, não esse caminho).
+
+**Aceite:** teste de timeout simulado prova que `totalSent` nunca perde a contagem real; os 3 dispatches históricos corrigidos (após autorização) refletem o `EmailLog` real.
+**Validação manual:** conferir no Supabase que os 3 dispatches citados no audit passam a ter `totalSent` correspondente aos `EmailLog` reais.
+
 ---
 
 ## Edge cases & error handling (transversais)
@@ -462,9 +571,12 @@ DEPOIS ┌ Editor ───────────────── [HTML] ─
 2. **D2 — nível de acesso do operator (O1/O2/O3)** — recomendação O1; aguarda owner.
 3. Cobrança real (assinatura + overage no Asaas): quando entrar, define se overage volta a ser permitido com teto ou permanece bloqueio rígido.
 4. ~~Resultado das queries MCP~~ **Resolvida (2026-07-06)**: investigação MCP executada (audit seção 6). Não há campanhas `scheduled` vencidas hoje, mas confirmou-se que o cron **mata silenciosamente** toda campanha agendada que vence (0 assinaturas ativas + bypass beta ausente no cron). O Estágio 1 é hotfix prioritário — a correção do gate de créditos do cron foi incorporada ao prompt do estágio.
+5. **D9 — trade-off de latência do sync Radar (import conclui antes do perfil Radar existir)** — aguarda confirmação do owner antes do Estágio 8. A alternativa (otimizar mantendo síncrono) está registrada em D9 caso o trade-off seja rejeitado.
+6. Origem das decisões "D6"/"I3" citadas no comentário de `EmailContactImportUseCase.ts:526-531` não foi localizada em nenhum spec vigente (grep em `*.md`/`specs/*.md`) — tratado como requisito real encontrado no código, não como spec formal; D9 propõe supersedê-lo explicitamente mediante confirmação do owner.
 
 ## Decisions log
 
 - 2026-07-05 — Auditoria concluída; spec proposta. D1=A/M1 e D2=O1 recomendadas, pendentes de confirmação do owner. Cobrança Asaas declarada non-goal desta rodada (gap reportado no audit 3.4).
 - 2026-07-06 — Investigação MCP executada (Supabase produção + Vercel + export de logs 24h). Confirmados em produção: kill silencioso de campanhas agendadas pelo gate de créditos do cron (sem bypass beta), billing com `creditsUsed = 0` acumulado, 3 campanhas `sent` com 0 envios, 2 dispatches presos em `sending`, 545 logs `queued` órfãos, 124 dispatch IDs órfãos/24h, 429 também no caminho de envio. Estágio 1 promovido a hotfix prioritário e prompt atualizado com o fix do gate de créditos + log obrigatório de kill.
 - 2026-07-06 — **Decisão do owner (D8):** funcionalidade com tag **Beta habilitada** = isenção total — não gera nenhuma cobrança e não valida créditos, em todos os caminhos de disparo. Substituída a proposta anterior do Estágio 2 de "contabilizar sem bloquear" para beta: agora beta não escreve nada em `EmailCreditUsage`. Prompt do Estágio 2 e critérios de aceite atualizados.
+- 2026-08-10 — Incidente de produção investigado via Vercel/Sentry/Supabase MCP (`EMAIL_AUDIT.md` §8, pós-deploy do `CRON_OBSERVABILITY_SPEC.md`). Confirmados: fila de import com 49 jobs/48.378 linhas travados há 16h+ atrás de um único job lento (causa: sync Radar síncrono dentro do lote sem checkpoint nem circuit breaker — D9/Estágio 8 propostos); cota mensal do Resend esgotada explicando 179/250 erros pós-deploy (operacional, não código); 3 dispatches históricos com `totalSent: 0` gravado apesar de 795-2.279 e-mails realmente enviados, por falha silenciosa do reconcile de erro transitório (D10/Estágio 9 propostos). Estágios 8/9 aguardam confirmação do owner (D9 tem trade-off de produto; D10 inclui correção de dados históricos que só roda com autorização).
