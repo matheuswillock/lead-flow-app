@@ -2,7 +2,7 @@
 
 **Data:** 2026-07-05 · **Atualizado:** 2026-08-10 (review PR #728 — 2 achados de fato corrigidos, 1 correção indevida revertida; Estágio 11/D12 adicionado)
 **Base:** `EMAIL_AUDIT.md` (mesma rodada + §0/§8/§9). Números de seção citados (ex.: 3.1, 8.1) referem-se ao audit.
-**Status:** Estágios 1, 2, 5, 6, 7 **implementados em produção**; Estágio 3 **parcial** (1 caminho de produto sem tags — ver linha da tabela). Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 8, 9, 10 e 11 aprovados/prontos para implementação** — nenhuma decisão de produto pendente resta (D9 confirmado; D12 é correção técnica, não decisão de produto).
+**Status:** Estágios 1, 2, **3**, 5, 6, 7 **implementados** (Estágio 3 concluído nesta branch — pendência `LeadDocumentRequestService`); Estágio 4 item 1 implementado; item 2 resolvido via D11/Estágio 10. **Estágios 8, 9, 10 e 11 aprovados/prontos para implementação** — nenhuma decisão de produto pendente resta (D9 confirmado; D12 é correção técnica, não decisão de produto).
 
 ## Status de execução
 
@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 1 — Fundação (cron unificado, estados terminais, bug CDP/Radar, timezone, janela de disparo) | D7 | **implementado** (inclui a janela de disparo por horário — correção do review PR #728, estava marcado como "removido" por erro de busca) | `EMAIL_AUDIT.md` §0 |
 | 2 — Créditos por Time (migration + saldo atômico) | D1, D3, D8 | **implementado** | `EMAIL_AUDIT.md` §0 |
-| 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **parcial** — `LeadDocumentRequestService.ts:26,55` ainda envia sem tags via `resend.emails.send` direto (não `EmailService.send`) | `EMAIL_AUDIT.md` §0 (achado real do review PR #728) |
+| 3 — Tags `team_id` obrigatórias + fim do 429 no enrichment | — | **implementado** — envio via `EmailService.sendEmail` com tracking (`team_id`, `category: transactional`) | `lib/email/lead-document-request-mail.test.ts` |
 | 4 — Webhook hardening (dedupe por constraint + retry do provedor) | D11 | **item 1 (dedupe) implementado; item 2 (retry em falha de processamento) resolvido via D11/Estágio 10 — não implementado ainda** | `EMAIL_AUDIT.md` §0 |
 | 5 — Descadastro público por Time | D5 | **implementado** | `EMAIL_AUDIT.md` §0 |
 | 6 — Importação de contatos em background | D4 | **implementado (com bug ativo — ver Estágio 8/D9)** | `EMAIL_AUDIT.md` §0 e §8.1 |
@@ -288,7 +288,7 @@ DEPOIS ┌ Campanhas ───────────────────�
 
 ### Estágio 3 — Tags obrigatórias + fim do 429 (órfãos na origem)
 
-**Status (2026-08-10, review PR #728): reaberto parcialmente.** Os itens 2-5 abaixo já estão implementados (ver `EMAIL_AUDIT.md` §0). Falta só o item 1a abaixo — `LeadDocumentRequestService.ts` chama `resend.emails.send` diretamente, sem passar por `EmailService.send` e sem tags.
+**Status (2026-08-10): implementado.** Item 1a (`LeadDocumentRequestService` → `EmailService.sendEmail` com tracking) concluído em `feature/email-lead-document-request-tags`. Itens 2-5 já estavam implementados (ver `EMAIL_AUDIT.md` §0).
 
 **Prompt (copy-paste):**
 
@@ -698,4 +698,4 @@ Rode a validação completa.
 - 2026-08-10 — **Reavaliação completa dos Estágios 1-7** a pedido do owner (`EMAIL_AUDIT.md` §0): leitura de código confirmou que D1, D3, D5, D6, D7, D8 e os Estágios 1, 2, 3, 5, 6, 7 já estão implementados em produção — o Decisions log nunca tinha sido atualizado para refletir esse trabalho. Único desvio: Estágio 4 item 2 (webhook responder 500 em erro de processamento) foi implementado com um desenho diferente (fire-and-forget + 200 sempre) — funciona para idempotência, mas não aciona retry automático do Resend em falha transitória; marcado como pendente de decisão do owner, não como bug. Auditoria adicional da conta Resend via API (`EMAIL_AUDIT.md` §9): 2 de 5 domínios com CNAME de tracking falho (1 deles com tracking ligado mesmo assim — afeta métricas de abertura/clique do time `backstageclub.com.br`), 3 API keys sem uso recente (candidatas a revogação), 1 webhook de dev esquecido (já `disabled`, sem risco). Cobrança real Asaas segue como único non-goal do escopo original ainda pendente.
 - 2026-08-10 — **Decisão do owner sobre o Estágio 4 item 2: precisamos de retry para as falhas.** Registrada como D11 — em vez de reverter para `500` síncrono (o que a própria documentação do Resend desaconselha para eventos válidos processados async), o desenho escolhido é retry **interno** via outbox (`ResendWebhookProcessingFailure` + cron `retry-resend-webhook-failures`), mesmo padrão já usado no repo. Novo Estágio 10 adicionado, pronto para implementar (não depende de mais nenhuma decisão do owner).
 - 2026-08-10 — **Decisão do owner sobre D9: trade-off de latência aceito.** O import de contatos passa a concluir/notificar antes de os perfis Radar existirem (atraso de minutos via cron), em troca de resolver a fila travada. Estágio 8 promovido de "proposto" para "aprovado, pronto para implementar" — junto com os Estágios 9 e 10, nenhum dos três depende mais de decisão de produto.
-- 2026-08-10 — **Review automatizado no PR #728 (Codex) — 3 comentários, todos verificados no código antes de aceitar/rejeitar.** Dois achados reais aceitos: (1) `LeadDocumentRequestService.ts:26,55` envia sem tags de rastreio, reabrindo parcialmente o Estágio 3 (não é mais "implementado", é "parcial"); (2) `isResendDomainSendCapable` bloqueia disparo de campanha para domínios `partially_failed`, não só o tracking — confirmado em produção (`teamId 7b577c22-…`, domínio `backstageclub.com.br`, disparo bloqueado agora) — nova decisão D12 e Estágio 11. Uma correção da reavaliação anterior (§0) estava **errada e foi revertida**: a "janela de disparo por horário" não foi removida, está implementada corretamente em `lib/email/campaign-dispatch-guards.ts`/`EmailCampaignUseCase.ts:2721-2735` — a busca anterior usou identificadores que nunca existiram no código.
+- 2026-08-10 — **Estágio 3 concluído:** `LeadDocumentRequestService` migrado para `EmailService.sendEmail` com tags obrigatórias (`team_id`, `category: transactional`, `sourceType: lead-document-request|lead-document-uploaded`). `LeadDocumentRequestUseCase` propaga `teamId`/`requestId`/`documentId` em todos os call sites (incl. `processReminders`). Testes unitários em `LeadDocumentRequestService.test.ts`.
