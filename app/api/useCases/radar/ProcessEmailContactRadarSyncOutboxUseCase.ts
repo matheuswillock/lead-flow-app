@@ -10,9 +10,13 @@ import type { EmailContactRadarSyncOutboxClaimRow } from "@/app/api/infra/data/r
 import { RadarService } from "@/app/api/services/radar/RadarService";
 import { syncEmailContactToRadarUseCase } from "@/app/api/useCases/radar/SyncEmailContactToRadarUseCase";
 import { computeEmailContactRadarSyncOutboxNextAttemptAt } from "@/lib/email/email-contact-radar-sync-outbox-backoff";
+import {
+  resolveRadarEmailContactSyncOutboxBatchSize,
+  resolveRadarSyncConcurrency,
+} from "@/lib/email/email-contact-radar-sync-outbox-config";
 
-const BATCH_SIZE = 50;
-const RADAR_SYNC_CONCURRENCY = 8;
+/** Cron a cada 5 minutos → 12 execuções/hora. */
+const CRON_RUNS_PER_HOUR = 12;
 
 export class ProcessEmailContactRadarSyncOutboxUseCase {
   private readonly radarService: RadarService;
@@ -33,17 +37,20 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
   }
 
   async execute(): Promise<Output> {
+    const batchSize = resolveRadarEmailContactSyncOutboxBatchSize();
+    const concurrency = resolveRadarSyncConcurrency();
+    const startedAt = Date.now();
     let claimedIds: string[] = [];
 
     try {
-      const claimed = await this.outboxRepository.claimDue(BATCH_SIZE);
+      const claimed = await this.outboxRepository.claimDue(batchSize);
       claimedIds = claimed.map((row) => row.id);
 
       let sent = 0;
       let retried = 0;
       let failed = 0;
 
-      for (const chunk of this.chunkArray(claimed, RADAR_SYNC_CONCURRENCY)) {
+      for (const chunk of this.chunkArray(claimed, concurrency)) {
         await Promise.all(
           chunk.map(async (row) => {
             const outcome = await this.processRow(row);
@@ -54,18 +61,47 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
         );
       }
 
+      const durationMs = Date.now() - startedAt;
+      const backlog = await this.outboxRepository.getBacklogSnapshot().catch((error) => {
+        console.error(
+          "[ProcessEmailContactRadarSyncOutboxUseCase] Falha ao ler backlog:",
+          error
+        );
+        return null;
+      });
+
+      const theoreticalThroughputPerHour = claimed.length * CRON_RUNS_PER_HOUR;
+
       console.info("[ProcessEmailContactRadarSyncOutboxUseCase] Lote processado", {
         claimed: claimed.length,
         sent,
         retried,
         failed,
+        batchSize,
+        concurrency,
+        connectionBudgetHint: concurrency + 1,
+        durationMs,
+        theoreticalThroughputPerHour,
+        backlogPending: backlog?.pending ?? null,
+        backlogProcessing: backlog?.processing ?? null,
+        maxPendingAgeSeconds: backlog?.maxPendingAgeSeconds ?? null,
       });
 
       return new Output(
         true,
         [`${sent} sync(s) concluído(s), ${retried} reenfileirado(s), ${failed} falha(s) definitiva(s)`],
         [],
-        { claimed: claimed.length, sent, retried, failed }
+        {
+          claimed: claimed.length,
+          sent,
+          retried,
+          failed,
+          batchSize,
+          concurrency,
+          durationMs,
+          theoreticalThroughputPerHour,
+          backlog,
+        }
       );
     } catch (error) {
       console.error("[ProcessEmailContactRadarSyncOutboxUseCase][execute]", error);
