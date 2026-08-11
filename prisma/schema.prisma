@@ -3173,6 +3173,7 @@ model EmailContactRadarSyncOutbox {
 
   @@index([status, nextAttemptAt])
   @@index([emailImportJobId, status])
+  @@index([teamId])
   @@map("corretor_studio_email_contact_radar_sync_outbox")
 }
 
@@ -3297,6 +3298,7 @@ model EmailLog {
   @@index([teamId, campaignId])
   @@index([campaignId, dispatchId])
   @@index([teamId, dispatchId, status], map: "corretor_studio_email_logs_team_dispatch_status_idx")
+  @@index([dispatchId])
   @@index([teamId, category, sentAt(sort: Desc)], map: "corretor_studio_email_logs_team_category_sent_idx")
   @@index([recipientEmail])
   @@index([sentAt(sort: Desc)])
@@ -5642,6 +5644,7 @@ model PublicFormMetricEvent {
   @@index([publicationId, eventType, createdAt])
   @@index([formId, createdAt(sort: Desc)])
   @@index([visitorSessionId, createdAt])
+  @@index([questionId])
   @@map("corretor_studio_public_form_metric_events")
 }
 

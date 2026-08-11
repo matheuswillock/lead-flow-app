@@ -3,6 +3,19 @@
   "git": {
     "deploymentEnabled": false
   },
+  "functions": {
+    "app/api/queues/public-form-metric-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "public-form-metric-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 1
+        }
+      ]
+    }
+  },
   "crons": [
     {
       "path": "/api/v1/email/cron/dispatch-scheduled",

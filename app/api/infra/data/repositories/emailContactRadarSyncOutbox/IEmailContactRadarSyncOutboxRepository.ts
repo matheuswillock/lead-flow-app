@@ -13,6 +13,12 @@ export type UpsertRadarSyncOutboxEntry = {
   emailImportJobId: string;
 };
 
+export type EmailContactRadarSyncOutboxBacklogSnapshot = {
+  pending: number;
+  processing: number;
+  maxPendingAgeSeconds: number | null;
+};
+
 export interface IEmailContactRadarSyncOutboxRepository {
   upsertPendingForContacts(entries: UpsertRadarSyncOutboxEntry[]): Promise<void>;
   claimDue(limit: number): Promise<EmailContactRadarSyncOutboxClaimRow[]>;
@@ -26,4 +32,5 @@ export interface IEmailContactRadarSyncOutboxRepository {
     lastError: string
   ): Promise<boolean>;
   countPendingByImportJobId(emailImportJobId: string): Promise<number>;
+  getBacklogSnapshot(): Promise<EmailContactRadarSyncOutboxBacklogSnapshot>;
 }
