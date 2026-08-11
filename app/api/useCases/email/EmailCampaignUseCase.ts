@@ -86,6 +86,13 @@ import {
   CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
   selectFailedRecipientEmailsForRetry,
 } from "@/lib/email/campaign-failed-recipients"
+import {
+  buildCampaignDispatchProgress,
+  buildCampaignDispatchProgressSummary,
+  type CampaignDispatchProgress,
+  type CampaignDispatchProgressStatus,
+  type DispatchLogCounters,
+} from "@/lib/email/campaign-dispatch-progress"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
@@ -95,6 +102,32 @@ const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
 const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
 const MANUAL_DISPATCH_STATUS_SET = new Set<EmailCampaignStatus>(MANUAL_DISPATCH_STATUSES)
 const RETRY_FAILED_ONLY_STATUSES = new Set<EmailCampaignStatus>(["failed", "partially_sent"])
+const TERMINAL_DISPATCH_FEEDBACK_STATUSES = new Set<EmailCampaignStatus>([
+  "sent",
+  "partially_sent",
+  "failed",
+])
+const DISPATCH_PROGRESS_SELECT = {
+  id: true,
+  campaignId: true,
+  dispatchNumber: true,
+  status: true,
+  totalRecipients: true,
+  retryFailedOnly: true,
+  errorMessage: true,
+  updatedAt: true,
+} as const
+
+type DispatchProgressRow = {
+  id: string
+  campaignId: string
+  dispatchNumber: number
+  status: CampaignDispatchProgressStatus
+  totalRecipients: number
+  retryFailedOnly: boolean
+  errorMessage: string | null
+  updatedAt: Date
+}
 
 export type ManualDispatchOptions = {
   /** Quando true (ou status failed/partially_sent), envia só destinatários com falha elegíveis. */
@@ -203,6 +236,191 @@ export class EmailCampaignUseCase {
       return error
     }
     return fallback
+  }
+
+  private async aggregateLogCountersByDispatchId(
+    teamId: string,
+    dispatchIds: string[]
+  ): Promise<Map<string, DispatchLogCounters>> {
+    const countersByDispatchId = new Map<string, DispatchLogCounters>()
+    if (dispatchIds.length === 0) return countersByDispatchId
+
+    for (const dispatchId of dispatchIds) {
+      countersByDispatchId.set(dispatchId, {
+        acceptedCount: 0,
+        failedCount: 0,
+        queuedCount: 0,
+      })
+    }
+
+    // Agrega no Postgres (não carrega N logs na app). Contrato = accepted por
+    // sentAt|resendEmailId; queued/failed só sem aceite.
+    const rows = await prisma.$queryRaw<
+      Array<{
+        dispatchId: string
+        acceptedCount: number | bigint
+        failedCount: number | bigint
+        queuedCount: number | bigint
+      }>
+    >`
+      SELECT
+        "dispatchId",
+        COUNT(*) FILTER (
+          WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL
+        )::int AS "acceptedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'failed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "failedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'queued'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "queuedCount"
+      FROM "corretor_studio_email_logs"
+      WHERE "teamId" = ${teamId}::uuid
+        AND "dispatchId" = ANY(${dispatchIds}::uuid[])
+      GROUP BY "dispatchId"
+    `
+
+    for (const row of rows) {
+      if (!row.dispatchId) continue
+      countersByDispatchId.set(row.dispatchId, {
+        acceptedCount: Number(row.acceptedCount),
+        failedCount: Number(row.failedCount),
+        queuedCount: Number(row.queuedCount),
+      })
+    }
+
+    return countersByDispatchId
+  }
+
+  private async buildProgressForDispatches(
+    teamId: string,
+    dispatches: DispatchProgressRow[]
+  ): Promise<Map<string, CampaignDispatchProgress>> {
+    const progressByDispatchId = new Map<string, CampaignDispatchProgress>()
+    if (dispatches.length === 0) return progressByDispatchId
+
+    const countersByDispatchId = await this.aggregateLogCountersByDispatchId(
+      teamId,
+      dispatches.map((dispatch) => dispatch.id)
+    )
+
+    for (const dispatch of dispatches) {
+      progressByDispatchId.set(
+        dispatch.id,
+        buildCampaignDispatchProgress(dispatch, countersByDispatchId.get(dispatch.id) ?? {
+          acceptedCount: 0,
+          failedCount: 0,
+          queuedCount: 0,
+        })
+      )
+    }
+
+    return progressByDispatchId
+  }
+
+  /**
+   * Carrega progresso de dispatch ativo/último para um lote de campanhas (folha).
+   * Sempre filtra por teamId. Agrega logs por dispatchId.
+   */
+  private async loadDispatchProgressForCampaignIds(
+    teamId: string,
+    campaignMeta: Array<{ id: string; status: EmailCampaignStatus }>
+  ): Promise<
+    Map<
+      string,
+      {
+        activeDispatch: CampaignDispatchProgress | null
+        latestDispatch: CampaignDispatchProgress | null
+      }
+    >
+  > {
+    const result = new Map<
+      string,
+      {
+        activeDispatch: CampaignDispatchProgress | null
+        latestDispatch: CampaignDispatchProgress | null
+      }
+    >()
+
+    for (const campaign of campaignMeta) {
+      result.set(campaign.id, { activeDispatch: null, latestDispatch: null })
+    }
+
+    if (campaignMeta.length === 0) return result
+
+    const campaignIds = campaignMeta.map((campaign) => campaign.id)
+
+    const activeDispatches = (await prisma.emailCampaignDispatch.findMany({
+      where: {
+        teamId,
+        campaignId: { in: campaignIds },
+        status: "sending",
+      },
+      select: DISPATCH_PROGRESS_SELECT,
+      orderBy: { dispatchNumber: "desc" },
+    })) as DispatchProgressRow[]
+
+    const activeByCampaignId = new Map<string, DispatchProgressRow>()
+    for (const dispatch of activeDispatches) {
+      if (!activeByCampaignId.has(dispatch.campaignId)) {
+        activeByCampaignId.set(dispatch.campaignId, dispatch)
+      }
+    }
+
+    const terminalCampaignIds = campaignMeta
+      .filter(
+        (campaign) =>
+          !activeByCampaignId.has(campaign.id) &&
+          TERMINAL_DISPATCH_FEEDBACK_STATUSES.has(campaign.status)
+      )
+      .map((campaign) => campaign.id)
+
+    const terminalDispatches: DispatchProgressRow[] = []
+    if (terminalCampaignIds.length > 0) {
+      const latestCandidates = (await prisma.emailCampaignDispatch.findMany({
+        where: {
+          teamId,
+          campaignId: { in: terminalCampaignIds },
+          status: { in: ["completed", "failed"] },
+        },
+        select: DISPATCH_PROGRESS_SELECT,
+        orderBy: [{ campaignId: "asc" }, { dispatchNumber: "desc" }],
+      })) as DispatchProgressRow[]
+
+      const seenCampaignIds = new Set<string>()
+      for (const dispatch of latestCandidates) {
+        if (seenCampaignIds.has(dispatch.campaignId)) continue
+        seenCampaignIds.add(dispatch.campaignId)
+        terminalDispatches.push(dispatch)
+      }
+    }
+
+    const allDispatches = [
+      ...Array.from(activeByCampaignId.values()),
+      ...terminalDispatches,
+    ]
+    const progressByDispatchId = await this.buildProgressForDispatches(teamId, allDispatches)
+
+    for (const [campaignId, dispatch] of activeByCampaignId) {
+      const entry = result.get(campaignId) ?? { activeDispatch: null, latestDispatch: null }
+      entry.activeDispatch = progressByDispatchId.get(dispatch.id) ?? null
+      result.set(campaignId, entry)
+    }
+
+    for (const dispatch of terminalDispatches) {
+      const entry = result.get(dispatch.campaignId) ?? {
+        activeDispatch: null,
+        latestDispatch: null,
+      }
+      entry.latestDispatch = progressByDispatchId.get(dispatch.id) ?? null
+      result.set(dispatch.campaignId, entry)
+    }
+
+    return result
   }
 
   private async resolvePublishedTemplate(templateId: string, teamId: string) {
@@ -662,6 +880,37 @@ export class EmailCampaignUseCase {
             })
           : []
 
+      const childCampaignsForProgress =
+        parentIdsWithSubs.length > 0
+          ? await prisma.emailCampaign.findMany({
+              where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
+              select: { id: true, status: true, parentCampaignId: true },
+            })
+          : []
+
+      const leafCampaignMeta = [
+        ...campaigns
+          .filter((campaign) => campaign._count.subCampaigns === 0)
+          .map((campaign) => ({ id: campaign.id, status: campaign.status })),
+        ...childCampaignsForProgress.map((child) => ({
+          id: child.id,
+          status: child.status,
+        })),
+      ]
+
+      const progressByCampaignId = await this.loadDispatchProgressForCampaignIds(
+        ctx.teamId,
+        leafCampaignMeta
+      )
+
+      const childrenByParentId = new Map<string, typeof childCampaignsForProgress>()
+      for (const child of childCampaignsForProgress) {
+        if (!child.parentCampaignId) continue
+        const bucket = childrenByParentId.get(child.parentCampaignId) ?? []
+        bucket.push(child)
+        childrenByParentId.set(child.parentCampaignId, bucket)
+      }
+
       const aggregatesByParent = new Map(
         childAggregates.map((row) => [row.parentCampaignId as string, row._sum])
       )
@@ -699,6 +948,25 @@ export class EmailCampaignUseCase {
           const totalSent = childSum?.totalSent ?? campaign.totalSent
           const isLeafRetryStatus =
             subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+
+          const leafProgress = progressByCampaignId.get(campaign.id)
+          const childProgresses =
+            subCampaignCount > 0
+              ? (childrenByParentId.get(campaign.id) ?? [])
+                  .map((child) => progressByCampaignId.get(child.id))
+                  .flatMap((entry) => {
+                    if (!entry) return []
+                    return [entry.activeDispatch, entry.latestDispatch].filter(
+                      (progress): progress is CampaignDispatchProgress => Boolean(progress)
+                    )
+                  })
+              : []
+
+          const dispatchProgressSummary =
+            subCampaignCount > 0
+              ? buildCampaignDispatchProgressSummary(childProgresses)
+              : null
+
           return resolveEmailCreator({
             id: campaign.id,
             name: campaign.name,
@@ -725,6 +993,9 @@ export class EmailCampaignUseCase {
             failedRetryRecipientCount: isLeafRetryStatus
               ? Math.max(0, totalRecipients - totalSent)
               : undefined,
+            activeDispatch: subCampaignCount === 0 ? leafProgress?.activeDispatch ?? null : null,
+            latestDispatch: subCampaignCount === 0 ? leafProgress?.latestDispatch ?? null : null,
+            dispatchProgressSummary,
           })
         }),
         total,
@@ -830,6 +1101,26 @@ export class EmailCampaignUseCase {
           ? (await this.resolveFailedRetryRecipientEmails(campaign.id)).length
           : undefined
 
+      const progressCampaignMeta = isParent
+        ? campaign.subCampaigns.map((sub) => ({ id: sub.id, status: sub.status }))
+        : [{ id: campaign.id, status: campaign.status }]
+
+      const progressByCampaignId = await this.loadDispatchProgressForCampaignIds(
+        ctx.teamId,
+        progressCampaignMeta
+      )
+
+      const leafProgress = progressByCampaignId.get(campaign.id)
+      const childProgressList = isParent
+        ? campaign.subCampaigns.flatMap((sub) => {
+            const entry = progressByCampaignId.get(sub.id)
+            if (!entry) return []
+            return [entry.activeDispatch, entry.latestDispatch].filter(
+              (progress): progress is CampaignDispatchProgress => Boolean(progress)
+            )
+          })
+        : []
+
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
         sourceContactListIds,
@@ -846,12 +1137,22 @@ export class EmailCampaignUseCase {
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
         managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
-        subCampaigns: campaign.subCampaigns.map((sub) => ({
-          ...sub,
-          failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
-            ? Math.max(0, sub.totalRecipients - sub.totalSent)
-            : undefined,
-        })),
+        activeDispatch: !isParent ? leafProgress?.activeDispatch ?? null : null,
+        latestDispatch: !isParent ? leafProgress?.latestDispatch ?? null : null,
+        dispatchProgressSummary: isParent
+          ? buildCampaignDispatchProgressSummary(childProgressList)
+          : null,
+        subCampaigns: campaign.subCampaigns.map((sub) => {
+          const subProgress = progressByCampaignId.get(sub.id)
+          return {
+            ...sub,
+            failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
+              ? Math.max(0, sub.totalRecipients - sub.totalSent)
+              : undefined,
+            activeDispatch: subProgress?.activeDispatch ?? null,
+            latestDispatch: subProgress?.latestDispatch ?? null,
+          }
+        }),
       }))
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
@@ -1907,6 +2208,7 @@ export class EmailCampaignUseCase {
           totalRecipients: recipientsList.length,
           status: "sending",
           batchIdempotencyScheme: "contentHash",
+          retryFailedOnly,
         },
       })
 
@@ -2971,6 +3273,7 @@ export class EmailCampaignUseCase {
             totalRecipients: dispatchInput.recipients.length,
             status: "sending",
             batchIdempotencyScheme: "contentHash",
+            retryFailedOnly: false,
           },
         })
 

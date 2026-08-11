@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { BarChart3, Radar, RefreshCw, AlertTriangle } from "lucide-react"
@@ -17,6 +17,10 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
 import { CampaignLogsTab } from "../CampaignLogsTab"
+import {
+  CampaignDispatchProgressLine,
+  resolveCampaignDispatchProgressDisplay,
+} from "../CampaignDispatchProgressLine"
 import { CampaignComparePanel } from "./CampaignComparePanel"
 import { DeliverabilityChart } from "./DeliverabilityChart"
 import { DispatchAccordionTable } from "./DispatchAccordionTable"
@@ -25,6 +29,7 @@ import { PeriodSelector } from "./PeriodSelector"
 import { TrackingDegradedAlert } from "./TrackingDegradedAlert"
 import { useCampaignAnalytics } from "./useCampaignAnalytics"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
+import type { CampaignDispatchProgress, CampaignDispatchProgressSummary } from "../../context/CampanhasTypes"
 
 type CampaignAnalyticsDialogProps = {
   open: boolean
@@ -33,6 +38,10 @@ type CampaignAnalyticsDialogProps = {
   campaignName?: string
   campaignErrorMessage?: string | null
   defaultTab?: "metrics" | "logs"
+  activeDispatch?: CampaignDispatchProgress | null
+  latestDispatch?: CampaignDispatchProgress | null
+  dispatchProgressSummary?: CampaignDispatchProgressSummary | null
+  isParentCampaign?: boolean
 }
 
 export function CampaignAnalyticsDialog({
@@ -42,6 +51,10 @@ export function CampaignAnalyticsDialog({
   campaignName,
   campaignErrorMessage,
   defaultTab,
+  activeDispatch,
+  latestDispatch,
+  dispatchProgressSummary,
+  isParentCampaign,
 }: CampaignAnalyticsDialogProps) {
   const host = useOptionalStudioEmailHost()
   const params = useParams<{ supabaseId?: string }>()
@@ -53,6 +66,28 @@ export function CampaignAnalyticsDialog({
   useEffect(() => {
     if (open) setActiveTab(defaultTab ?? "metrics")
   }, [campaignId, open, defaultTab])
+
+  const progress = resolveCampaignDispatchProgressDisplay({
+    activeDispatch,
+    latestDispatch,
+    dispatchProgressSummary,
+    isParentCampaign,
+  })
+
+  const dispatchProgressKey = useMemo(() => {
+    if (!campaignId || !progress) return undefined
+    const dispatchId =
+      activeDispatch?.dispatchId ??
+      latestDispatch?.dispatchId ??
+      `summary:${dispatchProgressSummary?.updatedAt ?? ""}`
+    return `${campaignId}:${dispatchId}:${progress.status}:${progress.completionKind}:${progress.acceptedCount}:${progress.failedCount}:${activeDispatch?.updatedAt ?? latestDispatch?.updatedAt ?? dispatchProgressSummary?.updatedAt ?? ""}`
+  }, [
+    activeDispatch,
+    campaignId,
+    dispatchProgressSummary,
+    latestDispatch,
+    progress,
+  ])
 
   const title = campaignName
     ? `Métricas — ${campaignName}`
@@ -119,9 +154,12 @@ export function CampaignAnalyticsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] max-w-5xl flex-col gap-0 p-0">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="size-5" />
-            <DialogTitle>{title}</DialogTitle>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="size-5" />
+              <DialogTitle>{title}</DialogTitle>
+            </div>
+            <CampaignDispatchProgressLine progress={progress} className="max-w-md" />
           </div>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
@@ -138,8 +176,15 @@ export function CampaignAnalyticsDialog({
               <TabsContent value="metrics" className="mt-0 flex flex-col gap-4">
                 {metricsContent}
               </TabsContent>
-              <TabsContent value="logs" className="mt-0 min-h-0 flex-1">
-                <CampaignLogsTab campaignId={campaignId} />
+              <TabsContent value="logs" className="mt-0 min-h-0 flex-1" forceMount>
+                <div className={cn(activeTab !== "logs" && "hidden")}>
+                  {open ? (
+                    <CampaignLogsTab
+                      campaignId={campaignId}
+                      dispatchProgressKey={dispatchProgressKey}
+                    />
+                  ) : null}
+                </div>
               </TabsContent>
             </Tabs>
           ) : (

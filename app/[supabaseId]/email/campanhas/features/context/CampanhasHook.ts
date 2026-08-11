@@ -15,6 +15,11 @@ import type {
 } from "./CampanhasTypes"
 import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
+import {
+  applyDispatchTerminalToast,
+  buildDispatchTerminalToast,
+  resolveCampaignDispatchTerminal,
+} from "@/lib/email/campaign-dispatch-terminal"
 import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
 
 const DEFAULT_PAGE_SIZE = 10
@@ -312,11 +317,20 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null)
   const [sheetTab, setSheetTab] = useState<CampaignSheetTab>("campaign")
 
-  const fetchingRef = useRef(false)
-  const lastCampaignsKeyRef = useRef("")
   const sendingIdRef = useRef<string | null>(null)
   const sendingCampaignSnapshotRef = useRef<Campaign | null>(null)
   const sendingSubCampaignParentIdRef = useRef<string | null>(null)
+  const fetchingRef = useRef(false)
+  const pendingForceRefreshRef = useRef(false)
+  const lastCampaignsKeyRef = useRef("")
+  const fetchCampaignsArgsRef = useRef<{
+    page: number
+    status: string[]
+    pageSize: number
+    name: string
+    dateFrom: string
+    dateTo: string
+  } | null>(null)
   const dispatchSeenInListRef = useRef(false)
 
   const fetchCampaigns = useCallback(async (
@@ -326,6 +340,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     nextName: string,
     nextDateFrom: string,
     nextDateTo: string,
+    options?: { force?: boolean },
   ) => {
     if (teamLoading) return
     if (!activeTeamId) {
@@ -335,11 +350,23 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setTotalPages(1)
       return
     }
+    fetchCampaignsArgsRef.current = {
+      page: nextPage,
+      status: nextStatus,
+      pageSize: nextPageSize,
+      name: nextName,
+      dateFrom: nextDateFrom,
+      dateTo: nextDateTo,
+    }
     const key = `${supabaseId}|${activeTeamId}|${nextPage}|${statusKey(nextStatus)}|${nextPageSize}|${nextName}|${nextDateFrom}|${nextDateTo}`
-    if (fetchingRef.current || lastCampaignsKeyRef.current === key) return
+    if (fetchingRef.current) {
+      if (options?.force) pendingForceRefreshRef.current = true
+      return
+    }
+    if (!options?.force && lastCampaignsKeyRef.current === key) return
     fetchingRef.current = true
     setLoading(true)
-    console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus, nextPageSize, nextName, nextDateFrom, nextDateTo })
+    console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus, nextPageSize, nextName, nextDateFrom, nextDateTo, force: options?.force })
     try {
       const result = await service.list(
         supabaseId,
@@ -385,6 +412,21 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setLoading(false)
       fetchingRef.current = false
+      if (pendingForceRefreshRef.current) {
+        pendingForceRefreshRef.current = false
+        const args = fetchCampaignsArgsRef.current
+        if (args) {
+          void fetchCampaigns(
+            args.page,
+            args.status,
+            args.pageSize,
+            args.name,
+            args.dateFrom,
+            args.dateTo,
+            { force: true }
+          )
+        }
+      }
     }
   }, [activeTeamId, supabaseId, teamLoading])
 
@@ -579,7 +621,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
-      if (tracked.status === "failed") {
+      const terminal = resolveCampaignDispatchTerminal(tracked)
+      if (terminal) {
+        applyDispatchTerminalToast(toast, buildDispatchTerminalToast(name, terminal))
+      } else if (tracked.status === "failed") {
         toast.error(
           tracked.errorMessage
             ? `Disparo de "${name}" falhou: ${tracked.errorMessage}`
@@ -593,20 +638,37 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
 
     if (dispatchSeenInListRef.current && statusFilter.includes("sending")) {
-      const name = sendingCampaignSnapshotRef.current?.name
+      const name = sendingCampaignSnapshotRef.current?.name ?? null
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
       sendingSubCampaignParentIdRef.current = null
       dispatchSeenInListRef.current = false
       setSendingId(null)
-      if (name) {
-        toast.success(`Disparo de "${name}" concluído. O status foi atualizado automaticamente.`)
-      } else {
-        toast.success("Disparo concluído. O status foi atualizado automaticamente.")
-      }
-      void fetchCredits()
+
+      void (async () => {
+        try {
+          const detailed = await service.getById(supabaseId, activeTeamId, trackedId)
+          const terminal = resolveCampaignDispatchTerminal(detailed)
+          if (terminal) {
+            applyDispatchTerminalToast(
+              toast,
+              buildDispatchTerminalToast(detailed.name || name, terminal)
+            )
+          } else {
+            // Ainda sem terminal confiável — não inventar sucesso pleno.
+            console.info("[useCampanhas] campanha saiu de sending sem terminal resolvido", {
+              trackedId,
+              status: detailed.status,
+            })
+          }
+        } catch (err) {
+          console.error("[useCampanhas] erro ao resolver toast terminal do disparo", err)
+        } finally {
+          void fetchCredits()
+        }
+      })()
     }
-  }, [campaigns, sendingId, statusFilter, fetchCredits])
+  }, [activeTeamId, campaigns, sendingId, statusFilter, fetchCredits, supabaseId])
 
   useEffect(() => {
     if (!sendingId) return
@@ -626,14 +688,19 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         sendingSubCampaignParentIdRef.current = null
         dispatchSeenInListRef.current = false
         setSendingId(null)
-        if (tracked.status === "failed") {
+        const terminal = resolveCampaignDispatchTerminal(tracked)
+        if (terminal) {
+          applyDispatchTerminalToast(toast, buildDispatchTerminalToast(tracked.name, terminal))
+        } else if (tracked.status === "failed") {
           toast.error(
             tracked.errorMessage
               ? `Disparo de "${tracked.name}" falhou: ${tracked.errorMessage}`
               : `Disparo de "${tracked.name}" falhou.`
           )
         } else {
-          toast.success(`Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`)
+          toast.success(
+            `Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`
+          )
         }
         void fetchCredits()
         void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
@@ -687,9 +754,62 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
           : statusFilter
         : ["sending"]
 
-    lastCampaignsKeyRef.current = ""
-    void fetchCampaigns(1, pollStatus, pageSize, nameFilter, dateFrom, dateTo)
-  }, [realtimeSendingCampaigns])
+    void fetchCampaigns(1, pollStatus, pageSize, nameFilter, dateFrom, dateTo, { force: true })
+  }, [realtimeSendingCampaigns, dateFrom, dateTo, fetchCampaigns, nameFilter, pageSize, sendingId, statusFilter])
+
+  // Polling obrigatório de progresso enquanto houver dispatch ativo (3–5s).
+  useEffect(() => {
+    const hasActiveDispatch = campaigns.some((campaign) => {
+      if (campaign.activeDispatch?.status === "sending") return true
+      if ((campaign.dispatchProgressSummary?.activeDispatchCount ?? 0) > 0) return true
+      if (campaign.status === "sending") return true
+      return Boolean(
+        campaign.subCampaigns?.some((sub) => sub.activeDispatch?.status === "sending" || sub.status === "sending")
+      )
+    })
+    const detailHasActive =
+      detailCampaign?.activeDispatch?.status === "sending" ||
+      (detailCampaign?.dispatchProgressSummary?.activeDispatchCount ?? 0) > 0 ||
+      detailCampaign?.status === "sending" ||
+      Boolean(
+        detailCampaign?.subCampaigns?.some(
+          (sub) => sub.activeDispatch?.status === "sending" || sub.status === "sending"
+        )
+      )
+
+    if (!hasActiveDispatch && !detailHasActive && !sendingId) return
+
+    const intervalId = window.setInterval(() => {
+      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo, {
+        force: true,
+      })
+      if (detailCampaign?.id) {
+        void service
+          .getById(supabaseId, activeTeamId, detailCampaign.id)
+          .then((detailed) => {
+            setDetailCampaign((prev) => (prev?.id === detailed.id ? detailed : prev))
+          })
+          .catch((err) => {
+            console.error("[useCampanhas] progress poll getById error", err)
+          })
+      }
+    }, 4000)
+
+    return () => window.clearInterval(intervalId)
+  }, [
+    activeTeamId,
+    campaigns,
+    dateFrom,
+    dateTo,
+    detailCampaign,
+    fetchCampaigns,
+    nameFilter,
+    page,
+    pageSize,
+    sendingId,
+    statusFilter,
+    supabaseId,
+  ])
 
   // Ao voltar à página com campanha já em envio, acompanha no banner/poll
   useEffect(() => {
