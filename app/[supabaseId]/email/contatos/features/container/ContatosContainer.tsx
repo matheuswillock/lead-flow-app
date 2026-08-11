@@ -16,6 +16,7 @@ import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
+import { ContatosSelectedListHeader } from "../components/ContatosSelectedListHeader"
 import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
 import { useOptionalFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
@@ -90,23 +91,26 @@ export function ContatosContainer() {
           ) : (
             <>
               <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-semibold">{selectedList?.name}</h2>
-                  {!selectedList?.isBlocklist && !readOnly ? (
-                    <div className="flex items-center gap-2">
-                      <ContactAddModal
-                        trigger={
-                          <Button size="sm" variant="outline">+ Adicionar contato</Button>
-                        }
-                      />
-                      <ContactImportButton />
-                    </div>
-                  ) : selectedList?.isBlocklist ? (
-                    <p className="text-sm text-muted-foreground">
-                      Lista somente leitura — contatos entram via descadastro.
-                    </p>
-                  ) : null}
-                </div>
+                <ContatosSelectedListHeader
+                  listName={selectedList?.name ?? ""}
+                  activeImport={selectedList?.activeImport}
+                  actions={
+                    !selectedList?.isBlocklist && !readOnly ? (
+                      <div className="flex items-center gap-2">
+                        <ContactAddModal
+                          trigger={
+                            <Button size="sm" variant="outline">+ Adicionar contato</Button>
+                          }
+                        />
+                        <ContactImportButton />
+                      </div>
+                    ) : selectedList?.isBlocklist ? (
+                      <p className="text-sm text-muted-foreground">
+                        Lista somente leitura — contatos entram via descadastro.
+                      </p>
+                    ) : null
+                  }
+                />
                 {hasRadar && !selectedList?.isBlocklist && selectedListId && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Segmento do Radar:</span>
