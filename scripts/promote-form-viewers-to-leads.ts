@@ -2,23 +2,41 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment -- one-off script */
 // @ts-nocheck
 /**
- * One-off: promove para Lead os contatos da Avalanche que visualizaram o formulário
+ * One-off: promove para Lead os contatos que visualizaram o formulário
  * mas nunca responderam nenhuma pergunta (Achado E6 — funil quebrado clique→Lead).
  *
  * O Excel importado tem telefone_1/telefone_2 no customFields do EmailContact.
  * Este script cruza os form_viewed events (excluindo quem respondeu alguma pergunta)
  * com o EmailContact da lista da campanha para recuperar telefone e cria os Leads.
  *
+ * Times conhecidos:
+ *   Avalanche de Vendas: aef1bfe7-d1fc-4085-879e-81d51a0cc9b8
+ *   Kathrein Antunes:    28f7b9e8-9516-4a08-864c-9ff3e085ba87
+ *
  * Uso:
- *   bun run scripts/promote-form-viewers-to-leads.ts          # dry-run (padrão)
- *   bun run scripts/promote-form-viewers-to-leads.ts --apply  # cria leads (requer autorização)
+ *   bun run scripts/promote-form-viewers-to-leads.ts --team-id <uuid>           # dry-run
+ *   bun run scripts/promote-form-viewers-to-leads.ts --team-id <uuid> --apply   # cria leads (requer autorização)
  */
 
 import { PrismaClient } from "@prisma/client";
 
-const AVALANCHE_TEAM_ID = "aef1bfe7-d1fc-4085-879e-81d51a0cc9b8";
 const APPLY = process.argv.includes("--apply");
 const prisma = new PrismaClient();
+
+function getTeamId(): string {
+  const idx = process.argv.indexOf("--team-id");
+  if (idx === -1 || !process.argv[idx + 1]) {
+    console.error(
+      "Erro: --team-id <uuid> é obrigatório.\n" +
+        "  Avalanche: aef1bfe7-d1fc-4085-879e-81d51a0cc9b8\n" +
+        "  Kathrein:  28f7b9e8-9516-4a08-864c-9ff3e085ba87"
+    );
+    process.exit(1);
+  }
+  return process.argv[idx + 1];
+}
+
+const TEAM_ID = getTeamId();
 
 type ContactData = {
   email: string;
@@ -69,10 +87,10 @@ function generateLeadCode(name: string): string {
 
 async function getManagerProfileId(): Promise<string> {
   const manager = await prisma.teamMember.findFirst({
-    where: { teamId: AVALANCHE_TEAM_ID, role: "MANAGER" },
+    where: { teamId: TEAM_ID, role: "MANAGER" },
     select: { profileId: true },
   });
-  if (!manager) throw new Error("Nenhum MANAGER encontrado no time Avalanche");
+  if (!manager) throw new Error(`Nenhum MANAGER encontrado no time ${TEAM_ID}`);
   return manager.profileId;
 }
 
@@ -96,7 +114,7 @@ async function findFormViewers(): Promise<ContactData[]> {
     FROM corretor_studio_public_form_metric_events pme
     JOIN corretor_studio_public_forms f ON f.id = pme."formId"
     WHERE pme."eventType" = 'form_viewed'
-      AND f."teamId" = ${AVALANCHE_TEAM_ID}::uuid
+      AND f."teamId" = ${TEAM_ID}::uuid
       AND NOT EXISTS (
         SELECT 1
         FROM corretor_studio_public_form_metric_events qa
@@ -107,7 +125,7 @@ async function findFormViewers(): Promise<ContactData[]> {
     ORDER BY pme."createdAt" DESC
   `;
 
-  console.info(`\n📋 ${events.length} form_viewed (sem question_answered) para Avalanche`);
+  console.info(`\n📋 ${events.length} form_viewed (sem question_answered) para o time ${TEAM_ID}`);
 
   const contacts: ContactData[] = [];
   const seenEmails = new Set<string>();
@@ -147,7 +165,7 @@ async function findFormViewers(): Promise<ContactData[]> {
     // Busca o EmailContact restringindo à lista da campanha quando disponível
     const contactWhere = contactListId
       ? { email: { equals: email, mode: "insensitive" as const }, listId: contactListId }
-      : { email: { equals: email, mode: "insensitive" as const }, list: { teamId: AVALANCHE_TEAM_ID } };
+      : { email: { equals: email, mode: "insensitive" as const }, list: { teamId: TEAM_ID } };
 
     const contact = await prisma.emailContact.findFirst({
       where: contactWhere,
@@ -174,7 +192,7 @@ async function findFormViewers(): Promise<ContactData[]> {
 
 async function main() {
   console.info("═══════════════════════════════════════════════════════");
-  console.info("🚀 Promover form viewers → Leads (Avalanche)");
+  console.info(`🚀 Promover form viewers → Leads (team: ${TEAM_ID})`);
   console.info(`   Modo: ${APPLY ? "APPLY (grava no banco)" : "DRY-RUN"}`);
   console.info("═══════════════════════════════════════════════════════");
 
@@ -201,7 +219,7 @@ async function main() {
   for (const viewer of viewers) {
     const existing = await prisma.lead.findFirst({
       where: {
-        teamId: AVALANCHE_TEAM_ID,
+        teamId: TEAM_ID,
         email: { equals: viewer.email, mode: "insensitive" },
         deletedAt: null,
       },
@@ -251,7 +269,7 @@ async function main() {
       data: {
         leadCode,
         managerId: managerProfileId,
-        teamId: AVALANCHE_TEAM_ID,
+        teamId: TEAM_ID,
         createdBy: managerProfileId,
         status: "new_opportunity",
         name: leadName,
