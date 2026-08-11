@@ -69,7 +69,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
   if (loading || !data) {
     return (
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 10 }).map((_, i) => (
+        {Array.from({ length: 12 }).map((_, i) => (
           <Card key={i}>
             <CardContent className="pt-6">
               <Skeleton className="mb-2 h-4 w-24" />
@@ -83,6 +83,8 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
   }
 
   const { totals, rates, deltas } = data
+  const formViewed = totals.formViewed ?? 0
+  const formStarted = totals.formStarted ?? 0
   const formCompletions = totals.formCompletions ?? 0
 
   return (
@@ -165,7 +167,21 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         inverse
       />
       <MetricCard
-        title="Formulário"
+        title="Form. Visualizado"
+        tooltip="Sessões que abriram a página do formulário vinculado ao template da campanha. Na visão geral, soma todos os formulários do time no período."
+        value={formViewed.toLocaleString("pt-BR")}
+        subtitle="visualizações do formulário"
+        delta={deltas?.totals.formViewed}
+      />
+      <MetricCard
+        title="Form. Iniciado"
+        tooltip="Sessões que começaram a preencher o formulário (primeira interação após a visualização)."
+        value={formStarted.toLocaleString("pt-BR")}
+        subtitle="inícios de preenchimento"
+        delta={deltas?.totals.formStarted}
+      />
+      <MetricCard
+        title="Form. Finalizado"
         tooltip="Preenchimentos completos do formulário vinculado ao template da campanha. Na visão geral, soma os preenchimentos completos de todos os formulários do time no período."
         value={formCompletions.toLocaleString("pt-BR")}
         subtitle="preenchimentos completos"
