@@ -22,12 +22,35 @@ export type BackfillRunResult = {
   errors: Array<{ logId: string; error: string }>
 }
 
+export type BackfillAppendOutcome =
+  | { outcome: "created"; id: string }
+  | { outcome: "duplicate" }
+  | { outcome: "failed"; error: string }
+
 export type BackfillRunnerDeps = {
   apply: boolean
   candidates: BackfillClickCandidate[]
   hasExistingEvent: (candidate: BackfillClickCandidate) => Promise<boolean>
   resolveProfileId: (candidate: BackfillClickCandidate) => Promise<string | null>
-  appendEventIfNew: (input: AppendEventInput) => Promise<{ id: string } | null>
+  appendEvent: (input: AppendEventInput) => Promise<BackfillAppendOutcome>
+}
+
+export async function interpretAppendEventIfNewResult(params: {
+  created: { id: string } | null
+  confirmDuplicate: () => Promise<boolean>
+}): Promise<BackfillAppendOutcome> {
+  if (params.created) {
+    return { outcome: "created", id: params.created.id }
+  }
+
+  if (await params.confirmDuplicate()) {
+    return { outcome: "duplicate" }
+  }
+
+  return {
+    outcome: "failed",
+    error: "appendEventIfNew retornou null sem duplicata confirmada",
+  }
 }
 
 export function buildAppendEventInput(
@@ -84,15 +107,25 @@ export async function runBackfillMissingRadarClickEvents(
         continue
       }
 
-      const created = await deps.appendEventIfNew(
+      const appended = await deps.appendEvent(
         buildAppendEventInput(candidate, profileId)
       )
 
-      if (created) {
+      if (appended.outcome === "created") {
         result.created += 1
-      } else {
-        result.skippedExisting += 1
+        continue
       }
+
+      if (appended.outcome === "duplicate") {
+        result.skippedExisting += 1
+        continue
+      }
+
+      result.failed += 1
+      result.errors.push({
+        logId: candidate.logId,
+        error: appended.error,
+      })
     } catch (error) {
       result.failed += 1
       result.errors.push({

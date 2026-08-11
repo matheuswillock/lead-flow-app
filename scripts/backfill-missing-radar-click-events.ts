@@ -15,9 +15,10 @@
 
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/app/api/infra/data/prisma"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import {
+  interpretAppendEventIfNewResult,
   runBackfillMissingRadarClickEvents,
   type BackfillClickCandidate,
 } from "@/lib/radar/backfill-missing-radar-click-events"
@@ -48,8 +49,6 @@ type FixtureFile = {
   }
   logIds: string[]
 }
-
-const prisma = new PrismaClient()
 
 function loadFixture(): FixtureFile {
   const raw = readFileSync(FIXTURE_PATH, "utf8")
@@ -267,7 +266,20 @@ async function main() {
     candidates,
     hasExistingEvent: hasExistingRadarClickEvent,
     resolveProfileId: resolveProfileIdForCandidate,
-    appendEventIfNew: (input) => radarRepository.appendEventIfNew(input),
+    appendEvent: async (input) => {
+      const created = await radarRepository.appendEventIfNew(input)
+      return interpretAppendEventIfNewResult({
+        created,
+        confirmDuplicate: () =>
+          radarRepository.hasDuplicateEvent(
+            input.teamId,
+            input.sourceType,
+            input.sourceId ?? "",
+            input.eventType,
+            input.occurredAt
+          ),
+      })
+    },
   })
 
   printSummary(result)
