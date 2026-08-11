@@ -1,6 +1,7 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import { EMAIL_CONTACT_RADAR_SYNC_OUTBOX_MAX_ATTEMPTS } from "@/lib/email/email-contact-radar-sync-outbox-backoff";
 import type {
+  EmailContactRadarSyncOutboxBacklogSnapshot,
   EmailContactRadarSyncOutboxClaimRow,
   IEmailContactRadarSyncOutboxRepository,
   UpsertRadarSyncOutboxEntry,
@@ -8,6 +9,21 @@ import type {
 
 /** Rows stuck in `processing` longer than this are treated as abandoned leases. */
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
+type ClaimRawRow = {
+  id: string;
+  emailContactId: string;
+  teamId: string;
+  emailImportJobId: string | null;
+  attemptCount: number;
+  generation: number;
+};
+
+type BacklogRawRow = {
+  status: "pending" | "processing";
+  total: number | bigint;
+  oldestAgeSeconds: number | null;
+};
 
 export class EmailContactRadarSyncOutboxRepository
   implements IEmailContactRadarSyncOutboxRepository
@@ -71,43 +87,51 @@ export class EmailContactRadarSyncOutboxRepository
     }
   }
 
+  /**
+   * Claim atômico via `FOR UPDATE SKIP LOCKED`.
+   * Não incrementa `attemptCount` no claim (falha/stale recovery fazem isso).
+   * Não incrementa `generation` no claim (upsert/stale/requeue invalidam leases).
+   */
   async claimDue(limit: number): Promise<EmailContactRadarSyncOutboxClaimRow[]> {
+    const safeLimit = Math.max(0, Math.floor(limit));
+    if (safeLimit === 0) return [];
+
     const now = new Date();
     await this.recoverStaleProcessingClaims(now);
 
-    const due = await prisma.emailContactRadarSyncOutbox.findMany({
-      where: {
-        status: "pending",
-        nextAttemptAt: { lte: now },
-      },
-      orderBy: { nextAttemptAt: "asc" },
-      take: limit,
-      select: {
-        id: true,
-        emailContactId: true,
-        teamId: true,
-        emailImportJobId: true,
-        attemptCount: true,
-        generation: true,
-      },
-    });
+    const rows = await prisma.$queryRaw<ClaimRawRow[]>`
+      WITH claimed AS (
+        SELECT id
+        FROM corretor_studio_email_contact_radar_sync_outbox
+        WHERE status = 'pending'::email_contact_radar_sync_outbox_status
+          AND "nextAttemptAt" <= ${now}
+        ORDER BY "nextAttemptAt" ASC
+        LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE corretor_studio_email_contact_radar_sync_outbox o
+      SET
+        status = 'processing'::email_contact_radar_sync_outbox_status,
+        "updatedAt" = ${now}
+      FROM claimed
+      WHERE o.id = claimed.id
+      RETURNING
+        o.id,
+        o."emailContactId" AS "emailContactId",
+        o."teamId" AS "teamId",
+        o."emailImportJobId" AS "emailImportJobId",
+        o."attemptCount" AS "attemptCount",
+        o.generation
+    `;
 
-    if (due.length === 0) {
-      return [];
-    }
-
-    const claimed: EmailContactRadarSyncOutboxClaimRow[] = [];
-    for (const row of due) {
-      const updated = await prisma.emailContactRadarSyncOutbox.updateMany({
-        where: { id: row.id, status: "pending", generation: row.generation },
-        data: { status: "processing", updatedAt: new Date() },
-      });
-      if (updated.count === 1) {
-        claimed.push(row);
-      }
-    }
-
-    return claimed;
+    return rows.map((row) => ({
+      id: row.id,
+      emailContactId: row.emailContactId,
+      teamId: row.teamId,
+      emailImportJobId: row.emailImportJobId,
+      attemptCount: Number(row.attemptCount),
+      generation: Number(row.generation),
+    }));
   }
 
   async requeueIfProcessing(ids: string[]): Promise<void> {
@@ -160,6 +184,42 @@ export class EmailContactRadarSyncOutboxRepository
         status: { in: ["pending", "processing"] },
       },
     });
+  }
+
+  async getBacklogSnapshot(): Promise<EmailContactRadarSyncOutboxBacklogSnapshot> {
+    const rows = await prisma.$queryRaw<BacklogRawRow[]>`
+      SELECT
+        status::text AS status,
+        COUNT(*)::int AS total,
+        EXTRACT(EPOCH FROM MAX(now() - "createdAt"))::float AS "oldestAgeSeconds"
+      FROM corretor_studio_email_contact_radar_sync_outbox
+      WHERE status IN (
+        'pending'::email_contact_radar_sync_outbox_status,
+        'processing'::email_contact_radar_sync_outbox_status
+      )
+      GROUP BY status
+    `;
+
+    let pending = 0;
+    let processing = 0;
+    let maxPendingAgeSeconds: number | null = null;
+
+    for (const row of rows) {
+      const total = Number(row.total);
+      const age =
+        row.oldestAgeSeconds == null || !Number.isFinite(row.oldestAgeSeconds)
+          ? null
+          : Math.max(0, Math.round(row.oldestAgeSeconds));
+
+      if (row.status === "pending") {
+        pending = total;
+        maxPendingAgeSeconds = age;
+      } else if (row.status === "processing") {
+        processing = total;
+      }
+    }
+
+    return { pending, processing, maxPendingAgeSeconds };
   }
 }
 

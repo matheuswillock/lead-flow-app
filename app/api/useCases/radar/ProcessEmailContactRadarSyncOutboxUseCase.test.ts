@@ -19,6 +19,11 @@ const markFailedWithRetryMock = mock(
   ) => true
 );
 const requeueIfProcessingMock = mock(async () => {});
+const getBacklogSnapshotMock = mock(async () => ({
+  pending: 0,
+  processing: 0,
+  maxPendingAgeSeconds: null as number | null,
+}));
 
 const syncExecuteMock = mock(async (): Promise<{
   isValid: boolean;
@@ -40,6 +45,7 @@ mock.module(
       markSent: markSentMock,
       markFailedWithRetry: markFailedWithRetryMock,
       requeueIfProcessing: requeueIfProcessingMock,
+      getBacklogSnapshot: getBacklogSnapshotMock,
     },
   })
 );
@@ -60,8 +66,14 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
     markSentMock.mockClear();
     markFailedWithRetryMock.mockClear();
     requeueIfProcessingMock.mockClear();
+    getBacklogSnapshotMock.mockClear();
     syncExecuteMock.mockClear();
     claimDueMock.mockImplementation(async () => []);
+    getBacklogSnapshotMock.mockImplementation(async () => ({
+      pending: 0,
+      processing: 0,
+      maxPendingAgeSeconds: null,
+    }));
     syncExecuteMock.mockImplementation(async () => ({
       isValid: true,
       successMessages: [],
@@ -71,16 +83,24 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
   });
 
   it("processa lote claimado e marca sent em sucesso", async () => {
-    claimDueMock.mockImplementation(async () => [
-      {
-        id: "outbox-1",
-        emailContactId: "contact-1",
-        teamId: "team-1",
-        emailImportJobId: "job-1",
-        attemptCount: 0,
-        generation: 0,
-      },
-    ]);
+    claimDueMock.mockImplementation(async (limit?: number) => {
+      expect(limit).toBe(250);
+      return [
+        {
+          id: "outbox-1",
+          emailContactId: "contact-1",
+          teamId: "team-1",
+          emailImportJobId: "job-1",
+          attemptCount: 0,
+          generation: 0,
+        },
+      ];
+    });
+    getBacklogSnapshotMock.mockImplementation(async () => ({
+      pending: 40,
+      processing: 1,
+      maxPendingAgeSeconds: 120,
+    }));
 
     const useCase = new ProcessEmailContactRadarSyncOutboxUseCase();
     const output = await useCase.execute();
@@ -88,6 +108,15 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
     expect(output.isValid).toBe(true);
     expect(syncExecuteMock).toHaveBeenCalledTimes(1);
     expect(markSentMock).toHaveBeenCalledWith("outbox-1", 0);
+    expect(getBacklogSnapshotMock).toHaveBeenCalledTimes(1);
+    expect(output.result).toMatchObject({
+      claimed: 1,
+      sent: 1,
+      batchSize: 250,
+      concurrency: 8,
+      theoreticalThroughputPerHour: 12,
+      backlog: { pending: 40, processing: 1, maxPendingAgeSeconds: 120 },
+    });
   });
 
   it("falha transitória reenfileira com backoff até o teto, depois marca failed", async () => {
