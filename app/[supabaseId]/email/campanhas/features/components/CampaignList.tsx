@@ -34,6 +34,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
+import {
+  CampaignDispatchProgressLine,
+  resolveCampaignDispatchProgressDisplay,
+} from "./CampaignDispatchProgressLine"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -498,6 +502,9 @@ export function CampaignList({
                         <CampaignStatusBadge
                           status={isSending ? "sending" : campaign.status}
                           scheduledAt={campaign.scheduledAt}
+                        />
+                        <CampaignDispatchProgressLine
+                          progress={resolveCampaignDispatchProgressDisplay(campaign)}
                         />
                         {(campaign.status === "failed" || campaign.status === "partially_sent") && campaign.errorMessage ? (
                           <Tooltip>

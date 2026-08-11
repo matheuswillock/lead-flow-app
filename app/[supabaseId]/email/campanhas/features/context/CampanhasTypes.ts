@@ -12,6 +12,34 @@ export type CampaignStatus =
   | "failed"
   | "archived"
 
+export type CampaignDispatchProgressStatus = "sending" | "completed" | "failed"
+export type CampaignDispatchCompletionKind = "pending" | "full" | "partial" | "failed"
+
+export type CampaignDispatchProgress = {
+  dispatchId: string
+  dispatchNumber: number
+  status: CampaignDispatchProgressStatus
+  completionKind: CampaignDispatchCompletionKind
+  totalRecipients: number
+  acceptedCount: number
+  failedCount: number
+  queuedCount: number
+  retryFailedOnly: boolean
+  errorMessage: string | null
+  updatedAt: string
+}
+
+export type CampaignDispatchProgressSummary = {
+  activeDispatchCount: number
+  terminalDispatchCount: number
+  totalRecipients: number
+  acceptedCount: number
+  failedCount: number
+  queuedCount: number
+  completionKind: CampaignDispatchCompletionKind
+  updatedAt: string
+}
+
 export type SubCampaignSummary = {
   id: string
   name: string
@@ -29,6 +57,8 @@ export type SubCampaignSummary = {
   templateId?: string
   errorMessage?: string | null
   failedRetryRecipientCount?: number
+  activeDispatch?: CampaignDispatchProgress | null
+  latestDispatch?: CampaignDispatchProgress | null
 }
 
 export type Campaign = {
@@ -64,6 +94,9 @@ export type Campaign = {
   managedByCorretorStudio?: boolean
   partiallySentCount?: number
   partiallySentTotal?: number
+  activeDispatch?: CampaignDispatchProgress | null
+  latestDispatch?: CampaignDispatchProgress | null
+  dispatchProgressSummary?: CampaignDispatchProgressSummary | null
 }
 
 export type CreditStatus = {

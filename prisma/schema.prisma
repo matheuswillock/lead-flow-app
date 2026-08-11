@@ -3249,6 +3249,7 @@ model EmailCampaignDispatch {
   totalComplained       Int                         @default(0)
   status                EmailCampaignDispatchStatus @default(sending)
   batchIdempotencyScheme EmailCampaignBatchIdempotencyScheme @default(positional)
+  retryFailedOnly       Boolean                     @default(false)
   errorMessage          String?                     @map("errorMessage") @db.Text
   createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
   updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)
@@ -3296,6 +3297,7 @@ model EmailLog {
   @@index([teamId, status])
   @@index([teamId, campaignId])
   @@index([campaignId, dispatchId])
+  @@index([teamId, dispatchId, status], map: "corretor_studio_email_logs_team_dispatch_status_idx")
   @@index([dispatchId])
   @@index([teamId, category, sentAt(sort: Desc)], map: "corretor_studio_email_logs_team_category_sent_idx")
   @@index([recipientEmail])

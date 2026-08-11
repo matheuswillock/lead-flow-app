@@ -7,8 +7,8 @@ import {
   mapResendDomainError,
 } from "@/lib/email/map-resend-domain-error"
 import {
+  assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
-  isEmailAllowedForTeamDomain,
   isPlatformDefaultFromEmail,
   PLATFORM_FROM_EMAIL,
   PLATFORM_FROM_NAME,
@@ -145,11 +145,11 @@ function validateSenderInput(input: UpsertEmailSenderInput): string | null {
 
 function validateSenderEmailForDomain(
   email: string,
-  domainName: string | null | undefined
+  domainName: string | null | undefined,
+  domainStatus: string | null | undefined
 ): string | null {
-  if (!domainName?.trim()) return null
-  if (isEmailAllowedForTeamDomain(email, domainName)) return null
-  return `O e-mail do remetente deve usar o domínio cadastrado (@${domainName.trim().toLowerCase()})`
+  const check = assertSenderEmailIsAllowed({ email, domainName, domainStatus })
+  return check.ok ? null : check.message
 }
 
 function normalizeSenderPayload(input: UpsertEmailSenderInput) {
@@ -440,9 +440,13 @@ export class EmailTeamSettingsUseCase {
 
       const settings = await prisma.emailTeamSettings.findUnique({
         where: { teamId: ctx.teamId },
-        select: { resendDomainName: true },
+        select: { resendDomainName: true, resendDomainStatus: true },
       })
-      const domainError = validateSenderEmailForDomain(input.email, settings?.resendDomainName)
+      const domainError = validateSenderEmailForDomain(
+        input.email,
+        settings?.resendDomainName,
+        settings?.resendDomainStatus
+      )
       if (domainError) return new Output(false, [], [domainError], null)
 
       const sender = await prisma.$transaction(async (tx) => {
@@ -476,9 +480,13 @@ export class EmailTeamSettingsUseCase {
 
       const settings = await prisma.emailTeamSettings.findUnique({
         where: { teamId: ctx.teamId },
-        select: { resendDomainName: true },
+        select: { resendDomainName: true, resendDomainStatus: true },
       })
-      const domainError = validateSenderEmailForDomain(input.email, settings?.resendDomainName)
+      const domainError = validateSenderEmailForDomain(
+        input.email,
+        settings?.resendDomainName,
+        settings?.resendDomainStatus
+      )
       if (domainError) return new Output(false, [], [domainError], null)
 
       const sender = await prisma.$transaction(async (tx) => {

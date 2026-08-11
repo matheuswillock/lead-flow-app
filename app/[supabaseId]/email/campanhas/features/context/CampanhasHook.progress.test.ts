@@ -1,0 +1,118 @@
+import { describe, expect, it } from "bun:test"
+import { isNewTerminalDispatch } from "@/lib/email/campaign-dispatch-terminal"
+
+/**
+ * Contrato de polling/force para CampanhasHook — exercita a lógica pura de assinatura
+ * e a regra de fila pendente sem montar o hook completo (depende de muitos providers).
+ */
+
+function buildDispatchProgressKey(params: {
+  campaignId: string
+  dispatchId: string
+  status: string
+  completionKind: string
+  acceptedCount: number
+  failedCount: number
+  updatedAt: string
+}) {
+  return `${params.campaignId}:${params.dispatchId}:${params.status}:${params.completionKind}:${params.acceptedCount}:${params.failedCount}:${params.updatedAt}`
+}
+
+describe("campaign dispatch progress refresh contract", () => {
+  it("assinatura muda quando acceptedCount avança sem realtime de campanha", () => {
+    const before = buildDispatchProgressKey({
+      campaignId: "c1",
+      dispatchId: "d1",
+      status: "sending",
+      completionKind: "pending",
+      acceptedCount: 0,
+      failedCount: 0,
+      updatedAt: "t1",
+    })
+    const after = buildDispatchProgressKey({
+      campaignId: "c1",
+      dispatchId: "d1",
+      status: "sending",
+      completionKind: "pending",
+      acceptedCount: 100,
+      failedCount: 0,
+      updatedAt: "t2",
+    })
+    expect(before).not.toBe(after)
+  })
+
+  it("fila pendente: force durante fetch marca pending e reexecuta ao final", () => {
+    let fetching = false
+    let pendingForce = false
+    let calls = 0
+
+    function fetchCampaigns(options?: { force?: boolean }) {
+      if (fetching) {
+        if (options?.force) pendingForce = true
+        return
+      }
+      fetching = true
+      calls += 1
+      // simula finally
+      fetching = false
+      if (pendingForce) {
+        pendingForce = false
+        fetchCampaigns({ force: true })
+      }
+    }
+
+    fetching = true
+    fetchCampaigns({ force: true })
+    expect(pendingForce).toBe(true)
+    expect(calls).toBe(0)
+
+    fetching = false
+    if (pendingForce) {
+      pendingForce = false
+      fetchCampaigns({ force: true })
+    }
+    expect(calls).toBe(1)
+    expect(pendingForce).toBe(false)
+  })
+})
+
+describe("toast fantasma de retry (isNewTerminalDispatch)", () => {
+  it("não emite toast terminal quando o retry falha no gate sem dispatch novo", () => {
+    // Sub-campanha 'failed' com dispatchId antigo. O retry morre na validação de variáveis,
+    // então nenhum EmailCampaignDispatch novo é criado — o dispatchId observado é o mesmo.
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: "dispatch-antigo",
+        preAttemptDispatchId: "dispatch-antigo",
+      })
+    ).toBe(false)
+  })
+
+  it("não emite toast quando não havia dispatch e o retry morre antes de criar um", () => {
+    // Falha antes de qualquer dispatch (zero logs): pré e pós são null.
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: null,
+        preAttemptDispatchId: null,
+      })
+    ).toBe(false)
+  })
+
+  it("emite toast terminal quando o retry gera um dispatch novo (fluxo feliz)", () => {
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: "dispatch-novo",
+        preAttemptDispatchId: "dispatch-antigo",
+      })
+    ).toBe(true)
+  })
+
+  it("emite toast quando o primeiro dispatch surge onde não havia nenhum", () => {
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: "dispatch-novo",
+        preAttemptDispatchId: null,
+      })
+    ).toBe(true)
+  })
+})

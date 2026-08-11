@@ -30,7 +30,6 @@ import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/d
 import {
   checkDispatchWindow,
   getResendDomainDispatchWarnings,
-  isResendDomainSendCapable,
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
@@ -49,8 +48,8 @@ import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
+  assertCampaignFromIsSendable,
   formatCampaignFromHeader,
-  isEmailAllowedForTeamDomain,
   resolveCampaignFrom,
 } from "@/lib/email/resolve-campaign-from"
 import { wouldExceedDailyEmailCap } from "@/lib/email/campaign-daily-dispatch-guard"
@@ -84,8 +83,18 @@ import {
   CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
   CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
   CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+  resolveRetryRecipientEmails,
   selectFailedRecipientEmailsForRetry,
 } from "@/lib/email/campaign-failed-recipients"
+import {
+  aggregateCumulativeDispatchLogCounters,
+  buildCampaignDispatchProgress,
+  buildCampaignDispatchProgressSummary,
+  buildCumulativeCampaignDispatchProgress,
+  type CampaignDispatchProgress,
+  type CampaignDispatchProgressStatus,
+  type DispatchLogCounters,
+} from "@/lib/email/campaign-dispatch-progress"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
@@ -95,6 +104,32 @@ const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
 const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
 const MANUAL_DISPATCH_STATUS_SET = new Set<EmailCampaignStatus>(MANUAL_DISPATCH_STATUSES)
 const RETRY_FAILED_ONLY_STATUSES = new Set<EmailCampaignStatus>(["failed", "partially_sent"])
+const TERMINAL_DISPATCH_FEEDBACK_STATUSES = new Set<EmailCampaignStatus>([
+  "sent",
+  "partially_sent",
+  "failed",
+])
+const DISPATCH_PROGRESS_SELECT = {
+  id: true,
+  campaignId: true,
+  dispatchNumber: true,
+  status: true,
+  totalRecipients: true,
+  retryFailedOnly: true,
+  errorMessage: true,
+  updatedAt: true,
+} as const
+
+type DispatchProgressRow = {
+  id: string
+  campaignId: string
+  dispatchNumber: number
+  status: CampaignDispatchProgressStatus
+  totalRecipients: number
+  retryFailedOnly: boolean
+  errorMessage: string | null
+  updatedAt: Date
+}
 
 export type ManualDispatchOptions = {
   /** Quando true (ou status failed/partially_sent), envia só destinatários com falha elegíveis. */
@@ -203,6 +238,248 @@ export class EmailCampaignUseCase {
       return error
     }
     return fallback
+  }
+
+  private async aggregateLogCountersByDispatchId(
+    teamId: string,
+    dispatchIds: string[]
+  ): Promise<Map<string, DispatchLogCounters>> {
+    const countersByDispatchId = new Map<string, DispatchLogCounters>()
+    if (dispatchIds.length === 0) return countersByDispatchId
+
+    for (const dispatchId of dispatchIds) {
+      countersByDispatchId.set(dispatchId, {
+        acceptedCount: 0,
+        failedCount: 0,
+        queuedCount: 0,
+      })
+    }
+
+    // Agrega no Postgres (não carrega N logs na app). Contrato = accepted por
+    // sentAt|resendEmailId; queued/failed só sem aceite.
+    const rows = await prisma.$queryRaw<
+      Array<{
+        dispatchId: string
+        acceptedCount: number | bigint
+        failedCount: number | bigint
+        queuedCount: number | bigint
+      }>
+    >`
+      SELECT
+        "dispatchId",
+        COUNT(*) FILTER (
+          WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL
+        )::int AS "acceptedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'failed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "failedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'queued'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "queuedCount"
+      FROM "corretor_studio_email_logs"
+      WHERE "teamId" = ${teamId}::uuid
+        AND "dispatchId" = ANY(${dispatchIds}::uuid[])
+      GROUP BY "dispatchId"
+    `
+
+    for (const row of rows) {
+      if (!row.dispatchId) continue
+      countersByDispatchId.set(row.dispatchId, {
+        acceptedCount: Number(row.acceptedCount),
+        failedCount: Number(row.failedCount),
+        queuedCount: Number(row.queuedCount),
+      })
+    }
+
+    return countersByDispatchId
+  }
+
+  private async buildProgressForDispatches(
+    teamId: string,
+    dispatches: DispatchProgressRow[]
+  ): Promise<Map<string, CampaignDispatchProgress>> {
+    const progressByDispatchId = new Map<string, CampaignDispatchProgress>()
+    if (dispatches.length === 0) return progressByDispatchId
+
+    const countersByDispatchId = await this.aggregateLogCountersByDispatchId(
+      teamId,
+      dispatches.map((dispatch) => dispatch.id)
+    )
+
+    for (const dispatch of dispatches) {
+      progressByDispatchId.set(
+        dispatch.id,
+        buildCampaignDispatchProgress(dispatch, countersByDispatchId.get(dispatch.id) ?? {
+          acceptedCount: 0,
+          failedCount: 0,
+          queuedCount: 0,
+        })
+      )
+    }
+
+    return progressByDispatchId
+  }
+
+  /**
+   * Carrega progresso de dispatch ativo/último para um lote de campanhas (folha).
+   * Sempre filtra por teamId. Agrega logs por dispatchId.
+   */
+  private async loadDispatchProgressForCampaignIds(
+    teamId: string,
+    campaignMeta: Array<{ id: string; status: EmailCampaignStatus }>
+  ): Promise<
+    Map<
+      string,
+      {
+        activeDispatch: CampaignDispatchProgress | null
+        latestDispatch: CampaignDispatchProgress | null
+      }
+    >
+  > {
+    const result = new Map<
+      string,
+      {
+        activeDispatch: CampaignDispatchProgress | null
+        latestDispatch: CampaignDispatchProgress | null
+      }
+    >()
+
+    for (const campaign of campaignMeta) {
+      result.set(campaign.id, { activeDispatch: null, latestDispatch: null })
+    }
+
+    if (campaignMeta.length === 0) return result
+
+    const campaignIds = campaignMeta.map((campaign) => campaign.id)
+
+    const activeDispatches = (await prisma.emailCampaignDispatch.findMany({
+      where: {
+        teamId,
+        campaignId: { in: campaignIds },
+        status: "sending",
+      },
+      select: DISPATCH_PROGRESS_SELECT,
+      orderBy: { dispatchNumber: "desc" },
+    })) as DispatchProgressRow[]
+
+    const activeByCampaignId = new Map<string, DispatchProgressRow>()
+    for (const dispatch of activeDispatches) {
+      if (!activeByCampaignId.has(dispatch.campaignId)) {
+        activeByCampaignId.set(dispatch.campaignId, dispatch)
+      }
+    }
+
+    const terminalCampaignIds = campaignMeta
+      .filter(
+        (campaign) =>
+          !activeByCampaignId.has(campaign.id) &&
+          TERMINAL_DISPATCH_FEEDBACK_STATUSES.has(campaign.status)
+      )
+      .map((campaign) => campaign.id)
+
+    const terminalDispatches: DispatchProgressRow[] = []
+    if (terminalCampaignIds.length > 0) {
+      const latestCandidates = (await prisma.emailCampaignDispatch.findMany({
+        where: {
+          teamId,
+          campaignId: { in: terminalCampaignIds },
+          status: { in: ["completed", "failed"] },
+        },
+        select: DISPATCH_PROGRESS_SELECT,
+        orderBy: [{ campaignId: "asc" }, { dispatchNumber: "desc" }],
+      })) as DispatchProgressRow[]
+
+      const seenCampaignIds = new Set<string>()
+      for (const dispatch of latestCandidates) {
+        if (seenCampaignIds.has(dispatch.campaignId)) continue
+        seenCampaignIds.add(dispatch.campaignId)
+        terminalDispatches.push(dispatch)
+      }
+    }
+
+    const allDispatches = [
+      ...Array.from(activeByCampaignId.values()),
+      ...terminalDispatches,
+    ]
+    const progressByDispatchId = await this.buildProgressForDispatches(teamId, allDispatches)
+
+    for (const [campaignId, dispatch] of activeByCampaignId) {
+      const entry = result.get(campaignId) ?? { activeDispatch: null, latestDispatch: null }
+      entry.activeDispatch = progressByDispatchId.get(dispatch.id) ?? null
+      result.set(campaignId, entry)
+    }
+
+    for (const dispatch of terminalDispatches) {
+      const entry = result.get(dispatch.campaignId) ?? {
+        activeDispatch: null,
+        latestDispatch: null,
+      }
+      entry.latestDispatch = progressByDispatchId.get(dispatch.id) ?? null
+      result.set(dispatch.campaignId, entry)
+    }
+
+    return result
+  }
+
+  /**
+   * Contadores cumulativos por campanha-folha (todos os dispatches), dedupe por
+   * recipientEmail. Usa @@index([teamId, campaignId]) em EmailLog.
+   */
+  private async aggregateCumulativeLogCountersByCampaignId(
+    teamId: string,
+    campaignIds: string[]
+  ): Promise<Map<string, DispatchLogCounters>> {
+    const result = new Map<string, DispatchLogCounters>()
+    for (const campaignId of campaignIds) {
+      result.set(campaignId, { acceptedCount: 0, failedCount: 0, queuedCount: 0 })
+    }
+    if (campaignIds.length === 0) return result
+
+    const logs = await prisma.emailLog.findMany({
+      where: {
+        teamId,
+        campaignId: { in: campaignIds },
+      },
+      select: {
+        campaignId: true,
+        recipientEmail: true,
+        status: true,
+        sentAt: true,
+        resendEmailId: true,
+      },
+    })
+
+    const logsByCampaignId = new Map<
+      string,
+      Array<{
+        recipientEmail: string
+        status: string
+        sentAt: Date | null
+        resendEmailId: string | null
+      }>
+    >()
+
+    for (const log of logs) {
+      if (!log.campaignId) continue
+      const bucket = logsByCampaignId.get(log.campaignId) ?? []
+      bucket.push({
+        recipientEmail: log.recipientEmail,
+        status: log.status,
+        sentAt: log.sentAt,
+        resendEmailId: log.resendEmailId,
+      })
+      logsByCampaignId.set(log.campaignId, bucket)
+    }
+
+    for (const [campaignId, campaignLogs] of logsByCampaignId) {
+      result.set(campaignId, aggregateCumulativeDispatchLogCounters(campaignLogs))
+    }
+
+    return result
   }
 
   private async resolvePublishedTemplate(templateId: string, teamId: string) {
@@ -522,11 +799,9 @@ export class EmailCampaignUseCase {
           ...schedule,
         })
 
-        const scheduleError = validateCampaignPlanSchedules(plan, schedule)
-        if (scheduleError) {
-          return new Output(false, [], [scheduleError], null)
-        }
-
+        // Preview é descoberta: devolve o plano dividido sem exigir horários
+        // (o wizard só preenche os agendamentos depois de ver o split). A
+        // validação de completude do agendamento fica no create/update.
         return new Output(true, [], [], {
           ...plan,
           audienceMode: "combined",
@@ -555,11 +830,9 @@ export class EmailCampaignUseCase {
         ...schedule,
       })
 
-      const scheduleError = validateCampaignPlanSchedules(plan, schedule)
-      if (scheduleError) {
-        return new Output(false, [], [scheduleError], null)
-      }
-
+      // Preview é descoberta: devolve o plano dividido sem exigir horários
+      // (o wizard só preenche os agendamentos depois de ver o split). A
+      // validação de completude do agendamento fica no create/update.
       return new Output(true, [], [], { ...plan, audienceMode: "list_only" })
     } catch (error) {
       console.error("[EmailCampaignUseCase][previewPlan]", error)
@@ -662,6 +935,43 @@ export class EmailCampaignUseCase {
             })
           : []
 
+      const childCampaignsForProgress =
+        parentIdsWithSubs.length > 0
+          ? await prisma.emailCampaign.findMany({
+              where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
+              select: { id: true, status: true, parentCampaignId: true, totalRecipients: true },
+            })
+          : []
+
+      const leafCampaignMeta = [
+        ...campaigns
+          .filter((campaign) => campaign._count.subCampaigns === 0)
+          .map((campaign) => ({ id: campaign.id, status: campaign.status })),
+        ...childCampaignsForProgress.map((child) => ({
+          id: child.id,
+          status: child.status,
+        })),
+      ]
+
+      const progressByCampaignId = await this.loadDispatchProgressForCampaignIds(
+        ctx.teamId,
+        leafCampaignMeta
+      )
+
+      const childIdsForCumulative = childCampaignsForProgress.map((child) => child.id)
+      const cumulativeByCampaignId = await this.aggregateCumulativeLogCountersByCampaignId(
+        ctx.teamId,
+        childIdsForCumulative
+      )
+
+      const childrenByParentId = new Map<string, typeof childCampaignsForProgress>()
+      for (const child of childCampaignsForProgress) {
+        if (!child.parentCampaignId) continue
+        const bucket = childrenByParentId.get(child.parentCampaignId) ?? []
+        bucket.push(child)
+        childrenByParentId.set(child.parentCampaignId, bucket)
+      }
+
       const aggregatesByParent = new Map(
         childAggregates.map((row) => [row.parentCampaignId as string, row._sum])
       )
@@ -699,6 +1009,31 @@ export class EmailCampaignUseCase {
           const totalSent = childSum?.totalSent ?? campaign.totalSent
           const isLeafRetryStatus =
             subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+
+          const leafProgress = progressByCampaignId.get(campaign.id)
+          const childProgresses =
+            subCampaignCount > 0
+              ? (childrenByParentId.get(campaign.id) ?? []).map((child) => {
+                  const entry = progressByCampaignId.get(child.id)
+                  return buildCumulativeCampaignDispatchProgress({
+                    campaignId: child.id,
+                    totalRecipients: child.totalRecipients ?? 0,
+                    activeDispatch: entry?.activeDispatch ?? null,
+                    latestDispatch: entry?.latestDispatch ?? null,
+                    counters: cumulativeByCampaignId.get(child.id) ?? {
+                      acceptedCount: 0,
+                      failedCount: 0,
+                      queuedCount: 0,
+                    },
+                  })
+                })
+              : []
+
+          const dispatchProgressSummary =
+            subCampaignCount > 0
+              ? buildCampaignDispatchProgressSummary(childProgresses)
+              : null
+
           return resolveEmailCreator({
             id: campaign.id,
             name: campaign.name,
@@ -725,6 +1060,9 @@ export class EmailCampaignUseCase {
             failedRetryRecipientCount: isLeafRetryStatus
               ? Math.max(0, totalRecipients - totalSent)
               : undefined,
+            activeDispatch: subCampaignCount === 0 ? leafProgress?.activeDispatch ?? null : null,
+            latestDispatch: subCampaignCount === 0 ? leafProgress?.latestDispatch ?? null : null,
+            dispatchProgressSummary,
           })
         }),
         total,
@@ -827,8 +1165,62 @@ export class EmailCampaignUseCase {
 
       const failedRetryRecipientCount =
         !isParent && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
-          ? (await this.resolveFailedRetryRecipientEmails(campaign.id)).length
+          ? await this.computeFailedRetryRecipientCount({
+              campaignId: campaign.id,
+              fallbackAudienceCount: activeRecipientCount,
+            })
           : undefined
+
+      // Contagem por sub-campanha exibida no diálogo de confirmação. Usa a mesma fonte
+      // real (por logs, com fallback de "sem log algum") do objeto de topo — nunca a
+      // fórmula frouxa `totalRecipients - totalSent`, que promete o que o backend não
+      // cumpre quando já existem logs parciais.
+      const subFailedRetryCountById = new Map<string, number>()
+      await Promise.all(
+        campaign.subCampaigns
+          .filter((sub) => RETRY_FAILED_ONLY_STATUSES.has(sub.status))
+          .map(async (sub) => {
+            const count = await this.computeFailedRetryRecipientCount({
+              campaignId: sub.id,
+              fallbackAudienceCount: sub.totalRecipients,
+            })
+            subFailedRetryCountById.set(sub.id, count)
+          })
+      )
+
+      const progressCampaignMeta = isParent
+        ? campaign.subCampaigns.map((sub) => ({ id: sub.id, status: sub.status }))
+        : [{ id: campaign.id, status: campaign.status }]
+
+      const progressByCampaignId = await this.loadDispatchProgressForCampaignIds(
+        ctx.teamId,
+        progressCampaignMeta
+      )
+
+      const cumulativeByCampaignId = isParent
+        ? await this.aggregateCumulativeLogCountersByCampaignId(
+            ctx.teamId,
+            campaign.subCampaigns.map((sub) => sub.id)
+          )
+        : new Map<string, DispatchLogCounters>()
+
+      const leafProgress = progressByCampaignId.get(campaign.id)
+      const childProgressList = isParent
+        ? campaign.subCampaigns.map((sub) => {
+            const entry = progressByCampaignId.get(sub.id)
+            return buildCumulativeCampaignDispatchProgress({
+              campaignId: sub.id,
+              totalRecipients: sub.totalRecipients ?? 0,
+              activeDispatch: entry?.activeDispatch ?? null,
+              latestDispatch: entry?.latestDispatch ?? null,
+              counters: cumulativeByCampaignId.get(sub.id) ?? {
+                acceptedCount: 0,
+                failedCount: 0,
+                queuedCount: 0,
+              },
+            })
+          })
+        : []
 
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
@@ -846,12 +1238,22 @@ export class EmailCampaignUseCase {
         subCampaignCount: campaign.subCampaigns.length,
         isParentCampaign: isParent,
         managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
-        subCampaigns: campaign.subCampaigns.map((sub) => ({
-          ...sub,
-          failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
-            ? Math.max(0, sub.totalRecipients - sub.totalSent)
-            : undefined,
-        })),
+        activeDispatch: !isParent ? leafProgress?.activeDispatch ?? null : null,
+        latestDispatch: !isParent ? leafProgress?.latestDispatch ?? null : null,
+        dispatchProgressSummary: isParent
+          ? buildCampaignDispatchProgressSummary(childProgressList)
+          : null,
+        subCampaigns: campaign.subCampaigns.map((sub) => {
+          const subProgress = progressByCampaignId.get(sub.id)
+          return {
+            ...sub,
+            failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
+              ? subFailedRetryCountById.get(sub.id) ?? 0
+              : undefined,
+            activeDispatch: subProgress?.activeDispatch ?? null,
+            latestDispatch: subProgress?.latestDispatch ?? null,
+          }
+        }),
       }))
     } catch (error) {
       console.error("[EmailCampaignUseCase][getById]", error)
@@ -1649,13 +2051,75 @@ export class EmailCampaignUseCase {
     return selectFailedRecipientEmailsForRetry(logs)
   }
 
+  /**
+   * Resolve os e-mails a redisparar no modo "reenviar apenas falhas", cobrindo o caso
+   * em que a tentativa anterior falhou **antes** de criar qualquer `EmailLog` (ex.:
+   * validação de variáveis). Sem log algum + status retriável ⇒ toda a audiência
+   * resolvida é reenviada (ninguém recebeu). Ver `resolveRetryRecipientEmails`.
+   */
+  private async resolveRetryRecipientEmailsForDispatch(
+    campaignId: string,
+    hasRetriableStatus: boolean,
+    resolvedAudienceEmails: string[]
+  ): Promise<{ emails: string[]; hadAnyLog: boolean }> {
+    const logs = await prisma.emailLog.findMany({
+      where: {
+        campaignId,
+        status: {
+          in: [
+            CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+            ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+            ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+          ],
+        },
+      },
+      select: { recipientEmail: true, status: true },
+    })
+
+    const hasAnyLog =
+      logs.length > 0 || (await prisma.emailLog.count({ where: { campaignId } })) > 0
+
+    return {
+      emails: resolveRetryRecipientEmails({
+        hasAnyLog,
+        hasRetriableStatus,
+        logs,
+        resolvedAudienceEmails,
+      }),
+      hadAnyLog: hasAnyLog,
+    }
+  }
+
+  /**
+   * Contagem exibida na UI ("N destinatário(s) que falharam"). Alinha a fonte com o
+   * disparo real: por logs `failed` quando existem, ou toda a audiência quando a
+   * campanha é retriável e não há log algum (falha antes de criar `EmailLog`).
+   */
+  private async computeFailedRetryRecipientCount(params: {
+    campaignId: string
+    fallbackAudienceCount: number
+  }): Promise<number> {
+    const failedByLogs = await this.resolveFailedRetryRecipientEmails(params.campaignId)
+    if (failedByLogs.length > 0) return failedByLogs.length
+
+    const hasAnyLog =
+      (await prisma.emailLog.count({ where: { campaignId: params.campaignId } })) > 0
+    return hasAnyLog ? 0 : Math.max(0, params.fallbackAudienceCount)
+  }
+
   async countFailedRetryRecipients(campaignId: string, ctx: TeamContext): Promise<number> {
     const campaign = await prisma.emailCampaign.findFirst({
       where: { id: campaignId, teamId: ctx.teamId },
-      select: { id: true },
+      select: { id: true, status: true, totalRecipients: true },
     })
     if (!campaign) return 0
-    return (await this.resolveFailedRetryRecipientEmails(campaignId)).length
+    if (!RETRY_FAILED_ONLY_STATUSES.has(campaign.status)) {
+      return (await this.resolveFailedRetryRecipientEmails(campaignId)).length
+    }
+    return this.computeFailedRetryRecipientCount({
+      campaignId,
+      fallbackAudienceCount: campaign.totalRecipients,
+    })
   }
 
   async startManualDispatch(
@@ -1764,35 +2228,13 @@ export class EmailCampaignUseCase {
         masterTimezone: campaign.team.master.timezone,
       })
 
-      const dispatchFromResolved = resolveCampaignFrom({
+      const fromGuard = assertCampaignFromIsSendable({
+        resolved: dispatchInput.resolvedFrom,
         domainName: teamSettings?.resendDomainName,
-        defaultSender,
-        legacyFromName: teamSettings?.fromName,
-        legacyFromEmail: teamSettings?.fromEmail,
+        domainStatus: teamSettings?.resendDomainStatus,
       })
-      if (
-        teamSettings?.resendDomainName &&
-        !isResendDomainSendCapable(teamSettings.resendDomainStatus)
-      ) {
-        return new Output(
-          false,
-          [],
-          [
-            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar.",
-          ],
-          null
-        )
-      }
-      if (
-        teamSettings?.resendDomainName &&
-        !isEmailAllowedForTeamDomain(dispatchFromResolved.fromEmail, teamSettings.resendDomainName)
-      ) {
-        return new Output(
-          false,
-          [],
-          ["O remetente da campanha não pertence ao domínio verificado no Resend."],
-          null
-        )
+      if (!fromGuard.ok) {
+        return new Output(false, [], [fromGuard.message], null)
       }
 
       // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
@@ -1802,13 +2244,19 @@ export class EmailCampaignUseCase {
 
       let recipientsForDispatch = dispatchInput.recipients
       if (retryFailedOnly) {
-        const failedEmails = new Set(await this.resolveFailedRetryRecipientEmails(campaign.id))
+        const { emails: retryEmails, hadAnyLog } = await this.resolveRetryRecipientEmailsForDispatch(
+          campaign.id,
+          RETRY_FAILED_ONLY_STATUSES.has(campaign.status),
+          dispatchInput.recipients.map((recipient) => recipient.email)
+        )
+        const retryEmailSet = new Set(retryEmails)
         recipientsForDispatch = dispatchInput.recipients.filter((recipient) =>
-          failedEmails.has(recipient.email.trim().toLowerCase())
+          retryEmailSet.has(recipient.email.trim().toLowerCase())
         )
         console.info("[EmailCampaignUseCase][startManualDispatch] retryFailedOnly", {
           campaignId: campaign.id,
           previousStatus: campaign.status,
+          hadAnyLog,
           fullAudienceCount: dispatchInput.recipients.length,
           failedOnlyCount: recipientsForDispatch.length,
         })
@@ -1907,6 +2355,7 @@ export class EmailCampaignUseCase {
           totalRecipients: recipientsList.length,
           status: "sending",
           batchIdempotencyScheme: "contentHash",
+          retryFailedOnly,
         },
       })
 
@@ -2614,6 +3063,24 @@ export class EmailCampaignUseCase {
           legacyFromEmail: teamSettings?.fromEmail,
           defaultSender,
         })
+
+        const orphanFromGuard = assertCampaignFromIsSendable({
+          resolved: fromResolved,
+          domainName: teamSettings?.resendDomainName,
+          domainStatus: teamSettings?.resendDomainStatus,
+        })
+        if (!orphanFromGuard.ok) {
+          console.error(
+            `[EmailCampaignUseCase][resumeOrphanSendingDispatches] dispatchId=${dispatch.id} bloqueado por domínio: ${orphanFromGuard.message}`
+          )
+          await this.markScheduledCampaignFailed(dispatch.campaignId, orphanFromGuard.message)
+          await prisma.emailCampaignDispatch.update({
+            where: { id: dispatch.id },
+            data: { status: "failed", errorMessage: orphanFromGuard.message },
+          })
+          continue
+        }
+
         const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
 
         const recipients = await this.rebuildRecipientsForOrphanResume({
@@ -2815,17 +3282,6 @@ export class EmailCampaignUseCase {
           })
           .catch(() => null)
 
-        if (
-          teamSettings?.resendDomainName &&
-          !isResendDomainSendCapable(teamSettings.resendDomainStatus)
-        ) {
-          await this.markScheduledCampaignFailed(
-            campaign.id,
-            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar."
-          )
-          continue
-        }
-
         const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
           teamSettings?.resendDomainStatus
         )
@@ -2890,6 +3346,16 @@ export class EmailCampaignUseCase {
           defaultSender,
           masterTimezone: campaign.team.master.timezone,
         })
+
+        const scheduledFromGuard = assertCampaignFromIsSendable({
+          resolved: dispatchInput.resolvedFrom,
+          domainName: teamSettings?.resendDomainName,
+          domainStatus: teamSettings?.resendDomainStatus,
+        })
+        if (!scheduledFromGuard.ok) {
+          await this.markScheduledCampaignFailed(campaign.id, scheduledFromGuard.message)
+          continue
+        }
 
         if (dispatchInput.recipients.length === 0) {
           const noRecipientsMessage = campaign.radarSegmentSlug
@@ -2971,6 +3437,7 @@ export class EmailCampaignUseCase {
             totalRecipients: dispatchInput.recipients.length,
             status: "sending",
             batchIdempotencyScheme: "contentHash",
+            retryFailedOnly: false,
           },
         })
 

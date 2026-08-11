@@ -21,11 +21,14 @@ mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchServi
 // --- EmailCampaignRecipientService ---
 const buildCampaignDispatchInputMock = mock(async () => makeDefaultDispatchInput([]))
 const findUnresolvedTokensMock = mock(() => [] as string[])
+const listActiveRecipientsMock = mock(
+  async (..._args: unknown[]) => [] as Array<{ email: string; name: string; contactId: string }>
+)
 mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService", () => ({
   EmailCampaignRecipientService: class {
     buildCampaignDispatchInput = buildCampaignDispatchInputMock
     findUnresolvedTokensForRecipients = findUnresolvedTokensMock
-    listActiveRecipients = mock(async () => [])
+    listActiveRecipients = listActiveRecipientsMock
   },
 }))
 
@@ -56,28 +59,42 @@ mock.module("@/lib/email/team-email-dispatch-logger", () => ({
 }))
 
 // --- Prisma ---
-const emailCampaignFindFirstMock = mock(async () => makeCampaign())
-const emailCampaignFindUniqueMock = mock(async () => ({
+const emailCampaignFindFirstMock = mock(async (..._args: unknown[]) => makeCampaign() as unknown)
+const emailCampaignFindUniqueMock = mock(async (..._args: unknown[]) => ({
   name: "Campanha Teste",
   parentCampaignId: null as string | null,
 }))
-const emailCampaignDispatchFindUniqueMock = mock(async () => ({
+const emailCampaignDispatchFindUniqueMock = mock(async (..._args: unknown[]) => ({
   triggeredBy: "profile-1",
   status: "sending" as const,
 }))
-const emailCampaignFindManyMock = mock(async () => [])
+const emailCampaignFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
 const emailCampaignCountMock = mock(async () => 0)
-const emailCampaignUpdateManyMock = mock(async () => ({ count: 1 }))
+const emailCampaignGroupByMock = mock(async (..._args: unknown[]) => [] as unknown[])
+const emailCampaignUpdateManyMock = mock(async (..._args: unknown[]) => ({ count: 1 }))
 const emailCampaignUpdateMock = mock(async () => ({ parentCampaignId: null as string | null }))
 const emailTemplateFindFirstMock = mock(async () => null as unknown)
 const emailCampaignDispatchAggregateMock = mock(async () => ({ _max: { dispatchNumber: 0 } }))
-const emailCampaignDispatchCreateMock = mock(async () => ({ id: "dispatch-1" }))
+const emailCampaignDispatchCreateMock = mock(async (..._args: unknown[]) => ({ id: "dispatch-1" }))
 const emailCampaignDispatchFindFirstMock = mock(async () => ({ id: "dispatch-1" }))
-const emailCampaignDispatchFindManyMock = mock(async () => [])
+const emailCampaignDispatchFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
 const emailCampaignDispatchUpdateMock = mock(async () => ({}))
-const emailCampaignDispatchUpdateManyMock = mock(async () => ({ count: 0 }))
+const emailCampaignDispatchUpdateManyMock = mock(async (..._args: unknown[]) => ({ count: 0 }))
 const emailTeamSenderFindFirstMock = mock(async () => null as { name: string; email: string } | null)
-const emailLogFindManyMock = mock(async () => [] as Array<{ recipientEmail: string; status: string }>)
+const emailLogFindManyMock = mock(async (..._args: unknown[]) => [] as Array<{
+  dispatchId?: string | null
+  recipientEmail?: string
+  status: string
+  sentAt?: Date | null
+  resendEmailId?: string | null
+}>)
+const queryRawMock = mock(async (..._args: unknown[]) => [] as Array<{
+  dispatchId: string
+  acceptedCount: number
+  failedCount: number
+  queuedCount: number
+}>)
+const profileFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 const emailTeamSettingsFindUniqueMock = mock(async (): Promise<unknown> => null)
 const prismaMock = {
@@ -86,11 +103,12 @@ const prismaMock = {
     findUnique: emailCampaignFindUniqueMock,
     findMany: emailCampaignFindManyMock,
     count: emailCampaignCountMock,
+    groupBy: emailCampaignGroupByMock,
     updateMany: emailCampaignUpdateManyMock,
     update: emailCampaignUpdateMock,
   },
   emailTeamSettings: { findUnique: emailTeamSettingsFindUniqueMock },
-  emailTemplate: { findFirst: emailTemplateFindFirstMock },
+  emailTemplate: { findFirst: emailTemplateFindFirstMock, findMany: mock(async () => []) },
   emailContactList: {
     findMany: mock(async () => [
       { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
@@ -115,6 +133,9 @@ const prismaMock = {
     findMany: emailLogFindManyMock,
     count: mock(async () => 0),
   },
+  profile: {
+    findMany: profileFindManyMock,
+  },
   backofficeTeamEmailLimitGrant: {
     findUnique: mock(async () => null),
   },
@@ -122,6 +143,7 @@ const prismaMock = {
     findUnique: mock(async () => null),
   },
   $transaction: transactionMock,
+  $queryRaw: queryRawMock,
 }
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
@@ -171,6 +193,38 @@ const { EmailCampaignUseCase, EMAIL_CAMPAIGN_FAILURE_MESSAGES } = await import(
 const { RESEND_DOMAIN_TRACKING_DEGRADED_WARNING } = await import(
   "@/lib/email/campaign-dispatch-guards"
 )
+const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
+  "@/lib/email/resolve-campaign-from"
+)
+const { aggregateDispatchLogCounters } = await import(
+  "@/lib/email/campaign-dispatch-progress"
+)
+
+type ProgressLogFixture = {
+  dispatchId?: string | null
+  status: string
+  sentAt?: Date | null
+  resendEmailId?: string | null
+}
+
+/** Simula a agregação SQL de progresso a partir dos mesmos fixtures de log. */
+function mockLogCounterAggregation(logs: ProgressLogFixture[]) {
+  queryRawMock.mockImplementation(async (...args: unknown[]) => {
+    const teamId = args[1]
+    expect(teamId).toBe("team-1")
+    const byDispatch = new Map<string, ProgressLogFixture[]>()
+    for (const log of logs) {
+      if (!log.dispatchId) continue
+      const bucket = byDispatch.get(log.dispatchId) ?? []
+      bucket.push(log)
+      byDispatch.set(log.dispatchId, bucket)
+    }
+    return [...byDispatch.entries()].map(([dispatchId, dispatchLogs]) => ({
+      dispatchId,
+      ...aggregateDispatchLogCounters(dispatchLogs),
+    }))
+  })
+}
 
 // =============================================================================
 // Helpers de fixture
@@ -186,7 +240,8 @@ function makeRecipients(count: number) {
 }
 
 function makeDefaultDispatchInput(
-  recipients: ReturnType<typeof makeRecipients> = []
+  recipients: ReturnType<typeof makeRecipients> = [],
+  resolvedFrom?: { fromName: string; fromEmail: string }
 ) {
   return {
     recipients,
@@ -196,6 +251,8 @@ function makeDefaultDispatchInput(
     html: "<p>Olá {{nome}}</p>",
     from: "Test <test@sender.com>",
     replyTo: null as string | null,
+    resolvedFrom:
+      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "deliveryby@corretorstudio.com" },
   }
 }
 
@@ -251,16 +308,21 @@ function setupTemplateMock() {
 const allMocks = [
   emailCampaignFindFirstMock,
   emailCampaignFindManyMock,
+  emailCampaignCountMock,
+  emailCampaignGroupByMock,
   emailCampaignUpdateManyMock,
   emailCampaignUpdateMock,
   emailTemplateFindFirstMock,
   emailCampaignDispatchAggregateMock,
   emailCampaignDispatchCreateMock,
   emailCampaignDispatchFindFirstMock,
+  emailCampaignDispatchFindManyMock,
   emailCampaignDispatchUpdateMock,
   emailCampaignDispatchUpdateManyMock,
   emailTeamSenderFindFirstMock,
   emailLogFindManyMock,
+  queryRawMock,
+  profileFindManyMock,
   transactionMock,
   reserveCreditsMock,
   releaseCreditsMock,
@@ -272,6 +334,7 @@ const allMocks = [
   processPendingBatchMock,
   buildCampaignDispatchInputMock,
   findUnresolvedTokensMock,
+  listActiveRecipientsMock,
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
 ]
@@ -296,6 +359,7 @@ describe("EmailCampaignUseCase.send", () => {
     emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
     emailTeamSenderFindFirstMock.mockImplementation(async () => null)
     emailLogFindManyMock.mockImplementation(async () => [])
+    queryRawMock.mockImplementation(async () => [])
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -770,6 +834,42 @@ describe("EmailCampaignUseCase.send", () => {
     expect(dispatchBatchMock).not.toHaveBeenCalled()
   })
 
+  it("C14c — failed sem log algum → reenvia toda a audiência (não '0 destinatários')", async () => {
+    // Regressão 5.1: a tentativa anterior morreu antes de criar EmailLog (ex.: validação de
+    // variáveis). Sem log 'failed', o critério por logs devolvia [] → NO_FAILED_RECIPIENTS.
+    const allRecipients = makeRecipients(4)
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(allRecipients)
+    )
+    emailLogFindManyMock.mockImplementation(async () => [])
+    dispatchBatchMock.mockImplementation(async (params: unknown) => {
+      const typed = params as { recipients: Array<{ email: string }> }
+      return {
+        sent: typed.recipients.length,
+        failed: 0,
+        dispatched: typed.recipients.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      }
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(true)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+    const dispatchArgs = dispatchBatchMock.mock.calls[0] as unknown as [
+      { recipients: Array<{ email: string }> },
+    ]
+    expect(dispatchArgs[0].recipients).toHaveLength(4)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(4)
+  })
+
   // ---------------------------------------------------------------------------
   // D12 — domínio partially_failed permite disparo com aviso
   // ---------------------------------------------------------------------------
@@ -830,7 +930,10 @@ describe("EmailCampaignUseCase.send", () => {
   it("D12 — domínio failed → bloqueia disparo antes do lock", async () => {
     const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
-      makeDefaultDispatchInput(recipients)
+      makeDefaultDispatchInput(recipients, {
+        fromName: "Test",
+        fromEmail: "test@example.com",
+      })
     )
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
       resendDomainName: "example.com",
@@ -850,6 +953,248 @@ describe("EmailCampaignUseCase.send", () => {
     expect(output.errorMessages[0]).toContain("Domínio de e-mail não verificado")
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+})
+
+// =============================================================================
+// D13 — guard de domínio (assertCampaignFromIsSendable) nos 3 pontos de disparo
+// =============================================================================
+
+describe("D13 — guard de domínio bloqueando disparo", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+
+    emailCampaignFindFirstMock.mockImplementation(async () => makeCampaign())
+    emailCampaignFindManyMock.mockImplementation(async () => [])
+    emailCampaignUpdateManyMock.mockImplementation(async () => ({ count: 1 }))
+    emailCampaignUpdateMock.mockImplementation(async () => ({
+      parentCampaignId: null,
+      name: "Campanha Teste",
+      teamId: "team-1",
+      createdBy: null,
+    }))
+    emailCampaignDispatchUpdateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailCampaignDispatchAggregateMock.mockImplementation(async () => ({
+      _max: { dispatchNumber: 0 },
+    }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    emailLogFindManyMock.mockImplementation(async () => [])
+    queryRawMock.mockImplementation(async () => [])
+    transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
+    reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
+    releaseCreditsMock.mockImplementation(async () => {})
+    resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    findUnresolvedTokensMock.mockImplementation(() => [])
+    createQueuedLogsMock.mockImplementation(
+      async (inputs: Array<{ recipientEmail: string }>) =>
+        inputs.map((i) => ({ email: i.recipientEmail, logId: `log-${i.recipientEmail}` }))
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 0,
+      failed: 0,
+      dispatched: [] as Array<{ email: string; resendId: string }>,
+      providerErrors: [] as Array<{ message: string; emails: string[] }>,
+    }))
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    setupTemplateMock()
+  })
+
+  function outsideSenderInput() {
+    return makeDefaultDispatchInput(makeRecipients(3), {
+      fromName: "Vendas",
+      fromEmail: "vendas@empresaxyz.com.br",
+    })
+  }
+
+  // --- Site A: startManualDispatch ---
+  it("D13a — domínio null + sender próprio → bloqueia (Domínio não verificado) sem lock/créditos", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+  })
+
+  it("D13b — domínio null sem sender → from de plataforma (deliveryby) permite disparo", async () => {
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.successMessages.some((m) => m.includes("segundo plano"))).toBe(true)
+    expect(output.errorMessages).toHaveLength(0)
+  })
+
+  it("D13c — domínio verified + sender de outro domínio → bloqueia (remetente fora do domínio)", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "verified",
+      fromName: "Test",
+      fromEmail: "team@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("remetente da campanha não pertence")
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+
+  // --- Site C: dispatchScheduledCampaigns ---
+  function makeScheduledCampaign() {
+    return {
+      id: "camp-sched",
+      name: "Scheduled",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+      parentCampaignId: null,
+      audienceContactIds: [],
+      createdBy: null,
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: { id: "list-1", name: "Lista" },
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+  }
+
+  function setupScheduledCampaignLock() {
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [makeScheduledCampaign()]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "scheduled") return { count: 1 }
+      return { count: 0 }
+    })
+  }
+
+  it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {
+    setupScheduledCampaignLock()
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignUpdateMock).toHaveBeenCalled()
+    const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string; errorMessage?: string } },
+    ])[0].data
+    expect(updateData.status).toBe("failed")
+    expect(updateData.errorMessage).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("D13e — scheduled domínio verified + sender de outro domínio → marca failed com msg de remetente", async () => {
+    setupScheduledCampaignLock()
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "verified",
+      fromName: "Test",
+      fromEmail: "team@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignUpdateMock).toHaveBeenCalled()
+    const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string; errorMessage?: string } },
+    ])[0].data
+    expect(updateData.status).toBe("failed")
+    expect(updateData.errorMessage).toContain("remetente da campanha não pertence")
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  // --- Site B: resumeOrphanSendingDispatches ---
+  it("D13f — órfão domínio null + sender arbitrário → nunca envia, marca failed, não conta resumed", async () => {
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [
+      {
+        id: "dispatch-orphan",
+        campaignId: "camp-1",
+        teamId: "team-1",
+        dispatchNumber: 1,
+        batchIdempotencyScheme: "contentHash",
+        templateHtml: "<p>Hi</p>",
+        templateSubject: "S",
+        totalRecipients: 1,
+        triggeredBy: "profile-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        templateId: "tpl-1",
+      },
+    ])
+    emailLogFindManyMock.mockImplementation(async () => [
+      {
+        id: "log-q",
+        recipientEmail: "r0@test.com",
+        recipientName: "R0",
+        status: "queued",
+      },
+    ])
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const resumed = await uc.resumeOrphanSendingDispatches({
+      now: new Date("2020-01-01T00:05:00.000Z"),
+    })
+
+    expect(resumed).toBe(0)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    expect(emailCampaignUpdateMock).toHaveBeenCalled()
+    const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string; errorMessage?: string } },
+    ])[0].data
+    expect(updateData.status).toBe("failed")
+    expect(updateData.errorMessage).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect(emailCampaignDispatchUpdateMock).toHaveBeenCalled()
   })
 })
 
@@ -946,5 +1291,916 @@ describe("EmailCampaignUseCase.previewPlan", () => {
       teamCtx
     )
     expect(both.errorMessages.join(" ")).not.toContain("não ambos")
+  })
+
+  // Ticket 06 — wizard não detecta split acima de 2.000 porque previewPlan
+  // valida agendamento cedo demais (uniformSchedule:false + schedules vazios).
+  // previewPlan é descoberta: deve devolver o plano dividido sem exigir horários.
+  it("06-A — audiência 3.445 (uniformSchedule:false, schedules vazios) revela 2 sub-campanhas", async () => {
+    listActiveRecipientsMock.mockImplementation(async () => makeRecipients(3445))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.previewPlan(
+      {
+        name: "Grande",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListId: "00000000-0000-4000-8000-000000000001",
+        uniformSchedule: false,
+        subCampaignSchedules: [],
+      },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(true)
+    const result = output.result as { subCampaigns: unknown[] }
+    expect(result.subCampaigns.length).toBe(2)
+  })
+})
+
+describe("EmailCampaignUseCase.create — gate de agendamento (ticket 06)", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    setupTemplateMock()
+  })
+
+  // Contraparte do 06-A: a validação de completude de agendamento continua no
+  // create. Mesma entrada que passa no preview deve bloquear a criação.
+  it("06-B — audiência 3.445 sem horários por sub-campanha → bloqueia criação", async () => {
+    listActiveRecipientsMock.mockImplementation(async () => makeRecipients(3445))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.create(
+      {
+        name: "Grande",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListId: "00000000-0000-4000-8000-000000000001",
+        uniformSchedule: false,
+        subCampaignSchedules: [],
+      },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("Informe uma data para cada sub-campanha")
+  })
+})
+
+
+type MockWhereArgs = { where?: { parentCampaignId?: unknown; status?: unknown; teamId?: string; dispatchId?: unknown; id?: string } }
+
+// =============================================================================
+// Dispatch progress contract (campaign-dispatch-ui-feedback)
+// =============================================================================
+
+describe("EmailCampaignUseCase dispatch progress", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    emailCampaignFindFirstMock.mockImplementation(async () => makeCampaign())
+    emailCampaignFindManyMock.mockImplementation(async () => [])
+    emailCampaignCountMock.mockImplementation(async () => 0)
+    emailCampaignGroupByMock.mockImplementation(async () => [])
+    emailCampaignUpdateManyMock.mockImplementation(async () => ({ count: 1 }))
+    emailCampaignUpdateMock.mockImplementation(async () => ({ parentCampaignId: null }))
+    emailCampaignDispatchAggregateMock.mockImplementation(async () => ({
+      _max: { dispatchNumber: 0 },
+    }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [])
+    emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
+    emailLogFindManyMock.mockImplementation(async () => [])
+    queryRawMock.mockImplementation(async () => [])
+    profileFindManyMock.mockImplementation(async () => [])
+    transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
+    reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
+    releaseCreditsMock.mockImplementation(async () => {})
+    resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(2))
+    )
+    findUnresolvedTokensMock.mockImplementation(() => [])
+    createQueuedLogsMock.mockImplementation(
+      async (inputs: Array<{ recipientEmail: string }>) =>
+        inputs.map((i) => ({ email: i.recipientEmail, logId: `log-${i.recipientEmail}` }))
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    setupTemplateMock()
+  })
+
+  it("list retorna activeDispatch para campanha sending", async () => {
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where && "parentCampaignId" in (whereArgs.where ?? {}) && whereArgs.where.parentCampaignId != null) {
+        return []
+      }
+      return [
+        {
+          id: "camp-1",
+          name: "Campanha Enviando",
+          status: "sending",
+          scheduledAt: null,
+          sentAt: null,
+          totalRecipients: 10,
+          totalSent: 0,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 1,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          createdBy: "profile-1",
+          managedByBackofficeUserId: null,
+          templateId: "tpl-1",
+          contactListId: "list-1",
+          radarSegmentSlug: null,
+          audienceContactIds: ["c1"],
+          errorMessage: null,
+          _count: { subCampaigns: 0 },
+        },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") {
+        return [
+          {
+            id: "dispatch-active",
+            campaignId: "camp-1",
+            dispatchNumber: 1,
+            status: "sending",
+            totalRecipients: 10,
+            retryFailedOnly: false,
+            errorMessage: null,
+            updatedAt: new Date("2026-01-01T00:01:00.000Z"),
+          },
+        ]
+      }
+      return []
+    })
+    mockLogCounterAggregation([
+      { dispatchId: "dispatch-active", status: "sent", sentAt: new Date(), resendEmailId: "re_1" },
+      { dispatchId: "dispatch-active", status: "queued", sentAt: null, resendEmailId: null },
+      { dispatchId: "dispatch-active", status: "failed", sentAt: null, resendEmailId: null },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+
+    expect(output.isValid).toBe(true)
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.activeDispatch).toMatchObject({
+      dispatchId: "dispatch-active",
+      status: "sending",
+      completionKind: "pending",
+      acceptedCount: 1,
+      queuedCount: 1,
+      failedCount: 1,
+      totalRecipients: 10,
+      retryFailedOnly: false,
+    })
+  })
+
+  it("startManualDispatch persiste retryFailedOnly true quando solicitado", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "failed" },
+      { recipientEmail: "r1@test.com", status: "failed" },
+    ])
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 2,
+      failed: 0,
+      dispatched: [
+        { email: "r0@test.com", resendId: "re_0" },
+        { email: "r1@test.com", resendId: "re_1" },
+      ],
+      providerErrors: [],
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(true)
+  })
+
+  it("startManualDispatch persiste retryFailedOnly false no envio normal", async () => {
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 2,
+      failed: 0,
+      dispatched: [
+        { email: "r0@test.com", resendId: "re_0" },
+        { email: "r1@test.com", resendId: "re_1" },
+      ],
+      providerErrors: [],
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(false)
+  })
+
+  it("list retorna latestDispatch para campanha failed com erro", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      {
+        id: "camp-failed",
+        name: "Falhou",
+        status: "failed",
+        scheduledAt: null,
+        sentAt: null,
+        totalRecipients: 5,
+        totalSent: 0,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        createdBy: "profile-1",
+        managedByBackofficeUserId: null,
+        templateId: "tpl-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        audienceContactIds: ["c1"],
+        errorMessage: "Erro Resend",
+        _count: { subCampaigns: 0 },
+      },
+    ])
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      return [
+        {
+          id: "dispatch-failed",
+          campaignId: "camp-failed",
+          dispatchNumber: 1,
+          status: "failed",
+          totalRecipients: 5,
+          retryFailedOnly: false,
+          errorMessage: "Erro Resend",
+          updatedAt: new Date("2026-01-01T00:02:00.000Z"),
+        },
+      ]
+    })
+    mockLogCounterAggregation([
+      { dispatchId: "dispatch-failed", status: "failed", sentAt: null, resendEmailId: null },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.activeDispatch).toBeNull()
+    expect(campaign.latestDispatch).toMatchObject({
+      dispatchId: "dispatch-failed",
+      status: "failed",
+      completionKind: "failed",
+      acceptedCount: 0,
+      failedCount: 1,
+      errorMessage: "Erro Resend",
+    })
+  })
+
+  it("getById retorna progresso de subcampanha em sending", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () => ({
+      ...makeCampaign({ id: "parent-1", status: "partially_sent" }),
+      description: null,
+      sourceContactListIds: [],
+      audienceContactIds: [],
+      managedByBackofficeUserId: null,
+      dispatchCount: 1,
+      totalRecipients: 20,
+      totalSent: 5,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalBounced: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      scheduledAt: null,
+      sentAt: null,
+      createdBy: "profile-1",
+      errorMessage: null,
+      template: { id: "tpl-1", name: "T", subject: "S" },
+      contactList: { id: "list-1", name: "T", totalContacts: 10 },
+      subCampaigns: [
+        {
+          id: "sub-sending",
+          name: "Parte 1",
+          description: null,
+          status: "sending",
+          scheduledAt: null,
+          sentAt: null,
+          totalRecipients: 10,
+          totalSent: 0,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 0,
+          contactListId: "list-1",
+          templateId: "tpl-1",
+          errorMessage: null,
+        },
+        {
+          id: "sub-sent",
+          name: "Parte 2",
+          description: null,
+          status: "sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 10,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 1,
+          contactListId: "list-2",
+          templateId: "tpl-1",
+          errorMessage: null,
+        },
+      ],
+    }))
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") {
+        return [
+          {
+            id: "dispatch-sub",
+            campaignId: "sub-sending",
+            dispatchNumber: 1,
+            status: "sending",
+            totalRecipients: 10,
+            retryFailedOnly: false,
+            errorMessage: null,
+            updatedAt: new Date("2026-01-01T00:01:00.000Z"),
+          },
+        ]
+      }
+      return [
+        {
+          id: "dispatch-sub-done",
+          campaignId: "sub-sent",
+          dispatchNumber: 1,
+          status: "completed",
+          totalRecipients: 10,
+          retryFailedOnly: false,
+          errorMessage: null,
+          updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      ]
+    })
+    mockLogCounterAggregation([
+      { dispatchId: "dispatch-sub", status: "sent", sentAt: new Date(), resendEmailId: "re_1" },
+      { dispatchId: "dispatch-sub", status: "queued", sentAt: null, resendEmailId: null },
+      {
+        dispatchId: "dispatch-sub-done",
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: "re_2",
+      },
+    ])
+    emailLogFindManyMock.mockImplementation(async () => [
+      {
+        campaignId: "sub-sending",
+        recipientEmail: "a@test.com",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: "re_1",
+      },
+      {
+        campaignId: "sub-sending",
+        recipientEmail: "b@test.com",
+        status: "queued",
+        sentAt: null,
+        resendEmailId: null,
+      },
+      {
+        campaignId: "sub-sent",
+        recipientEmail: "c@test.com",
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: "re_2",
+      },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.getById("parent-1", teamCtx)
+    expect(output.isValid).toBe(true)
+    const result = output.result as {
+      subCampaigns: Array<Record<string, unknown>>
+      dispatchProgressSummary: Record<string, unknown> | null
+    }
+    expect(result.subCampaigns[0].activeDispatch).toMatchObject({
+      dispatchId: "dispatch-sub",
+      status: "sending",
+      completionKind: "pending",
+      acceptedCount: 1,
+      queuedCount: 1,
+    })
+    expect(result.dispatchProgressSummary).toMatchObject({
+      activeDispatchCount: 1,
+      completionKind: "pending",
+      acceptedCount: 2,
+    })
+  })
+
+  it("agregação diferencia queued/accepted/failed e não reduz aceite após delivered/opened", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      {
+        id: "camp-1",
+        name: "Camp",
+        status: "sending",
+        scheduledAt: null,
+        sentAt: null,
+        totalRecipients: 4,
+        totalSent: 0,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        createdAt: new Date(),
+        createdBy: "profile-1",
+        managedByBackofficeUserId: null,
+        templateId: "tpl-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        audienceContactIds: ["c1"],
+        errorMessage: null,
+        _count: { subCampaigns: 0 },
+      },
+    ])
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [
+      {
+        id: "dispatch-1",
+        campaignId: "camp-1",
+        dispatchNumber: 1,
+        status: "sending",
+        totalRecipients: 4,
+        retryFailedOnly: false,
+        errorMessage: null,
+        updatedAt: new Date(),
+      },
+    ])
+    mockLogCounterAggregation([
+      { dispatchId: "dispatch-1", status: "queued", sentAt: null, resendEmailId: null },
+      { dispatchId: "dispatch-1", status: "failed", sentAt: null, resendEmailId: null },
+      { dispatchId: "dispatch-1", status: "delivered", sentAt: new Date(), resendEmailId: "re_1" },
+      { dispatchId: "dispatch-1", status: "opened", sentAt: new Date(), resendEmailId: "re_2" },
+      { dispatchId: "dispatch-1", status: "bounced", sentAt: new Date(), resendEmailId: "re_3" },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.activeDispatch).toMatchObject({
+      acceptedCount: 3,
+      failedCount: 1,
+      queuedCount: 1,
+    })
+  })
+
+  it("dispatch completed com acceptedCount < totalRecipients → completionKind partial", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      {
+        id: "camp-partial",
+        name: "Parcial",
+        status: "sent",
+        scheduledAt: null,
+        sentAt: new Date(),
+        totalRecipients: 10,
+        totalSent: 7,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        createdAt: new Date(),
+        createdBy: "profile-1",
+        managedByBackofficeUserId: null,
+        templateId: "tpl-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        audienceContactIds: ["c1"],
+        errorMessage: null,
+        _count: { subCampaigns: 0 },
+      },
+    ])
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      return [
+        {
+          id: "dispatch-partial",
+          campaignId: "camp-partial",
+          dispatchNumber: 1,
+          status: "completed",
+          totalRecipients: 10,
+          retryFailedOnly: false,
+          errorMessage: null,
+          updatedAt: new Date(),
+        },
+      ]
+    })
+    mockLogCounterAggregation([
+      ...Array.from({ length: 7 }, (_, i) => ({
+        dispatchId: "dispatch-partial",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: `re_${i}`,
+      })),
+      ...Array.from({ length: 3 }, () => ({
+        dispatchId: "dispatch-partial",
+        status: "failed",
+        sentAt: null as Date | null,
+        resendEmailId: null as string | null,
+      })),
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.latestDispatch).toMatchObject({
+      status: "completed",
+      completionKind: "partial",
+      acceptedCount: 7,
+      failedCount: 3,
+    })
+    expect((campaign.latestDispatch as { status: string }).status).not.toBe("partially_completed")
+  })
+
+  it("list retorna dispatchProgressSummary para campanha-pai com sub em sending", async () => {
+    let findManyCalls = 0
+    emailCampaignFindManyMock.mockImplementation(async () => {
+      findManyCalls += 1
+      if (findManyCalls === 1) {
+        return [
+          {
+            id: "parent-1",
+            name: "Pai",
+            status: "partially_sent",
+            scheduledAt: null,
+            sentAt: null,
+            totalRecipients: 20,
+            totalSent: 0,
+            totalDelivered: 0,
+            totalOpened: 0,
+            totalClicked: 0,
+            totalBounced: 0,
+            dispatchCount: 0,
+            createdAt: new Date(),
+            createdBy: "profile-1",
+            managedByBackofficeUserId: null,
+            templateId: "tpl-1",
+            contactListId: null,
+            radarSegmentSlug: null,
+            audienceContactIds: [],
+            errorMessage: null,
+            _count: { subCampaigns: 2 },
+          },
+        ]
+      }
+      // children for progress
+      return [
+        { id: "sub-1", status: "sending", parentCampaignId: "parent-1", totalRecipients: 10 },
+        { id: "sub-2", status: "sent", parentCampaignId: "parent-1", totalRecipients: 10 },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignGroupByMock.mockImplementation(async () => [
+      {
+        parentCampaignId: "parent-1",
+        _sum: {
+          totalSent: 5,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 1,
+        },
+      },
+    ])
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") {
+        return [
+          {
+            id: "dispatch-child",
+            campaignId: "sub-1",
+            dispatchNumber: 1,
+            status: "sending",
+            totalRecipients: 10,
+            retryFailedOnly: false,
+            errorMessage: null,
+            updatedAt: new Date(),
+          },
+        ]
+      }
+      return [
+        {
+          id: "dispatch-child-done",
+          campaignId: "sub-2",
+          dispatchNumber: 1,
+          status: "completed",
+          totalRecipients: 10,
+          retryFailedOnly: false,
+          errorMessage: null,
+          updatedAt: new Date(),
+        },
+      ]
+    })
+    mockLogCounterAggregation([
+      { dispatchId: "dispatch-child", status: "sent", sentAt: new Date(), resendEmailId: "re_1" },
+      {
+        dispatchId: "dispatch-child-done",
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: "re_2",
+      },
+    ])
+    emailLogFindManyMock.mockImplementation(async () => [
+      {
+        campaignId: "sub-1",
+        recipientEmail: "a@test.com",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: "re_1",
+      },
+      {
+        campaignId: "sub-2",
+        recipientEmail: "b@test.com",
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: "re_2",
+      },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.activeDispatch).toBeNull()
+    expect(campaign.dispatchProgressSummary).toMatchObject({
+      activeDispatchCount: 1,
+      completionKind: "pending",
+      acceptedCount: 2,
+    })
+  })
+
+  it("list summary cumula aceite entre dispatch inicial e retryFailedOnly do mesmo filho", async () => {
+    let findManyCalls = 0
+    emailCampaignFindManyMock.mockImplementation(async () => {
+      findManyCalls += 1
+      if (findManyCalls === 1) {
+        return [
+          {
+            id: "parent-retry",
+            name: "Pai retry",
+            status: "partially_sent",
+            scheduledAt: null,
+            sentAt: null,
+            totalRecipients: 100,
+            totalSent: 100,
+            totalDelivered: 0,
+            totalOpened: 0,
+            totalClicked: 0,
+            totalBounced: 0,
+            dispatchCount: 2,
+            createdAt: new Date(),
+            createdBy: "profile-1",
+            managedByBackofficeUserId: null,
+            templateId: "tpl-1",
+            contactListId: null,
+            radarSegmentSlug: null,
+            audienceContactIds: [],
+            errorMessage: null,
+            _count: { subCampaigns: 1 },
+          },
+        ]
+      }
+      return [
+        {
+          id: "sub-retry",
+          status: "sent",
+          parentCampaignId: "parent-retry",
+          totalRecipients: 100,
+        },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignGroupByMock.mockImplementation(async () => [
+      {
+        parentCampaignId: "parent-retry",
+        _sum: {
+          totalSent: 100,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 2,
+        },
+      },
+    ])
+    // Só o dispatch #2 (retry) aparece como latest terminal — o bug antigo reportava 20/20.
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      return [
+        {
+          id: "dispatch-retry-2",
+          campaignId: "sub-retry",
+          dispatchNumber: 2,
+          status: "completed",
+          totalRecipients: 20,
+          retryFailedOnly: true,
+          errorMessage: null,
+          updatedAt: new Date(),
+        },
+      ]
+    })
+    mockLogCounterAggregation(
+      Array.from({ length: 20 }, (_, i) => ({
+        dispatchId: "dispatch-retry-2",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: `re_retry_${i}`,
+      }))
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      ...Array.from({ length: 80 }, (_, i) => ({
+        campaignId: "sub-retry",
+        recipientEmail: `ok${i}@test.com`,
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: `re_ok_${i}`,
+      })),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        campaignId: "sub-retry",
+        recipientEmail: `fail${i}@test.com`,
+        status: "failed",
+        sentAt: null as Date | null,
+        resendEmailId: null as string | null,
+      })),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        campaignId: "sub-retry",
+        recipientEmail: `fail${i}@test.com`,
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: `re_retry_${i}`,
+      })),
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.dispatchProgressSummary).toMatchObject({
+      acceptedCount: 100,
+      totalRecipients: 100,
+      completionKind: "full",
+      activeDispatchCount: 0,
+    })
+  })
+
+  it("dispatchScheduledCampaigns cria dispatch com retryFailedOnly false", async () => {
+    const scheduledCampaign = {
+      id: "camp-scheduled",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      templateId: "tpl-1",
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+      audienceContactIds: [],
+      createdBy: "profile-1",
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: { id: "list-1", name: "Lista" },
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [scheduledCampaign]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return { count: 0 }
+      if (whereArgs?.where?.status === "scheduled" || whereArgs?.where?.id === "camp-scheduled") {
+        return { count: 1 }
+      }
+      return { count: 0 }
+    })
+    emailCampaignDispatchUpdateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-sched" }))
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(1))
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 1,
+      failed: 0,
+      dispatched: [{ email: "r0@test.com", resendId: "re_1" }],
+      providerErrors: [],
+    }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-sched" }))
+    emailCampaignFindUniqueMock.mockImplementation(async () => ({
+      name: "Sched",
+      parentCampaignId: null,
+    }))
+    emailCampaignDispatchFindUniqueMock.mockImplementation(async () => ({
+      triggeredBy: "profile-1",
+      status: "sending",
+    }))
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 1 })
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean; teamId?: string } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(false)
+    expect(createArg[0].data.teamId).toBe("team-1")
+  })
+
+  it("query de logs de progresso sempre filtra por teamId", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      {
+        id: "camp-1",
+        name: "Camp",
+        status: "sending",
+        scheduledAt: null,
+        sentAt: null,
+        totalRecipients: 1,
+        totalSent: 0,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        createdAt: new Date(),
+        createdBy: "profile-1",
+        managedByBackofficeUserId: null,
+        templateId: "tpl-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        audienceContactIds: ["c1"],
+        errorMessage: null,
+        _count: { subCampaigns: 0 },
+      },
+    ])
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      expect(whereArgs?.where?.teamId).toBe("team-1")
+      return [
+        {
+          id: "dispatch-1",
+          campaignId: "camp-1",
+          dispatchNumber: 1,
+          status: "sending",
+          totalRecipients: 1,
+          retryFailedOnly: false,
+          errorMessage: null,
+          updatedAt: new Date(),
+        },
+      ]
+    })
+    queryRawMock.mockImplementation(async (...args: unknown[]) => {
+      expect(args[1]).toBe("team-1")
+      expect(Array.isArray(args[2])).toBe(true)
+      expect((args[2] as string[]).length).toBeGreaterThan(0)
+      return []
+    })
+
+    const uc = new EmailCampaignUseCase()
+    await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    expect(queryRawMock).toHaveBeenCalled()
   })
 })

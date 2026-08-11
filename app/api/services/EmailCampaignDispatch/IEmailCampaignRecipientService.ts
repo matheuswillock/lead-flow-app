@@ -1,4 +1,5 @@
 import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
+import type { ResolvedCampaignFrom } from "@/lib/email/resolve-campaign-from"
 
 export type CampaignRecipient = {
   contactId?: string | null
@@ -15,6 +16,7 @@ export type CampaignDispatchInput = {
   html: string
   from: string
   replyTo: string | null
+  resolvedFrom: ResolvedCampaignFrom
 }
 
 export interface IEmailCampaignRecipientService {

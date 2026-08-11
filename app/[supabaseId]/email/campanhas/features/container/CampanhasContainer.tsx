@@ -25,6 +25,10 @@ type AnalyticsDialogProps = {
   campaignName?: string
   campaignErrorMessage?: string | null
   defaultTab?: "metrics" | "logs"
+  activeDispatch?: import("../context/CampanhasTypes").CampaignDispatchProgress | null
+  latestDispatch?: import("../context/CampanhasTypes").CampaignDispatchProgress | null
+  dispatchProgressSummary?: import("../context/CampanhasTypes").CampaignDispatchProgressSummary | null
+  isParentCampaign?: boolean
 }
 
 const DefaultCampaignAnalyticsDialog = dynamic(
@@ -62,6 +66,8 @@ export function CampanhasContainer({
     handleDateFilter,
     clearFilters,
     openWizard,
+    campaigns,
+    detailCampaign,
   } = useCampanhasContext()
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsDefaultTab, setAnalyticsDefaultTab] = useState<"metrics" | "logs">("metrics")
@@ -103,6 +109,13 @@ export function CampanhasContainer({
     setAnalyticsDefaultTab(campaign.defaultTab ?? defaultTab ?? "metrics")
     setAnalyticsOpen(true)
   }
+
+  const liveAnalyticsCampaign =
+    analyticsCampaign == null
+      ? null
+      : detailCampaign?.id === analyticsCampaign.id
+        ? detailCampaign
+        : campaigns.find((campaign) => campaign.id === analyticsCampaign.id) ?? null
 
   return (
     <div className="flex flex-col gap-6">
@@ -160,6 +173,10 @@ export function CampanhasContainer({
         campaignName={analyticsCampaign?.name}
         campaignErrorMessage={analyticsCampaign?.errorMessage}
         defaultTab={analyticsDefaultTab}
+        activeDispatch={liveAnalyticsCampaign?.activeDispatch}
+        latestDispatch={liveAnalyticsCampaign?.latestDispatch}
+        dispatchProgressSummary={liveAnalyticsCampaign?.dispatchProgressSummary}
+        isParentCampaign={liveAnalyticsCampaign?.isParentCampaign}
       />
     </div>
   )

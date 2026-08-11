@@ -5,31 +5,175 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { useUser } from "@/app/context/UserContext"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { API_CLIENT_BASE } from "@/lib/route-map"
+import { resolveCampaignDispatchTerminal } from "@/lib/email/campaign-dispatch-terminal"
+import { takeLeavingSendingSnapshot } from "./campaign-dispatch-leaving-snapshot"
+import type {
+  CampaignDispatchCompletionKind,
+  CampaignDispatchProgress,
+  CampaignDispatchProgressSummary,
+} from "./CampanhasTypes"
+
+export const CAMPAIGN_DISPATCH_TERMINAL_TTL_MS = 8_000
 
 export type SendingCampaign = {
   id: string
   name: string
   totalRecipients: number
   totalSent: number
+  acceptedCount?: number
+  failedCount?: number
+  completionKind?: CampaignDispatchCompletionKind
+  dispatchId?: string | null
+  retryFailedOnly?: boolean
+  errorMessage?: string | null
+  status?: "sending" | "completed" | "failed"
+}
+
+export type TerminalCampaign = SendingCampaign & {
+  terminalUntil: number
+  dispatchId: string
 }
 
 type CampaignDispatchRealtimeState = {
   sendingCampaigns: SendingCampaign[]
+  terminalCampaigns: TerminalCampaign[]
 }
 
-const CampaignDispatchRealtimeContext = createContext<CampaignDispatchRealtimeState | undefined>(undefined)
+const CampaignDispatchRealtimeContext = createContext<CampaignDispatchRealtimeState | undefined>(
+  undefined
+)
 
 type Props = {
   children: React.ReactNode
   supabaseId: string
 }
 
+function mapCampaignRow(campaign: {
+  id: string
+  name: string
+  totalRecipients: number
+  totalSent: number
+  status: string
+  activeDispatch?: CampaignDispatchProgress | null
+  latestDispatch?: CampaignDispatchProgress | null
+  dispatchProgressSummary?: {
+    totalRecipients: number
+    acceptedCount: number
+    failedCount: number
+    completionKind: CampaignDispatchCompletionKind
+    updatedAt: string
+  } | null
+}): SendingCampaign | null {
+  if (campaign.status !== "sending" && !campaign.activeDispatch) {
+    return null
+  }
+
+  const progress = campaign.activeDispatch
+  const summary = campaign.dispatchProgressSummary
+  const totalRecipients =
+    progress?.totalRecipients ?? summary?.totalRecipients ?? campaign.totalRecipients
+  const acceptedCount =
+    progress?.acceptedCount ?? summary?.acceptedCount ?? campaign.totalSent
+
+  return {
+    id: campaign.id,
+    name: campaign.name,
+    totalRecipients,
+    totalSent: acceptedCount,
+    acceptedCount,
+    failedCount: progress?.failedCount ?? summary?.failedCount ?? 0,
+    completionKind: progress?.completionKind ?? summary?.completionKind ?? "pending",
+    dispatchId: progress?.dispatchId ?? null,
+    retryFailedOnly: progress?.retryFailedOnly ?? false,
+    errorMessage: progress?.errorMessage ?? null,
+    status: "sending",
+  }
+}
+
 export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props) {
   const { activeTeamId } = useTeamContext()
   const { user } = useUser()
   const [sendingCampaigns, setSendingCampaigns] = useState<SendingCampaign[]>([])
+  const [terminalCampaigns, setTerminalCampaigns] = useState<TerminalCampaign[]>([])
+  const previousSendingRef = useRef<Map<string, SendingCampaign>>(new Map())
+  const terminalTimersRef = useRef<Map<string, number>>(new Map())
   const reconnectTimerRef = useRef<number | null>(null)
   const reconnectAttemptRef = useRef(0)
+
+  const promoteToTerminal = useCallback((campaign: SendingCampaign) => {
+    const dispatchId = campaign.dispatchId ?? `campaign:${campaign.id}`
+    const existingTimer = terminalTimersRef.current.get(dispatchId)
+    if (existingTimer) window.clearTimeout(existingTimer)
+
+    const terminalUntil = Date.now() + CAMPAIGN_DISPATCH_TERMINAL_TTL_MS
+    setTerminalCampaigns((prev) => {
+      const without = prev.filter((item) => item.dispatchId !== dispatchId)
+      return [
+        ...without,
+        {
+          ...campaign,
+          dispatchId,
+          terminalUntil,
+          status: campaign.completionKind === "failed" ? "failed" : "completed",
+        },
+      ]
+    })
+
+    const timerId = window.setTimeout(() => {
+      terminalTimersRef.current.delete(dispatchId)
+      setTerminalCampaigns((prev) => prev.filter((item) => item.dispatchId !== dispatchId))
+    }, CAMPAIGN_DISPATCH_TERMINAL_TTL_MS)
+    terminalTimersRef.current.set(dispatchId, timerId)
+  }, [])
+
+  const resolveTerminalFromApi = useCallback(
+    async (prev: SendingCampaign): Promise<SendingCampaign | null> => {
+      try {
+        const res = await fetch(`${API_CLIENT_BASE}/email/campaigns/${prev.id}`, {
+          headers: { "x-supabase-id": supabaseId },
+          cache: "no-store",
+        })
+        if (!res.ok) return null
+        const json = (await res.json()) as {
+          isValid?: boolean
+          result?: {
+            id: string
+            name?: string
+            status: string
+            totalRecipients: number
+            totalSent: number
+            errorMessage?: string | null
+            activeDispatch?: CampaignDispatchProgress | null
+            latestDispatch?: CampaignDispatchProgress | null
+            dispatchProgressSummary?: CampaignDispatchProgressSummary | null
+          }
+        }
+        const campaign = json.result
+        if (!campaign || json.isValid === false) return null
+
+        const terminal = resolveCampaignDispatchTerminal(campaign)
+        if (!terminal) return null
+
+        return {
+          ...prev,
+          name: campaign.name || prev.name,
+          totalRecipients: terminal.totalRecipients,
+          totalSent: terminal.acceptedCount,
+          acceptedCount: terminal.acceptedCount,
+          failedCount: terminal.failedCount,
+          completionKind: terminal.completionKind,
+          dispatchId: terminal.dispatchId ?? prev.dispatchId,
+          retryFailedOnly: terminal.retryFailedOnly,
+          errorMessage: terminal.errorMessage,
+          status: terminal.status,
+        }
+      } catch (err) {
+        console.error("[CampaignDispatchRealtime] Erro ao resolver terminal do disparo:", err)
+        return null
+      }
+    },
+    [supabaseId]
+  )
 
   const fetchSendingCampaigns = useCallback(async () => {
     if (!activeTeamId || !user?.id) return
@@ -48,28 +192,65 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
             totalRecipients: number
             totalSent: number
             status: string
+            activeDispatch?: CampaignDispatchProgress | null
+            latestDispatch?: CampaignDispatchProgress | null
+            dispatchProgressSummary?: {
+              totalRecipients: number
+              acceptedCount: number
+              failedCount: number
+              completionKind: CampaignDispatchCompletionKind
+              updatedAt: string
+            } | null
           }>
         }
       }
-      const campaigns = json.result?.campaigns ?? []
-      setSendingCampaigns(
-        campaigns
-          .filter((c) => c.status === "sending")
-          .map((c) => ({
-            id: c.id,
-            name: c.name,
-            totalRecipients: c.totalRecipients,
-            totalSent: c.totalSent,
-          }))
-      )
+      const campaigns = (json.result?.campaigns ?? [])
+        .map(mapCampaignRow)
+        .filter((campaign): campaign is SendingCampaign => Boolean(campaign))
+
+      const nextMap = new Map(campaigns.map((campaign) => [campaign.id, campaign]))
+      const disappeared: SendingCampaign[] = []
+      for (const [id, prev] of previousSendingRef.current) {
+        if (!nextMap.has(id)) {
+          disappeared.push(prev)
+        }
+      }
+      previousSendingRef.current = nextMap
+      setSendingCampaigns(campaigns)
+
+      // Polling-only path: never invent completed/full only because the row left status=sending.
+      for (const prev of disappeared) {
+        void resolveTerminalFromApi(prev).then((resolved) => {
+          if (resolved) promoteToTerminal(resolved)
+        })
+      }
     } catch (err) {
       console.error("[CampaignDispatchRealtime] Erro ao buscar campanhas em envio:", err)
     }
-  }, [activeTeamId, user?.id, supabaseId])
+  }, [activeTeamId, promoteToTerminal, resolveTerminalFromApi, user?.id, supabaseId])
 
   useEffect(() => {
     void fetchSendingCampaigns()
   }, [fetchSendingCampaigns])
+
+  useEffect(() => {
+    if (!activeTeamId || !user?.id) return
+
+    const intervalId = window.setInterval(() => {
+      void fetchSendingCampaigns()
+    }, 4000)
+
+    return () => window.clearInterval(intervalId)
+  }, [activeTeamId, fetchSendingCampaigns, user?.id])
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of terminalTimersRef.current.values()) {
+        window.clearTimeout(timerId)
+      }
+      terminalTimersRef.current.clear()
+    }
+  }, [])
 
   useEffect(() => {
     if (!activeTeamId || !user?.id) return
@@ -158,23 +339,60 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
               totalRecipients?: number
               totalSent?: number
               teamId?: string
+              errorMessage?: string | null
             }
             if (!row?.id || row.teamId !== capturedTeamId) return
 
             const { id, name = "", status: newStatus, totalSent = 0, totalRecipients = 0 } = row
 
-            setSendingCampaigns((prev) => {
-              if (newStatus === "sending") {
+            if (newStatus === "sending") {
+              setSendingCampaigns((prev) => {
                 const idx = prev.findIndex((c) => c.id === id)
                 if (idx >= 0) {
                   const next = [...prev]
-                  next[idx] = { ...next[idx], totalSent, totalRecipients }
+                  next[idx] = {
+                    ...next[idx],
+                    totalSent,
+                    totalRecipients,
+                    acceptedCount: totalSent,
+                    name: name || next[idx].name,
+                  }
+                  previousSendingRef.current.set(id, next[idx])
                   return next
                 }
-                return [...prev, { id, name, totalRecipients, totalSent }]
-              }
-              return prev.filter((c) => c.id !== id)
+                const created: SendingCampaign = {
+                  id,
+                  name,
+                  totalRecipients,
+                  totalSent,
+                  acceptedCount: totalSent,
+                  status: "sending",
+                  completionKind: "pending",
+                }
+                previousSendingRef.current.set(id, created)
+                return [...prev, created]
+              })
+              return
+            }
+
+            // Leave sending: never invent completionKind from realtime row totals
+            // (totalSent can lag acceptedCount). Resolve via GET + resolveCampaignDispatchTerminal
+            // — same safe path as polling disappearance.
+            // Snapshot do ref síncrono ANTES do setState (updater pode não rodar neste tick).
+            const leavingSnapshot = takeLeavingSendingSnapshot(previousSendingRef.current, id, {
+              name,
+              errorMessage: row.errorMessage ?? null,
             })
+            setSendingCampaigns((prev) => prev.filter((c) => c.id !== id))
+
+            if (leavingSnapshot) {
+              void resolveTerminalFromApi(leavingSnapshot).then((resolved) => {
+                if (resolved) promoteToTerminal(resolved)
+              })
+            }
+
+            // Aceleração: refetch lista sending (não substitui a resolução terminal acima)
+            void fetchSendingCampaigns()
           }
         )
         .subscribe((status) => {
@@ -193,10 +411,10 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
       clearReconnectTimer()
       teardownChannel()
     }
-  }, [activeTeamId, user?.id])
+  }, [activeTeamId, fetchSendingCampaigns, promoteToTerminal, resolveTerminalFromApi, user?.id])
 
   return (
-    <CampaignDispatchRealtimeContext.Provider value={{ sendingCampaigns }}>
+    <CampaignDispatchRealtimeContext.Provider value={{ sendingCampaigns, terminalCampaigns }}>
       {children}
     </CampaignDispatchRealtimeContext.Provider>
   )
@@ -204,6 +422,8 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
 
 export function useCampaignDispatchRealtime(): CampaignDispatchRealtimeState {
   const ctx = useContext(CampaignDispatchRealtimeContext)
-  if (!ctx) throw new Error("useCampaignDispatchRealtime must be used within CampaignDispatchRealtimeProvider")
+  if (!ctx) {
+    throw new Error("useCampaignDispatchRealtime must be used within CampaignDispatchRealtimeProvider")
+  }
   return ctx
 }

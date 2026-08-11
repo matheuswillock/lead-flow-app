@@ -7,6 +7,8 @@
  * - Sem remetente + sem domínio → deliveryby@corretorstudio.com
  */
 
+import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
+
 export const PLATFORM_FROM_DOMAIN = "corretorstudio.com"
 export const DELIVERY_LOCAL_PART = "deliveryby"
 export const PLATFORM_FROM_NAME = "Corretor Studio"
@@ -30,9 +32,97 @@ export type ResolvedCampaignFrom = {
   fromEmail: string
 }
 
+export const CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE =
+  "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar."
+
+export const CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE =
+  "O remetente da campanha não pertence ao domínio verificado no Resend."
+
+export const SENDER_EMAIL_DOMAIN_NOT_VERIFIED_MESSAGE =
+  "Domínio de e-mail não verificado. Verifique o domínio nas configurações antes de cadastrar um remetente."
+
+export const SENDER_EMAIL_OUTSIDE_DOMAIN_MESSAGE =
+  "O e-mail do remetente deve usar o domínio cadastrado e verificado no Resend."
+
+export type CampaignFromSendableCheck =
+  | { ok: true }
+  | { ok: false; message: string }
+
+/**
+ * Guard de domínio: impede disparo quando o "from" da campanha não pode ser
+ * enviado de forma segura. E-mails no domínio da plataforma
+ * (`@corretorstudio.com`, incl. deliveryby/no-reply) passam sempre. Qualquer
+ * outro from exige um domínio do time verificado no Resend e pertencente ao
+ * remetente.
+ */
+export function assertCampaignFromIsSendable(params: {
+  resolved: ResolvedCampaignFrom
+  domainName?: string | null | undefined
+  domainStatus?: string | null | undefined
+}): CampaignFromSendableCheck {
+  if (
+    isPlatformDefaultFromEmail(params.resolved.fromEmail) ||
+    isEmailOnPlatformDomain(params.resolved.fromEmail)
+  ) {
+    return { ok: true }
+  }
+
+  const domainCapable =
+    Boolean(params.domainName?.trim()) && isResendDomainSendCapable(params.domainStatus)
+  if (!domainCapable) {
+    return { ok: false, message: CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE }
+  }
+
+  if (!isEmailAllowedForTeamDomain(params.resolved.fromEmail, params.domainName)) {
+    return { ok: false, message: CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE }
+  }
+
+  return { ok: true }
+}
+
+/**
+ * Mesma regra de negócio de `assertCampaignFromIsSendable`, com mensagens
+ * orientadas ao cadastro/edição de remetente (não ao disparo).
+ */
+export function assertSenderEmailIsAllowed(params: {
+  email: string
+  domainName?: string | null | undefined
+  domainStatus?: string | null | undefined
+}): CampaignFromSendableCheck {
+  const check = assertCampaignFromIsSendable({
+    resolved: { fromName: "sender", fromEmail: params.email },
+    domainName: params.domainName,
+    domainStatus: params.domainStatus,
+  })
+  if (check.ok) return check
+  if (check.message === CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE) {
+    return { ok: false, message: SENDER_EMAIL_DOMAIN_NOT_VERIFIED_MESSAGE }
+  }
+  if (check.message === CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE) {
+    const domain = params.domainName?.trim().toLowerCase()
+    return {
+      ok: false,
+      message: domain
+        ? `O e-mail do remetente deve usar o domínio cadastrado (@${domain})`
+        : SENDER_EMAIL_OUTSIDE_DOMAIN_MESSAGE,
+    }
+  }
+  return check
+}
+
 export function isPlatformDefaultFromEmail(email: string | null | undefined): boolean {
   if (!email?.trim()) return true
   return LEGACY_PLATFORM_FROM_EMAILS.has(email.trim().toLowerCase())
+}
+
+/** Qualquer e-mail no domínio (ou subdomínio) da plataforma Corretor Studio. */
+export function isEmailOnPlatformDomain(email: string | null | undefined): boolean {
+  if (!email?.trim()) return false
+  const normalized = email.trim().toLowerCase()
+  const at = normalized.lastIndexOf("@")
+  if (at < 0) return false
+  const host = normalized.slice(at + 1)
+  return host === PLATFORM_FROM_DOMAIN || host.endsWith(`.${PLATFORM_FROM_DOMAIN}`)
 }
 
 export function buildDeliveryFromEmail(domainName: string | null | undefined): string {
