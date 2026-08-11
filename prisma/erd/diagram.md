@@ -3363,6 +3363,8 @@ completed completed
     Json profileData "❓"
     Int engagementScore "❓"
     String engagementBand "❓"
+    String gender "❓"
+    String genderSource "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }

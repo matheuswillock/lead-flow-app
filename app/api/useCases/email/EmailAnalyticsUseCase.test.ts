@@ -14,11 +14,12 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
     listTemplateVersionMetrics: mock(async () => []),
     listCampaignMetrics: mock(async () => []),
     countFormCompletions: mock(async () => 0),
+    countFormEvents: mock(async () => 0),
     findCampaignTemplateHtml: mock(async () => null),
     findCampaignNames: mock(async () => []),
     findResendDomainStatus: mock(async () => null),
     ...overrides,
-  }
+  } as IEmailAnalyticsRepository
 }
 
 const baseWindow = { from: new Date("2026-01-01"), to: new Date("2026-01-31") }
@@ -26,6 +27,30 @@ const baseWindow = { from: new Date("2026-01-01"), to: new Date("2026-01-31") }
 // ---------- testes ----------
 
 describe("EmailAnalyticsUseCase.getAnalytics", () => {
+  it("G0 — PeriodSlice expõe formViewed e formStarted no mesmo contrato de formCompletions", async () => {
+    const countFormCompletions = mock(async () => 0)
+    const countFormEvents = mock(async (_options: { eventType: string }) => {
+      if (_options.eventType === "form_viewed") return 29
+      if (_options.eventType === "form_started") return 6
+      return 0
+    })
+    const repo = buildRepo({ countFormCompletions, countFormEvents })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.totals.formViewed).toBe(29)
+    expect(output.result.totals.formStarted).toBe(6)
+    expect(output.result.totals.formCompletions).toBe(0)
+    expect(output.result.deltas.totals.formViewed).toBeDefined()
+    expect(output.result.deltas.totals.formStarted).toBeDefined()
+    const eventTypes = countFormEvents.mock.calls.map(
+      (call) => (call[0] as { eventType: string }).eventType,
+    )
+    expect(eventTypes).toContain("form_viewed")
+    expect(eventTypes).toContain("form_started")
+  })
+
   it("A1 — openRate usa 'sent' como denominador (não 'delivered')", async () => {
     const repo = buildRepo({
       countLogs: mock(async (_where, filter) => {

@@ -1,0 +1,18 @@
+export const BR_FIRST_NAME_GENDER: Readonly<Record<string, "male" | "female">> = {
+  ana: "female",
+  antonio: "male",
+  beatriz: "female",
+  carlos: "male",
+  fernanda: "female",
+  gabriel: "male",
+  joao: "male",
+  jose: "male",
+  juliana: "female",
+  lucas: "male",
+  maria: "female",
+  marcos: "male",
+  patricia: "female",
+  paulo: "male",
+  pedro: "male",
+  rafael: "male",
+}

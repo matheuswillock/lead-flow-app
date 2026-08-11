@@ -70,6 +70,16 @@ export class EmailAnalyticsUseCase {
     // Por campanha sem form vinculado: formCompletions = 0 (formId explícito inexistente).
     const skipFormCount = options.campaignId !== undefined && formId === undefined && options.formId !== null
 
+    const formCountOptions = skipFormCount
+      ? null
+      : {
+          teamId: options.teamId,
+          from: options.from,
+          to: options.to,
+          formId: options.campaignId ? formId : undefined,
+          campaignId: options.campaignId,
+        }
+
     const [
       total,
       delivered,
@@ -82,6 +92,8 @@ export class EmailAnalyticsUseCase {
       unsubscribed,
       suppressed,
       formCompletions,
+      formViewed,
+      formStarted,
     ] = await Promise.all([
       this.repository.countLogs(logWhere),
       this.repository.countLogs(logWhere, "delivered"),
@@ -93,14 +105,15 @@ export class EmailAnalyticsUseCase {
       this.repository.countLogs(logWhere, "delivery_delayed"),
       this.repository.countLogs(logWhere, "unsubscribed"),
       this.repository.countLogs(logWhere, "suppressed"),
-      skipFormCount
-        ? Promise.resolve(0)
-        : this.repository.countFormCompletions({
-            teamId: options.teamId,
-            from: options.from,
-            to: options.to,
-            formId: options.campaignId ? formId : undefined,
-          }),
+      formCountOptions
+        ? this.repository.countFormCompletions(formCountOptions)
+        : Promise.resolve(0),
+      formCountOptions
+        ? this.repository.countFormEvents({ ...formCountOptions, eventType: "form_viewed" })
+        : Promise.resolve(0),
+      formCountOptions
+        ? this.repository.countFormEvents({ ...formCountOptions, eventType: "form_started" })
+        : Promise.resolve(0),
     ])
 
     const totals: AnalyticsTotalsForDelta = {
@@ -115,6 +128,8 @@ export class EmailAnalyticsUseCase {
       unsubscribed,
       suppressed,
       formCompletions,
+      formViewed,
+      formStarted,
     }
 
     return {

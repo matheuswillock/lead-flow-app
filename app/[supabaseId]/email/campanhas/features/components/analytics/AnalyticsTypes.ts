@@ -26,6 +26,8 @@ export type AnalyticsTotals = {
   unsubscribed: number
   suppressed: number
   formCompletions: number
+  formViewed: number
+  formStarted: number
 }
 
 export type AnalyticsData = {
