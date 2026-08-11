@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { Prisma } from "@prisma/client"
 
 const updateManyMock = mock(async () => ({ count: 0 }))
 const jobUpdateMock = mock(async () => ({}))
@@ -88,6 +89,14 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       count: countMock,
     },
   },
+  default: {
+    ...prismaStub,
+    emailContactRadarSyncOutbox: {
+      upsert: upsertMock,
+      count: countMock,
+    },
+  },
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
   getImportCronPrisma: () => ({
     ...prismaStub,
     emailContactRadarSyncOutbox: {
@@ -123,6 +132,16 @@ mock.module("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase", () => ({
 const { EmailContactImportUseCase } = await import(
   "@/app/api/useCases/email/EmailContactImportUseCase"
 )
+const { withTransientTransactionRetry } = await import(
+  "@/lib/prisma/retry-transient-transaction"
+)
+
+function p2028() {
+  return new Prisma.PrismaClientKnownRequestError(
+    "Unable to start a transaction in the given time.",
+    { code: "P2028", clientVersion: "test" }
+  )
+}
 
 function makeJob(overrides: Partial<typeof claimedJob> = {}) {
   return {
@@ -158,6 +177,15 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     updateManyMock.mockClear()
     updateManyMock.mockImplementation(async () => ({ count: 0 }))
     transactionMock.mockClear()
+    transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        emailImportJob: {
+          findFirst: mock(async () => claimedJob),
+          updateMany: mock(async () => ({ count: claimedJob ? 1 : 0 })),
+        },
+      }
+      return fn(tx)
+    })
     jobUpdateMock.mockClear()
     jobUpdateMock.mockImplementation(async () => ({}))
     emailContactFindManyMock.mockClear()
@@ -189,11 +217,89 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     )
   })
 
-  it("retorna sucesso quando não há jobs pendentes", async () => {
+  it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {
     const useCase = new EmailContactImportUseCase()
     const output = await useCase.processPendingJobs()
     expect(output.isValid).toBe(true)
+    expect(output.successMessages).toContain("Nenhum job pendente")
     expect((output.result as { processedJobs: number }).processedJobs).toBe(0)
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("T1: reexecuta claim após P2028 e processa o job", async () => {
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows: [] }))
+
+    transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      if (transactionMock.mock.calls.length === 1) throw p2028()
+      const tx = {
+        emailImportJob: {
+          findFirst: mock(async () => claimedJob),
+          updateMany: mock(async () => ({ count: 1 })),
+        },
+      }
+      return fn(tx)
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(transactionMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("T2: esgota retries de P2028 e retorna mensagem com code", async () => {
+    transactionMock.mockImplementation(async () => {
+      throw p2028()
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("P2028")
+    expect(output.errorMessages[0]).toContain("Unable to start a transaction")
+    expect(output.errorMessages[0]).not.toBe("Erro ao processar jobs de importação")
+    expect(transactionMock).toHaveBeenCalledTimes(3)
+  })
+
+  it("T3: erro não-transitório falha imediatamente sem retry", async () => {
+    transactionMock.mockImplementation(async () => {
+      throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      })
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("P2002")
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("T4: retry usa o backoff default de produção entre tentativas", async () => {
+    const delays: number[] = []
+    const sleep = async (ms: number) => {
+      delays.push(ms)
+    }
+    const operation = mock(async () => {
+      throw p2028()
+    })
+
+    await expect(
+      withTransientTransactionRetry(operation, {
+        maxAttempts: 3,
+        sleep,
+      })
+    ).rejects.toMatchObject({ code: "P2028" })
+
+    expect(delays).toEqual([250, 500])
   })
 
   it("reclaim jobs stuck em processing para pending antes do claim", async () => {

@@ -5,7 +5,7 @@ import type { ICronExecutionsService, ListCronExecutionsParams } from "./ICronEx
 export class CronExecutionsService implements ICronExecutionsService {
   async listExecutions(params?: ListCronExecutionsParams): Promise<Output> {
     const searchParams = new URLSearchParams()
-    
+
     if (params?.cronKey) searchParams.append("cronKey", params.cronKey)
     if (params?.status) searchParams.append("status", params.status)
     if (params?.startDate) searchParams.append("startDate", params.startDate)

@@ -1,9 +1,9 @@
-import type { BackofficeCronStatus } from "@prisma/client"
 import type { Output } from "@/lib/output"
+import type { CronExecutionStatusKey } from "../context/CronExecutionsContextTypes"
 
 export type ListCronExecutionsParams = {
   cronKey?: string
-  status?: BackofficeCronStatus
+  status?: CronExecutionStatusKey
   startDate?: string
   endDate?: string
   limit?: number
