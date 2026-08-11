@@ -6,8 +6,8 @@
  * mas nunca responderam nenhuma pergunta (Achado E6 — funil quebrado clique→Lead).
  *
  * O Excel importado tem telefone_1/telefone_2 no customFields do EmailContact.
- * Este script cruza os 29 form_viewed events com o EmailContact para recuperar
- * o dado de telefone e cria os Leads correspondentes.
+ * Este script cruza os form_viewed events (excluindo quem respondeu alguma pergunta)
+ * com o EmailContact da lista da campanha para recuperar telefone e cria os Leads.
  *
  * Uso:
  *   bun run scripts/promote-form-viewers-to-leads.ts          # dry-run (padrão)
@@ -29,11 +29,11 @@ type ContactData = {
   socios: string | null;
   formName: string;
   formViewedAt: Date;
+  contactListId: string | null;
 };
 
 function extractPhone(customFields: Record<string, unknown> | null): string | null {
   if (!customFields) return null;
-  // Tenta variações comuns das chaves do Excel
   const candidates = [
     customFields["telefone_1"],
     customFields["Telefone 1"],
@@ -69,10 +69,7 @@ function generateLeadCode(name: string): string {
 
 async function getManagerProfileId(): Promise<string> {
   const manager = await prisma.teamMember.findFirst({
-    where: {
-      teamId: AVALANCHE_TEAM_ID,
-      role: "MANAGER",
-    },
+    where: { teamId: AVALANCHE_TEAM_ID, role: "MANAGER" },
     select: { profileId: true },
   });
   if (!manager) throw new Error("Nenhum MANAGER encontrado no time Avalanche");
@@ -80,10 +77,11 @@ async function getManagerProfileId(): Promise<string> {
 }
 
 async function findFormViewers(): Promise<ContactData[]> {
-  // Busca todos os form_viewed do time Avalanche
+  // form_viewed sem question_answered na mesma sessão (NOT EXISTS por visitorSessionId+formId)
   const events = await prisma.$queryRaw<
     Array<{
       email_log_id: string | null;
+      dispatch_id: string | null;
       recipient_email_origin: string | null;
       form_name: string;
       form_viewed_at: Date;
@@ -91,6 +89,7 @@ async function findFormViewers(): Promise<ContactData[]> {
   >`
     SELECT
       (pme.origin->>'emailLogId') AS email_log_id,
+      (pme.origin->>'dispatchId') AS dispatch_id,
       (pme.origin->>'recipientEmail') AS recipient_email_origin,
       f.name AS form_name,
       pme."createdAt" AS form_viewed_at
@@ -98,28 +97,46 @@ async function findFormViewers(): Promise<ContactData[]> {
     JOIN corretor_studio_public_forms f ON f.id = pme."formId"
     WHERE pme."eventType" = 'form_viewed'
       AND f."teamId" = ${AVALANCHE_TEAM_ID}::uuid
+      AND NOT EXISTS (
+        SELECT 1
+        FROM corretor_studio_public_form_metric_events qa
+        WHERE qa."visitorSessionId" = pme."visitorSessionId"
+          AND qa."formId" = pme."formId"
+          AND qa."eventType" = 'question_answered'
+      )
     ORDER BY pme."createdAt" DESC
   `;
 
-  console.info(`\n📋 ${events.length} form_viewed encontrados para Avalanche`);
+  console.info(`\n📋 ${events.length} form_viewed (sem question_answered) para Avalanche`);
 
   const contacts: ContactData[] = [];
   const seenEmails = new Set<string>();
 
   for (const event of events) {
-    // Resolve o email do destinatário via EmailLog ou direto do origin
     let recipientEmail: string | null = event.recipient_email_origin ?? null;
+    let contactListId: string | null = null;
 
-    if (!recipientEmail && event.email_log_id) {
+    // Resolve email e contactListId via EmailLog → EmailCampaignDispatch
+    if (event.email_log_id) {
       const log = await prisma.emailLog.findUnique({
         where: { id: event.email_log_id },
-        select: { recipientEmail: true },
+        select: {
+          recipientEmail: true,
+          dispatch: { select: { contactListId: true } },
+        },
       });
-      recipientEmail = log?.recipientEmail ?? null;
+      if (!recipientEmail) recipientEmail = log?.recipientEmail ?? null;
+      contactListId = log?.dispatch?.contactListId ?? null;
+    } else if (event.dispatch_id) {
+      const dispatch = await prisma.emailCampaignDispatch.findUnique({
+        where: { id: event.dispatch_id },
+        select: { contactListId: true },
+      });
+      contactListId = dispatch?.contactListId ?? null;
     }
 
     if (!recipientEmail) {
-      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} sem email resolvível — ignorando`);
+      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} sem email — ignorando`);
       continue;
     }
 
@@ -127,17 +144,14 @@ async function findFormViewers(): Promise<ContactData[]> {
     if (seenEmails.has(email)) continue;
     seenEmails.add(email);
 
-    // Busca o EmailContact com os dados do Excel
+    // Busca o EmailContact restringindo à lista da campanha quando disponível
+    const contactWhere = contactListId
+      ? { email: { equals: email, mode: "insensitive" as const }, listId: contactListId }
+      : { email: { equals: email, mode: "insensitive" as const }, list: { teamId: AVALANCHE_TEAM_ID } };
+
     const contact = await prisma.emailContact.findFirst({
-      where: {
-        email: { equals: email, mode: "insensitive" },
-        list: { teamId: AVALANCHE_TEAM_ID },
-      },
-      select: {
-        email: true,
-        name: true,
-        customFields: true,
-      },
+      where: contactWhere,
+      select: { email: true, name: true, customFields: true },
     });
 
     const cf = (contact?.customFields as Record<string, unknown> | null) ?? null;
@@ -151,6 +165,7 @@ async function findFormViewers(): Promise<ContactData[]> {
       socios: extractString(cf, "socios", "Sócios", "socios"),
       formName: event.form_name,
       formViewedAt: event.form_viewed_at,
+      contactListId,
     });
   }
 
@@ -169,15 +184,13 @@ async function main() {
   const viewers = await findFormViewers();
   console.info(`\n📊 ${viewers.length} e-mails únicos resolvidos:\n`);
 
-  // Mostra os primeiros customFields keys para debug
   const firstWithCf = viewers.find((v) => v.telefone || v.razaoSocial);
   if (firstWithCf) {
     console.info(`   Exemplo de dados enriquecidos:`);
     console.info(`   email: ${firstWithCf.email}`);
     console.info(`   telefone: ${firstWithCf.telefone ?? "(sem telefone)"}`);
     console.info(`   razaoSocial: ${firstWithCf.razaoSocial ?? "(vazio)"}`);
-    console.info(`   nomeFantasia: ${firstWithCf.nomeFantasia ?? "(vazio)"}`);
-    console.info(`   socios: ${firstWithCf.socios ?? "(vazio)"}`);
+    console.info(`   contactListId: ${firstWithCf.contactListId ?? "(não resolvida)"}`);
     console.info("");
   }
 
@@ -186,7 +199,6 @@ async function main() {
   let noPhone = 0;
 
   for (const viewer of viewers) {
-    // Verifica se o Lead já existe
     const existing = await prisma.lead.findFirst({
       where: {
         teamId: AVALANCHE_TEAM_ID,
@@ -202,7 +214,6 @@ async function main() {
       continue;
     }
 
-    // Nome: preferência razaoSocial > nomeFantasia > name do contact > email
     const leadName =
       viewer.razaoSocial ||
       viewer.nomeFantasia ||
@@ -229,8 +240,8 @@ async function main() {
     } while (codeAttempts < 10);
 
     const notes = [
-      "Lead criado automaticamente a partir de visualização de formulário da campanha de e-mail.",
-      !phone ? "⚠️ Contato sem telefone no momento da criação — enriquecer manualmente." : null,
+      "Lead criado a partir de visualização de formulário via campanha de e-mail (sem preenchimento).",
+      !phone ? "⚠️ Contato sem telefone — enriquecer manualmente." : null,
       viewer.socios ? `Sócios identificados: ${viewer.socios}` : null,
     ]
       .filter(Boolean)
@@ -242,11 +253,12 @@ async function main() {
         managerId: managerProfileId,
         teamId: AVALANCHE_TEAM_ID,
         createdBy: managerProfileId,
+        status: "new_opportunity",
         name: leadName,
         email: viewer.email,
         phone: phone ?? undefined,
         razaoSocial: viewer.razaoSocial ?? undefined,
-        originChannel: "manual",
+        originChannel: "public_form",
         originMetadata: {
           source: "form_viewed",
           formName: viewer.formName,
