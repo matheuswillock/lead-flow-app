@@ -1,24 +1,86 @@
+import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase"
+import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
 import {
   handlePublicFormMetricEventsCallback,
   type PublicFormMetricQueuePayload,
-} from "@/lib/queues/public-form-metric-events";
+} from "@/lib/queues/public-form-metric-events"
+
+type QueueMessageMetadata = {
+  messageId: string
+  deliveryCount: number
+  topicName?: string
+  consumerGroup?: string
+  region?: string
+}
 
 /**
- * Consumer push privado (trigger `queue/v2beta`) — PoC T1.
- * Não grava Postgres; apenas confirma recebimento/ack para Observability.
- * O consumer definitivo de `PublicFormMetricEvent` fica no T5.
+ * Consumer push privado (trigger `queue/v2beta`, maxConcurrency: 1).
+ * Persiste `PublicFormMetricEvent` de forma idempotente via `eventKey` único.
+ * Entrega at-least-once: duplicatas colapsam no upsert do repositório.
  */
-export const POST = handlePublicFormMetricEventsCallback(
-  async (message: PublicFormMetricQueuePayload, metadata) => {
-    console.info("[PublicFormMetricEventsQueue][POST] message received", {
+export async function processPublicFormMetricQueueMessage(
+  message: PublicFormMetricQueuePayload,
+  metadata: QueueMessageMetadata,
+): Promise<void> {
+  console.info("[PublicFormMetricEventsQueueRoute][POST] message received", {
+    messageId: metadata.messageId,
+    deliveryCount: metadata.deliveryCount,
+    topicName: metadata.topicName,
+    consumerGroup: metadata.consumerGroup,
+    region: metadata.region,
+    eventType: message?.eventType,
+    eventKey: message?.eventKey,
+    publicId: message?.publicId,
+  })
+
+  if (!message?.publicId || !message?.eventKey || !message?.visitorSessionId || !message?.eventType) {
+    console.error("[PublicFormMetricEventsQueueRoute][POST] invalid payload, acking", {
+      messageId: metadata.messageId,
+      message,
+    })
+    return
+  }
+
+  const input: PublicFormMetricEventInput = {
+    visitorSessionId: message.visitorSessionId,
+    eventType: message.eventType as PublicFormMetricEventInput["eventType"],
+    questionId: message.questionId ?? undefined,
+    eventKey: message.eventKey,
+    origin: message.origin ?? {},
+  }
+
+  try {
+    const accepted = await publicFormsUseCase.persistQueuedMetric(message.publicId, input)
+    if (!accepted) {
+      // Formulário indisponível / publicação encerrada — sem sentido retry infinito.
+      console.info("[PublicFormMetricEventsQueueRoute][POST] form unavailable, acking", {
+        messageId: metadata.messageId,
+        publicId: message.publicId,
+        eventKey: message.eventKey,
+      })
+      return
+    }
+    console.info("[PublicFormMetricEventsQueueRoute][POST] metric persisted", {
+      messageId: metadata.messageId,
+      eventKey: message.eventKey,
+      eventType: message.eventType,
+    })
+  } catch (error) {
+    console.error("[PublicFormMetricEventsQueueRoute][POST] persist failed, will retry", {
       messageId: metadata.messageId,
       deliveryCount: metadata.deliveryCount,
-      topicName: metadata.topicName,
-      consumerGroup: metadata.consumerGroup,
-      region: metadata.region,
-      eventType: message?.eventType,
-      eventKey: message?.eventKey,
-      publicId: message?.publicId,
-    });
+      eventKey: message.eventKey,
+      error,
+    })
+    throw error
+  }
+}
+
+export const POST = handlePublicFormMetricEventsCallback(
+  processPublicFormMetricQueueMessage,
+  {
+    retry: (_error, metadata) => ({
+      afterSeconds: Math.min(60 * Math.max(1, metadata.deliveryCount), 300),
+    }),
   },
-);
+)
