@@ -34,6 +34,7 @@ export interface IPublicFormsUseCase {
   getPublic(publicId: string): Promise<Output>
   getAvailabilityContext(publicId: string): Promise<Output>
   recordMetric(publicId: string, input: PublicFormMetricEventInput): Promise<Output>
+  persistQueuedMetric(publicId: string, input: PublicFormMetricEventInput): Promise<boolean>
   analytics(
     access: TeamAccess,
     id: string,

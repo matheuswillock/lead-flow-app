@@ -11085,6 +11085,42 @@
                   }
                 },
                 {
+                  "name": "POST Public Form Metric Events",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"visitorSessionId\": \"{{publicFormVisitorSessionId}}\",\n  \"eventType\": \"form_viewed\",\n  \"eventKey\": \"{{publicFormVisitorSessionId}}:form_viewed:form\",\n  \"origin\": {\n    \"utmSource\": \"postman\"\n  }\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/public-forms/:publicId/events",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "public-forms",
+                        ":publicId",
+                        "events"
+                      ],
+                      "variable": [
+                        {
+                          "key": "publicId",
+                          "value": "{{publicFormPublicId}}"
+                        }
+                      ]
+                    },
+                    "description": "Registra evento de métrica do formulário público. Eventos críticos (form_viewed, question_answered, form_completed) seguem queue-first via Vercel Queues e respondem 202 com result.queued=true sem gravar Postgres na rota. Demais tipos usam caminho direto (result.accepted=true). Falha de publish retorna 502 com result.code=public_form_metric_queue_publish_failed."
+                  }
+                },
+                {
                   "name": "GET Public Form Templates",
                   "request": {
                     "method": "GET",
