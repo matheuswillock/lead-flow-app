@@ -4,9 +4,12 @@ import {
   CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE,
   PLATFORM_FROM_EMAIL,
   PLATFORM_FROM_NAME,
+  SENDER_EMAIL_DOMAIN_NOT_VERIFIED_MESSAGE,
   assertCampaignFromIsSendable,
+  assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
   isEmailAllowedForTeamDomain,
+  isEmailOnPlatformDomain,
   isPlatformDefaultFromEmail,
   resolveCampaignFrom,
 } from "./resolve-campaign-from"
@@ -68,6 +71,13 @@ describe("buildDeliveryFromEmail / isPlatformDefaultFromEmail", () => {
     expect(isPlatformDefaultFromEmail(PLATFORM_FROM_EMAIL)).toBe(true)
     expect(isPlatformDefaultFromEmail("contato@empresa.com")).toBe(false)
   })
+
+  it("isEmailOnPlatformDomain", () => {
+    expect(isEmailOnPlatformDomain(null)).toBe(false)
+    expect(isEmailOnPlatformDomain("contato@corretorstudio.com")).toBe(true)
+    expect(isEmailOnPlatformDomain("a@mail.corretorstudio.com")).toBe(true)
+    expect(isEmailOnPlatformDomain("bruno@backstageclub.com.br")).toBe(false)
+  })
 })
 
 describe("isEmailAllowedForTeamDomain", () => {
@@ -106,6 +116,14 @@ describe("assertCampaignFromIsSendable", () => {
         })
       ).toEqual({ ok: true })
     }
+
+    expect(
+      assertCampaignFromIsSendable({
+        resolved: { fromName: "Contato", fromEmail: "contato@corretorstudio.com" },
+        domainName: null,
+        domainStatus: null,
+      })
+    ).toEqual({ ok: true })
   })
 
   it("domínio null + sender próprio → bloqueia com CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE", () => {
@@ -168,5 +186,27 @@ describe("assertCampaignFromIsSendable", () => {
         })
       ).toEqual({ ok: true })
     }
+  })
+})
+
+describe("assertSenderEmailIsAllowed", () => {
+  it("mapeia domínio não verificado para mensagem de cadastro de remetente", () => {
+    expect(
+      assertSenderEmailIsAllowed({
+        email: "bruno@backstageclub.com.br",
+        domainName: null,
+        domainStatus: null,
+      })
+    ).toEqual({ ok: false, message: SENDER_EMAIL_DOMAIN_NOT_VERIFIED_MESSAGE })
+  })
+
+  it("plataforma → ok sem domínio", () => {
+    expect(
+      assertSenderEmailIsAllowed({
+        email: "contato@corretorstudio.com",
+        domainName: null,
+        domainStatus: null,
+      })
+    ).toEqual({ ok: true })
   })
 })

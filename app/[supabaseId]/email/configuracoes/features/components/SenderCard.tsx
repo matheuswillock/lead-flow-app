@@ -36,6 +36,7 @@ import type { UpsertEmailSenderData } from "../services/IEmailSettingsService"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { EmailSender } from "../context/EmailSettingsTypes"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
+import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
 
 function getInitials(name: string) {
   return name
@@ -50,11 +51,19 @@ type SenderFormProps = {
   initialValue?: UpsertEmailSenderData
   loading: boolean
   submitLabel: string
+  lockEmail?: boolean
   onSubmit: (data: UpsertEmailSenderData) => Promise<void>
   onCancel?: () => void
 }
 
-function SenderForm({ initialValue, loading, submitLabel, onSubmit, onCancel }: SenderFormProps) {
+function SenderForm({
+  initialValue,
+  loading,
+  submitLabel,
+  lockEmail = false,
+  onSubmit,
+  onCancel,
+}: SenderFormProps) {
   const [name, setName] = useState(initialValue?.name ?? "")
   const [email, setEmail] = useState(initialValue?.email ?? "")
   const [replyTo, setReplyTo] = useState(initialValue?.replyTo ?? "")
@@ -95,9 +104,14 @@ function SenderForm({ initialValue, loading, submitLabel, onSubmit, onCancel }: 
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              disabled={loading}
+              disabled={loading || lockEmail}
               placeholder="Ex: deliveryby@mail.suaempresa.com.br"
             />
+            {lockEmail ? (
+              <FieldDescription>
+                Verifique um domínio nas configurações antes de alterar o e-mail do remetente.
+              </FieldDescription>
+            ) : null}
           </FieldContent>
         </Field>
 
@@ -137,6 +151,7 @@ function SenderRow({
   isUpdating,
   isDeleting,
   isSettingDefault,
+  lockEmail,
   onUpdate,
   onDelete,
   onSetDefault,
@@ -145,6 +160,7 @@ function SenderRow({
   isUpdating: boolean
   isDeleting: boolean
   isSettingDefault: boolean
+  lockEmail: boolean
   onUpdate: (data: UpsertEmailSenderData) => Promise<void>
   onDelete: () => Promise<void>
   onSetDefault: () => Promise<void>
@@ -228,6 +244,7 @@ function SenderRow({
         <SenderForm
           initialValue={{ name: sender.name, email: sender.email, replyTo: sender.replyTo }}
           loading={isUpdating}
+          lockEmail={lockEmail}
           submitLabel="Salvar alterações"
           onSubmit={async (data) => {
             await onUpdate(data)
@@ -254,8 +271,11 @@ export function SenderCard() {
     handleDeleteSender,
     handleSetDefaultSender,
     domainName,
+    domainStatus,
   } = useEmailSettingsContext()
   const [adding, setAdding] = useState(false)
+
+  const domainSendCapable = isResendDomainSendCapable(domainStatus)
 
   const defaultSender = useMemo(
     () => senders.find((sender) => sender.id === defaultSenderId) ?? null,
@@ -305,20 +325,35 @@ export function SenderCard() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-foreground">Lista de remetentes</p>
-              <p className="text-sm text-muted-foreground">
-                {senders.length} {senders.length === 1 ? "remetente cadastrado" : "remetentes cadastrados"}
-              </p>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium text-foreground">Lista de remetentes</p>
+                <p className="text-sm text-muted-foreground">
+                  {senders.length} {senders.length === 1 ? "remetente cadastrado" : "remetentes cadastrados"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => setAdding((current) => !current)}
+                disabled={creatingSender || !domainSendCapable}
+              >
+                {creatingSender ? (
+                  <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Plus data-icon="inline-start" />
+                )}
+                Adicionar remetente
+              </Button>
             </div>
-            <Button type="button" onClick={() => setAdding((current) => !current)} disabled={creatingSender}>
-              {creatingSender ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
-              Adicionar remetente
-            </Button>
+            {!domainSendCapable ? (
+              <p className="text-sm text-muted-foreground">
+                Verifique um domínio nas configurações antes de cadastrar um remetente.
+              </p>
+            ) : null}
           </div>
 
-          {adding ? (
+          {adding && domainSendCapable ? (
             <SenderForm
               loading={creatingSender}
               submitLabel="Salvar remetente"
@@ -338,6 +373,7 @@ export function SenderCard() {
                 isUpdating={updatingSenderId === sender.id}
                 isDeleting={deletingSenderId === sender.id}
                 isSettingDefault={settingDefaultSenderId === sender.id}
+                lockEmail={!domainSendCapable}
                 onUpdate={(data) => handleUpdateSender(sender.id, data)}
                 onDelete={() => handleDeleteSender(sender.id)}
                 onSetDefault={() => handleSetDefaultSender(sender.id)}
