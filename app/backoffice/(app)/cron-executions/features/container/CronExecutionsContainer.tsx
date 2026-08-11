@@ -1,56 +1,41 @@
 "use client"
 
-import { useEffect } from "react"
-import { useCronExecutions } from "../context/CronExecutionsContext"
-import { CronExecutionFilters } from "../components/CronExecutionFilters"
-import { CronExecutionsList } from "../components/CronExecutionsList"
-import { CronExecutionDetails } from "../components/CronExecutionDetails"
+import { RefreshCw } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { useCronExecutions } from "../context/useCronExecutionsHook"
+import { BackofficeCronExecutionsFiltersBar } from "../components/BackofficeCronExecutionsFiltersBar"
+import { BackofficeCronExecutionsTable } from "../components/BackofficeCronExecutionsTable"
+import { BackofficeCronExecutionDetailsSheet } from "../components/BackofficeCronExecutionDetailsSheet"
 
 export function CronExecutionsContainer() {
-  const {
-    executions,
-    loading,
-    error,
-    selectedExecution,
-    fetchExecutions,
-    selectExecution,
-  } = useCronExecutions()
-
-  useEffect(() => {
-    fetchExecutions()
-  }, [fetchExecutions])
+  const { error, loading, refresh } = useCronExecutions()
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Execuções de Crons
-        </h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Monitore o status e histórico de execução dos jobs agendados
-        </p>
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold">Execuções de crons</h1>
+          <p className="text-sm text-muted-foreground">
+            Monitore o status e o histórico de execução dos jobs agendados.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" disabled={loading} onClick={() => void refresh()}>
+          <RefreshCw data-icon="inline-start" />
+          Atualizar
+        </Button>
       </div>
 
-      {error && (
-        <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
+      {error ? (
+        <Alert variant="destructive">
+          <AlertTitle>Não foi possível carregar as execuções</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      <CronExecutionFilters onFilter={fetchExecutions} />
-      
-      <CronExecutionsList
-        executions={executions}
-        loading={loading}
-        onSelectExecution={selectExecution}
-      />
-
-      {selectedExecution && (
-        <CronExecutionDetails
-          execution={selectedExecution}
-          onClose={() => selectExecution(null)}
-        />
-      )}
+      <BackofficeCronExecutionsFiltersBar />
+      <BackofficeCronExecutionsTable />
+      <BackofficeCronExecutionDetailsSheet />
     </div>
   )
 }
