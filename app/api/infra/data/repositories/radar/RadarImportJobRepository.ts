@@ -54,7 +54,7 @@ export class RadarImportJobRepository {
   async findProfileData(profileId: string, teamId: string) {
     return prisma.radarProfile.findFirst({
       where: { id: profileId, teamId },
-      select: { profileData: true },
+      select: { profileData: true, gender: true, genderSource: true },
     })
   }
 }

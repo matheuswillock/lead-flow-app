@@ -13,8 +13,8 @@ import {
 const MAPPED_GENDER_FIELD_KEYS = ["gender", "genero", "gênero", "sexo"] as const
 const SOCIOS_FIELD_KEYS = ["socios", "sócios", "socio", "sócio"] as const
 
-function asCustomFieldsRecord(
-  customFields: Prisma.JsonValue | null | undefined
+function asFieldRecord(
+  customFields: Prisma.JsonValue | Record<string, unknown> | null | undefined
 ): Record<string, unknown> | null {
   if (!customFields || typeof customFields !== "object" || Array.isArray(customFields)) {
     return null
@@ -71,10 +71,10 @@ export function parseMappedGender(value: string): RadarGender | null {
   return null
 }
 
-export function buildGenderCandidateFromEmailContactCustomFields(
-  customFields: Prisma.JsonValue | null | undefined
+export function buildGenderCandidateFromFieldRecord(
+  fields: Prisma.JsonValue | Record<string, unknown> | null | undefined
 ): GenderCandidate | null {
-  const record = asCustomFieldsRecord(customFields)
+  const record = asFieldRecord(fields)
   const mappedRaw = extractCustomFieldValue(record, MAPPED_GENDER_FIELD_KEYS)
 
   if (mappedRaw) {
@@ -90,6 +90,12 @@ export function buildGenderCandidateFromEmailContactCustomFields(
 
   const inferred = inferGenderFromSocios(sociosRaw)
   return toInferredCandidate(inferred)
+}
+
+export function buildGenderCandidateFromEmailContactCustomFields(
+  customFields: Prisma.JsonValue | null | undefined
+): GenderCandidate | null {
+  return buildGenderCandidateFromFieldRecord(customFields)
 }
 
 function toInferredCandidate(inferred: InferredGender): GenderCandidate | null {
