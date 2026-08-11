@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { buildProfileDataMap, resolveRadarFieldValue } from "@/lib/radar/resolve-field-value"
+import {
+  buildProfileDataMap,
+  mergeImportedBaseProfileData,
+  resolveRadarFieldValue,
+} from "@/lib/radar/resolve-field-value"
 
 const baseProfile = {
   displayName: "Maria Silva",
@@ -56,5 +60,23 @@ describe("resolveRadarFieldValue", () => {
 
     expect(profileData.operadora).toBe("Unimed")
     expect(profileData.nome_cliente).toBe("Maria Silva")
+  })
+
+  it("preserva chaves base.* do import e deixa variáveis materializadas vencerem", () => {
+    const merged = mergeImportedBaseProfileData(
+      {
+        "base.socios": "Maria Silva",
+        "base.segmento": "Industrial",
+        operadora: "stale",
+      },
+      { operadora: "Unimed", nome_cliente: "Maria Silva" }
+    )
+
+    expect(merged).toEqual({
+      "base.socios": "Maria Silva",
+      "base.segmento": "Industrial",
+      operadora: "Unimed",
+      nome_cliente: "Maria Silva",
+    })
   })
 })
