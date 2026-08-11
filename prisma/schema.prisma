@@ -4589,6 +4589,8 @@ model RadarProfile {
   profileData               Json?
   engagementScore           Int?      @db.SmallInt
   engagementBand            String?   @db.Text
+  gender                    String?   @db.Text
+  genderSource              String?   @db.Text
   createdAt                 DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime  @updatedAt @db.Timestamptz(6)
 
@@ -4604,6 +4606,7 @@ model RadarProfile {
   @@index([teamId, lastSeenAt(sort: Desc)])
   @@index([teamId, engagementBand])
   @@index([teamId, engagementScore(sort: Desc)])
+  @@index([teamId, gender])
   @@map("corretor_studio_radar_profiles")
 }
 
