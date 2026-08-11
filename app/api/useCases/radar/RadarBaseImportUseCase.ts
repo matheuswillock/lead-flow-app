@@ -14,6 +14,10 @@ import {
 } from "@/lib/radar/radar-import-storage"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 import {
+  formatTransientTransactionErrorMessage,
+  withTransientTransactionRetry,
+} from "@/lib/prisma/retry-transient-transaction"
+import {
   inferRadarFieldValueType,
   isRadarNewFieldKey,
   profileDataKeyForImportField,
@@ -457,7 +461,10 @@ export class RadarBaseImportUseCase {
     const startedAt = Date.now()
 
     try {
-      const claimed = await radarImportJobRepository.claimPendingJob()
+      const claimed = await withTransientTransactionRetry(
+        () => radarImportJobRepository.claimPendingJob(),
+        { label: "RadarBaseImportUseCase.claimPendingJob" }
+      )
 
       if (!claimed) {
         return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
@@ -619,7 +626,12 @@ export class RadarBaseImportUseCase {
       })
     } catch (error) {
       console.error("[RadarBaseImportUseCase][processPendingJobs]", error)
-      return new Output(false, [], ["Erro ao processar jobs de importação"], null)
+      return new Output(
+        false,
+        [],
+        [formatTransientTransactionErrorMessage(error)],
+        null
+      )
     }
   }
 }

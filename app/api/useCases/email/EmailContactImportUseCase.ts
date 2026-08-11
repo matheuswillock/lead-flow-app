@@ -12,6 +12,10 @@ import {
 } from "@/lib/email/email-import-storage"
 import { generateEmailImportId } from "@/lib/email/generate-import-id"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import {
+  formatTransientTransactionErrorMessage,
+  withTransientTransactionRetry,
+} from "@/lib/prisma/retry-transient-transaction"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 
 const DEFAULT_LIST_NAME = "Todos contatos"
@@ -430,20 +434,24 @@ export class EmailContactImportUseCase {
     try {
       await this.reclaimStuckJobs()
 
-      const claimed = await this.db.$transaction(async (tx) => {
-        const pending = await tx.emailImportJob.findFirst({
-          where: { status: "pending" },
-          orderBy: { createdAt: "asc" },
-        })
-        if (!pending) return null
+      const claimed = await withTransientTransactionRetry(
+        () =>
+          this.db.$transaction(async (tx) => {
+            const pending = await tx.emailImportJob.findFirst({
+              where: { status: "pending" },
+              orderBy: { createdAt: "asc" },
+            })
+            if (!pending) return null
 
-        const updated = await tx.emailImportJob.updateMany({
-          where: { id: pending.id, status: "pending" },
-          data: { status: "processing" },
-        })
-        if (updated.count !== 1) return null
-        return pending
-      })
+            const updated = await tx.emailImportJob.updateMany({
+              where: { id: pending.id, status: "pending" },
+              data: { status: "processing" },
+            })
+            if (updated.count !== 1) return null
+            return pending
+          }),
+        { label: "EmailContactImportUseCase.claimPendingJob" }
+      )
 
       if (!claimed) {
         return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
@@ -609,7 +617,12 @@ export class EmailContactImportUseCase {
       })
     } catch (error) {
       console.error("[EmailContactImportUseCase][processPendingJobs]", error)
-      return new Output(false, [], ["Erro ao processar jobs de importação"], null)
+      return new Output(
+        false,
+        [],
+        [formatTransientTransactionErrorMessage(error)],
+        null
+      )
     }
   }
 }
