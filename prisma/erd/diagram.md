@@ -2688,6 +2688,7 @@ completed completed
     Int totalComplained 
     EmailCampaignDispatchStatus status 
     EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme 
+    Boolean retryFailedOnly 
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 

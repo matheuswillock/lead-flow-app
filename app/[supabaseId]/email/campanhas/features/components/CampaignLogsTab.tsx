@@ -83,9 +83,11 @@ function statusKey(statuses: string[]): string {
 
 type CampaignLogsTabProps = {
   campaignId: string
+  /** Assinatura de progresso — quando muda, força refresh preservando filtros/página. */
+  dispatchProgressKey?: string
 }
 
-export function CampaignLogsTab({ campaignId }: CampaignLogsTabProps) {
+export function CampaignLogsTab({ campaignId, dispatchProgressKey }: CampaignLogsTabProps) {
   const params = useParams<{ supabaseId: string }>()
   const supabaseId = params.supabaseId
   const { activeTeamId } = useTeamContext()
@@ -102,9 +104,17 @@ export function CampaignLogsTab({ campaignId }: CampaignLogsTabProps) {
   const [loadingDetail, setLoadingDetail] = useState(false)
 
   const fetchingRef = useRef(false)
+  const pendingForceRef = useRef(false)
   const lastKeyRef = useRef("")
+  const pageRef = useRef(page)
+  const searchRef = useRef("")
+  const statusFilterRef = useRef<string[]>([])
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  pageRef.current = page
+  searchRef.current = debouncedSearch
+  statusFilterRef.current = statusFilter
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
@@ -117,12 +127,22 @@ export function CampaignLogsTab({ campaignId }: CampaignLogsTabProps) {
     }
   }, [search])
 
-  const fetchLogs = useCallback(async (nextPage: number, nextSearch: string, nextStatuses: string[]) => {
+  const fetchLogs = useCallback(async (
+    nextPage: number,
+    nextSearch: string,
+    nextStatuses: string[],
+    options?: { force?: boolean }
+  ) => {
     if (!activeTeamId || !supabaseId) return
     const key = `${campaignId}|${nextPage}|${nextSearch}|${statusKey(nextStatuses)}|${activeTeamId}`
-    if (fetchingRef.current || lastKeyRef.current === key) return
+    if (fetchingRef.current) {
+      if (options?.force) pendingForceRef.current = true
+      return
+    }
+    if (!options?.force && lastKeyRef.current === key) return
     fetchingRef.current = true
-    setLoading(true)
+    const hasExistingRows = logs.length > 0
+    if (!hasExistingRows) setLoading(true)
     try {
       const result = await service.getCampaignLogs(supabaseId, activeTeamId, campaignId, {
         page: nextPage,
@@ -141,13 +161,22 @@ export function CampaignLogsTab({ campaignId }: CampaignLogsTabProps) {
     } finally {
       setLoading(false)
       fetchingRef.current = false
+      if (pendingForceRef.current) {
+        pendingForceRef.current = false
+        void fetchLogs(pageRef.current, searchRef.current, statusFilterRef.current, { force: true })
+      }
     }
-  }, [activeTeamId, campaignId, supabaseId])
+  }, [activeTeamId, campaignId, logs.length, supabaseId])
 
   useEffect(() => {
     lastKeyRef.current = ""
     void fetchLogs(page, debouncedSearch, statusFilter)
   }, [fetchLogs, page, debouncedSearch, statusFilter])
+
+  useEffect(() => {
+    if (!dispatchProgressKey) return
+    void fetchLogs(pageRef.current, searchRef.current, statusFilterRef.current, { force: true })
+  }, [dispatchProgressKey, fetchLogs])
 
   function handleStatusFilterChange(values: string[]) {
     setStatusFilter(values)
@@ -199,7 +228,7 @@ export function CampaignLogsTab({ campaignId }: CampaignLogsTabProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
+            {loading && logs.length === 0 ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: 6 }).map((__, j) => (

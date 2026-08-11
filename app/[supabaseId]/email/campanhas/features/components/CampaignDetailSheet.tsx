@@ -42,6 +42,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
+import {
+  CampaignDispatchProgressLine,
+  resolveCampaignDispatchProgressDisplay,
+} from "./CampaignDispatchProgressLine"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
@@ -479,6 +483,12 @@ export function CampaignDetailSheet({
             ) : null}
             <span>Campanha atual.</span>
           </SheetDescription>
+          {detailCampaign ? (
+            <CampaignDispatchProgressLine
+              progress={resolveCampaignDispatchProgressDisplay(detailCampaign)}
+              className="max-w-md"
+            />
+          ) : null}
         </SheetHeader>
 
         {detailCampaign ? (
@@ -564,7 +574,12 @@ export function CampaignDetailSheet({
                                 {sub.subCampaignIndex ?? "—"}
                               </TableCell>
                               <TableCell>
-                                <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
+                                <div className="flex flex-col gap-1">
+                                  <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
+                                  <CampaignDispatchProgressLine
+                                    progress={sub.activeDispatch ?? sub.latestDispatch ?? null}
+                                  />
+                                </div>
                               </TableCell>
                               <TableCell className="text-muted-foreground">
                                 {sub.scheduledAt
