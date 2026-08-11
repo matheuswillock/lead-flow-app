@@ -61,6 +61,17 @@ export type EmailCampaignMetricRow = {
   complained: number
 }
 
+export type FormMetricEventType = "form_viewed" | "form_started" | "form_completed"
+
+export type CountFormEventsOptions = {
+  teamId: string
+  from: Date
+  to: Date
+  eventType: "form_viewed" | "form_started"
+  formId?: string
+  campaignId?: string
+}
+
 export interface IEmailAnalyticsRepository {
   countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
   listDispatches(options: {
@@ -89,11 +100,13 @@ export interface IEmailAnalyticsRepository {
     from: Date
     to: Date
   }): Promise<EmailCampaignMetricRow[]>
+  countFormEvents(options: CountFormEventsOptions): Promise<number>
   countFormCompletions(options: {
     teamId: string
     from: Date
     to: Date
     formId?: string
+    campaignId?: string
   }): Promise<number>
   findCampaignTemplateHtml(options: {
     teamId: string
@@ -293,36 +306,74 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     }))
   }
 
-  async countFormCompletions(options: {
+  private async buildFormMetricEventWhere(options: {
     teamId: string
     from: Date
     to: Date
+    eventType: FormMetricEventType
     formId?: string
-  }): Promise<number> {
+    campaignId?: string
+  }) {
+    const dateFilter = { createdAt: { gte: options.from, lte: options.to } }
+
     if (options.formId) {
-      return prisma.publicFormMetricEvent.count({
-        where: {
-          formId: options.formId,
-          eventType: "form_completed",
-          createdAt: { gte: options.from, lte: options.to },
-          form: { teamId: options.teamId },
-        },
-      })
+      const campaignFilter = options.campaignId
+        ? await this.buildCampaignOriginFilter(options.teamId, options.campaignId)
+        : undefined
+
+      return {
+        formId: options.formId,
+        eventType: options.eventType,
+        ...dateFilter,
+        form: { teamId: options.teamId },
+        ...(campaignFilter && { OR: campaignFilter }),
+      }
     }
 
     const forms = await prisma.publicForm.findMany({
       where: { teamId: options.teamId },
       select: { id: true },
     })
-    if (forms.length === 0) return 0
+    if (forms.length === 0) return null
 
-    return prisma.publicFormMetricEvent.count({
-      where: {
-        formId: { in: forms.map((form) => form.id) },
-        eventType: "form_completed",
-        createdAt: { gte: options.from, lte: options.to },
-      },
+    const campaignFilter = options.campaignId
+      ? await this.buildCampaignOriginFilter(options.teamId, options.campaignId)
+      : undefined
+
+    return {
+      formId: { in: forms.map((form) => form.id) },
+      eventType: options.eventType,
+      ...dateFilter,
+      ...(campaignFilter && { OR: campaignFilter }),
+    }
+  }
+
+  private async buildCampaignOriginFilter(teamId: string, campaignId: string) {
+    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId)
+    return campaignIds.map((id) => ({
+      origin: { path: ["campaignId"], equals: id },
+    }))
+  }
+
+  async countFormEvents(options: CountFormEventsOptions): Promise<number> {
+    const where = await this.buildFormMetricEventWhere(options)
+    if (!where) return 0
+    return prisma.publicFormMetricEvent.count({ where })
+  }
+
+  async countFormCompletions(options: {
+    teamId: string
+    from: Date
+    to: Date
+    formId?: string
+    campaignId?: string
+  }): Promise<number> {
+    const where = await this.buildFormMetricEventWhere({
+      ...options,
+      eventType: "form_completed",
     })
+    if (!where) return 0
+    return prisma.publicFormMetricEvent.count({ where })
   }
 
   async findCampaignTemplateHtml(options: {
