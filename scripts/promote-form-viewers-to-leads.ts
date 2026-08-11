@@ -87,10 +87,10 @@ function generateLeadCode(name: string): string {
 
 async function getManagerProfileId(): Promise<string> {
   const manager = await prisma.teamMember.findFirst({
-    where: { teamId: TEAM_ID, role: "MANAGER" },
+    where: { teamId: TEAM_ID, role: "manager" },
     select: { profileId: true },
   });
-  if (!manager) throw new Error(`Nenhum MANAGER encontrado no time ${TEAM_ID}`);
+  if (!manager) throw new Error(`Nenhum manager encontrado no time ${TEAM_ID}`);
   return manager.profileId;
 }
 
