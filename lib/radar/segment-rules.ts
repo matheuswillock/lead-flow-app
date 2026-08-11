@@ -78,6 +78,28 @@ export function profileClickedNotClosedInWindow(
   )
 }
 
+const ENGAGEMENT_EVENT_TYPES = new Set([
+  "email.opened",
+  "email.clicked",
+  "form.viewed",
+  "form.started",
+])
+
+export function profileEngagedNoLeadInWindow(
+  profile: Pick<RadarSegmentProfileInput, "events" | "identities">,
+  now: number,
+  recentMs: number = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+): boolean {
+  const hasLeadId = profile.identities.some((identity) => identity.type === "lead_id")
+  if (hasLeadId) return false
+
+  return profile.events.some(
+    (event) =>
+      ENGAGEMENT_EVENT_TYPES.has(event.eventType) &&
+      isWithinRecentWindow(event.occurredAt, now, recentMs)
+  )
+}
+
 export function buildEmailEventMetadata(campaignId?: string | null, extra?: Record<string, unknown>) {
   return {
     ...(extra ?? {}),
@@ -129,6 +151,8 @@ export function profileMatchesRadarSegment(
       return hasPortfolio
     case "crm_clients":
       return Boolean(profile.identities.some((identity) => identity.type === "lead_id"))
+    case "engaged_no_lead":
+      return profileEngagedNoLeadInWindow(profile, now, recentMs)
     default: {
       const _exhaustive: never = segment
       void _exhaustive

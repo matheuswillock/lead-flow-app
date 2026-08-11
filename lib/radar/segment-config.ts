@@ -10,6 +10,7 @@ export const RADAR_SEGMENT_SLUGS = [
   "email_blocked",
   "opened_not_clicked",
   "clicked_not_closed",
+  "engaged_no_lead",
   "portfolio_renewal_due",
   "inactive_recent_campaign",
   "portfolio_clients",

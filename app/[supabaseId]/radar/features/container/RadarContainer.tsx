@@ -81,6 +81,8 @@ export function RadarContainer() {
     deleteCustomSegment,
     previewSegmentContactList,
     materializeSegmentToContactList,
+    promoteProfileToLead,
+    updateProfileGender,
     exportFilteredProfiles,
     exportSegmentMembers,
     segmentProfilesTarget,
@@ -399,6 +401,16 @@ export function RadarContainer() {
           isLoadingTouchpoints={isLoadingTouchpoints}
           contracts={contracts}
           isLoadingContracts={isLoadingContracts}
+          onPromoteToLead={
+            selectedProfile
+              ? () => promoteProfileToLead(selectedProfile.id)
+              : undefined
+          }
+          onUpdateGender={
+            selectedProfile
+              ? (gender) => updateProfileGender(selectedProfile.id, gender)
+              : undefined
+          }
         />
 
         <RadarSegmentBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} segment={editingSegment} />
@@ -417,6 +429,13 @@ export function RadarContainer() {
             closeSegmentProfiles()
             void openProfile(id)
           }}
+          showPromoteAction={
+            segmentProfilesTarget?.kind === "system" &&
+            segmentProfilesTarget.slugOrId === "engaged_no_lead"
+          }
+          onPromoteProfile={(profileId) =>
+            promoteProfileToLead(profileId, { source: "segment-list" })
+          }
         />
 
         <AlertDialog

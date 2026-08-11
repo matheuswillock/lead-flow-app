@@ -43,4 +43,31 @@ describe("countFixedSegmentsSQL", () => {
     expect(fnSource.includes("'WON'")).toBe(false)
     expect(fnSource.includes("'PAID'")).toBe(false)
   })
+
+  it("G1 — define engaged_no_lead reutilizando has_lead_id e email_events", () => {
+    const source = readFileSync(RADAR_REPOSITORY_PATH, "utf8")
+    const start = source.indexOf("async countFixedSegmentsSQL")
+    const end = source.indexOf("export const radarRepository", start)
+    const fnSource = source.slice(start, end)
+
+    expect(fnSource).toContain("engaged_no_lead_profiles")
+    expect(fnSource).toContain("NOT pb.has_lead_id")
+    expect(fnSource).toContain("FROM email_events ee")
+    expect(fnSource).toContain("engaged_no_lead")
+  })
+
+  it("G1 — todo teamId interpolado usa cast ::uuid (bug B5)", () => {
+    const source = readFileSync(RADAR_REPOSITORY_PATH, "utf8")
+    const start = source.indexOf("async countFixedSegmentsSQL")
+    const end = source.indexOf("export const radarRepository", start)
+    const fnSource = source.slice(start, end)
+
+    const teamIdBindings = fnSource.match(/\$\{teamId\}/g) ?? []
+    expect(teamIdBindings.length).toBeGreaterThan(0)
+
+    for (const binding of teamIdBindings) {
+      const index = fnSource.indexOf(binding)
+      expect(fnSource.slice(index, index + binding.length + 6)).toBe("${teamId}::uuid")
+    }
+  })
 })

@@ -41,6 +41,10 @@ import { CUSTOM_RADAR_SEGMENT_PREFIX } from "@/lib/radar/segment-audience"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types"
 import { LEAD_FIELD_CATALOG, PORTFOLIO_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSES } from "@/lib/radar/segment-dsl"
+import {
+  RADAR_PROFILE_GENDER_LABELS,
+  RADAR_PROFILE_GENDER_VALUES,
+} from "@/lib/radar/radar-profile-gender"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useParams } from "next/navigation"
 import { useRadarContext } from "../context/RadarContext"
@@ -894,7 +898,7 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                       onValueChange={(value) =>
                         updateCondition(index, {
                           kind: "profile_field",
-                          field: value as "primaryEmail" | "primaryDocument" | "lastSeenAt",
+                          field: value as "primaryEmail" | "primaryDocument" | "lastSeenAt" | "gender",
                           operator: value === "lastSeenAt" ? "before" : "eq",
                         })
                       }
@@ -905,6 +909,7 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                       <SelectContent>
                         <SelectItem value="primaryEmail">E-mail</SelectItem>
                         <SelectItem value="primaryDocument">Documento</SelectItem>
+                        <SelectItem value="gender">Gênero</SelectItem>
                         <SelectItem value="lastSeenAt">Última interação</SelectItem>
                       </SelectContent>
                     </Select>
@@ -924,7 +929,9 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                       <SelectContent>
                         {(condition.field === "lastSeenAt"
                           ? OPERATORS_BY_LAST_SEEN
-                          : OPERATORS_BY_PROFILE_FIELD[condition.field]
+                          : condition.field === "gender"
+                            ? OPERATORS_BY_PROFILE_FIELD.gender
+                            : OPERATORS_BY_PROFILE_FIELD[condition.field]
                         ).map((operator) => (
                           <SelectItem key={operator} value={operator}>
                             {OPERATOR_LABELS[operator]}
@@ -932,7 +939,28 @@ export function RadarSegmentBuilderDialog({ open, onOpenChange, segment }: Radar
                         ))}
                       </SelectContent>
                     </Select>
-                    {conditionNeedsValueInput(condition) ? (
+                    {condition.field === "gender" && conditionNeedsValueInput(condition) ? (
+                      <Select
+                        value={typeof condition.value === "string" ? condition.value : ""}
+                        onValueChange={(value) =>
+                          updateCondition(index, {
+                            ...condition,
+                            value,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Valor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RADAR_PROFILE_GENDER_VALUES.map((value) => (
+                            <SelectItem key={value} value={value}>
+                              {RADAR_PROFILE_GENDER_LABELS[value]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : conditionNeedsValueInput(condition) ? (
                       <Input
                         className="w-40"
                         type={

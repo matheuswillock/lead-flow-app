@@ -102,6 +102,8 @@ const profileListSelect = {
   lastSeenAt: true,
   engagementScore: true,
   engagementBand: true,
+  gender: true,
+  genderSource: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -968,6 +970,9 @@ export class RadarRepository {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
+        void this.updateEngagementScore(input.profileId, input.teamId).catch((scoreError) => {
+          console.error("[RadarRepository][updateEngagementScore]", scoreError)
+        })
         return null
       }
       console.error("[RadarRepository][appendEventIfNew]", error)
@@ -1466,6 +1471,102 @@ export class RadarRepository {
         },
       },
     })
+  }
+
+  /** G2: dados mínimos para promover perfil Radar a Lead (escopo de time). */
+  async getProfileForPromotionWithCtx(scope: RadarTeamScope, profileId: string) {
+    return this.db.radarProfile.findFirst({
+      where: { id: profileId, teamId: scope.teamId },
+      select: {
+        id: true,
+        displayName: true,
+        displayPhone: true,
+        normalizedPhone: true,
+        primaryEmail: true,
+        normalizedPrimaryEmail: true,
+        identities: {
+          where: { type: { in: ["lead_id", "email"] } },
+          select: {
+            type: true,
+            value: true,
+            normalizedValue: true,
+          },
+        },
+      },
+    })
+  }
+
+  /**
+   * G2: reserva atômica do slot lead_id no perfil (evita dupla promoção concorrente).
+   * Retorna true quando a identidade foi inserida; false se o perfil já tinha lead_id.
+   */
+  async tryInsertLeadIdentityIfAbsent(
+    scope: RadarTeamScope,
+    profileId: string,
+    leadId: string
+  ): Promise<boolean> {
+    return this.db.$transaction(async (tx) => {
+      const lockKey = `${scope.teamId}:promote-lead:${profileId}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarIdentity.findFirst({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          type: "lead_id",
+        },
+        select: { id: true },
+      })
+      if (existing) return false
+
+      try {
+        await tx.radarIdentity.create({
+          data: {
+            profileId,
+            teamId: scope.teamId,
+            type: "lead_id",
+            value: leadId,
+            normalizedValue: leadId,
+            source: "manual_promote",
+            isPrimary: false,
+          },
+        })
+        return true
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          return false
+        }
+        throw error
+      }
+    })
+  }
+
+  async updateProfileGender(
+    profileId: string,
+    teamId: string,
+    gender: "male" | "female",
+    genderSource: "mapped" | "inferred" | "manual"
+  ) {
+    return this.db.radarProfile.updateMany({
+      where: { id: profileId, teamId },
+      data: { gender, genderSource },
+    })
+  }
+
+  /** F3: edição manual de gênero escopada ao time (via TeamContext no caller). */
+  async updateProfileGenderWithCtx(
+    scope: RadarTeamScope,
+    profileId: string,
+    gender: "male" | "female" | "unknown"
+  ): Promise<{ updated: boolean }> {
+    const result = await this.db.radarProfile.updateMany({
+      where: { id: profileId, teamId: scope.teamId },
+      data: { gender, genderSource: "manual" },
+    })
+    return { updated: result.count > 0 }
   }
 
   async listProfileEventsWithCtx(
@@ -2383,7 +2484,7 @@ export class RadarRepository {
   }
 
   /**
-   * Fase 2: calcula as 8 contagens de segmentos fixos do Radar com agregação
+   * Fase 2: calcula as 9 contagens de segmentos fixos do Radar com agregação
    * SQL nativa (Postgres) usando CTEs, substituindo varredura em memória.
    * Retorna Map<slug, count> para preservar compatibilidade com o fluxo existente.
    */
@@ -2400,6 +2501,7 @@ export class RadarRepository {
         email_blocked: bigint
         opened_not_clicked: bigint
         clicked_not_closed: bigint
+        engaged_no_lead: bigint
         portfolio_renewal_due: bigint
         inactive_recent_campaign: bigint
         portfolio_clients: bigint
@@ -2523,6 +2625,21 @@ export class RadarRepository {
                 AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
             )
           )
+      ),
+      engaged_no_lead_profiles AS (
+        SELECT DISTINCT pb.id AS "profileId"
+        FROM profile_base pb
+        WHERE NOT pb.has_lead_id
+          AND (
+            EXISTS (SELECT 1 FROM email_events ee WHERE ee."profileId" = pb.id)
+            OR EXISTS (
+              SELECT 1 FROM "corretor_studio_radar_events" e
+              WHERE e."profileId" = pb.id
+                AND e."teamId" = ${teamId}::uuid
+                AND e."eventType" IN ('form.viewed', 'form.started')
+                AND e."occurredAt" >= ${recentThreshold}
+            )
+          )
       )
       SELECT
         COUNT(*) FILTER (
@@ -2538,6 +2655,7 @@ export class RadarRepository {
         COUNT(*) FILTER (WHERE pb.has_blocked_consent) AS email_blocked,
         COUNT(oncp."profileId") AS opened_not_clicked,
         COUNT(cncp."profileId") AS clicked_not_closed,
+        COUNT(enlp."profileId") AS engaged_no_lead,
         COUNT(rdp.id) AS portfolio_renewal_due,
         COUNT(*) FILTER (WHERE NOT pb.has_recent_sent) AS inactive_recent_campaign,
         COUNT(*) FILTER (WHERE pb.has_portfolio) AS portfolio_clients,
@@ -2545,6 +2663,7 @@ export class RadarRepository {
       FROM profile_base pb
       LEFT JOIN opened_not_clicked_profiles oncp ON pb.id = oncp."profileId"
       LEFT JOIN clicked_not_closed_profiles cncp ON pb.id = cncp."profileId"
+      LEFT JOIN engaged_no_lead_profiles enlp ON pb.id = enlp."profileId"
       LEFT JOIN renewal_due_profiles rdp ON pb.id = rdp.id
     `
 
@@ -2558,6 +2677,7 @@ export class RadarRepository {
       ["email_blocked", Number(row.email_blocked)],
       ["opened_not_clicked", Number(row.opened_not_clicked)],
       ["clicked_not_closed", Number(row.clicked_not_closed)],
+      ["engaged_no_lead", Number(row.engaged_no_lead)],
       ["portfolio_renewal_due", Number(row.portfolio_renewal_due)],
       ["inactive_recent_campaign", Number(row.inactive_recent_campaign)],
       ["portfolio_clients", Number(row.portfolio_clients)],

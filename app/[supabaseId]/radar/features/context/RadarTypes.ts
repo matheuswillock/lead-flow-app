@@ -5,6 +5,8 @@ export type RadarProfileListItem = {
   displayName: string
   displayPhone: string | null
   primaryEmail: string | null
+  gender?: string | null
+  genderSource?: string | null
   lastSeenAt: string | null
   engagementScore?: number | null
   engagementBand?: string | null
@@ -67,7 +69,7 @@ export type RadarListSegmentsResult = {
 /** Mirrors lib/radar/segment-dsl.ts's discriminated union — kept in sync manually. */
 export type RadarProfileFieldCondition = {
   kind: "profile_field"
-  field: "primaryEmail" | "primaryDocument" | "lastSeenAt"
+  field: "primaryEmail" | "primaryDocument" | "lastSeenAt" | "gender"
   operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty" | "before" | "after" | "within_days"
   value?: unknown
 }

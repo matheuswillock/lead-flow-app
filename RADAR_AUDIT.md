@@ -452,3 +452,72 @@ HINT: No operator matches the given name and argument types. You might need to a
 **Não é regressão do trabalho em andamento (Estágios 8-11 do `EMAIL_SPEC.md`):** confirmado que o commit hoje em produção (`c797e71d`) já tinha esse bug — não foi introduzido por nada relacionado ao outbox de sync do Radar (D9) nem aos demais estágios em andamento. É uma regressão **da própria correção do B1** (commit `88c21a4f`, mesma linha de trabalho, 2026-08-07) — o fix dos nomes de tabela nunca foi validado contra Postgres real (só contra Prisma mockado em teste, aparentemente), então o gap de cast nunca foi pego.
 
 **Correção:** adicionar `::uuid` em todas as 14 comparações de `${teamId}` (e revisar se `l.id::text` já usado na linha 108 tem o cast correto no sentido oposto). Adicionar também um `try/catch` em `countSegments`/`getCachedRadarSegments` para que uma falha nos segmentos fixos não derrube `getMetrics`/segmentos customizados junto — hoje qualquer erro em `countFixedSegmentsSQL` derruba a resposta inteira da rota, incluindo os segmentos customizados do time que não dependem dessa query.
+
+## 11. Incidente de produção 2026-08-10 — `RadarEvent`s `email.clicked` perdidos em rajada de webhook Resend
+
+**Gatilho:** auditoria de performance pós-deploy (epic `auditoria-performance`, frente E5) cruzando `EmailEvent`/`EmailLog` com espelho Radar. **Não confundir** com o item **E5** do checklist da Fase E no topo deste documento (Resend `emailEvent` upsert idempotente — problema distinto).
+
+**Fluxo afetado:** webhook Resend `email.clicked` → `ResendWebhookUseCase` → `RadarService.recordEmailEngagementEvent` (`app/api/services/radar/RadarService.ts:1135-1143`) → `RadarRepository.appendEventIfNew` com `sourceType: "email_log"`, `sourceId: logId`, `eventType: "email.clicked"`. O mesmo método também é usado no sync batch de e-mail (`syncFromEmail`, linhas 773-784).
+
+### B6 — `appendEventIfNew` engolia exceções com `catch { return null }` — 17 cliques confirmados sem espelho Radar 🟡 (fix estrutural mergeado; backfill de dados pendente)
+
+**Causa provável confirmada no código (pré-fix):** `app/api/infra/data/repositories/radar/RadarRepository.ts`, método `appendEventIfNew` (~linhas 940-958 em `develop` antes do merge de #750). O bloco final era:
+
+```typescript
+} catch {
+  return null
+}
+```
+
+Qualquer falha na gravação — inclusive erros **transitórios** de contenção/lock/timeout do Postgres durante rajadas paralelas de webhook `email.clicked` (múltiplos cliques do mesmo destinatário ou de destinatários distintos processados em paralelo pelo handler fire-and-forget) — retornava `null` **sem log**, **sem outbox** e **sem retry**. Para o chamador (`RadarService.recordEmailEngagementEvent`), `null` é indistinguível de duplicata idempotente: o clique fica registrado em `corretor_studio_email_events` via upsert do webhook, mas **nunca** espelhado em `corretor_studio_radar_events`. Relacionado ao padrão de instabilidade de pool documentado em B2 (§9), mas aqui o impacto específico é **perda silenciosa de evento**, não só falha ruidosa de `updateEngagementScore`.
+
+**Quantificação (SQL em produção, auditoria 2026-08-10):** cruzamento de `EmailEvent` com `type = 'clicked'` contra ausência de `RadarEvent` correspondente (`eventType = 'email.clicked'`, `sourceType = 'email_log'`, `sourceId = EmailEvent.id`), restrito aos dois times com maior volume de campanhas na janela investigada:
+
+| Time | `teamId` | Órfãos (`email.clicked` sem `RadarEvent`) |
+|---|---|---|
+| Kathrein Antunes | `28f7b9e8-9516-4a08-864c-9ff3e085ba87` | **5** |
+| Avalanche de Vendas Unipessoal Ltda | `aef1bfe7-d1fc-4085-879e-81d51a0cc9b8` | **12** |
+| **Total** | | **17** |
+
+Os 17 `logId`s (`EmailLog.id` / `sourceId` do espelho Radar) foram identificados na auditoria e são o conjunto finito alvo do backfill E5.2 (lista versionável em fixture — ver abaixo).
+
+**Efeito em runtime:** perfis afetados ficam sem o marco `email.clicked` na timeline/touchpoints e sem o peso correspondente no `engagementScore`/`engagementBand` (peso D19: 12 para `email.clicked`). Segmentos fixos que dependem de clique recente (`clicked_not_closed`, `engaged_no_lead` via CTE `email_events`, etc.) podem subcontar esses perfis.
+
+**Fix estrutural (E5.1) — mergeado em produção via [PR #750](https://github.com/matheuswillock/lead-flow-app/pull/750) (squash `ba8bef0a` em `develop`, 2026-08-11):**
+
+| Commit | Descrição |
+|---|---|
+| `fe2f12e1` | Substitui `catch { return null }` por classificação de erro: `withPrismaRetry` (até 2 retries) para falhas transitórias; `console.error("[RadarRepository][appendEventIfNew]", error)` para falhas reais; `P2002` (duplicata) continua retornando `null` **sem** log. Testes novos em `RadarRepository.appendEventIfNew.test.ts`. |
+| `30eab3b5` | **Correção de idempotência:** `withPrismaRetry` só quando `sourceId` está presente — sem `sourceId`, retry após commit parcial poderia duplicar evento e inflar score (unique não deduplica `NULL`). |
+| `de7e04e0` | Ajuste de mocks de teste (`withPrismaRetry` transitivo em imports de e-mail). |
+
+Comportamento pós-fix (linhas ~942-977 em `develop`):
+
+- Escrita com `sourceId` → `withPrismaRetry(createEvent, { label: "appendEventIfNew", retries: 2 })`.
+- Escrita sem `sourceId` → `createEvent()` direto, sem retry.
+- Falha não-transitória ou esgotamento de retries → log + `return null` (agora **observável** nos logs Vercel).
+- Duplicata (`P2002`) → `return null` silencioso (contrato idempotente inalterado).
+
+**Backfill one-off (E5.2) — dados históricos ainda pendentes:**
+
+Script de operação manual (não migration), espelhando o padrão dry-run/`--apply` de `scripts/promote-form-viewers-to-leads.ts`:
+
+| Artefato | Caminho |
+|---|---|
+| Runner testável | `lib/radar/backfill-missing-radar-click-events.ts` |
+| Testes TDD | `lib/radar/backfill-missing-radar-click-events.test.ts` |
+| Script CLI | `scripts/backfill-missing-radar-click-events.ts` |
+| Fixture dos 17 `logId`s | `scripts/fixtures/missing-radar-click-events.json` |
+
+O script reconstitui cada clique a partir de `EmailLog`/`EmailEvent` e chama `appendEventIfNew` (já com o fix de E5.1). Suporta `--discover` / `--write-fixture` para repopular a fixture a partir do banco quando `logIds` estiver vazio.
+
+**Status operacional (2026-08-11):**
+
+| Etapa | Status |
+|---|---|
+| Fix estrutural E5.1 | ✅ Mergeado — PR #750 / `ba8bef0a` |
+| Script E5.2 no repositório | 🟡 Implementado na branch de trabalho da epic (`bugfix/radar-appendevent-silent-catch`); **ainda não mergeado em `develop` junto com E5.1** no momento desta documentação |
+| Dry-run em produção | ⏳ Pendente de execução/revisão com o owner |
+| `--apply` em produção | ⏳ **Pendente de autorização explícita do owner** — os 17 registros históricos **não** foram recriados ainda; esta seção **não** deve ser lida como incidente totalmente resolvido enquanto o backfill não rodar |
+
+**Recomendação pós-backfill:** após `--apply` autorizado, atualizar esta seção com contagem real (criados / já existentes / falhas) do resumo do script e marcar o backfill como concluído.

@@ -26,8 +26,12 @@ export function resolveGender(
     return null
   }
 
+  if (current.genderSource === "manual") {
+    return null
+  }
+
   if (candidate.source === "inferred") {
-    if (current.genderSource === "manual" || current.genderSource === "mapped") {
+    if (current.genderSource === "mapped") {
       return null
     }
   }
