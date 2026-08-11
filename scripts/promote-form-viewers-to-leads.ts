@@ -56,6 +56,9 @@ function extractPhone(customFields: Record<string, unknown> | null): string | nu
     customFields["telefone_1"],
     customFields["Telefone 1"],
     customFields["telefone1"],
+    customFields["telefone_2"],
+    customFields["Telefone 2"],
+    customFields["telefone2"],
     customFields["phone"],
     customFields["telefone"],
   ];
@@ -99,16 +102,12 @@ async function findFormViewers(): Promise<ContactData[]> {
   const events = await prisma.$queryRaw<
     Array<{
       email_log_id: string | null;
-      dispatch_id: string | null;
-      recipient_email_origin: string | null;
       form_name: string;
       form_viewed_at: Date;
     }>
   >`
     SELECT
       (pme.origin->>'emailLogId') AS email_log_id,
-      (pme.origin->>'dispatchId') AS dispatch_id,
-      (pme.origin->>'recipientEmail') AS recipient_email_origin,
       f.name AS form_name,
       pme."createdAt" AS form_viewed_at
     FROM corretor_studio_public_form_metric_events pme
@@ -131,32 +130,29 @@ async function findFormViewers(): Promise<ContactData[]> {
   const seenEmails = new Set<string>();
 
   for (const event of events) {
-    let recipientEmail: string | null = event.recipient_email_origin ?? null;
-    let contactListId: string | null = null;
-
-    // Resolve email e contactListId via EmailLog → EmailCampaignDispatch
-    if (event.email_log_id) {
-      const log = await prisma.emailLog.findUnique({
-        where: { id: event.email_log_id },
-        select: {
-          recipientEmail: true,
-          dispatch: { select: { contactListId: true } },
-        },
-      });
-      if (!recipientEmail) recipientEmail = log?.recipientEmail ?? null;
-      contactListId = log?.dispatch?.contactListId ?? null;
-    } else if (event.dispatch_id) {
-      const dispatch = await prisma.emailCampaignDispatch.findUnique({
-        where: { id: event.dispatch_id },
-        select: { contactListId: true },
-      });
-      contactListId = dispatch?.contactListId ?? null;
-    }
-
-    if (!recipientEmail) {
-      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} sem email — ignorando`);
+    // P1: Rejeita eventos sem atribuição de campanha verificada no servidor.
+    // origin.recipientEmail é valor do cliente e não pode ser usado diretamente.
+    if (!event.email_log_id) {
+      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} sem emailLogId — ignorando`);
       continue;
     }
+
+    const log = await prisma.emailLog.findUnique({
+      where: { id: event.email_log_id },
+      select: {
+        recipientEmail: true,
+        teamId: true,
+        dispatch: { select: { contactListId: true } },
+      },
+    });
+
+    if (!log || log.teamId !== TEAM_ID) {
+      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} — EmailLog inválido ou pertence a outro time — ignorando`);
+      continue;
+    }
+
+    const recipientEmail = log.recipientEmail;
+    const contactListId = log.dispatch?.contactListId ?? null;
 
     const email = recipientEmail.toLowerCase().trim();
     if (seenEmails.has(email)) continue;
@@ -217,17 +213,18 @@ async function main() {
   let noPhone = 0;
 
   for (const viewer of viewers) {
+    // P1: inclui soft-deleted para evitar violação de unique constraint (teamId, email)
     const existing = await prisma.lead.findFirst({
       where: {
         teamId: TEAM_ID,
         email: { equals: viewer.email, mode: "insensitive" },
-        deletedAt: null,
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, deletedAt: true },
     });
 
     if (existing) {
-      console.info(`  ⏭️  ${viewer.email} → Lead já existe (${existing.name})`);
+      const tag = existing.deletedAt ? " [soft-deleted]" : "";
+      console.info(`  ⏭️  ${viewer.email} → Lead já existe (${existing.name})${tag} — ignorando`);
       skipped++;
       continue;
     }
