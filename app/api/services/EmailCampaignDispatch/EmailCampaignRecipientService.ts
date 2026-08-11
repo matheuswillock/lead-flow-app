@@ -133,6 +133,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
       html: params.template.html,
       from,
       replyTo,
+      resolvedFrom,
     }
   }
 

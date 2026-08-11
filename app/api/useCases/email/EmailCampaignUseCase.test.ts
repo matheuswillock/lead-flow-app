@@ -190,6 +190,9 @@ const { EmailCampaignUseCase, EMAIL_CAMPAIGN_FAILURE_MESSAGES } = await import(
 const { RESEND_DOMAIN_TRACKING_DEGRADED_WARNING } = await import(
   "@/lib/email/campaign-dispatch-guards"
 )
+const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
+  "@/lib/email/resolve-campaign-from"
+)
 const { aggregateDispatchLogCounters } = await import(
   "@/lib/email/campaign-dispatch-progress"
 )
@@ -234,7 +237,8 @@ function makeRecipients(count: number) {
 }
 
 function makeDefaultDispatchInput(
-  recipients: ReturnType<typeof makeRecipients> = []
+  recipients: ReturnType<typeof makeRecipients> = [],
+  resolvedFrom?: { fromName: string; fromEmail: string }
 ) {
   return {
     recipients,
@@ -244,6 +248,8 @@ function makeDefaultDispatchInput(
     html: "<p>Olá {{nome}}</p>",
     from: "Test <test@sender.com>",
     replyTo: null as string | null,
+    resolvedFrom:
+      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "deliveryby@corretorstudio.com" },
   }
 }
 
@@ -884,7 +890,10 @@ describe("EmailCampaignUseCase.send", () => {
   it("D12 — domínio failed → bloqueia disparo antes do lock", async () => {
     const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
-      makeDefaultDispatchInput(recipients)
+      makeDefaultDispatchInput(recipients, {
+        fromName: "Test",
+        fromEmail: "test@example.com",
+      })
     )
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
       resendDomainName: "example.com",
@@ -904,6 +913,248 @@ describe("EmailCampaignUseCase.send", () => {
     expect(output.errorMessages[0]).toContain("Domínio de e-mail não verificado")
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+})
+
+// =============================================================================
+// D13 — guard de domínio (assertCampaignFromIsSendable) nos 3 pontos de disparo
+// =============================================================================
+
+describe("D13 — guard de domínio bloqueando disparo", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+
+    emailCampaignFindFirstMock.mockImplementation(async () => makeCampaign())
+    emailCampaignFindManyMock.mockImplementation(async () => [])
+    emailCampaignUpdateManyMock.mockImplementation(async () => ({ count: 1 }))
+    emailCampaignUpdateMock.mockImplementation(async () => ({
+      parentCampaignId: null,
+      name: "Campanha Teste",
+      teamId: "team-1",
+      createdBy: null,
+    }))
+    emailCampaignDispatchUpdateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailCampaignDispatchAggregateMock.mockImplementation(async () => ({
+      _max: { dispatchNumber: 0 },
+    }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    emailLogFindManyMock.mockImplementation(async () => [])
+    queryRawMock.mockImplementation(async () => [])
+    transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
+    reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
+    releaseCreditsMock.mockImplementation(async () => {})
+    resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    findUnresolvedTokensMock.mockImplementation(() => [])
+    createQueuedLogsMock.mockImplementation(
+      async (inputs: Array<{ recipientEmail: string }>) =>
+        inputs.map((i) => ({ email: i.recipientEmail, logId: `log-${i.recipientEmail}` }))
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 0,
+      failed: 0,
+      dispatched: [] as Array<{ email: string; resendId: string }>,
+      providerErrors: [] as Array<{ message: string; emails: string[] }>,
+    }))
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    setupTemplateMock()
+  })
+
+  function outsideSenderInput() {
+    return makeDefaultDispatchInput(makeRecipients(3), {
+      fromName: "Vendas",
+      fromEmail: "vendas@empresaxyz.com.br",
+    })
+  }
+
+  // --- Site A: startManualDispatch ---
+  it("D13a — domínio null + sender próprio → bloqueia (Domínio não verificado) sem lock/créditos", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+  })
+
+  it("D13b — domínio null sem sender → from de plataforma (deliveryby) permite disparo", async () => {
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.successMessages.some((m) => m.includes("segundo plano"))).toBe(true)
+    expect(output.errorMessages).toHaveLength(0)
+  })
+
+  it("D13c — domínio verified + sender de outro domínio → bloqueia (remetente fora do domínio)", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "verified",
+      fromName: "Test",
+      fromEmail: "team@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("remetente da campanha não pertence")
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+
+  // --- Site C: dispatchScheduledCampaigns ---
+  function makeScheduledCampaign() {
+    return {
+      id: "camp-sched",
+      name: "Scheduled",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+      parentCampaignId: null,
+      audienceContactIds: [],
+      createdBy: null,
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: { id: "list-1", name: "Lista" },
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+  }
+
+  function setupScheduledCampaignLock() {
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [makeScheduledCampaign()]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "scheduled") return { count: 1 }
+      return { count: 0 }
+    })
+  }
+
+  it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {
+    setupScheduledCampaignLock()
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignUpdateMock).toHaveBeenCalled()
+    const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string; errorMessage?: string } },
+    ])[0].data
+    expect(updateData.status).toBe("failed")
+    expect(updateData.errorMessage).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("D13e — scheduled domínio verified + sender de outro domínio → marca failed com msg de remetente", async () => {
+    setupScheduledCampaignLock()
+    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "verified",
+      fromName: "Test",
+      fromEmail: "team@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignUpdateMock).toHaveBeenCalled()
+    const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string; errorMessage?: string } },
+    ])[0].data
+    expect(updateData.status).toBe("failed")
+    expect(updateData.errorMessage).toContain("remetente da campanha não pertence")
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  // --- Site B: resumeOrphanSendingDispatches ---
+  it("D13f — órfão domínio null + sender arbitrário → nunca envia, marca failed, não conta resumed", async () => {
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [
+      {
+        id: "dispatch-orphan",
+        campaignId: "camp-1",
+        teamId: "team-1",
+        dispatchNumber: 1,
+        batchIdempotencyScheme: "contentHash",
+        templateHtml: "<p>Hi</p>",
+        templateSubject: "S",
+        totalRecipients: 1,
+        triggeredBy: "profile-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        templateId: "tpl-1",
+      },
+    ])
+    emailLogFindManyMock.mockImplementation(async () => [
+      {
+        id: "log-q",
+        recipientEmail: "r0@test.com",
+        recipientName: "R0",
+        status: "queued",
+      },
+    ])
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const resumed = await uc.resumeOrphanSendingDispatches({
+      now: new Date("2020-01-01T00:05:00.000Z"),
+    })
+
+    expect(resumed).toBe(0)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    expect(emailCampaignUpdateMock).toHaveBeenCalled()
+    const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string; errorMessage?: string } },
+    ])[0].data
+    expect(updateData.status).toBe("failed")
+    expect(updateData.errorMessage).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect(emailCampaignDispatchUpdateMock).toHaveBeenCalled()
   })
 })
 

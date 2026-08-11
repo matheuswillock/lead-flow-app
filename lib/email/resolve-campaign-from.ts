@@ -7,6 +7,8 @@
  * - Sem remetente + sem domínio → deliveryby@corretorstudio.com
  */
 
+import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
+
 export const PLATFORM_FROM_DOMAIN = "corretorstudio.com"
 export const DELIVERY_LOCAL_PART = "deliveryby"
 export const PLATFORM_FROM_NAME = "Corretor Studio"
@@ -28,6 +30,44 @@ export type ResolveCampaignFromInput = {
 export type ResolvedCampaignFrom = {
   fromName: string
   fromEmail: string
+}
+
+export const CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE =
+  "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar."
+
+export const CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE =
+  "O remetente da campanha não pertence ao domínio verificado no Resend."
+
+export type CampaignFromSendableCheck =
+  | { ok: true }
+  | { ok: false; message: string }
+
+/**
+ * Guard de domínio: impede disparo quando o "from" da campanha não pode ser
+ * enviado de forma segura. O from de plataforma (deliveryby/no-reply@
+ * corretorstudio.com) passa sempre. Qualquer outro from exige um domínio do
+ * time verificado no Resend e pertencente ao remetente.
+ */
+export function assertCampaignFromIsSendable(params: {
+  resolved: ResolvedCampaignFrom
+  domainName?: string | null | undefined
+  domainStatus?: string | null | undefined
+}): CampaignFromSendableCheck {
+  if (isPlatformDefaultFromEmail(params.resolved.fromEmail)) {
+    return { ok: true }
+  }
+
+  const domainCapable =
+    Boolean(params.domainName?.trim()) && isResendDomainSendCapable(params.domainStatus)
+  if (!domainCapable) {
+    return { ok: false, message: CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE }
+  }
+
+  if (!isEmailAllowedForTeamDomain(params.resolved.fromEmail, params.domainName)) {
+    return { ok: false, message: CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE }
+  }
+
+  return { ok: true }
 }
 
 export function isPlatformDefaultFromEmail(email: string | null | undefined): boolean {

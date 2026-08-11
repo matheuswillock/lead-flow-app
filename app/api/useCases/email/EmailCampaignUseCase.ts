@@ -30,7 +30,6 @@ import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/d
 import {
   checkDispatchWindow,
   getResendDomainDispatchWarnings,
-  isResendDomainSendCapable,
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
@@ -49,8 +48,8 @@ import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
+  assertCampaignFromIsSendable,
   formatCampaignFromHeader,
-  isEmailAllowedForTeamDomain,
   resolveCampaignFrom,
 } from "@/lib/email/resolve-campaign-from"
 import { wouldExceedDailyEmailCap } from "@/lib/email/campaign-daily-dispatch-guard"
@@ -2065,35 +2064,13 @@ export class EmailCampaignUseCase {
         masterTimezone: campaign.team.master.timezone,
       })
 
-      const dispatchFromResolved = resolveCampaignFrom({
+      const fromGuard = assertCampaignFromIsSendable({
+        resolved: dispatchInput.resolvedFrom,
         domainName: teamSettings?.resendDomainName,
-        defaultSender,
-        legacyFromName: teamSettings?.fromName,
-        legacyFromEmail: teamSettings?.fromEmail,
+        domainStatus: teamSettings?.resendDomainStatus,
       })
-      if (
-        teamSettings?.resendDomainName &&
-        !isResendDomainSendCapable(teamSettings.resendDomainStatus)
-      ) {
-        return new Output(
-          false,
-          [],
-          [
-            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar.",
-          ],
-          null
-        )
-      }
-      if (
-        teamSettings?.resendDomainName &&
-        !isEmailAllowedForTeamDomain(dispatchFromResolved.fromEmail, teamSettings.resendDomainName)
-      ) {
-        return new Output(
-          false,
-          [],
-          ["O remetente da campanha não pertence ao domínio verificado no Resend."],
-          null
-        )
+      if (!fromGuard.ok) {
+        return new Output(false, [], [fromGuard.message], null)
       }
 
       // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
@@ -2916,6 +2893,24 @@ export class EmailCampaignUseCase {
           legacyFromEmail: teamSettings?.fromEmail,
           defaultSender,
         })
+
+        const orphanFromGuard = assertCampaignFromIsSendable({
+          resolved: fromResolved,
+          domainName: teamSettings?.resendDomainName,
+          domainStatus: teamSettings?.resendDomainStatus,
+        })
+        if (!orphanFromGuard.ok) {
+          console.error(
+            `[EmailCampaignUseCase][resumeOrphanSendingDispatches] dispatchId=${dispatch.id} bloqueado por domínio: ${orphanFromGuard.message}`
+          )
+          await this.markScheduledCampaignFailed(dispatch.campaignId, orphanFromGuard.message)
+          await prisma.emailCampaignDispatch.update({
+            where: { id: dispatch.id },
+            data: { status: "failed", errorMessage: orphanFromGuard.message },
+          })
+          continue
+        }
+
         const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
 
         const recipients = await this.rebuildRecipientsForOrphanResume({
@@ -3117,17 +3112,6 @@ export class EmailCampaignUseCase {
           })
           .catch(() => null)
 
-        if (
-          teamSettings?.resendDomainName &&
-          !isResendDomainSendCapable(teamSettings.resendDomainStatus)
-        ) {
-          await this.markScheduledCampaignFailed(
-            campaign.id,
-            "Domínio de e-mail não verificado no Resend. Verifique o domínio nas configurações antes de disparar."
-          )
-          continue
-        }
-
         const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
           teamSettings?.resendDomainStatus
         )
@@ -3192,6 +3176,16 @@ export class EmailCampaignUseCase {
           defaultSender,
           masterTimezone: campaign.team.master.timezone,
         })
+
+        const scheduledFromGuard = assertCampaignFromIsSendable({
+          resolved: dispatchInput.resolvedFrom,
+          domainName: teamSettings?.resendDomainName,
+          domainStatus: teamSettings?.resendDomainStatus,
+        })
+        if (!scheduledFromGuard.ok) {
+          await this.markScheduledCampaignFailed(campaign.id, scheduledFromGuard.message)
+          continue
+        }
 
         if (dispatchInput.recipients.length === 0) {
           const noRecipientsMessage = campaign.radarSegmentSlug
