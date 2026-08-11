@@ -140,7 +140,7 @@ describe("RadarBaseImportUseCase.processPendingJobs", () => {
     expect(claimPendingJobMock).toHaveBeenCalledTimes(1)
   })
 
-  it("T4: retry usa backoff entre tentativas", async () => {
+  it("T4: retry usa o backoff default de produção entre tentativas", async () => {
     const delays: number[] = []
     const sleep = async (ms: number) => {
       delays.push(ms)
@@ -152,7 +152,6 @@ describe("RadarBaseImportUseCase.processPendingJobs", () => {
     await expect(
       withTransientTransactionRetry(operation, {
         maxAttempts: 3,
-        backoffMs: [250, 500],
         sleep,
       })
     ).rejects.toMatchObject({ code: "P2028" })

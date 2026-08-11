@@ -13,6 +13,13 @@ function p2028(message = "Unable to start a transaction in the given time.") {
   })
 }
 
+function p2024() {
+  return new Prisma.PrismaClientKnownRequestError("Timed out fetching a connection", {
+    code: "P2024",
+    clientVersion: "test",
+  })
+}
+
 function p2002() {
   return new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
     code: "P2002",
@@ -21,16 +28,9 @@ function p2002() {
 }
 
 describe("isTransientTransactionError", () => {
-  it("reconhece P2028 e P2024", () => {
+  it("reconhece P2028 e não trata P2024 como retryable neste cron", () => {
     expect(isTransientTransactionError(p2028())).toBe(true)
-    expect(
-      isTransientTransactionError(
-        new Prisma.PrismaClientKnownRequestError("pool", {
-          code: "P2024",
-          clientVersion: "test",
-        })
-      )
-    ).toBe(true)
+    expect(isTransientTransactionError(p2024())).toBe(false)
   })
 
   it("rejeita erros não-transitórios", () => {
@@ -40,7 +40,7 @@ describe("isTransientTransactionError", () => {
 })
 
 describe("withTransientTransactionRetry", () => {
-  it("reexecuta após P2028 e retorna sucesso na 2ª tentativa", async () => {
+  it("usa o backoff default de produção após P2028", async () => {
     const delays: number[] = []
     const sleep = async (ms: number) => {
       delays.push(ms)
@@ -52,7 +52,6 @@ describe("withTransientTransactionRetry", () => {
 
     const result = await withTransientTransactionRetry(operation, {
       sleep,
-      backoffMs: [250, 500],
     })
 
     expect(result).toBe("ok")
@@ -93,6 +92,24 @@ describe("withTransientTransactionRetry", () => {
     await expect(
       withTransientTransactionRetry(operation, { sleep })
     ).rejects.toMatchObject({ code: "P2002" })
+
+    expect(operation).toHaveBeenCalledTimes(1)
+    expect(delays).toEqual([])
+  })
+
+  it("propaga P2024 sem retry para preservar o deadline do cron", async () => {
+    const delays: number[] = []
+    const operation = mock(async () => {
+      throw p2024()
+    })
+
+    await expect(
+      withTransientTransactionRetry(operation, {
+        sleep: async (ms) => {
+          delays.push(ms)
+        },
+      })
+    ).rejects.toMatchObject({ code: "P2024" })
 
     expect(operation).toHaveBeenCalledTimes(1)
     expect(delays).toEqual([])

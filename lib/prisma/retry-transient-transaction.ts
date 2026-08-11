@@ -1,12 +1,11 @@
 import { Prisma } from "@prisma/client"
 
-/** Transaction start timeout / connection pool exhaustion — retryable under cron contention. */
-const TRANSIENT_TRANSACTION_ERROR_CODES = new Set(["P2028", "P2024"])
+/** Transaction start timeout — retryable within the import cron deadline. */
+const TRANSIENT_TRANSACTION_ERROR_CODES = new Set(["P2028"])
 
 const DEFAULT_MAX_ATTEMPTS = 3
-/** Backoff between attempts: 250ms, then 500ms (spec Ticket 1). Zero in test for suite speed. */
-const DEFAULT_BACKOFF_MS =
-  process.env.NODE_ENV === "test" ? ([0, 0] as const) : ([250, 500] as const)
+/** Production backoff between attempts: 250ms, then 500ms (spec Ticket 1). */
+const DEFAULT_BACKOFF_MS = [250, 500] as const
 
 export function isTransientTransactionError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -40,7 +39,7 @@ export type WithTransientTransactionRetryOptions = {
 }
 
 /**
- * Retries an operation on transient Prisma transaction/pool errors (P2028, P2024).
+ * Retries an operation on transient Prisma transaction start errors (P2028).
  * Non-transient errors propagate immediately.
  */
 export async function withTransientTransactionRetry<T>(
@@ -50,7 +49,10 @@ export async function withTransientTransactionRetry<T>(
   const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
   const backoffMs = options?.backoffMs ?? DEFAULT_BACKOFF_MS
   const sleep =
-    options?.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
+    options?.sleep ??
+    (process.env.NODE_ENV === "test"
+      ? async () => undefined
+      : (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
   const label = options?.label ? ` ${options.label}` : ""
 
   let lastError: unknown
