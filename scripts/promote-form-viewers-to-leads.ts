@@ -1,7 +1,6 @@
 #!/usr/bin/env tsx
 /* eslint-disable @typescript-eslint/ban-ts-comment -- one-off script */
 // @ts-nocheck
-/* eslint-disable no-console */
 /**
  * One-off: promove para Lead os contatos da Avalanche que visualizaram o formulário
  * mas nunca responderam nenhuma pergunta (Achado E6 — funil quebrado clique→Lead).
