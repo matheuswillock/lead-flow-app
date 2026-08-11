@@ -256,7 +256,15 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     for (const feature of features) {
       const effectiveFeature = resolveEffectiveFeature(feature.id) ?? feature
+      const betaEnabled = effectiveFeature.betaEnabled === true
+      const betaEligible = betaEnabled
+        ? isBetaEligibleForFeature(feature.id, effectiveFeature.id)
+        : false
       let hasAccess = false
+
+      if (betaEnabled && !betaEligible) {
+        continue
+      }
 
       if (effectiveFeature.accessMode === "PUBLIC") {
         hasAccess = evaluatePrincipalRules(
@@ -283,8 +291,8 @@ export class FeatureAccessService implements IFeatureAccessService {
 
       if (
         !hasAccess &&
-        effectiveFeature.betaEnabled &&
-        isBetaEligibleForFeature(feature.id, effectiveFeature.id)
+        betaEnabled &&
+        betaEligible
       ) {
         if (effectiveFeature.accessMode === "PUBLIC") {
           hasAccess = evaluatePrincipalRules(
