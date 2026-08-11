@@ -970,6 +970,9 @@ export class RadarRepository {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
+        void this.updateEngagementScore(input.profileId, input.teamId).catch((scoreError) => {
+          console.error("[RadarRepository][updateEngagementScore]", scoreError)
+        })
         return null
       }
       console.error("[RadarRepository][appendEventIfNew]", error)
@@ -1502,39 +1505,43 @@ export class RadarRepository {
     profileId: string,
     leadId: string
   ): Promise<boolean> {
-    const inserted = await this.db.$executeRaw`
-      INSERT INTO "corretor_studio_radar_identities" (
-        "id",
-        "profileId",
-        "teamId",
-        "type",
-        "value",
-        "normalizedValue",
-        "source",
-        "isPrimary",
-        "createdAt",
-        "updatedAt"
-      )
-      SELECT
-        gen_random_uuid(),
-        ${profileId}::uuid,
-        ${scope.teamId}::uuid,
-        'lead_id'::"radar_identity_type",
-        ${leadId},
-        ${leadId},
-        'manual_promote',
-        false,
-        now(),
-        now()
-      WHERE NOT EXISTS (
-        SELECT 1
-        FROM "corretor_studio_radar_identities" ri
-        WHERE ri."profileId" = ${profileId}::uuid
-          AND ri."teamId" = ${scope.teamId}::uuid
-          AND ri."type" = 'lead_id'::"radar_identity_type"
-      )
-    `
-    return Number(inserted) > 0
+    return this.db.$transaction(async (tx) => {
+      const lockKey = `${scope.teamId}:promote-lead:${profileId}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarIdentity.findFirst({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          type: "lead_id",
+        },
+        select: { id: true },
+      })
+      if (existing) return false
+
+      try {
+        await tx.radarIdentity.create({
+          data: {
+            profileId,
+            teamId: scope.teamId,
+            type: "lead_id",
+            value: leadId,
+            normalizedValue: leadId,
+            source: "manual_promote",
+            isPrimary: false,
+          },
+        })
+        return true
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          return false
+        }
+        throw error
+      }
+    })
   }
 
   async updateProfileGender(

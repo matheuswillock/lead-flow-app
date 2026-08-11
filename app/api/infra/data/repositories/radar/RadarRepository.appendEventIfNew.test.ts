@@ -243,5 +243,9 @@ describe("RadarRepository.appendEventIfNew (E5.1)", () => {
     expect(result).toBeNull()
     expect(radarEventCreate).toHaveBeenCalledTimes(1)
     expect(consoleErrorSpy).not.toHaveBeenCalled()
+    expect(updateEngagementScoreSpy).toHaveBeenCalledWith(
+      APPEND_INPUT.profileId,
+      APPEND_INPUT.teamId
+    )
   })
 })

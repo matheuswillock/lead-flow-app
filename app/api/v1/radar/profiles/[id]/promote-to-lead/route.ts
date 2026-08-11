@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest, connection } from "next/server"
 import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/utils/getRadarAccess"
 import { promoteRadarProfileToLeadUseCase } from "@/app/api/useCases/radar/PromoteRadarProfileToLeadUseCase"
-import { invalidateLeadCache } from "@/lib/cache/invalidation"
+import { invalidateLeadCache, invalidateRadarSegmentsCache } from "@/lib/cache/invalidation"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const result = output.result as { leadId?: string } | null
     if (result?.leadId) {
       invalidateLeadCache({ leadId: result.leadId, teamId: radarAccess.access.teamId })
+      invalidateRadarSegmentsCache({ teamId: radarAccess.access.teamId })
     }
 
     return NextResponse.json(output, { status: 201 })

@@ -27,8 +27,12 @@ mock.module("@/app/api/useCases/radar/PromoteRadarProfileToLeadUseCase", () => (
   },
 }))
 
+const invalidateLeadCache = mock(() => undefined)
+const invalidateRadarSegmentsCache = mock(() => undefined)
+
 mock.module("@/lib/cache/invalidation", () => ({
-  invalidateLeadCache: mock(() => undefined),
+  invalidateLeadCache,
+  invalidateRadarSegmentsCache,
 }))
 
 const { POST } = await import("./route")
@@ -65,6 +69,8 @@ describe("POST /api/v1/radar/profiles/[id]/promote-to-lead", () => {
     getRadarAccess.mockReset()
     teamContextFromRadarAccess.mockReset()
     promoteExecute.mockReset()
+    invalidateLeadCache.mockReset()
+    invalidateRadarSegmentsCache.mockReset()
 
     getRadarAccess.mockResolvedValue(mockAccess)
     teamContextFromRadarAccess.mockReturnValue({
@@ -86,6 +92,11 @@ describe("POST /api/v1/radar/profiles/[id]/promote-to-lead", () => {
       access: mockAccess.access,
       ctx: { profileId: "operator-1", teamMember: { role: UserRole.manager, functions: [] } },
     })
+    expect(invalidateLeadCache).toHaveBeenCalledWith({
+      leadId: "lead-1",
+      teamId: "team-1",
+    })
+    expect(invalidateRadarSegmentsCache).toHaveBeenCalledWith({ teamId: "team-1" })
   })
 
   it("G2 — perfil de outro time retorna erro apropriado", async () => {
