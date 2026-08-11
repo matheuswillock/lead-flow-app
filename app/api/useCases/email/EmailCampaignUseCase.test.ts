@@ -80,50 +80,54 @@ const emailTeamSenderFindFirstMock = mock(async () => null as { name: string; em
 const emailLogFindManyMock = mock(async () => [] as Array<{ recipientEmail: string; status: string }>)
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 const emailTeamSettingsFindUniqueMock = mock(async (): Promise<unknown> => null)
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    emailCampaign: {
-      findFirst: emailCampaignFindFirstMock,
-      findUnique: emailCampaignFindUniqueMock,
-      findMany: emailCampaignFindManyMock,
-      count: emailCampaignCountMock,
-      updateMany: emailCampaignUpdateManyMock,
-      update: emailCampaignUpdateMock,
-    },
-    emailTeamSettings: { findUnique: emailTeamSettingsFindUniqueMock },
-    emailTemplate: { findFirst: emailTemplateFindFirstMock },
-    emailContactList: {
-      findMany: mock(async () => [
-        { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
-      ]),
-    },
-    emailContact: {
-      findMany: mock(async () => []),
-    },
-    emailCampaignDispatch: {
-      aggregate: emailCampaignDispatchAggregateMock,
-      create: emailCampaignDispatchCreateMock,
-      findFirst: emailCampaignDispatchFindFirstMock,
-      findUnique: emailCampaignDispatchFindUniqueMock,
-      findMany: emailCampaignDispatchFindManyMock,
-      update: emailCampaignDispatchUpdateMock,
-      updateMany: emailCampaignDispatchUpdateManyMock,
-    },
-    emailTeamSender: {
-      findFirst: emailTeamSenderFindFirstMock,
-    },
-    emailLog: {
-      findMany: emailLogFindManyMock,
-      count: mock(async () => 0),
-    },
-    backofficeTeamEmailLimitGrant: {
-      findUnique: mock(async () => null),
-    },
-    teamEmailCampaignLimitGrant: {
-      findUnique: mock(async () => null),
-    },
-    $transaction: transactionMock,
+const prismaMock = {
+  emailCampaign: {
+    findFirst: emailCampaignFindFirstMock,
+    findUnique: emailCampaignFindUniqueMock,
+    findMany: emailCampaignFindManyMock,
+    count: emailCampaignCountMock,
+    updateMany: emailCampaignUpdateManyMock,
+    update: emailCampaignUpdateMock,
   },
+  emailTeamSettings: { findUnique: emailTeamSettingsFindUniqueMock },
+  emailTemplate: { findFirst: emailTemplateFindFirstMock },
+  emailContactList: {
+    findMany: mock(async () => [
+      { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
+    ]),
+  },
+  emailContact: {
+    findMany: mock(async () => []),
+  },
+  emailCampaignDispatch: {
+    aggregate: emailCampaignDispatchAggregateMock,
+    create: emailCampaignDispatchCreateMock,
+    findFirst: emailCampaignDispatchFindFirstMock,
+    findUnique: emailCampaignDispatchFindUniqueMock,
+    findMany: emailCampaignDispatchFindManyMock,
+    update: emailCampaignDispatchUpdateMock,
+    updateMany: emailCampaignDispatchUpdateManyMock,
+  },
+  emailTeamSender: {
+    findFirst: emailTeamSenderFindFirstMock,
+  },
+  emailLog: {
+    findMany: emailLogFindManyMock,
+    count: mock(async () => 0),
+  },
+  backofficeTeamEmailLimitGrant: {
+    findUnique: mock(async () => null),
+  },
+  teamEmailCampaignLimitGrant: {
+    findUnique: mock(async () => null),
+  },
+  $transaction: transactionMock,
+}
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: prismaMock,
+  default: prismaMock,
+  // RadarRepository (pulled via list-segment-recipients) imports withPrismaRetry.
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
 
 // --- FeatureAccessService ---

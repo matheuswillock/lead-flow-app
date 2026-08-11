@@ -17,29 +17,33 @@ const emailContactRadarSyncOutboxGroupByMock = mock(
 const emailEventFindManyMock = mock(async () => [] as Record<string, unknown>[])
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    emailContactList: {
-      findFirst: emailContactListFindFirstMock,
-      create: emailContactListCreateMock,
-      findMany: emailContactListFindManyMock,
-    },
-    emailContact: {
-      findMany: emailContactFindManyMock,
-      count: emailContactCountMock,
-      groupBy: emailContactGroupByMock,
-    },
-    emailImportJob: {
-      findMany: emailImportJobFindManyMock,
-    },
-    emailContactRadarSyncOutbox: {
-      groupBy: emailContactRadarSyncOutboxGroupByMock,
-    },
-    emailEvent: {
-      findMany: emailEventFindManyMock,
-    },
-    $transaction: transactionMock,
+const prismaMock = {
+  emailContactList: {
+    findFirst: emailContactListFindFirstMock,
+    create: emailContactListCreateMock,
+    findMany: emailContactListFindManyMock,
   },
+  emailContact: {
+    findMany: emailContactFindManyMock,
+    count: emailContactCountMock,
+    groupBy: emailContactGroupByMock,
+  },
+  emailImportJob: {
+    findMany: emailImportJobFindManyMock,
+  },
+  emailContactRadarSyncOutbox: {
+    groupBy: emailContactRadarSyncOutboxGroupByMock,
+  },
+  emailEvent: {
+    findMany: emailEventFindManyMock,
+  },
+  $transaction: transactionMock,
+}
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: prismaMock,
+  default: prismaMock,
+  // RadarRepository (via SyncEmailContactToRadarUseCase) imports withPrismaRetry.
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
 
 const { EmailContactListUseCase } = await import(

@@ -108,6 +108,7 @@ async function withPrismaRetryMock<T>(
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
+  default: prismaMock,
   withPrismaRetry: withPrismaRetryMock,
 }))
 
