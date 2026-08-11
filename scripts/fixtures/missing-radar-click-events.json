@@ -1,0 +1,9 @@
+{
+  "description": "17 email.clicked RadarEvents perdidos no incidente E5 (2026-08-10): 5 Kathrein + 12 Avalanche.",
+  "expectedCount": 17,
+  "teams": {
+    "kathrein": "28f7b9e8-9516-4a08-864c-9ff3e085ba87",
+    "avalanche": "aef1bfe7-d1fc-4085-879e-81d51a0cc9b8"
+  },
+  "logIds": []
+}
