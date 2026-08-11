@@ -8,6 +8,20 @@ import {
   type ResendDomainFetcher,
 } from "./ReconcileResendDomainStatusUseCase"
 
+function connectedDomain(
+  overrides: Partial<ConnectedResendDomainRow> &
+    Pick<ConnectedResendDomainRow, "teamId" | "resendDomainId">
+): ConnectedResendDomainRow {
+  return {
+    resendDomainName: "example.com",
+    resendDomainStatus: "verified",
+    resendDomainRegion: "sa-east-1",
+    resendOpenTracking: true,
+    resendClickTracking: true,
+    ...overrides,
+  }
+}
+
 const listConnectedDomainsMock = mock(async (): Promise<ConnectedResendDomainRow[]> => [])
 const syncFromResendDomainMock = mock(async () => ({
   status: "partially_failed",
@@ -17,7 +31,13 @@ const syncFromResendDomainMock = mock(async () => ({
   trackingSubdomain: "links",
 }))
 const fetchDomainMock = mock<ResendDomainFetcher>(async () => ({
-  data: { id: "dom-1", status: "partially_failed" },
+  data: {
+    id: "dom-1",
+    status: "partially_failed",
+    region: "sa-east-1",
+    openTracking: true,
+    clickTracking: true,
+  },
   error: null,
 }))
 
@@ -40,19 +60,24 @@ describe("ReconcileResendDomainStatusUseCase", () => {
     fetchDomainMock.mockClear()
     listConnectedDomainsMock.mockImplementation(async () => [])
     fetchDomainMock.mockImplementation(async () => ({
-      data: { id: "dom-1", status: "partially_failed" },
+      data: {
+        id: "dom-1",
+        status: "partially_failed",
+        region: "sa-east-1",
+        openTracking: true,
+        clickTracking: true,
+      },
       error: null,
     }))
   })
 
   it("sincroniza quando status persistido difere do Resend", async () => {
     listConnectedDomainsMock.mockImplementation(async () => [
-      {
+      connectedDomain({
         teamId: "team-1",
         resendDomainId: "dom-1",
-        resendDomainName: "example.com",
         resendDomainStatus: "verified",
-      },
+      }),
     ])
 
     const useCase = new ReconcileResendDomainStatusUseCase(
@@ -67,14 +92,13 @@ describe("ReconcileResendDomainStatusUseCase", () => {
     expect(syncFromResendDomainMock).toHaveBeenCalledTimes(1)
   })
 
-  it("não sincroniza quando status já está alinhado", async () => {
+  it("não sincroniza quando snapshot já está alinhado", async () => {
     listConnectedDomainsMock.mockImplementation(async () => [
-      {
+      connectedDomain({
         teamId: "team-1",
         resendDomainId: "dom-1",
-        resendDomainName: "example.com",
         resendDomainStatus: "partially_failed",
-      },
+      }),
     ])
 
     const useCase = new ReconcileResendDomainStatusUseCase(
@@ -88,14 +112,36 @@ describe("ReconcileResendDomainStatusUseCase", () => {
     expect(syncFromResendDomainMock).not.toHaveBeenCalled()
   })
 
-  it("conta erro quando Resend API falha", async () => {
+  it("sincroniza quando status bate mas tracking/região difere", async () => {
     listConnectedDomainsMock.mockImplementation(async () => [
-      {
+      connectedDomain({
         teamId: "team-1",
         resendDomainId: "dom-1",
-        resendDomainName: "example.com",
-        resendDomainStatus: "verified",
-      },
+        resendDomainStatus: "partially_failed",
+        resendDomainRegion: "us-east-1",
+        resendOpenTracking: false,
+        resendClickTracking: false,
+      }),
+    ])
+
+    const useCase = new ReconcileResendDomainStatusUseCase(
+      buildRepository(),
+      fetchDomainMock
+    )
+    const result = await useCase.execute()
+
+    expect(result.isValid).toBe(true)
+    expect(result.result.synced).toBe(1)
+    expect(result.result.inSync).toBe(0)
+    expect(syncFromResendDomainMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("conta erro quando Resend API falha", async () => {
+    listConnectedDomainsMock.mockImplementation(async () => [
+      connectedDomain({
+        teamId: "team-1",
+        resendDomainId: "dom-1",
+      }),
     ])
     fetchDomainMock.mockImplementation(async () => ({
       data: null,
@@ -116,24 +162,31 @@ describe("ReconcileResendDomainStatusUseCase", () => {
 
   it("retorna inválido quando há erros parciais mas também sincronizações", async () => {
     listConnectedDomainsMock.mockImplementation(async () => [
-      {
+      connectedDomain({
         teamId: "team-1",
         resendDomainId: "dom-1",
         resendDomainName: "ok.example.com",
-        resendDomainStatus: "verified",
-      },
-      {
+      }),
+      connectedDomain({
         teamId: "team-2",
         resendDomainId: "dom-2",
         resendDomainName: "fail.example.com",
-        resendDomainStatus: "verified",
-      },
+      }),
     ])
     fetchDomainMock.mockImplementation(async (domainId) => {
       if (domainId === "dom-2") {
         return { data: null, error: "rate limit" }
       }
-      return { data: { id: domainId, status: "partially_failed" }, error: null }
+      return {
+        data: {
+          id: domainId,
+          status: "partially_failed",
+          region: "sa-east-1",
+          openTracking: true,
+          clickTracking: true,
+        },
+        error: null,
+      }
     })
 
     const useCase = new ReconcileResendDomainStatusUseCase(

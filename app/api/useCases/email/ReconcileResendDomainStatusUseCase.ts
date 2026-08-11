@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output"
 import { assertResend } from "@/lib/email"
-import { isResendDomainStatusInSync } from "@/lib/email/resend-domain-reconcile"
+import { isResendDomainSnapshotInSync } from "@/lib/email/resend-domain-reconcile"
 import {
   emailTeamDomainEventRepository,
   type ConnectedResendDomainRow,
@@ -94,11 +94,11 @@ export class ReconcileResendDomainStatusUseCase {
         return "error"
       }
 
-      const remoteStatus = data.status ?? null
-      if (isResendDomainStatusInSync(team.resendDomainStatus, remoteStatus)) {
+      if (isResendDomainSnapshotInSync(team, data)) {
         return "in_sync"
       }
 
+      const remoteStatus = data.status ?? null
       await this.domainEvents.syncFromResendDomain(team.teamId, data, new Date())
       console.info("[ReconcileResendDomainStatusUseCase] Status reconciliado", {
         teamId: team.teamId,
