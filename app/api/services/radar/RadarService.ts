@@ -101,6 +101,10 @@ const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string
     name: "Clicaram e não fecharam",
     description: "Clicaram em campanha sem fechamento em carteira ou CRM",
   },
+  engaged_no_lead: {
+    name: "Engajados sem Lead",
+    description: "Interagiram por e-mail ou formulário sem lead vinculado no CRM",
+  },
   portfolio_renewal_due: {
     name: "Carteira próxima de renovação",
     description: "Clientes com renovação nos próximos 60 dias",
@@ -1012,6 +1016,7 @@ export class RadarService {
       email_blocked: 0,
       opened_not_clicked: 0,
       clicked_not_closed: 0,
+      engaged_no_lead: 0,
       portfolio_renewal_due: 0,
       inactive_recent_campaign: 0,
       portfolio_clients: 0,

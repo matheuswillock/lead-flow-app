@@ -42,6 +42,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   email_blocked: "Bloqueados",
   opened_not_clicked: "Abriram e não clicaram",
   clicked_not_closed: "Clicaram e não fecharam",
+  engaged_no_lead: "Engajados sem Lead",
   portfolio_renewal_due: "Carteira próxima de renovação",
   inactive_recent_campaign: "Sem campanha recente",
   portfolio_clients: "Carteira",

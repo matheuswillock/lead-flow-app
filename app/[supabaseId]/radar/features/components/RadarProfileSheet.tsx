@@ -4,10 +4,24 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ChevronDown, ExternalLink, Mail, Mails } from "lucide-react"
+import { useEffect, useState } from "react"
+import { ChevronDown, ExternalLink, Mail, Mails, UserPlus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  RADAR_PROFILE_GENDER_LABELS,
+  RADAR_PROFILE_GENDER_VALUES,
+} from "@/lib/radar/radar-profile-gender"
+import type { RadarGender } from "@/lib/radar/gender"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -25,6 +39,7 @@ import type {
 } from "../context/RadarTypes"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
+import { PromoteRadarProfileAlertDialog } from "./PromoteRadarProfileAlertDialog"
 import { RadarEngagementBadge } from "./RadarEngagementBadge"
 import {
   buildLeadCrmHref,
@@ -165,6 +180,8 @@ type RadarProfileSheetProps = {
   isLoadingTouchpoints: boolean
   contracts: RadarProfileContracts | null
   isLoadingContracts: boolean
+  onPromoteToLead?: () => Promise<boolean>
+  onUpdateGender?: (gender: RadarGender) => Promise<boolean>
 }
 
 export function RadarProfileSheet({
@@ -180,9 +197,15 @@ export function RadarProfileSheet({
   isLoadingTouchpoints,
   contracts,
   isLoadingContracts,
+  onPromoteToLead,
+  onUpdateGender,
 }: RadarProfileSheetProps) {
   const params = useParams()
   const supabaseId = params.supabaseId as string
+  const [promoteDialogOpen, setPromoteDialogOpen] = useState(false)
+  const [isPromotingToLead, setIsPromotingToLead] = useState(false)
+  const [genderDraft, setGenderDraft] = useState<RadarGender>("unknown")
+  const [isSavingGender, setIsSavingGender] = useState(false)
   const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
   const displayableIdentities = profile ? filterDisplayableIdentities(profile.identities) : []
   const emailIdentities = profile
@@ -213,6 +236,14 @@ export function RadarProfileSheet({
 
   const hasContracts =
     (contracts?.portfolios.length ?? 0) > 0 || (contracts?.finalized.length ?? 0) > 0
+
+  const profileGender = (profile?.gender as RadarGender | null | undefined) ?? "unknown"
+  const genderDirty = profile ? genderDraft !== profileGender : false
+
+  useEffect(() => {
+    if (!profile) return
+    setGenderDraft((profile.gender as RadarGender | null | undefined) ?? "unknown")
+  }, [profile?.id, profile?.gender])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -270,6 +301,82 @@ export function RadarProfileSheet({
                   </div>
                 </div>
               </div>
+
+              {onUpdateGender ? (
+                <>
+                  <Separator />
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel>Gênero</FieldLabel>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <Select
+                          value={genderDraft}
+                          onValueChange={(value) => setGenderDraft(value as RadarGender)}
+                          disabled={isSavingGender}
+                        >
+                          <SelectTrigger className="w-full sm:w-48">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {RADAR_PROFILE_GENDER_VALUES.map((value) => (
+                              <SelectItem key={value} value={value}>
+                                {RADAR_PROFILE_GENDER_LABELS[value]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          disabled={isSavingGender || !genderDirty}
+                          onClick={() => {
+                            setIsSavingGender(true)
+                            void onUpdateGender(genderDraft).finally(() => {
+                              setIsSavingGender(false)
+                            })
+                          }}
+                        >
+                          {isSavingGender ? "Salvando…" : "Salvar gênero"}
+                        </Button>
+                      </div>
+                      {profile.genderSource ? (
+                        <p className="text-xs text-muted-foreground">
+                          Origem: {profile.genderSource === "manual" ? "Manual" : profile.genderSource}
+                        </p>
+                      ) : null}
+                    </Field>
+                  </FieldGroup>
+                </>
+              ) : null}
+
+              {!hasLeadIdentity && onPromoteToLead ? (
+                <>
+                  <Separator />
+                  <Button
+                    variant="default"
+                    className="w-full"
+                    onClick={() => setPromoteDialogOpen(true)}
+                  >
+                    <UserPlus data-icon="inline-start" />
+                    Promover a Lead
+                  </Button>
+                  <PromoteRadarProfileAlertDialog
+                    open={promoteDialogOpen}
+                    onOpenChange={setPromoteDialogOpen}
+                    displayName={profile.displayName}
+                    primaryEmail={profile.primaryEmail}
+                    isPromoting={isPromotingToLead}
+                    onConfirm={async () => {
+                      setIsPromotingToLead(true)
+                      try {
+                        const success = await onPromoteToLead()
+                        if (success) setPromoteDialogOpen(false)
+                      } finally {
+                        setIsPromotingToLead(false)
+                      }
+                    }}
+                  />
+                </>
+              ) : null}
 
               {hasLeadIdentity ? (
                 <>

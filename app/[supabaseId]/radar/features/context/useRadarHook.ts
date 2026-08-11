@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
+import { removeProfileFromSegmentList } from "@/lib/radar/radar-segment-promote-list"
 import { toast } from "sonner"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { radarFrontendService } from "../services/RadarService"
@@ -685,6 +686,70 @@ export function useRadarHookFn() {
     [activeTeamId, supabaseId, withMutationLock]
   )
 
+  const promoteProfileToLead = useCallback(
+    async (
+      profileId: string,
+      options?: { source?: "profile-sheet" | "segment-list" }
+    ): Promise<boolean> => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          await radarFrontendService.promoteProfileToLead(supabaseId, activeTeamId, profileId)
+          toast.success("Lead criado a partir do perfil Radar.")
+          if (options?.source === "segment-list") {
+            let removedFromList = false
+            setSegmentProfilesItems((prev) => {
+              const next = removeProfileFromSegmentList(prev, profileId)
+              removedFromList = next.removed
+              return next.items
+            })
+            if (removedFromList) {
+              setSegmentProfilesTotal((prev) => Math.max(0, prev - 1))
+            }
+          } else {
+            await openProfile(profileId)
+          }
+          await loadDashboard()
+          return true
+        } catch (promoteError) {
+          console.error("[useRadarHookFn][promoteProfileToLead]", promoteError)
+          toast.error(
+            promoteError instanceof Error
+              ? promoteError.message
+              : "Não foi possível promover o perfil a Lead."
+          )
+          return false
+        }
+      })
+      return result ?? false
+    },
+    [activeTeamId, loadDashboard, openProfile, supabaseId, withMutationLock]
+  )
+
+  const updateProfileGender = useCallback(
+    async (profileId: string, gender: "male" | "female" | "unknown"): Promise<boolean> => {
+      if (!supabaseId || !activeTeamId) return false
+      const result = await withMutationLock(async () => {
+        try {
+          await radarFrontendService.updateProfileGender(supabaseId, activeTeamId, profileId, gender)
+          toast.success("Gênero do perfil atualizado.")
+          await openProfile(profileId)
+          return true
+        } catch (updateError) {
+          console.error("[useRadarHookFn][updateProfileGender]", updateError)
+          toast.error(
+            updateError instanceof Error
+              ? updateError.message
+              : "Não foi possível atualizar o gênero do perfil."
+          )
+          return false
+        }
+      })
+      return result ?? false
+    },
+    [activeTeamId, openProfile, supabaseId, withMutationLock]
+  )
+
   return {
     profiles,
     segments,
@@ -744,6 +809,8 @@ export function useRadarHookFn() {
     isLoadingContracts,
     previewSegmentContactList,
     materializeSegmentToContactList,
+    promoteProfileToLead,
+    updateProfileGender,
     reload: loadDashboard,
   }
 }
