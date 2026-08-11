@@ -21,11 +21,14 @@ mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchServi
 // --- EmailCampaignRecipientService ---
 const buildCampaignDispatchInputMock = mock(async () => makeDefaultDispatchInput([]))
 const findUnresolvedTokensMock = mock(() => [] as string[])
+const listActiveRecipientsMock = mock(
+  async (..._args: unknown[]) => [] as Array<{ email: string; name: string; contactId: string }>
+)
 mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService", () => ({
   EmailCampaignRecipientService: class {
     buildCampaignDispatchInput = buildCampaignDispatchInputMock
     findUnresolvedTokensForRecipients = findUnresolvedTokensMock
-    listActiveRecipients = mock(async () => [])
+    listActiveRecipients = listActiveRecipientsMock
   },
 }))
 
@@ -331,6 +334,7 @@ const allMocks = [
   processPendingBatchMock,
   buildCampaignDispatchInputMock,
   findUnresolvedTokensMock,
+  listActiveRecipientsMock,
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
 ]
@@ -1287,6 +1291,57 @@ describe("EmailCampaignUseCase.previewPlan", () => {
       teamCtx
     )
     expect(both.errorMessages.join(" ")).not.toContain("não ambos")
+  })
+
+  // Ticket 06 — wizard não detecta split acima de 2.000 porque previewPlan
+  // valida agendamento cedo demais (uniformSchedule:false + schedules vazios).
+  // previewPlan é descoberta: deve devolver o plano dividido sem exigir horários.
+  it("06-A — audiência 3.445 (uniformSchedule:false, schedules vazios) revela 2 sub-campanhas", async () => {
+    listActiveRecipientsMock.mockImplementation(async () => makeRecipients(3445))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.previewPlan(
+      {
+        name: "Grande",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListId: "00000000-0000-4000-8000-000000000001",
+        uniformSchedule: false,
+        subCampaignSchedules: [],
+      },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(true)
+    const result = output.result as { subCampaigns: unknown[] }
+    expect(result.subCampaigns.length).toBe(2)
+  })
+})
+
+describe("EmailCampaignUseCase.create — gate de agendamento (ticket 06)", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    setupTemplateMock()
+  })
+
+  // Contraparte do 06-A: a validação de completude de agendamento continua no
+  // create. Mesma entrada que passa no preview deve bloquear a criação.
+  it("06-B — audiência 3.445 sem horários por sub-campanha → bloqueia criação", async () => {
+    listActiveRecipientsMock.mockImplementation(async () => makeRecipients(3445))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.create(
+      {
+        name: "Grande",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListId: "00000000-0000-4000-8000-000000000001",
+        uniformSchedule: false,
+        subCampaignSchedules: [],
+      },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("Informe uma data para cada sub-campanha")
   })
 })
 

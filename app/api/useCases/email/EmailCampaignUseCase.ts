@@ -799,11 +799,9 @@ export class EmailCampaignUseCase {
           ...schedule,
         })
 
-        const scheduleError = validateCampaignPlanSchedules(plan, schedule)
-        if (scheduleError) {
-          return new Output(false, [], [scheduleError], null)
-        }
-
+        // Preview é descoberta: devolve o plano dividido sem exigir horários
+        // (o wizard só preenche os agendamentos depois de ver o split). A
+        // validação de completude do agendamento fica no create/update.
         return new Output(true, [], [], {
           ...plan,
           audienceMode: "combined",
@@ -832,11 +830,9 @@ export class EmailCampaignUseCase {
         ...schedule,
       })
 
-      const scheduleError = validateCampaignPlanSchedules(plan, schedule)
-      if (scheduleError) {
-        return new Output(false, [], [scheduleError], null)
-      }
-
+      // Preview é descoberta: devolve o plano dividido sem exigir horários
+      // (o wizard só preenche os agendamentos depois de ver o split). A
+      // validação de completude do agendamento fica no create/update.
       return new Output(true, [], [], { ...plan, audienceMode: "list_only" })
     } catch (error) {
       console.error("[EmailCampaignUseCase][previewPlan]", error)
