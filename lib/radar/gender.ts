@@ -48,3 +48,18 @@ export function resolveGender(
     genderSource: candidate.source,
   }
 }
+
+/** Guard SQL para update atômico: `null` = sem filtro (escrita `manual`). */
+export function allowedCurrentSourcesForGenderWrite(
+  incoming: RadarGenderSource
+): { allowNull: boolean; sources: RadarGenderSource[] } | null {
+  if (incoming === "manual") {
+    return null
+  }
+
+  if (incoming === "mapped") {
+    return { allowNull: true, sources: ["inferred", "mapped"] }
+  }
+
+  return { allowNull: true, sources: ["inferred"] }
+}

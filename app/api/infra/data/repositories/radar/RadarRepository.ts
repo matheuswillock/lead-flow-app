@@ -13,6 +13,10 @@ import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMet
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
 import {
+  allowedCurrentSourcesForGenderWrite,
+  type RadarGenderSource,
+} from "@/lib/radar/gender"
+import {
   DEFAULT_ENGAGEMENT_CONFIG,
   DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
   computeEngagementScore,
@@ -1551,7 +1555,11 @@ export class RadarRepository {
     genderSource: "mapped" | "inferred" | "manual"
   ) {
     return this.db.radarProfile.updateMany({
-      where: { id: profileId, teamId },
+      where: {
+        id: profileId,
+        teamId,
+        ...genderSourceWriteWhere(genderSource),
+      },
       data: { gender, genderSource },
     })
   }
@@ -2190,6 +2198,7 @@ export class RadarRepository {
         primaryEmail: true,
         primaryDocument: true,
         lastSeenAt: true,
+        profileData: true,
         consents: { select: { channel: true, status: true } },
         sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
         identities: { select: { type: true, normalizedValue: true } },
@@ -2684,6 +2693,22 @@ export class RadarRepository {
       ["crm_clients", Number(row.crm_clients)],
     ])
   }
+}
+
+function genderSourceWriteWhere(
+  incoming: RadarGenderSource
+): Prisma.RadarProfileWhereInput {
+  const guard = allowedCurrentSourcesForGenderWrite(incoming)
+  if (!guard) return {}
+
+  const clauses: Prisma.RadarProfileWhereInput[] = []
+  if (guard.allowNull) {
+    clauses.push({ genderSource: null })
+  }
+  if (guard.sources.length > 0) {
+    clauses.push({ genderSource: { in: guard.sources } })
+  }
+  return { OR: clauses }
 }
 
 export const radarRepository = new RadarRepository()
