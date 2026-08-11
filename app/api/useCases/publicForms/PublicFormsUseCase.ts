@@ -4,6 +4,7 @@ import {
   mapPublicFormDraft,
   publicFormsService,
 } from "@/app/api/services/PublicForms/PublicFormsService"
+import { withPrismaRetry } from "@/app/api/infra/data/prisma"
 import { Output } from "@/lib/output"
 import type {
   PublicFormDraftInput,
@@ -13,6 +14,12 @@ import type {
 import { rankTopFormsByConversion } from "@/lib/public-forms/form-ranking"
 import { validatePublicFormDraft } from "@/lib/public-forms/validate-public-form-draft"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
+import {
+  buildPublicFormMetricQueuePayload,
+  isCriticalPublicFormMetricEvent,
+  publishPublicFormMetricEvent,
+  PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
+} from "@/lib/queues/public-form-metric-events"
 
 function isManager(access: TeamAccess) {
   return access.isMaster || access.teamMember.role === "manager"
@@ -231,11 +238,72 @@ export class PublicFormsUseCase {
   }
 
   async recordMetric(publicId: string, input: PublicFormMetricEventInput) {
-    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
-    const accepted = await publicFormsService.recordMetric(publicId, input)
-    return accepted
-      ? new Output(true, [], [], { accepted: true })
-      : new Output(false, [], ["Formulário indisponível"], null)
+    if (!isValidPublicFormId(publicId)) {
+      return new Output(false, [], ["Formulário indisponível"], null)
+    }
+
+    // Queue-first para eventos críticos de funil: sem Prisma no caminho feliz.
+    if (isCriticalPublicFormMetricEvent(input.eventType)) {
+      const payload = buildPublicFormMetricQueuePayload(publicId, {
+        ...input,
+        eventType: input.eventType,
+      })
+      try {
+        const { messageId } = await publishPublicFormMetricEvent(payload)
+        console.info("[PublicFormsUseCase][recordMetric] queued critical metric", {
+          publicId,
+          eventType: input.eventType,
+          eventKey: input.eventKey,
+          messageId,
+        })
+        return new Output(true, [], [], { queued: true, messageId })
+      } catch (error) {
+        console.error(
+          `[PublicFormsUseCase][recordMetric] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`,
+          {
+            tag: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
+            publicId,
+            eventType: input.eventType,
+            eventKey: input.eventKey,
+            error,
+          },
+        )
+        return new Output(false, [], ["Falha ao enfileirar evento de métrica"], {
+          code: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
+        })
+      }
+    }
+
+    try {
+      const accepted = await withPrismaRetry(
+        () => publicFormsService.recordMetric(publicId, input),
+        { retries: 1, label: "publicForms.recordMetric" },
+      )
+      return accepted
+        ? new Output(true, [], [], { accepted: true })
+        : new Output(false, [], ["Formulário indisponível"], null)
+    } catch (error) {
+      console.error("[PublicFormsUseCase][recordMetric] direct path failed", {
+        publicId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        error,
+      })
+      return new Output(false, [], ["Falha ao registrar evento de métrica"], null)
+    }
+  }
+
+  /**
+   * Persistência idempotente usada pelo consumer da Vercel Queue.
+   * Reutiliza `recordMetric` do service (upsert por eventKey + side-effects).
+   * Erros transitórios propagam para o retry do `handleCallback`.
+   */
+  async persistQueuedMetric(publicId: string, input: PublicFormMetricEventInput): Promise<boolean> {
+    if (!isValidPublicFormId(publicId)) return false
+    return withPrismaRetry(
+      () => publicFormsService.recordMetric(publicId, input),
+      { retries: 1, label: "publicForms.persistQueuedMetric" },
+    )
   }
 
   async analytics(access: TeamAccess, id: string, from?: Date, to?: Date, publicationId?: string) {

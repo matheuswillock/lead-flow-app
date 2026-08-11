@@ -6,6 +6,7 @@ import {
   consumePublicFormRateLimit,
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
+import { PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG } from "@/lib/queues/public-form-metric-events"
 
 export async function POST(
   request: Request,
@@ -26,6 +27,23 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })
   }
+
   const output = await publicFormsUseCase.recordMetric(publicId, parsed.data)
-  return NextResponse.json(output, { status: output.isValid ? 202 : 404 })
+  if (output.isValid) {
+    return NextResponse.json(output, { status: 202 })
+  }
+
+  const code =
+    output.result && typeof output.result === "object" && "code" in output.result
+      ? String((output.result as { code?: unknown }).code ?? "")
+      : ""
+  if (code === PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG) {
+    console.error(
+      `[PublicFormMetricEventsRoute][POST] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`,
+      { publicId, eventType: parsed.data.eventType, eventKey: parsed.data.eventKey },
+    )
+    return NextResponse.json(output, { status: 502 })
+  }
+
+  return NextResponse.json(output, { status: 404 })
 }
