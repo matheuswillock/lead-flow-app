@@ -79,3 +79,38 @@ export function selectFailedRecipientEmailsForRetry(
 
   return eligible.sort()
 }
+
+function normalizeEmailList(emails: string[]): string[] {
+  const normalized = new Set<string>()
+  for (const email of emails) {
+    const value = normalizeEmail(email)
+    if (value) normalized.add(value)
+  }
+  return [...normalized].sort()
+}
+
+/**
+ * Resolve os e-mails a redisparar no modo "Reenviar apenas falhas".
+ *
+ * Existe um modo de falha em que a tentativa anterior morreu **antes** de criar
+ * qualquer `EmailLog` (ex.: validação de variáveis abortou antes do dispatch).
+ * Nesse caso `selectFailedRecipientEmailsForRetry` devolve `[]` (não há log `failed`),
+ * e a UI reporta "0 destinatários com falha" mesmo com ninguém tendo recebido nada.
+ *
+ * Regra:
+ * - Se a campanha está em status retriável e **não há log algum** (`hasAnyLog === false`),
+ *   ninguém recebeu → devolver **toda** a audiência resolvida (`resolvedAudienceEmails`).
+ * - Caso contrário, manter o critério por logs `failed` (sem regressão para o modo
+ *   "logs existentes com falhas", ex.: lote 403 da Resend).
+ */
+export function resolveRetryRecipientEmails(params: {
+  hasAnyLog: boolean
+  hasRetriableStatus: boolean
+  logs: CampaignFailedRecipientLogRow[]
+  resolvedAudienceEmails: string[]
+}): string[] {
+  if (params.hasRetriableStatus && !params.hasAnyLog) {
+    return normalizeEmailList(params.resolvedAudienceEmails)
+  }
+  return selectFailedRecipientEmailsForRetry(params.logs)
+}

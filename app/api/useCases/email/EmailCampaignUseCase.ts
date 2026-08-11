@@ -83,6 +83,7 @@ import {
   CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
   CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
   CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+  resolveRetryRecipientEmails,
   selectFailedRecipientEmailsForRetry,
 } from "@/lib/email/campaign-failed-recipients"
 import {
@@ -1168,8 +1169,28 @@ export class EmailCampaignUseCase {
 
       const failedRetryRecipientCount =
         !isParent && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
-          ? (await this.resolveFailedRetryRecipientEmails(campaign.id)).length
+          ? await this.computeFailedRetryRecipientCount({
+              campaignId: campaign.id,
+              fallbackAudienceCount: activeRecipientCount,
+            })
           : undefined
+
+      // Contagem por sub-campanha exibida no diálogo de confirmação. Usa a mesma fonte
+      // real (por logs, com fallback de "sem log algum") do objeto de topo — nunca a
+      // fórmula frouxa `totalRecipients - totalSent`, que promete o que o backend não
+      // cumpre quando já existem logs parciais.
+      const subFailedRetryCountById = new Map<string, number>()
+      await Promise.all(
+        campaign.subCampaigns
+          .filter((sub) => RETRY_FAILED_ONLY_STATUSES.has(sub.status))
+          .map(async (sub) => {
+            const count = await this.computeFailedRetryRecipientCount({
+              campaignId: sub.id,
+              fallbackAudienceCount: sub.totalRecipients,
+            })
+            subFailedRetryCountById.set(sub.id, count)
+          })
+      )
 
       const progressCampaignMeta = isParent
         ? campaign.subCampaigns.map((sub) => ({ id: sub.id, status: sub.status }))
@@ -1231,7 +1252,7 @@ export class EmailCampaignUseCase {
           return {
             ...sub,
             failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
-              ? Math.max(0, sub.totalRecipients - sub.totalSent)
+              ? subFailedRetryCountById.get(sub.id) ?? 0
               : undefined,
             activeDispatch: subProgress?.activeDispatch ?? null,
             latestDispatch: subProgress?.latestDispatch ?? null,
@@ -2034,13 +2055,75 @@ export class EmailCampaignUseCase {
     return selectFailedRecipientEmailsForRetry(logs)
   }
 
+  /**
+   * Resolve os e-mails a redisparar no modo "reenviar apenas falhas", cobrindo o caso
+   * em que a tentativa anterior falhou **antes** de criar qualquer `EmailLog` (ex.:
+   * validação de variáveis). Sem log algum + status retriável ⇒ toda a audiência
+   * resolvida é reenviada (ninguém recebeu). Ver `resolveRetryRecipientEmails`.
+   */
+  private async resolveRetryRecipientEmailsForDispatch(
+    campaignId: string,
+    hasRetriableStatus: boolean,
+    resolvedAudienceEmails: string[]
+  ): Promise<{ emails: string[]; hadAnyLog: boolean }> {
+    const logs = await prisma.emailLog.findMany({
+      where: {
+        campaignId,
+        status: {
+          in: [
+            CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+            ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+            ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+          ],
+        },
+      },
+      select: { recipientEmail: true, status: true },
+    })
+
+    const hasAnyLog =
+      logs.length > 0 || (await prisma.emailLog.count({ where: { campaignId } })) > 0
+
+    return {
+      emails: resolveRetryRecipientEmails({
+        hasAnyLog,
+        hasRetriableStatus,
+        logs,
+        resolvedAudienceEmails,
+      }),
+      hadAnyLog: hasAnyLog,
+    }
+  }
+
+  /**
+   * Contagem exibida na UI ("N destinatário(s) que falharam"). Alinha a fonte com o
+   * disparo real: por logs `failed` quando existem, ou toda a audiência quando a
+   * campanha é retriável e não há log algum (falha antes de criar `EmailLog`).
+   */
+  private async computeFailedRetryRecipientCount(params: {
+    campaignId: string
+    fallbackAudienceCount: number
+  }): Promise<number> {
+    const failedByLogs = await this.resolveFailedRetryRecipientEmails(params.campaignId)
+    if (failedByLogs.length > 0) return failedByLogs.length
+
+    const hasAnyLog =
+      (await prisma.emailLog.count({ where: { campaignId: params.campaignId } })) > 0
+    return hasAnyLog ? 0 : Math.max(0, params.fallbackAudienceCount)
+  }
+
   async countFailedRetryRecipients(campaignId: string, ctx: TeamContext): Promise<number> {
     const campaign = await prisma.emailCampaign.findFirst({
       where: { id: campaignId, teamId: ctx.teamId },
-      select: { id: true },
+      select: { id: true, status: true, totalRecipients: true },
     })
     if (!campaign) return 0
-    return (await this.resolveFailedRetryRecipientEmails(campaignId)).length
+    if (!RETRY_FAILED_ONLY_STATUSES.has(campaign.status)) {
+      return (await this.resolveFailedRetryRecipientEmails(campaignId)).length
+    }
+    return this.computeFailedRetryRecipientCount({
+      campaignId,
+      fallbackAudienceCount: campaign.totalRecipients,
+    })
   }
 
   async startManualDispatch(
@@ -2165,13 +2248,19 @@ export class EmailCampaignUseCase {
 
       let recipientsForDispatch = dispatchInput.recipients
       if (retryFailedOnly) {
-        const failedEmails = new Set(await this.resolveFailedRetryRecipientEmails(campaign.id))
+        const { emails: retryEmails, hadAnyLog } = await this.resolveRetryRecipientEmailsForDispatch(
+          campaign.id,
+          RETRY_FAILED_ONLY_STATUSES.has(campaign.status),
+          dispatchInput.recipients.map((recipient) => recipient.email)
+        )
+        const retryEmailSet = new Set(retryEmails)
         recipientsForDispatch = dispatchInput.recipients.filter((recipient) =>
-          failedEmails.has(recipient.email.trim().toLowerCase())
+          retryEmailSet.has(recipient.email.trim().toLowerCase())
         )
         console.info("[EmailCampaignUseCase][startManualDispatch] retryFailedOnly", {
           campaignId: campaign.id,
           previousStatus: campaign.status,
+          hadAnyLog,
           fullAudienceCount: dispatchInput.recipients.length,
           failedOnlyCount: recipientsForDispatch.length,
         })

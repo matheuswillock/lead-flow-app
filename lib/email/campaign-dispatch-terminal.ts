@@ -118,6 +118,27 @@ export function resolveCampaignDispatchTerminal(
   return null
 }
 
+/**
+ * Decide se o polling de retry deve emitir o toast terminal.
+ *
+ * `handleSend` seta `sendingId` **otimisticamente** antes do POST resolver, o que dispara
+ * o polling. Se o retry morrer no gate (ex.: variáveis), nenhum `EmailCampaignDispatch` novo
+ * é criado e a sub-campanha continua `failed` com o `errorMessage` **antigo** — o polling
+ * emitiria um toast fantasma com o erro velho.
+ *
+ * Regra fail-closed: só é um estado terminal novo se um `dispatchId` foi observado e ele
+ * **difere** do `dispatchId` pré-tentativa. Sem dispatch novo ⇒ sem toast (o `catch` do
+ * `handleSend` cuida do erro real e atual).
+ */
+export function isNewTerminalDispatch(params: {
+  observedDispatchId: string | null | undefined
+  preAttemptDispatchId: string | null | undefined
+}): boolean {
+  const observed = params.observedDispatchId ?? null
+  if (observed === null) return false
+  return observed !== (params.preAttemptDispatchId ?? null)
+}
+
 export function buildDispatchTerminalToast(
   name: string | null | undefined,
   terminal: ResolvedDispatchTerminal

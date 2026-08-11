@@ -830,6 +830,42 @@ describe("EmailCampaignUseCase.send", () => {
     expect(dispatchBatchMock).not.toHaveBeenCalled()
   })
 
+  it("C14c — failed sem log algum → reenvia toda a audiência (não '0 destinatários')", async () => {
+    // Regressão 5.1: a tentativa anterior morreu antes de criar EmailLog (ex.: validação de
+    // variáveis). Sem log 'failed', o critério por logs devolvia [] → NO_FAILED_RECIPIENTS.
+    const allRecipients = makeRecipients(4)
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(allRecipients)
+    )
+    emailLogFindManyMock.mockImplementation(async () => [])
+    dispatchBatchMock.mockImplementation(async (params: unknown) => {
+      const typed = params as { recipients: Array<{ email: string }> }
+      return {
+        sent: typed.recipients.length,
+        failed: 0,
+        dispatched: typed.recipients.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      }
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(true)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+    const dispatchArgs = dispatchBatchMock.mock.calls[0] as unknown as [
+      { recipients: Array<{ email: string }> },
+    ]
+    expect(dispatchArgs[0].recipients).toHaveLength(4)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(4)
+  })
+
   // ---------------------------------------------------------------------------
   // D12 — domínio partially_failed permite disparo com aviso
   // ---------------------------------------------------------------------------

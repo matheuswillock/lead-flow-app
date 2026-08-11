@@ -18,6 +18,7 @@ import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import {
   applyDispatchTerminalToast,
   buildDispatchTerminalToast,
+  isNewTerminalDispatch,
   resolveCampaignDispatchTerminal,
 } from "@/lib/email/campaign-dispatch-terminal"
 import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
@@ -320,6 +321,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const sendingIdRef = useRef<string | null>(null)
   const sendingCampaignSnapshotRef = useRef<Campaign | null>(null)
   const sendingSubCampaignParentIdRef = useRef<string | null>(null)
+  // dispatchId da sub-campanha logo antes de um retry. O polling só emite toast terminal
+  // se observar um dispatchId diferente (fail-closed contra o toast fantasma do erro antigo).
+  const retryPreAttemptDispatchIdRef = useRef<string | null>(null)
   const fetchingRef = useRef(false)
   const pendingForceRefreshRef = useRef(false)
   const lastCampaignsKeyRef = useRef("")
@@ -516,6 +520,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setPage(1)
       lastCampaignsKeyRef.current = ""
     } else {
+      // Captura o dispatchId atual da sub ANTES do retry: o polling otimista dispara
+      // imediatamente e veria o `failed` + erro antigo; só emite toast se o dispatchId mudar.
+      const preAttemptSub = detailCampaign?.subCampaigns?.find((sub) => sub.id === id)
+      retryPreAttemptDispatchIdRef.current = preAttemptSub?.latestDispatch?.dispatchId ?? null
       sendingSubCampaignParentIdRef.current = detailCampaign?.id ?? null
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
@@ -599,6 +607,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
       } else {
         sendingSubCampaignParentIdRef.current = null
+        retryPreAttemptDispatchIdRef.current = null
         setSendingId(null)
       }
     }
@@ -685,7 +694,20 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         const tracked = detailed.subCampaigns?.find((sub) => sub.id === sendingId)
         if (!tracked || tracked.status === "sending") return
 
+        // Fail-closed contra o toast fantasma: se nenhum dispatch novo surgiu (retry morreu
+        // no gate de variáveis), o `failed` + errorMessage observados são os antigos.
+        // Não emitir toast terminal — o catch do handleSend cuida do erro real e atual.
+        if (
+          !isNewTerminalDispatch({
+            observedDispatchId: tracked.latestDispatch?.dispatchId ?? null,
+            preAttemptDispatchId: retryPreAttemptDispatchIdRef.current,
+          })
+        ) {
+          return
+        }
+
         sendingSubCampaignParentIdRef.current = null
+        retryPreAttemptDispatchIdRef.current = null
         dispatchSeenInListRef.current = false
         setSendingId(null)
         const terminal = resolveCampaignDispatchTerminal(tracked)
