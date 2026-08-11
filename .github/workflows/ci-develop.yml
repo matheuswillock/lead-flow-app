@@ -6,6 +6,11 @@ on:
     branches: ["develop"]
     paths-ignore:
       - "package.json"
+  # Escape hatch obrigatório: com `paths-ignore`, um push cujo diff líquido é
+  # vazio ou só package.json (ex.: merge commit de sync main -> develop) não
+  # dispara o workflow, e a release branch nunca é regenerada. Os jobs abaixo
+  # rodam tanto em `push` quanto em `workflow_dispatch` para permitir a
+  # regeneração manual sem commit artificial em develop.
   workflow_dispatch:
 
 # cancel-in-progress: false — um run de develop precisa terminar atômico
@@ -29,7 +34,7 @@ env:
 jobs:
   ci-light:
     name: CI Light (VPS)
-    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: ${{ (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 8
     outputs:
@@ -53,7 +58,7 @@ jobs:
 
   typecheck:
     name: Typecheck
-    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: ${{ (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -71,7 +76,7 @@ jobs:
   build:
     name: Build
     # Jobs pesados no runner hospedado do GitHub (RAM dedicada por pipeline, paralelo sem OOM na VPS).
-    if: ${{ github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: ${{ (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -108,7 +113,7 @@ jobs:
 
   quality-gate:
     name: Quality Gate
-    if: ${{ always() && github.event_name == 'push' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: ${{ always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 2
     needs:
@@ -214,7 +219,6 @@ jobs:
   migration-dry-run:
     name: Migration Dry Run
     if: |
-      github.event_name == 'push' &&
       !cancelled() &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.migration-check.outputs.has_pending == 'true'
@@ -255,7 +259,6 @@ jobs:
   version-bump:
     name: Auto Version Bump (develop)
     if: |
-      github.event_name == 'push' &&
       (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) &&
       needs.quality-gate.result == 'success'
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
@@ -395,7 +398,7 @@ jobs:
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
-    if: ${{ github.event_name == 'push' && always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    if: ${{ always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 15
     needs:
