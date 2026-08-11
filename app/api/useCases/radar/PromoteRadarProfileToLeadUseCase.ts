@@ -74,7 +74,7 @@ class PromoteRadarProfileToLeadUseCase {
             radarProfileId: profile.id,
           },
           notes: buildPromotionNotes(Boolean(phone)),
-        } as CreateLeadRequest,
+        } as unknown as CreateLeadRequest,
         input.access.teamId
       )
 
