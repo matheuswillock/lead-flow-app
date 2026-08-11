@@ -1,17 +1,21 @@
-import type {
-  RadarChannel,
-  RadarConsentReason,
-  RadarConsentStatus,
-  RadarIdentityType,
-  RadarSourceType,
-  LeadStatus,
+import {
   Prisma,
+  type RadarChannel,
+  type RadarConsentReason,
+  type RadarConsentStatus,
+  type RadarIdentityType,
+  type RadarSourceType,
+  type LeadStatus,
 } from "@prisma/client"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma"
 import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
+import {
+  allowedCurrentSourcesForGenderWrite,
+  type RadarGenderSource,
+} from "@/lib/radar/gender"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
   DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
@@ -24,6 +28,7 @@ import {
 } from "@/lib/radar/engagement-score"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
+const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
 
 type EngagementWeightsConfigCache = {
   weights: WeightMap
@@ -101,12 +106,51 @@ const profileListSelect = {
   lastSeenAt: true,
   engagementScore: true,
   engagementBand: true,
+  gender: true,
+  genderSource: true,
   createdAt: true,
   updatedAt: true,
 } as const
 
 export class RadarRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
+
+  private async runWithTransientPrismaRetry<T>(
+    operation: () => Promise<T>,
+    label: string,
+    retries = 2
+  ): Promise<T> {
+    const delayMs = 150
+    let lastError: unknown
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await operation()
+      } catch (error) {
+        lastError = error
+        const code =
+          error instanceof Prisma.PrismaClientKnownRequestError
+            ? error.code
+            : (error as { code?: string } | null)?.code
+
+        const isTransient = !!code && TRANSIENT_PRISMA_ERROR_CODES.has(code)
+        const hasRetriesLeft = attempt < retries
+
+        if (!isTransient || !hasRetriesLeft) {
+          throw error
+        }
+
+        console.warn(
+          `[RadarRepository][${label}] Transient error (${code}). Retrying (${attempt + 1}/${retries})...`
+        )
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        await this.db.$connect()
+      }
+    }
+
+    throw lastError
+  }
+
   async upsertProfile(input: UpsertProfileInput) {
     const existing = await this.db.radarProfile.findUnique({
       where: {
@@ -900,22 +944,42 @@ export class RadarRepository {
     }
 
     try {
-      const created = await this.db.radarEvent.create({
-        data: {
-          profileId: input.profileId,
-          teamId: input.teamId,
-          eventType: input.eventType,
-          sourceType: input.sourceType,
-          sourceId: input.sourceId ?? null,
-          occurredAt: input.occurredAt,
-          metadata: input.metadata,
-        },
-      })
+      // Retry only when sourceId is present: the unique constraint cannot
+      // dedupe NULL sourceIds, so a transient failure after commit would
+      // double-insert on retry and inflate engagement scores.
+      const createEvent = () =>
+        this.db.radarEvent.create({
+          data: {
+            profileId: input.profileId,
+            teamId: input.teamId,
+            eventType: input.eventType,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId ?? null,
+            occurredAt: input.occurredAt,
+            metadata: input.metadata,
+          },
+        })
+      const created = input.sourceId
+        ? await withPrismaRetry(createEvent, {
+            label: "appendEventIfNew",
+            retries: 2,
+          })
+        : await createEvent()
       void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
         console.error("[RadarRepository][updateEngagementScore]", error)
       })
       return created
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        void this.updateEngagementScore(input.profileId, input.teamId).catch((scoreError) => {
+          console.error("[RadarRepository][updateEngagementScore]", scoreError)
+        })
+        return null
+      }
+      console.error("[RadarRepository][appendEventIfNew]", error)
       return null
     }
   }
@@ -1121,37 +1185,41 @@ export class RadarRepository {
       }
     }
 
-    const [weightRows, configRow, formRuleRows] = await Promise.all([
-      this.db.backofficeRadarEngagementWeight.findMany({
-        where: { isActive: true },
-        select: { eventType: true, weight: true },
-      }),
-      this.db.backofficeRadarEngagementConfig.findFirst({
-        where: { isActive: true },
-        select: {
-          windowRecentDays: true,
-          windowMidDays: true,
-          windowOldDays: true,
-          recentMultiplier: true,
-          oldMultiplier: true,
-          hotThreshold: true,
-          warmThreshold: true,
-          lukewarmThreshold: true,
-        },
-        orderBy: { updatedAt: "desc" },
-      }),
-      this.db.backofficeFormEngagementScoreRule.findMany({
-        where: { isActive: true },
-        select: {
-          minPercent: true,
-          maxPercent: true,
-          multiplier: true,
-          label: true,
-          isActive: true,
-        },
-        orderBy: { minPercent: "asc" },
-      }),
-    ])
+    const [weightRows, configRow, formRuleRows] = await this.runWithTransientPrismaRetry(
+      () =>
+        Promise.all([
+          this.db.backofficeRadarEngagementWeight.findMany({
+            where: { isActive: true },
+            select: { eventType: true, weight: true },
+          }),
+          this.db.backofficeRadarEngagementConfig.findFirst({
+            where: { isActive: true },
+            select: {
+              windowRecentDays: true,
+              windowMidDays: true,
+              windowOldDays: true,
+              recentMultiplier: true,
+              oldMultiplier: true,
+              hotThreshold: true,
+              warmThreshold: true,
+              lukewarmThreshold: true,
+            },
+            orderBy: { updatedAt: "desc" },
+          }),
+          this.db.backofficeFormEngagementScoreRule.findMany({
+            where: { isActive: true },
+            select: {
+              minPercent: true,
+              maxPercent: true,
+              multiplier: true,
+              label: true,
+              isActive: true,
+            },
+            orderBy: { minPercent: "asc" },
+          }),
+        ]),
+      "loadEngagementWeightsAndConfig"
+    )
 
     const weights: WeightMap = {}
     for (const row of weightRows) {
@@ -1407,6 +1475,106 @@ export class RadarRepository {
         },
       },
     })
+  }
+
+  /** G2: dados mínimos para promover perfil Radar a Lead (escopo de time). */
+  async getProfileForPromotionWithCtx(scope: RadarTeamScope, profileId: string) {
+    return this.db.radarProfile.findFirst({
+      where: { id: profileId, teamId: scope.teamId },
+      select: {
+        id: true,
+        displayName: true,
+        displayPhone: true,
+        normalizedPhone: true,
+        primaryEmail: true,
+        normalizedPrimaryEmail: true,
+        identities: {
+          where: { type: { in: ["lead_id", "email"] } },
+          select: {
+            type: true,
+            value: true,
+            normalizedValue: true,
+          },
+        },
+      },
+    })
+  }
+
+  /**
+   * G2: reserva atômica do slot lead_id no perfil (evita dupla promoção concorrente).
+   * Retorna true quando a identidade foi inserida; false se o perfil já tinha lead_id.
+   */
+  async tryInsertLeadIdentityIfAbsent(
+    scope: RadarTeamScope,
+    profileId: string,
+    leadId: string
+  ): Promise<boolean> {
+    return this.db.$transaction(async (tx) => {
+      const lockKey = `${scope.teamId}:promote-lead:${profileId}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarIdentity.findFirst({
+        where: {
+          profileId,
+          teamId: scope.teamId,
+          type: "lead_id",
+        },
+        select: { id: true },
+      })
+      if (existing) return false
+
+      try {
+        await tx.radarIdentity.create({
+          data: {
+            profileId,
+            teamId: scope.teamId,
+            type: "lead_id",
+            value: leadId,
+            normalizedValue: leadId,
+            source: "manual_promote",
+            isPrimary: false,
+          },
+        })
+        return true
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          return false
+        }
+        throw error
+      }
+    })
+  }
+
+  async updateProfileGender(
+    profileId: string,
+    teamId: string,
+    gender: "male" | "female",
+    genderSource: "mapped" | "inferred" | "manual"
+  ) {
+    return this.db.radarProfile.updateMany({
+      where: {
+        id: profileId,
+        teamId,
+        ...genderSourceWriteWhere(genderSource),
+      },
+      data: { gender, genderSource },
+    })
+  }
+
+  /** F3: edição manual de gênero escopada ao time (via TeamContext no caller). */
+  async updateProfileGenderWithCtx(
+    scope: RadarTeamScope,
+    profileId: string,
+    gender: "male" | "female" | "unknown"
+  ): Promise<{ updated: boolean }> {
+    const result = await this.db.radarProfile.updateMany({
+      where: { id: profileId, teamId: scope.teamId },
+      data: { gender, genderSource: "manual" },
+    })
+    return { updated: result.count > 0 }
   }
 
   async listProfileEventsWithCtx(
@@ -2030,6 +2198,7 @@ export class RadarRepository {
         primaryEmail: true,
         primaryDocument: true,
         lastSeenAt: true,
+        profileData: true,
         consents: { select: { channel: true, status: true } },
         sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
         identities: { select: { type: true, normalizedValue: true } },
@@ -2322,6 +2491,224 @@ export class RadarRepository {
       orderBy: { finalizedDateAt: "desc" },
     })
   }
+
+  /**
+   * Fase 2: calcula as 9 contagens de segmentos fixos do Radar com agregação
+   * SQL nativa (Postgres) usando CTEs, substituindo varredura em memória.
+   * Retorna Map<slug, count> para preservar compatibilidade com o fluxo existente.
+   */
+  async countFixedSegmentsSQL(
+    teamId: string,
+    recentWindowDays: number = 30
+  ): Promise<Map<string, number>> {
+    const recentWindowMs = recentWindowDays * 24 * 60 * 60 * 1000
+    const recentThreshold = new Date(Date.now() - recentWindowMs)
+
+    const result = await this.db.$queryRaw<
+      Array<{
+        email_marketable: bigint
+        email_blocked: bigint
+        opened_not_clicked: bigint
+        clicked_not_closed: bigint
+        engaged_no_lead: bigint
+        portfolio_renewal_due: bigint
+        inactive_recent_campaign: bigint
+        portfolio_clients: bigint
+        crm_clients: bigint
+      }>
+    >`
+      WITH profile_base AS (
+        SELECT
+          p.id,
+          p."normalizedPrimaryEmail",
+          EXISTS(
+            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
+            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
+              AND c."channel" = 'email' AND c."status" = 'blocked'
+          ) AS has_blocked_consent,
+          EXISTS(
+            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
+            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
+              AND c."channel" = 'email' AND c."status" = 'allowed'
+          ) AS has_allowed_consent,
+          EXISTS(
+            SELECT 1 FROM "corretor_studio_radar_source_links" sl
+            WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
+              AND sl."sourceType" = 'portfolio'
+          ) AS has_portfolio,
+          EXISTS(
+            SELECT 1 FROM "corretor_studio_radar_identities" i
+            WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
+              AND i."type" = 'lead_id'
+          ) AS has_lead_id,
+          EXISTS(
+            SELECT 1 FROM "corretor_studio_radar_events" e
+            WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
+              AND e."eventType" = 'email.sent'
+              AND e."occurredAt" >= ${recentThreshold}
+          ) AS has_recent_sent
+        FROM "corretor_studio_radar_profiles" p
+        WHERE p."teamId" = ${teamId}::uuid
+      ),
+      email_events AS (
+        SELECT
+          e."profileId",
+          e."eventType",
+          e."occurredAt",
+          e."metadata"
+        FROM "corretor_studio_radar_events" e
+        WHERE e."teamId" = ${teamId}::uuid
+          AND e."eventType" IN ('email.opened', 'email.clicked')
+          AND e."occurredAt" >= ${recentThreshold}
+      ),
+      campaign_opens AS (
+        SELECT DISTINCT
+          ee."profileId",
+          ee."metadata"->>'campaignId' AS campaign_id
+        FROM email_events ee
+        WHERE ee."eventType" = 'email.opened'
+          AND ee."metadata"->>'campaignId' IS NOT NULL
+      ),
+      campaign_clicks AS (
+        SELECT DISTINCT
+          ee."profileId",
+          ee."metadata"->>'campaignId' AS campaign_id
+        FROM email_events ee
+        WHERE ee."eventType" = 'email.clicked'
+          AND ee."metadata"->>'campaignId' IS NOT NULL
+      ),
+      opened_not_clicked_profiles AS (
+        SELECT DISTINCT co."profileId"
+        FROM campaign_opens co
+        LEFT JOIN campaign_clicks cc
+          ON co."profileId" = cc."profileId"
+          AND co.campaign_id = cc.campaign_id
+        WHERE cc."profileId" IS NULL
+      ),
+      clicked_profiles AS (
+        SELECT DISTINCT ee."profileId"
+        FROM email_events ee
+        WHERE ee."eventType" = 'email.clicked'
+          AND ee."metadata"->>'campaignId' IS NOT NULL
+      ),
+      closed_profiles AS (
+        SELECT p.id
+        FROM "corretor_studio_radar_profiles" p
+        WHERE p."teamId" = ${teamId}::uuid
+          AND (
+            EXISTS(
+              SELECT 1 FROM "corretor_studio_radar_source_links" sl
+              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
+                AND sl."sourceType" = 'portfolio'
+            )
+            OR EXISTS(
+              SELECT 1 FROM "corretor_studio_radar_identities" i
+              INNER JOIN "corretor_studio_leads" l ON i."normalizedValue" = l.id::text
+              WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
+                AND i."type" = 'lead_id'
+                AND l."teamId" = ${teamId}::uuid
+                AND l."status" IN ('contract_finalized')
+            )
+          )
+      ),
+      clicked_not_closed_profiles AS (
+        SELECT cp."profileId"
+        FROM clicked_profiles cp
+        LEFT JOIN closed_profiles clp ON cp."profileId" = clp.id
+        WHERE clp.id IS NULL
+      ),
+      renewal_due_profiles AS (
+        SELECT DISTINCT p.id
+        FROM "corretor_studio_radar_profiles" p
+        WHERE p."teamId" = ${teamId}::uuid
+          AND (
+            EXISTS(
+              SELECT 1 FROM "corretor_studio_radar_events" e
+              WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
+                AND e."eventType" = 'portfolio.renewal_due'
+            )
+            OR EXISTS(
+              SELECT 1 FROM "corretor_studio_radar_source_links" sl
+              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
+                AND sl."sourceType" = 'portfolio'
+                AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
+            )
+          )
+      ),
+      engaged_no_lead_profiles AS (
+        SELECT DISTINCT pb.id AS "profileId"
+        FROM profile_base pb
+        WHERE NOT pb.has_lead_id
+          AND (
+            EXISTS (SELECT 1 FROM email_events ee WHERE ee."profileId" = pb.id)
+            OR EXISTS (
+              SELECT 1 FROM "corretor_studio_radar_events" e
+              WHERE e."profileId" = pb.id
+                AND e."teamId" = ${teamId}::uuid
+                AND e."eventType" IN ('form.viewed', 'form.started')
+                AND e."occurredAt" >= ${recentThreshold}
+            )
+          )
+      )
+      SELECT
+        COUNT(*) FILTER (
+          WHERE pb."normalizedPrimaryEmail" IS NOT NULL
+            AND pb."normalizedPrimaryEmail" != ''
+            AND (NOT pb.has_blocked_consent)
+            AND (pb.has_allowed_consent OR NOT EXISTS(
+              SELECT 1 FROM "corretor_studio_radar_channel_consents" c
+              WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}::uuid
+                AND c."channel" = 'email'
+            ))
+        ) AS email_marketable,
+        COUNT(*) FILTER (WHERE pb.has_blocked_consent) AS email_blocked,
+        COUNT(oncp."profileId") AS opened_not_clicked,
+        COUNT(cncp."profileId") AS clicked_not_closed,
+        COUNT(enlp."profileId") AS engaged_no_lead,
+        COUNT(rdp.id) AS portfolio_renewal_due,
+        COUNT(*) FILTER (WHERE NOT pb.has_recent_sent) AS inactive_recent_campaign,
+        COUNT(*) FILTER (WHERE pb.has_portfolio) AS portfolio_clients,
+        COUNT(*) FILTER (WHERE pb.has_lead_id) AS crm_clients
+      FROM profile_base pb
+      LEFT JOIN opened_not_clicked_profiles oncp ON pb.id = oncp."profileId"
+      LEFT JOIN clicked_not_closed_profiles cncp ON pb.id = cncp."profileId"
+      LEFT JOIN engaged_no_lead_profiles enlp ON pb.id = enlp."profileId"
+      LEFT JOIN renewal_due_profiles rdp ON pb.id = rdp.id
+    `
+
+    const row = result[0]
+    if (!row) {
+      return new Map()
+    }
+
+    return new Map([
+      ["email_marketable", Number(row.email_marketable)],
+      ["email_blocked", Number(row.email_blocked)],
+      ["opened_not_clicked", Number(row.opened_not_clicked)],
+      ["clicked_not_closed", Number(row.clicked_not_closed)],
+      ["engaged_no_lead", Number(row.engaged_no_lead)],
+      ["portfolio_renewal_due", Number(row.portfolio_renewal_due)],
+      ["inactive_recent_campaign", Number(row.inactive_recent_campaign)],
+      ["portfolio_clients", Number(row.portfolio_clients)],
+      ["crm_clients", Number(row.crm_clients)],
+    ])
+  }
+}
+
+function genderSourceWriteWhere(
+  incoming: RadarGenderSource
+): Prisma.RadarProfileWhereInput {
+  const guard = allowedCurrentSourcesForGenderWrite(incoming)
+  if (!guard) return {}
+
+  const clauses: Prisma.RadarProfileWhereInput[] = []
+  if (guard.allowNull) {
+    clauses.push({ genderSource: null })
+  }
+  if (guard.sources.length > 0) {
+    clauses.push({ genderSource: { in: guard.sources } })
+  }
+  return { OR: clauses }
 }
 
 export const radarRepository = new RadarRepository()

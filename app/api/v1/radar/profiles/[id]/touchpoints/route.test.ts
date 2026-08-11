@@ -1,5 +1,11 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+
+mock.module("next/server", () => ({
+  NextRequest,
+  NextResponse,
+  connection: mock(async () => undefined),
+}))
 
 const profileExistsInScope = mock(async () => true)
 const listProfileTouchpointEventMarkers = mock(

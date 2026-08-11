@@ -619,6 +619,19 @@ export class BackofficeStudioEmailUseCase {
     return decorateOutput(await this.settings.getDomainRecords(resolved.ctx))
   }
 
+  async configureDomainTracking(
+    actor: StudioEmailActor,
+    input: {
+      trackingSubdomain: string
+      openTracking: boolean
+      clickTracking: boolean
+    }
+  ): Promise<Output> {
+    const resolved = await resolveCtx(actor)
+    if (resolved.error) return resolved.error
+    return decorateOutput(await this.settings.configureDomainTracking(input, resolved.ctx))
+  }
+
   async listVariables(actor: StudioEmailActor): Promise<Output> {
     const resolved = await resolveCtx(actor)
     if (resolved.error) return resolved.error

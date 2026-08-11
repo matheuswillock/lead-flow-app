@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { Prisma } from "@prisma/client"
 
 const updateManyMock = mock(async () => ({ count: 0 }))
 const jobUpdateMock = mock(async () => ({}))
@@ -77,14 +78,39 @@ const prismaStub = {
   },
 }
 
+const upsertMock = mock(async (_args?: unknown) => ({}))
+const countMock = mock(async () => 0)
+
 mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: prismaStub,
-  getImportCronPrisma: () => prismaStub,
+  prisma: {
+    ...prismaStub,
+    emailContactRadarSyncOutbox: {
+      upsert: upsertMock,
+      count: countMock,
+    },
+  },
+  default: {
+    ...prismaStub,
+    emailContactRadarSyncOutbox: {
+      upsert: upsertMock,
+      count: countMock,
+    },
+  },
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
+  getImportCronPrisma: () => ({
+    ...prismaStub,
+    emailContactRadarSyncOutbox: {
+      upsert: upsertMock,
+      count: countMock,
+    },
+  }),
 }))
+
+const createSystemNotificationMock = mock(async (_args?: unknown) => {})
 
 mock.module("@/app/api/services/notifications/NotificationService", () => ({
   notificationService: {
-    createSystemNotification: mock(async () => {}),
+    createSystemNotification: createSystemNotificationMock,
   },
 }))
 
@@ -106,6 +132,16 @@ mock.module("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase", () => ({
 const { EmailContactImportUseCase } = await import(
   "@/app/api/useCases/email/EmailContactImportUseCase"
 )
+const { withTransientTransactionRetry } = await import(
+  "@/lib/prisma/retry-transient-transaction"
+)
+
+function p2028() {
+  return new Prisma.PrismaClientKnownRequestError(
+    "Unable to start a transaction in the given time.",
+    { code: "P2028", clientVersion: "test" }
+  )
+}
 
 function makeJob(overrides: Partial<typeof claimedJob> = {}) {
   return {
@@ -141,6 +177,15 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     updateManyMock.mockClear()
     updateManyMock.mockImplementation(async () => ({ count: 0 }))
     transactionMock.mockClear()
+    transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        emailImportJob: {
+          findFirst: mock(async () => claimedJob),
+          updateMany: mock(async () => ({ count: claimedJob ? 1 : 0 })),
+        },
+      }
+      return fn(tx)
+    })
     jobUpdateMock.mockClear()
     jobUpdateMock.mockImplementation(async () => ({}))
     emailContactFindManyMock.mockClear()
@@ -162,17 +207,99 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     }))
     teamHasRadarFeatureMock.mockClear()
     teamHasRadarFeatureMock.mockImplementation(async () => false)
+    upsertMock.mockClear()
+    countMock.mockClear()
+    countMock.mockImplementation(async () => 0)
+    createSystemNotificationMock.mockClear()
     downloadPayloadMock.mockClear()
     downloadPayloadMock.mockImplementation(async () =>
       JSON.stringify({ rows: [] })
     )
   })
 
-  it("retorna sucesso quando não há jobs pendentes", async () => {
+  it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {
     const useCase = new EmailContactImportUseCase()
     const output = await useCase.processPendingJobs()
     expect(output.isValid).toBe(true)
+    expect(output.successMessages).toContain("Nenhum job pendente")
     expect((output.result as { processedJobs: number }).processedJobs).toBe(0)
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("T1: reexecuta claim após P2028 e processa o job", async () => {
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows: [] }))
+
+    transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      if (transactionMock.mock.calls.length === 1) throw p2028()
+      const tx = {
+        emailImportJob: {
+          findFirst: mock(async () => claimedJob),
+          updateMany: mock(async () => ({ count: 1 })),
+        },
+      }
+      return fn(tx)
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(transactionMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("T2: esgota retries de P2028 e retorna mensagem com code", async () => {
+    transactionMock.mockImplementation(async () => {
+      throw p2028()
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("P2028")
+    expect(output.errorMessages[0]).toContain("Unable to start a transaction")
+    expect(output.errorMessages[0]).not.toBe("Erro ao processar jobs de importação")
+    expect(transactionMock).toHaveBeenCalledTimes(3)
+  })
+
+  it("T3: erro não-transitório falha imediatamente sem retry", async () => {
+    transactionMock.mockImplementation(async () => {
+      throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      })
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("P2002")
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("T4: retry usa o backoff default de produção entre tentativas", async () => {
+    const delays: number[] = []
+    const sleep = async (ms: number) => {
+      delays.push(ms)
+    }
+    const operation = mock(async () => {
+      throw p2028()
+    })
+
+    await expect(
+      withTransientTransactionRetry(operation, {
+        maxAttempts: 3,
+        sleep,
+      })
+    ).rejects.toMatchObject({ code: "P2028" })
+
+    expect(delays).toEqual([250, 500])
   })
 
   it("reclaim jobs stuck em processing para pending antes do claim", async () => {
@@ -200,7 +327,7 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(transactionMock).toHaveBeenCalled()
   })
 
-  it("avança processedRows só após sync Radar do lote (I3)", async () => {
+  it("com Radar habilitado enfileira outbox e não chama sync síncrono (D9)", async () => {
     const rows = makeRows(3)
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
@@ -212,7 +339,38 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
     const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}`, email: rows[i].email }))
     emailContactFindManyMock.mockImplementation(async (args) => {
-      // upsertContactsBatch: select email; radar sync: select id
+      if (args?.select?.id) {
+        return contactIds.map(({ id }) => ({ id }))
+      }
+      return []
+    })
+    emailContactCreateManyMock.mockImplementation(async () => ({ count: 3 }))
+
+    const useCase = new EmailContactImportUseCase()
+    const output = await useCase.processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(syncExecuteMock).not.toHaveBeenCalled()
+    expect(upsertMock).toHaveBeenCalledTimes(3)
+    const upsertCall = upsertMock.mock.calls[0]?.[0] as {
+      create: { emailImportJobId: string; teamId: string };
+    } | undefined
+    expect(upsertCall?.create.emailImportJobId).toBe("job-1")
+    expect(upsertCall?.create.teamId).toBe("team-1")
+  })
+
+  it("avança processedRows logo após upsert de contatos, sem esperar Radar (D9)", async () => {
+    const rows = makeRows(3)
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows }))
+    teamHasRadarFeatureMock.mockImplementation(async () => true)
+
+    const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}`, email: rows[i].email }))
+    emailContactFindManyMock.mockImplementation(async (args) => {
       if (args?.select?.id) {
         return contactIds.map(({ id }) => ({ id }))
       }
@@ -221,29 +379,21 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     emailContactCreateManyMock.mockImplementation(async () => ({ count: 3 }))
 
     const processedRowsSnapshots: number[] = []
-    syncExecuteMock.mockImplementation(async () => {
+    upsertMock.mockImplementation(async () => {
       const calls = jobUpdateMock.mock.calls as unknown as Array<
         [{ data?: { processedRows?: number } }]
       >
       const lastUpdate = calls.at(-1)
-      // Durante sync, processedRows ainda não deve ter avançado neste lote
       processedRowsSnapshots.push(
         lastUpdate?.[0]?.data?.processedRows ?? claimedJob!.processedRows
       )
-      return {
-        isValid: true,
-        successMessages: [],
-        errorMessages: [],
-        result: { errors: 0 },
-      }
+      return {}
     })
 
     const useCase = new EmailContactImportUseCase()
     const output = await useCase.processPendingJobs()
 
     expect(output.isValid).toBe(true)
-    expect(syncExecuteMock).toHaveBeenCalledTimes(3)
-    // Durante todo o sync, checkpoint do lote ainda em 0
     expect(processedRowsSnapshots.every((v) => v === 0)).toBe(true)
 
     const finalUpdates = (
@@ -257,8 +407,8 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(completedCheckpoint?.processedRows).toBe(3)
   })
 
-  it("sincroniza Radar em chunks de 5 via Promise.all (I2)", async () => {
-    const rows = makeRows(12)
+  it("notificação de import inclui pendingRadarSync escopado ao job atual", async () => {
+    const rows = makeRows(2)
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
       id: "list-1",
@@ -266,97 +416,29 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     }))
     downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows }))
     teamHasRadarFeatureMock.mockImplementation(async () => true)
+    countMock.mockImplementation(async (args?: { where?: { emailImportJobId?: string } }) =>
+      args?.where?.emailImportJobId === "job-1" ? 2 : 99
+    )
 
-    const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}` }))
     emailContactFindManyMock.mockImplementation(async (args) => {
-      if (args?.select?.id) return contactIds
+      if (args?.select?.id) {
+        return [{ id: "contact-1" }, { id: "contact-2" }]
+      }
       return []
     })
-    emailContactCreateManyMock.mockImplementation(async () => ({ count: 12 }))
-
-    let inFlight = 0
-    let maxInFlight = 0
-    syncExecuteMock.mockImplementation(async () => {
-      inFlight += 1
-      maxInFlight = Math.max(maxInFlight, inFlight)
-      await new Promise((r) => setTimeout(r, 20))
-      inFlight -= 1
-      return {
-        isValid: true,
-        successMessages: [],
-        errorMessages: [],
-        result: { errors: 0 },
-      }
-    })
+    emailContactCreateManyMock.mockImplementation(async () => ({ count: 2 }))
 
     const useCase = new EmailContactImportUseCase()
-    const output = await useCase.processPendingJobs()
+    await useCase.processPendingJobs()
 
-    expect(output.isValid).toBe(true)
-    expect(syncExecuteMock).toHaveBeenCalledTimes(12)
-    expect(maxInFlight).toBe(5)
+    expect(createSystemNotificationMock).toHaveBeenCalled()
+    const notifyCall = createSystemNotificationMock.mock.calls[0]?.[0] as {
+      metadata?: { pendingRadarSync?: number }
+    } | undefined
+    expect(notifyCall?.metadata?.pendingRadarSync).toBe(2)
   })
 
-  it("em timeout mid-sync não avança processedRows do lote incompleto (I2+I3)", async () => {
-    const rows = makeRows(8)
-    claimedJob = makeJob({ processedRows: 0 })
-    emailContactListFindFirstMock.mockImplementation(async () => ({
-      id: "list-1",
-      isSystemDefault: true,
-    }))
-    downloadPayloadMock.mockImplementation(async () => JSON.stringify({ rows }))
-    teamHasRadarFeatureMock.mockImplementation(async () => true)
-
-    const contactIds = rows.map((_, i) => ({ id: `contact-${i + 1}` }))
-    emailContactFindManyMock.mockImplementation(async (args) => {
-      if (args?.select?.id) return contactIds
-      return []
-    })
-    emailContactCreateManyMock.mockImplementation(async () => ({ count: 8 }))
-
-    const realNow = Date.now
-    let fakeNow = realNow()
-    Date.now = () => fakeNow
-
-    let syncCalls = 0
-    syncExecuteMock.mockImplementation(async () => {
-      syncCalls += 1
-      // Após o 1º chunk (5 contatos), estoura o budget no check do próximo chunk
-      if (syncCalls >= 5) {
-        fakeNow += 50_000
-      }
-      return {
-        isValid: true,
-        successMessages: [],
-        errorMessages: [],
-        result: { errors: 0 },
-      }
-    })
-
-    try {
-      const useCase = new EmailContactImportUseCase()
-      const output = await useCase.processPendingJobs()
-
-      expect(output.isValid).toBe(true)
-      expect(output.successMessages).toContain("Job re-enfileirado por tempo")
-      expect(syncCalls).toBe(5)
-
-      const requeueUpdate = (
-        jobUpdateMock.mock.calls as unknown as Array<
-          [{ data: { status?: string; processedRows?: number } }]
-        >
-      )
-        .map((call) => call[0].data)
-        .find((d) => d.status === "pending")
-
-      expect(requeueUpdate).toBeDefined()
-      expect(requeueUpdate?.processedRows).toBe(0)
-    } finally {
-      Date.now = realNow
-    }
-  })
-
-  it("sem feature Radar avança processedRows após upsert (skip sync)", async () => {
+  it("sem feature Radar avança processedRows após upsert (skip outbox)", async () => {
     const rows = makeRows(2)
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
@@ -373,6 +455,7 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
     expect(output.isValid).toBe(true)
     expect(syncExecuteMock).not.toHaveBeenCalled()
+    expect(upsertMock).not.toHaveBeenCalled()
 
     const checkpoint = (
       jobUpdateMock.mock.calls as unknown as Array<[{ data: { processedRows?: number } }]>

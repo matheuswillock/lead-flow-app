@@ -15371,6 +15371,37 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Configurar Tracking do Domínio",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/domain/tracking",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "domain",
+                    "tracking"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"trackingSubdomain\": \"links\",\n  \"openTracking\": true,\n  \"clickTracking\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -15648,7 +15679,7 @@
                     "campaigns"
                   ]
                 },
-                "description": "scheduledAt opcional (ISO 8601). Suporta contactListIds + listStrategy (merge|per_list), uniformSchedule, subCampaignSchedules. Para listas com mais de 2000 contatos, scheduledAt e scheduleIntervalDays (>=1) são obrigatórios.",
+                "description": "scheduledAt opcional (ISO 8601). Suporta contactListIds + listStrategy (merge|per_list), uniformSchedule, subCampaignSchedules e subCampaignTemplates (template por índice no modo segregado). Para listas com mais de 2000 contatos, scheduledAt e scheduleIntervalDays (>=1) são obrigatórios.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"contactListIds\": [\"{{contactListId}}\"],\n  \"listStrategy\": \"merge\",\n  \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n  \"scheduleIntervalDays\": 1,\n  \"uniformSchedule\": true\n}",
@@ -15709,6 +15740,37 @@
                     "campaigns",
                     "{{campaignId}}"
                   ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Atualizar Campanha",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}"
+                  ]
+                },
+                "description": "Atualiza draft/scheduled. subCampaignUpdates aceita name, scheduledAt, contactListId e templateId por filho.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"templateId\": \"{{templateId}}\",\n  \"subCampaignUpdates\": [\n    {\n      \"id\": \"{{subCampaignId}}\",\n      \"name\": \"Newsletter Maio (parte 1/2)\",\n      \"scheduledAt\": \"2026-08-01T15:00:00.000Z\",\n      \"templateId\": \"{{templateId}}\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
                 }
               },
               "response": []
@@ -16272,6 +16334,50 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Processa fila EmailImportJob em lotes."
+              },
+              "response": []
+            },
+            {
+              "name": "Retry Falhas Webhook Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/retry-resend-webhook-failures",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "retry-resend-webhook-failures"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Reprocessa falhas do webhook Resend (D11)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reconciliar Status de Domínio Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/reconcile-resend-domain-status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "reconcile-resend-domain-status"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Poll Resend API e corrige resendDomainStatus dessincronizado (D12 item 3)."
               },
               "response": []
             },
@@ -18710,6 +18816,87 @@
                 "value": "{{supabaseUserId}}"
               }
             ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Promover perfil a Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/promote-to-lead",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "promote-to-lead"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar gênero do perfil",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gender\": \"female\"\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/api/v1/radar/profiles/:id",
               "host": [

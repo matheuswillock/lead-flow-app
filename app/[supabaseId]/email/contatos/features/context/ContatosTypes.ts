@@ -1,9 +1,18 @@
 export type ContactListActiveImport = {
   importId: string
+  status: string
   processedRows: number
   totalRows: number
+  importedCount: number
+  updatedCount: number
+  skippedCount: number
+  failedBatchCount: number
+  completedBatches: number
   currentBatch: number
   totalBatches: number
+  pendingRadarSync: number
+  failedRadarSync: number
+  updatedAt: string
 }
 
 export type ContactList = {

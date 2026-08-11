@@ -1,6 +1,13 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
-import { NextRequest } from "next/server"
-import { GET, POST } from "./route"
+import { NextRequest, NextResponse } from "next/server"
+
+mock.module("next/server", () => ({
+  NextRequest,
+  NextResponse,
+  connection: mock(async () => undefined),
+}))
+
+mock.module("server-only", () => ({}))
 
 mock.module("@/app/api/v1/radar/utils/getRadarAccess", () => ({
   getRadarAccess: mock(async () => ({})),
@@ -17,6 +24,8 @@ mock.module("@/app/api/useCases/radar/MaterializeSegmentToContactListUseCase", (
 mock.module("@/lib/radar/segment-audience", () => ({
   CUSTOM_RADAR_SEGMENT_PREFIX: "custom:",
 }))
+
+const { GET, POST } = await import("./route")
 
 const { getRadarAccess } = await import("@/app/api/v1/radar/utils/getRadarAccess")
 const { materializeSegmentToContactListUseCase } = await import(

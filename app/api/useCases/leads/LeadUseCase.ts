@@ -1,6 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { after } from "next/server";
 import { cacheTags } from "@/lib/cache/cacheTags";
+import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository";
 import { ILeadUseCase } from "./ILeadUseCase";
 import type {
   LeadCreateOptions,
@@ -2154,6 +2155,25 @@ export class LeadUseCase implements ILeadUseCase {
           scheduledAtTransfer: false,
         },
       });
+
+      try {
+        await publicFormsRepository.copyLeadSubmissionsOnTeamTransfer({
+          leadId: transferredLead.id,
+          sourceTeamId: lead.teamId!,
+          targetTeamId: data.targetTeamId,
+        });
+      } catch (copyError) {
+        // Transferência já commitada — cópia é best-effort para não reportar falha em lead já movido.
+        console.error(
+          "[transferLeadBetweenTeams] Falha ao copiar submissions após transferência (best-effort):",
+          {
+            leadId: transferredLead.id,
+            sourceTeamId: lead.teamId,
+            targetTeamId: data.targetTeamId,
+            error: copyError,
+          },
+        );
+      }
 
       const finalLead = await this.leadRepository.findById(transferredLead.id);
       const result: TransferLeadBetweenTeamsResult = {

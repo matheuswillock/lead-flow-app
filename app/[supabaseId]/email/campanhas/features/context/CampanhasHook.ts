@@ -175,6 +175,7 @@ export type CampanhasActions = {
   setWizardSaveAsRadarSegment: (v: boolean) => void
   setWizardSaveAsRadarSegmentName: (v: string) => void
   setWizardScheduledAt: (v: Date | undefined) => void
+  applyUniformScheduledAt: (v: Date | undefined) => void
   setWizardUniformSchedule: (v: boolean) => void
   setWizardScheduleIntervalDays: (v: number) => void
   setWizardUniformTemplate: (v: boolean) => void
@@ -290,7 +291,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [wizardSubCampaignSchedules, setWizardSubCampaignSchedules] = useState<WizardSubCampaignSchedule[]>([])
   const [wizardSubCampaignListIds, setWizardSubCampaignListIds] = useState<Record<number, string>>({})
   const [wizardSubCampaignNames, setWizardSubCampaignNames] = useState<Record<number, string>>({})
-  const [wizardUniformTemplate, setWizardUniformTemplateState] = useState(true)
+  const [wizardUniformTemplate, setWizardUniformTemplateState] = useState(false)
   const [wizardSubCampaignTemplateIds, setWizardSubCampaignTemplateIds] = useState<Record<number, string>>({})
   const [wizardPreviewPlan, setWizardPreviewPlan] = useState<CampaignPreviewPlan | null>(null)
   const wizardPreviewPlanRef = useRef<CampaignPreviewPlan | null>(null)
@@ -785,7 +786,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardSubCampaignSchedules([])
     setWizardSubCampaignListIds({})
     setWizardSubCampaignNames({})
-    setWizardUniformTemplateState(true)
+    setWizardUniformTemplateState(false)
     setWizardSubCampaignTemplateIds({})
     setWizardPreviewPlan(null)
     setWizardLinkedForm(null)
@@ -812,18 +813,37 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [activeTeamId, hideRadarSegments, service, supabaseId])
 
   const ensureWizardOptionsFromCampaign = useCallback((campaign: Campaign) => {
-    const templateId = campaign.template?.id ?? campaign.templateId
-    if (templateId) {
+    const templateIds = Array.from(
+      new Set(
+        [
+          campaign.template?.id ?? campaign.templateId,
+          ...(campaign.subCampaigns ?? []).map((sub) => sub.templateId),
+        ].filter((id): id is string => Boolean(id))
+      )
+    )
+    if (templateIds.length > 0) {
       setTemplates((prev) => {
-        if (prev.some((template) => template.id === templateId)) return prev
-        const injected: Template = {
-          id: templateId,
-          name: campaign.template?.name ?? "Template da campanha",
-          subject: campaign.template?.subject ?? "",
-          status: "published",
-          isCurrentPublished: true,
-        }
-        return [injected, ...prev]
+        const missing = templateIds.filter((id) => !prev.some((template) => template.id === id))
+        if (missing.length === 0) return prev
+        const injected: Template[] = missing.map((id) => {
+          if ((campaign.template?.id ?? campaign.templateId) === id) {
+            return {
+              id,
+              name: campaign.template?.name ?? "Template da campanha",
+              subject: campaign.template?.subject ?? "",
+              status: "published",
+              isCurrentPublished: true,
+            }
+          }
+          return {
+            id,
+            name: "Template da sub-campanha",
+            subject: "",
+            status: "published",
+            isCurrentPublished: true,
+          }
+        })
+        return [...injected, ...prev]
       })
     }
 
@@ -905,6 +925,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
     const MS_PER_DAY = 24 * 60 * 60 * 1000
     let intervalDays = 1
+    let hasUniformInterval = false
     if (subSchedules.length > 1) {
       const deltas: number[] = []
       let allExactWholeDayGaps = true
@@ -926,11 +947,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       }
       if (allExactWholeDayGaps && deltas.length > 0 && deltas.every((day) => day === deltas[0])) {
         intervalDays = deltas[0]
+        hasUniformInterval = true
       }
     }
 
     const subListIds: Record<number, string> = {}
     const subNames: Record<number, string> = {}
+    const subTemplateIds: Record<number, string> = {}
     for (const sub of campaign.subCampaigns ?? []) {
       if (sub.subCampaignIndex && sub.contactListId) {
         subListIds[sub.subCampaignIndex] = sub.contactListId
@@ -938,7 +961,29 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       if (sub.subCampaignIndex && sub.name.trim()) {
         subNames[sub.subCampaignIndex] = sub.name
       }
+      if (sub.subCampaignIndex && sub.templateId) {
+        subTemplateIds[sub.subCampaignIndex] = sub.templateId
+      }
     }
+
+    const children = (campaign.subCampaigns ?? []).filter(
+      (sub) => (sub.subCampaignIndex ?? 0) > 0
+    )
+    const resolvedChildTemplates = children.map(
+      (sub) => sub.templateId ?? templateId
+    )
+    const allTemplatesSame =
+      children.length <= 1 ||
+      (resolvedChildTemplates.length === children.length &&
+        resolvedChildTemplates.every((id) => id === resolvedChildTemplates[0] && Boolean(id)))
+    const childScheduleKeys = children.map((sub) =>
+      sub.scheduledAt ? new Date(sub.scheduledAt).getTime() : null
+    )
+    const allSchedulesSame =
+      children.length <= 1 ||
+      childScheduleKeys.every((key) => key === childScheduleKeys[0])
+    const isUniformConfig =
+      children.length > 1 && allTemplatesSame && (allSchedulesSame || hasUniformInterval)
 
     const baseName = (campaign.name ?? "").trim()
     const prefixedName =
@@ -952,7 +997,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardActiveTab("geral")
     setWizardName(prefixedName)
     setWizardDescriptionState(campaign.description ?? "")
-    setWizardTemplateId(templateId)
+    setWizardTemplateId(
+      isUniformConfig
+        ? (resolvedChildTemplates[0] || templateId)
+        : children.length > 1 && resolvedChildTemplates[0]
+          ? resolvedChildTemplates[0]
+          : templateId
+    )
     setWizardContactListIds(uniqueListIds)
     setWizardListStrategy(
       uniqueListIds.length > 1 ? (isPerList ? "per_list" : "merge") : "single"
@@ -960,11 +1011,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource(campaign.radarSegmentSlug ? "radar_segment" : "contact_list")
     setWizardRadarSegmentSlug(campaign.radarSegmentSlug ?? "")
     setWizardScheduledAt(firstScheduled)
-    setWizardUniformScheduleState(false)
+    setWizardUniformScheduleState(isUniformConfig)
+    setWizardUniformTemplateState(isUniformConfig || children.length <= 1)
     setWizardScheduleIntervalDays(intervalDays)
     setWizardSubCampaignSchedules(subSchedules)
     setWizardSubCampaignListIds(subListIds)
     setWizardSubCampaignNames(subNames)
+    setWizardSubCampaignTemplateIds(isUniformConfig ? {} : subTemplateIds)
     setWizardLinkedForm(campaign.linkedForm ?? null)
     ensureWizardOptionsFromCampaign(campaign)
   }, [ensureWizardOptionsFromCampaign])
@@ -1085,11 +1138,73 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   const setWizardUniformTemplate = useCallback((uniform: boolean) => {
     setWizardUniformTemplateState(uniform)
-    if (uniform) setWizardSubCampaignTemplateIds({})
-  }, [])
+    setWizardUniformScheduleState(uniform)
+
+    const plan = wizardPreviewPlanRef.current
+    const globalTemplate = wizardTemplateId
+    const globalStart = wizardScheduledAtRef.current
+
+    if (uniform) {
+      setWizardSubCampaignTemplateIds({})
+      if (plan && plan.subCampaigns.length > 1 && globalStart) {
+        setWizardSubCampaignSchedules(
+          syncSubCampaignSchedules({
+            plan,
+            prev: [],
+            fallbackStart: globalStart,
+            intervalDays: wizardScheduleIntervalDaysRef.current,
+          })
+        )
+      } else if (uniform) {
+        setWizardSubCampaignSchedules([])
+      }
+      return
+    }
+
+    // Segregado: pré-preencher cards com template/horário globais atuais
+    if (plan && plan.subCampaigns.length > 1) {
+      if (globalTemplate) {
+        const seeded: Record<number, string> = {}
+        for (const sub of plan.subCampaigns) {
+          seeded[sub.index] = globalTemplate
+        }
+        setWizardSubCampaignTemplateIds(seeded)
+      }
+      setWizardSubCampaignSchedules((prev) => {
+        const synced = syncSubCampaignSchedules({
+          plan,
+          prev,
+          fallbackStart: globalStart,
+          intervalDays: wizardScheduleIntervalDaysRef.current,
+        })
+        return schedulesEqual(prev, synced) ? prev : synced
+      })
+    }
+  }, [wizardTemplateId])
 
   const setWizardSubCampaignTemplateId = useCallback((index: number, templateId: string) => {
     setWizardSubCampaignTemplateIds((prev) => ({ ...prev, [index]: templateId }))
+  }, [])
+
+  const applyUniformScheduledAt = useCallback((date: Date | undefined) => {
+    setWizardScheduledAt(date)
+    const plan = wizardPreviewPlanRef.current
+    if (!plan || plan.subCampaigns.length <= 1) {
+      setWizardSubCampaignSchedules([])
+      return
+    }
+    if (!date) {
+      setWizardSubCampaignSchedules([])
+      return
+    }
+    setWizardSubCampaignSchedules(
+      syncSubCampaignSchedules({
+        plan,
+        prev: [],
+        fallbackStart: date,
+        intervalDays: wizardScheduleIntervalDaysRef.current,
+      })
+    )
   }, [])
 
   const refreshWizardPreviewPlan = useCallback(async () => {
@@ -1157,16 +1272,32 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const handleSaveCampaign = useCallback(async () => {
     setWizardSaving(true)
     try {
+      const planSubs = wizardPreviewPlan?.subCampaigns ?? []
+      let resolvedSchedules = wizardSubCampaignSchedules
+      if (wizardUniformTemplate && planSubs.length > 1 && wizardScheduledAt) {
+        resolvedSchedules = syncSubCampaignSchedules({
+          plan: wizardPreviewPlan!,
+          prev: [],
+          fallbackStart: wizardScheduledAt,
+          intervalDays: wizardScheduleIntervalDays,
+        })
+        setWizardSubCampaignSchedules(resolvedSchedules)
+      }
+
+      const sortedTemplateEntries = Object.entries(wizardSubCampaignTemplateIds)
+        .map(([index, templateId]) => ({ index: Number(index), templateId }))
+        .sort((a, b) => a.index - b.index)
+      const primaryTemplateId = wizardUniformTemplate
+        ? wizardTemplateId
+        : (sortedTemplateEntries[0]?.templateId || wizardTemplateId)
+
       const subCampaignTemplates = !wizardUniformTemplate
-        ? Object.entries(wizardSubCampaignTemplateIds).map(([index, templateId]) => ({
-            index: Number(index),
-            templateId,
-          }))
+        ? sortedTemplateEntries
         : undefined
       const payload = buildCampaignPayload({
         name: wizardName,
         description: wizardDescription,
-        templateId: wizardTemplateId,
+        templateId: primaryTemplateId,
         contactListIds: wizardContactListIds,
         listStrategy: wizardListStrategy,
         radarSegmentSlug: wizardRadarSegmentSlug,
@@ -1175,21 +1306,31 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         scheduledAt: wizardScheduledAt,
         uniformSchedule: false,
         scheduleIntervalDays: wizardScheduleIntervalDays,
-        subCampaignSchedules: wizardSubCampaignSchedules,
+        subCampaignSchedules: resolvedSchedules,
         subCampaignTemplates,
       })
 
       if (wizardMode === "edit" && wizardCampaignId) {
         const detailed = await service.getById(supabaseId, activeTeamId, wizardCampaignId)
+        type SubUpdate = {
+          id: string
+          name: string
+          scheduledAt: string | null
+          contactListId?: string
+          templateId?: string
+        }
         const subCampaignUpdates =
-          wizardPreviewPlan?.subCampaigns
+          planSubs
             .map((sub) => {
               const child = detailed.subCampaigns?.find((entry) => entry.subCampaignIndex === sub.index)
               if (!child) return null
-              const customSchedule = wizardSubCampaignSchedules.find((entry) => entry.index === sub.index)
+              const customSchedule = resolvedSchedules.find((entry) => entry.index === sub.index)
               const contactListOverride = wizardSubCampaignListIds[sub.index]
               const overriddenName = wizardSubCampaignNames[sub.index]
               const resolvedName = (overriddenName ?? sub.name).trim() || sub.name
+              const childTemplateId = wizardUniformTemplate
+                ? primaryTemplateId
+                : (wizardSubCampaignTemplateIds[sub.index] || primaryTemplateId)
               return {
                 id: child.id,
                 name: resolvedName,
@@ -1197,9 +1338,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
                   ? customSchedule.scheduledAt.toISOString()
                   : sub.scheduledAt ?? null,
                 ...(contactListOverride !== undefined && { contactListId: contactListOverride }),
-              }
+                ...(childTemplateId ? { templateId: childTemplateId } : {}),
+              } satisfies SubUpdate
             })
-            .filter((entry): entry is { id: string; name: string; scheduledAt: string | null } => Boolean(entry)) ?? []
+            .filter((entry): entry is SubUpdate => Boolean(entry)) ?? []
 
         await service.update(supabaseId, activeTeamId, wizardCampaignId, {
           name: payload.name,
@@ -1258,7 +1400,6 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     activeTeamId,
     dateFrom,
     dateTo,
-    detailCampaign,
     fetchCampaigns,
     nameFilter,
     page,
@@ -1273,17 +1414,18 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardListStrategy,
     wizardMode,
     wizardName,
-    wizardPreviewPlan?.subCampaigns,
+    wizardPreviewPlan,
     wizardRadarSegmentSlug,
     wizardSaveAsRadarSegment,
     wizardSaveAsRadarSegmentName,
     wizardScheduleIntervalDays,
     wizardScheduledAt,
-    wizardSubCampaignSchedules,
     wizardSubCampaignListIds,
     wizardSubCampaignNames,
+    wizardSubCampaignSchedules,
+    wizardSubCampaignTemplateIds,
     wizardTemplateId,
-    wizardUniformSchedule,
+    wizardUniformTemplate,
   ])
 
   const handleMaterializeRadarSegment = useCallback(async () => {
@@ -1415,6 +1557,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardSaveAsRadarSegment,
     setWizardSaveAsRadarSegmentName,
     setWizardScheduledAt,
+    applyUniformScheduledAt,
     setWizardUniformSchedule,
     setWizardScheduleIntervalDays,
     setWizardUniformTemplate,

@@ -27,5 +27,6 @@ export const cacheTags = {
   teamFilterPresets: (teamId: string, profileId: string, scope: string) =>
     `team-filter-presets:${teamId}:${profileId}:${scope}`,
   notifications: (recipientProfileId: string) => `notifications:${recipientProfileId}`,
+  radarSegments: (teamId: string) => `radar-segments:${teamId}`,
 } as const;
 

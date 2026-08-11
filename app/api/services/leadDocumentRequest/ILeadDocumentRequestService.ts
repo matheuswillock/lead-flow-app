@@ -1,4 +1,6 @@
 export type SendRequestEmailData = {
+  teamId: string;
+  requestId: string;
   closerName: string;
   leadName: string;
   publicUrl: string;
@@ -7,6 +9,8 @@ export type SendRequestEmailData = {
 };
 
 export type SendUploadNotificationEmailData = {
+  teamId: string;
+  documentId: string;
   closerName: string;
   leadName: string;
   documentName: string;

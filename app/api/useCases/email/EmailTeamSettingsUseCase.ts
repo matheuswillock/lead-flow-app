@@ -2,7 +2,10 @@ import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { assertResend } from "@/lib/email"
-import { mapResendDomainError } from "@/lib/email/map-resend-domain-error"
+import {
+  isTrackingSubdomainAlreadyExists,
+  mapResendDomainError,
+} from "@/lib/email/map-resend-domain-error"
 import {
   buildDeliveryFromEmail,
   isEmailAllowedForTeamDomain,
@@ -14,6 +17,10 @@ import {
 import {
   emailTeamDomainEventRepository,
 } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
+import {
+  getResendDomainDispatchWarnings,
+  isResendDomainTrackingCapable,
+} from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
 export type BlockedDateRange =
@@ -26,6 +33,8 @@ export type ResendDomainStatus =
   | "verified"
   | "failed"
   | "temporary_failure"
+  | "partially_verified"
+  | "partially_failed"
 
 export interface UpdateEmailSettingsInput {
   dispatchBlockedDates?: BlockedDateRange[] | null
@@ -56,6 +65,21 @@ const senderSelect = {
 } satisfies Prisma.EmailTeamSenderSelect
 
 const DEFAULT_DOMAIN_REGION = "sa-east-1"
+const DEFAULT_TRACKING_SUBDOMAIN = "links"
+
+export type ConfigureDomainTrackingInput = {
+  trackingSubdomain: string
+  openTracking: boolean
+  clickTracking: boolean
+}
+
+const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
+
+function normalizeTrackingSubdomain(value: string): string | null {
+  const normalized = value.trim().toLowerCase()
+  if (!TRACKING_SUBDOMAIN_RE.test(normalized)) return null
+  return normalized
+}
 
 const CLEAR_DOMAIN_DATA = {
   resendDomainId: null,
@@ -202,6 +226,8 @@ export class EmailTeamSettingsUseCase {
       resendDomainConnectedAt: settings?.resendDomainConnectedAt?.toISOString() ?? null,
       resendOpenTracking: settings?.resendOpenTracking ?? DEFAULTS.resendOpenTracking,
       resendClickTracking: settings?.resendClickTracking ?? DEFAULTS.resendClickTracking,
+      resendDomainTrackingCapable: isResendDomainTrackingCapable(settings?.resendDomainStatus),
+      resendDomainDispatchWarnings: getResendDomainDispatchWarnings(settings?.resendDomainStatus),
       domainEvents,
       senders,
       defaultSenderId: defaultSender?.id ?? null,
@@ -578,6 +604,7 @@ export class EmailTeamSettingsUseCase {
         customReturnPath: "bounce",
         openTracking: true,
         clickTracking: true,
+        trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
       if (error || !data) {
         console.error("[EmailTeamSettingsUseCase][connectDomain] Resend error", error)
@@ -593,6 +620,7 @@ export class EmailTeamSettingsUseCase {
         id: data.id,
         openTracking: true,
         clickTracking: true,
+        trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
 
       const connectedAt = new Date()
@@ -648,11 +676,192 @@ export class EmailTeamSettingsUseCase {
         connectedAt: connectedAt.toISOString(),
         openTracking: true,
         clickTracking: true,
+        trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
         records: data.records ?? [],
       })
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][connectDomain]", error)
       return new Output(false, [], ["Erro ao conectar domínio"], null)
+    }
+  }
+
+  async configureDomainTracking(
+    input: ConfigureDomainTrackingInput,
+    ctx: TeamContext
+  ): Promise<Output> {
+    try {
+      if (!input.openTracking && !input.clickTracking) {
+        return new Output(
+          false,
+          [],
+          ["Habilite pelo menos abertura ou cliques para configurar o tracking."],
+          null
+        )
+      }
+
+      const trackingSubdomain = normalizeTrackingSubdomain(input.trackingSubdomain)
+      if (!trackingSubdomain) {
+        return new Output(
+          false,
+          [],
+          [
+            "Subdomínio de tracking inválido. Use apenas letras minúsculas, números e hífen (ex.: links).",
+          ],
+          null
+        )
+      }
+
+      const settings = await prisma.emailTeamSettings.findUnique({
+        where: { teamId: ctx.teamId },
+        select: { resendDomainId: true, resendDomainName: true },
+      })
+      if (!settings?.resendDomainId) {
+        return new Output(false, [], ["Nenhum domínio conectado para configurar tracking"], null)
+      }
+
+      const resend = assertResend()
+      const { data: currentDomain, error: currentError } = await resend.domains.get(
+        settings.resendDomainId
+      )
+      if (currentError || !currentDomain) {
+        console.error(
+          "[EmailTeamSettingsUseCase][configureDomainTracking] Resend get error",
+          currentError
+        )
+        return new Output(
+          false,
+          [],
+          [
+            mapResendDomainError(
+              currentError?.message,
+              "tracking",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
+          null
+        )
+      }
+
+      const existingTrackingSubdomain =
+        currentDomain.tracking_subdomain?.trim().toLowerCase() || null
+      const trackingAlreadyConfigured = existingTrackingSubdomain === trackingSubdomain
+
+      const updatePayload: {
+        id: string
+        openTracking: boolean
+        clickTracking: boolean
+        trackingSubdomain?: string
+      } = {
+        id: settings.resendDomainId,
+        openTracking: input.openTracking,
+        clickTracking: input.clickTracking,
+      }
+      if (!trackingAlreadyConfigured) {
+        updatePayload.trackingSubdomain = trackingSubdomain
+      }
+
+      const { error } = await resend.domains.update(updatePayload)
+
+      const maybeTrackingConflict =
+        Boolean(error) &&
+        (error?.statusCode === 409 || isTrackingSubdomainAlreadyExists(error?.message))
+
+      if (error && !maybeTrackingConflict) {
+        console.error("[EmailTeamSettingsUseCase][configureDomainTracking] Resend error", error)
+        return new Output(
+          false,
+          [],
+          [
+            mapResendDomainError(
+              error.message,
+              "tracking",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
+          null
+        )
+      }
+
+      const { data: domainData, error: getError } = await resend.domains.get(
+        settings.resendDomainId
+      )
+      if (getError || !domainData) {
+        console.error(
+          "[EmailTeamSettingsUseCase][configureDomainTracking] Resend get error",
+          getError
+        )
+        return new Output(
+          false,
+          [],
+          [mapResendDomainError(getError?.message, "tracking", settings.resendDomainName ?? undefined)],
+          null
+        )
+      }
+
+      const syncedTrackingSubdomain =
+        domainData.tracking_subdomain?.trim().toLowerCase() || null
+      // Idempotent only when THIS domain already owns the requested subdomain.
+      // Unrelated 409s (e.g. subdomain on another domain) must surface as errors.
+      const trackingConflict =
+        maybeTrackingConflict &&
+        (existingTrackingSubdomain === trackingSubdomain ||
+          syncedTrackingSubdomain === trackingSubdomain)
+
+      if (error && !trackingConflict) {
+        console.error(
+          "[EmailTeamSettingsUseCase][configureDomainTracking] Resend conflict not owned by domain",
+          {
+            domainId: settings.resendDomainId,
+            trackingSubdomain,
+            existingTrackingSubdomain,
+            syncedTrackingSubdomain,
+            error,
+          }
+        )
+        return new Output(
+          false,
+          [],
+          [
+            mapResendDomainError(
+              error.message,
+              "tracking",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
+          null
+        )
+      }
+
+      if (trackingConflict) {
+        console.info(
+          "[EmailTeamSettingsUseCase][configureDomainTracking] Tracking subdomain already exists; syncing current domain state",
+          { domainId: settings.resendDomainId, trackingSubdomain }
+        )
+      }
+
+      const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
+        ctx.teamId,
+        domainData,
+        new Date()
+      )
+
+      const successMessage = trackingConflict
+        ? "Subdomínio de tracking já existia no Resend. Status sincronizado — adicione o DNS de Tracking e re-verifique, se pendente."
+        : "Métricas de tracking configuradas. Adicione o registro DNS de Tracking e re-verifique."
+
+      return new Output(true, [successMessage], [], {
+        domainId: domainData.id,
+        domainName: domainData.name,
+        status: synced.status as ResendDomainStatus,
+        region: synced.region,
+        openTracking: synced.openTracking,
+        clickTracking: synced.clickTracking,
+        trackingSubdomain: synced.trackingSubdomain ?? trackingSubdomain,
+        records: domainData.records ?? [],
+      })
+    } catch (error) {
+      console.error("[EmailTeamSettingsUseCase][configureDomainTracking]", error)
+      return new Output(false, [], ["Erro ao configurar métricas de tracking"], null)
     }
   }
 
@@ -753,6 +962,7 @@ export class EmailTeamSettingsUseCase {
         region: synced.region,
         openTracking: synced.openTracking,
         clickTracking: synced.clickTracking,
+        trackingSubdomain: synced.trackingSubdomain,
       })
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][verifyDomain]", error)
@@ -812,6 +1022,7 @@ export class EmailTeamSettingsUseCase {
         connectedAt: settings.resendDomainConnectedAt?.toISOString() ?? null,
         openTracking: synced.openTracking,
         clickTracking: synced.clickTracking,
+        trackingSubdomain: synced.trackingSubdomain,
         records: data.records ?? [],
         events: domainEvents.map((event) => ({
           ...event,

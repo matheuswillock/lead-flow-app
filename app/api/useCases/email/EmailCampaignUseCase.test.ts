@@ -57,66 +57,77 @@ mock.module("@/lib/email/team-email-dispatch-logger", () => ({
 
 // --- Prisma ---
 const emailCampaignFindFirstMock = mock(async () => makeCampaign())
-const emailCampaignFindUniqueMock = mock(async () => ({ name: "Campanha Teste" }))
+const emailCampaignFindUniqueMock = mock(async () => ({
+  name: "Campanha Teste",
+  parentCampaignId: null as string | null,
+}))
+const emailCampaignDispatchFindUniqueMock = mock(async () => ({
+  triggeredBy: "profile-1",
+  status: "sending" as const,
+}))
 const emailCampaignFindManyMock = mock(async () => [])
 const emailCampaignCountMock = mock(async () => 0)
 const emailCampaignUpdateManyMock = mock(async () => ({ count: 1 }))
-const emailCampaignUpdateMock = mock(async () => ({}))
+const emailCampaignUpdateMock = mock(async () => ({ parentCampaignId: null as string | null }))
 const emailTemplateFindFirstMock = mock(async () => null as unknown)
 const emailCampaignDispatchAggregateMock = mock(async () => ({ _max: { dispatchNumber: 0 } }))
 const emailCampaignDispatchCreateMock = mock(async () => ({ id: "dispatch-1" }))
 const emailCampaignDispatchFindFirstMock = mock(async () => ({ id: "dispatch-1" }))
-const emailCampaignDispatchFindUniqueMock = mock(async () => ({ triggeredBy: "profile-1" }))
 const emailCampaignDispatchFindManyMock = mock(async () => [])
 const emailCampaignDispatchUpdateMock = mock(async () => ({}))
 const emailCampaignDispatchUpdateManyMock = mock(async () => ({ count: 0 }))
 const emailTeamSenderFindFirstMock = mock(async () => null as { name: string; email: string } | null)
 const emailLogFindManyMock = mock(async () => [] as Array<{ recipientEmail: string; status: string }>)
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    emailCampaign: {
-      findFirst: emailCampaignFindFirstMock,
-      findUnique: emailCampaignFindUniqueMock,
-      findMany: emailCampaignFindManyMock,
-      count: emailCampaignCountMock,
-      updateMany: emailCampaignUpdateManyMock,
-      update: emailCampaignUpdateMock,
-    },
-    emailTeamSettings: { findUnique: mock(async () => null) },
-    emailTemplate: { findFirst: emailTemplateFindFirstMock },
-    emailContactList: {
-      findMany: mock(async () => [
-        { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
-      ]),
-    },
-    emailContact: {
-      findMany: mock(async () => []),
-    },
-    emailCampaignDispatch: {
-      aggregate: emailCampaignDispatchAggregateMock,
-      create: emailCampaignDispatchCreateMock,
-      findFirst: emailCampaignDispatchFindFirstMock,
-      findUnique: emailCampaignDispatchFindUniqueMock,
-      findMany: emailCampaignDispatchFindManyMock,
-      update: emailCampaignDispatchUpdateMock,
-      updateMany: emailCampaignDispatchUpdateManyMock,
-    },
-    emailTeamSender: {
-      findFirst: emailTeamSenderFindFirstMock,
-    },
-    emailLog: {
-      findMany: emailLogFindManyMock,
-      count: mock(async () => 0),
-    },
-    backofficeTeamEmailLimitGrant: {
-      findUnique: mock(async () => null),
-    },
-    teamEmailCampaignLimitGrant: {
-      findUnique: mock(async () => null),
-    },
-    $transaction: transactionMock,
+const emailTeamSettingsFindUniqueMock = mock(async (): Promise<unknown> => null)
+const prismaMock = {
+  emailCampaign: {
+    findFirst: emailCampaignFindFirstMock,
+    findUnique: emailCampaignFindUniqueMock,
+    findMany: emailCampaignFindManyMock,
+    count: emailCampaignCountMock,
+    updateMany: emailCampaignUpdateManyMock,
+    update: emailCampaignUpdateMock,
   },
+  emailTeamSettings: { findUnique: emailTeamSettingsFindUniqueMock },
+  emailTemplate: { findFirst: emailTemplateFindFirstMock },
+  emailContactList: {
+    findMany: mock(async () => [
+      { id: "00000000-0000-4000-8000-000000000001", name: "Lista 1" },
+    ]),
+  },
+  emailContact: {
+    findMany: mock(async () => []),
+  },
+  emailCampaignDispatch: {
+    aggregate: emailCampaignDispatchAggregateMock,
+    create: emailCampaignDispatchCreateMock,
+    findFirst: emailCampaignDispatchFindFirstMock,
+    findUnique: emailCampaignDispatchFindUniqueMock,
+    findMany: emailCampaignDispatchFindManyMock,
+    update: emailCampaignDispatchUpdateMock,
+    updateMany: emailCampaignDispatchUpdateManyMock,
+  },
+  emailTeamSender: {
+    findFirst: emailTeamSenderFindFirstMock,
+  },
+  emailLog: {
+    findMany: emailLogFindManyMock,
+    count: mock(async () => 0),
+  },
+  backofficeTeamEmailLimitGrant: {
+    findUnique: mock(async () => null),
+  },
+  teamEmailCampaignLimitGrant: {
+    findUnique: mock(async () => null),
+  },
+  $transaction: transactionMock,
+}
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: prismaMock,
+  default: prismaMock,
+  // RadarRepository (pulled via list-segment-recipients) imports withPrismaRetry.
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
 
 // --- FeatureAccessService ---
@@ -156,6 +167,9 @@ mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
 // =============================================================================
 const { EmailCampaignUseCase, EMAIL_CAMPAIGN_FAILURE_MESSAGES } = await import(
   "./EmailCampaignUseCase"
+)
+const { RESEND_DOMAIN_TRACKING_DEGRADED_WARNING } = await import(
+  "@/lib/email/campaign-dispatch-guards"
 )
 
 // =============================================================================
@@ -259,6 +273,7 @@ const allMocks = [
   buildCampaignDispatchInputMock,
   findUnresolvedTokensMock,
   dispatchBatchMock,
+  emailTeamSettingsFindUniqueMock,
 ]
 
 // =============================================================================
@@ -272,7 +287,7 @@ describe("EmailCampaignUseCase.send", () => {
     // Restaurar implementações padrão após clear
     emailCampaignFindFirstMock.mockImplementation(async () => makeCampaign())
     emailCampaignUpdateManyMock.mockImplementation(async () => ({ count: 1 }))
-    emailCampaignUpdateMock.mockImplementation(async () => ({}))
+    emailCampaignUpdateMock.mockImplementation(async () => ({ parentCampaignId: null }))
     emailCampaignDispatchAggregateMock.mockImplementation(async () => ({
       _max: { dispatchNumber: 0 },
     }))
@@ -304,6 +319,7 @@ describe("EmailCampaignUseCase.send", () => {
       dispatched: [],
       providerErrors: [],
     }))
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
     setupTemplateMock()
   })
 
@@ -752,6 +768,88 @@ describe("EmailCampaignUseCase.send", () => {
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
     expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // D12 — domínio partially_failed permite disparo com aviso
+  // ---------------------------------------------------------------------------
+  it("D12 — domínio partially_failed → dispara com aviso de tracking degradado", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "backstageclub.com.br",
+      resendDomainStatus: "partially_failed",
+      fromName: "Test",
+      fromEmail: "test@backstageclub.com.br",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.successMessages.some((m) => m.includes("segundo plano"))).toBe(true)
+    expect(output.successMessages).toContain(RESEND_DOMAIN_TRACKING_DEGRADED_WARNING)
+    expect(output.result?.warnings).toEqual([RESEND_DOMAIN_TRACKING_DEGRADED_WARNING])
+    expect(emailCampaignUpdateManyMock).toHaveBeenCalled()
+    expect(reserveCreditsMock).toHaveBeenCalled()
+  })
+
+  it("D12 — domínio partially_verified → dispara com aviso de tracking degradado", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "partially_verified",
+      fromName: "Test",
+      fromEmail: "test@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.successMessages).toContain(RESEND_DOMAIN_TRACKING_DEGRADED_WARNING)
+    expect(output.result?.warnings).toEqual([RESEND_DOMAIN_TRACKING_DEGRADED_WARNING])
+  })
+
+  // ---------------------------------------------------------------------------
+  // D12 — domínio failed continua bloqueado
+  // ---------------------------------------------------------------------------
+  it("D12 — domínio failed → bloqueia disparo antes do lock", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "failed",
+      fromName: "Test",
+      fromEmail: "test@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("Domínio de e-mail não verificado")
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 })
 

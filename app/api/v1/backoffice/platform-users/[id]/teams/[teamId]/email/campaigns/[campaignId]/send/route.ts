@@ -59,6 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         totalRecipients: job.totalRecipients,
         retryFailedOnly: job.retryFailedOnly,
         status: "sending" as const,
+        ...(job.warnings?.length ? { warnings: job.warnings } : {}),
       }),
       202
     )

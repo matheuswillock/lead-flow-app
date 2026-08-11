@@ -169,6 +169,14 @@ indeterminate indeterminate
     
 
 
+        backoffice_cron_status {
+            running running
+success success
+failed failed
+        }
+    
+
+
         filter_preset_scope {
             crm crm
 performance performance
@@ -786,6 +794,13 @@ failed failed
     
 
 
+        email_campaign_batch_idempotency_scheme {
+            positional positional
+contentHash contentHash
+        }
+    
+
+
         email_log_status {
             queued queued
 sent sent
@@ -860,11 +875,29 @@ boolean boolean
     
 
 
+        email_contact_radar_sync_outbox_status {
+            pending pending
+processing processing
+sent sent
+failed failed
+        }
+    
+
+
         email_orphan_event_status {
             pending pending
 processed processed
 failed failed
 skipped skipped
+        }
+    
+
+
+        resend_webhook_processing_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
         }
     
 
@@ -1097,6 +1130,14 @@ missing_identity missing_identity
         email_variable_value_source {
             STATIC STATIC
 RADAR RADAR
+        }
+    
+
+
+        segment_source_type {
+            manual manual
+campaign campaign
+child child
         }
     
 
@@ -1828,6 +1869,22 @@ completed completed
     Json responsePayload "❓"
     String errorMessage "❓"
     DateTime createdAt 
+    }
+  
+
+  "backoffice_cron_executions" {
+    String id "🗝️"
+    String cronKey 
+    String cronPath 
+    BackofficeCronStatus status 
+    DateTime startedAt 
+    DateTime finishedAt "❓"
+    Int durationMs "❓"
+    String errorSummary "❓"
+    String errorDetail "❓"
+    Json metadata "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -2575,6 +2632,18 @@ completed completed
     }
   
 
+  "corretor_studio_email_contact_radar_sync_outbox" {
+    String id "🗝️"
+    EmailContactRadarSyncOutboxStatus status 
+    Int generation 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_email_campaigns" {
     String id "🗝️"
     String name 
@@ -2618,6 +2687,7 @@ completed completed
     Int totalBounced 
     Int totalComplained 
     EmailCampaignDispatchStatus status 
+    EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme 
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -2664,6 +2734,20 @@ completed completed
     Int attempts 
     String lastError "❓"
     DateTime processedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_resend_webhook_processing_failures" {
+    String id "🗝️"
+    String svixId 
+    String eventType 
+    Json payload 
+    ResendWebhookProcessingFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3279,6 +3363,8 @@ completed completed
     Json profileData "❓"
     Int engagementScore "❓"
     String engagementBand "❓"
+    String gender "❓"
+    String genderSource "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3336,6 +3422,7 @@ completed completed
     Json rulesJson 
     Boolean isSystem 
     Boolean isActive 
+    SegmentSourceType sourceType 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3974,6 +4061,7 @@ completed completed
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookTokenExpiryMode" : "enum:expiryMode"
     "backoffice_webhook_tokens" }o--|| backoffice_users : "generatedBy"
     "backoffice_webhook_request_logs" |o--|| "BackofficeWebhookSource" : "enum:source"
+    "backoffice_cron_executions" |o--|| "BackofficeCronStatus" : "enum:status"
     "backoffice_email_contact_lists" }o--|o backoffice_users : "createdBy"
     "backoffice_email_contacts" }o--|| backoffice_email_contact_lists : "list"
     "backoffice_email_contacts" }o--|o backoffice_leads : "lead"
@@ -4141,6 +4229,10 @@ completed completed
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
     "corretor_studio_email_import_jobs" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
+    "corretor_studio_email_contact_radar_sync_outbox" |o--|| "EmailContactRadarSyncOutboxStatus" : "enum:status"
+    "corretor_studio_email_contact_radar_sync_outbox" |o--|| corretor_studio_email_contacts : "emailContact"
+    "corretor_studio_email_contact_radar_sync_outbox" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_contact_radar_sync_outbox" }o--|o corretor_studio_email_import_jobs : "emailImportJob"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
@@ -4149,6 +4241,7 @@ completed completed
     "corretor_studio_email_campaigns" }o--|o corretor_studio_email_contact_lists : "contactList"
     "corretor_studio_email_campaigns" |o--|o corretor_studio_email_campaigns : "parentCampaign"
     "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignDispatchStatus" : "enum:status"
+    "corretor_studio_email_campaign_dispatches" |o--|| "EmailCampaignBatchIdempotencyScheme" : "enum:batchIdempotencyScheme"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_campaigns : "campaign"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_campaign_dispatches" }o--|| corretor_studio_email_templates : "template"
@@ -4162,6 +4255,7 @@ completed completed
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "email_orphan_events" |o--|| "EmailOrphanEventStatus" : "enum:status"
+    "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
@@ -4308,8 +4402,11 @@ completed completed
     "corretor_studio_radar_channel_consents" |o--|o "RadarConsentReason" : "enum:reason"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_radar_profiles : "profile"
     "corretor_studio_radar_channel_consents" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_radar_segments" |o--|| "SegmentSourceType" : "enum:sourceType"
     "corretor_studio_radar_segments" }o--|| corretor_studio_teams : "team"
     "corretor_studio_radar_segments" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_radar_segments" |o--|o corretor_studio_radar_segments : "parent"
+    "corretor_studio_radar_segments" }o--|o corretor_studio_email_campaigns : "sourceCampaign"
     "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_radar_field_definitions" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_team_radar_field_definitions" }o--|o corretor_studio_radar_import_jobs : "importJob"

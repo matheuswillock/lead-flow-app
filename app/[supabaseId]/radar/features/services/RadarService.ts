@@ -10,12 +10,11 @@ import type {
 import type {
   RadarCustomSegment,
   RadarCustomSegmentListItem,
-  RadarMetrics,
+  RadarListSegmentsResult,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
-  RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
@@ -183,15 +182,41 @@ export class RadarFrontendService implements IRadarService {
     return parseOutput<RadarProfileDetail>(res)
   }
 
-  async listSegments(
+  async promoteProfileToLead(
     supabaseId: string,
-    teamId: string
-  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }> {
+    teamId: string,
+    profileId: string
+  ): Promise<{ leadId: string; radarProfileId: string }> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/promote-to-lead`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ leadId: string; radarProfileId: string }>(res)
+  }
+
+  async updateProfileGender(
+    supabaseId: string,
+    teamId: string,
+    profileId: string,
+    gender: "male" | "female" | "unknown"
+  ): Promise<{ id: string; gender: string; genderSource: string }> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}`, {
+      method: "PATCH",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ gender }),
+    })
+    return parseOutput<{ id: string; gender: string; genderSource: string }>(res)
+  }
+
+  async listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult> {
     const res = await fetch(`${this.baseUrl}/segments`, {
       cache: "no-store",
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    return parseOutput<{ segments: RadarSegment[]; metrics: RadarMetrics }>(res)
+    return parseOutput<RadarListSegmentsResult>(res)
   }
 
   async listSegmentProfiles(
@@ -355,6 +380,68 @@ export class RadarFrontendService implements IRadarService {
       body: JSON.stringify({ rules }),
     })
     return parseOutput<{ count: number }>(res)
+  }
+
+  async previewSegmentWithHierarchy(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      rules?: RadarSegmentRules
+      parentSegmentId?: string
+      campaignId?: string
+    }
+  ): Promise<{ count: number; totalConditions: number; previewProfiles: RadarProfileDetail[] }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/preview`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<{ count: number; totalConditions: number; previewProfiles: RadarProfileDetail[] }>(res)
+  }
+
+  async createSegmentFromCampaign(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      campaignId: string
+      name: string
+      description?: string | null
+      additionalRules?: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; totalConditions: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/from-campaign`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<{ segmentId: string; name: string; totalConditions: number }>(res)
+  }
+
+  async createChildSegment(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      parentSegmentId: string
+      name: string
+      description?: string | null
+      childRules: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; parentName: string; totalConditions: number }> {
+    const res = await fetch(`${this.baseUrl}/segments/custom/child`, {
+      method: "POST",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    })
+    return parseOutput<{ segmentId: string; name: string; parentName: string; totalConditions: number }>(res)
   }
 
   async getProfileTouchpoints(

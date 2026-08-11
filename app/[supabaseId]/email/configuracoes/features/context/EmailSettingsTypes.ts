@@ -8,6 +8,8 @@ export type ResendDomainStatus =
   | "verified"
   | "failed"
   | "temporary_failure"
+  | "partially_verified"
+  | "partially_failed"
 
 export type DomainRecord = {
   record?: string
@@ -41,6 +43,7 @@ export type DomainConnectResult = {
   connectedAt?: string | null
   openTracking?: boolean
   clickTracking?: boolean
+  trackingSubdomain?: string | null
   records: DomainRecord[]
   events?: DomainEvent[]
 }
@@ -86,6 +89,8 @@ export type EmailSettings = {
   resendDomainConnectedAt: string | null
   resendOpenTracking: boolean
   resendClickTracking: boolean
+  resendDomainTrackingCapable: boolean
+  resendDomainDispatchWarnings: string[]
   domainEvents: DomainEvent[]
   senders: EmailSender[]
   defaultSenderId: string | null

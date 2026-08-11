@@ -1,12 +1,11 @@
 import type {
   RadarCustomSegment,
   RadarCustomSegmentListItem,
-  RadarMetrics,
+  RadarListSegmentsResult,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
-  RadarSegment,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
@@ -93,10 +92,18 @@ export interface IRadarService {
     segmentId: string
   ): Promise<RadarExportResult>
   getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
-  listSegments(
+  updateProfileGender(
     supabaseId: string,
-    teamId: string
-  ): Promise<{ segments: RadarSegment[]; metrics: RadarMetrics }>
+    teamId: string,
+    profileId: string,
+    gender: "male" | "female" | "unknown"
+  ): Promise<{ id: string; gender: string; genderSource: string }>
+  promoteProfileToLead(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<{ leadId: string; radarProfileId: string }>
+  listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult>
   listSegmentProfiles(
     supabaseId: string,
     teamId: string,
@@ -151,6 +158,35 @@ export interface IRadarService {
     teamId: string,
     rules: RadarSegmentRules
   ): Promise<{ count: number }>
+  previewSegmentWithHierarchy(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      rules?: RadarSegmentRules
+      parentSegmentId?: string
+      campaignId?: string
+    }
+  ): Promise<{ count: number; totalConditions: number; previewProfiles: RadarProfileDetail[] }>
+  createSegmentFromCampaign(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      campaignId: string
+      name: string
+      description?: string | null
+      additionalRules?: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; totalConditions: number }>
+  createChildSegment(
+    supabaseId: string,
+    teamId: string,
+    input: {
+      parentSegmentId: string
+      name: string
+      description?: string | null
+      childRules: RadarSegmentRules
+    }
+  ): Promise<{ segmentId: string; name: string; parentName: string; totalConditions: number }>
   getProfileTouchpoints(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileTouchpoints>
   getProfileContracts(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileContracts>
   materializeContactList(

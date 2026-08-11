@@ -29,10 +29,13 @@ import { RADAR_PRIMARY_SEGMENT_PRIORITY } from "@/lib/radar/field-catalog"
 import {
   buildProfileDataMap,
   getLeadIdFromProfile,
+  mergeImportedBaseProfileData,
   type RadarResolvableLead,
   type RadarResolvableProfile,
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
+import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
+import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
@@ -100,6 +103,10 @@ const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string
   clicked_not_closed: {
     name: "Clicaram e não fecharam",
     description: "Clicaram em campanha sem fechamento em carteira ou CRM",
+  },
+  engaged_no_lead: {
+    name: "Engajados sem Lead",
+    description: "Interagiram por e-mail ou formulário sem lead vinculado no CRM",
   },
   portfolio_renewal_due: {
     name: "Carteira próxima de renovação",
@@ -723,9 +730,33 @@ export class RadarService {
         sourceType: "email_contact",
         sourceId: contact.id,
       })
+
+      const genderUpdate = resolveGenderUpdateFromEmailContact(
+        {
+          gender: (profile.gender as RadarGender | null) ?? null,
+          genderSource: (profile.genderSource as RadarGenderSource | null) ?? null,
+        },
+        contact.customFields
+      )
+      if (
+        genderUpdate &&
+        (genderUpdate.gender === "male" || genderUpdate.gender === "female") &&
+        (genderUpdate.genderSource === "mapped" || genderUpdate.genderSource === "inferred")
+      ) {
+        await this.repo.updateProfileGender(
+          profile.id,
+          scope.teamId,
+          genderUpdate.gender,
+          genderUpdate.genderSource
+        )
+      }
     } catch (error) {
-      counters.errors.push(`contact:${contact.id}`)
-      console.error("[RadarService][syncFromEmail] contact", contact.id, error)
+      const message = error instanceof Error ? error.message : String(error)
+      counters.errors.push(`contact:${contact.id}:${message}`)
+      console.error(
+        `[RadarService][syncFromEmail] contact ${contact.id} error=${message}`,
+        error
+      )
     }
   }
 
@@ -977,6 +1008,24 @@ export class RadarService {
   }
 
   async countSegments(scope: RadarTeamScope): Promise<SegmentCount[]> {
+    // Fase 2: usa agregação SQL em vez de varredura em memória
+    const sqlCounts = await this.repo.countFixedSegmentsSQL(
+      scope.teamId,
+      RECENT_CAMPAIGN_WINDOW_DAYS
+    )
+
+    return (Object.keys(SEGMENT_META) as RadarSegmentSlug[]).map((slug) => ({
+      slug,
+      ...SEGMENT_META[slug],
+      count: sqlCounts.get(slug) ?? 0,
+    }))
+  }
+
+  /**
+   * Contagem legada em memória — mantida temporariamente para validação
+   * comparativa. Remove após validar equivalência dos números em produção.
+   */
+  async countSegmentsLegacy(scope: RadarTeamScope): Promise<SegmentCount[]> {
     const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
 
     const rawLeadStatuses = await this.repo.findLeadStatuses(
@@ -990,6 +1039,7 @@ export class RadarService {
       email_blocked: 0,
       opened_not_clicked: 0,
       clicked_not_closed: 0,
+      engaged_no_lead: 0,
       portfolio_renewal_due: 0,
       inactive_recent_campaign: 0,
       portfolio_clients: 0,
@@ -1043,10 +1093,10 @@ export class RadarService {
     return this.repo.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
-  async getMetrics(scope: RadarTeamScope) {
+  async getMetrics(scope: RadarTeamScope, precomputedSegments?: SegmentCount[]) {
     const [totalProfiles, segments] = await Promise.all([
       this.repo.countProfiles(scope),
-      this.countSegments(scope),
+      precomputedSegments ? Promise.resolve(precomputedSegments) : this.countSegments(scope),
     ])
 
     const marketable = segments.find((s) => s.slug === "email_marketable")?.count ?? 0
@@ -1157,8 +1207,15 @@ export class RadarService {
     for (const profile of profiles) {
       const leadId = getLeadIdFromProfile(profile as RadarResolvableProfile)
       const lead = leadId ? (leadsById.get(leadId) as RadarResolvableLead) : null
-      const profileData = buildProfileDataMap(variables, profile as RadarResolvableProfile, lead)
-      await this.repo.updateProfileData(profile.id, scope.teamId, profileData)
+      const profileData = mergeImportedBaseProfileData(
+        "profileData" in profile ? profile.profileData : null,
+        buildProfileDataMap(variables, profile as RadarResolvableProfile, lead)
+      )
+      await this.repo.updateProfileData(
+        profile.id,
+        scope.teamId,
+        profileData as Prisma.InputJsonValue
+      )
       updated += 1
     }
 

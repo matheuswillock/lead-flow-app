@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { backofficeEmailCampaignUseCase } from "@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -13,7 +15,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
     }
 
-    const output = await backofficeEmailCampaignUseCase.ensureUpcomingLiveCampaignExists()
+    const output = await withCronAudit(
+      {
+        cronKey: "provision-live-campaign",
+        cronPath: "/api/v1/backoffice/cron/provision-live-campaign",
+      },
+      () => backofficeEmailCampaignUseCase.ensureUpcomingLiveCampaignExists(),
+      {
+        onFailure: getDefaultCronSlackCallback(),
+      }
+    )
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)

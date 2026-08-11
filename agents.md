@@ -1,8 +1,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.5.0
-**Last Updated:** 2026-08-05
+**Version:** 2.5.1
+**Last Updated:** 2026-08-09
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -91,6 +91,23 @@ bun run db:migrate:new <migration-name>
 ```
 
 All migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`).
+
+### Physical table/column names (MUST) — anti-drift com `@@map`
+
+Fonte de verdade do schema de banco:
+
+1. **`prisma/schema.prisma`** — models, enums, campos, índices e **nomes físicos** via `@@map` / `@map` / `@@map` de enums.
+2. **`app/api/infra/data/prisma.ts`** — único boundary do `PrismaClient` compartilhado (não define DDL; agents **MUST NOT** inventar client/tabela/coluna fora do que o schema declara).
+
+Antes de escrever qualquer SQL em `supabase/migrations/**`, `$queryRaw` / `$executeRaw`, ou DDL manual:
+
+- Agents **MUST** ler o `model`/`enum` correspondente em `prisma/schema.prisma` e usar **somente** o nome físico mapeado (`@@map("...")` / `@map("...")`).
+- Agents **MUST NOT** usar o nome do model Prisma como nome de tabela/relação em SQL (ex.: `"RadarProfile"`, `"Lead"`) quando existir `@@map` — isso quebra em runtime (`relation "…" does not exist`) porque SQL raw e migrations **não** passam pelo `@@map`.
+- Agents **MUST NOT** inventar tabelas/colunas/enums “parecidos” com o domínio (ex.: `"RadarConsent"` quando o model é `RadarChannelConsent` mapeado para `corretor_studio_radar_channel_consents`).
+- Em migrations geradas por `db:migrate:from-prisma`, agents **MUST** revisar o SQL e confirmar que `CREATE TABLE` / `ALTER TABLE` / `REFERENCES` usam os nomes físicos do schema — não o nome do model.
+- Preferir Prisma Client (que resolve `@@map`) a SQL raw. Se SQL raw for inevitável, cada identificador de tabela/coluna **MUST** bater com o `@map`/`@@map` do schema na mesma mudança.
+
+Incidente de referência: `RADAR_AUDIT.md` §9 B1 (`countFixedSegmentsSQL` usou nomes de model em `$queryRaw`).
 
 ### Applying migrations to remote (MUST)
 
@@ -296,6 +313,18 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - **Supabase Auth:** Session refresh enforced in `middleware.ts` via `updateSession(request)`.
 - **Asaas:** Webhook entrypoint `app/api/webhooks/asaas/route.ts`; token header `asaas-access-token` **MUST** match `ASAAS_WEBHOOK_TOKEN`.
 
+### Webhook Handler Policy (FOR NEW FEATURES)
+
+All webhook handlers **MUST** follow the pattern: **respond with HTTP 200 immediately, process asynchronously, retry on failure**. This protects the application from blocking on external provider requests and ensures no events are silently lost.
+
+1. **Always respond 200 quickly** — `{ received: true }, { status: 200 }` **BEFORE** any processing. Providers like Resend only retry non-2xx responses, so a 200 response acts as an acknowledgment. Do not return `500` for processing failures; the provider has no context to retry a failure that originated in our code.
+2. **Process in background** — Use `after()` (Next.js 15.1+) or a fire-and-forget async block, never synchronous processing in the handler. Webhook signature verification happens before this point (401 if invalid); processing errors happen after (safe to hide from the provider).
+3. **Persist failures to an outbox table** — When processing throws, create a row in a `*Outbox` table (`EventOutbox`, `WebhookProcessingFailure`, etc.) with the original event payload, status `pending`, and attempt metadata.
+4. **Implement a retry cron** — Poll the outbox every 5 minutes via a dedicated cron handler (`/api/v1/cron/retry-*-failures`). Claim `pending` rows atomically, reprocess with exponential backoff, mark `resolved` or `failed` (dead-letter) after max attempts. **Retry failures must be observable and never infinite.**
+5. **Dedupe on idempotency keys** — Use database constraints (e.g. `@@unique([webhookId, eventType, occurredAt])`) to prevent duplicate processing if the provider retries or we accidentally reprocess the same event.
+
+**Example:** `app/api/webhooks/resend/route.ts` (status 200 → verify signature → queue in `after()`) + `app/api/v1/email/cron/retry-resend-webhook-failures/route.ts` (poll `ResendWebhookProcessingFailure`, retry with backoff). See `EMAIL_SPEC.md` Estágio 10 / D11 for the full spec.
+
 ## Project Rules
 
 ### MUST NOT
@@ -366,7 +395,7 @@ Deviations allowed only if explicitly listed in `.governance/ai-governance.confi
 
 CI **MUST** fail when governance checks fail.
 
-- Check: `bun run governance:check`
+- Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**`)
 - Client API masking (CI step dedicado): `bun run governance:check-api-masking`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
@@ -431,7 +460,7 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 - [ ] Seguiu `agents.md`?
 - [ ] Fez pull da `develop` antes de iniciar a branch de trabalho?
 - [ ] Confirmou que nenhum PR foi criado manualmente e que nenhum commit foi feito direto em `main`/`develop`/`release/*`?
-- [ ] Criou migration? Schema via `bun run db:migrate:from-prisma -- <name>` ou manual via `db:migrate:new`; revisou SQL e aplicou remoto somente com autorização?
+- [ ] Criou migration ou SQL raw? Schema via `bun run db:migrate:from-prisma -- <name>` ou manual via `db:migrate:new`; confirmou nomes físicos (`@@map`/`@map` em `prisma/schema.prisma`) — nunca nome de model Prisma como tabela; boundary de client em `app/api/infra/data/prisma.ts`; aplicou remoto somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
 - [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?

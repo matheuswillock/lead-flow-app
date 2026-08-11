@@ -29,12 +29,208 @@ export interface CreateContactListInput {
 }
 
 const DEFAULT_LIST_NAME = "Todos contatos"
+const ACTIVE_IMPORT_STATUSES = ["pending", "processing"] as const
+const TERMINAL_IMPORT_STATUSES = ["completed", "completed_with_errors", "failed"] as const
+const RECENT_TERMINAL_IMPORT_WINDOW_MS = 15 * 60 * 1000
+
+type EmailImportProgressJob = {
+  id: string
+  listId: string
+  importId: string
+  status: string
+  processedRows: number
+  totalRows: number
+  importedCount: number
+  updatedCount: number
+  skippedCount: number
+  failedBatches: unknown
+  batchSize: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+type ContactListActiveImportProgress = {
+  importId: string
+  status: string
+  processedRows: number
+  totalRows: number
+  importedCount: number
+  updatedCount: number
+  skippedCount: number
+  failedBatchCount: number
+  completedBatches: number
+  currentBatch: number
+  totalBatches: number
+  pendingRadarSync: number
+  failedRadarSync: number
+  updatedAt: string
+}
 
 export class EmailContactListUseCase {
   private contactListService = new EmailContactListService()
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase()
+  }
+
+  private parseFailedBatchCount(value: unknown): number {
+    return Array.isArray(value) ? value.length : 0
+  }
+
+  private isActiveImportStatus(status: string): boolean {
+    return (ACTIVE_IMPORT_STATUSES as readonly string[]).includes(status)
+  }
+
+  private isTerminalImportStatus(status: string): boolean {
+    return (TERMINAL_IMPORT_STATUSES as readonly string[]).includes(status)
+  }
+
+  private buildImportProgress(
+    job: EmailImportProgressJob,
+    pendingRadarSync: number,
+    failedRadarSync: number
+  ): ContactListActiveImportProgress {
+    const safeBatchSize = Math.max(1, job.batchSize)
+    const totalBatches = Math.max(1, Math.ceil(job.totalRows / safeBatchSize))
+    const isActive = this.isActiveImportStatus(job.status)
+    const isFullyProcessed = job.totalRows > 0 && job.processedRows >= job.totalRows
+    const completedBatches =
+      !isActive || isFullyProcessed
+        ? totalBatches
+        : Math.min(totalBatches, Math.floor(job.processedRows / safeBatchSize))
+    const currentBatch = isActive
+      ? Math.min(totalBatches, completedBatches + 1)
+      : totalBatches
+
+    return {
+      importId: job.importId,
+      status: job.status,
+      processedRows: job.processedRows,
+      totalRows: job.totalRows,
+      importedCount: job.importedCount,
+      updatedCount: job.updatedCount,
+      skippedCount: job.skippedCount,
+      failedBatchCount: this.parseFailedBatchCount(job.failedBatches),
+      completedBatches,
+      currentBatch,
+      totalBatches,
+      pendingRadarSync,
+      failedRadarSync,
+      updatedAt: job.updatedAt.toISOString(),
+    }
+  }
+
+  private async loadImportProgressByListId(
+    ctx: TeamContext,
+    listIds: string[]
+  ): Promise<Map<string, ContactListActiveImportProgress>> {
+    const progressByListId = new Map<string, ContactListActiveImportProgress>()
+    if (listIds.length === 0) {
+      return progressByListId
+    }
+
+    const recentCutoff = new Date(Date.now() - RECENT_TERMINAL_IMPORT_WINDOW_MS)
+
+    // 1) Busca só jobs candidatos das listas retornadas:
+    // ativos, terminais recentes, ou terminais com outbox Radar pendente/processando/falho.
+    const jobs = await prisma.emailImportJob.findMany({
+      where: {
+        teamId: ctx.teamId,
+        listId: { in: listIds },
+        OR: [
+          { status: { in: [...ACTIVE_IMPORT_STATUSES] } },
+          {
+            status: { in: [...TERMINAL_IMPORT_STATUSES] },
+            updatedAt: { gte: recentCutoff },
+          },
+          {
+            status: { in: [...TERMINAL_IMPORT_STATUSES] },
+            radarSyncOutboxEntries: {
+              some: { status: { in: ["pending", "processing", "failed"] } },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        listId: true,
+        importId: true,
+        status: true,
+        processedRows: true,
+        totalRows: true,
+        importedCount: true,
+        updatedCount: true,
+        skippedCount: true,
+        failedBatches: true,
+        batchSize: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    })
+
+    if (jobs.length === 0) {
+      return progressByListId
+    }
+
+    const candidateJobIds = jobs.map((job) => job.id)
+
+    // 2) Conta Radar apenas para os jobs candidatos (sem varrer outbox do time inteiro).
+    const radarSyncGroups = await prisma.emailContactRadarSyncOutbox.groupBy({
+      by: ["emailImportJobId", "status"],
+      where: {
+        emailImportJobId: { in: candidateJobIds },
+        teamId: ctx.teamId,
+        status: { in: ["pending", "processing", "failed"] },
+      },
+      _count: { _all: true },
+    })
+
+    const pendingRadarByJobId = new Map<string, number>()
+    const failedRadarByJobId = new Map<string, number>()
+    for (const group of radarSyncGroups) {
+      if (!group.emailImportJobId) continue
+      if (group.status === "failed") {
+        failedRadarByJobId.set(group.emailImportJobId, group._count._all)
+        continue
+      }
+      pendingRadarByJobId.set(
+        group.emailImportJobId,
+        (pendingRadarByJobId.get(group.emailImportJobId) ?? 0) + group._count._all
+      )
+    }
+
+    const relevantJobs = jobs.filter((job) => {
+      if (this.isActiveImportStatus(job.status)) return true
+      if (!this.isTerminalImportStatus(job.status)) return false
+      const pendingRadarSync = pendingRadarByJobId.get(job.id) ?? 0
+      const failedRadarSync = failedRadarByJobId.get(job.id) ?? 0
+      if (pendingRadarSync > 0 || failedRadarSync > 0) return true
+      return job.updatedAt.getTime() >= recentCutoff.getTime()
+    })
+
+    relevantJobs.sort((a, b) => {
+      const aActive = this.isActiveImportStatus(a.status)
+      const bActive = this.isActiveImportStatus(b.status)
+      if (aActive !== bActive) return aActive ? -1 : 1
+      const updatedDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+      if (updatedDiff !== 0) return updatedDiff
+      return b.createdAt.getTime() - a.createdAt.getTime()
+    })
+
+    for (const job of relevantJobs) {
+      if (progressByListId.has(job.listId)) continue
+      progressByListId.set(
+        job.listId,
+        this.buildImportProgress(
+          job,
+          pendingRadarByJobId.get(job.id) ?? 0,
+          failedRadarByJobId.get(job.id) ?? 0
+        )
+      )
+    }
+
+    return progressByListId
   }
 
   private dedupeRowsByEmail<T extends { email: string }>(rows: T[]): T[] {
@@ -200,51 +396,7 @@ export class EmailContactListUseCase {
       }
 
       const listIds = lists.map((list) => list.id)
-      const activeImportJobs =
-        listIds.length > 0
-          ? await prisma.emailImportJob.findMany({
-              where: {
-                teamId: ctx.teamId,
-                listId: { in: listIds },
-                status: { in: ["pending", "processing"] },
-              },
-              select: {
-                listId: true,
-                importId: true,
-                processedRows: true,
-                totalRows: true,
-                batchSize: true,
-              },
-              orderBy: { createdAt: "desc" },
-            })
-          : []
-
-      const activeImportByListId = new Map<
-        string,
-        {
-          importId: string
-          processedRows: number
-          totalRows: number
-          currentBatch: number
-          totalBatches: number
-        }
-      >()
-
-      for (const job of activeImportJobs) {
-        if (activeImportByListId.has(job.listId)) continue
-        const totalBatches = Math.max(1, Math.ceil(job.totalRows / job.batchSize))
-        const currentBatch = Math.min(
-          totalBatches,
-          Math.floor(job.processedRows / job.batchSize) + 1
-        )
-        activeImportByListId.set(job.listId, {
-          importId: job.importId,
-          processedRows: job.processedRows,
-          totalRows: job.totalRows,
-          currentBatch,
-          totalBatches,
-        })
-      }
+      const activeImportByListId = await this.loadImportProgressByListId(ctx, listIds)
 
       const normalizedLists = lists
         .map((list) => {

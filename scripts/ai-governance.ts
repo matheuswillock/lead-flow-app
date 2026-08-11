@@ -1409,6 +1409,68 @@ function printAllowlistWarnings(
   }
 }
 
+function tableHasCreateStatement(sql: string, table: string): boolean {
+  const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  // Somente o identificador alvo do CREATE TABLE (não menções em FK/ALTER posteriores).
+  const createTarget = new RegExp(
+    `\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:(?:public|"public")\\.)?"?${escaped}"?\\s*\\(`,
+    "i",
+  )
+  if (createTarget.test(sql)) {
+    return true
+  }
+
+  const renamePattern = new RegExp(`RENAME\\s+TO\\s+"?${escaped}"?\\b`, "i")
+  if (renamePattern.test(sql)) {
+    return true
+  }
+
+  if (
+    table.startsWith("corretor_studio_radar_") &&
+    /corretor_studio_radar_%s/.test(sql) &&
+    /\bRENAME\s+TO\b/i.test(sql)
+  ) {
+    return true
+  }
+
+  return false
+}
+
+async function validatePrismaModelTableMigrations(issues: string[]): Promise<void> {
+  const schemaPath = path.join(ROOT, "prisma/schema.prisma");
+  const migrationsDir = path.join(ROOT, "supabase/migrations");
+  const schema = await fs.readFile(schemaPath, "utf8");
+  const migrationFiles = (await fs.readdir(migrationsDir)).filter((file) =>
+    file.endsWith(".sql"),
+  );
+  const migrationContents = await Promise.all(
+    migrationFiles.map((file) =>
+      fs.readFile(path.join(migrationsDir, file), "utf8"),
+    ),
+  );
+
+  const modelBlocks = schema.split(/^model /m).slice(1);
+  const missing: string[] = [];
+
+  for (const block of modelBlocks) {
+    const mapMatch = block.match(/@@map\("([^"]+)"\)/);
+    if (!mapMatch) continue;
+    const table = mapMatch[1];
+    const found = migrationContents.some((sql) => tableHasCreateStatement(sql, table));
+    if (!found) {
+      missing.push(table);
+    }
+  }
+
+  if (missing.length > 0) {
+    const preview = missing.slice(0, 10).join(", ");
+    const suffix = missing.length > 10 ? ` (+${missing.length - 10} more)` : "";
+    issues.push(
+      `Prisma @@map table(s) without CREATE TABLE in supabase/migrations: ${preview}${suffix}`,
+    );
+  }
+}
+
 async function checkGovernance(
   config: GovernanceConfig,
   canonicalText: string,
@@ -1433,6 +1495,7 @@ async function checkGovernance(
   await validateClientApiPathMasking(config, issues, warnings);
   await validateBrowserNativeDialogs(issues);
   await validateBunGlobalUsage(issues);
+  await validatePrismaModelTableMigrations(issues);
 
   if (warnings.length > 0) {
     console.warn("\n[governance:check] WARNINGS");

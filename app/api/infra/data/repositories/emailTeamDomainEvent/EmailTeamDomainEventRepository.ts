@@ -25,6 +25,18 @@ export type ResendDomainSnapshot = {
   click_tracking?: boolean
   openTracking?: boolean
   clickTracking?: boolean
+  tracking_subdomain?: string | null
+  trackingSubdomain?: string | null
+}
+
+export type ConnectedResendDomainRow = {
+  teamId: string
+  resendDomainId: string
+  resendDomainName: string | null
+  resendDomainStatus: string | null
+  resendDomainRegion: string | null
+  resendOpenTracking: boolean
+  resendClickTracking: boolean
 }
 
 export interface IEmailTeamDomainEventRepository {
@@ -58,7 +70,9 @@ export interface IEmailTeamDomainEventRepository {
     region: string | null
     openTracking: boolean
     clickTracking: boolean
+    trackingSubdomain: string | null
   }>
+  listConnectedDomains(): Promise<ConnectedResendDomainRow[]>
 }
 
 export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepository {
@@ -149,6 +163,10 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
     const region = domain.region ?? null
     const openTracking = Boolean(domain.openTracking ?? domain.open_tracking)
     const clickTracking = Boolean(domain.clickTracking ?? domain.click_tracking)
+    const trackingSubdomain =
+      domain.trackingSubdomain?.trim() ||
+      domain.tracking_subdomain?.trim() ||
+      null
 
     await this.updateDomainTracking(teamId, { status, region, openTracking, clickTracking })
 
@@ -178,7 +196,37 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
       })
     }
 
-    return { status, region, openTracking, clickTracking }
+    return { status, region, openTracking, clickTracking, trackingSubdomain }
+  }
+
+  async listConnectedDomains(): Promise<ConnectedResendDomainRow[]> {
+    const rows = await prisma.emailTeamSettings.findMany({
+      where: { resendDomainId: { not: null } },
+      select: {
+        teamId: true,
+        resendDomainId: true,
+        resendDomainName: true,
+        resendDomainStatus: true,
+        resendDomainRegion: true,
+        resendOpenTracking: true,
+        resendClickTracking: true,
+      },
+    })
+
+    return rows.flatMap((row) => {
+      if (!row.resendDomainId) return []
+      return [
+        {
+          teamId: row.teamId,
+          resendDomainId: row.resendDomainId,
+          resendDomainName: row.resendDomainName,
+          resendDomainStatus: row.resendDomainStatus,
+          resendDomainRegion: row.resendDomainRegion,
+          resendOpenTracking: row.resendOpenTracking,
+          resendClickTracking: row.resendClickTracking,
+        },
+      ]
+    })
   }
 }
 

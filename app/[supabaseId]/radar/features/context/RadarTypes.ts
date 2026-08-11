@@ -5,6 +5,8 @@ export type RadarProfileListItem = {
   displayName: string
   displayPhone: string | null
   primaryEmail: string | null
+  gender?: string | null
+  genderSource?: string | null
   lastSeenAt: string | null
   engagementScore?: number | null
   engagementBand?: string | null
@@ -57,10 +59,17 @@ export type RadarSegment = {
   isSystem: boolean
 }
 
+export type RadarListSegmentsResult = {
+  segments: RadarSegment[]
+  metrics: RadarMetrics
+  /** true quando a contagem de segmentos fixos falhou no backend — os counts exibidos não refletem dados reais. */
+  fixedSegmentsError?: boolean
+}
+
 /** Mirrors lib/radar/segment-dsl.ts's discriminated union — kept in sync manually. */
 export type RadarProfileFieldCondition = {
   kind: "profile_field"
-  field: "primaryEmail" | "primaryDocument" | "lastSeenAt"
+  field: "primaryEmail" | "primaryDocument" | "lastSeenAt" | "gender"
   operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty" | "before" | "after" | "within_days"
   value?: unknown
 }
@@ -157,12 +166,20 @@ export type RadarCustomSegment = {
   rulesJson: RadarSegmentRules
   isSystem: boolean
   isActive: boolean
+  parentId?: string | null
+  sourceType?: "manual" | "campaign" | "child"
+  sourceCampaignId?: string | null
   createdAt: string
   updatedAt: string
 }
 
 /** `GET .../segments/custom` includes `count`; create/update responses don't. */
-export type RadarCustomSegmentListItem = RadarCustomSegment & { count: number }
+export type RadarCustomSegmentListItem = RadarCustomSegment & {
+  count: number
+  parent?: { id: string; name: string } | null
+  children?: Array<{ id: string; name: string }>
+  sourceCampaign?: { id: string; name: string } | null
+}
 
 export type RadarSegmentDeleteResult = {
   id: string

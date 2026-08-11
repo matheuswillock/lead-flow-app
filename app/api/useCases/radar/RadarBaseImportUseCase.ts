@@ -14,10 +14,15 @@ import {
 } from "@/lib/radar/radar-import-storage"
 import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
 import {
+  formatTransientTransactionErrorMessage,
+  withTransientTransactionRetry,
+} from "@/lib/prisma/retry-transient-transaction"
+import {
   inferRadarFieldValueType,
   isRadarNewFieldKey,
   profileDataKeyForImportField,
   RADAR_IMPORT_MAX_ROWS,
+  RADAR_IMPORT_SOCIOS_PROFILE_DATA_KEY,
   slugifyRadarFieldKey,
 } from "@/lib/radarImport/radarImportFields"
 import type { ParsedRadarImportRow } from "@/lib/radarImport/parseRadarImportBuffer"
@@ -29,6 +34,13 @@ import {
   normalizeRadarName,
   normalizeRadarPhone,
 } from "@/lib/radar/normalization"
+import { buildGenderCandidateFromFieldRecord } from "@/lib/radar/email-contact-gender"
+import {
+  resolveGender,
+  type GenderState,
+  type RadarGender,
+  type RadarGenderSource,
+} from "@/lib/radar/gender"
 
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
@@ -103,14 +115,55 @@ export class RadarBaseImportUseCase {
   ): Record<string, unknown> {
     const patch: Record<string, unknown> = {}
     for (const fieldKey of Object.keys(fieldMapping)) {
-      if (fieldKey === "name" || fieldKey === "phone" || fieldKey === "email" || fieldKey === "document") {
+      if (
+        fieldKey === "name" ||
+        fieldKey === "phone" ||
+        fieldKey === "email" ||
+        fieldKey === "document" ||
+        fieldKey === "gender" ||
+        fieldKey === "socios"
+      ) {
         continue
       }
       const value = mappedValues[fieldKey]
       if (!value) continue
       patch[profileDataKeyForImportField(fieldKey)] = value
     }
+    if (mappedValues.socios) {
+      patch[RADAR_IMPORT_SOCIOS_PROFILE_DATA_KEY] = mappedValues.socios
+    }
     return patch
+  }
+
+  private async applyResolvedGender(
+    profileId: string,
+    teamId: string,
+    current: GenderState,
+    mappedValues: Record<string, string>
+  ): Promise<void> {
+    if (!mappedValues.gender && !mappedValues.socios) {
+      return
+    }
+
+    const candidate = buildGenderCandidateFromFieldRecord({
+      gender: mappedValues.gender,
+      socios: mappedValues.socios,
+    })
+    if (!candidate) return
+
+    const update = resolveGender(current, candidate)
+    if (
+      update &&
+      (update.gender === "male" || update.gender === "female") &&
+      (update.genderSource === "mapped" || update.genderSource === "inferred")
+    ) {
+      await radarRepository.updateProfileGender(
+        profileId,
+        teamId,
+        update.gender,
+        update.genderSource
+      )
+    }
   }
 
   private async upsertFieldDefinitions(
@@ -250,6 +303,17 @@ export class RadarBaseImportUseCase {
     }
 
     const existingProfile = await radarImportJobRepository.findProfileData(profileId, teamId)
+
+    await this.applyResolvedGender(
+      profileId,
+      teamId,
+      {
+        gender: (existingProfile?.gender as RadarGender | null | undefined) ?? null,
+        genderSource:
+          (existingProfile?.genderSource as RadarGenderSource | null | undefined) ?? null,
+      },
+      mappedValues
+    )
 
     await radarRepository.updateProfileData(
       profileId,
@@ -457,7 +521,10 @@ export class RadarBaseImportUseCase {
     const startedAt = Date.now()
 
     try {
-      const claimed = await radarImportJobRepository.claimPendingJob()
+      const claimed = await withTransientTransactionRetry(
+        () => radarImportJobRepository.claimPendingJob(),
+        { label: "RadarBaseImportUseCase.claimPendingJob" }
+      )
 
       if (!claimed) {
         return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
@@ -619,7 +686,12 @@ export class RadarBaseImportUseCase {
       })
     } catch (error) {
       console.error("[RadarBaseImportUseCase][processPendingJobs]", error)
-      return new Output(false, [], ["Erro ao processar jobs de importação"], null)
+      return new Output(
+        false,
+        [],
+        [formatTransientTransactionErrorMessage(error)],
+        null
+      )
     }
   }
 }

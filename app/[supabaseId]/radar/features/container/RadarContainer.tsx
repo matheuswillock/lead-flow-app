@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import { Database, Download, Plus } from "lucide-react"
+import { AlertTriangle, Database, Download, Plus } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -37,6 +38,8 @@ import { RadarSegmentBuilderDialog } from "../components/RadarSegmentBuilderDial
 import { RadarSegmentCard } from "../components/RadarSegmentCard"
 import { RadarSegmentProfilesSheet } from "../components/RadarSegmentProfilesSheet"
 import { RadarImportButton } from "../components/radar-import/RadarImportButton"
+import { GenerateSegmentDialog } from "../components/GenerateSegmentDialog"
+import { SegmentTreeView } from "../components/SegmentTreeView"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
@@ -45,6 +48,7 @@ export function RadarContainer() {
     segments,
     customSegments,
     metrics,
+    fixedSegmentsError,
     selectedProfile,
     detailEvents,
     detailEventsTotal,
@@ -77,6 +81,8 @@ export function RadarContainer() {
     deleteCustomSegment,
     previewSegmentContactList,
     materializeSegmentToContactList,
+    promoteProfileToLead,
+    updateProfileGender,
     exportFilteredProfiles,
     exportSegmentMembers,
     segmentProfilesTarget,
@@ -103,6 +109,12 @@ export function RadarContainer() {
   const [contactListPreviewCount, setContactListPreviewCount] = useState<number | null>(null)
   const [isPreviewingContactList, setIsPreviewingContactList] = useState(false)
   const [isCreatingContactList, setIsCreatingContactList] = useState(false)
+  const [generateSegmentOpen, setGenerateSegmentOpen] = useState(false)
+  const [generateSegmentSource, setGenerateSegmentSource] = useState<{
+    type: "segment"
+    id: string
+    name: string
+  } | null>(null)
 
   const handleOpenContactListDialog = useCallback(
     async (target: RadarSegmentProfilesTarget) => {
@@ -127,6 +139,15 @@ export function RadarContainer() {
       setIsCreatingContactList(false)
     }
   }, [contactListPreviewTarget, materializeSegmentToContactList])
+
+  const handleOpenGenerateSegment = useCallback((segment: RadarCustomSegmentListItem) => {
+    setGenerateSegmentSource({
+      type: "segment",
+      id: segment.id,
+      name: segment.name,
+    })
+    setGenerateSegmentOpen(true)
+  }, [])
 
   const systemSegments = useMemo(() => {
     const base = segments.filter((segment: RadarSegment) => segment.isSystem)
@@ -155,6 +176,17 @@ export function RadarContainer() {
           </div>
           <p className="text-sm text-muted-foreground">Perfis unificados para campanhas de e-mail</p>
         </div>
+
+        {fixedSegmentsError ? (
+          <Alert variant="destructive">
+            <AlertTriangle data-icon="inline-start" />
+            <AlertTitle>Não foi possível calcular os segmentos fixos</AlertTitle>
+            <AlertDescription>
+              Os números abaixo e os segmentos do sistema não refletem dados reais no momento. Tente
+              recarregar a página em alguns minutos.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
@@ -318,51 +350,39 @@ export function RadarContainer() {
                     setBuilderOpen(true)
                   }}
                 />
-              ) : (
+              ) : isLoading ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {isLoading
-                    ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
-                    : customSegments.map((segment) => (
-                        <RadarSegmentCard
-                          key={segment.id}
-                          name={segment.name}
-                          description={segment.description}
-                          count={segment.count}
-                          variant="custom"
-                          isInactive={!segment.isActive}
-                          mutationLock={mutationLock}
-                          onViewProfiles={
-                            segment.isActive
-                              ? () => openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
-                              : undefined
-                          }
-                          onExport={
-                            segment.isActive
-                              ? (format) =>
-                                  void exportSegmentMembers(
-                                    { kind: "custom", slugOrId: segment.id, name: segment.name },
-                                    format
-                                  )
-                              : undefined
-                          }
-                          onCreateContactList={
-                            segment.isActive
-                              ? () =>
-                                  void handleOpenContactListDialog({
-                                    kind: "custom",
-                                    slugOrId: segment.id,
-                                    name: segment.name,
-                                  })
-                              : undefined
-                          }
-                          onEdit={() => {
-                            setEditingSegment(segment)
-                            setBuilderOpen(true)
-                          }}
-                          onDelete={() => setDeleteTarget(segment)}
-                        />
-                      ))}
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-32 rounded-xl" />
+                  ))}
                 </div>
+              ) : (
+                <SegmentTreeView
+                  segments={customSegments}
+                  mutationLock={mutationLock}
+                  onViewProfiles={(segment) =>
+                    openSegmentProfiles({ kind: "custom", slugOrId: segment.id, name: segment.name })
+                  }
+                  onExport={(segment, format) =>
+                    void exportSegmentMembers(
+                      { kind: "custom", slugOrId: segment.id, name: segment.name },
+                      format
+                    )
+                  }
+                  onCreateContactList={(segment) =>
+                    void handleOpenContactListDialog({
+                      kind: "custom",
+                      slugOrId: segment.id,
+                      name: segment.name,
+                    })
+                  }
+                  onEdit={(segment) => {
+                    setEditingSegment(segment)
+                    setBuilderOpen(true)
+                  }}
+                  onDelete={(segment) => setDeleteTarget(segment)}
+                  onGenerateChild={handleOpenGenerateSegment}
+                />
               )}
             </div>
           </TabsContent>
@@ -381,6 +401,16 @@ export function RadarContainer() {
           isLoadingTouchpoints={isLoadingTouchpoints}
           contracts={contracts}
           isLoadingContracts={isLoadingContracts}
+          onPromoteToLead={
+            selectedProfile
+              ? () => promoteProfileToLead(selectedProfile.id)
+              : undefined
+          }
+          onUpdateGender={
+            selectedProfile
+              ? (gender) => updateProfileGender(selectedProfile.id, gender)
+              : undefined
+          }
         />
 
         <RadarSegmentBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} segment={editingSegment} />
@@ -399,6 +429,13 @@ export function RadarContainer() {
             closeSegmentProfiles()
             void openProfile(id)
           }}
+          showPromoteAction={
+            segmentProfilesTarget?.kind === "system" &&
+            segmentProfilesTarget.slugOrId === "engaged_no_lead"
+          }
+          onPromoteProfile={(profileId) =>
+            promoteProfileToLead(profileId, { source: "segment-list" })
+          }
         />
 
         <AlertDialog
@@ -460,6 +497,20 @@ export function RadarContainer() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {generateSegmentSource ? (
+          <GenerateSegmentDialog
+            open={generateSegmentOpen}
+            onOpenChange={(open) => {
+              setGenerateSegmentOpen(open)
+              if (!open) setGenerateSegmentSource(null)
+            }}
+            sourceType="segment"
+            sourceName={generateSegmentSource.name}
+            parentSegmentId={generateSegmentSource.id}
+            onSuccess={() => void reload()}
+          />
+        ) : null}
       </div>
     </TooltipProvider>
   )

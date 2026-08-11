@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import {
@@ -11,10 +11,12 @@ import {
   Globe,
   LoaderCircle,
   MoreHorizontal,
+  MousePointerClick,
   ShieldAlert,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +30,14 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +53,7 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
@@ -50,6 +61,9 @@ import type { DomainRecord, ResendDomainStatus } from "../context/EmailSettingsT
 import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { formatResendRegion } from "../utils/resend-region-labels"
+
+const DEFAULT_TRACKING_SUBDOMAIN = "links"
+const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
 
 function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
   if (!status) {
@@ -85,6 +99,16 @@ function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
       label: "Falha temporária",
       icon: <AlertCircle className="size-3" />,
       className: "border-semantic-warning/30 bg-semantic-warning-surface text-semantic-warning",
+    },
+    partially_verified: {
+      label: "Parcialmente verificado",
+      icon: <Clock className="size-3" />,
+      className: "border-semantic-warning/30 bg-semantic-warning-surface text-semantic-warning",
+    },
+    partially_failed: {
+      label: "Falha parcial",
+      icon: <AlertCircle className="size-3" />,
+      className: "border-destructive/30 bg-destructive/10 text-destructive",
     },
   }
 
@@ -127,6 +151,11 @@ function purposeLabel(record: DomainRecord): string {
   return labels[purpose] ?? purpose
 }
 
+function isTrackingRecord(record: DomainRecord): boolean {
+  const purpose = record.record?.trim()
+  return purpose === "Tracking" || purpose === "TrackingCAA"
+}
+
 async function copyToClipboard(value: string, label: string) {
   try {
     await navigator.clipboard.writeText(value)
@@ -166,16 +195,25 @@ export function CustomDomainCard() {
     domainConnectedAt,
     domainOpenTracking,
     domainClickTracking,
+    domainTrackingSubdomain,
+    domainDispatchWarnings,
     domainEvents,
     connectingDomain,
     verifyingDomain,
     loadingRecords,
     disconnectingDomain,
+    configuringDomainTracking,
     handleConnectDomain,
     handleDisconnectDomain,
     handleVerifyDomain,
     handleLoadDomainRecords,
+    handleConfigureDomainTracking,
   } = useEmailSettingsContext()
+
+  const [trackingDialogOpen, setTrackingDialogOpen] = useState(false)
+  const [trackingSubdomainInput, setTrackingSubdomainInput] = useState(DEFAULT_TRACKING_SUBDOMAIN)
+  const [openTrackingDraft, setOpenTrackingDraft] = useState(true)
+  const [clickTrackingDraft, setClickTrackingDraft] = useState(true)
 
   useEffect(() => {
     if (domainName && domainRecords.length === 0) {
@@ -185,6 +223,36 @@ export function CustomDomainCard() {
 
   const isConnected = Boolean(domainName)
   const verifyLabel = domainStatus === "verified" ? "Reverificar DNS" : "Verificar DNS"
+  const hasTrackingConfigured = Boolean(domainTrackingSubdomain?.trim())
+  const trackingPreviewHost = domainName
+    ? `${trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN}.${domainName}`
+    : trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN
+
+  function openTrackingDialog() {
+    setTrackingSubdomainInput(domainTrackingSubdomain?.trim() || DEFAULT_TRACKING_SUBDOMAIN)
+    setOpenTrackingDraft(hasTrackingConfigured ? domainOpenTracking : true)
+    setClickTrackingDraft(hasTrackingConfigured ? domainClickTracking : true)
+    setTrackingDialogOpen(true)
+  }
+
+  async function submitTrackingConfig() {
+    const subdomain = trackingSubdomainInput.trim().toLowerCase()
+    if (!TRACKING_SUBDOMAIN_RE.test(subdomain)) {
+      toast.error("Subdomínio inválido. Use apenas letras minúsculas, números e hífen (ex.: links).")
+      return
+    }
+    if (!openTrackingDraft && !clickTrackingDraft) {
+      toast.error("Habilite pelo menos abertura ou cliques.")
+      return
+    }
+
+    const ok = await handleConfigureDomainTracking({
+      trackingSubdomain: subdomain,
+      openTracking: openTrackingDraft,
+      clickTracking: clickTrackingDraft,
+    })
+    if (ok) setTrackingDialogOpen(false)
+  }
 
   return (
     <EmailSettingsSectionCard
@@ -200,6 +268,13 @@ export function CustomDomainCard() {
         </div>
       ) : isConnected ? (
         <>
+          {domainDispatchWarnings.length > 0 ? (
+            <Alert className="border-semantic-warning/30 bg-semantic-warning-surface text-foreground">
+              <ShieldAlert className="size-4 text-semantic-warning" />
+              <AlertTitle>Tracking de abertura/clique limitado</AlertTitle>
+              <AlertDescription>{domainDispatchWarnings.join(" ")}</AlertDescription>
+            </Alert>
+          ) : null}
           <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 flex-1 items-start gap-4">
@@ -294,6 +369,36 @@ export function CustomDomainCard() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background text-muted-foreground">
+                  <MousePointerClick className="size-4" />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
+                    Métricas de tracking
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Para rastrear aberturas e cliques, configure um subdomínio de tracking alinhado ao seu
+                    domínio de envio.
+                  </p>
+                  {hasTrackingConfigured ? (
+                    <p className="text-sm text-foreground">
+                      Subdomínio:{" "}
+                      <span className="font-mono text-xs">
+                        {domainTrackingSubdomain}.{domainName}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <Button type="button" variant="outline" onClick={openTrackingDialog}>
+                {hasTrackingConfigured ? "Alterar" : "Configurar"}
+              </Button>
+            </div>
+          </div>
+
           <DomainEventsTimeline events={domainEvents} domainStatus={domainStatus} />
 
           <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
@@ -335,6 +440,11 @@ export function CustomDomainCard() {
                 domínio raiz para reforçar a autenticidade — não é exigido pelo Resend para verificar o
                 domínio.
               </p>
+              {hasTrackingConfigured ? (
+                <p>
+                  Após configurar o tracking, cadastre também o CNAME de Tracking e clique em {verifyLabel}.
+                </p>
+              ) : null}
             </div>
 
             {loadingRecords ? (
@@ -358,7 +468,10 @@ export function CustomDomainCard() {
                   </TableHeader>
                   <TableBody>
                     {domainRecords.map((record, index) => (
-                      <TableRow key={`${record.type}-${record.name}-${index}`}>
+                      <TableRow
+                        key={`${record.type}-${record.name}-${index}`}
+                        className={cn(isTrackingRecord(record) && "bg-primary/5")}
+                      >
                         <TableCell className="text-xs font-medium">{purposeLabel(record)}</TableCell>
                         <TableCell className="font-mono text-xs">{record.type}</TableCell>
                         <TableCell>
@@ -391,6 +504,90 @@ export function CustomDomainCard() {
               </p>
             )}
           </div>
+
+          <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
+            <DialogContent className="max-h-[90vh] flex flex-col gap-0 p-0 sm:max-w-lg">
+              <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
+                <DialogTitle>Configurar métricas de tracking</DialogTitle>
+                <DialogDescription>
+                  Defina o subdomínio e quais métricas deseja habilitar. Depois, adicione o registro DNS de
+                  Tracking e re-verifique.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="overflow-y-auto flex-1 px-6 py-4">
+                <FieldGroup className="gap-5">
+                  <Field>
+                    <FieldLabel htmlFor="tracking-subdomain-input">Subdomínio de tracking</FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="tracking-subdomain-input"
+                        value={trackingSubdomainInput}
+                        onChange={(event) => setTrackingSubdomainInput(event.target.value.toLowerCase())}
+                        placeholder={DEFAULT_TRACKING_SUBDOMAIN}
+                        disabled={configuringDomainTracking}
+                        autoComplete="off"
+                      />
+                      <FieldDescription>
+                        Preview: <span className="font-mono text-xs">{trackingPreviewHost}</span>
+                      </FieldDescription>
+                    </FieldContent>
+                  </Field>
+
+                  <Field orientation="horizontal">
+                    <FieldContent>
+                      <FieldLabel htmlFor="open-tracking-switch">Abertura</FieldLabel>
+                      <FieldDescription>Rastreia quando o e-mail é aberto.</FieldDescription>
+                    </FieldContent>
+                    <Switch
+                      id="open-tracking-switch"
+                      checked={openTrackingDraft}
+                      onCheckedChange={setOpenTrackingDraft}
+                      disabled={configuringDomainTracking}
+                    />
+                  </Field>
+
+                  <Field orientation="horizontal">
+                    <FieldContent>
+                      <FieldLabel htmlFor="click-tracking-switch">Cliques</FieldLabel>
+                      <FieldDescription>Rastreia cliques nos links do e-mail.</FieldDescription>
+                    </FieldContent>
+                    <Switch
+                      id="click-tracking-switch"
+                      checked={clickTrackingDraft}
+                      onCheckedChange={setClickTrackingDraft}
+                      disabled={configuringDomainTracking}
+                    />
+                  </Field>
+                </FieldGroup>
+              </div>
+
+              <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setTrackingDialogOpen(false)}
+                  disabled={configuringDomainTracking}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void submitTrackingConfig()}
+                  disabled={
+                    configuringDomainTracking ||
+                    !trackingSubdomainInput.trim() ||
+                    (!openTrackingDraft && !clickTrackingDraft)
+                  }
+                >
+                  {configuringDomainTracking ? (
+                    <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                  ) : null}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       ) : (
         <div className="rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">

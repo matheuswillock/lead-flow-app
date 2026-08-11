@@ -7,6 +7,9 @@ const leadCustomFieldOperatorSchema = z.enum(["eq", "neq", "contains", "is_empty
 const OPERATORS_REQUIRING_VALUE = new Set<CustomFieldFilterOperator>(["eq", "neq", "contains"])
 
 const profileTextFieldSchema = z.enum(["primaryEmail", "primaryDocument"])
+const profileGenderFieldSchema = z.literal("gender")
+const profileGenderValueSchema = z.enum(["male", "female", "unknown"])
+const profileGenderOperatorSchema = z.enum(["eq", "neq", "is_empty", "not_empty"])
 const profileTextOperatorSchema = z.enum(["eq", "neq", "contains", "is_empty", "not_empty"])
 const profileDateOperatorSchema = z.enum(["before", "after", "within_days"])
 
@@ -80,11 +83,36 @@ export const RADAR_SEGMENT_LEAD_STATUSES = leadStatusSchema.options
 const profileFieldConditionSchema = z
   .object({
     kind: z.literal("profile_field"),
-    field: profileTextFieldSchema.or(z.literal("lastSeenAt")),
-    operator: profileTextOperatorSchema.or(profileDateOperatorSchema),
+    field: profileTextFieldSchema.or(z.literal("lastSeenAt")).or(profileGenderFieldSchema),
+    operator: profileTextOperatorSchema.or(profileDateOperatorSchema).or(profileGenderOperatorSchema),
     value: z.unknown().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.field === "gender") {
+      if (!profileGenderOperatorSchema.safeParse(data.operator).success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Operador inválido para "gender": use eq, neq, is_empty ou not_empty`,
+          path: ["operator"],
+        })
+        return
+      }
+      if (OPERATORS_REQUIRING_VALUE.has(data.operator as CustomFieldFilterOperator) && data.value === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `O operador "${data.operator}" exige um valor`, path: ["value"] })
+        return
+      }
+      if (data.operator === "eq" || data.operator === "neq") {
+        if (!profileGenderValueSchema.safeParse(data.value).success) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'value deve ser "male", "female" ou "unknown"',
+            path: ["value"],
+          })
+        }
+      }
+      return
+    }
+
     if (data.field === "lastSeenAt") {
       if (!profileDateOperatorSchema.safeParse(data.operator).success) {
         ctx.addIssue({

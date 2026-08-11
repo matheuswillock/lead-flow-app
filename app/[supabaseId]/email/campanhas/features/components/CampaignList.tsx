@@ -109,7 +109,7 @@ function CampaignActionsMenu({
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
   const canEdit = ["draft", "scheduled"].includes(campaign.status)
-  const canCancel = campaign.status === "scheduled"
+  const canCancel = campaign.status === "scheduled" || campaign.status === "sending"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
   const canArchive = ["sent", "failed", "partially_sent"].includes(campaign.status)
 
@@ -207,7 +207,11 @@ function CampaignActionsMenu({
                 disabled={!canCancel || cancelingId === campaign.id}
               >
                 <CalendarX className="mr-2 h-4 w-4" />
-                {cancelingId === campaign.id ? "Cancelando..." : "Cancelar agendamento"}
+                {cancelingId === campaign.id
+                  ? "Cancelando..."
+                  : campaign.status === "sending"
+                    ? "Cancelar envio"
+                    : "Cancelar agendamento"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {canDelete && (
@@ -289,15 +293,27 @@ function CampaignActionsMenu({
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar agendamento?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {campaign.status === "sending" ? "Cancelar envio?" : "Cancelar agendamento?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A campanha <strong>"{campaign.name}"</strong> voltará para rascunho e não será
-              disparada no horário agendado.
+              {campaign.status === "sending" ? (
+                <>
+                  O envio da campanha <strong>"{campaign.name}"</strong> será interrompido
+                  imediatamente. E-mails que ainda não foram enviados serão cancelados. E-mails já
+                  enviados não serão afetados.
+                </>
+              ) : (
+                <>
+                  A campanha <strong>"{campaign.name}"</strong> voltará para rascunho e não será
+                  disparada no horário agendado.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={cancelingId === campaign.id}>
-              Manter agendamento
+              {campaign.status === "sending" ? "Continuar enviando" : "Manter agendamento"}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {

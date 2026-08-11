@@ -1,9 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { getResendDomainDispatchWarnings } from "@/lib/email/campaign-dispatch-guards"
 import { EmailSettingsService } from "../services/EmailSettingsService"
-import type { UpsertEmailSenderData, UpsertEmailVariableData } from "../services/IEmailSettingsService"
+import type {
+  ConfigureDomainTrackingData,
+  UpsertEmailSenderData,
+  UpsertEmailVariableData,
+} from "../services/IEmailSettingsService"
 import type {
   BlockedDateRange,
   DomainConnectResult,
@@ -65,15 +70,19 @@ export type EmailSettingsHookReturn = {
   domainConnectedAt: string | null
   domainOpenTracking: boolean
   domainClickTracking: boolean
+  domainTrackingSubdomain: string | null
+  domainDispatchWarnings: string[]
   domainEvents: DomainEvent[]
   connectingDomain: boolean
   verifyingDomain: boolean
   loadingRecords: boolean
   disconnectingDomain: boolean
+  configuringDomainTracking: boolean
   handleConnectDomain: () => Promise<void>
   handleDisconnectDomain: () => Promise<void>
   handleVerifyDomain: () => Promise<void>
   handleLoadDomainRecords: () => Promise<void>
+  handleConfigureDomainTracking: (data: ConfigureDomainTrackingData) => Promise<boolean>
 
   globalVariables: EmailGlobalVariable[]
   creatingVariable: boolean
@@ -122,11 +131,17 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainConnectedAt, setDomainConnectedAt] = useState<string | null>(null)
   const [domainOpenTracking, setDomainOpenTracking] = useState(false)
   const [domainClickTracking, setDomainClickTracking] = useState(false)
+  const [domainTrackingSubdomain, setDomainTrackingSubdomain] = useState<string | null>(null)
+  const domainDispatchWarnings = useMemo(
+    () => getResendDomainDispatchWarnings(domainStatus),
+    [domainStatus]
+  )
   const [domainEvents, setDomainEvents] = useState<DomainEvent[]>([])
   const [connectingDomain, setConnectingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
   const [loadingRecords, setLoadingRecords] = useState(false)
   const [disconnectingDomain, setDisconnectingDomain] = useState(false)
+  const [configuringDomainTracking, setConfiguringDomainTracking] = useState(false)
 
   const fetchingRef = useRef(false)
   const lastSettingsKeyRef = useRef("")
@@ -369,6 +384,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainConnectedAt(result.connectedAt ?? new Date().toISOString())
       setDomainOpenTracking(result.openTracking ?? true)
       setDomainClickTracking(result.clickTracking ?? true)
+      setDomainTrackingSubdomain(result.trackingSubdomain ?? "links")
       setDomainRecords(result.records)
       setDomainEvents(result.events ?? [])
       setDomainInput("")
@@ -392,6 +408,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainConnectedAt(null)
       setDomainOpenTracking(false)
       setDomainClickTracking(false)
+      setDomainTrackingSubdomain(null)
       setDomainRecords([])
       setDomainEvents([])
       toast.success("Domínio removido")
@@ -413,6 +430,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainConnectedAt(result.connectedAt ?? domainConnectedAt)
       setDomainOpenTracking(result.openTracking ?? domainOpenTracking)
       setDomainClickTracking(result.clickTracking ?? domainClickTracking)
+      setDomainTrackingSubdomain(result.trackingSubdomain ?? domainTrackingSubdomain)
       if (result.events) setDomainEvents(result.events)
     } catch (err) {
       console.error("[useEmailSettings] handleLoadDomainRecords error", err)
@@ -435,6 +453,33 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setVerifyingDomain(false)
     }
   }, [handleLoadDomainRecords])
+
+  const handleConfigureDomainTracking = useCallback(
+    async (data: ConfigureDomainTrackingData) => {
+      if (configuringDomainTracking) return false
+      setConfiguringDomainTracking(true)
+      try {
+        const result = await service.configureDomainTracking(data)
+        setDomainRecords(result.records)
+        setDomainStatus(result.status as ResendDomainStatus)
+        setDomainRegion(result.region ?? domainRegion)
+        setDomainOpenTracking(result.openTracking ?? data.openTracking)
+        setDomainClickTracking(result.clickTracking ?? data.clickTracking)
+        setDomainTrackingSubdomain(result.trackingSubdomain ?? data.trackingSubdomain)
+        toast.success(
+          "Métricas configuradas. Adicione o registro DNS de Tracking e re-verifique."
+        )
+        return true
+      } catch (err) {
+        console.error("[useEmailSettings] handleConfigureDomainTracking error", err)
+        toast.error(err instanceof Error ? err.message : "Erro ao configurar métricas de tracking")
+        return false
+      } finally {
+        setConfiguringDomainTracking(false)
+      }
+    },
+    [configuringDomainTracking, domainRegion]
+  )
 
   return {
     settings,
@@ -477,15 +522,19 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     domainConnectedAt,
     domainOpenTracking,
     domainClickTracking,
+    domainTrackingSubdomain,
+    domainDispatchWarnings,
     domainEvents,
     connectingDomain,
     verifyingDomain,
     loadingRecords,
     disconnectingDomain,
+    configuringDomainTracking,
     handleConnectDomain,
     handleDisconnectDomain,
     handleVerifyDomain,
     handleLoadDomainRecords,
+    handleConfigureDomainTracking,
     globalVariables,
     creatingVariable,
     updatingVariableId,

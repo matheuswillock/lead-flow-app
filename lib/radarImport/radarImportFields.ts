@@ -6,12 +6,15 @@ export type RadarImportNativeFieldKey =
   | "phone"
   | "email"
   | "document"
+  | "gender"
+  | "socios"
 
 export type RadarImportCatalogFieldKey = (typeof RADAR_FIELD_CATALOG)[number]["key"]
 
 export type RadarImportFieldKey = RadarImportNativeFieldKey | RadarImportCatalogFieldKey | `new:${string}`
 
 export const RADAR_IMPORT_MAX_ROWS = 2000
+export const RADAR_IMPORT_SOCIOS_PROFILE_DATA_KEY = "base.socios"
 
 const CATALOG_IMPORT_FIELDS: ImportFieldDef[] = RADAR_FIELD_CATALOG.filter(
   (entry) => !entry.key.startsWith("profile.")
@@ -53,6 +56,20 @@ export const RADAR_IMPORT_NATIVE_FIELDS: ImportFieldDef[] = [
     description: "CPF ou CNPJ para reconciliação de identidade.",
     required: false,
     aliases: ["cpf", "cnpj", "documento", "doc"],
+  },
+  {
+    key: "gender",
+    label: "Gênero",
+    description: "Gênero da pessoa de contato. Quando informado, prevalece sobre inferência por sócios.",
+    required: false,
+    aliases: ["genero", "gênero", "sexo", "gender"],
+  },
+  {
+    key: "socios",
+    label: "Sócios",
+    description: "Nome dos sócios usado para inferência de gênero quando não houver coluna de gênero.",
+    required: false,
+    aliases: ["socios", "sócios", "socio", "sócio"],
   },
 ]
 

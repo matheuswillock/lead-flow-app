@@ -20,6 +20,10 @@ import {
 } from "@/lib/email/template-ranking"
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
+import {
+  getResendDomainDispatchWarnings,
+  isResendDomainTrackingCapable,
+} from "@/lib/email/campaign-dispatch-guards"
 
 type PeriodSlice = {
   period: { from: Date; to: Date }
@@ -66,6 +70,16 @@ export class EmailAnalyticsUseCase {
     // Por campanha sem form vinculado: formCompletions = 0 (formId explícito inexistente).
     const skipFormCount = options.campaignId !== undefined && formId === undefined && options.formId !== null
 
+    const formCountOptions = skipFormCount
+      ? null
+      : {
+          teamId: options.teamId,
+          from: options.from,
+          to: options.to,
+          formId: options.campaignId ? formId : undefined,
+          campaignId: options.campaignId,
+        }
+
     const [
       total,
       delivered,
@@ -78,6 +92,8 @@ export class EmailAnalyticsUseCase {
       unsubscribed,
       suppressed,
       formCompletions,
+      formViewed,
+      formStarted,
     ] = await Promise.all([
       this.repository.countLogs(logWhere),
       this.repository.countLogs(logWhere, "delivered"),
@@ -89,14 +105,15 @@ export class EmailAnalyticsUseCase {
       this.repository.countLogs(logWhere, "delivery_delayed"),
       this.repository.countLogs(logWhere, "unsubscribed"),
       this.repository.countLogs(logWhere, "suppressed"),
-      skipFormCount
-        ? Promise.resolve(0)
-        : this.repository.countFormCompletions({
-            teamId: options.teamId,
-            from: options.from,
-            to: options.to,
-            formId: options.campaignId ? formId : undefined,
-          }),
+      formCountOptions
+        ? this.repository.countFormCompletions(formCountOptions)
+        : Promise.resolve(0),
+      formCountOptions
+        ? this.repository.countFormEvents({ ...formCountOptions, eventType: "form_viewed" })
+        : Promise.resolve(0),
+      formCountOptions
+        ? this.repository.countFormEvents({ ...formCountOptions, eventType: "form_started" })
+        : Promise.resolve(0),
     ])
 
     const totals: AnalyticsTotalsForDelta = {
@@ -111,6 +128,8 @@ export class EmailAnalyticsUseCase {
       unsubscribed,
       suppressed,
       formCompletions,
+      formViewed,
+      formStarted,
     }
 
     return {
@@ -137,6 +156,14 @@ export class EmailAnalyticsUseCase {
     }
   }
 
+  private async resolveTrackingMeta(teamId: string) {
+    const resendDomainStatus = await this.repository.findResendDomainStatus(teamId)
+    return {
+      resendDomainTrackingCapable: isResendDomainTrackingCapable(resendDomainStatus),
+      trackingWarnings: getResendDomainDispatchWarnings(resendDomainStatus),
+    }
+  }
+
   async getAnalytics(options: {
     teamId: string
     from: Date
@@ -150,7 +177,7 @@ export class EmailAnalyticsUseCase {
 
       const prev = previousPeriodRange(options.from, options.to)
 
-      const [current, previous] = await Promise.all([
+      const [current, previous, trackingMeta] = await Promise.all([
         this.loadPeriodTotals({
           teamId: options.teamId,
           from: options.from,
@@ -165,9 +192,10 @@ export class EmailAnalyticsUseCase {
           campaignId: options.campaignId,
           formId: options.campaignId ? formId : undefined,
         }),
+        this.resolveTrackingMeta(options.teamId),
       ])
 
-      const base = this.withDeltas(current, previous)
+      const base = { ...this.withDeltas(current, previous), ...trackingMeta }
 
       if (!options.campaignId) {
         return new Output(true, [], [], base)
@@ -210,7 +238,7 @@ export class EmailAnalyticsUseCase {
       const tomorrowStart = startOfDayInTz(addDaysInTz(todayStart, 1, options.timezone), options.timezone)
       const yesterdayStart = startOfDayInTz(addDaysInTz(todayStart, -1, options.timezone), options.timezone)
 
-      const [current, previous, campaignRows] = await Promise.all([
+      const [current, previous, campaignRows, trackingMeta] = await Promise.all([
         this.loadPeriodTotals({
           teamId: options.teamId,
           from: todayStart,
@@ -226,12 +254,14 @@ export class EmailAnalyticsUseCase {
           from: todayStart,
           to: tomorrowStart,
         }),
+        this.resolveTrackingMeta(options.teamId),
       ])
 
       const topCampaigns = rankTopCampaigns(aggregateCampaignTotals(campaignRows), 3)
 
       return new Output(true, [], [], {
         ...this.withDeltas(current, previous),
+        ...trackingMeta,
         topCampaigns,
       })
     } catch (error) {
@@ -264,6 +294,7 @@ export class EmailAnalyticsUseCase {
       }
 
       const prev = previousPeriodRange(options.from, options.to)
+      const trackingMeta = await this.resolveTrackingMeta(options.teamId)
 
       const campaigns = await Promise.all(
         uniqueIds.map(async (campaignId) => {
@@ -296,6 +327,7 @@ export class EmailAnalyticsUseCase {
       return new Output(true, [], [], {
         period: { from: options.from, to: options.to },
         previousPeriod: prev,
+        ...trackingMeta,
         campaigns,
       })
     } catch (error) {
