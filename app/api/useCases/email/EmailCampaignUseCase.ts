@@ -86,8 +86,10 @@ import {
   selectFailedRecipientEmailsForRetry,
 } from "@/lib/email/campaign-failed-recipients"
 import {
+  aggregateCumulativeDispatchLogCounters,
   buildCampaignDispatchProgress,
   buildCampaignDispatchProgressSummary,
+  buildCumulativeCampaignDispatchProgress,
   type CampaignDispatchProgress,
   type CampaignDispatchProgressStatus,
   type DispatchLogCounters,
@@ -417,6 +419,63 @@ export class EmailCampaignUseCase {
       }
       entry.latestDispatch = progressByDispatchId.get(dispatch.id) ?? null
       result.set(dispatch.campaignId, entry)
+    }
+
+    return result
+  }
+
+  /**
+   * Contadores cumulativos por campanha-folha (todos os dispatches), dedupe por
+   * recipientEmail. Usa @@index([teamId, campaignId]) em EmailLog.
+   */
+  private async aggregateCumulativeLogCountersByCampaignId(
+    teamId: string,
+    campaignIds: string[]
+  ): Promise<Map<string, DispatchLogCounters>> {
+    const result = new Map<string, DispatchLogCounters>()
+    for (const campaignId of campaignIds) {
+      result.set(campaignId, { acceptedCount: 0, failedCount: 0, queuedCount: 0 })
+    }
+    if (campaignIds.length === 0) return result
+
+    const logs = await prisma.emailLog.findMany({
+      where: {
+        teamId,
+        campaignId: { in: campaignIds },
+      },
+      select: {
+        campaignId: true,
+        recipientEmail: true,
+        status: true,
+        sentAt: true,
+        resendEmailId: true,
+      },
+    })
+
+    const logsByCampaignId = new Map<
+      string,
+      Array<{
+        recipientEmail: string
+        status: string
+        sentAt: Date | null
+        resendEmailId: string | null
+      }>
+    >()
+
+    for (const log of logs) {
+      if (!log.campaignId) continue
+      const bucket = logsByCampaignId.get(log.campaignId) ?? []
+      bucket.push({
+        recipientEmail: log.recipientEmail,
+        status: log.status,
+        sentAt: log.sentAt,
+        resendEmailId: log.resendEmailId,
+      })
+      logsByCampaignId.set(log.campaignId, bucket)
+    }
+
+    for (const [campaignId, campaignLogs] of logsByCampaignId) {
+      result.set(campaignId, aggregateCumulativeDispatchLogCounters(campaignLogs))
     }
 
     return result
@@ -883,7 +942,7 @@ export class EmailCampaignUseCase {
         parentIdsWithSubs.length > 0
           ? await prisma.emailCampaign.findMany({
               where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
-              select: { id: true, status: true, parentCampaignId: true },
+              select: { id: true, status: true, parentCampaignId: true, totalRecipients: true },
             })
           : []
 
@@ -900,6 +959,12 @@ export class EmailCampaignUseCase {
       const progressByCampaignId = await this.loadDispatchProgressForCampaignIds(
         ctx.teamId,
         leafCampaignMeta
+      )
+
+      const childIdsForCumulative = childCampaignsForProgress.map((child) => child.id)
+      const cumulativeByCampaignId = await this.aggregateCumulativeLogCountersByCampaignId(
+        ctx.teamId,
+        childIdsForCumulative
       )
 
       const childrenByParentId = new Map<string, typeof childCampaignsForProgress>()
@@ -951,14 +1016,20 @@ export class EmailCampaignUseCase {
           const leafProgress = progressByCampaignId.get(campaign.id)
           const childProgresses =
             subCampaignCount > 0
-              ? (childrenByParentId.get(campaign.id) ?? [])
-                  .map((child) => progressByCampaignId.get(child.id))
-                  .flatMap((entry) => {
-                    if (!entry) return []
-                    return [entry.activeDispatch, entry.latestDispatch].filter(
-                      (progress): progress is CampaignDispatchProgress => Boolean(progress)
-                    )
+              ? (childrenByParentId.get(campaign.id) ?? []).map((child) => {
+                  const entry = progressByCampaignId.get(child.id)
+                  return buildCumulativeCampaignDispatchProgress({
+                    campaignId: child.id,
+                    totalRecipients: child.totalRecipients ?? 0,
+                    activeDispatch: entry?.activeDispatch ?? null,
+                    latestDispatch: entry?.latestDispatch ?? null,
+                    counters: cumulativeByCampaignId.get(child.id) ?? {
+                      acceptedCount: 0,
+                      failedCount: 0,
+                      queuedCount: 0,
+                    },
                   })
+                })
               : []
 
           const dispatchProgressSummary =
@@ -1109,14 +1180,28 @@ export class EmailCampaignUseCase {
         progressCampaignMeta
       )
 
+      const cumulativeByCampaignId = isParent
+        ? await this.aggregateCumulativeLogCountersByCampaignId(
+            ctx.teamId,
+            campaign.subCampaigns.map((sub) => sub.id)
+          )
+        : new Map<string, DispatchLogCounters>()
+
       const leafProgress = progressByCampaignId.get(campaign.id)
       const childProgressList = isParent
-        ? campaign.subCampaigns.flatMap((sub) => {
+        ? campaign.subCampaigns.map((sub) => {
             const entry = progressByCampaignId.get(sub.id)
-            if (!entry) return []
-            return [entry.activeDispatch, entry.latestDispatch].filter(
-              (progress): progress is CampaignDispatchProgress => Boolean(progress)
-            )
+            return buildCumulativeCampaignDispatchProgress({
+              campaignId: sub.id,
+              totalRecipients: sub.totalRecipients ?? 0,
+              activeDispatch: entry?.activeDispatch ?? null,
+              latestDispatch: entry?.latestDispatch ?? null,
+              counters: cumulativeByCampaignId.get(sub.id) ?? {
+                acceptedCount: 0,
+                failedCount: 0,
+                queuedCount: 0,
+              },
+            })
           })
         : []
 

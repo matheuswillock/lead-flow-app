@@ -6,6 +6,7 @@ import { useUser } from "@/app/context/UserContext"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 import { resolveCampaignDispatchTerminal } from "@/lib/email/campaign-dispatch-terminal"
+import { takeLeavingSendingSnapshot } from "./campaign-dispatch-leaving-snapshot"
 import type {
   CampaignDispatchCompletionKind,
   CampaignDispatchProgress,
@@ -377,19 +378,12 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
             // Leave sending: never invent completionKind from realtime row totals
             // (totalSent can lag acceptedCount). Resolve via GET + resolveCampaignDispatchTerminal
             // — same safe path as polling disappearance.
-            let leavingSnapshot: SendingCampaign | null = null
-            setSendingCampaigns((prev) => {
-              const leaving = prev.find((c) => c.id === id) ?? previousSendingRef.current.get(id)
-              if (leaving) {
-                leavingSnapshot = {
-                  ...leaving,
-                  name: name || leaving.name,
-                  errorMessage: row.errorMessage ?? leaving.errorMessage ?? null,
-                }
-              }
-              previousSendingRef.current.delete(id)
-              return prev.filter((c) => c.id !== id)
+            // Snapshot do ref síncrono ANTES do setState (updater pode não rodar neste tick).
+            const leavingSnapshot = takeLeavingSendingSnapshot(previousSendingRef.current, id, {
+              name,
+              errorMessage: row.errorMessage ?? null,
             })
+            setSendingCampaigns((prev) => prev.filter((c) => c.id !== id))
 
             if (leavingSnapshot) {
               void resolveTerminalFromApi(leavingSnapshot).then((resolved) => {

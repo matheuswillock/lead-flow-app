@@ -1582,6 +1582,29 @@ describe("EmailCampaignUseCase dispatch progress", () => {
         resendEmailId: "re_2",
       },
     ])
+    emailLogFindManyMock.mockImplementation(async () => [
+      {
+        campaignId: "sub-sending",
+        recipientEmail: "a@test.com",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: "re_1",
+      },
+      {
+        campaignId: "sub-sending",
+        recipientEmail: "b@test.com",
+        status: "queued",
+        sentAt: null,
+        resendEmailId: null,
+      },
+      {
+        campaignId: "sub-sent",
+        recipientEmail: "c@test.com",
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: "re_2",
+      },
+    ])
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.getById("parent-1", teamCtx)
@@ -1600,6 +1623,7 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     expect(result.dispatchProgressSummary).toMatchObject({
       activeDispatchCount: 1,
       completionKind: "pending",
+      acceptedCount: 2,
     })
   })
 
@@ -1763,8 +1787,8 @@ describe("EmailCampaignUseCase dispatch progress", () => {
       }
       // children for progress
       return [
-        { id: "sub-1", status: "sending", parentCampaignId: "parent-1" },
-        { id: "sub-2", status: "sent", parentCampaignId: "parent-1" },
+        { id: "sub-1", status: "sending", parentCampaignId: "parent-1", totalRecipients: 10 },
+        { id: "sub-2", status: "sent", parentCampaignId: "parent-1", totalRecipients: 10 },
       ]
     })
     emailCampaignCountMock.mockImplementation(async () => 1)
@@ -1819,6 +1843,22 @@ describe("EmailCampaignUseCase dispatch progress", () => {
         resendEmailId: "re_2",
       },
     ])
+    emailLogFindManyMock.mockImplementation(async () => [
+      {
+        campaignId: "sub-1",
+        recipientEmail: "a@test.com",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: "re_1",
+      },
+      {
+        campaignId: "sub-2",
+        recipientEmail: "b@test.com",
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: "re_2",
+      },
+    ])
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
@@ -1828,6 +1868,120 @@ describe("EmailCampaignUseCase dispatch progress", () => {
       activeDispatchCount: 1,
       completionKind: "pending",
       acceptedCount: 2,
+    })
+  })
+
+  it("list summary cumula aceite entre dispatch inicial e retryFailedOnly do mesmo filho", async () => {
+    let findManyCalls = 0
+    emailCampaignFindManyMock.mockImplementation(async () => {
+      findManyCalls += 1
+      if (findManyCalls === 1) {
+        return [
+          {
+            id: "parent-retry",
+            name: "Pai retry",
+            status: "partially_sent",
+            scheduledAt: null,
+            sentAt: null,
+            totalRecipients: 100,
+            totalSent: 100,
+            totalDelivered: 0,
+            totalOpened: 0,
+            totalClicked: 0,
+            totalBounced: 0,
+            dispatchCount: 2,
+            createdAt: new Date(),
+            createdBy: "profile-1",
+            managedByBackofficeUserId: null,
+            templateId: "tpl-1",
+            contactListId: null,
+            radarSegmentSlug: null,
+            audienceContactIds: [],
+            errorMessage: null,
+            _count: { subCampaigns: 1 },
+          },
+        ]
+      }
+      return [
+        {
+          id: "sub-retry",
+          status: "sent",
+          parentCampaignId: "parent-retry",
+          totalRecipients: 100,
+        },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignGroupByMock.mockImplementation(async () => [
+      {
+        parentCampaignId: "parent-retry",
+        _sum: {
+          totalSent: 100,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 2,
+        },
+      },
+    ])
+    // Só o dispatch #2 (retry) aparece como latest terminal — o bug antigo reportava 20/20.
+    emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      return [
+        {
+          id: "dispatch-retry-2",
+          campaignId: "sub-retry",
+          dispatchNumber: 2,
+          status: "completed",
+          totalRecipients: 20,
+          retryFailedOnly: true,
+          errorMessage: null,
+          updatedAt: new Date(),
+        },
+      ]
+    })
+    mockLogCounterAggregation(
+      Array.from({ length: 20 }, (_, i) => ({
+        dispatchId: "dispatch-retry-2",
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: `re_retry_${i}`,
+      }))
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      ...Array.from({ length: 80 }, (_, i) => ({
+        campaignId: "sub-retry",
+        recipientEmail: `ok${i}@test.com`,
+        status: "delivered",
+        sentAt: new Date(),
+        resendEmailId: `re_ok_${i}`,
+      })),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        campaignId: "sub-retry",
+        recipientEmail: `fail${i}@test.com`,
+        status: "failed",
+        sentAt: null as Date | null,
+        resendEmailId: null as string | null,
+      })),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        campaignId: "sub-retry",
+        recipientEmail: `fail${i}@test.com`,
+        status: "sent",
+        sentAt: new Date(),
+        resendEmailId: `re_retry_${i}`,
+      })),
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.dispatchProgressSummary).toMatchObject({
+      acceptedCount: 100,
+      totalRecipients: 100,
+      completionKind: "full",
+      activeDispatchCount: 0,
     })
   })
 

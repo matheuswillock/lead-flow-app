@@ -79,6 +79,107 @@ export function aggregateDispatchLogCounters(
   return { acceptedCount, failedCount, queuedCount }
 }
 
+type CumulativeLogTier = "queued" | "failed" | "accepted"
+
+const CUMULATIVE_TIER_RANK: Record<CumulativeLogTier, number> = {
+  queued: 0,
+  failed: 1,
+  accepted: 2,
+}
+
+/**
+ * Agrega logs de **todos** os dispatches de uma campanha, deduplicando por
+ * `recipientEmail` normalizado. Precedência: accepted > failed > queued —
+ * aceite é monotônico; retry bem-sucedido sobrepõe falha anterior do mesmo endereço.
+ */
+export function aggregateCumulativeDispatchLogCounters(
+  logs: Array<{
+    recipientEmail: string
+    status: string
+    sentAt?: Date | string | null
+    resendEmailId?: string | null
+  }>
+): DispatchLogCounters {
+  const byEmail = new Map<string, CumulativeLogTier>()
+
+  for (const log of logs) {
+    const email = log.recipientEmail.trim().toLowerCase()
+    if (!email) continue
+
+    let tier: CumulativeLogTier | null = null
+    if (isDispatchLogAccepted(log)) {
+      tier = "accepted"
+    } else if (log.status === "failed") {
+      tier = "failed"
+    } else if (log.status === "queued") {
+      tier = "queued"
+    }
+    if (!tier) continue
+
+    const previous = byEmail.get(email)
+    if (!previous || CUMULATIVE_TIER_RANK[tier] > CUMULATIVE_TIER_RANK[previous]) {
+      byEmail.set(email, tier)
+    }
+  }
+
+  let acceptedCount = 0
+  let failedCount = 0
+  let queuedCount = 0
+  for (const tier of byEmail.values()) {
+    if (tier === "accepted") acceptedCount += 1
+    else if (tier === "failed") failedCount += 1
+    else queuedCount += 1
+  }
+
+  return { acceptedCount, failedCount, queuedCount }
+}
+
+/**
+ * Monta uma entrada de progresso por campanha-folha a partir dos contadores
+ * cumulativos + dispatch ativo/último (só para status/metadados).
+ */
+export function buildCumulativeCampaignDispatchProgress(params: {
+  campaignId: string
+  totalRecipients: number
+  activeDispatch: CampaignDispatchProgress | null
+  latestDispatch: CampaignDispatchProgress | null
+  counters: DispatchLogCounters
+}): CampaignDispatchProgress {
+  const { campaignId, totalRecipients, activeDispatch, latestDispatch, counters } = params
+
+  if (activeDispatch) {
+    return {
+      ...activeDispatch,
+      totalRecipients: Math.max(totalRecipients, activeDispatch.totalRecipients),
+      acceptedCount: counters.acceptedCount,
+      failedCount: counters.failedCount,
+      queuedCount: counters.queuedCount,
+      completionKind: "pending",
+    }
+  }
+
+  const base = latestDispatch
+  const status: CampaignDispatchProgressStatus = base?.status ?? "completed"
+  return {
+    dispatchId: base?.dispatchId ?? `cumulative:${campaignId}`,
+    dispatchNumber: base?.dispatchNumber ?? 0,
+    status,
+    completionKind: deriveDispatchCompletionKind({
+      status,
+      totalRecipients,
+      acceptedCount: counters.acceptedCount,
+      failedCount: counters.failedCount,
+    }),
+    totalRecipients,
+    acceptedCount: counters.acceptedCount,
+    failedCount: counters.failedCount,
+    queuedCount: counters.queuedCount,
+    retryFailedOnly: base?.retryFailedOnly ?? false,
+    errorMessage: base?.errorMessage ?? null,
+    updatedAt: base?.updatedAt ?? new Date(0).toISOString(),
+  }
+}
+
 export function deriveDispatchCompletionKind(params: {
   status: CampaignDispatchProgressStatus
   totalRecipients: number

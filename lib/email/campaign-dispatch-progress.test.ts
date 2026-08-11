@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import {
+  aggregateCumulativeDispatchLogCounters,
   aggregateDispatchLogCounters,
   buildCampaignDispatchProgress,
+  buildCumulativeCampaignDispatchProgress,
   deriveDispatchCompletionKind,
   formatCampaignDispatchProgressLabel,
 } from "./campaign-dispatch-progress"
@@ -102,5 +104,83 @@ describe("campaign-dispatch-progress helpers", () => {
     )
     expect(progress.status).toBe("completed")
     expect(progress.completionKind).toBe("full")
+  })
+})
+
+describe("aggregateCumulativeDispatchLogCounters", () => {
+  it("dedupe por e-mail: retry accepted sobrepõe failed anterior → 100/100", () => {
+    const firstWave = Array.from({ length: 80 }, (_, i) => ({
+      recipientEmail: `ok${i}@test.com`,
+      status: "delivered",
+      sentAt: new Date(),
+      resendEmailId: `re_ok_${i}`,
+    }))
+    const firstFailures = Array.from({ length: 20 }, (_, i) => ({
+      recipientEmail: `fail${i}@test.com`,
+      status: "failed",
+      sentAt: null as Date | null,
+      resendEmailId: null as string | null,
+    }))
+    const retryAccepted = Array.from({ length: 20 }, (_, i) => ({
+      recipientEmail: `fail${i}@test.com`,
+      status: "sent",
+      sentAt: new Date(),
+      resendEmailId: `re_retry_${i}`,
+    }))
+
+    const counters = aggregateCumulativeDispatchLogCounters([
+      ...firstWave,
+      ...firstFailures,
+      ...retryAccepted,
+    ])
+
+    expect(counters).toEqual({ acceptedCount: 100, failedCount: 0, queuedCount: 0 })
+  })
+
+  it("precedência accepted > failed > queued no mesmo endereço", () => {
+    expect(
+      aggregateCumulativeDispatchLogCounters([
+        { recipientEmail: "A@Test.com", status: "queued", sentAt: null, resendEmailId: null },
+        { recipientEmail: "a@test.com", status: "failed", sentAt: null, resendEmailId: null },
+        {
+          recipientEmail: "a@test.com",
+          status: "sent",
+          sentAt: new Date(),
+          resendEmailId: "re_1",
+        },
+      ])
+    ).toEqual({ acceptedCount: 1, failedCount: 0, queuedCount: 0 })
+  })
+})
+
+describe("buildCumulativeCampaignDispatchProgress", () => {
+  it("com activeDispatch mantém sending e aplica contadores cumulativos", () => {
+    const progress = buildCumulativeCampaignDispatchProgress({
+      campaignId: "sub-1",
+      totalRecipients: 100,
+      activeDispatch: {
+        dispatchId: "d2",
+        dispatchNumber: 2,
+        status: "sending",
+        completionKind: "pending",
+        totalRecipients: 20,
+        acceptedCount: 5,
+        failedCount: 0,
+        queuedCount: 15,
+        retryFailedOnly: true,
+        errorMessage: null,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      },
+      latestDispatch: null,
+      counters: { acceptedCount: 85, failedCount: 0, queuedCount: 15 },
+    })
+    expect(progress).toMatchObject({
+      status: "sending",
+      completionKind: "pending",
+      acceptedCount: 85,
+      queuedCount: 15,
+      totalRecipients: 100,
+      retryFailedOnly: true,
+    })
   })
 })
