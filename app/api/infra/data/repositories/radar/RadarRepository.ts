@@ -938,21 +938,27 @@ export class RadarRepository {
     }
 
     try {
-      const created = await withPrismaRetry(
-        () =>
-          this.db.radarEvent.create({
-            data: {
-              profileId: input.profileId,
-              teamId: input.teamId,
-              eventType: input.eventType,
-              sourceType: input.sourceType,
-              sourceId: input.sourceId ?? null,
-              occurredAt: input.occurredAt,
-              metadata: input.metadata,
-            },
-          }),
-        { label: "appendEventIfNew", retries: 2 }
-      )
+      // Retry only when sourceId is present: the unique constraint cannot
+      // dedupe NULL sourceIds, so a transient failure after commit would
+      // double-insert on retry and inflate engagement scores.
+      const createEvent = () =>
+        this.db.radarEvent.create({
+          data: {
+            profileId: input.profileId,
+            teamId: input.teamId,
+            eventType: input.eventType,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId ?? null,
+            occurredAt: input.occurredAt,
+            metadata: input.metadata,
+          },
+        })
+      const created = input.sourceId
+        ? await withPrismaRetry(createEvent, {
+            label: "appendEventIfNew",
+            retries: 2,
+          })
+        : await createEvent()
       void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
         console.error("[RadarRepository][updateEngagementScore]", error)
       })

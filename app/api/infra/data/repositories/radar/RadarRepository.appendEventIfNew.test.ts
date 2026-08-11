@@ -20,6 +20,14 @@ const APPEND_INPUT: AppendInput = {
   occurredAt: new Date("2026-08-10T12:00:00.000Z"),
 }
 
+const APPEND_INPUT_WITHOUT_SOURCE_ID: AppendInput = {
+  profileId: "profile-1",
+  teamId: "team-1",
+  eventType: "email.opened",
+  sourceType: "email_log",
+  occurredAt: new Date("2026-08-10T12:00:00.000Z"),
+}
+
 const createdEvent = {
   id: "event-1",
   profileId: APPEND_INPUT.profileId,
@@ -56,11 +64,51 @@ const prismaMock = {
   },
 }
 
-const { withPrismaRetry } = await import("@/app/api/infra/data/prisma")
+const transientPrismaErrors = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
+
+/** Test-local retry bound to prismaMock — never touches the real DB client. */
+async function withPrismaRetryMock<T>(
+  operation: () => Promise<T>,
+  options?: { retries?: number; label?: string; delayMs?: number }
+): Promise<T> {
+  const retries = options?.retries ?? 1
+  const delayMs = options?.delayMs ?? 0
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+      const code =
+        error instanceof Prisma.PrismaClientKnownRequestError
+          ? error.code
+          : (error as { code?: string } | null)?.code
+
+      const isTransient = !!code && transientPrismaErrors.has(code)
+      const hasRetriesLeft = attempt < retries
+
+      if (!isTransient || !hasRetriesLeft) {
+        throw error
+      }
+
+      const label = options?.label ? ` ${options.label}` : ""
+      console.warn(
+        `[prisma] Transient error${label} (${code}). Retrying (${attempt + 1}/${retries})...`
+      )
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+      await prismaMock.$connect()
+    }
+  }
+
+  throw lastError
+}
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
-  withPrismaRetry,
+  withPrismaRetry: withPrismaRetryMock,
 }))
 
 const { RadarRepository } = await import(
@@ -125,6 +173,7 @@ describe("RadarRepository.appendEventIfNew (E5.1)", () => {
 
     expect(result).toEqual(createdEvent)
     expect(radarEventCreate).toHaveBeenCalledTimes(2)
+    expect(prismaMock.$connect).toHaveBeenCalled()
     expect(consoleErrorSpy).not.toHaveBeenCalled()
   })
 
@@ -138,6 +187,21 @@ describe("RadarRepository.appendEventIfNew (E5.1)", () => {
 
     expect(result).toBeNull()
     expect(radarEventCreate).toHaveBeenCalledTimes(3)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+    expect(consoleErrorSpy.mock.calls[0]?.[0]).toBe("[RadarRepository][appendEventIfNew]")
+  })
+
+  it("não faz retry em erro transitório quando sourceId está ausente", async () => {
+    radarEventCreate.mockImplementation(async () => {
+      throw transientError("P2024")
+    })
+
+    const repo = new RadarRepository()
+    const result = await repo.appendEventIfNew(APPEND_INPUT_WITHOUT_SOURCE_ID)
+
+    expect(result).toBeNull()
+    expect(radarEventCreate).toHaveBeenCalledTimes(1)
+    expect(prismaMock.$connect).not.toHaveBeenCalled()
     expect(consoleErrorSpy).toHaveBeenCalled()
     expect(consoleErrorSpy.mock.calls[0]?.[0]).toBe("[RadarRepository][appendEventIfNew]")
   })
