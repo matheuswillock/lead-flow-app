@@ -28,6 +28,7 @@ const updateManyMock = mock(async (_args?: {
   count: 0,
 }));
 const countMock = mock(async (_args?: { where?: { emailImportJobId?: string } }) => 0);
+const queryRawMock = mock(async (): Promise<unknown[]> => []);
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -38,6 +39,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       update: mock(async () => ({})),
       count: countMock,
     },
+    $queryRaw: queryRawMock,
   },
 }));
 
@@ -51,8 +53,10 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     findManyMock.mockClear();
     updateManyMock.mockClear();
     countMock.mockClear();
+    queryRawMock.mockClear();
     findManyMock.mockImplementation(async () => []);
     updateManyMock.mockImplementation(async () => ({ count: 0 }));
+    queryRawMock.mockImplementation(async () => []);
   });
 
   it("upsertPendingForContacts reativa linha sent/failed para pending com attemptCount 0 e incrementa generation", async () => {
@@ -90,11 +94,13 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     expect(args.update.generation).toEqual({ increment: 1 });
   });
 
-  it("claimDue só inclui linhas cujo updateMany pending→processing retorna count 1 (claim concorrente)", async () => {
-    findManyMock.mockImplementation(async (args?: { where?: { status?: string } }) => {
-      if (args?.where?.status === "processing") {
-        return [];
-      }
+  it("claimDue usa SKIP LOCKED e não duplica item entre claims concorrentes", async () => {
+    findManyMock.mockImplementation(async () => []);
+
+    let remaining = 1;
+    queryRawMock.mockImplementation(async () => {
+      if (remaining <= 0) return [];
+      remaining -= 1;
       return [
         {
           id: "outbox-1",
@@ -107,24 +113,6 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       ];
     });
 
-    const claimedIds = new Set<string>();
-    updateManyMock.mockImplementation(async (args?: {
-      where?: { id?: string; status?: string; generation?: number };
-    }) => {
-      if (
-        args?.where?.status === "pending" &&
-        args.where.id &&
-        args.where.generation === 2
-      ) {
-        if (claimedIds.has(args.where.id)) {
-          return { count: 0 };
-        }
-        claimedIds.add(args.where.id);
-        return { count: 1 };
-      }
-      return { count: 0 };
-    });
-
     const repo = new EmailContactRadarSyncOutboxRepository();
     const [claimA, claimB] = await Promise.all([repo.claimDue(10), repo.claimDue(10)]);
 
@@ -132,6 +120,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     expect(allClaimed).toHaveLength(1);
     expect(allClaimed[0]?.id).toBe("outbox-1");
     expect(allClaimed[0]?.generation).toBe(2);
+    expect(queryRawMock).toHaveBeenCalled();
   });
 
   it("corrida reimport-durante-processing: worker obsoleto não marca sent após upsert incrementar generation", async () => {
@@ -211,6 +200,8 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       return { count: 0 };
     });
 
+    queryRawMock.mockImplementation(async () => []);
+
     const repo = new EmailContactRadarSyncOutboxRepository();
     await repo.claimDue(10);
 
@@ -250,6 +241,8 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       return { count: 0 };
     });
 
+    queryRawMock.mockImplementation(async () => []);
+
     const repo = new EmailContactRadarSyncOutboxRepository();
     await repo.claimDue(10);
   });
@@ -266,5 +259,21 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     };
     expect(args.where.emailImportJobId).toBe("job-current");
     expect(args.where.status.in).toEqual(["pending", "processing"]);
+  });
+
+  it("getBacklogSnapshot agrega pending/processing e idade máxima", async () => {
+    queryRawMock.mockImplementation(async () => [
+      { status: "pending", total: 120, oldestAgeSeconds: 3600.4 },
+      { status: "processing", total: 8, oldestAgeSeconds: 90 },
+    ]);
+
+    const repo = new EmailContactRadarSyncOutboxRepository();
+    const snapshot = await repo.getBacklogSnapshot();
+
+    expect(snapshot).toEqual({
+      pending: 120,
+      processing: 8,
+      maxPendingAgeSeconds: 3600,
+    });
   });
 });
