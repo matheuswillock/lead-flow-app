@@ -219,6 +219,67 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.providerErrors.some((error) => error.emails.includes("carol.ocipriani@gmail.com|hugopoli@gmail.com"))).toBe(true)
   })
 
+  it("D13 — canonicaliza ordem do chunk antes de idempotency key e payload", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],
+      error: null,
+    })
+
+    const recipients = [
+      {
+        email: "zeta@test.com",
+        name: "Z",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "alpha@test.com",
+        name: "A",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "middle@test.com",
+        name: "M",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+
+    await service.dispatchBatch({
+      ...makeBaseParams(recipients),
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const firstPayload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ to: string }>
+    const firstKey = (batchSendMock.mock.calls[0] as unknown[][])[1]
+    expect(firstPayload.map((entry) => entry.to)).toEqual([
+      "alpha@test.com",
+      "middle@test.com",
+      "zeta@test.com",
+    ])
+
+    batchSendMock.mockClear()
+    batchSendMock.mockResolvedValueOnce({
+      data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],
+      error: null,
+    })
+
+    await service.dispatchBatch({
+      ...makeBaseParams([...recipients].reverse()),
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const secondPayload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ to: string }>
+    const secondKey = (batchSendMock.mock.calls[0] as unknown[][])[1]
+    expect(secondPayload.map((entry) => entry.to)).toEqual([
+      "alpha@test.com",
+      "middle@test.com",
+      "zeta@test.com",
+    ])
+    expect(secondKey).toEqual(firstKey)
+  })
+
   it("D11 — Resend 422 Invalid `to` (mensagem real): providerErrors com statusCode e e-mails do chunk", async () => {
     const resendMessage =
       "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format."

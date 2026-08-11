@@ -11,6 +11,7 @@ export type ContactListActiveImport = {
   currentBatch: number
   totalBatches: number
   pendingRadarSync: number
+  failedRadarSync: number
   updatedAt: string
 }
 

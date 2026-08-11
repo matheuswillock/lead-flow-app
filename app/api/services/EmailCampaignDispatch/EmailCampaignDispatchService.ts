@@ -173,8 +173,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       params.enableContentHashFallbackOnIdempotencyConflict ?? false
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex]
-      const chunkEmails = chunk.map((recipient) => recipient.email)
+      const sortedChunk = [...chunks[chunkIndex]].sort((a, b) =>
+        a.email.localeCompare(b.email, undefined, { sensitivity: "base" })
+      )
+      const chunkEmails = sortedChunk.map((recipient) => recipient.email)
       const entityIdAttempts = buildBatchIdempotencyEntityIdAttempts({
         scheme: batchIdempotencyScheme,
         enableContentHashFallbackOnIdempotencyConflict,
@@ -186,7 +188,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       // aceite do chunk não pode ser engolida como "falha de batch" (sent sem resendEmailId).
       let chunkDispatched: Array<{ email: string; resendId: string }> = []
 
-      const batchPayload = chunk.map((recipient) => {
+      const batchPayload = sortedChunk.map((recipient) => {
           const unsubscribeUrl = recipient.contactId
             ? buildCampaignUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId)
             : ""
@@ -289,11 +291,11 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                 ) {
                   continue entityIdLoop
                 }
-                result.failed += chunk.length
+                result.failed += sortedChunk.length
                 result.providerErrors.push({
                   message: errorMessage,
                   statusCode: errorStatusCode,
-                  emails: chunk.map((recipient) => recipient.email),
+                  emails: sortedChunk.map((recipient) => recipient.email),
                 })
                 chunkDispatched = []
                 break entityIdLoop
@@ -302,15 +304,15 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             }
 
             const items = parseResendBatchSendItems(batchResult.data)
-            if (items.length === 0 && chunk.length > 0) {
+            if (items.length === 0 && sortedChunk.length > 0) {
               console.error(
                 "[EmailCampaignDispatchService][dispatchBatch] Resposta sem IDs de e-mail para chunk",
-                { campaignId: params.campaignId, chunkIndex, chunkSize: chunk.length }
+                { campaignId: params.campaignId, chunkIndex, chunkSize: sortedChunk.length }
               )
             }
             chunkDispatched = []
             items.forEach((item, idx) => {
-              const recipient = chunk[idx]
+              const recipient = sortedChunk[idx]
               if (!recipient) return
               if (item?.id) {
                 result.dispatched.push({ email: recipient.email, resendId: item.id })
@@ -324,8 +326,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                 })
               }
             })
-            if (items.length < chunk.length) {
-              const missing = chunk.slice(items.length)
+            if (items.length < sortedChunk.length) {
+              const missing = sortedChunk.slice(items.length)
               result.failed += missing.length
               if (missing.length > 0) {
                 result.providerErrors.push({
@@ -348,10 +350,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             })
             const retryable = isRetryableResendBatchError({ message })
             if (!retryable || attempt === MAX_BATCH_SEND_ATTEMPTS - 1) {
-              result.failed += chunk.length
+              result.failed += sortedChunk.length
               result.providerErrors.push({
                 message,
-                emails: chunk.map((recipient) => recipient.email),
+                emails: sortedChunk.map((recipient) => recipient.email),
               })
               chunkDispatched = []
               break entityIdLoop

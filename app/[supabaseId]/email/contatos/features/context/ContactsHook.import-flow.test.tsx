@@ -24,6 +24,7 @@ function makeActiveImport(
     currentBatch: 2,
     totalBatches: 3,
     pendingRadarSync: 0,
+    failedRadarSync: 0,
     updatedAt: "2026-08-10T10:05:00.000Z",
     ...overrides,
   }

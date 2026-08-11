@@ -10,7 +10,20 @@ export type ContactImportStatusView = {
 export function resolveContactImportProgressLabel(
   activeImport: ContactListActiveImport
 ): string {
+  if (activeImport.failedRadarSync > 0) {
+    return `${activeImport.failedRadarSync} contato(s) com falha no Radar`
+  }
   return `${activeImport.processedRows}/${activeImport.totalRows} linhas processadas`
+}
+
+function resolveRadarSecondaryLabel(activeImport: ContactListActiveImport): string | null {
+  if (activeImport.failedRadarSync > 0) {
+    return `${activeImport.failedRadarSync} falha(s) no Radar`
+  }
+  if (activeImport.pendingRadarSync > 0) {
+    return "Radar em segundo plano"
+  }
+  return null
 }
 
 export function resolveContactImportStatusView(
@@ -56,8 +69,7 @@ export function resolveContactImportStatusView(
   if (hasFailures) {
     return {
       label: compact ? "Com falhas" : "Importado com falhas",
-      secondaryLabel:
-        activeImport.pendingRadarSync > 0 ? "Radar em segundo plano" : null,
+      secondaryLabel: resolveRadarSecondaryLabel(activeImport),
       compact,
       variant: "secondary",
     }
@@ -69,8 +81,7 @@ export function resolveContactImportStatusView(
   ) {
     return {
       label: compact ? "Importados" : "Contatos importados",
-      secondaryLabel:
-        activeImport.pendingRadarSync > 0 ? "Radar em segundo plano" : null,
+      secondaryLabel: resolveRadarSecondaryLabel(activeImport),
       compact,
       variant: "secondary",
     }
