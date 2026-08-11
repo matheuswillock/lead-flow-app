@@ -21,6 +21,7 @@ function makeActiveImport(
     currentBatch: 2,
     totalBatches: 3,
     pendingRadarSync: 0,
+    failedRadarSync: 0,
     updatedAt: "2026-08-10T10:05:00.000Z",
     ...overrides,
   }
@@ -67,9 +68,22 @@ describe("resolveContactImportStatusView", () => {
         status: "completed",
         failedBatchCount: 2,
         pendingRadarSync: 0,
+        failedRadarSync: 0,
       })
     )
     expect(view.label).toBe("Importado com falhas")
+  })
+
+  it("mostra falhas definitivas do Radar no rótulo secundário", () => {
+    const view = resolveContactImportStatusView(
+      makeActiveImport({
+        status: "completed",
+        pendingRadarSync: 0,
+        failedRadarSync: 3,
+      })
+    )
+
+    expect(view.secondaryLabel).toBe("3 falha(s) no Radar")
   })
 
   it("retorna Falha no import para status failed", () => {
@@ -98,5 +112,17 @@ describe("resolveContactImportProgressLabel", () => {
     )
     expect(label).toBe("500/1500 linhas processadas")
     expect(label).not.toContain("999")
+  })
+
+  it("prioriza falhas definitivas do Radar no rótulo de progresso", () => {
+    const label = resolveContactImportProgressLabel(
+      makeActiveImport({
+        processedRows: 1500,
+        totalRows: 1500,
+        failedRadarSync: 2,
+      })
+    )
+
+    expect(label).toBe("2 contato(s) com falha no Radar")
   })
 })

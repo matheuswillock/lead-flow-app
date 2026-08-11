@@ -62,6 +62,7 @@ type ContactListActiveImportProgress = {
   currentBatch: number
   totalBatches: number
   pendingRadarSync: number
+  failedRadarSync: number
   updatedAt: string
 }
 
@@ -86,7 +87,8 @@ export class EmailContactListUseCase {
 
   private buildImportProgress(
     job: EmailImportProgressJob,
-    pendingRadarSync: number
+    pendingRadarSync: number,
+    failedRadarSync: number
   ): ContactListActiveImportProgress {
     const safeBatchSize = Math.max(1, job.batchSize)
     const totalBatches = Math.max(1, Math.ceil(job.totalRows / safeBatchSize))
@@ -113,6 +115,7 @@ export class EmailContactListUseCase {
       currentBatch,
       totalBatches,
       pendingRadarSync,
+      failedRadarSync,
       updatedAt: job.updatedAt.toISOString(),
     }
   }
@@ -129,7 +132,7 @@ export class EmailContactListUseCase {
     const recentCutoff = new Date(Date.now() - RECENT_TERMINAL_IMPORT_WINDOW_MS)
 
     // 1) Busca só jobs candidatos das listas retornadas:
-    // ativos, terminais recentes, ou terminais com outbox Radar pendente/processando.
+    // ativos, terminais recentes, ou terminais com outbox Radar pendente/processando/falho.
     const jobs = await prisma.emailImportJob.findMany({
       where: {
         teamId: ctx.teamId,
@@ -143,7 +146,7 @@ export class EmailContactListUseCase {
           {
             status: { in: [...TERMINAL_IMPORT_STATUSES] },
             radarSyncOutboxEntries: {
-              some: { status: { in: ["pending", "processing"] } },
+              some: { status: { in: ["pending", "processing", "failed"] } },
             },
           },
         ],
@@ -173,27 +176,36 @@ export class EmailContactListUseCase {
     const candidateJobIds = jobs.map((job) => job.id)
 
     // 2) Conta Radar apenas para os jobs candidatos (sem varrer outbox do time inteiro).
-    const pendingRadarGroups = await prisma.emailContactRadarSyncOutbox.groupBy({
-      by: ["emailImportJobId"],
+    const radarSyncGroups = await prisma.emailContactRadarSyncOutbox.groupBy({
+      by: ["emailImportJobId", "status"],
       where: {
         emailImportJobId: { in: candidateJobIds },
         teamId: ctx.teamId,
-        status: { in: ["pending", "processing"] },
+        status: { in: ["pending", "processing", "failed"] },
       },
       _count: { _all: true },
     })
 
     const pendingRadarByJobId = new Map<string, number>()
-    for (const group of pendingRadarGroups) {
+    const failedRadarByJobId = new Map<string, number>()
+    for (const group of radarSyncGroups) {
       if (!group.emailImportJobId) continue
-      pendingRadarByJobId.set(group.emailImportJobId, group._count._all)
+      if (group.status === "failed") {
+        failedRadarByJobId.set(group.emailImportJobId, group._count._all)
+        continue
+      }
+      pendingRadarByJobId.set(
+        group.emailImportJobId,
+        (pendingRadarByJobId.get(group.emailImportJobId) ?? 0) + group._count._all
+      )
     }
 
     const relevantJobs = jobs.filter((job) => {
       if (this.isActiveImportStatus(job.status)) return true
       if (!this.isTerminalImportStatus(job.status)) return false
       const pendingRadarSync = pendingRadarByJobId.get(job.id) ?? 0
-      if (pendingRadarSync > 0) return true
+      const failedRadarSync = failedRadarByJobId.get(job.id) ?? 0
+      if (pendingRadarSync > 0 || failedRadarSync > 0) return true
       return job.updatedAt.getTime() >= recentCutoff.getTime()
     })
 
@@ -210,7 +222,11 @@ export class EmailContactListUseCase {
       if (progressByListId.has(job.listId)) continue
       progressByListId.set(
         job.listId,
-        this.buildImportProgress(job, pendingRadarByJobId.get(job.id) ?? 0)
+        this.buildImportProgress(
+          job,
+          pendingRadarByJobId.get(job.id) ?? 0,
+          failedRadarByJobId.get(job.id) ?? 0
+        )
       )
     }
 

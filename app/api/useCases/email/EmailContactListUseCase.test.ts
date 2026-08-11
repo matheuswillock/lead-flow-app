@@ -12,7 +12,7 @@ const emailImportJobFindManyMock = mock(
 )
 const emailContactRadarSyncOutboxGroupByMock = mock(
   async (_args?: Record<string, unknown>) =>
-    [] as Array<{ emailImportJobId: string; _count: { _all: number } }>
+    [] as Array<{ emailImportJobId: string; status: string; _count: { _all: number } }>
 )
 const emailEventFindManyMock = mock(async () => [] as Record<string, unknown>[])
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
@@ -82,6 +82,7 @@ type ListedContactList = {
     currentBatch: number
     totalBatches: number
     pendingRadarSync: number
+    failedRadarSync: number
     updatedAt: string
   } | null
 }
@@ -198,7 +199,7 @@ describe("EmailContactListUseCase.list — progresso de importação", () => {
       },
     ])
     emailContactRadarSyncOutboxGroupByMock.mockResolvedValue([
-      { emailImportJobId: "job-1", _count: { _all: 12 } },
+      { emailImportJobId: "job-1", status: "pending", _count: { _all: 12 } },
     ])
 
     const uc = new EmailContactListUseCase()
@@ -275,7 +276,7 @@ describe("EmailContactListUseCase.list — progresso de importação", () => {
       },
     ])
     emailContactRadarSyncOutboxGroupByMock.mockResolvedValue([
-      { emailImportJobId: "job-old-radar", _count: { _all: 3 } },
+      { emailImportJobId: "job-old-radar", status: "processing", _count: { _all: 3 } },
     ])
 
     const uc = new EmailContactListUseCase()
@@ -336,7 +337,7 @@ describe("EmailContactListUseCase.list — progresso de importação", () => {
       },
     ])
     emailContactRadarSyncOutboxGroupByMock.mockResolvedValue([
-      { emailImportJobId: "job-current", _count: { _all: 4 } },
+      { emailImportJobId: "job-current", status: "processing", _count: { _all: 4 } },
     ])
 
     const uc = new EmailContactListUseCase()
@@ -346,12 +347,47 @@ describe("EmailContactListUseCase.list — progresso de importação", () => {
     expect(list?.activeImport?.pendingRadarSync).toBe(4)
     expect(emailContactRadarSyncOutboxGroupByMock).toHaveBeenCalledTimes(1)
     expect(emailContactRadarSyncOutboxGroupByMock.mock.calls[0]?.[0]).toMatchObject({
-      by: ["emailImportJobId"],
+      by: ["emailImportJobId", "status"],
       where: {
         emailImportJobId: { in: ["job-current"] },
         teamId: "team-1",
-        status: { in: ["pending", "processing"] },
+        status: { in: ["pending", "processing", "failed"] },
       },
+    })
+  })
+
+  it("expõe failedRadarSync e mantém import terminal com falhas definitivas no Radar", async () => {
+    mockListScaffold()
+    emailImportJobFindManyMock.mockResolvedValue([
+      {
+        id: "job-failed-radar",
+        listId: "list-1",
+        importId: "import-failed-radar",
+        status: "completed",
+        processedRows: 1000,
+        totalRows: 1000,
+        importedCount: 1000,
+        updatedCount: 0,
+        skippedCount: 0,
+        failedBatches: null,
+        batchSize: 500,
+        createdAt: new Date("2026-08-10T06:00:00.000Z"),
+        updatedAt: new Date("2026-08-10T06:30:00.000Z"),
+      },
+    ])
+    emailContactRadarSyncOutboxGroupByMock.mockResolvedValue([
+      { emailImportJobId: "job-failed-radar", status: "failed", _count: { _all: 2 } },
+    ])
+
+    const uc = new EmailContactListUseCase()
+    const lists = getListResult(await uc.list(teamCtx))
+    const list = lists.find((entry) => entry.id === "list-1")
+
+    expect(list?.activeImport).toMatchObject({
+      importId: "import-failed-radar",
+      status: "completed",
+      pendingRadarSync: 0,
+      failedRadarSync: 2,
     })
   })
 
@@ -375,7 +411,7 @@ describe("EmailContactListUseCase.list — progresso de importação", () => {
       },
     ])
     emailContactRadarSyncOutboxGroupByMock.mockResolvedValue([
-      { emailImportJobId: "job-errors", _count: { _all: 5 } },
+      { emailImportJobId: "job-errors", status: "pending", _count: { _all: 5 } },
     ])
 
     const uc = new EmailContactListUseCase()
