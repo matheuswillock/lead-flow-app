@@ -5,7 +5,10 @@ import { toast } from "sonner";
 import { ContatosService } from "../services/ContatosService";
 import type { ContactList, Contact, ContactsState } from "./ContatosTypes";
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
-import type { ContactsRefreshRequest } from "../utils/contact-import-refresh";
+import {
+  decideContactsFetch,
+  type ContactsRefreshRequest,
+} from "../utils/contact-import-refresh";
 import {
   onContactListsPolled,
   shouldPollContactLists,
@@ -46,7 +49,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   const fetchingContactsRef = useRef(false);
   const lastContactsKeyRef = useRef("");
   const lastImportProgressKeyRef = useRef("");
-  const pendingForceRefreshRef = useRef<ContactsRefreshRequest | null>(null);
+  const pendingContactsRefreshRef = useRef<ContactsRefreshRequest | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageRef = useRef(page);
   const searchRef = useRef(search);
@@ -83,26 +86,31 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       nextSearch: string,
       options?: { force?: boolean }
     ) => {
-      const key = `${listId}|${nextPage}|${nextSearch}`;
-      if (fetchingContactsRef.current) {
-        if (options?.force) {
-          pendingForceRefreshRef.current = {
-            listId,
-            page: nextPage,
-            search: nextSearch,
-            force: true,
-          };
-        }
+      const force = Boolean(options?.force);
+      const decision = decideContactsFetch({
+        isFetchingContacts: fetchingContactsRef.current,
+        force,
+        listId,
+        page: nextPage,
+        search: nextSearch,
+        lastContactsKey: lastContactsKeyRef.current,
+        pendingRefresh: pendingContactsRefreshRef.current,
+      });
+
+      if (decision.action === "none") return;
+      if (decision.action === "queue" && decision.request) {
+        pendingContactsRefreshRef.current = decision.request;
         return;
       }
-      if (!options?.force && lastContactsKeyRef.current === key) return;
+
+      const key = `${listId}|${nextPage}|${nextSearch}`;
       fetchingContactsRef.current = true;
       setLoadingContacts(true);
       console.info("[useContatos] fetchContacts", {
         listId,
         nextPage,
         nextSearch,
-        force: Boolean(options?.force),
+        force,
       });
       try {
         const result = await service.getContacts(
@@ -122,11 +130,11 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       } finally {
         setLoadingContacts(false);
         fetchingContactsRef.current = false;
-        const pending = pendingForceRefreshRef.current;
+        const pending = pendingContactsRefreshRef.current;
         if (pending) {
-          pendingForceRefreshRef.current = null;
+          pendingContactsRefreshRef.current = null;
           void fetchContacts(pending.listId, pending.page, pending.search, {
-            force: true,
+            force: pending.force,
           });
         }
       }
@@ -159,12 +167,12 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       setSearch("");
       lastContactsKeyRef.current = "";
       lastImportProgressKeyRef.current = "";
-      pendingForceRefreshRef.current = null;
+      pendingContactsRefreshRef.current = null;
       return;
     }
     lastContactsKeyRef.current = "";
     lastImportProgressKeyRef.current = "";
-    pendingForceRefreshRef.current = null;
+    pendingContactsRefreshRef.current = null;
     void fetchContacts(selectedListId, 1, "");
     setSearch("");
     setPage(1);
@@ -178,30 +186,22 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         search: searchRef.current,
         lastProgressKey: lastImportProgressKeyRef.current,
         isFetchingContacts: fetchingContactsRef.current,
-        pendingRefresh: pendingForceRefreshRef.current,
+        pendingRefresh: pendingContactsRefreshRef.current,
       },
       lists
     );
 
     lastImportProgressKeyRef.current = result.nextState.lastProgressKey;
-    pendingForceRefreshRef.current = result.nextState.pendingRefresh;
 
-    if (result.action === "fetch" && result.request) {
-      void fetchContacts(
-        result.request.listId,
-        result.request.page,
-        result.request.search,
-        { force: true }
-      );
-      return;
-    }
-
-    // Se o plano enfileirou, ainda chama fetchContacts com force:
-    // se a chamada em andamento já terminou (corrida), o force executa agora;
-    // se ainda estiver ocupado, o próprio fetchContacts re-enfileira.
-    if (result.action === "queue" && result.nextState.pendingRefresh) {
-      const pending = result.nextState.pendingRefresh;
-      void fetchContacts(pending.listId, pending.page, pending.search, {
+    // A fila de fetch fica só em fetchContacts/decideContactsFetch, para não
+    // sobrescrever page/search enfileirados pela navegação do usuário.
+    if (
+      (result.action === "fetch" || result.action === "queue") &&
+      (result.request || result.nextState.pendingRefresh)
+    ) {
+      const request = result.request ?? result.nextState.pendingRefresh;
+      if (!request) return;
+      void fetchContacts(request.listId, request.page, request.search, {
         force: true,
       });
     }

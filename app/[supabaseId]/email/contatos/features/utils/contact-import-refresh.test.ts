@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import type { ContactList, ContactListActiveImport } from "../context/ContatosTypes"
 import {
   buildContactImportProgressKey,
+  decideContactsFetch,
   planForcedContactsRefresh,
   type ContactsRefreshRequest,
 } from "./contact-import-refresh"
@@ -176,5 +177,79 @@ describe("planForcedContactsRefresh", () => {
       search: "bruno",
       force: true,
     })
+  })
+})
+
+describe("decideContactsFetch", () => {
+  it("enfileira request do usuário (sem force) quando já há getContacts em andamento", () => {
+    const decision = decideContactsFetch({
+      isFetchingContacts: true,
+      force: false,
+      listId: "list-1",
+      page: 2,
+      search: "maria",
+      lastContactsKey: "list-1|1|",
+    })
+
+    expect(decision).toEqual({
+      action: "queue",
+      request: {
+        listId: "list-1",
+        page: 2,
+        search: "maria",
+        force: false,
+      },
+    })
+  })
+
+  it("enfileira navegação do usuário e não deixa force refresh voltar página antiga", () => {
+    const userQueued = decideContactsFetch({
+      isFetchingContacts: true,
+      force: false,
+      listId: "list-1",
+      page: 3,
+      search: "bruno",
+      lastContactsKey: "list-1|1|",
+    })
+    expect(userQueued).toEqual({
+      action: "queue",
+      request: {
+        listId: "list-1",
+        page: 3,
+        search: "bruno",
+        force: false,
+      },
+    })
+
+    const forceAfterUser = decideContactsFetch({
+      isFetchingContacts: true,
+      force: true,
+      listId: "list-1",
+      page: 1,
+      search: "",
+      lastContactsKey: "list-1|1|",
+      pendingRefresh: userQueued.request,
+    })
+    expect(forceAfterUser).toEqual({
+      action: "queue",
+      request: {
+        listId: "list-1",
+        page: 3,
+        search: "bruno",
+        force: true,
+      },
+    })
+  })
+
+  it("ignora fetch idêntico sem force quando não há chamada em andamento", () => {
+    const decision = decideContactsFetch({
+      isFetchingContacts: false,
+      force: false,
+      listId: "list-1",
+      page: 1,
+      search: "",
+      lastContactsKey: "list-1|1|",
+    })
+    expect(decision.action).toBe("none")
   })
 })
