@@ -5,6 +5,11 @@ import { toast } from "sonner";
 import { ContatosService } from "../services/ContatosService";
 import type { ContactList, Contact, ContactsState } from "./ContatosTypes";
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
+import type { ContactsRefreshRequest } from "../utils/contact-import-refresh";
+import {
+  onContactListsPolled,
+  shouldPollContactLists,
+} from "../utils/contact-import-flow";
 
 const PAGE_SIZE = 50;
 const defaultService = new ContatosService();
@@ -40,7 +45,19 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   const fetchingListsRef = useRef(false);
   const fetchingContactsRef = useRef(false);
   const lastContactsKeyRef = useRef("");
+  const lastImportProgressKeyRef = useRef("");
+  const pendingForceRefreshRef = useRef<ContactsRefreshRequest | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageRef = useRef(page);
+  const searchRef = useRef(search);
+
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
 
   const fetchLists = useCallback(async () => {
     if (fetchingListsRef.current) return;
@@ -60,12 +77,33 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   }, []);
 
   const fetchContacts = useCallback(
-    async (listId: string, nextPage: number, nextSearch: string) => {
+    async (
+      listId: string,
+      nextPage: number,
+      nextSearch: string,
+      options?: { force?: boolean }
+    ) => {
       const key = `${listId}|${nextPage}|${nextSearch}`;
-      if (fetchingContactsRef.current || lastContactsKeyRef.current === key) return;
+      if (fetchingContactsRef.current) {
+        if (options?.force) {
+          pendingForceRefreshRef.current = {
+            listId,
+            page: nextPage,
+            search: nextSearch,
+            force: true,
+          };
+        }
+        return;
+      }
+      if (!options?.force && lastContactsKeyRef.current === key) return;
       fetchingContactsRef.current = true;
       setLoadingContacts(true);
-      console.info("[useContatos] fetchContacts", { listId, nextPage, nextSearch });
+      console.info("[useContatos] fetchContacts", {
+        listId,
+        nextPage,
+        nextSearch,
+        force: Boolean(options?.force),
+      });
       try {
         const result = await service.getContacts(
           listId,
@@ -84,6 +122,13 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       } finally {
         setLoadingContacts(false);
         fetchingContactsRef.current = false;
+        const pending = pendingForceRefreshRef.current;
+        if (pending) {
+          pendingForceRefreshRef.current = null;
+          void fetchContacts(pending.listId, pending.page, pending.search, {
+            force: true,
+          });
+        }
       }
     },
     []
@@ -93,7 +138,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     void fetchLists();
   }, [supabaseId, fetchLists]);
 
-  const hasActiveImport = lists.some((list) => list.activeImport != null);
+  const hasActiveImport = shouldPollContactLists(lists);
 
   useEffect(() => {
     if (!hasActiveImport) return;
@@ -113,13 +158,54 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
       setTotalPages(1);
       setSearch("");
       lastContactsKeyRef.current = "";
+      lastImportProgressKeyRef.current = "";
+      pendingForceRefreshRef.current = null;
       return;
     }
     lastContactsKeyRef.current = "";
+    lastImportProgressKeyRef.current = "";
+    pendingForceRefreshRef.current = null;
     void fetchContacts(selectedListId, 1, "");
     setSearch("");
     setPage(1);
   }, [selectedListId, fetchContacts]);
+
+  useEffect(() => {
+    const result = onContactListsPolled(
+      {
+        selectedListId,
+        page: pageRef.current,
+        search: searchRef.current,
+        lastProgressKey: lastImportProgressKeyRef.current,
+        isFetchingContacts: fetchingContactsRef.current,
+        pendingRefresh: pendingForceRefreshRef.current,
+      },
+      lists
+    );
+
+    lastImportProgressKeyRef.current = result.nextState.lastProgressKey;
+    pendingForceRefreshRef.current = result.nextState.pendingRefresh;
+
+    if (result.action === "fetch" && result.request) {
+      void fetchContacts(
+        result.request.listId,
+        result.request.page,
+        result.request.search,
+        { force: true }
+      );
+      return;
+    }
+
+    // Se o plano enfileirou, ainda chama fetchContacts com force:
+    // se a chamada em andamento já terminou (corrida), o force executa agora;
+    // se ainda estiver ocupado, o próprio fetchContacts re-enfileira.
+    if (result.action === "queue" && result.nextState.pendingRefresh) {
+      const pending = result.nextState.pendingRefresh;
+      void fetchContacts(pending.listId, pending.page, pending.search, {
+        force: true,
+      });
+    }
+  }, [lists, selectedListId, fetchContacts]);
 
   const handleSelectList = useCallback((id: string) => {
     setSelectedListId(id);
@@ -165,7 +251,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
   const refreshSelectedList = useCallback(async () => {
     await fetchLists();
     if (selectedListId) {
-      await fetchContacts(selectedListId, page, search);
+      await fetchContacts(selectedListId, page, search, { force: true });
     }
   }, [fetchLists, fetchContacts, selectedListId, page, search]);
 
