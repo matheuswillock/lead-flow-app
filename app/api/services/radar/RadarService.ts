@@ -29,6 +29,7 @@ import { RADAR_PRIMARY_SEGMENT_PRIORITY } from "@/lib/radar/field-catalog"
 import {
   buildProfileDataMap,
   getLeadIdFromProfile,
+  mergeImportedBaseProfileData,
   type RadarResolvableLead,
   type RadarResolvableProfile,
 } from "@/lib/radar/resolve-field-value"
@@ -1206,8 +1207,15 @@ export class RadarService {
     for (const profile of profiles) {
       const leadId = getLeadIdFromProfile(profile as RadarResolvableProfile)
       const lead = leadId ? (leadsById.get(leadId) as RadarResolvableLead) : null
-      const profileData = buildProfileDataMap(variables, profile as RadarResolvableProfile, lead)
-      await this.repo.updateProfileData(profile.id, scope.teamId, profileData)
+      const profileData = mergeImportedBaseProfileData(
+        "profileData" in profile ? profile.profileData : null,
+        buildProfileDataMap(variables, profile as RadarResolvableProfile, lead)
+      )
+      await this.repo.updateProfileData(
+        profile.id,
+        scope.teamId,
+        profileData as Prisma.InputJsonValue
+      )
       updated += 1
     }
 

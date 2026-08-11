@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { resolveGender } from "./gender"
+import { allowedCurrentSourcesForGenderWrite, resolveGender } from "./gender"
 
 describe("resolveGender", () => {
   test("fonte mapped presente vence e ignora inferred no estado atual", () => {
@@ -40,6 +40,18 @@ describe("resolveGender", () => {
     )
 
     expect(result).toBeNull()
+  })
+
+  test("allowedCurrentSourcesForGenderWrite bloqueia manual e mapped→inferred", () => {
+    expect(allowedCurrentSourcesForGenderWrite("manual")).toBeNull()
+    expect(allowedCurrentSourcesForGenderWrite("mapped")).toEqual({
+      allowNull: true,
+      sources: ["inferred", "mapped"],
+    })
+    expect(allowedCurrentSourcesForGenderWrite("inferred")).toEqual({
+      allowNull: true,
+      sources: ["inferred"],
+    })
   })
 
   test("inferred não sobrescreve mapped existente", () => {

@@ -92,6 +92,21 @@ export function resolveRadarFieldValue(
   }
 }
 
+export function mergeImportedBaseProfileData(
+  existing: unknown,
+  materialized: Record<string, string>
+): Record<string, unknown> {
+  const preserved: Record<string, unknown> = {}
+  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+    for (const [key, value] of Object.entries(existing)) {
+      if (key.startsWith("base.")) {
+        preserved[key] = value
+      }
+    }
+  }
+  return { ...preserved, ...materialized }
+}
+
 export function buildProfileDataMap(
   variables: Array<{ key: string; radarFieldKey: string | null }>,
   profile: RadarResolvableProfile,
