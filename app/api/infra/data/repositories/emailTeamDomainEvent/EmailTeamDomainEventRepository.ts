@@ -34,6 +34,9 @@ export type ConnectedResendDomainRow = {
   resendDomainId: string
   resendDomainName: string | null
   resendDomainStatus: string | null
+  resendDomainRegion: string | null
+  resendOpenTracking: boolean
+  resendClickTracking: boolean
 }
 
 export interface IEmailTeamDomainEventRepository {
@@ -204,6 +207,9 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainId: true,
         resendDomainName: true,
         resendDomainStatus: true,
+        resendDomainRegion: true,
+        resendOpenTracking: true,
+        resendClickTracking: true,
       },
     })
 
@@ -215,6 +221,9 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
           resendDomainId: row.resendDomainId,
           resendDomainName: row.resendDomainName,
           resendDomainStatus: row.resendDomainStatus,
+          resendDomainRegion: row.resendDomainRegion,
+          resendOpenTracking: row.resendOpenTracking,
+          resendClickTracking: row.resendClickTracking,
         },
       ]
     })

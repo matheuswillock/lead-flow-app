@@ -92,6 +92,17 @@ export interface IRadarService {
     segmentId: string
   ): Promise<RadarExportResult>
   getProfile(supabaseId: string, teamId: string, id: string): Promise<RadarProfileDetail>
+  updateProfileGender(
+    supabaseId: string,
+    teamId: string,
+    profileId: string,
+    gender: "male" | "female" | "unknown"
+  ): Promise<{ id: string; gender: string; genderSource: string }>
+  promoteProfileToLead(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<{ leadId: string; radarProfileId: string }>
   listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult>
   listSegmentProfiles(
     supabaseId: string,

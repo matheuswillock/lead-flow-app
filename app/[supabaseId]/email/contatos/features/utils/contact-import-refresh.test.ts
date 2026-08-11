@@ -23,6 +23,7 @@ function makeActiveImport(
     currentBatch: 2,
     totalBatches: 3,
     pendingRadarSync: 0,
+    failedRadarSync: 0,
     updatedAt: "2026-08-10T10:05:00.000Z",
     ...overrides,
   }
@@ -50,12 +51,12 @@ function makeList(
 }
 
 describe("buildContactImportProgressKey", () => {
-  it("inclui importId, processedRows, status e pendingRadarSync da lista selecionada", () => {
+  it("inclui importId, processedRows, status, pendingRadarSync e failedRadarSync da lista selecionada", () => {
     const key = buildContactImportProgressKey(
       "list-1",
-      makeActiveImport({ processedRows: 750, status: "processing", pendingRadarSync: 4 })
+      makeActiveImport({ processedRows: 750, status: "processing", pendingRadarSync: 4, failedRadarSync: 1 })
     )
-    expect(key).toBe("list-1:import-1:750:processing:4")
+    expect(key).toBe("list-1:import-1:750:processing:4:1")
   })
 
   it("retorna string vazia sem lista ou sem activeImport", () => {

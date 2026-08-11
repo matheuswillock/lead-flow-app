@@ -2,7 +2,7 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import type { RadarProfileDetail } from "../context/RadarTypes"
-import { RadarProfilesTable } from "./RadarProfilesTable"
+import { RadarSegmentProfilesList } from "./RadarSegmentProfilesList"
 
 type RadarSegmentProfilesSheetProps = {
   segmentName: string | null
@@ -15,6 +15,8 @@ type RadarSegmentProfilesSheetProps = {
   pageSize: number
   onPageChange: (page: number) => void
   onViewProfile: (id: string) => void
+  showPromoteAction?: boolean
+  onPromoteProfile?: (profileId: string) => Promise<boolean>
 }
 
 export function RadarSegmentProfilesSheet({
@@ -28,6 +30,8 @@ export function RadarSegmentProfilesSheet({
   pageSize,
   onPageChange,
   onViewProfile,
+  showPromoteAction = false,
+  onPromoteProfile,
 }: RadarSegmentProfilesSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -39,15 +43,16 @@ export function RadarSegmentProfilesSheet({
           {!isLoading && profiles.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum perfil neste segmento.</p>
           ) : (
-            <RadarProfilesTable
+            <RadarSegmentProfilesList
               profiles={profiles}
               isLoading={isLoading}
-              error={null}
               page={page}
               total={total}
               pageSize={pageSize}
               onPageChange={onPageChange}
               onViewProfile={onViewProfile}
+              showPromoteAction={showPromoteAction}
+              onPromoteProfile={onPromoteProfile}
             />
           )}
         </div>

@@ -1,17 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 import { UserFunction, UserRole } from "@prisma/client"
 import { NextRequest } from "next/server"
-import * as teamAccessModule from "@/app/api/v1/utils/teamAccess"
-import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase"
 import { Output } from "@/lib/output"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { getRadarAccess } from "./getRadarAccess"
+import type { TeamAccessResult } from "@/app/api/v1/utils/teamAccess"
+
+mock.module("server-only", () => ({}))
+
+const teamAccessModule = await import("@/app/api/v1/utils/teamAccess")
+const { featureAccessUseCase } = await import(
+  "@/app/api/useCases/featureAccess/FeatureAccessUseCase"
+)
+const { getRadarAccess } = await import("./getRadarAccess")
 
 function makeRequest(headers: Record<string, string> = {}) {
   return new NextRequest("http://localhost/api/v1/radar/profiles", { headers })
 }
 
-function makeTeamAccess(role: UserRole, isMaster = false): teamAccessModule.TeamAccessResult {
+function makeTeamAccess(role: UserRole, isMaster = false): TeamAccessResult {
   return {
     access: {
       supabaseId: "user-1",

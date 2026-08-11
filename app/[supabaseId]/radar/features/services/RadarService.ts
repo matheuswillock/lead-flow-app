@@ -182,6 +182,35 @@ export class RadarFrontendService implements IRadarService {
     return parseOutput<RadarProfileDetail>(res)
   }
 
+  async promoteProfileToLead(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<{ leadId: string; radarProfileId: string }> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/promote-to-lead`, {
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<{ leadId: string; radarProfileId: string }>(res)
+  }
+
+  async updateProfileGender(
+    supabaseId: string,
+    teamId: string,
+    profileId: string,
+    gender: "male" | "female" | "unknown"
+  ): Promise<{ id: string; gender: string; genderSource: string }> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}`, {
+      method: "PATCH",
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ gender }),
+    })
+    return parseOutput<{ id: string; gender: string; genderSource: string }>(res)
+  }
+
   async listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult> {
     const res = await fetch(`${this.baseUrl}/segments`, {
       cache: "no-store",

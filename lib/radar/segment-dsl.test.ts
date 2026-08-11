@@ -85,6 +85,28 @@ describe("segment-dsl", () => {
     ).not.toThrow()
   })
 
+  it("F3 — aceita profile_field gender eq female", () => {
+    const rules = parseRadarSegmentRules({
+      match: "all",
+      conditions: [{ kind: "profile_field", field: "gender", operator: "eq", value: "female" }],
+    })
+    expect(rules.conditions[0]).toEqual({
+      kind: "profile_field",
+      field: "gender",
+      operator: "eq",
+      value: "female",
+    })
+  })
+
+  it("F3 — rejeita gender eq com valor inválido", () => {
+    expect(() =>
+      parseRadarSegmentRules({
+        match: "all",
+        conditions: [{ kind: "profile_field", field: "gender", operator: "eq", value: "feminino" }],
+      })
+    ).toThrow()
+  })
+
   it("aceita consent válido e rejeita channel/status fora do catálogo", () => {
     expect(() =>
       parseRadarSegmentRules({

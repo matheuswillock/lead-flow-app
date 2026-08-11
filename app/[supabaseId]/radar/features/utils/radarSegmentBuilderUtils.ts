@@ -13,11 +13,12 @@ import type { CustomFieldFilterOperator } from "@/lib/leadCustomFields/customFie
 import type { RadarSegmentCondition, RadarSegmentRules } from "../context/RadarTypes"
 
 export const OPERATORS_BY_PROFILE_FIELD: Record<
-  "primaryEmail" | "primaryDocument",
+  "primaryEmail" | "primaryDocument" | "gender",
   CustomFieldFilterOperator[]
 > = {
   primaryEmail: ["eq", "neq", "contains", "is_empty", "not_empty"],
   primaryDocument: ["eq", "neq", "contains", "is_empty", "not_empty"],
+  gender: ["eq", "neq", "is_empty", "not_empty"],
 }
 
 export const OPERATORS_BY_LAST_SEEN: Array<"before" | "after" | "within_days"> = [
@@ -66,6 +67,13 @@ function isConditionCompleteForSave(condition: RadarSegmentCondition): boolean {
   switch (condition.kind) {
     case "profile_field":
       if (!conditionNeedsValueInput(condition)) return true
+      if (condition.field === "gender") {
+        return (
+          condition.value === "male" ||
+          condition.value === "female" ||
+          condition.value === "unknown"
+        )
+      }
       if (condition.field === "lastSeenAt" && condition.operator === "within_days") {
         return isValidPositiveDaysValue(condition.value)
       }

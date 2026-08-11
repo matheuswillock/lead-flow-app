@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.209.0",
+  "version": "0.212.5",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -52,7 +52,8 @@
     "lint:check": "prettier --check .",
     "lint:fix": "prettier --write .",
     "lint:pt-br": "bun scripts/lint-pt-br.ts",
-    "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth lib/backoffice-adhesions app/api/services/backofficeAdhesion \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/leadSchedule app/api/useCases/email app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup app/api/useCases/integrations app/api/useCases/metaLeads",
+    "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth lib/backoffice-adhesions app/api/services/backofficeAdhesion \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/leadSchedule app/api/services/radar app/api/useCases/email app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup app/api/useCases/integrations app/api/useCases/metaLeads app/api/useCases/radar app/api/v1/radar && bun run test:ui",
+    "test:ui": "bun test --isolate --preload ./test/setup-happy-dom.ts \"app/backoffice/(app)/cron-executions\"",
     "test:backoffice-deletion": "bun test --isolate app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
     "test:email": "bun test --isolate app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
     "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts lib/supabase/auth-sessions.test.ts",
@@ -179,8 +180,11 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.11.2",
     "@next/eslint-plugin-next": "16.2.9",
     "@tailwindcss/postcss": "^4.2.2",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/bun": "^1.3.13",
     "@types/node": "^24.12.2",
     "@types/papaparse": "^5.5.2",
@@ -191,6 +195,7 @@
     "dotenv-cli": "^11.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
+    "happy-dom": "^20.11.2",
     "npm-run-all": "^4.1.5",
     "postcss": "^8.5.9",
     "prettier": "^3.8.2",

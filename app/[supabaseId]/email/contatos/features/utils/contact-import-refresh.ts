@@ -70,7 +70,7 @@ export function buildContactImportProgressKey(
   activeImport: ContactListActiveImport | null | undefined
 ): string {
   if (!selectedListId || !activeImport) return ""
-  return `${selectedListId}:${activeImport.importId}:${activeImport.processedRows}:${activeImport.status}:${activeImport.pendingRadarSync}`
+  return `${selectedListId}:${activeImport.importId}:${activeImport.processedRows}:${activeImport.status}:${activeImport.pendingRadarSync}:${activeImport.failedRadarSync}`
 }
 
 export function planForcedContactsRefresh(input: {

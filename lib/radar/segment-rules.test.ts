@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   profileClickedNotClosedInWindow,
+  profileEngagedNoLeadInWindow,
   profileMatchesRadarSegment,
   profileOpenedNotClickedInWindow,
 } from "@/lib/radar/segment-rules"
@@ -180,5 +181,52 @@ describe("profileMatchesRadarSegment", () => {
     expect(profileMatchesRadarSegment(profile, "crm_clients", new Map(), NOW, RECENT_MS)).toBe(
       false
     )
+  })
+})
+
+describe("profileEngagedNoLeadInWindow (G1)", () => {
+  const baseProfile = {
+    identities: [] as { type?: string; normalizedValue: string }[],
+    events: [] as { eventType: string; occurredAt: Date; metadata?: unknown }[],
+  }
+
+  it("inclui perfil com evento de engajamento e sem lead_id", () => {
+    const profile = {
+      ...baseProfile,
+      events: [{ eventType: "email.opened", occurredAt: daysAgo(2) }],
+    }
+
+    expect(profileEngagedNoLeadInWindow(profile, NOW, RECENT_MS)).toBe(true)
+    expect(
+      profileMatchesRadarSegment(
+        { ...profile, consents: [], sourceLinks: [], normalizedPrimaryEmail: "a@b.com" },
+        "engaged_no_lead",
+        new Map(),
+        NOW,
+        RECENT_MS
+      )
+    ).toBe(true)
+  })
+
+  it("exclui perfil com evento de engajamento e lead_id preenchido", () => {
+    const profile = {
+      identities: [{ type: "lead_id", normalizedValue: "lead-1" }],
+      events: [{ eventType: "email.clicked", occurredAt: daysAgo(2) }],
+    }
+
+    expect(profileEngagedNoLeadInWindow(profile, NOW, RECENT_MS)).toBe(false)
+  })
+
+  it("exclui perfil sem eventos mesmo com lead_id null", () => {
+    expect(profileEngagedNoLeadInWindow(baseProfile, NOW, RECENT_MS)).toBe(false)
+  })
+
+  it("conta form.viewed como engajamento", () => {
+    const profile = {
+      ...baseProfile,
+      events: [{ eventType: "form.viewed", occurredAt: daysAgo(1) }],
+    }
+
+    expect(profileEngagedNoLeadInWindow(profile, NOW, RECENT_MS)).toBe(true)
   })
 })

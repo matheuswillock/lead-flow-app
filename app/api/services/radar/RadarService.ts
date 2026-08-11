@@ -33,6 +33,8 @@ import {
   type RadarResolvableProfile,
 } from "@/lib/radar/resolve-field-value"
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
+import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
+import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
@@ -100,6 +102,10 @@ const SEGMENT_META: Record<RadarSegmentSlug, { name: string; description: string
   clicked_not_closed: {
     name: "Clicaram e não fecharam",
     description: "Clicaram em campanha sem fechamento em carteira ou CRM",
+  },
+  engaged_no_lead: {
+    name: "Engajados sem Lead",
+    description: "Interagiram por e-mail ou formulário sem lead vinculado no CRM",
   },
   portfolio_renewal_due: {
     name: "Carteira próxima de renovação",
@@ -723,6 +729,26 @@ export class RadarService {
         sourceType: "email_contact",
         sourceId: contact.id,
       })
+
+      const genderUpdate = resolveGenderUpdateFromEmailContact(
+        {
+          gender: (profile.gender as RadarGender | null) ?? null,
+          genderSource: (profile.genderSource as RadarGenderSource | null) ?? null,
+        },
+        contact.customFields
+      )
+      if (
+        genderUpdate &&
+        (genderUpdate.gender === "male" || genderUpdate.gender === "female") &&
+        (genderUpdate.genderSource === "mapped" || genderUpdate.genderSource === "inferred")
+      ) {
+        await this.repo.updateProfileGender(
+          profile.id,
+          scope.teamId,
+          genderUpdate.gender,
+          genderUpdate.genderSource
+        )
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       counters.errors.push(`contact:${contact.id}:${message}`)
@@ -1012,6 +1038,7 @@ export class RadarService {
       email_blocked: 0,
       opened_not_clicked: 0,
       clicked_not_closed: 0,
+      engaged_no_lead: 0,
       portfolio_renewal_due: 0,
       inactive_recent_campaign: 0,
       portfolio_clients: 0,

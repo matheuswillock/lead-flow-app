@@ -57,13 +57,38 @@ function translateProfileLastSeenAt(operator: string, value: unknown): Prisma.Ra
   return { lastSeenAt: { gt: date } }
 }
 
-function translateProfileField(
+function translateProfileGenderField(operator: string, value: unknown): Prisma.RadarProfileWhereInput {
+  if (operator === "is_empty") {
+    return { gender: null }
+  }
+  if (operator === "not_empty") {
+    return { gender: { not: null } }
+  }
+
+  const genderValue = String(value ?? "")
+  if (operator === "neq") {
+    return { NOT: { gender: genderValue } }
+  }
+  return { gender: genderValue }
+}
+
+/** Exposto para testes unitários (F3 — coluna física `gender`). */
+export function translateProfileField(
   condition: Extract<RadarSegmentCondition, { kind: "profile_field" }>
 ): Prisma.RadarProfileWhereInput {
+  if (condition.field === "gender") {
+    return translateProfileGenderField(condition.operator, condition.value)
+  }
   if (condition.field === "lastSeenAt") {
     return translateProfileLastSeenAt(condition.operator, condition.value)
   }
   return translateProfileTextField(condition.field, condition.operator, condition.value)
+}
+
+function translateProfileFieldInternal(
+  condition: Extract<RadarSegmentCondition, { kind: "profile_field" }>
+): Prisma.RadarProfileWhereInput {
+  return translateProfileField(condition)
 }
 
 function translateConsent(
@@ -286,7 +311,7 @@ async function translateCondition(
 ): Promise<Prisma.RadarProfileWhereInput> {
   switch (condition.kind) {
     case "profile_field":
-      return translateProfileField(condition)
+      return translateProfileFieldInternal(condition)
     case "consent":
       return translateConsent(condition)
     case "event":
@@ -318,6 +343,14 @@ async function buildProfileWhere(teamId: string, rules: RadarSegmentRules): Prom
     teamId,
     ...(rules.match === "all" ? { AND: fragments } : { OR: fragments }),
   }
+}
+
+/** Exposto para testes — garante escopo multi-tenant via `teamId` no where Prisma. */
+export async function buildRadarSegmentProfileWhere(
+  teamId: string,
+  rules: RadarSegmentRules
+): Promise<Prisma.RadarProfileWhereInput> {
+  return buildProfileWhere(teamId, rules)
 }
 
 export interface IRadarSegmentQueryService {
