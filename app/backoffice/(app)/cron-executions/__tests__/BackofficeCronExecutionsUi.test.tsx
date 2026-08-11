@@ -3,8 +3,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { BackofficeCronExecutionsFiltersBar } from "../features/components/BackofficeCronExecutionsFiltersBar"
 import { BackofficeCronExecutionsTable } from "../features/components/BackofficeCronExecutionsTable"
 import { BackofficeCronExecutionDetailsSheet } from "../features/components/BackofficeCronExecutionDetailsSheet"
+import { useCronExecutions } from "../features/context/useCronExecutionsHook"
 import {
   FakeCronExecutionsService,
+  QueuedCronExecutionsService,
   installBrowserStubs,
   makeExecution,
   renderWithProvider,
@@ -217,5 +219,56 @@ describe("T16 — visibilidade do botão Limpar", () => {
       expect(screen.queryByRole("button", { name: /^Limpar/ })).toBeNull()
     )
     expect(getBodyRows().length).toBe(3)
+  })
+})
+
+describe("T17 — descarta respostas obsoletas ao trocar o período rapidamente", () => {
+  function PeriodSwitcher() {
+    const { setFilters } = useCronExecutions()
+    return (
+      <>
+        <button onClick={() => setFilters({ query: "", cronKeyFilter: [], statusFilter: [], periodStart: "2026-08-01", periodEnd: "2026-08-01" })}>
+          period-a
+        </button>
+        <button onClick={() => setFilters({ query: "", cronKeyFilter: [], statusFilter: [], periodStart: "2026-08-02", periodEnd: "2026-08-02" })}>
+          period-b
+        </button>
+      </>
+    )
+  }
+
+  it("mantém o resultado da última requisição mesmo se a mais antiga resolver por último", async () => {
+    const service = new QueuedCronExecutionsService()
+    render(
+      renderWithProvider(
+        service,
+        <>
+          <PeriodSwitcher />
+          <BackofficeCronExecutionsTable />
+        </>
+      )
+    )
+
+    // Requisição inicial (montagem) — índice 0.
+    await waitFor(() => expect(service.calls.length).toBe(1))
+
+    // Dispara a requisição de "period-a" (índice 1) e, antes dela resolver,
+    // troca para "period-b" (índice 2) — duas requisições em voo.
+    fireEvent.click(screen.getByText("period-a"))
+    await waitFor(() => expect(service.calls.length).toBe(2))
+    fireEvent.click(screen.getByText("period-b"))
+    await waitFor(() => expect(service.calls.length).toBe(3))
+
+    // A resposta mais antiga (period-a) resolve por último — deve ser
+    // descartada em favor do resultado de period-b, que é o filtro atual.
+    service.resolveCall(2, [makeExecution({ id: "b", cronKey: "webhook-outbox" })])
+    await waitFor(() => expect(getBodyRows().length).toBe(1))
+    service.resolveCall(1, [makeExecution({ id: "a", cronKey: "radar-import" })])
+
+    // Dá tempo para um possível overwrite indevido acontecer antes de checar.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(getBodyRows().length).toBe(1)
+    expect(screen.getByText("webhook-outbox")).toBeDefined()
+    expect(screen.queryByText("radar-import")).toBeNull()
   })
 })

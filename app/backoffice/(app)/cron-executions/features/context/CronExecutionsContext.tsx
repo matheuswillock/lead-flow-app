@@ -39,6 +39,11 @@ export function CronExecutionsProvider({ service, children }: CronExecutionsProv
 
   const inFlightKeyRef = useRef<string | null>(null)
   const lastSuccessKeyRef = useRef<string | null>(null)
+  // Monotonic counter identifying the most recently dispatched request.
+  // Guards against an older in-flight response landing after a newer one
+  // (e.g. the period filter changing twice in quick succession) and
+  // clobbering fresher data or the loading state.
+  const requestIdRef = useRef(0)
 
   // Only the period narrows the server query; the remaining dimensions are
   // multi-select and are applied client-side over the fetched window.
@@ -51,6 +56,7 @@ export function CronExecutionsProvider({ service, children }: CronExecutionsProv
 
       const [periodStart, periodEnd] = key.split("|")
       inFlightKeyRef.current = key
+      const requestId = ++requestIdRef.current
       setLoading(true)
       setError(null)
 
@@ -61,6 +67,10 @@ export function CronExecutionsProvider({ service, children }: CronExecutionsProv
           limit: EXECUTIONS_WINDOW_LIMIT,
         })
 
+        // A newer request was dispatched while this one was in flight —
+        // discard this stale response instead of overwriting fresher data.
+        if (requestIdRef.current !== requestId) return
+
         if (output.isValid) {
           const result = output.result as { executions?: CronExecutionItem[] } | null
           setExecutions(result?.executions ?? [])
@@ -69,11 +79,16 @@ export function CronExecutionsProvider({ service, children }: CronExecutionsProv
           setError(output.errorMessages.join(", "))
         }
       } catch (err) {
+        if (requestIdRef.current !== requestId) return
         console.error("[CronExecutionsProvider][loadExecutions]", err)
         setError("Erro ao carregar execuções")
       } finally {
-        inFlightKeyRef.current = null
-        setLoading(false)
+        if (inFlightKeyRef.current === key) {
+          inFlightKeyRef.current = null
+        }
+        if (requestIdRef.current === requestId) {
+          setLoading(false)
+        }
       }
     },
     [service]

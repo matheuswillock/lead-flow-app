@@ -95,6 +95,33 @@ export class FakeCronExecutionsService implements ICronExecutionsService {
   }
 }
 
+/**
+ * Serviço com resolução controlada manualmente pelo teste — permite simular
+ * respostas fora de ordem (a N-ésima chamada resolve antes da N-1-ésima)
+ * para reproduzir e travar a corrida de respostas obsoletas.
+ */
+export class QueuedCronExecutionsService implements ICronExecutionsService {
+  readonly calls: (ListCronExecutionsParams | undefined)[] = []
+  private readonly pending: {
+    resolve: (output: Output) => void
+    executions: CronExecutionItem[]
+  }[] = []
+
+  async listExecutions(params?: ListCronExecutionsParams): Promise<Output> {
+    this.calls.push(params)
+    return new Promise<Output>((resolve) => {
+      this.pending.push({ resolve, executions: [] })
+    })
+  }
+
+  /** Resolve a chamada de índice `callIndex` com o conjunto de execuções dado. */
+  resolveCall(callIndex: number, executions: CronExecutionItem[]) {
+    const entry = this.pending[callIndex]
+    if (!entry) throw new Error(`Nenhuma chamada pendente no índice ${callIndex}`)
+    entry.resolve(new Output(true, ["ok"], [], { executions }))
+  }
+}
+
 export function renderWithProvider(
   service: ICronExecutionsService,
   children: ReactNode
