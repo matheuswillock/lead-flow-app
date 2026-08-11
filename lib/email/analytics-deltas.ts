@@ -24,6 +24,8 @@ export type AnalyticsTotalsForDelta = {
   unsubscribed: number
   suppressed: number
   formCompletions: number
+  formViewed: number
+  formStarted: number
 }
 
 /** Neutro para taxas quando |diff| < 0.05 pp. */
@@ -82,6 +84,8 @@ export function attachTotalDeltas(
     unsubscribed: calcMetricDelta(current.unsubscribed, previous.unsubscribed),
     suppressed: calcMetricDelta(current.suppressed, previous.suppressed),
     formCompletions: calcMetricDelta(current.formCompletions, previous.formCompletions),
+    formViewed: calcMetricDelta(current.formViewed, previous.formViewed),
+    formStarted: calcMetricDelta(current.formStarted, previous.formStarted),
   }
 }
 
