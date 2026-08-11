@@ -1,26 +1,24 @@
+import { Skeleton } from "@/components/ui/skeleton"
+
 export default function CronExecutionsLoading() {
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <div className="h-8 w-64 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2"></div>
-        <div className="h-4 w-96 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-96" />
       </div>
 
-      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow mb-6">
-        <div className="h-6 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Skeleton className="h-8 w-[250px]" />
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-8 w-28" />
       </div>
 
-      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          ))}
-        </div>
+      <div className="flex flex-col gap-2 rounded-md border p-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <Skeleton key={`cron-executions-loading-row-${index}`} className="h-12 w-full" />
+        ))}
       </div>
     </div>
   )
