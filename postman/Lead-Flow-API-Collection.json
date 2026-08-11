@@ -12516,9 +12516,21 @@
                 "header": [],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates?includeInactive=true",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates"],
-                  "query": [{ "key": "includeInactive", "value": "true" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates"
+                  ],
+                  "query": [
+                    {
+                      "key": "includeInactive",
+                      "value": "true"
+                    }
+                  ]
                 },
                 "description": "Lista templates globais de formulário público (backoffice)."
               }
@@ -12527,15 +12539,27 @@
               "name": "POST Create Backoffice Public Form Template",
               "request": {
                 "method": "POST",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"slug\": \"my_template\",\n  \"name\": \"Meu template\",\n  \"description\": \"Descrição do template\",\n  \"sortOrder\": 0,\n  \"draft\": {}\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates"
+                  ]
                 },
                 "description": "Cria rascunho de template global."
               }
@@ -12547,9 +12571,22 @@
                 "header": [],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId"],
-                  "variable": [{ "key": "templateId", "value": "" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates",
+                    ":templateId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "templateId",
+                      "value": ""
+                    }
+                  ]
                 },
                 "description": "Detalhe de template (metadados + draft)."
               }
@@ -12558,16 +12595,34 @@
               "name": "PATCH Update Backoffice Public Form Template",
               "request": {
                 "method": "PATCH",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"name\": \"Meu template atualizado\",\n  \"sortOrder\": 1,\n  \"draft\": {}\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId"],
-                  "variable": [{ "key": "templateId", "value": "" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates",
+                    ":templateId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "templateId",
+                      "value": ""
+                    }
+                  ]
                 },
                 "description": "Atualiza metadados e draft do template."
               }
@@ -12579,9 +12634,23 @@
                 "header": [],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId/publish",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId", "publish"],
-                  "variable": [{ "key": "templateId", "value": "" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates",
+                    ":templateId",
+                    "publish"
+                  ],
+                  "variable": [
+                    {
+                      "key": "templateId",
+                      "value": ""
+                    }
+                  ]
                 },
                 "description": "Valida draft e publica template (isActive=true)."
               }
@@ -12593,9 +12662,23 @@
                 "header": [],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/:templateId/unpublish",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates", ":templateId", "unpublish"],
-                  "variable": [{ "key": "templateId", "value": "" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates",
+                    ":templateId",
+                    "unpublish"
+                  ],
+                  "variable": [
+                    {
+                      "key": "templateId",
+                      "value": ""
+                    }
+                  ]
                 },
                 "description": "Despublica template (isActive=false)."
               }
@@ -12607,8 +12690,16 @@
                 "header": [],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/public-form-templates/wizard-context",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "public-form-templates", "wizard-context"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "public-form-templates",
+                    "wizard-context"
+                  ]
                 },
                 "description": "Contexto do wizard (operadoras globais, sem time)."
               }
@@ -20638,8 +20729,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/tags",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "tags"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "tags"
+              ]
             }
           },
           "response": []
@@ -20649,17 +20747,31 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"string\",\n  \"color\": \"#hex\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/tags",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "tags"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "tags"
+              ]
             }
           },
           "response": []
@@ -20671,8 +20783,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/tags/{{tagId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "tags", "{{tagId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "tags",
+                "{{tagId}}"
+              ]
             }
           },
           "response": []
@@ -20684,8 +20804,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/tags",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "{{leadId}}", "tags"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{{leadId}}",
+                "tags"
+              ]
             }
           },
           "response": []
@@ -20695,17 +20823,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"tagId\": \"string\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/tags",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "{{leadId}}", "tags"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{{leadId}}",
+                "tags"
+              ]
             }
           },
           "response": []
@@ -20717,8 +20860,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/tags/{{tagId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "{{leadId}}", "tags", "{{tagId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{{leadId}}",
+                "tags",
+                "{{tagId}}"
+              ]
             }
           },
           "response": []
@@ -20730,8 +20882,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/contacts",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "{{leadId}}", "contacts"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{{leadId}}",
+                "contacts"
+              ]
             }
           },
           "response": []
@@ -20741,17 +20901,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"type\": \"call\",\n  \"outcome\": \"answered\",\n  \"duration\": 5,\n  \"contactDate\": \"2026-08-03\",\n  \"contactTime\": \"14:30\",\n  \"body\": \"Notas\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/contacts",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "leads", "{{leadId}}", "contacts"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{{leadId}}",
+                "contacts"
+              ]
             }
           },
           "response": []
@@ -20842,8 +21017,12 @@
                 "header": [],
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/health",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["health"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "health"
+                  ]
                 },
                 "description": "Healthcheck do OpenWA Gateway na VPS."
               },
@@ -20854,8 +21033,14 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "apikey",
+                    "value": "{{openwaApiKey}}"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -20863,8 +21048,14 @@
                 },
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/session/start/{{openwaInstanceName}}",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["session", "start", "{{openwaInstanceName}}"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "session",
+                    "start",
+                    "{{openwaInstanceName}}"
+                  ]
                 },
                 "description": "Inicia sessão whatsapp-web.js e registra webhook inbound do Corretor Studio."
               },
@@ -20874,11 +21065,22 @@
               "name": "GET /session/status/:instance",
               "request": {
                 "method": "GET",
-                "header": [{ "key": "apikey", "value": "{{openwaApiKey}}" }],
+                "header": [
+                  {
+                    "key": "apikey",
+                    "value": "{{openwaApiKey}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/session/status/{{openwaInstanceName}}",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["session", "status", "{{openwaInstanceName}}"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "session",
+                    "status",
+                    "{{openwaInstanceName}}"
+                  ]
                 },
                 "description": "Estado da sessão: INITIALIZING | QR_READY | CONNECTED | DISCONNECTED."
               },
@@ -20888,11 +21090,22 @@
               "name": "DELETE /session/delete/:instance",
               "request": {
                 "method": "DELETE",
-                "header": [{ "key": "apikey", "value": "{{openwaApiKey}}" }],
+                "header": [
+                  {
+                    "key": "apikey",
+                    "value": "{{openwaApiKey}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/session/delete/{{openwaInstanceName}}",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["session", "delete", "{{openwaInstanceName}}"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "session",
+                    "delete",
+                    "{{openwaInstanceName}}"
+                  ]
                 },
                 "description": "Encerra sessão e remove ZIP RemoteAuth do Supabase Storage."
               },
@@ -20903,8 +21116,14 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "apikey",
+                    "value": "{{openwaApiKey}}"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -20912,8 +21131,14 @@
                 },
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/client/sendMessage/{{openwaInstanceName}}",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["client", "sendMessage", "{{openwaInstanceName}}"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "client",
+                    "sendMessage",
+                    "{{openwaInstanceName}}"
+                  ]
                 },
                 "description": "Envia texto via Gateway (instância CONNECTED)."
               },
@@ -20924,8 +21149,14 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "apikey",
+                    "value": "{{openwaApiKey}}"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -20933,8 +21164,14 @@
                 },
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/client/sendMedia/{{openwaInstanceName}}",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["client", "sendMedia", "{{openwaInstanceName}}"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "client",
+                    "sendMedia",
+                    "{{openwaInstanceName}}"
+                  ]
                 },
                 "description": "Envia mídia base64 via Gateway."
               },
@@ -20945,8 +21182,14 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "apikey", "value": "{{openwaApiKey}}" }
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "apikey",
+                    "value": "{{openwaApiKey}}"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -20954,8 +21197,14 @@
                 },
                 "url": {
                   "raw": "{{openwaGatewayUrl}}/client/markChatSeen/{{openwaInstanceName}}",
-                  "host": ["{{openwaGatewayUrl}}"],
-                  "path": ["client", "markChatSeen", "{{openwaInstanceName}}"]
+                  "host": [
+                    "{{openwaGatewayUrl}}"
+                  ],
+                  "path": [
+                    "client",
+                    "markChatSeen",
+                    "{{openwaInstanceName}}"
+                  ]
                 },
                 "description": "Marca chat como lido (read receipt)."
               },
@@ -20996,6 +21245,48 @@
               ]
             },
             "description": "Webhook inbound OpenWA Gateway (Spec 01). Requer HMAC válido. Eventos: qr, ready, disconnected, message, message_ack."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Queues (Vercel PoC T1)",
+      "item": [
+        {
+          "name": "Test Publish Public Form Metric Events",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cronSecret}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"form_viewed\",\n  \"publicId\": \"t1-validation-public-id\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/queues/public-form-metric-events/test-publish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "queues",
+                "public-form-metric-events",
+                "test-publish"
+              ]
+            },
+            "description": "PoC T1: publica mensagem de teste no topico public-form-metric-events. Bloqueado em production. Auth via CRON_SECRET."
           },
           "response": []
         }
