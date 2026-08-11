@@ -2,23 +2,41 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment -- one-off script */
 // @ts-nocheck
 /**
- * One-off: promove para Lead os contatos da Avalanche que visualizaram o formulário
+ * One-off: promove para Lead os contatos que visualizaram o formulário
  * mas nunca responderam nenhuma pergunta (Achado E6 — funil quebrado clique→Lead).
  *
  * O Excel importado tem telefone_1/telefone_2 no customFields do EmailContact.
  * Este script cruza os form_viewed events (excluindo quem respondeu alguma pergunta)
  * com o EmailContact da lista da campanha para recuperar telefone e cria os Leads.
  *
+ * Times conhecidos:
+ *   Avalanche de Vendas: aef1bfe7-d1fc-4085-879e-81d51a0cc9b8
+ *   Kathrein Antunes:    28f7b9e8-9516-4a08-864c-9ff3e085ba87
+ *
  * Uso:
- *   bun run scripts/promote-form-viewers-to-leads.ts          # dry-run (padrão)
- *   bun run scripts/promote-form-viewers-to-leads.ts --apply  # cria leads (requer autorização)
+ *   bun run scripts/promote-form-viewers-to-leads.ts --team-id <uuid>           # dry-run
+ *   bun run scripts/promote-form-viewers-to-leads.ts --team-id <uuid> --apply   # cria leads (requer autorização)
  */
 
 import { PrismaClient } from "@prisma/client";
 
-const AVALANCHE_TEAM_ID = "aef1bfe7-d1fc-4085-879e-81d51a0cc9b8";
 const APPLY = process.argv.includes("--apply");
 const prisma = new PrismaClient();
+
+function getTeamId(): string {
+  const idx = process.argv.indexOf("--team-id");
+  if (idx === -1 || !process.argv[idx + 1]) {
+    console.error(
+      "Erro: --team-id <uuid> é obrigatório.\n" +
+        "  Avalanche: aef1bfe7-d1fc-4085-879e-81d51a0cc9b8\n" +
+        "  Kathrein:  28f7b9e8-9516-4a08-864c-9ff3e085ba87"
+    );
+    process.exit(1);
+  }
+  return process.argv[idx + 1];
+}
+
+const TEAM_ID = getTeamId();
 
 type ContactData = {
   email: string;
@@ -38,6 +56,9 @@ function extractPhone(customFields: Record<string, unknown> | null): string | nu
     customFields["telefone_1"],
     customFields["Telefone 1"],
     customFields["telefone1"],
+    customFields["telefone_2"],
+    customFields["Telefone 2"],
+    customFields["telefone2"],
     customFields["phone"],
     customFields["telefone"],
   ];
@@ -69,10 +90,10 @@ function generateLeadCode(name: string): string {
 
 async function getManagerProfileId(): Promise<string> {
   const manager = await prisma.teamMember.findFirst({
-    where: { teamId: AVALANCHE_TEAM_ID, role: "MANAGER" },
+    where: { teamId: TEAM_ID, role: "manager" },
     select: { profileId: true },
   });
-  if (!manager) throw new Error("Nenhum MANAGER encontrado no time Avalanche");
+  if (!manager) throw new Error(`Nenhum manager encontrado no time ${TEAM_ID}`);
   return manager.profileId;
 }
 
@@ -81,22 +102,18 @@ async function findFormViewers(): Promise<ContactData[]> {
   const events = await prisma.$queryRaw<
     Array<{
       email_log_id: string | null;
-      dispatch_id: string | null;
-      recipient_email_origin: string | null;
       form_name: string;
       form_viewed_at: Date;
     }>
   >`
     SELECT
       (pme.origin->>'emailLogId') AS email_log_id,
-      (pme.origin->>'dispatchId') AS dispatch_id,
-      (pme.origin->>'recipientEmail') AS recipient_email_origin,
       f.name AS form_name,
       pme."createdAt" AS form_viewed_at
     FROM corretor_studio_public_form_metric_events pme
     JOIN corretor_studio_public_forms f ON f.id = pme."formId"
     WHERE pme."eventType" = 'form_viewed'
-      AND f."teamId" = ${AVALANCHE_TEAM_ID}::uuid
+      AND f."teamId" = ${TEAM_ID}::uuid
       AND NOT EXISTS (
         SELECT 1
         FROM corretor_studio_public_form_metric_events qa
@@ -107,38 +124,35 @@ async function findFormViewers(): Promise<ContactData[]> {
     ORDER BY pme."createdAt" DESC
   `;
 
-  console.info(`\n📋 ${events.length} form_viewed (sem question_answered) para Avalanche`);
+  console.info(`\n📋 ${events.length} form_viewed (sem question_answered) para o time ${TEAM_ID}`);
 
   const contacts: ContactData[] = [];
   const seenEmails = new Set<string>();
 
   for (const event of events) {
-    let recipientEmail: string | null = event.recipient_email_origin ?? null;
-    let contactListId: string | null = null;
-
-    // Resolve email e contactListId via EmailLog → EmailCampaignDispatch
-    if (event.email_log_id) {
-      const log = await prisma.emailLog.findUnique({
-        where: { id: event.email_log_id },
-        select: {
-          recipientEmail: true,
-          dispatch: { select: { contactListId: true } },
-        },
-      });
-      if (!recipientEmail) recipientEmail = log?.recipientEmail ?? null;
-      contactListId = log?.dispatch?.contactListId ?? null;
-    } else if (event.dispatch_id) {
-      const dispatch = await prisma.emailCampaignDispatch.findUnique({
-        where: { id: event.dispatch_id },
-        select: { contactListId: true },
-      });
-      contactListId = dispatch?.contactListId ?? null;
-    }
-
-    if (!recipientEmail) {
-      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} sem email — ignorando`);
+    // P1: Rejeita eventos sem atribuição de campanha verificada no servidor.
+    // origin.recipientEmail é valor do cliente e não pode ser usado diretamente.
+    if (!event.email_log_id) {
+      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} sem emailLogId — ignorando`);
       continue;
     }
+
+    const log = await prisma.emailLog.findUnique({
+      where: { id: event.email_log_id },
+      select: {
+        recipientEmail: true,
+        teamId: true,
+        dispatch: { select: { contactListId: true } },
+      },
+    });
+
+    if (!log || log.teamId !== TEAM_ID) {
+      console.info(`  ⚠️  form_viewed em ${event.form_viewed_at.toISOString()} — EmailLog inválido ou pertence a outro time — ignorando`);
+      continue;
+    }
+
+    const recipientEmail = log.recipientEmail;
+    const contactListId = log.dispatch?.contactListId ?? null;
 
     const email = recipientEmail.toLowerCase().trim();
     if (seenEmails.has(email)) continue;
@@ -147,7 +161,7 @@ async function findFormViewers(): Promise<ContactData[]> {
     // Busca o EmailContact restringindo à lista da campanha quando disponível
     const contactWhere = contactListId
       ? { email: { equals: email, mode: "insensitive" as const }, listId: contactListId }
-      : { email: { equals: email, mode: "insensitive" as const }, list: { teamId: AVALANCHE_TEAM_ID } };
+      : { email: { equals: email, mode: "insensitive" as const }, list: { teamId: TEAM_ID } };
 
     const contact = await prisma.emailContact.findFirst({
       where: contactWhere,
@@ -174,7 +188,7 @@ async function findFormViewers(): Promise<ContactData[]> {
 
 async function main() {
   console.info("═══════════════════════════════════════════════════════");
-  console.info("🚀 Promover form viewers → Leads (Avalanche)");
+  console.info(`🚀 Promover form viewers → Leads (team: ${TEAM_ID})`);
   console.info(`   Modo: ${APPLY ? "APPLY (grava no banco)" : "DRY-RUN"}`);
   console.info("═══════════════════════════════════════════════════════");
 
@@ -199,17 +213,18 @@ async function main() {
   let noPhone = 0;
 
   for (const viewer of viewers) {
+    // P1: inclui soft-deleted para evitar violação de unique constraint (teamId, email)
     const existing = await prisma.lead.findFirst({
       where: {
-        teamId: AVALANCHE_TEAM_ID,
+        teamId: TEAM_ID,
         email: { equals: viewer.email, mode: "insensitive" },
-        deletedAt: null,
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, deletedAt: true },
     });
 
     if (existing) {
-      console.info(`  ⏭️  ${viewer.email} → Lead já existe (${existing.name})`);
+      const tag = existing.deletedAt ? " [soft-deleted]" : "";
+      console.info(`  ⏭️  ${viewer.email} → Lead já existe (${existing.name})${tag} — ignorando`);
       skipped++;
       continue;
     }
@@ -251,7 +266,7 @@ async function main() {
       data: {
         leadCode,
         managerId: managerProfileId,
-        teamId: AVALANCHE_TEAM_ID,
+        teamId: TEAM_ID,
         createdBy: managerProfileId,
         status: "new_opportunity",
         name: leadName,
