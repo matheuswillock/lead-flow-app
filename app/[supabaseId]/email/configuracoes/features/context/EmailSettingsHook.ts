@@ -1,7 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { getResendDomainDispatchWarnings } from "@/lib/email/campaign-dispatch-guards"
 import { EmailSettingsService } from "../services/EmailSettingsService"
 import type {
   ConfigureDomainTrackingData,
@@ -131,7 +132,10 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainOpenTracking, setDomainOpenTracking] = useState(false)
   const [domainClickTracking, setDomainClickTracking] = useState(false)
   const [domainTrackingSubdomain, setDomainTrackingSubdomain] = useState<string | null>(null)
-  const [domainDispatchWarnings, setDomainDispatchWarnings] = useState<string[]>([])
+  const domainDispatchWarnings = useMemo(
+    () => getResendDomainDispatchWarnings(domainStatus),
+    [domainStatus]
+  )
   const [domainEvents, setDomainEvents] = useState<DomainEvent[]>([])
   const [connectingDomain, setConnectingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
@@ -158,7 +162,6 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     setDomainConnectedAt(result.resendDomainConnectedAt ?? null)
     setDomainOpenTracking(result.resendOpenTracking ?? false)
     setDomainClickTracking(result.resendClickTracking ?? false)
-    setDomainDispatchWarnings(result.resendDomainDispatchWarnings ?? [])
     setDomainEvents(result.domainEvents ?? [])
     setSenders(result.senders ?? [])
     setDefaultSenderId(result.defaultSenderId ?? null)
@@ -406,7 +409,6 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainOpenTracking(false)
       setDomainClickTracking(false)
       setDomainTrackingSubdomain(null)
-      setDomainDispatchWarnings([])
       setDomainRecords([])
       setDomainEvents([])
       toast.success("Domínio removido")
