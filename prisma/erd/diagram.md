@@ -603,6 +603,34 @@ canceled canceled
     
 
 
+        platform_purchase_type {
+            email_credits email_credits
+feature_addon feature_addon
+radar_self_service radar_self_service
+radar_managed radar_managed
+subscription_capacity subscription_capacity
+        }
+    
+
+
+        platform_purchase_status {
+            pending pending
+awaiting_payment awaiting_payment
+paid paid
+failed failed
+canceled canceled
+        }
+    
+
+
+        asaas_notification_backfill_status {
+            pending pending
+completed completed
+failed failed
+        }
+    
+
+
         notification_type {
             ACTIVITY_MENTION ACTIVITY_MENTION
 ACTIVITY_REACTION ACTIVITY_REACTION
@@ -2476,6 +2504,38 @@ completed completed
     }
   
 
+  "corretor_studio_platform_purchases" {
+    String id "🗝️"
+    String profile_id 
+    String team_id "❓"
+    String product_slug 
+    PlatformPurchaseType purchase_type 
+    PlatformPurchaseStatus status 
+    String billing_type "❓"
+    Decimal amount 
+    Int quantity "❓"
+    String description "❓"
+    Json metadata "❓"
+    String asaas_payment_id "❓"
+    String asaas_customer_id "❓"
+    String external_reference 
+    DateTime paid_at "❓"
+    DateTime applied_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "corretor_studio_asaas_notification_backfill" {
+    String asaas_customer_id "🗝️"
+    AsaasNotificationBackfillStatus status 
+    String last_error "❓"
+    DateTime completed_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "corretor_studio_pending_actions" {
     String id "🗝️"
     PendingActionType actionType 
@@ -4192,6 +4252,11 @@ completed completed
     "corretor_studio_profile_web_push_subscriptions" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_web_push_consents" |o--|| "WebPushConsentStatus" : "enum:status"
     "corretor_studio_profile_web_push_consents" |o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_platform_purchases" |o--|| "PlatformPurchaseType" : "enum:purchase_type"
+    "corretor_studio_platform_purchases" |o--|| "PlatformPurchaseStatus" : "enum:status"
+    "corretor_studio_platform_purchases" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_platform_purchases" }o--|o corretor_studio_teams : "team"
+    "corretor_studio_asaas_notification_backfill" |o--|| "AsaasNotificationBackfillStatus" : "enum:status"
     "corretor_studio_pending_actions" |o--|| "PendingActionType" : "enum:actionType"
     "corretor_studio_pending_actions" |o--|| "PendingActionStatus" : "enum:status"
     "corretor_studio_pending_actions" }o--|| corretor_studio_profiles : "master"
