@@ -13,8 +13,14 @@ import type { EmailLogStatus } from "@prisma/client"
  * - `bounced` | `complained` — já chegaram ao provedor; reenviar seria duplicata
  *   e/ou prejudicaria reputação
  *
- * Fora do escopo deste critério:
- * - `queued` sem `failed` (órfãos / stuck — fluxo `resumeOrphanSendingDispatches`)
+ * `queued` sem `failed`:
+ * - Enquanto a campanha/dispatch ainda está `sending`, é tratado pelo fluxo
+ *   `resumeOrphanSendingDispatches` (órfão em andamento, não uma falha).
+ * - Se a campanha/dispatch já chegou a um status terminal (`failed`/`partially_sent`,
+ *   ex.: timeout de 30 min de `recoverStuckSendingCampaigns`) e ainda assim sobraram
+ *   logs `queued`, esses destinatários nunca serão retomados por nenhum cron — nesse
+ *   caso `includeStuckQueued: true` (ver `selectFailedRecipientEmailsForRetry`) os
+ *   trata como elegíveis para "Reenviar apenas falhas".
  */
 export const CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES = [
   "sent",
@@ -40,13 +46,29 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
+/** Status de log que nunca chegou a um desfecho terminal (nem aceito, nem falho). */
+export const CAMPAIGN_RETRY_STUCK_LOG_STATUS = "queued" as const satisfies EmailLogStatus
+
+export type SelectFailedRecipientEmailsOptions = {
+  /**
+   * Quando `true`, também trata logs `queued` (nunca resolvidos — dispatch travou/
+   * timeout antes de chegar a um desfecho terminal) como elegíveis para redisparo.
+   * Só deve ser `true` quando a campanha/dispatch já está em status terminal
+   * (`failed`/`partially_sent`) — nesse ponto o `queued` é definitivamente órfão,
+   * não "em andamento" (isso continua sendo tratado por `resumeOrphanSendingDispatches`).
+   */
+  includeStuckQueued?: boolean
+}
+
 /**
  * Seleciona e-mails elegíveis para redisparo de falhas a partir dos logs da campanha.
  * Entrada tipicamente vem de `emailLog.findMany({ where: { campaignId }, select: { recipientEmail, status } })`.
  */
 export function selectFailedRecipientEmailsForRetry(
-  logs: CampaignFailedRecipientLogRow[]
+  logs: CampaignFailedRecipientLogRow[],
+  options?: SelectFailedRecipientEmailsOptions
 ): string[] {
+  const includeStuckQueued = options?.includeStuckQueued ?? false
   const successEmails = new Set<string>()
   const excludedEmails = new Set<string>()
   const failedEmails = new Set<string>()
@@ -66,6 +88,11 @@ export function selectFailedRecipientEmailsForRetry(
     }
 
     if (log.status === CAMPAIGN_RETRY_FAILURE_LOG_STATUS) {
+      failedEmails.add(email)
+      continue
+    }
+
+    if (includeStuckQueued && log.status === CAMPAIGN_RETRY_STUCK_LOG_STATUS) {
       failedEmails.add(email)
     }
   }
@@ -108,9 +135,13 @@ export function resolveRetryRecipientEmails(params: {
   hasRetriableStatus: boolean
   logs: CampaignFailedRecipientLogRow[]
   resolvedAudienceEmails: string[]
+  /** Ver `SelectFailedRecipientEmailsOptions.includeStuckQueued`. */
+  includeStuckQueued?: boolean
 }): string[] {
   if (params.hasRetriableStatus && !params.hasAnyLog) {
     return normalizeEmailList(params.resolvedAudienceEmails)
   }
-  return selectFailedRecipientEmailsForRetry(params.logs)
+  return selectFailedRecipientEmailsForRetry(params.logs, {
+    includeStuckQueued: params.includeStuckQueued,
+  })
 }

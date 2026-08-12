@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import type { Prisma, TeamWebhookEventKey, TeamWebhookOutboxStatus } from "@prisma/client";
 import type {
   EnqueueTeamWebhookOutboxInput,
   ITeamWebhookOutboxRepository,
@@ -7,6 +8,17 @@ import type {
 
 /** Rows stuck in `processing` longer than this are treated as abandoned leases. */
 const STALE_PROCESSING_MS = 5 * 60 * 1000;
+
+type ClaimRawRow = {
+  id: string;
+  teamId: string;
+  webhookId: string;
+  eventKey: TeamWebhookEventKey;
+  payload: Prisma.JsonValue;
+  status: TeamWebhookOutboxStatus;
+  attemptCount: number | bigint;
+  nextAttemptAt: Date;
+};
 
 export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository {
   async enqueue(input: EnqueueTeamWebhookOutboxInput): Promise<void> {
@@ -23,7 +35,14 @@ export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository
     });
   }
 
+  /**
+   * Claim atômico via `FOR UPDATE SKIP LOCKED` (padrão D9).
+   * Evita N `updateMany` sequenciais e corrida entre crons sobrepostos.
+   */
   async claimDue(limit: number): Promise<TeamWebhookOutboxClaimRow[]> {
+    const safeLimit = Math.max(0, Math.floor(limit));
+    if (safeLimit === 0) return [];
+
     const now = new Date();
     const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS);
 
@@ -40,41 +59,43 @@ export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository
       },
     });
 
-    const due = await prisma.teamWebhookOutbox.findMany({
-      where: {
-        status: "pending",
-        nextAttemptAt: { lte: now },
-      },
-      orderBy: { nextAttemptAt: "asc" },
-      take: limit,
-      select: {
-        id: true,
-        teamId: true,
-        webhookId: true,
-        eventKey: true,
-        payload: true,
-        status: true,
-        attemptCount: true,
-        nextAttemptAt: true,
-      },
-    });
+    const rows = await prisma.$queryRaw<ClaimRawRow[]>`
+      WITH claimed AS (
+        SELECT id
+        FROM corretor_studio_team_webhook_outbox
+        WHERE status = 'pending'::team_webhook_outbox_status
+          AND "nextAttemptAt" <= ${now}
+        ORDER BY "nextAttemptAt" ASC
+        LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE corretor_studio_team_webhook_outbox o
+      SET
+        status = 'processing'::team_webhook_outbox_status,
+        "updatedAt" = ${now}
+      FROM claimed
+      WHERE o.id = claimed.id
+      RETURNING
+        o.id,
+        o."teamId" AS "teamId",
+        o."webhookId" AS "webhookId",
+        o."eventKey" AS "eventKey",
+        o.payload,
+        o.status,
+        o."attemptCount" AS "attemptCount",
+        o."nextAttemptAt" AS "nextAttemptAt"
+    `;
 
-    if (due.length === 0) {
-      return [];
-    }
-
-    const claimed: TeamWebhookOutboxClaimRow[] = [];
-    for (const row of due) {
-      const updated = await prisma.teamWebhookOutbox.updateMany({
-        where: { id: row.id, status: "pending" },
-        data: { status: "processing", updatedAt: new Date() },
-      });
-      if (updated.count === 1) {
-        claimed.push(row);
-      }
-    }
-
-    return claimed;
+    return rows.map((row) => ({
+      id: row.id,
+      teamId: row.teamId,
+      webhookId: row.webhookId,
+      eventKey: row.eventKey,
+      payload: row.payload,
+      status: row.status,
+      attemptCount: Number(row.attemptCount),
+      nextAttemptAt: row.nextAttemptAt,
+    }));
   }
 
   async requeueIfProcessing(ids: string[]): Promise<void> {
