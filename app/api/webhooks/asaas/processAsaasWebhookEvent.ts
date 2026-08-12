@@ -258,6 +258,42 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         });
       }
     }
+
+    const isPlatformPurchaseRef =
+      !!externalReference && externalReference.startsWith("platform-purchase-");
+    if (isPlatformPurchaseRef && (isPaid || paymentStatus === "CONFIRMED")) {
+      try {
+        const { platformCheckoutUseCase } = await import(
+          "@/app/api/useCases/platformCheckout/PlatformCheckoutUseCase"
+        );
+        const purchaseResult = await platformCheckoutUseCase.applyPaidPurchase({
+          externalReference,
+          asaasPaymentId: paymentId,
+        });
+
+        if (!purchaseResult.isValid) {
+          console.error("[AsaasWebhookRoute][process] platform purchase failed", {
+            eventId,
+            errorMessages: purchaseResult.errorMessages,
+            paymentId,
+            externalReference,
+          });
+        } else {
+          console.info("[AsaasWebhookRoute][process] platform purchase applied", {
+            eventId,
+            paymentId,
+            externalReference,
+            successMessages: purchaseResult.successMessages,
+          });
+        }
+      } catch (error) {
+        rethrowIfPrerenderInterrupted(error);
+        console.error("[AsaasWebhookRoute][process] platform purchase error", {
+          eventId,
+          error,
+        });
+      }
+    }
   }
 
   if (isPaid && body?.payment?.subscription) {

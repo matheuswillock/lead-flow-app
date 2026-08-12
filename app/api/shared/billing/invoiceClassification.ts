@@ -47,6 +47,10 @@ export function classifyAsaasPaymentInvoice(input: {
     return { invoiceKind: "addon_user", invoiceName: INVOICE_NAMES.addon_user };
   }
 
+  if (externalReference.startsWith("platform-purchase-")) {
+    return { invoiceKind: "other", invoiceName: INVOICE_NAMES.other };
+  }
+
   if (input.subscription) {
     return { invoiceKind: "subscription", invoiceName: INVOICE_NAMES.subscription };
   }

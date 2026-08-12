@@ -16566,6 +16566,63 @@
           "response": []
         },
         {
+          "name": "POST Platform Checkout (genérico)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productSlug\": \"email\",\n  \"purchaseType\": \"email_credits\",\n  \"profileId\": \"{{profileId}}\",\n  \"teamId\": \"{{teamId}}\",\n  \"billingType\": \"PIX\",\n  \"amount\": 49.9,\n  \"quantity\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/platform-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-checkout"
+              ]
+            },
+            "description": "Cria PlatformPurchase pendente e retorna checkoutId/externalReference (URL pública /addon-checkout/[id])."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Platform Checkout Detalhes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/platform-checkout/:checkoutId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-checkout",
+                ":checkoutId"
+              ],
+              "variable": [
+                {
+                  "key": "checkoutId",
+                  "value": "",
+                  "description": "ID da PlatformPurchase"
+                }
+              ]
+            },
+            "description": "Reabre checkout genérico sem duplicar cobrança."
+          },
+          "response": []
+        },
+        {
           "name": "POST Criar Pagamento (PIX)",
           "request": {
             "method": "POST",
