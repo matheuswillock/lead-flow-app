@@ -211,6 +211,12 @@ export function deriveDispatchCompletionKind(params: {
         : "full"
   }
 
+  // status=failed mas todos os destinatários foram aceitos (ex.: reconciliado
+  // via webhook após o registro interno já ter marcado falha) → sucesso total.
+  if (params.acceptedCount >= params.totalRecipients && params.totalRecipients > 0) {
+    return "full"
+  }
+
   // status=failed com algum aceite → parcial
   return params.acceptedCount > 0 ? "partial" : "failed"
 }
