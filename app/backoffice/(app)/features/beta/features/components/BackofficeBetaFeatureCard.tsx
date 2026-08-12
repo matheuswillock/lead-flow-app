@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import type { BetaFeatureItem, BetaGrantItem } from "../context/BackofficeBetaTypes"
 import { useBackofficeBeta } from "../context/BackofficeBetaContext"
+import { betaBillingLabel, scopeLabel } from "../utils/betaScopeLabel"
 
 function initials(name: string | null) {
   if (!name) return "?"
@@ -17,22 +18,6 @@ function initials(name: string | null) {
     .map((n) => n[0])
     .join("")
     .toUpperCase()
-}
-
-function scopeLabel(grant: BetaGrantItem): string {
-  if (grant.betaTeamScope === "ALL_TEAMS") {
-    return "Todos os times"
-  }
-
-  if (grant.teams.length === 0) {
-    return "Times específicos"
-  }
-
-  if (grant.teams.length <= 2) {
-    return grant.teams.map((team) => team.name).join(", ")
-  }
-
-  return `${grant.teams.length} times`
 }
 
 interface Props {
@@ -48,10 +33,13 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
     <div className="rounded-lg border bg-card flex flex-col">
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{feature.name}</span>
             <Badge variant="outline" className="text-orange-500 border-orange-500/40 text-[10px]">
               Beta
+            </Badge>
+            <Badge variant="secondary" className="text-[10px]">
+              {betaBillingLabel(feature.chargeDuringBeta)}
             </Badge>
             <Badge variant="secondary" className="text-[10px]">
               {activeGrants.length}
@@ -79,7 +67,7 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
           </p>
         )}
 
-        {activeGrants.map((grant) => {
+        {activeGrants.map((grant: BetaGrantItem) => {
           const key = `${feature.id}:${grant.profileId}`
           const removing = isRemoving[key] ?? false
 
