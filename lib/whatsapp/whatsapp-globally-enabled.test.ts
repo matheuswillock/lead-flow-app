@@ -17,33 +17,34 @@ mock.module("@/app/api/infra/data/prisma", () => ({
 
 const {
   isWhatsAppGloballyEnabled,
+  resolveWhatsAppGlobalFeatureGate,
   resetWhatsAppGloballyEnabledCacheForTests,
 } = await import("./whatsapp-globally-enabled")
 
-describe("isWhatsAppGloballyEnabled", () => {
+describe("resolveWhatsAppGlobalFeatureGate / isWhatsAppGloballyEnabled", () => {
   beforeEach(() => {
     resetWhatsAppGloballyEnabledCacheForTests()
     findFirstMock.mockClear()
     findFirstMock.mockImplementation(async () => null)
   })
 
-  it("retorna false (fail-closed) quando a query do Prisma lança erro", async () => {
+  it("retorna lookup_failed (fail-closed) quando a query do Prisma lança erro", async () => {
     findFirstMock.mockImplementation(async () => {
       throw new Error("P2024: Timed out fetching a new connection from the connection pool")
     })
 
-    const result = await isWhatsAppGloballyEnabled()
-
-    expect(result).toBe(false)
-    expect(findFirstMock).toHaveBeenCalledTimes(1)
+    const gate = await resolveWhatsAppGlobalFeatureGate()
+    expect(gate.status).toBe("lookup_failed")
+    expect(await isWhatsAppGloballyEnabled()).toBe(false)
+    expect(findFirstMock).toHaveBeenCalledTimes(2)
   })
 
-  it("retorna false quando não há cache válido e isActive é false no banco", async () => {
+  it("retorna disabled quando não há cache válido e isActive é false no banco", async () => {
     findFirstMock.mockImplementation(async () => ({ isActive: false }))
 
-    const result = await isWhatsAppGloballyEnabled()
-
-    expect(result).toBe(false)
+    const gate = await resolveWhatsAppGlobalFeatureGate()
+    expect(gate).toEqual({ status: "disabled" })
+    expect(await isWhatsAppGloballyEnabled()).toBe(false)
     expect(findFirstMock).toHaveBeenCalledTimes(1)
     expect(findFirstMock.mock.calls[0]?.[0]).toEqual({
       where: { slug: "whatsapp" },
@@ -54,11 +55,17 @@ describe("isWhatsAppGloballyEnabled", () => {
   it("com cache válido não consulta o banco de novo", async () => {
     findFirstMock.mockImplementation(async () => ({ isActive: false }))
 
-    const first = await isWhatsAppGloballyEnabled()
-    const second = await isWhatsAppGloballyEnabled()
+    const first = await resolveWhatsAppGlobalFeatureGate()
+    const second = await resolveWhatsAppGlobalFeatureGate()
 
-    expect(first).toBe(false)
-    expect(second).toBe(false)
+    expect(first).toEqual({ status: "disabled" })
+    expect(second).toEqual({ status: "disabled" })
     expect(findFirstMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("retorna enabled quando isActive é true", async () => {
+    findFirstMock.mockImplementation(async () => ({ isActive: true }))
+    await expect(resolveWhatsAppGlobalFeatureGate()).resolves.toEqual({ status: "enabled" })
+    await expect(isWhatsAppGloballyEnabled()).resolves.toBe(true)
   })
 })
