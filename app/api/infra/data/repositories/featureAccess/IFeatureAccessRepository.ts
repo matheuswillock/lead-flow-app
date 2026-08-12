@@ -14,6 +14,7 @@ export type ActiveFeatureRecord = Pick<
   | "parentId"
   | "inheritParentSettings"
   | "betaEnabled"
+  | "chargeDuringBeta"
   | "accessMode"
   | "defaultAccessLevel"
   | "billedSeparately"

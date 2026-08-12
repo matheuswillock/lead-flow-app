@@ -257,9 +257,12 @@ export class FeatureAccessService implements IFeatureAccessService {
     for (const feature of features) {
       const effectiveFeature = resolveEffectiveFeature(feature.id) ?? feature
       const betaEnabled = effectiveFeature.betaEnabled === true
+      const chargeDuringBeta = effectiveFeature.chargeDuringBeta === true
       const betaEligible = betaEnabled
         ? isBetaEligibleForFeature(feature.id, effectiveFeature.id)
         : false
+      // Beta gratuito = elegível e sem cobrança durante beta (RA-04 / RA-05).
+      const freeBeta = betaEnabled && betaEligible && !chargeDuringBeta
       let hasAccess = false
 
       if (betaEnabled && !betaEligible) {
@@ -289,11 +292,8 @@ export class FeatureAccessService implements IFeatureAccessService {
         }
       }
 
-      if (
-        !hasAccess &&
-        betaEnabled &&
-        betaEligible
-      ) {
+      // Fallback de acesso só para beta gratuito — beta cobrado exige produto/assinatura.
+      if (!hasAccess && freeBeta) {
         if (effectiveFeature.accessMode === "PUBLIC") {
           hasAccess = evaluatePrincipalRules(
             effectiveFeature.accessRules,
@@ -326,9 +326,9 @@ export class FeatureAccessService implements IFeatureAccessService {
   }
 
   /**
-   * D8 (EMAIL_SPEC): tag Beta + entitlement da feature = isenção total de créditos.
-   * Usa `betaLabelSlugs` (betaEnabled com herança ∧ hasAccess) para não isentar
-   * contas sem acesso a EMAIL_CAMPAIGNS / EMAIL só porque o flag global está ligado.
+   * D8 (EMAIL_SPEC) + RA-04/RA-05: isenção de créditos só para beta gratuito.
+   * Usa `betaLabelSlugs` (betaEnabled com herança ∧ hasAccess) e exige
+   * `chargeDuringBeta=false` na feature efetiva de e-mail.
    */
   async resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
     const access = await this.resolveAllowedSlugs({
@@ -337,10 +337,41 @@ export class FeatureAccessService implements IFeatureAccessService {
       activeTeamId: ctx.teamId,
     })
 
-    return (
-      access.betaLabelSlugs.includes(FEATURE_SLUGS.EMAIL_CAMPAIGNS) ||
-      access.betaLabelSlugs.includes(FEATURE_SLUGS.EMAIL)
+    const emailBetaSlugs = [FEATURE_SLUGS.EMAIL_CAMPAIGNS, FEATURE_SLUGS.EMAIL].filter((slug) =>
+      access.betaLabelSlugs.includes(slug)
     )
+    if (emailBetaSlugs.length === 0) {
+      return false
+    }
+
+    const features = await this.repository.listActiveFeatures()
+    const featureById = new Map(features.map((feature) => [feature.id, feature]))
+    const featureBySlug = new Map(features.map((feature) => [feature.slug, feature]))
+
+    const resolveEffectiveFeature = (
+      featureId: string,
+      visited = new Set<string>()
+    ): ActiveFeatureRecord | undefined => {
+      const feature = featureById.get(featureId)
+      if (!feature) return undefined
+      if (!feature.inheritParentSettings || !feature.parentId) return feature
+      if (visited.has(feature.id)) return feature
+      visited.add(feature.id)
+      const parent = featureById.get(feature.parentId)
+      if (!parent) return feature
+      return resolveEffectiveFeature(parent.id, visited) ?? feature
+    }
+
+    for (const slug of emailBetaSlugs) {
+      const feature = featureBySlug.get(slug)
+      if (!feature) continue
+      const effective = resolveEffectiveFeature(feature.id) ?? feature
+      if (effective.betaEnabled === true && effective.chargeDuringBeta !== true) {
+        return true
+      }
+    }
+
+    return false
   }
 }
 

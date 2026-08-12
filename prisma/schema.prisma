@@ -3483,6 +3483,7 @@ model BackofficeFeature {
   accessMode            BackofficeFeatureAccessMode  @default(PUBLIC)
   defaultAccessLevel    BackofficeFeatureAccessLevel @default(FULL)
   betaEnabled           Boolean                      @default(false)
+  chargeDuringBeta      Boolean                      @default(false) @map("charge_during_beta")
   inheritParentSettings Boolean                      @default(false)
   billedSeparately      Boolean                      @default(false)
   isActive              Boolean                      @default(true)
