@@ -32,6 +32,30 @@ describe("campaign-dispatch-progress helpers", () => {
     ).toBe("partial")
   })
 
+  it("completionKind full quando status=failed mas 100% dos destinatários foram aceitos", () => {
+    // Caso real: dispatch marcado failed internamente, mas os webhooks do Resend
+    // confirmaram depois que todos os e-mails saíram (ex.: erro pós-envio).
+    expect(
+      deriveDispatchCompletionKind({
+        status: "failed",
+        totalRecipients: 2211,
+        acceptedCount: 2211,
+        failedCount: 0,
+      })
+    ).toBe("full")
+  })
+
+  it("completionKind partial quando status=failed com aceite parcial", () => {
+    expect(
+      deriveDispatchCompletionKind({
+        status: "failed",
+        totalRecipients: 10,
+        acceptedCount: 4,
+        failedCount: 6,
+      })
+    ).toBe("partial")
+  })
+
   it("format labels cobrem estados de UI", () => {
     expect(
       formatCampaignDispatchProgressLabel({
