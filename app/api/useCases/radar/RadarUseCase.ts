@@ -97,7 +97,8 @@ async function getCachedRadarSegments(
     })),
   ]
 
-  return new Output(true, [], [], { segments, metrics, fixedSegmentsError })
+  // "use cache" requires plain objects — Output class instances are not serializable
+  return { segments, metrics, fixedSegmentsError }
 }
 
 export type RadarListProfilesInput = {
@@ -502,7 +503,8 @@ export class RadarUseCase {
   async listSegments(teamId: string, ctx: TeamContext) {
     const role = ctx.teamMember.role
     const functionsKey = ctx.teamMember.functions.join(",")
-    return getCachedRadarSegments(teamId, ctx.profileId, role, functionsKey)
+    const cached = await getCachedRadarSegments(teamId, ctx.profileId, role, functionsKey)
+    return new Output(true, [], [], cached)
   }
 
   async listSegmentProfiles(

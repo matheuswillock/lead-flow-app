@@ -103,7 +103,7 @@ export function useRadarHookFn() {
     setError(null)
 
     try {
-      const [segmentsResult, profilesResult, customSegmentsResult] = await Promise.all([
+      const [segmentsSettled, profilesSettled, customSegmentsSettled] = await Promise.allSettled([
         radarFrontendService.listSegments(supabaseId, activeTeamId),
         radarFrontendService.listProfiles(supabaseId, activeTeamId, {
           page,
@@ -119,12 +119,35 @@ export function useRadarHookFn() {
         }),
         radarFrontendService.listCustomSegments(supabaseId, activeTeamId),
       ])
-      setSegments(segmentsResult.segments)
-      setMetrics(segmentsResult.metrics)
-      setFixedSegmentsError(Boolean(segmentsResult.fixedSegmentsError))
-      setProfiles(profilesResult.items)
-      setTotal(profilesResult.total)
-      setCustomSegments(customSegmentsResult)
+
+      if (segmentsSettled.status === "fulfilled") {
+        setSegments(segmentsSettled.value.segments)
+        setMetrics(segmentsSettled.value.metrics)
+        setFixedSegmentsError(Boolean(segmentsSettled.value.fixedSegmentsError))
+      } else {
+        console.error("[useRadarHookFn][loadDashboard][segments]", segmentsSettled.reason)
+        setSegments([])
+        setMetrics(null)
+        setFixedSegmentsError(true)
+        toast.error("Não foi possível carregar as métricas e segmentos do Radar.")
+      }
+
+      if (profilesSettled.status === "fulfilled") {
+        setProfiles(profilesSettled.value.items)
+        setTotal(profilesSettled.value.total)
+      } else {
+        console.error("[useRadarHookFn][loadDashboard][profiles]", profilesSettled.reason)
+        setProfiles([])
+        setTotal(0)
+        setError("Não foi possível carregar os perfis Radar. Tente novamente.")
+      }
+
+      if (customSegmentsSettled.status === "fulfilled") {
+        setCustomSegments(customSegmentsSettled.value)
+      } else {
+        console.error("[useRadarHookFn][loadDashboard][customSegments]", customSegmentsSettled.reason)
+        setCustomSegments([])
+      }
     } catch (loadError) {
       console.error("[useRadarHookFn][loadDashboard]", loadError)
       setError("Não foi possível carregar os perfis Radar. Tente novamente.")
