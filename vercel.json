@@ -95,7 +95,7 @@
     },
     {
       "path": "/api/v1/integrations/webhooks/cron/process-outbox",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/document-request-reminders",
