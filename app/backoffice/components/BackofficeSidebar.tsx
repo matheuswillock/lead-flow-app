@@ -31,6 +31,7 @@ import {
   SearchCheck,
   Activity,
   Clock,
+  Gauge,
 } from "lucide-react"
 import {
   Sidebar,
@@ -174,7 +175,25 @@ const navigationItems: NavItem[] = [
   { title: "Extração de Leads", url: "/backoffice/extracao-leads", icon: SearchCheck },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
-  { title: "Engajamento Radar", url: "/backoffice/radar/engajamento", icon: Activity },
+  {
+    title: "Radar",
+    url: "/backoffice/radar",
+    icon: Activity,
+    children: [
+      {
+        title: "Engajamento",
+        url: "/backoffice/radar/engajamento",
+        icon: Activity,
+        match: (pathname) => pathname.startsWith("/backoffice/radar/engajamento"),
+      },
+      {
+        title: "Outbox (vazão)",
+        url: "/backoffice/radar/outbox",
+        icon: Gauge,
+        match: (pathname) => pathname.startsWith("/backoffice/radar/outbox"),
+      },
+    ],
+  },
   { title: "Regras de transição", url: "/backoffice/regras-transicao", icon: ListChecks },
   { title: "Aprovações", url: "/backoffice/approvals", icon: ShieldCheck },
   { title: "Backups", url: "/backoffice/backups", icon: Database },

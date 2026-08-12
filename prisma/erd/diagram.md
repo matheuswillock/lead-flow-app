@@ -2975,6 +2975,16 @@ completed completed
     }
   
 
+  "backoffice_radar_outbox_throughput_configs" {
+    String id "🗝️"
+    Int batchSize 
+    Int concurrency 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_form_engagement_score_rules" {
     String id "🗝️"
     Int minPercent 
@@ -4366,6 +4376,7 @@ completed completed
     "backoffice_crm_lead_status_transition_gates" |o--|o "BackofficeLeadStatus" : "enum:sourceStatus"
     "backoffice_crm_lead_status_transition_gates" |o--|o "BackofficeLeadStatus" : "enum:targetStatus"
     "backoffice_crm_lead_status_transition_gates" }o--|| corretor_studio_profiles : "updatedBy"
+    "backoffice_radar_outbox_throughput_configs" }o--|o corretor_studio_profiles : "updatedBy"
     "backoffice_crm_lead_status_transition_field_rules" |o--|| "BackofficeLeadStatus" : "enum:targetStatus"
     "backoffice_crm_lead_status_transition_field_rules" |o--|| "BackofficeLeadTransitionFieldKey" : "enum:fieldKey"
     "backoffice_crm_lead_status_transition_field_rules" }o--|| corretor_studio_profiles : "updatedBy"
