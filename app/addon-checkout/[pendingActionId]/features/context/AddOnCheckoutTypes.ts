@@ -14,6 +14,8 @@ export interface AddOnCheckoutDefaultBillingData {
   state: string;
 }
 
+export type AddOnCheckoutSource = "pending_action" | "platform_purchase";
+
 export interface AddOnCheckoutData {
   pendingActionId: string;
   paymentId: string | null;
@@ -32,6 +34,11 @@ export interface AddOnCheckoutData {
   requesterName?: string;
   alreadyPaid?: boolean;
   defaultBillingData: AddOnCheckoutDefaultBillingData;
+  /** Distingue adesão legada vs PlatformPurchase genérico (Ticket 6). */
+  checkoutSource?: AddOnCheckoutSource;
+  purchaseType?: string;
+  productSlug?: string;
+  activationHint?: string;
 }
 
 export interface PaymentStatus {

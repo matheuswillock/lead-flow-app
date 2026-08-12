@@ -7,7 +7,8 @@ import { isManagerLikeRole } from "@/lib/roles"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const schema = z.object({
-  plan: z.enum(["starter", "plus", "pro", "business"]),
+  plan: z.enum(["starter", "plus", "pro", "upgrade", "business"]),
+  billingType: z.enum(["PIX", "CREDIT_CARD"]).default("PIX"),
 })
 
 function makeUseCase() {
@@ -36,7 +37,11 @@ export async function POST(request: NextRequest) {
     }
 
     const useCase = makeUseCase()
-    const output = await useCase.subscribe(validation.data.plan, teamAccess.access)
+    const output = await useCase.subscribe(
+      validation.data.plan,
+      teamAccess.access,
+      validation.data.billingType
+    )
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

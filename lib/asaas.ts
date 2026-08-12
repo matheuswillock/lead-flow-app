@@ -55,10 +55,56 @@ export const asaasApi = {
   get customers() { return `${getAsaasApiUrl()}/customers`; },
   get subscriptions() { return `${getAsaasApiUrl()}/subscriptions`; },
   get payments() { return `${getAsaasApiUrl()}/payments`; },
+  /** @deprecated use `notifications` — path legado apontava para /notifications */
   get webhooks() { return `${getAsaasApiUrl()}/notifications`; },
+  get notifications() { return `${getAsaasApiUrl()}/notifications`; },
+  customerNotifications: (customerId: string) =>
+    `${getAsaasApiUrl()}/customers/${customerId}/notifications`,
+  notificationById: (notificationId: string) =>
+    `${getAsaasApiUrl()}/notifications/${notificationId}`,
+  get notificationsBatch() { return `${getAsaasApiUrl()}/notifications/batch`; },
   get checkouts() { return `${getAsaasApiUrl()}/checkouts`; },
   pixQrCode: (paymentId: string) => `${getAsaasApiUrl()}/payments/${paymentId}/pixQrCode`,
 };
+
+export type AsaasCustomerNotification = {
+  id: string
+  customer: string
+  enabled: boolean
+  emailEnabledForProvider?: boolean
+  smsEnabledForProvider?: boolean
+  emailEnabledForCustomer?: boolean
+  smsEnabledForCustomer?: boolean
+  phoneCallEnabledForCustomer?: boolean
+  whatsappEnabledForCustomer?: boolean
+  event?: string
+  scheduleOffset?: number
+  deleted?: boolean
+}
+
+export type AsaasCustomerNotificationUpdate = {
+  id: string
+  enabled?: boolean
+  emailEnabledForProvider?: boolean
+  smsEnabledForProvider?: boolean
+  emailEnabledForCustomer?: boolean
+  smsEnabledForCustomer?: boolean
+  phoneCallEnabledForCustomer?: boolean
+  whatsappEnabledForCustomer?: boolean
+  scheduleOffset?: number
+}
+
+export function buildDisableCustomerFacingNotificationPatch(
+  notification: Pick<AsaasCustomerNotification, "id">
+): AsaasCustomerNotificationUpdate {
+  return {
+    id: notification.id,
+    emailEnabledForCustomer: false,
+    smsEnabledForCustomer: false,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: false,
+  }
+}
 
 // Helper para fazer requisições ao Asaas com tratamento de erros
 export async function asaasFetch(endpoint: string, options?: RequestInit) {

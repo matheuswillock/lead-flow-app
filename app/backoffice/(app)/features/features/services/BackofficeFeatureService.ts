@@ -1,27 +1,7 @@
 import type { IBackofficeFeatureService } from "./IBackofficeFeatureService"
 import type { BackofficeFeatureFormData, BackofficeFeatureItem } from "../context/BackofficeFeatureTypes"
+import { formToPayload } from "../utils/backofficeFeatureForm"
 import { API_CLIENT_BASE } from "@/lib/route-map";
-
-function formToPayload(data: BackofficeFeatureFormData | Partial<BackofficeFeatureFormData>) {
-  const payload: Record<string, unknown> = {}
-
-  if (data.name !== undefined) payload.name = data.name
-  if ("description" in data) payload.description = data.description || null
-  if (data.accessMode !== undefined) payload.accessMode = data.accessMode
-  if (data.defaultAccessLevel !== undefined) payload.defaultAccessLevel = data.defaultAccessLevel
-  if (data.betaEnabled !== undefined) payload.betaEnabled = data.betaEnabled
-  if (data.inheritParentSettings !== undefined) {
-    payload.inheritParentSettings = data.inheritParentSettings
-  }
-  if (data.billedSeparately !== undefined) payload.billedSeparately = data.billedSeparately
-  if (data.isActive !== undefined) payload.isActive = data.isActive
-  if ("sortOrder" in data) payload.sortOrder = parseInt(data.sortOrder ?? "0", 10) || 0
-  if ("productSlug" in data) payload.productSlug = data.productSlug || null
-  if ("parentId" in data) payload.parentId = data.parentId || null
-  if ("accessRules" in data) payload.accessRules = data.accessRules ?? []
-
-  return payload
-}
 
 export class BackofficeFeatureService implements IBackofficeFeatureService {
   async list(): Promise<BackofficeFeatureItem[]> {

@@ -1,4 +1,8 @@
 // app/api/services/IAsaasCustomerService.ts
+import type {
+  AsaasCustomerNotification,
+  AsaasCustomerNotificationUpdate,
+} from '@/lib/asaas';
 import type { AsaasCustomer, AsaasCustomerResponse } from './AsaasCustomerService';
 
 export interface IAsaasCustomerService {
@@ -14,5 +18,18 @@ export interface IAsaasCustomerService {
   updateCustomer(customerId: string, data: Partial<AsaasCustomer>): Promise<AsaasCustomerResponse>;
   deleteCustomer(customerId: string): Promise<{ deleted: boolean }>;
   restoreCustomer(customerId: string): Promise<AsaasCustomerResponse>;
+  listCustomerNotifications(customerId: string): Promise<AsaasCustomerNotification[]>;
+  updateCustomerNotification(
+    notificationId: string,
+    data: Omit<AsaasCustomerNotificationUpdate, 'id'>
+  ): Promise<AsaasCustomerNotification>;
+  updateCustomerNotificationsBatch(
+    customerId: string,
+    notifications: AsaasCustomerNotificationUpdate[]
+  ): Promise<AsaasCustomerNotification[]>;
+  disableCustomerFacingNotifications(customerId: string): Promise<{
+    updatedCount: number;
+    notifications: AsaasCustomerNotification[];
+  }>;
 }
 
