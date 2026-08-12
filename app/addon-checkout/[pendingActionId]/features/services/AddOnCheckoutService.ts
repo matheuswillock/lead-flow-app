@@ -1,9 +1,27 @@
 import type { AddOnCheckoutData, AddOnCheckoutSubmitInput, PaymentStatus } from "../context/AddOnCheckoutTypes";
 import type { IAddOnCheckoutService } from "./IAddOnCheckoutService";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import {
+  mapPlatformPurchaseToCheckoutData,
+  type PlatformCheckoutApiResult,
+} from "../utils/mapPlatformPurchaseToCheckoutData";
 
 class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
+  private async tryFetchPlatformCheckout(
+    checkoutId: string
+  ): Promise<AddOnCheckoutData | null> {
+    const response = await fetch(`${API_CLIENT_BASE}/platform-checkout/${checkoutId}`);
+    if (!response.ok) return null;
+    const result = await response.json();
+    if (!result.isValid || !result.result) return null;
+    return mapPlatformPurchaseToCheckoutData(result.result as PlatformCheckoutApiResult);
+  }
+
   async fetchCheckoutData(pendingActionId: string): Promise<AddOnCheckoutData> {
+    // PlatformPurchase genérico e PendingAction legado compartilham /addon-checkout/[id].
+    const platform = await this.tryFetchPlatformCheckout(pendingActionId);
+    if (platform) return platform;
+
     const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}`);
 
     if (!response.ok) {
@@ -16,7 +34,10 @@ class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
       throw new Error(result.errorMessages?.[0] || "Erro ao carregar dados");
     }
 
-    return result.result;
+    return {
+      ...(result.result as AddOnCheckoutData),
+      checkoutSource: "pending_action",
+    };
   }
 
   async createPayment(pendingActionId: string, input: AddOnCheckoutSubmitInput): Promise<any> {

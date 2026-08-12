@@ -10,7 +10,8 @@ import {
 } from "@/app/api/infra/data/repositories/resendWebhookProcessingFailure/ResendWebhookProcessingFailureRepository"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
-const MAX_CONCURRENT = 5
+/** Backpressure por isolate: default 2 reduz pressão no pool sob rajada Resend. */
+const MAX_CONCURRENT = Math.max(1, Number(process.env.RESEND_WEBHOOK_MAX_CONCURRENT ?? 2))
 let inFlight = 0
 
 export async function POST(request: NextRequest) {

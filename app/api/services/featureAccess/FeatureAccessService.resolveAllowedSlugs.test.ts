@@ -30,6 +30,7 @@ function makeFeature(
     parentId: null,
     inheritParentSettings: false,
     betaEnabled: true,
+    chargeDuringBeta: false,
     accessMode: "PUBLIC",
     defaultAccessLevel: "FULL",
     billedSeparately: false,

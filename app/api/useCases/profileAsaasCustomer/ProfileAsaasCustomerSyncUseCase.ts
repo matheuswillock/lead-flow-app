@@ -42,6 +42,7 @@ function buildCustomerPayload(profile: {
     complement: profile.complement || undefined,
     province: profile.neighborhood || undefined,
     externalReference: profile.id,
+    notificationDisabled: true,
   };
 }
 
@@ -73,6 +74,7 @@ export class ProfileAsaasCustomerSyncUseCase {
         }
 
         await profileRepository.updateAsaasCustomerId(profileId, created.customerId);
+        await this.syncCustomerFacingNotificationsDisabled(created.customerId);
 
         return new Output(true, ["Cliente Asaas criado"], [], {
           asaasCustomerId: created.customerId,
@@ -85,6 +87,7 @@ export class ProfileAsaasCustomerSyncUseCase {
         await AsaasCustomerService.getCustomer(profile.asaasCustomerId);
         try {
           await AsaasCustomerService.updateCustomer(profile.asaasCustomerId, payload);
+          await this.syncCustomerFacingNotificationsDisabled(profile.asaasCustomerId);
           return new Output(true, ["Cliente Asaas atualizado"], [], {
             asaasCustomerId: profile.asaasCustomerId,
             created: false,
@@ -109,6 +112,7 @@ export class ProfileAsaasCustomerSyncUseCase {
         }
 
         await profileRepository.updateAsaasCustomerId(profileId, created.customerId);
+        await this.syncCustomerFacingNotificationsDisabled(created.customerId);
 
         return new Output(true, ["Cliente Asaas recriado"], [], {
           asaasCustomerId: created.customerId,
@@ -119,6 +123,17 @@ export class ProfileAsaasCustomerSyncUseCase {
     } catch (error) {
       console.error("[ProfileAsaasCustomerSyncUseCase][ensureProfileAsaasCustomer]", error);
       return new Output(false, [], ["Erro ao sincronizar cliente Asaas"], null);
+    }
+  }
+
+  private async syncCustomerFacingNotificationsDisabled(asaasCustomerId: string): Promise<void> {
+    try {
+      await AsaasCustomerService.disableCustomerFacingNotifications(asaasCustomerId);
+    } catch (error) {
+      console.error(
+        "[ProfileAsaasCustomerSyncUseCase][disableCustomerFacingNotifications]",
+        { asaasCustomerId, error }
+      );
     }
   }
 }

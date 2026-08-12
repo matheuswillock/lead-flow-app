@@ -1,5 +1,11 @@
 // app/api/services/AsaasCustomerService.ts
-import { asaasApi, asaasFetch } from '@/lib/asaas';
+import {
+  asaasApi,
+  asaasFetch,
+  buildDisableCustomerFacingNotificationPatch,
+  type AsaasCustomerNotification,
+  type AsaasCustomerNotificationUpdate,
+} from '@/lib/asaas';
 
 export interface AsaasCustomer {
   name: string;              // Nome completo do Manager
@@ -13,6 +19,8 @@ export interface AsaasCustomer {
   province?: string;        // Bairro
   postalCode?: string;      // CEP (apenas números)
   externalReference: string; // ID do Profile no nosso sistema
+  /** D8: Asaas não deve notificar o pagador — comunicação via Corretor Studio */
+  notificationDisabled?: boolean;
 }
 
 export interface AsaasCustomerResponse {
@@ -43,6 +51,15 @@ export class AsaasCustomerService implements IAsaasCustomerService {
   updateCustomer: IAsaasCustomerService['updateCustomer'] = AsaasCustomerService.updateCustomer;
   deleteCustomer: IAsaasCustomerService['deleteCustomer'] = AsaasCustomerService.deleteCustomer;
   restoreCustomer: IAsaasCustomerService['restoreCustomer'] = AsaasCustomerService.restoreCustomer;
+  listCustomerNotifications: IAsaasCustomerService['listCustomerNotifications'] =
+    AsaasCustomerService.listCustomerNotifications;
+  updateCustomerNotification: IAsaasCustomerService['updateCustomerNotification'] =
+    AsaasCustomerService.updateCustomerNotification;
+  updateCustomerNotificationsBatch: IAsaasCustomerService['updateCustomerNotificationsBatch'] =
+    AsaasCustomerService.updateCustomerNotificationsBatch;
+  disableCustomerFacingNotifications: IAsaasCustomerService['disableCustomerFacingNotifications'] =
+    AsaasCustomerService.disableCustomerFacingNotifications;
+
   /**
    * Cria um novo cliente Manager no Asaas
    */
@@ -56,12 +73,18 @@ export class AsaasCustomerService implements IAsaasCustomerService {
         cpfCnpjLength: data.cpfCnpj?.length || 0,
         cpfCnpjType: typeof data.cpfCnpj,
         phone: data.phone?.substring(0, 4) + '***',
-        phoneLength: data.phone?.length || 0
+        phoneLength: data.phone?.length || 0,
+        notificationDisabled: data.notificationDisabled ?? true,
       });
+
+      const payload: AsaasCustomer = {
+        ...data,
+        notificationDisabled: data.notificationDisabled ?? true,
+      };
       
       const customer = await asaasFetch(asaasApi.customers, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
 
       return {
@@ -148,14 +171,97 @@ export class AsaasCustomerService implements IAsaasCustomerService {
     data: Partial<AsaasCustomer>
   ): Promise<AsaasCustomerResponse> {
     try {
+      const payload: Partial<AsaasCustomer> = {
+        ...data,
+        notificationDisabled: data.notificationDisabled ?? true,
+      };
       return await asaasFetch(`${asaasApi.customers}/${customerId}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
     } catch (error: any) {
       console.error('❌ Erro ao atualizar cliente:', error);
       throw new Error(error.message || 'Erro ao atualizar cliente');
     }
+  }
+
+  static async listCustomerNotifications(
+    customerId: string
+  ): Promise<AsaasCustomerNotification[]> {
+    try {
+      const result = await asaasFetch(asaasApi.customerNotifications(customerId), {
+        method: 'GET',
+      });
+      return Array.isArray(result?.data) ? (result.data as AsaasCustomerNotification[]) : [];
+    } catch (error: any) {
+      console.error('❌ Erro ao listar notificações do cliente Asaas:', error);
+      throw new Error(error.message || 'Erro ao listar notificações do cliente');
+    }
+  }
+
+  static async updateCustomerNotification(
+    notificationId: string,
+    data: Omit<AsaasCustomerNotificationUpdate, 'id'>
+  ): Promise<AsaasCustomerNotification> {
+    try {
+      return await asaasFetch(asaasApi.notificationById(notificationId), {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar notificação Asaas:', error);
+      throw new Error(error.message || 'Erro ao atualizar notificação');
+    }
+  }
+
+  static async updateCustomerNotificationsBatch(
+    customerId: string,
+    notifications: AsaasCustomerNotificationUpdate[]
+  ): Promise<AsaasCustomerNotification[]> {
+    try {
+      const result = await asaasFetch(asaasApi.notificationsBatch, {
+        method: 'POST',
+        body: JSON.stringify({
+          customer: customerId,
+          notifications,
+        }),
+      });
+      if (Array.isArray(result?.data)) {
+        return result.data as AsaasCustomerNotification[];
+      }
+      if (Array.isArray(result)) {
+        return result as AsaasCustomerNotification[];
+      }
+      return [];
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar notificações Asaas em lote:', error);
+      throw new Error(error.message || 'Erro ao atualizar notificações em lote');
+    }
+  }
+
+  /**
+   * Desabilita canais de comunicação com o pagador (D8/D9).
+   * Mantém a possibilidade de notificações do provider.
+   */
+  static async disableCustomerFacingNotifications(customerId: string): Promise<{
+    updatedCount: number;
+    notifications: AsaasCustomerNotification[];
+  }> {
+    await AsaasCustomerService.updateCustomer(customerId, {
+      notificationDisabled: true,
+    });
+
+    const existing = await AsaasCustomerService.listCustomerNotifications(customerId);
+    if (existing.length === 0) {
+      return { updatedCount: 0, notifications: [] };
+    }
+
+    const patch = existing.map((item) => buildDisableCustomerFacingNotificationPatch(item));
+    const updated = await AsaasCustomerService.updateCustomerNotificationsBatch(
+      customerId,
+      patch
+    );
+    return { updatedCount: patch.length, notifications: updated };
   }
 
   /**

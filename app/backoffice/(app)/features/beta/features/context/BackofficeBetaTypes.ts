@@ -30,6 +30,7 @@ export interface BetaFeatureItem {
   id: string
   slug: string
   name: string
+  chargeDuringBeta: boolean
   grants: BetaGrantItem[]
 }
 

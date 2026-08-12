@@ -16077,10 +16077,10 @@
                     "subscribe"
                   ]
                 },
-                "description": "plan: starter | plus | pro | business",
+                "description": "Cria checkout genérico (purchaseType=email_credits). Não ativa assinatura antes do pagamento. plan: starter | plus | pro | upgrade | business. billingType: PIX | CREDIT_CARD (default PIX).",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"plan\": \"starter\"\n}",
+                  "raw": "{\n  \"plan\": \"starter\",\n  \"billingType\": \"PIX\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -16562,6 +16562,63 @@
               ]
             },
             "description": "Retorna detalhes do add-on (tipo, label, pricing, defaultBillingData) para o checkout público."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Platform Checkout (genérico)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productSlug\": \"email\",\n  \"purchaseType\": \"email_credits\",\n  \"profileId\": \"{{profileId}}\",\n  \"teamId\": \"{{teamId}}\",\n  \"billingType\": \"PIX\",\n  \"amount\": 49.9,\n  \"quantity\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/platform-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-checkout"
+              ]
+            },
+            "description": "Cria PlatformPurchase pendente e retorna checkoutId/externalReference (URL pública /addon-checkout/[id])."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Platform Checkout Detalhes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/platform-checkout/:checkoutId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "platform-checkout",
+                ":checkoutId"
+              ],
+              "variable": [
+                {
+                  "key": "checkoutId",
+                  "value": "",
+                  "description": "ID da PlatformPurchase"
+                }
+              ]
+            },
+            "description": "Reabre checkout genérico sem duplicar cobrança."
           },
           "response": []
         },

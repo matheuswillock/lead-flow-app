@@ -1,24 +1,18 @@
-import { EmailCreditPlan } from "@prisma/client"
+import { randomUUID } from "crypto"
+import { EmailCreditPlan, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import {
+  OVERAGE_RATE_PER_HUNDRED,
+  PLAN_CREDITS,
+} from "@/lib/email/email-credit-plans"
+import { addMonthsInTz, resolveTimezone, startOfMonthInTz } from "@/lib/dates"
 import type {
+  ApplyPaidPlanInput,
+  ApplyPaidPlanResult,
   CreditStatus,
   IEmailCreditService,
   ReserveCreditsResult,
 } from "./IEmailCreditService"
-
-const PLAN_CREDITS: Record<EmailCreditPlan, number> = {
-  starter: 1000,
-  plus: 5000,
-  pro: 10000,
-  business: 25000,
-}
-
-const OVERAGE_RATE_PER_HUNDRED: Record<EmailCreditPlan, number> = {
-  starter: 3.5,
-  plus: 3.0,
-  pro: 2.5,
-  business: 2.0,
-}
 
 export class EmailCreditService implements IEmailCreditService {
   getOverageRatePerHundred(plan: EmailCreditPlan): number {
@@ -138,6 +132,132 @@ export class EmailCreditService implements IEmailCreditService {
           : this.formatInsufficientCreditsMessage(amount, result.available)
       )
     }
+  }
+
+  /**
+   * Aplica créditos após pagamento confirmado (webhook). Idempotente por `paymentId`.
+   */
+  async applyPaidPlan(input: ApplyPaidPlanInput): Promise<ApplyPaidPlanResult> {
+    const paymentId = input.paymentId.trim()
+    if (!paymentId) {
+      throw new Error("paymentId é obrigatório para aplicar créditos")
+    }
+
+    const existingGrant = await prisma.emailCreditPaymentGrant.findUnique({
+      where: { paymentId },
+      select: { id: true },
+    })
+    if (existingGrant) {
+      return { applied: false, alreadyApplied: true }
+    }
+
+    const monthlyCredits = PLAN_CREDITS[input.plan]
+    const now = new Date()
+    const tz = resolveTimezone(input.timezone)
+    const periodEnd = startOfMonthInTz(addMonthsInTz(now, 1, tz), tz)
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.emailCreditPaymentGrant.create({
+          data: {
+            id: randomUUID(),
+            teamId: input.teamId,
+            plan: input.plan,
+            paymentId,
+            checkoutId: input.checkoutId ?? null,
+            monthlyCredits,
+          },
+        })
+
+        const existing = await tx.emailCreditSubscription.findUnique({
+          where: { teamId: input.teamId },
+          select: { id: true },
+        })
+
+        if (existing) {
+          await tx.emailCreditSubscription.update({
+            where: { teamId: input.teamId },
+            data: {
+              plan: input.plan,
+              monthlyCredits,
+              status: "active",
+              currentPeriodStart: now,
+              currentPeriodEnd: periodEnd,
+              canceledAt: null,
+              updatedAt: now,
+            },
+          })
+
+          const currentUsage = await tx.emailCreditUsage.findFirst({
+            where: {
+              subscriptionId: existing.id,
+              periodStart: { lte: now },
+              periodEnd: { gte: now },
+            },
+            select: { id: true },
+          })
+
+          if (currentUsage) {
+            await tx.emailCreditUsage.update({
+              where: { id: currentUsage.id },
+              data: {
+                periodStart: now,
+                periodEnd,
+                creditsUsed: 0,
+                overageCount: 0,
+                overageCharged: 0,
+              },
+            })
+          } else {
+            await tx.emailCreditUsage.create({
+              data: {
+                id: randomUUID(),
+                subscriptionId: existing.id,
+                periodStart: now,
+                periodEnd,
+                creditsUsed: 0,
+                overageCount: 0,
+                overageCharged: 0,
+              },
+            })
+          }
+        } else {
+          const subscription = await tx.emailCreditSubscription.create({
+            data: {
+              id: randomUUID(),
+              teamId: input.teamId,
+              plan: input.plan,
+              monthlyCredits,
+              status: "active",
+              currentPeriodStart: now,
+              currentPeriodEnd: periodEnd,
+            },
+          })
+
+          await tx.emailCreditUsage.create({
+            data: {
+              id: randomUUID(),
+              subscriptionId: subscription.id,
+              periodStart: now,
+              periodEnd,
+              creditsUsed: 0,
+              overageCount: 0,
+              overageCharged: 0,
+            },
+          })
+        }
+      })
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        return { applied: false, alreadyApplied: true }
+      }
+      throw error
+    }
+
+    return { applied: true, alreadyApplied: false }
   }
 }
 

@@ -13,6 +13,7 @@ export interface BackofficeFeatureItem {
   accessMode: BackofficeFeatureAccessMode
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled: boolean
+  chargeDuringBeta: boolean
   inheritParentSettings: boolean
   billedSeparately: boolean
   isActive: boolean
@@ -38,6 +39,7 @@ export interface BackofficeFeatureFormData {
   accessMode: BackofficeFeatureAccessMode
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled: boolean
+  chargeDuringBeta: boolean
   inheritParentSettings: boolean
   billedSeparately: boolean
   isActive: boolean
@@ -53,6 +55,7 @@ export const EMPTY_FEATURE_FORM: BackofficeFeatureFormData = {
   accessMode: "PUBLIC",
   defaultAccessLevel: "FULL",
   betaEnabled: false,
+  chargeDuringBeta: false,
   inheritParentSettings: false,
   billedSeparately: false,
   isActive: true,
