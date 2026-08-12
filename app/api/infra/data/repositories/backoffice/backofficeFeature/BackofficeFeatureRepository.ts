@@ -120,6 +120,7 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
         accessMode: data.accessMode,
         defaultAccessLevel: data.defaultAccessLevel,
         betaEnabled: data.betaEnabled ?? false,
+        chargeDuringBeta: data.chargeDuringBeta ?? false,
         inheritParentSettings: data.inheritParentSettings ?? false,
         billedSeparately: data.billedSeparately ?? false,
         isActive: data.isActive ?? true,
@@ -147,6 +148,9 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
           defaultAccessLevel: data.defaultAccessLevel,
         }),
         ...(data.betaEnabled !== undefined && { betaEnabled: data.betaEnabled }),
+        ...(data.chargeDuringBeta !== undefined && {
+          chargeDuringBeta: data.chargeDuringBeta,
+        }),
         ...(data.inheritParentSettings !== undefined && {
           inheritParentSettings: data.inheritParentSettings,
         }),

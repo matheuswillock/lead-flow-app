@@ -41,6 +41,7 @@ export interface CreateBackofficeFeatureInput {
   accessMode: BackofficeFeatureAccessMode
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
+  chargeDuringBeta?: boolean
   inheritParentSettings?: boolean
   billedSeparately?: boolean
   isActive?: boolean
@@ -55,6 +56,7 @@ export interface UpdateBackofficeFeatureInput {
   accessMode?: BackofficeFeatureAccessMode
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
+  chargeDuringBeta?: boolean
   inheritParentSettings?: boolean
   billedSeparately?: boolean
   isActive?: boolean
