@@ -112,6 +112,14 @@ mock.module("@/app/api/infra/data/prisma", () => ({
   withPrismaRetry: withPrismaRetryMock,
 }))
 
+const publishRadarEngagementScoreUpdate = mock(async () => ({ messageId: "mid-1" }))
+
+mock.module("@/lib/queues/radar-engagement-score-updates", () => ({
+  publishRadarEngagementScoreUpdate,
+  RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG:
+    "radar_engagement_score_queue_publish_failed",
+}))
+
 const { RadarRepository } = await import(
   "@/app/api/infra/data/repositories/radar/RadarRepository"
 )
@@ -140,7 +148,6 @@ function foreignKeyError() {
 describe("RadarRepository.appendEventIfNew (E5.1)", () => {
   let consoleErrorSpy: ReturnType<typeof spyOn>
   let consoleWarnSpy: ReturnType<typeof spyOn>
-  let updateEngagementScoreSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
     radarEventFindFirst.mockReset()
@@ -148,12 +155,8 @@ describe("RadarRepository.appendEventIfNew (E5.1)", () => {
     radarEventCreate.mockReset()
     radarEventCreate.mockImplementation(async () => createdEvent)
     prismaMock.$connect.mockClear()
-
-    updateEngagementScoreSpy?.mockRestore()
-    updateEngagementScoreSpy = spyOn(
-      RadarRepository.prototype,
-      "updateEngagementScore"
-    ).mockImplementation(async () => ({ score: 0, band: "cold" }))
+    publishRadarEngagementScoreUpdate.mockReset()
+    publishRadarEngagementScoreUpdate.mockResolvedValue({ messageId: "mid-1" })
 
     consoleErrorSpy?.mockRestore()
     consoleWarnSpy?.mockRestore()
@@ -243,9 +246,9 @@ describe("RadarRepository.appendEventIfNew (E5.1)", () => {
     expect(result).toBeNull()
     expect(radarEventCreate).toHaveBeenCalledTimes(1)
     expect(consoleErrorSpy).not.toHaveBeenCalled()
-    expect(updateEngagementScoreSpy).toHaveBeenCalledWith(
-      APPEND_INPUT.profileId,
-      APPEND_INPUT.teamId
-    )
+    expect(publishRadarEngagementScoreUpdate).toHaveBeenCalledWith({
+      profileId: APPEND_INPUT.profileId,
+      teamId: APPEND_INPUT.teamId,
+    })
   })
 })
