@@ -119,6 +119,19 @@ export function resolveCampaignDispatchTerminal(
 }
 
 /**
+ * Sentinel para "não sabemos qual era o dispatch pré-tentativa" (ex.: o detalhe da
+ * campanha ainda não carregou quando o usuário clicou em retry) — distinto de `null`,
+ * que significa "sabemos que não havia dispatch anterior". Ver `isNewTerminalDispatch`.
+ */
+export const PRE_ATTEMPT_DISPATCH_ID_UNKNOWN = "unknown" as const
+
+export type PreAttemptDispatchId =
+  | string
+  | null
+  | undefined
+  | typeof PRE_ATTEMPT_DISPATCH_ID_UNKNOWN
+
+/**
  * Decide se o polling de retry deve emitir o toast terminal.
  *
  * `handleSend` seta `sendingId` **otimisticamente** antes do POST resolver, o que dispara
@@ -128,12 +141,15 @@ export function resolveCampaignDispatchTerminal(
  *
  * Regra fail-closed: só é um estado terminal novo se um `dispatchId` foi observado e ele
  * **difere** do `dispatchId` pré-tentativa. Sem dispatch novo ⇒ sem toast (o `catch` do
- * `handleSend` cuida do erro real e atual).
+ * `handleSend` cuida do erro real e atual). Quando o pré-tentativa é
+ * `PRE_ATTEMPT_DISPATCH_ID_UNKNOWN` (detalhe ainda não carregado no momento do clique),
+ * também falha fechado — nunca tratamos isso como "sem dispatch anterior".
  */
 export function isNewTerminalDispatch(params: {
   observedDispatchId: string | null | undefined
-  preAttemptDispatchId: string | null | undefined
+  preAttemptDispatchId: PreAttemptDispatchId
 }): boolean {
+  if (params.preAttemptDispatchId === PRE_ATTEMPT_DISPATCH_ID_UNKNOWN) return false
   const observed = params.observedDispatchId ?? null
   if (observed === null) return false
   return observed !== (params.preAttemptDispatchId ?? null)
