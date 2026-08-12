@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 import { platformCheckoutUseCase } from "@/app/api/useCases/platformCheckout/PlatformCheckoutUseCase"
 
-export const dynamic = "force-dynamic"
-
 export async function GET(
   _request: Request,
   context: { params: Promise<{ checkoutId: string }> }

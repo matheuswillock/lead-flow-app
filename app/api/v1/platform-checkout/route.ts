@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 import { platformCheckoutUseCase } from "@/app/api/useCases/platformCheckout/PlatformCheckoutUseCase"
 
-export const dynamic = "force-dynamic"
-
 type PlatformPurchaseTypeInput =
   | "email_credits"
   | "feature_addon"
