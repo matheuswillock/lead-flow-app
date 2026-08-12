@@ -4,6 +4,7 @@ import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseC
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
 import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
+import { runDispatchScheduledCronTick } from "@/lib/email/run-dispatch-scheduled-cron"
 
 export const maxDuration = 60
 
@@ -24,8 +25,7 @@ export async function GET(request: NextRequest) {
       },
       async () => {
         const useCase = new EmailCampaignUseCase()
-        await useCase.resumeOrphanSendingDispatches({ now: new Date() })
-        return useCase.dispatchScheduledCampaigns()
+        return runDispatchScheduledCronTick(useCase, new Date())
       },
       {
         onFailure: getDefaultCronSlackCallback(),
