@@ -342,6 +342,16 @@ export class FeatureAccessService implements IFeatureAccessService {
       access.betaLabelSlugs.includes(FEATURE_SLUGS.EMAIL)
     )
   }
+
+  async resolveRadarBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean> {
+    const access = await this.resolveAllowedSlugs({
+      profileId: ctx.profileId,
+      managerId: ctx.managerId,
+      activeTeamId: ctx.teamId,
+    })
+
+    return access.betaLabelSlugs.includes(FEATURE_SLUGS.RADAR)
+  }
 }
 
 export const featureAccessService = new FeatureAccessService(new FeatureAccessRepository())

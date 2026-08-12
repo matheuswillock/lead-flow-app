@@ -154,8 +154,12 @@ mock.module("@/app/api/infra/data/prisma", () => ({
 
 // --- FeatureAccessService ---
 const resolveEmailBetaAccessMock = mock(async () => false)
+const resolveRadarBetaAccessMock = mock(async () => true)
 mock.module("@/app/api/services/featureAccess/FeatureAccessService", () => ({
-  featureAccessService: { resolveEmailBetaAccess: resolveEmailBetaAccessMock },
+  featureAccessService: {
+    resolveEmailBetaAccess: resolveEmailBetaAccessMock,
+    resolveRadarBetaAccess: resolveRadarBetaAccessMock,
+  },
 }))
 
 // --- EmailOrphanEventService ---
@@ -331,6 +335,7 @@ const allMocks = [
   markManyTeamEmailLogsSentMock,
   markTeamEmailLogFailedMock,
   resolveEmailBetaAccessMock,
+  resolveRadarBetaAccessMock,
   processPendingBatchMock,
   buildCampaignDispatchInputMock,
   findUnresolvedTokensMock,
@@ -364,6 +369,7 @@ describe("EmailCampaignUseCase.send", () => {
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
     resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
     processPendingBatchMock.mockImplementation(async () => ({
       processed: 0,
       failed: 0,
@@ -521,6 +527,82 @@ describe("EmailCampaignUseCase.send", () => {
     expect(output.isValid).toBe(true)
     expect(reserveCreditsMock).not.toHaveBeenCalled()
     expect(releaseCreditsMock).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // T05/T06/T07 — gate Grupo Beta de Radar (SPEC D12)
+  // ---------------------------------------------------------------------------
+  it("T05 — com créditos mas fora do Beta Radar → bloqueia envio", async () => {
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA)
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("T06 — no Beta Radar com créditos → pode enviar", async () => {
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
+    resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    const recipients = makeRecipients(2)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 2,
+      failed: 0,
+      dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+      providerErrors: [],
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(reserveCreditsMock).toHaveBeenCalled()
+  })
+
+  it("T06b — no Beta Radar com isenção de créditos de e-mail → pode enviar sem debitar", async () => {
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
+    resolveEmailBetaAccessMock.mockImplementation(async () => true)
+    const recipients = makeRecipients(2)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 2,
+      failed: 0,
+      dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+      providerErrors: [],
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+
+  it("T07 — Beta Radar de outro time (activeTeamId fora do escopo) → bloqueia", async () => {
+    // resolveRadarBetaAccess já encapsula ALL_TEAMS vs SPECIFIC_TEAMS pelo teamId ativo.
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", { ...teamCtx, teamId: "team-outro" })
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA)
+    expect(resolveRadarBetaAccessMock).toHaveBeenCalled()
+    const call = resolveRadarBetaAccessMock.mock.calls[0] as unknown as [
+      { teamId: string }
+    ]
+    expect(call[0].teamId).toBe("team-outro")
   })
 
   // ---------------------------------------------------------------------------
@@ -987,6 +1069,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
     resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
     processPendingBatchMock.mockImplementation(async () => ({
       processed: 0,
       failed: 0,
@@ -1375,6 +1458,7 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
     resolveEmailBetaAccessMock.mockImplementation(async () => false)
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(makeRecipients(2))
     )

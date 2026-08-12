@@ -16077,10 +16077,10 @@
                     "subscribe"
                   ]
                 },
-                "description": "plan: starter | plus | pro | business",
+                "description": "Cria checkout genérico (purchaseType=email_credits). Não ativa assinatura antes do pagamento. plan: starter | plus | pro | upgrade | business. billingType: PIX | CREDIT_CARD (default PIX).",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"plan\": \"starter\"\n}",
+                  "raw": "{\n  \"plan\": \"starter\",\n  \"billingType\": \"PIX\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"

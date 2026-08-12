@@ -1,21 +1,31 @@
-import { randomUUID } from "crypto"
 import { EmailCreditPlan } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
-import { emailCreditService, PLAN_CREDITS } from "@/app/api/services/EmailCredit/EmailCreditService"
+import { emailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
+import type { IEmailCreditService } from "@/app/api/services/EmailCredit/IEmailCreditService"
+import {
+  platformCheckoutUseCase,
+  type PlatformCheckoutUseCase,
+} from "@/app/api/useCases/platformCheckout/PlatformCheckoutUseCase"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import { addMonthsInTz, resolveTimezone, startOfMonthInTz } from "@/lib/dates"
+import {
+  emailCreditsProductSlug,
+  OVERAGE_RATE_PER_HUNDRED,
+  PLAN_CREDITS,
+  PLAN_PRICES,
+} from "@/lib/email/email-credit-plans"
+
+type EmailCreditBillingType = "PIX" | "CREDIT_CARD"
 import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService"
 import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
-
-const PLAN_PRICES: Record<EmailCreditPlan, number> = {
-  starter: 25.0,
-  plus: 100.0,
-  pro: 175.0,
-  business: 375.0,
-}
+import { resolveTimezone } from "@/lib/dates"
 
 export class EmailCreditUseCase {
+  constructor(
+    private readonly creditService: IEmailCreditService = emailCreditService,
+    private readonly checkoutUseCase: PlatformCheckoutUseCase = platformCheckoutUseCase
+  ) {}
+
   private async resolveTeamMasterTimezone(teamId: string): Promise<string> {
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -39,9 +49,17 @@ export class EmailCreditUseCase {
     }
   }
 
-  async subscribe(plan: EmailCreditPlan, ctx: TeamContext): Promise<Output> {
+  /**
+   * Inicia compra de créditos via checkout genérico (`PlatformPurchase`, purchaseType=email_credits).
+   * NÃO ativa `EmailCreditSubscription` antes do pagamento confirmado.
+   */
+  async subscribe(
+    plan: EmailCreditPlan,
+    ctx: TeamContext,
+    billingType: EmailCreditBillingType = "PIX"
+  ): Promise<Output> {
     try {
-      const { teamId } = ctx
+      const { teamId, profileId } = ctx
 
       const isBetaExempt = await featureAccessService.resolveEmailBetaAccess(ctx)
       if (isBetaExempt) {
@@ -53,66 +71,55 @@ export class EmailCreditUseCase {
         )
       }
 
-      const existing = await prisma.emailCreditSubscription.findUnique({
-        where: { teamId },
+      const checkoutOutput = await this.checkoutUseCase.createCheckout({
+        productSlug: emailCreditsProductSlug(plan),
+        purchaseType: "email_credits",
+        profileId,
+        teamId,
+        billingType,
+        amount: PLAN_PRICES[plan],
+        quantity: PLAN_CREDITS[plan],
+        description: `Créditos de e-mail — plano ${plan}`,
+        metadata: { plan },
       })
 
-      if (existing && existing.status === "active") {
-        const periodEnd = new Date(existing.currentPeriodEnd)
-        await prisma.emailCreditSubscription.update({
-          where: { teamId },
-          data: {
-            plan,
-            monthlyCredits: PLAN_CREDITS[plan],
-            updatedAt: new Date(),
-          },
-        })
-
+      if (!checkoutOutput.isValid || !checkoutOutput.result) {
         return new Output(
-          true,
-          [`Plano de créditos alterado para ${plan} com sucesso`],
+          false,
           [],
-          { plan, monthlyCredits: PLAN_CREDITS[plan], pricePerMonth: PLAN_PRICES[plan], currentPeriodEnd: periodEnd }
+          checkoutOutput.errorMessages.length > 0
+            ? checkoutOutput.errorMessages
+            : ["Não foi possível criar o checkout de créditos"],
+          null
         )
       }
 
-      const now = new Date()
-      const tz = ctx.userTimezone
-      const periodEnd = startOfMonthInTz(addMonthsInTz(now, 1, tz), tz)
-
-      const subscription = await prisma.emailCreditSubscription.create({
-        data: {
-          id: randomUUID(),
-          teamId,
-          plan,
-          monthlyCredits: PLAN_CREDITS[plan],
-          status: "active",
-          currentPeriodStart: now,
-          currentPeriodEnd: periodEnd,
-        },
-      })
-
-      await prisma.emailCreditUsage.create({
-        data: {
-          id: randomUUID(),
-          subscriptionId: subscription.id,
-          periodStart: now,
-          periodEnd: periodEnd,
-          creditsUsed: 0,
-          overageCount: 0,
-          overageCharged: 0,
-        },
-      })
+      const checkout = checkoutOutput.result as {
+        checkoutId: string
+        checkoutUrl: string
+        externalReference: string
+        status: string
+      }
 
       return new Output(
         true,
-        [`Assinatura de créditos ${plan} ativada com sucesso`],
+        ["Checkout de créditos criado. Assinatura será ativada após confirmação do pagamento"],
         [],
-        { plan, monthlyCredits: PLAN_CREDITS[plan], pricePerMonth: PLAN_PRICES[plan], currentPeriodEnd: periodEnd }
+        {
+          checkoutId: checkout.checkoutId,
+          checkoutUrl: checkout.checkoutUrl,
+          externalReference: checkout.externalReference,
+          status: "pending",
+          plan,
+          monthlyCredits: PLAN_CREDITS[plan],
+          pricePerMonth: PLAN_PRICES[plan],
+          teamId,
+          subscriptionActivated: false,
+        }
       )
     } catch (error) {
       console.error("[EmailCreditUseCase][subscribe]", error)
-      return new Output(false, [], ["Erro ao ativar assinatura de créditos de e-mail"], null)
+      return new Output(false, [], ["Erro ao criar checkout de créditos de e-mail"], null)
     }
   }
 
@@ -137,7 +144,7 @@ export class EmailCreditUseCase {
         })
       }
 
-      const status = await emailCreditService.getStatus(ctx.teamId)
+      const status = await this.creditService.getStatus(ctx.teamId)
 
       if (!status.hasSubscription) {
         return new Output(true, [], [], {
@@ -206,7 +213,7 @@ export class EmailCreditUseCase {
       plan,
       monthlyCredits: PLAN_CREDITS[plan],
       pricePerMonth: PLAN_PRICES[plan],
-      overageRatePer100: { starter: 3.5, plus: 3.0, pro: 2.5, business: 2.0 }[plan],
+      overageRatePer100: OVERAGE_RATE_PER_HUNDRED[plan],
     }))
   }
 }

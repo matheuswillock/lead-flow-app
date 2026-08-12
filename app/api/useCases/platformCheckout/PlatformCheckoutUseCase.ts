@@ -35,6 +35,8 @@ export type PlatformCheckoutDetails = {
   externalReference: string
   asaasPaymentId: string | null
   checkoutUrl: string
+  teamId: string | null
+  profileId: string
   metadata: unknown
 }
 
@@ -69,6 +71,8 @@ function toDetails(purchase: PlatformPurchase): PlatformCheckoutDetails {
     externalReference: purchase.externalReference,
     asaasPaymentId: purchase.asaasPaymentId,
     checkoutUrl: buildPublicCheckoutUrl(purchase.id),
+    teamId: purchase.teamId,
+    profileId: purchase.profileId,
     metadata: purchase.metadata,
   }
 }
