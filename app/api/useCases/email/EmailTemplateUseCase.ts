@@ -14,11 +14,16 @@ import { resolveCampaignFrom } from "@/lib/email/resolve-campaign-from"
 import { inlineEmailHtml } from "@/lib/email/inline-email-html"
 import {
   type EmailTemplateFunctionDefinition,
+  type EmailTemplateVariableDefinition,
   type EmailTemplateVariableKind,
   extractTemplateVariableKeys,
+  findUnresolvedEmailTemplateTokens,
   interpolateEmailTemplate,
 } from "@/lib/email/interpolate"
-import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
+import {
+  EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+  suggestUnsubscribeTokenHint,
+} from "@/lib/email/unsubscribe-link-embed"
 import { getFullUrl } from "@/lib/utils/app-url"
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 
@@ -163,6 +168,46 @@ export class EmailTemplateUseCase {
       },
       select: { id: true },
     })
+  }
+
+  /**
+   * Valida se o template tem alguma variável não resolvida (sem valor de time, de
+   * contato ou de fallback) antes de aprovar/publicar — evita que o problema só
+   * apareça no momento do disparo real (sem nenhum EmailLog criado).
+   */
+  private async findUnresolvedTemplateTokensForValidation(params: {
+    subject: string
+    html: string | null
+    variables: unknown
+    ctx: TeamContext
+  }): Promise<string[]> {
+    const recipient = {
+      email: "exemplo@corretorstudio.com.br",
+      name: "Exemplo",
+      customFields: {},
+    }
+    const defaultsUseCase = new EmailTeamVariablesUseCase()
+    const defaultsOutput = await defaultsUseCase.getDefaultsMap(params.ctx)
+    const globalDefaults = defaultsOutput.isValid
+      ? { ...(defaultsOutput.result as Record<string, string>) }
+      : {}
+    const definitions = Array.isArray(params.variables)
+      ? (params.variables as EmailTemplateVariableDefinition[])
+      : []
+
+    return findUnresolvedEmailTemplateTokens(
+      params.subject,
+      inlineEmailHtml(params.html ?? ""),
+      recipient,
+      globalDefaults,
+      definitions
+    )
+  }
+
+  private buildUnresolvedTemplateTokensErrorMessage(unresolvedTokens: string[]): string {
+    const base = `Variáveis sem valor suficiente: ${unresolvedTokens.map((token) => `{{${token}}}`).join(", ")}`
+    const hint = suggestUnsubscribeTokenHint(unresolvedTokens)
+    return hint ? `${base}. ${hint}` : base
   }
 
   async list(
@@ -517,11 +562,26 @@ export class EmailTemplateUseCase {
 
       const existing = await prisma.emailTemplate.findFirst({
         where: { id, teamId: ctx.teamId, isArchived: false, approvalStatus: "pending_approval" },
-        select: { id: true },
+        select: { id: true, subject: true, html: true, variables: true },
       })
 
       if (!existing) {
         return new Output(false, [], ["Template pendente de aprovação não encontrado"], null)
+      }
+
+      const unresolvedTokens = await this.findUnresolvedTemplateTokensForValidation({
+        subject: existing.subject,
+        html: existing.html,
+        variables: existing.variables,
+        ctx,
+      })
+      if (unresolvedTokens.length > 0) {
+        return new Output(
+          false,
+          [],
+          [this.buildUnresolvedTemplateTokensErrorMessage(unresolvedTokens)],
+          null
+        )
       }
 
       const template = await prisma.emailTemplate.update({
@@ -790,7 +850,15 @@ export class EmailTemplateUseCase {
       const [existing, teamSettings] = await Promise.all([
         prisma.emailTemplate.findFirst({
           where: { id, teamId: ctx.teamId, isArchived: false },
-          select: { id: true, html: true, approvalStatus: true, approvedAt: true, versionGroupId: true },
+          select: {
+            id: true,
+            subject: true,
+            html: true,
+            variables: true,
+            approvalStatus: true,
+            approvedAt: true,
+            versionGroupId: true,
+          },
         }),
         prisma.emailTeamSettings.findUnique({
           where: { teamId: ctx.teamId },
@@ -814,6 +882,21 @@ export class EmailTemplateUseCase {
           false,
           [],
           ["Template precisa passar por aprovação antes de ser publicado"],
+          null
+        )
+      }
+
+      const unresolvedTokens = await this.findUnresolvedTemplateTokensForValidation({
+        subject: existing.subject,
+        html: existing.html,
+        variables: existing.variables,
+        ctx,
+      })
+      if (unresolvedTokens.length > 0) {
+        return new Output(
+          false,
+          [],
+          [this.buildUnresolvedTemplateTokensErrorMessage(unresolvedTokens)],
           null
         )
       }

@@ -95,6 +95,7 @@ const queryRawMock = mock(async (..._args: unknown[]) => [] as Array<{
   queuedCount: number
 }>)
 const emailLogCountMock = mock(async (..._args: unknown[]) => 0)
+const emailLogGroupByMock = mock(async (..._args: unknown[]) => [] as Array<{ campaignId: string | null }>)
 const profileFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 const emailTeamSettingsFindUniqueMock = mock(async (): Promise<unknown> => null)
@@ -133,6 +134,7 @@ const prismaMock = {
   emailLog: {
     findMany: emailLogFindManyMock,
     count: emailLogCountMock,
+    groupBy: emailLogGroupByMock,
   },
   profile: {
     findMany: profileFindManyMock,
@@ -328,6 +330,7 @@ const allMocks = [
   emailTeamSenderFindFirstMock,
   emailLogFindManyMock,
   emailLogCountMock,
+  emailLogGroupByMock,
   queryRawMock,
   profileFindManyMock,
   transactionMock,
@@ -953,6 +956,49 @@ describe("EmailCampaignUseCase.send", () => {
     ]
     expect(dispatchArgs[0].recipients).toHaveLength(4)
     expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(4)
+  })
+
+  it("C14d — retryFailedOnly inclui destinatários queued travados (regressão Golden Cross)", async () => {
+    // Dispatch travou por timeout (recoverStuckSendingCampaigns marca status failed),
+    // mas os EmailLog nunca saíram de "queued" — antes do fix, ficavam permanentemente
+    // órfãos: o critério de retry só olhava status "failed".
+    const allRecipients = makeRecipients(3)
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(allRecipients)
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "queued" },
+      { recipientEmail: "r1@test.com", status: "queued" },
+      { recipientEmail: "r2@test.com", status: "sent" },
+    ])
+    dispatchBatchMock.mockImplementation(async (params: unknown) => {
+      const typed = params as { recipients: Array<{ email: string }> }
+      return {
+        sent: typed.recipients.length,
+        failed: 0,
+        dispatched: typed.recipients.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      }
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(true)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+    const dispatchArgs = dispatchBatchMock.mock.calls[0] as unknown as [
+      { recipients: Array<{ email: string }> },
+    ]
+    expect(dispatchArgs[0].recipients.map((recipient) => recipient.email).sort()).toEqual([
+      "r0@test.com",
+      "r1@test.com",
+    ])
   })
 
   // ---------------------------------------------------------------------------
