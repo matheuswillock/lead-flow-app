@@ -94,6 +94,7 @@ const queryRawMock = mock(async (..._args: unknown[]) => [] as Array<{
   failedCount: number
   queuedCount: number
 }>)
+const emailLogCountMock = mock(async (..._args: unknown[]) => 0)
 const profileFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
 const transactionMock = mock(async (ops: Promise<unknown>[]) => Promise.all(ops))
 const emailTeamSettingsFindUniqueMock = mock(async (): Promise<unknown> => null)
@@ -131,7 +132,7 @@ const prismaMock = {
   },
   emailLog: {
     findMany: emailLogFindManyMock,
-    count: mock(async () => 0),
+    count: emailLogCountMock,
   },
   profile: {
     findMany: profileFindManyMock,
@@ -326,6 +327,7 @@ const allMocks = [
   emailCampaignDispatchUpdateManyMock,
   emailTeamSenderFindFirstMock,
   emailLogFindManyMock,
+  emailLogCountMock,
   queryRawMock,
   profileFindManyMock,
   transactionMock,
@@ -1280,6 +1282,94 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     expect(updateData.errorMessage).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
     expect(emailCampaignDispatchUpdateMock).toHaveBeenCalled()
   })
+
+  it("D13g — órfão sem logs queued restantes: incrementa totais e atualiza status do pai (regressão Mulheres 05)", async () => {
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [
+      {
+        id: "dispatch-orphan-2",
+        campaignId: "camp-child-2",
+        teamId: "team-1",
+        dispatchNumber: 1,
+        batchIdempotencyScheme: "positional",
+        templateHtml: "<p>Hi</p>",
+        templateSubject: "S",
+        totalRecipients: 287,
+        triggeredBy: "profile-1",
+        contactListId: "list-1",
+        radarSegmentSlug: null,
+        templateId: "tpl-1",
+      },
+    ])
+    // Nenhum log "queued" restante — todos os destinatários já têm log terminal
+    // (o envio real já saiu, só faltou consolidar o estado da campanha).
+    emailLogFindManyMock.mockImplementation(async () => [])
+    emailLogCountMock.mockImplementation(async () => 269)
+    emailCampaignDispatchFindUniqueMock.mockImplementation(async () => ({
+      triggeredBy: "profile-1",
+      status: "sending" as const,
+    }))
+    emailCampaignUpdateMock.mockImplementationOnce(async () => ({
+      parentCampaignId: "parent-1" as string | null,
+    }))
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      {
+        status: "sent",
+        totalSent: 296,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        sentAt: new Date("2026-08-05T21:32:00Z"),
+      },
+      {
+        status: "sent",
+        totalSent: 269,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        sentAt: new Date("2026-08-06T11:45:00Z"),
+      },
+      {
+        status: "sent",
+        totalSent: 293,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalBounced: 0,
+        dispatchCount: 1,
+        sentAt: new Date("2026-08-07T12:25:00Z"),
+      },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const resumed = await uc.resumeOrphanSendingDispatches({
+      now: new Date("2026-08-11T12:41:00.000Z"),
+    })
+
+    expect(resumed).toBe(1)
+
+    const campaignUpdateCalls = emailCampaignUpdateMock.mock.calls as unknown as Array<
+      [{ where: { id: string }; data: Record<string, unknown> }]
+    >
+
+    // A sub-campanha órfã deve ter totalSent/dispatchCount incrementados, não zerados.
+    const subCampaignUpdate = campaignUpdateCalls.find(
+      (call) => call[0].where.id === "camp-child-2"
+    )
+    expect(subCampaignUpdate?.[0].data.status).toBe("sent")
+    expect(subCampaignUpdate?.[0].data.totalSent).toEqual({ increment: 269 })
+    expect(subCampaignUpdate?.[0].data.dispatchCount).toEqual({ increment: 1 })
+
+    // refreshParentCampaignStatus deve ter sido disparado para o pai — sem isso o pai
+    // ficava travado em "scheduled" mesmo com todas as sub-campanhas enviadas.
+    const parentUpdateCall = campaignUpdateCalls.find(
+      (call) => call[0].where.id === "parent-1"
+    )
+    expect(parentUpdateCall?.[0].data.status).toBe("sent")
+  })
 })
 
 // =============================================================================
@@ -1545,6 +1635,71 @@ describe("EmailCampaignUseCase dispatch progress", () => {
       totalRecipients: 10,
       retryFailedOnly: false,
     })
+  })
+
+  it("list corrige status failed divergente quando os EmailLog mostram 100% de aceite (regressão Mulheres)", async () => {
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where && "parentCampaignId" in (whereArgs.where ?? {}) && whereArgs.where.parentCampaignId != null) {
+        return []
+      }
+      return [
+        {
+          id: "camp-mulheres",
+          name: "Mulheres",
+          status: "failed",
+          scheduledAt: null,
+          sentAt: null,
+          totalRecipients: 2211,
+          totalSent: 0,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 1,
+          createdAt: new Date("2026-08-11T14:03:00.000Z"),
+          createdBy: "profile-1",
+          managedByBackofficeUserId: null,
+          templateId: "tpl-1",
+          contactListId: "list-1",
+          radarSegmentSlug: null,
+          audienceContactIds: ["c1"],
+          errorMessage: "Erro interno durante o disparo",
+          _count: { subCampaigns: 0 },
+        },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    // EmailLog real mostra que os 2211 destinatários foram aceitos pelo provedor
+    // (via webhook), apesar do registro interno de status ter ficado em "failed".
+    emailLogFindManyMock.mockImplementation(async () =>
+      Array.from({ length: 2211 }, (_, i) => ({
+        campaignId: "camp-mulheres",
+        recipientEmail: `r${i}@test.com`,
+        status: "delivered",
+        sentAt: new Date("2026-08-11T14:05:00.000Z"),
+        resendEmailId: `re_${i}`,
+      }))
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+
+    expect(output.isValid).toBe(true)
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.status).toBe("sent")
+    expect(campaign.totalSent).toBe(2211)
+    expect(campaign.errorMessage).toBeNull()
+
+    // Persistiu a correção no banco, não só na resposta.
+    const campaignUpdateCalls = emailCampaignUpdateMock.mock.calls as unknown as Array<
+      [{ where: { id: string }; data: Record<string, unknown> }]
+    >
+    const reconcileUpdate = campaignUpdateCalls.find(
+      (call) => call[0].where.id === "camp-mulheres"
+    )
+    expect(reconcileUpdate?.[0].data.status).toBe("sent")
+    expect(reconcileUpdate?.[0].data.totalSent).toBe(2211)
   })
 
   it("startManualDispatch persiste retryFailedOnly true quando solicitado", async () => {
