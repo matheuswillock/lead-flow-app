@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.217.0",
+  "version": "0.218.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -52,7 +52,7 @@
     "lint:check": "prettier --check .",
     "lint:fix": "prettier --write .",
     "lint:pt-br": "bun scripts/lint-pt-br.ts",
-    "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth lib/backoffice-adhesions app/api/services/backofficeAdhesion \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/featureAccess app/api/services/leadSchedule app/api/services/radar app/api/infra/data/repositories/featureAccess app/api/useCases/email app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup app/api/useCases/integrations app/api/useCases/metaLeads app/api/useCases/radar app/api/v1/radar && bun run test:ui",
+    "test": "bun test --isolate app/api/useCases/leads/utils app/api/v1/leads/DTO app/api/services/resend lib/email lib/leadCustomFields lib/radar lib/web-push lib/proxy lib/studio-bot lib/public-forms lib/auth lib/backoffice-adhesions app/api/services/backofficeAdhesion \"app/[supabaseId]/radar/features/utils\" app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/services/featureAccess app/api/services/leadSchedule app/api/services/radar app/api/infra/data/repositories/featureAccess app/api/useCases/email app/api/useCases/backofficeFeature app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup app/api/useCases/integrations app/api/useCases/metaLeads app/api/useCases/radar app/api/v1/radar && bun run test:ui",
     "test:ui": "bun test --isolate --preload ./test/setup-happy-dom.ts \"app/backoffice/(app)/cron-executions\" \"./app/[supabaseId]/components/CampaignDispatchIndicator.test.tsx\" \"./app/[supabaseId]/email/campanhas/features/components/CampaignDispatchProgressLine.test.tsx\" \"./app/[supabaseId]/email/campanhas/features/components/CampaignDispatchProgress.regression.test.tsx\" \"./app/[supabaseId]/email/campanhas/features/context/CampanhasHook.progress.test.ts\" \"./app/[supabaseId]/email/campanhas/features/context/campaign-dispatch-leaving-snapshot.test.ts\"",
     "test:backoffice-deletion": "bun test --isolate app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
     "test:email": "bun test --isolate app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",

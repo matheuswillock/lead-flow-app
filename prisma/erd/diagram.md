@@ -2782,6 +2782,7 @@ completed completed
     BackofficeFeatureAccessMode accessMode 
     BackofficeFeatureAccessLevel defaultAccessLevel 
     Boolean betaEnabled 
+    Boolean charge_during_beta 
     Boolean inheritParentSettings 
     Boolean billedSeparately 
     Boolean isActive 

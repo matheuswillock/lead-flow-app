@@ -25,6 +25,7 @@ export interface CreateBackofficeFeatureInput {
   accessMode?: BackofficeFeatureAccessMode
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
+  chargeDuringBeta?: boolean
   inheritParentSettings?: boolean
   billedSeparately?: boolean
   isActive?: boolean
@@ -40,11 +41,35 @@ export interface UpdateBackofficeFeatureInput {
   accessMode?: BackofficeFeatureAccessMode
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
+  chargeDuringBeta?: boolean
   inheritParentSettings?: boolean
   billedSeparately?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
+}
+
+function validateChargeDuringBetaPolicy(input: {
+  chargeDuringBeta: boolean
+  betaEnabled: boolean
+  accessMode: BackofficeFeatureAccessMode
+  productSlug: string | null | undefined
+}): string | null {
+  if (!input.chargeDuringBeta) return null
+
+  if (!input.betaEnabled) {
+    return "Cobrança durante o beta exige betaEnabled=true"
+  }
+
+  if (input.accessMode !== "PAID" && input.accessMode !== "ADDON") {
+    return "Cobrança durante o beta exige accessMode PAID ou ADDON"
+  }
+
+  if (!input.productSlug?.trim()) {
+    return "Cobrança durante o beta exige productSlug de produto vinculado"
+  }
+
+  return null
 }
 
 const backofficeFeatureRepository = new BackofficeFeatureRepository()
@@ -107,6 +132,12 @@ export class BackofficeFeatureUseCase {
       const createInheritParentSettings = input.inheritParentSettings ?? false
       const createBilledSeparately =
         createInheritParentSettings ? false : (input.billedSeparately ?? false)
+      const createBetaEnabled = createInheritParentSettings ? false : (input.betaEnabled ?? false)
+      const createChargeDuringBeta = createInheritParentSettings
+        ? false
+        : (input.chargeDuringBeta ?? false)
+      const createAccessMode = input.accessMode ?? "PUBLIC"
+      const createProductSlug = input.productSlug ?? null
 
       if (createInheritParentSettings && input.betaEnabled) {
         return new Output(
@@ -115,6 +146,16 @@ export class BackofficeFeatureUseCase {
           ["Funcionalidades que herdam do pai não podem ter beta próprio"],
           null
         )
+      }
+
+      const chargeDuringBetaError = validateChargeDuringBetaPolicy({
+        chargeDuringBeta: createChargeDuringBeta,
+        betaEnabled: createBetaEnabled,
+        accessMode: createAccessMode,
+        productSlug: createProductSlug,
+      })
+      if (chargeDuringBetaError) {
+        return new Output(false, [], [chargeDuringBetaError], null)
       }
 
       if (input.productSlug) {
@@ -131,10 +172,11 @@ export class BackofficeFeatureUseCase {
         slug,
         description: input.description ?? null,
         parentId: input.parentId ?? null,
-        productSlug: input.productSlug ?? null,
-        accessMode: input.accessMode ?? "PUBLIC",
+        productSlug: createProductSlug,
+        accessMode: createAccessMode,
         defaultAccessLevel: input.defaultAccessLevel ?? "FULL",
-        betaEnabled: createInheritParentSettings ? false : (input.betaEnabled ?? false),
+        betaEnabled: createBetaEnabled,
+        chargeDuringBeta: createChargeDuringBeta,
         inheritParentSettings: createInheritParentSettings,
         billedSeparately: input.parentId ? createBilledSeparately : false,
         isActive: input.isActive ?? true,
@@ -197,6 +239,16 @@ export class BackofficeFeatureUseCase {
 
       const effectiveBetaEnabled =
         input.betaEnabled !== undefined ? input.betaEnabled : existing.betaEnabled
+      const effectiveAccessMode =
+        input.accessMode !== undefined ? input.accessMode : existing.accessMode
+      const effectiveProductSlug = Object.prototype.hasOwnProperty.call(input, "productSlug")
+        ? (input.productSlug ?? null)
+        : (existing.productSlug ?? null)
+      const effectiveChargeDuringBeta = effectiveInheritParentSettings
+        ? false
+        : input.chargeDuringBeta !== undefined
+          ? input.chargeDuringBeta
+          : existing.chargeDuringBeta
 
       if (effectiveInheritParentSettings && effectiveBetaEnabled) {
         return new Output(
@@ -207,6 +259,16 @@ export class BackofficeFeatureUseCase {
         )
       }
 
+      const chargeDuringBetaError = validateChargeDuringBetaPolicy({
+        chargeDuringBeta: effectiveChargeDuringBeta,
+        betaEnabled: effectiveInheritParentSettings ? false : effectiveBetaEnabled,
+        accessMode: effectiveAccessMode,
+        productSlug: effectiveProductSlug,
+      })
+      if (chargeDuringBetaError) {
+        return new Output(false, [], [chargeDuringBetaError], null)
+      }
+
       const effectiveBilledSeparately = effectiveInheritParentSettings
         ? false
         : input.billedSeparately !== undefined
@@ -215,7 +277,9 @@ export class BackofficeFeatureUseCase {
 
       const normalizedInput: UpdateBackofficeFeatureInput = {
         ...input,
-        ...(effectiveInheritParentSettings ? { betaEnabled: false, billedSeparately: false } : {}),
+        ...(effectiveInheritParentSettings
+          ? { betaEnabled: false, billedSeparately: false, chargeDuringBeta: false }
+          : { chargeDuringBeta: effectiveChargeDuringBeta }),
         ...(!effectiveParentId ? { billedSeparately: false } : { billedSeparately: effectiveBilledSeparately }),
       }
 

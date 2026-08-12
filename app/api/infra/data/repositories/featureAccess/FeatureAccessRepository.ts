@@ -20,6 +20,7 @@ const activeFeatureSelect = {
   parentId: true,
   inheritParentSettings: true,
   betaEnabled: true,
+  chargeDuringBeta: true,
   accessMode: true,
   defaultAccessLevel: true,
   billedSeparately: true,
