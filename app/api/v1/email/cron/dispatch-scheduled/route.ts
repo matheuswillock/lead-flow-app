@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         cronPath: "/api/v1/email/cron/dispatch-scheduled",
       },
       async () => {
-        const useCase = new EmailCampaignUseCase()
+        const useCase = EmailCampaignUseCase.forDispatchCron()
         return runDispatchScheduledCronTick(useCase, new Date())
       },
       {

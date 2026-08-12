@@ -39,6 +39,15 @@ type EngagementWeightsConfigCache = {
 
 let engagementWeightsConfigCache: EngagementWeightsConfigCache | null = null
 
+/** Coalesce fire-and-forget engagement recalcs to limit pool storms (T7b). */
+const ENGAGEMENT_SCORE_MAX_IN_FLIGHT = Math.max(
+  1,
+  Number(process.env.RADAR_ENGAGEMENT_SCORE_MAX_IN_FLIGHT ?? 2)
+)
+const engagementScorePending = new Map<string, { profileId: string; teamId: string }>()
+const engagementScoreQueued = new Set<string>()
+let engagementScoreInFlight = 0
+
 export type RadarTeamScope = {
   teamId: string
   ctx: TeamContext
@@ -965,18 +974,14 @@ export class RadarRepository {
             retries: 2,
           })
         : await createEvent()
-      void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
-        console.error("[RadarRepository][updateEngagementScore]", error)
-      })
+      this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
       return created
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
-        void this.updateEngagementScore(input.profileId, input.teamId).catch((scoreError) => {
-          console.error("[RadarRepository][updateEngagementScore]", scoreError)
-        })
+        this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
         return null
       }
       console.error("[RadarRepository][appendEventIfNew]", error)
@@ -1009,9 +1014,7 @@ export class RadarRepository {
             metadata: input.metadata,
           },
         })
-        void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
-          console.error("[RadarRepository][updateEngagementScore]", error)
-        })
+        this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
         return created
       } catch {
         return null
@@ -1053,11 +1056,46 @@ export class RadarRepository {
 
     // Fora da transação/advisory lock — não participa do dedupe.
     if (created) {
-      void this.updateEngagementScore(input.profileId, input.teamId).catch((error) => {
-        console.error("[RadarRepository][updateEngagementScore]", error)
-      })
+      this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
     }
     return created
+  }
+
+  /**
+   * Agenda recálculo de engajamento fora do caminho quente (webhook/cron/UI).
+   * Deduplica por perfil e limita concorrência para não saturar o pool.
+   */
+  scheduleEngagementScoreUpdate(profileId: string, teamId: string): void {
+    const key = `${teamId}:${profileId}`
+    engagementScorePending.set(key, { profileId, teamId })
+    if (engagementScoreQueued.has(key)) return
+    engagementScoreQueued.add(key)
+    queueMicrotask(() => {
+      void this.drainEngagementScoreQueue()
+    })
+  }
+
+  private async drainEngagementScoreQueue(): Promise<void> {
+    while (engagementScorePending.size > 0 && engagementScoreInFlight < ENGAGEMENT_SCORE_MAX_IN_FLIGHT) {
+      const next = engagementScorePending.entries().next().value as
+        | [string, { profileId: string; teamId: string }]
+        | undefined
+      if (!next) break
+      const [key, job] = next
+      engagementScorePending.delete(key)
+      engagementScoreQueued.delete(key)
+      engagementScoreInFlight += 1
+      void this.updateEngagementScore(job.profileId, job.teamId)
+        .catch((error) => {
+          console.error("[RadarRepository][updateEngagementScore]", error)
+        })
+        .finally(() => {
+          engagementScoreInFlight -= 1
+          if (engagementScorePending.size > 0) {
+            void this.drainEngagementScoreQueue()
+          }
+        })
+    }
   }
 
   /**
@@ -1065,33 +1103,35 @@ export class RadarRepository {
    * eventos dentro de `windowOldDays`. Pesos + config backoffice com cache 5 min.
    */
   async updateEngagementScore(profileId: string, teamId: string) {
-    const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
+    return this.runWithTransientPrismaRetry(async () => {
+      const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
 
-    const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
-    const events = await this.db.radarEvent.findMany({
-      where: {
-        profileId,
-        teamId,
-        occurredAt: { gte: since },
-      },
-      select: {
-        eventType: true,
-        occurredAt: true,
-        metadata: true,
-      },
-    })
+      const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+      const events = await this.db.radarEvent.findMany({
+        where: {
+          profileId,
+          teamId,
+          occurredAt: { gte: since },
+        },
+        select: {
+          eventType: true,
+          occurredAt: true,
+          metadata: true,
+        },
+      })
 
-    const { score, band } = computeEngagementScore(events, weights, config, new Date(), formRules)
+      const { score, band } = computeEngagementScore(events, weights, config, new Date(), formRules)
 
-    await this.db.radarProfile.updateMany({
-      where: { id: profileId, teamId },
-      data: {
-        engagementScore: score,
-        engagementBand: band,
-      },
-    })
+      await this.db.radarProfile.updateMany({
+        where: { id: profileId, teamId },
+        data: {
+          engagementScore: score,
+          engagementBand: band,
+        },
+      })
 
-    return { score, band }
+      return { score, band }
+    }, "updateEngagementScore")
   }
 
   /**

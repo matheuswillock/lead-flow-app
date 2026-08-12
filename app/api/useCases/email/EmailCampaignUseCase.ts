@@ -1,8 +1,7 @@
 import { randomUUID } from "crypto"
-import type { EmailCampaignStatus } from "@prisma/client"
-import { Prisma } from "@prisma/client"
+import { Prisma, type EmailCampaignStatus, type PrismaClient } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { prisma, getEmailCronPrisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
 import type {
@@ -210,6 +209,12 @@ export class EmailCampaignUseCase {
   private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
 
+  constructor(private readonly db: PrismaClient = prisma) {}
+
+  static forDispatchCron(): EmailCampaignUseCase {
+    return new EmailCampaignUseCase(getEmailCronPrisma())
+  }
+
   private async notifyDispatchFailureIfNeeded(params: {
     recipientProfileId: string | null | undefined
     teamId: string
@@ -259,7 +264,7 @@ export class EmailCampaignUseCase {
 
     // Agrega no Postgres (não carrega N logs na app). Contrato = accepted por
     // sentAt|resendEmailId; queued/failed só sem aceite.
-    const rows = await prisma.$queryRaw<
+    const rows = await this.db.$queryRaw<
       Array<{
         dispatchId: string
         acceptedCount: number | bigint
@@ -358,7 +363,7 @@ export class EmailCampaignUseCase {
 
     const campaignIds = campaignMeta.map((campaign) => campaign.id)
 
-    const activeDispatches = (await prisma.emailCampaignDispatch.findMany({
+    const activeDispatches = (await this.db.emailCampaignDispatch.findMany({
       where: {
         teamId,
         campaignId: { in: campaignIds },
@@ -385,7 +390,7 @@ export class EmailCampaignUseCase {
 
     const terminalDispatches: DispatchProgressRow[] = []
     if (terminalCampaignIds.length > 0) {
-      const latestCandidates = (await prisma.emailCampaignDispatch.findMany({
+      const latestCandidates = (await this.db.emailCampaignDispatch.findMany({
         where: {
           teamId,
           campaignId: { in: terminalCampaignIds },
@@ -441,7 +446,7 @@ export class EmailCampaignUseCase {
     }
     if (campaignIds.length === 0) return result
 
-    const logs = await prisma.emailLog.findMany({
+    const logs = await this.db.emailLog.findMany({
       where: {
         teamId,
         campaignId: { in: campaignIds },
@@ -485,13 +490,13 @@ export class EmailCampaignUseCase {
   }
 
   private async resolvePublishedTemplate(templateId: string, teamId: string) {
-    const ref = await prisma.emailTemplate.findFirst({
+    const ref = await this.db.emailTemplate.findFirst({
       where: { id: templateId, teamId, isArchived: false },
       select: { versionGroupId: true },
     })
     if (!ref) return null
 
-    return prisma.emailTemplate.findFirst({
+    return this.db.emailTemplate.findFirst({
       where: {
         teamId,
         versionGroupId: ref.versionGroupId,
@@ -537,7 +542,7 @@ export class EmailCampaignUseCase {
       return { slices: [], error: "Selecione ao menos uma lista de contatos" }
     }
 
-    const lists = await prisma.emailContactList.findMany({
+    const lists = await this.db.emailContactList.findMany({
       where: { id: { in: contactListIds }, teamId, isArchived: false },
       select: { id: true, name: true },
     })
@@ -644,7 +649,7 @@ export class EmailCampaignUseCase {
       )
     }
 
-    const created = await prisma.emailContact.findMany({
+    const created = await this.db.emailContact.findMany({
       where: { listId: list.id },
       select: { id: true },
     })
@@ -863,8 +868,8 @@ export class EmailCampaignUseCase {
         }),
       }
 
-      const [campaigns, total] = await prisma.$transaction([
-        prisma.emailCampaign.findMany({
+      const [campaigns, total] = await this.db.$transaction([
+        this.db.emailCampaign.findMany({
           where,
           select: {
             id: true,
@@ -893,7 +898,7 @@ export class EmailCampaignUseCase {
           skip: (options.page - 1) * options.pageSize,
           take: options.pageSize,
         }),
-        prisma.emailCampaign.count({ where }),
+        this.db.emailCampaign.count({ where }),
       ])
 
       const creatorIds = Array.from(new Set(campaigns.map((campaign) => campaign.createdBy)))
@@ -902,16 +907,16 @@ export class EmailCampaignUseCase {
         new Set(campaigns.map((campaign) => campaign.contactListId).filter((id): id is string => Boolean(id)))
       )
 
-      const [creators, templates, contactLists] = await prisma.$transaction([
-        prisma.profile.findMany({
+      const [creators, templates, contactLists] = await this.db.$transaction([
+        this.db.profile.findMany({
           where: { id: { in: creatorIds } },
           select: { id: true, fullName: true, email: true },
         }),
-        prisma.emailTemplate.findMany({
+        this.db.emailTemplate.findMany({
           where: { id: { in: templateIds }, teamId: ctx.teamId },
           select: { id: true, name: true },
         }),
-        prisma.emailContactList.findMany({
+        this.db.emailContactList.findMany({
           where: { id: { in: contactListIds }, teamId: ctx.teamId },
           select: { id: true, name: true },
         }),
@@ -923,7 +928,7 @@ export class EmailCampaignUseCase {
 
       const childAggregates =
         parentIdsWithSubs.length > 0
-          ? await prisma.emailCampaign.groupBy({
+          ? await this.db.emailCampaign.groupBy({
               by: ["parentCampaignId"],
               where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
               _sum: {
@@ -939,7 +944,7 @@ export class EmailCampaignUseCase {
 
       const childCampaignsForProgress =
         parentIdsWithSubs.length > 0
-          ? await prisma.emailCampaign.findMany({
+          ? await this.db.emailCampaign.findMany({
               where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
               select: { id: true, status: true, parentCampaignId: true, totalRecipients: true },
             })
@@ -1080,7 +1085,7 @@ export class EmailCampaignUseCase {
 
   async getById(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const campaign = await prisma.emailCampaign.findFirst({
+      const campaign = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId },
         include: {
           template: { select: { id: true, name: true, subject: true } },
@@ -1158,7 +1163,7 @@ export class EmailCampaignUseCase {
       const linkedForm = await detectLinkedFormFromTemplateHtml(
         ctx.teamId,
         (
-          await prisma.emailTemplate.findFirst({
+          await this.db.emailTemplate.findFirst({
             where: { id: campaign.templateId, teamId: ctx.teamId },
             select: { html: true },
           })
@@ -1269,7 +1274,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Nome da campanha é obrigatório"], null)
       }
 
-      const teamSettings = await prisma.emailTeamSettings
+      const teamSettings = await this.db.emailTeamSettings
         .findUnique({
           where: { teamId: ctx.teamId },
           select: { dispatchAllowedRoles: true },
@@ -1455,7 +1460,7 @@ export class EmailCampaignUseCase {
           if (!plan.isParentCampaign) {
             return createCombinedInDb(prisma)
           }
-          return prisma.$transaction(async (tx) => createCombinedInDb(tx))
+          return this.db.$transaction(async (tx) => createCombinedInDb(tx))
         }
 
         if (!customSegmentId) {
@@ -1467,7 +1472,7 @@ export class EmailCampaignUseCase {
         }
 
         // Mantém o advisory lock até a campanha existir (evita remoção concorrente do segmento)
-        const created = await prisma.$transaction(async (tx) => {
+        const created = await this.db.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
           const stillActive = await tx.teamRadarSegment.findFirst({
             where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
@@ -1525,11 +1530,11 @@ export class EmailCampaignUseCase {
           : null
 
         if (!customSegmentId) {
-          const campaign = await prisma.emailCampaign.create({ data: campaignData })
+          const campaign = await this.db.emailCampaign.create({ data: campaignData })
           return new Output(true, ["Campanha criada com sucesso"], [], campaign)
         }
 
-        const campaign = await prisma.$transaction(async (tx) => {
+        const campaign = await this.db.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
 
           const stillActive = await tx.teamRadarSegment.findFirst({
@@ -1570,7 +1575,7 @@ export class EmailCampaignUseCase {
 
       if (!plan.isParentCampaign) {
         const single = plan.subCampaigns[0]
-        const campaign = await prisma.emailCampaign.create({
+        const campaign = await this.db.emailCampaign.create({
           data: {
             id: randomUUID(),
             teamId: ctx.teamId,
@@ -1594,7 +1599,7 @@ export class EmailCampaignUseCase {
         ? "scheduled"
         : "draft"
 
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await this.db.$transaction(async (tx) => {
         const parent = await tx.emailCampaign.create({
           data: {
             id: parentId,
@@ -1658,12 +1663,12 @@ export class EmailCampaignUseCase {
   async update(id: string, data: UpdateCampaignInput, ctx: TeamContext): Promise<Output> {
     try {
       const editableStatuses = ["draft", "scheduled"] as const
-      const existing = await prisma.emailCampaign.findFirst({
+      const existing = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: [...editableStatuses] } },
       })
 
       if (!existing) {
-        const campaign = await prisma.emailCampaign.findFirst({
+        const campaign = await this.db.emailCampaign.findFirst({
           where: { id, teamId: ctx.teamId },
           select: { status: true },
         })
@@ -1681,7 +1686,7 @@ export class EmailCampaignUseCase {
 
       const canChangeSchedule = existing.status === "draft" || existing.status === "scheduled"
       const isParentCampaign =
-        (await prisma.emailCampaign.count({ where: { parentCampaignId: id, teamId: ctx.teamId } })) > 0
+        (await this.db.emailCampaign.count({ where: { parentCampaignId: id, teamId: ctx.teamId } })) > 0
       const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const maxPerSub = teamLimits.maxRecipientsPerSub
 
@@ -1751,7 +1756,7 @@ export class EmailCampaignUseCase {
         }
 
         for (const subUpdate of data.subCampaignUpdates) {
-          const child = await prisma.emailCampaign.findFirst({
+          const child = await this.db.emailCampaign.findFirst({
             where: {
               id: subUpdate.id,
               parentCampaignId: id,
@@ -1795,7 +1800,7 @@ export class EmailCampaignUseCase {
             nextTemplateId = template.id
           }
 
-          await prisma.emailCampaign.update({
+          await this.db.emailCampaign.update({
             where: { id: subUpdate.id },
             data: {
               ...(subUpdate.name !== undefined && { name: subUpdate.name.trim() }),
@@ -1842,7 +1847,7 @@ export class EmailCampaignUseCase {
         }
       }
 
-      const campaign = await prisma.emailCampaign.update({
+      const campaign = await this.db.emailCampaign.update({
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
@@ -1880,7 +1885,7 @@ export class EmailCampaignUseCase {
   }
 
   private async getNextDispatchNumber(campaignId: string): Promise<number> {
-    const { _max } = await prisma.emailCampaignDispatch.aggregate({
+    const { _max } = await this.db.emailCampaignDispatch.aggregate({
       where: { campaignId },
       _max: { dispatchNumber: true },
     })
@@ -1960,28 +1965,31 @@ export class EmailCampaignUseCase {
     globalDefaults: Record<string, string>
     templateVariables: ReturnType<EmailCampaignRecipientService["parseTemplateVariables"]>
   }): void {
-    for (const recipient of params.recipients) {
-      if (!params.dispatchedEmails.has(recipient.email)) continue
+    const jobs = params.recipients
+      .filter((recipient) => params.dispatchedEmails.has(recipient.email))
+      .map((recipient) => ({
+        recipientEmail: recipient.email,
+        subject: interpolateEmailTemplate(
+          params.subject,
+          recipient,
+          params.globalDefaults,
+          params.templateVariables
+        ),
+      }))
 
-      const renderedSubject = interpolateEmailTemplate(
-        params.subject,
-        recipient,
-        params.globalDefaults,
-        params.templateVariables
-      )
-
-      void emailCampaignLeadActivityService
-        .recordDispatchForRecipient({
+    void withConcurrencyLimit(jobs, EMAIL_LOG_WRITE_CONCURRENCY_LIMIT, async (job) => {
+      try {
+        await emailCampaignLeadActivityService.recordDispatchForRecipient({
           teamId: params.teamId,
           campaignId: params.campaignId,
           dispatchId: params.dispatchId,
-          recipientEmail: recipient.email,
-          subject: renderedSubject,
+          recipientEmail: job.recipientEmail,
+          subject: job.subject,
         })
-        .catch((activityError) => {
-          console.error("[EmailCampaignUseCase][recordDispatchLeadActivities]", activityError)
-        })
-    }
+      } catch (activityError) {
+        console.error("[EmailCampaignUseCase][recordDispatchLeadActivities]", activityError)
+      }
+    })
   }
 
   private async reserveTeamCreditsForDispatch(
@@ -2022,7 +2030,7 @@ export class EmailCampaignUseCase {
   }
 
   private async refreshParentCampaignStatusForChild(campaignId: string): Promise<void> {
-    const campaign = await prisma.emailCampaign.findFirst({
+    const campaign = await this.db.emailCampaign.findFirst({
       where: { id: campaignId },
       select: { parentCampaignId: true },
     })
@@ -2036,7 +2044,7 @@ export class EmailCampaignUseCase {
    * Ver critério em `lib/email/campaign-failed-recipients.ts`.
    */
   private async resolveFailedRetryRecipientEmails(campaignId: string): Promise<string[]> {
-    const logs = await prisma.emailLog.findMany({
+    const logs = await this.db.emailLog.findMany({
       where: {
         campaignId,
         status: {
@@ -2064,7 +2072,7 @@ export class EmailCampaignUseCase {
     hasRetriableStatus: boolean,
     resolvedAudienceEmails: string[]
   ): Promise<{ emails: string[]; hadAnyLog: boolean }> {
-    const logs = await prisma.emailLog.findMany({
+    const logs = await this.db.emailLog.findMany({
       where: {
         campaignId,
         status: {
@@ -2079,7 +2087,7 @@ export class EmailCampaignUseCase {
     })
 
     const hasAnyLog =
-      logs.length > 0 || (await prisma.emailLog.count({ where: { campaignId } })) > 0
+      logs.length > 0 || (await this.db.emailLog.count({ where: { campaignId } })) > 0
 
     return {
       emails: resolveRetryRecipientEmails({
@@ -2105,12 +2113,12 @@ export class EmailCampaignUseCase {
     if (failedByLogs.length > 0) return failedByLogs.length
 
     const hasAnyLog =
-      (await prisma.emailLog.count({ where: { campaignId: params.campaignId } })) > 0
+      (await this.db.emailLog.count({ where: { campaignId: params.campaignId } })) > 0
     return hasAnyLog ? 0 : Math.max(0, params.fallbackAudienceCount)
   }
 
   async countFailedRetryRecipients(campaignId: string, ctx: TeamContext): Promise<number> {
-    const campaign = await prisma.emailCampaign.findFirst({
+    const campaign = await this.db.emailCampaign.findFirst({
       where: { id: campaignId, teamId: ctx.teamId },
       select: { id: true, status: true, totalRecipients: true },
     })
@@ -2134,7 +2142,7 @@ export class EmailCampaignUseCase {
     let hasCampaignsBetaAccess = false
 
     try {
-      const campaign = await prisma.emailCampaign.findFirst({
+      const campaign = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: [...MANUAL_DISPATCH_STATUSES] } },
         include: {
           contactList: { select: { id: true, name: true, totalContacts: true } },
@@ -2144,7 +2152,7 @@ export class EmailCampaignUseCase {
 
       let teamSettings = null
       try {
-        teamSettings = await prisma.emailTeamSettings.findUnique({ where: { teamId: ctx.teamId } })
+        teamSettings = await this.db.emailTeamSettings.findUnique({ where: { teamId: ctx.teamId } })
       } catch {
         // fall back to env defaults if model unavailable in current client build
       }
@@ -2206,14 +2214,14 @@ export class EmailCampaignUseCase {
         teamId: ctx.teamId,
       })
 
-      const defaultSender = await prisma.emailTeamSender
+      const defaultSender = await this.db.emailTeamSender
         .findFirst({
           where: { teamId: ctx.teamId, isDefault: true },
           select: { name: true, email: true },
         })
         .catch(() => null)
 
-      const parentChildCount = await prisma.emailCampaign.count({
+      const parentChildCount = await this.db.emailCampaign.count({
         where: { parentCampaignId: campaign.id, teamId: ctx.teamId },
       })
       if (parentChildCount > 0) {
@@ -2322,7 +2330,7 @@ export class EmailCampaignUseCase {
         )
       }
 
-      const lockResult = await prisma.emailCampaign.updateMany({
+      const lockResult = await this.db.emailCampaign.updateMany({
         where: { id, teamId: ctx.teamId, status: { in: [...MANUAL_DISPATCH_STATUSES] } },
         data: { status: "sending", errorMessage: null },
       })
@@ -2340,7 +2348,7 @@ export class EmailCampaignUseCase {
         hasCampaignsBetaAccess
       )
       if (!creditReservation.ok) {
-        await prisma.emailCampaign.update({
+        await this.db.emailCampaign.update({
           where: { id },
           data: { status: previousStatus ?? "draft", errorMessage: creditReservation.message },
         })
@@ -2349,7 +2357,7 @@ export class EmailCampaignUseCase {
       reservedCredits = creditsToReserve
 
       const dispatchNumber = await this.getNextDispatchNumber(campaign.id)
-      const dispatchRecord = await prisma.emailCampaignDispatch.create({
+      const dispatchRecord = await this.db.emailCampaignDispatch.create({
         data: {
           id: randomUUID(),
           campaignId: campaign.id,
@@ -2440,7 +2448,7 @@ export class EmailCampaignUseCase {
         EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL
       )
 
-      const failedCampaign = await prisma.emailCampaign
+      const failedCampaign = await this.db.emailCampaign
         .update({
           where: { id },
           data: {
@@ -2477,7 +2485,7 @@ export class EmailCampaignUseCase {
     let sentCount = 0
 
     try {
-      const stillSending = await prisma.emailCampaignDispatch.findFirst({
+      const stillSending = await this.db.emailCampaignDispatch.findFirst({
         where: { id: job.dispatchId, teamId: job.teamId, status: "sending" },
         select: { id: true },
       })
@@ -2595,11 +2603,11 @@ export class EmailCampaignUseCase {
 
         if (terminal.campaignStatus === "failed") {
           const [campaignMeta, dispatchMeta] = await Promise.all([
-            prisma.emailCampaign.findUnique({
+            this.db.emailCampaign.findUnique({
               where: { id: job.campaignId },
               select: { name: true },
             }),
-            prisma.emailCampaignDispatch.findUnique({
+            this.db.emailCampaignDispatch.findUnique({
               where: { id: job.dispatchId },
               select: { triggeredBy: true },
             }),
@@ -2669,7 +2677,7 @@ export class EmailCampaignUseCase {
         () => 0
       )
 
-      await prisma.emailCampaignDispatch
+      await this.db.emailCampaignDispatch
         .update({
           where: { id: job.dispatchId },
           data: {
@@ -2680,7 +2688,7 @@ export class EmailCampaignUseCase {
         })
         .catch(() => null)
 
-      const failedCampaign = await prisma.emailCampaign
+      const failedCampaign = await this.db.emailCampaign
         .update({
           where: { id: job.campaignId },
           data: {
@@ -2691,7 +2699,7 @@ export class EmailCampaignUseCase {
         })
         .catch(() => null)
 
-      const dispatchMeta = await prisma.emailCampaignDispatch
+      const dispatchMeta = await this.db.emailCampaignDispatch
         .findUnique({
           where: { id: job.dispatchId },
           select: { triggeredBy: true },
@@ -2733,12 +2741,12 @@ export class EmailCampaignUseCase {
 
     return withDispatchTerminalCommitRetry(
       async () => {
-        const dispatch = await prisma.emailCampaignDispatch.findUnique({
+        const dispatch = await this.db.emailCampaignDispatch.findUnique({
           where: { id: params.dispatchId },
           select: { status: true },
         })
         if (dispatch && dispatch.status !== "sending") {
-          const campaign = await prisma.emailCampaign.findUnique({
+          const campaign = await this.db.emailCampaign.findUnique({
             where: { id: params.campaignId },
             select: { parentCampaignId: true },
           })
@@ -2750,8 +2758,8 @@ export class EmailCampaignUseCase {
           return campaign
         }
 
-        const [updatedCampaign] = await prisma.$transaction([
-          prisma.emailCampaign.update({
+        const [updatedCampaign] = await this.db.$transaction([
+          this.db.emailCampaign.update({
             where: { id: params.campaignId },
             data: {
               status: params.terminal.campaignStatus,
@@ -2769,7 +2777,7 @@ export class EmailCampaignUseCase {
             },
             select: { parentCampaignId: true },
           }),
-          prisma.emailCampaignDispatch.update({
+          this.db.emailCampaignDispatch.update({
             where: { id: params.dispatchId },
             data: {
               ...(setDispatchTotalSent
@@ -2792,12 +2800,12 @@ export class EmailCampaignUseCase {
           )
         },
         verifyAlreadyCommitted: async () => {
-          const dispatch = await prisma.emailCampaignDispatch.findUnique({
+          const dispatch = await this.db.emailCampaignDispatch.findUnique({
             where: { id: params.dispatchId },
             select: { status: true },
           })
           if (dispatch && dispatch.status !== "sending") {
-            return prisma.emailCampaign.findUnique({
+            return this.db.emailCampaign.findUnique({
               where: { id: params.campaignId },
               select: { parentCampaignId: true },
             })
@@ -2809,7 +2817,7 @@ export class EmailCampaignUseCase {
   }
 
   private async reconcileManualDispatchAfterError(job: ManualDispatchJob): Promise<Output | null> {
-    const stillSending = await prisma.emailCampaignDispatch.findFirst({
+    const stillSending = await this.db.emailCampaignDispatch.findFirst({
       where: { id: job.dispatchId, teamId: job.teamId, status: "sending" },
       select: { id: true },
     })
@@ -2874,7 +2882,7 @@ export class EmailCampaignUseCase {
         totalRecipients: job.totalRecipients,
       })
 
-      const campaignAfterFallback = await prisma.emailCampaign.findUnique({
+      const campaignAfterFallback = await this.db.emailCampaign.findUnique({
         where: { id: job.campaignId },
         select: { parentCampaignId: true },
       })
@@ -2924,7 +2932,7 @@ export class EmailCampaignUseCase {
 
     // Primeiro, recuperar campanhas órfãs (em "sending" sem dispatch)
     // Essas devem ser revertidas para o estado anterior, não marcadas como failed
-    const orphanCampaigns = await prisma.emailCampaign.findMany({
+    const orphanCampaigns = await this.db.emailCampaign.findMany({
       where: {
         status: "sending",
         updatedAt: { lt: threshold },
@@ -2946,7 +2954,7 @@ export class EmailCampaignUseCase {
         orphanCampaignsWithoutDispatches.map((c) => ({ id: c.id, name: c.name }))
       )
 
-      await prisma.emailCampaign.updateMany({
+      await this.db.emailCampaign.updateMany({
         where: {
           id: { in: orphanCampaignsWithoutDispatches.map((c) => c.id) },
         },
@@ -2959,15 +2967,15 @@ export class EmailCampaignUseCase {
     }
 
     // Agora marcar como failed apenas campanhas com dispatch travado
-    const [campaigns, dispatches] = await prisma.$transaction([
-      prisma.emailCampaign.updateMany({
+    const [campaigns, dispatches] = await this.db.$transaction([
+      this.db.emailCampaign.updateMany({
         where: { status: "sending", updatedAt: { lt: threshold } },
         data: {
           status: "failed",
           errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING,
         },
       }),
-      prisma.emailCampaignDispatch.updateMany({
+      this.db.emailCampaignDispatch.updateMany({
         where: { status: "sending", updatedAt: { lt: threshold } },
         data: {
           status: "failed",
@@ -2998,7 +3006,7 @@ export class EmailCampaignUseCase {
     const stuckThreshold = new Date(now.getTime() - STUCK_SENDING_THRESHOLD_MS)
     const minAge = new Date(now.getTime() - ORPHAN_RESUME_MIN_AGE_MS)
 
-    const orphanDispatches = await prisma.emailCampaignDispatch.findMany({
+    const orphanDispatches = await this.db.emailCampaignDispatch.findMany({
       where: {
         status: "sending",
         updatedAt: { lt: minAge, gte: stuckThreshold },
@@ -3025,7 +3033,7 @@ export class EmailCampaignUseCase {
     let resumed = 0
     for (const dispatch of orphanDispatches) {
       try {
-        const queuedLogs = await prisma.emailLog.findMany({
+        const queuedLogs = await this.db.emailLog.findMany({
           where: { dispatchId: dispatch.id, status: "queued" },
           select: {
             id: true,
@@ -3055,14 +3063,14 @@ export class EmailCampaignUseCase {
 
         let teamSettings = null
         try {
-          teamSettings = await prisma.emailTeamSettings.findUnique({
+          teamSettings = await this.db.emailTeamSettings.findUnique({
             where: { teamId: dispatch.teamId },
           })
         } catch {
           teamSettings = null
         }
 
-        const defaultSender = await prisma.emailTeamSender
+        const defaultSender = await this.db.emailTeamSender
           .findFirst({
             where: { teamId: dispatch.teamId, isDefault: true },
             select: { name: true, email: true },
@@ -3086,7 +3094,7 @@ export class EmailCampaignUseCase {
             `[EmailCampaignUseCase][resumeOrphanSendingDispatches] dispatchId=${dispatch.id} bloqueado por domínio: ${orphanFromGuard.message}`
           )
           await this.markScheduledCampaignFailed(dispatch.campaignId, orphanFromGuard.message)
-          await prisma.emailCampaignDispatch.update({
+          await this.db.emailCampaignDispatch.update({
             where: { id: dispatch.id },
             data: { status: "failed", errorMessage: orphanFromGuard.message },
           })
@@ -3165,7 +3173,7 @@ export class EmailCampaignUseCase {
     const emails = params.queuedLogs.map((log) => log.recipientEmail.trim().toLowerCase())
     const uniqueEmails = Array.from(new Set(emails))
 
-    const contacts = await prisma.emailContact.findMany({
+    const contacts = await this.db.emailContact.findMany({
       where: {
         email: { in: uniqueEmails, mode: "insensitive" },
         ...(params.contactListId
@@ -3223,7 +3231,7 @@ export class EmailCampaignUseCase {
 
   private async markScheduledCampaignFailed(campaignId: string, errorMessage: string): Promise<void> {
     console.error(`[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaignId} motivo=${errorMessage}`)
-    const updated = await prisma.emailCampaign.update({
+    const updated = await this.db.emailCampaign.update({
       where: { id: campaignId },
       data: { status: "failed", errorMessage },
       select: { parentCampaignId: true, name: true, teamId: true, createdBy: true },
@@ -3248,7 +3256,7 @@ export class EmailCampaignUseCase {
 
     await this.recoverStuckSendingCampaigns(now)
 
-    const campaigns = await prisma.emailCampaign.findMany({
+    const campaigns = await this.db.emailCampaign.findMany({
       where: {
         status: "scheduled",
         scheduledAt: { lte: now },
@@ -3266,7 +3274,7 @@ export class EmailCampaignUseCase {
 
     for (const campaign of campaigns) {
       try {
-        const lockResult = await prisma.emailCampaign.updateMany({
+        const lockResult = await this.db.emailCampaign.updateMany({
           where: { id: campaign.id, status: "scheduled" },
           data: { status: "sending" },
         })
@@ -3278,7 +3286,7 @@ export class EmailCampaignUseCase {
         const masterId = campaign.team.master.id
         const ownerTz = resolveTimezone(campaign.team.master.timezone)
 
-        const teamSettings = await prisma.emailTeamSettings
+        const teamSettings = await this.db.emailTeamSettings
           .findUnique({
             where: { teamId: campaign.teamId },
             select: {
@@ -3311,7 +3319,7 @@ export class EmailCampaignUseCase {
             dispatchTimeTo: teamSettings.dispatchTimeTo,
           })
           if (windowCheck.blocked && windowCheck.defer) {
-            await prisma.emailCampaign.update({
+            await this.db.emailCampaign.update({
               where: { id: campaign.id },
               data: { status: "scheduled" },
             })
@@ -3351,7 +3359,7 @@ export class EmailCampaignUseCase {
 
         const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-        const defaultSender = await prisma.emailTeamSender
+        const defaultSender = await this.db.emailTeamSender
           .findFirst({
             where: { teamId: campaign.teamId, isDefault: true },
             select: { name: true, email: true },
@@ -3398,7 +3406,7 @@ export class EmailCampaignUseCase {
           additionalRecipients: dispatchInput.recipients.length,
         })
         if (dailyCap.exceeded) {
-          await prisma.emailCampaign.update({
+          await this.db.emailCampaign.update({
             where: { id: campaign.id },
             data: { status: "scheduled" },
           })
@@ -3433,7 +3441,7 @@ export class EmailCampaignUseCase {
           hasCampaignsBetaAccess
         )
         if (!creditReservation.ok) {
-          await prisma.emailCampaign.update({
+          await this.db.emailCampaign.update({
             where: { id: campaign.id },
             data: { status: "scheduled", errorMessage: creditReservation.message },
           })
@@ -3445,7 +3453,7 @@ export class EmailCampaignUseCase {
 
         let sentCount = 0
         try {
-        const dispatchRecord = await prisma.emailCampaignDispatch.create({
+        const dispatchRecord = await this.db.emailCampaignDispatch.create({
           data: {
             id: randomUUID(),
             campaignId: campaign.id,
@@ -3643,14 +3651,14 @@ export class EmailCampaignUseCase {
     const limits = await resolveTeamEmailCampaignLimits(params.teamId)
     if (limits.maxRecipientsPerSub == null) return false
 
-    const team = await prisma.team.findFirst({
+    const team = await this.db.team.findFirst({
       where: { id: params.teamId },
       select: { master: { select: { timezone: true } } },
     })
     const timezone = resolveTimezone(team?.master.timezone)
     const dayKey = formatLocalDateValue(params.scheduledAt, timezone)
 
-    const siblings = await prisma.emailCampaign.findMany({
+    const siblings = await this.db.emailCampaign.findMany({
       where: {
         parentCampaignId: params.parentCampaignId,
         teamId: params.teamId,
@@ -3672,7 +3680,7 @@ export class EmailCampaignUseCase {
   }
 
   private async refreshParentCampaignStatus(parentCampaignId: string): Promise<void> {
-    const children = await prisma.emailCampaign.findMany({
+    const children = await this.db.emailCampaign.findMany({
       where: { parentCampaignId },
       select: { status: true, totalSent: true, totalDelivered: true, totalOpened: true, totalClicked: true, totalBounced: true, dispatchCount: true, sentAt: true },
     })
@@ -3718,7 +3726,7 @@ export class EmailCampaignUseCase {
       .filter((value): value is Date => Boolean(value))
       .sort((a, b) => b.getTime() - a.getTime())[0]
 
-    await prisma.emailCampaign.update({
+    await this.db.emailCampaign.update({
       where: { id: parentCampaignId },
       data: {
         status: parentStatus,
@@ -3730,7 +3738,7 @@ export class EmailCampaignUseCase {
 
   async cancel(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const existing = await prisma.emailCampaign.findFirst({
+      const existing = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["scheduled", "sending"] } },
         select: {
           id: true,
@@ -3746,8 +3754,8 @@ export class EmailCampaignUseCase {
 
       if (existing.status === "scheduled") {
         if (existing._count.subCampaigns > 0) {
-          await prisma.$transaction([
-            prisma.emailCampaign.updateMany({
+          await this.db.$transaction([
+            this.db.emailCampaign.updateMany({
               where: {
                 parentCampaignId: id,
                 teamId: ctx.teamId,
@@ -3755,13 +3763,13 @@ export class EmailCampaignUseCase {
               },
               data: { status: "canceled" },
             }),
-            prisma.emailCampaign.update({
+            this.db.emailCampaign.update({
               where: { id },
               data: { status: "canceled" },
             }),
           ])
         } else {
-          await prisma.emailCampaign.update({
+          await this.db.emailCampaign.update({
             where: { id },
             data: { status: "canceled" },
           })
@@ -3774,7 +3782,7 @@ export class EmailCampaignUseCase {
       }
 
       // Status: "sending" - cancelar logs pendentes e dispatches em andamento
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await this.db.$transaction(async (tx) => {
         // 1. Cancelar logs pendentes (queued)
         const canceledLogs = await tx.emailLog.updateMany({
           where: {
@@ -3854,7 +3862,7 @@ export class EmailCampaignUseCase {
 
   async deleteDraft(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const existing = await prisma.emailCampaign.findFirst({
+      const existing = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled", "canceled"] } },
       })
 
@@ -3862,7 +3870,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser excluída"], null)
       }
 
-      await prisma.emailCampaign.delete({ where: { id } })
+      await this.db.emailCampaign.delete({ where: { id } })
 
       return new Output(true, ["Campanha removida com sucesso"], [], null)
     } catch (error) {
@@ -3873,7 +3881,7 @@ export class EmailCampaignUseCase {
 
   async archive(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const existing = await prisma.emailCampaign.findFirst({
+      const existing = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed", "partially_sent"] } },
       })
 
@@ -3881,7 +3889,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser arquivada"], null)
       }
 
-      await prisma.emailCampaign.update({
+      await this.db.emailCampaign.update({
         where: { id },
         data: { status: "archived" },
       })
