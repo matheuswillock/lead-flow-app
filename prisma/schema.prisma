@@ -788,6 +788,7 @@ enum EmailCreditPlan {
   starter
   plus
   pro
+  upgrade
   business
 
   @@map("email_credit_plan")
@@ -3027,6 +3028,21 @@ model EmailCreditSubscription {
 
   @@index([currentPeriodEnd])
   @@map("corretor_studio_email_credit_subscriptions")
+}
+
+/// Ledger idempotente de pagamentos aplicados a créditos (paymentId Asaas único).
+/// Compra canônica fica em PlatformPurchase (purchaseType=email_credits); este grant evita reaplicar o mesmo paymentId.
+model EmailCreditPaymentGrant {
+  id             String         @id @default(uuid()) @db.Uuid
+  teamId         String         @db.Uuid
+  plan           EmailCreditPlan
+  paymentId      String         @unique
+  checkoutId     String?
+  monthlyCredits Int
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+
+  @@index([teamId])
+  @@map("corretor_studio_email_credit_payment_grants")
 }
 
 model EmailCreditUsage {

@@ -36,5 +36,10 @@ export interface IFeatureAccessService {
    * E o usuário/conta tem entitlement (EMAIL_CAMPAIGNS ou EMAIL).
    */
   resolveEmailBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
+  /**
+   * D12 (beta-addons SPEC): gate inicial de disparo de e-mail = Grupo Beta de Radar.
+   * Respeita ALL_TEAMS vs SPECIFIC_TEAMS via activeTeamId (Tickets 1/1b).
+   */
+  resolveRadarBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
 }
 

@@ -788,6 +788,7 @@ adhesion adhesion
             starter starter
 plus plus
 pro pro
+upgrade upgrade
 business business
         }
     
@@ -2592,6 +2593,17 @@ completed completed
     }
   
 
+  "corretor_studio_email_credit_payment_grants" {
+    String id "🗝️"
+    String teamId 
+    EmailCreditPlan plan 
+    String paymentId 
+    String checkoutId "❓"
+    Int monthlyCredits 
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_email_credit_usages" {
     String id "🗝️"
     DateTime periodStart 
@@ -4276,6 +4288,7 @@ completed completed
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_credit_payment_grants" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_team_email_campaign_limit_grants" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
