@@ -148,6 +148,7 @@ const prismaMock = {
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
   default: prismaMock,
+  getEmailCronPrisma: () => prismaMock,
   // RadarRepository (pulled via list-segment-recipients) imports withPrismaRetry.
   withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
