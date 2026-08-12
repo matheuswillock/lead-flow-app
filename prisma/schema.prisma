@@ -982,6 +982,7 @@ model Profile {
   updatedLeadStatusTransitionGates         BackofficeLeadStatusTransitionGate[]         @relation("BackofficeLeadStatusTransitionGateUpdater")
   updatedCrmLeadStatusTransitionFieldRules BackofficeCrmLeadStatusTransitionFieldRule[] @relation("BackofficeCrmLeadStatusTransitionFieldRuleUpdater")
   updatedCrmLeadStatusTransitionGates      BackofficeCrmLeadStatusTransitionGate[]      @relation("BackofficeCrmLeadStatusTransitionGateUpdater")
+  updatedRadarOutboxThroughputConfigs      BackofficeRadarOutboxThroughputConfig[]      @relation("BackofficeRadarOutboxThroughputConfigUpdater")
   finalizedContracts                       LeadFinalized[]                              @relation("LeadFinalizedCloser")
   createdTasks                             Task[]                                       @relation("TaskCreator")
   taskAssignments                          TaskAssignee[]                               @relation("TaskAssigneeProfile")
@@ -3684,6 +3685,22 @@ model BackofficeRadarEngagementConfig {
   updatedAt         DateTime @updatedAt @db.Timestamptz(6)
 
   @@map("backoffice_radar_engagement_configs")
+}
+
+/// Vazão do outbox Radar D9 (cron sync-email-contacts): batch + concurrency (singleton).
+model BackofficeRadarOutboxThroughputConfig {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchSize          Int      @default(250)
+  concurrency        Int      @default(8)
+  isActive           Boolean  @default(true)
+  updatedByProfileId String?  @db.Uuid
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile? @relation("BackofficeRadarOutboxThroughputConfigUpdater", fields: [updatedByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([isActive])
+  @@map("backoffice_radar_outbox_throughput_configs")
 }
 
 /// D19-B-bis: mapeia score% da submissão de formulário → multiplicador do peso form.completed.

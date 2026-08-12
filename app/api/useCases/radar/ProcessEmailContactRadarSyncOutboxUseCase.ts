@@ -10,13 +10,8 @@ import type { EmailContactRadarSyncOutboxClaimRow } from "@/app/api/infra/data/r
 import { RadarService } from "@/app/api/services/radar/RadarService";
 import { syncEmailContactToRadarUseCase } from "@/app/api/useCases/radar/SyncEmailContactToRadarUseCase";
 import { computeEmailContactRadarSyncOutboxNextAttemptAt } from "@/lib/email/email-contact-radar-sync-outbox-backoff";
-import {
-  resolveRadarEmailContactSyncOutboxBatchSize,
-  resolveRadarSyncConcurrency,
-} from "@/lib/email/email-contact-radar-sync-outbox-config";
-
-/** Cron a cada 5 minutos → 12 execuções/hora. */
-const CRON_RUNS_PER_HOUR = 12;
+import { RADAR_OUTBOX_CRON_RUNS_PER_HOUR } from "@/lib/email/email-contact-radar-sync-outbox-config";
+import { resolveEffectiveRadarOutboxThroughput } from "@/lib/email/resolve-radar-outbox-throughput";
 
 export class ProcessEmailContactRadarSyncOutboxUseCase {
   private readonly radarService: RadarService;
@@ -37,8 +32,9 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
   }
 
   async execute(): Promise<Output> {
-    const batchSize = resolveRadarEmailContactSyncOutboxBatchSize();
-    const concurrency = resolveRadarSyncConcurrency();
+    const throughput = await resolveEffectiveRadarOutboxThroughput();
+    const batchSize = throughput.batchSize;
+    const concurrency = throughput.concurrency;
     const startedAt = Date.now();
     let claimedIds: string[] = [];
 
@@ -70,7 +66,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
         return null;
       });
 
-      const theoreticalThroughputPerHour = claimed.length * CRON_RUNS_PER_HOUR;
+      const theoreticalThroughputPerHour = claimed.length * RADAR_OUTBOX_CRON_RUNS_PER_HOUR;
 
       console.info("[ProcessEmailContactRadarSyncOutboxUseCase] Lote processado", {
         claimed: claimed.length,
@@ -79,6 +75,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
         failed,
         batchSize,
         concurrency,
+        throughputSource: throughput.source,
         connectionBudgetHint: concurrency + 1,
         durationMs,
         theoreticalThroughputPerHour,
@@ -98,6 +95,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
           failed,
           batchSize,
           concurrency,
+          throughputSource: throughput.source,
           durationMs,
           theoreticalThroughputPerHour,
           backlog,
