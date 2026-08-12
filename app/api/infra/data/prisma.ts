@@ -17,6 +17,7 @@ function buildDatabaseUrlWithConnectionLimit(url: string, connectionLimit: numbe
 }
 
 let importCronPrismaClient: PrismaClient | undefined;
+let emailCronPrismaClient: PrismaClient | undefined;
 
 /** Prisma client com pool maior para o cron de import (sync Radar paralelo). */
 export function getImportCronPrisma(): PrismaClient {
@@ -35,6 +36,29 @@ export function getImportCronPrisma(): PrismaClient {
     });
   }
   return importCronPrismaClient;
+}
+
+/**
+ * Prisma client com orçamento explícito para o cron de disparo de e-mail.
+ * Default conservador (3) para não competir com o pool serverless comum
+ * (`connection_limit=1`) nem com o import (default 6).
+ */
+export function getEmailCronPrisma(): PrismaClient {
+  if (!emailCronPrismaClient) {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error("[prisma] DATABASE_URL is required for email cron client");
+    }
+    const limit = Number(process.env.EMAIL_CRON_CONNECTION_LIMIT ?? 3);
+    emailCronPrismaClient = new PrismaClient({
+      datasources: {
+        db: {
+          url: buildDatabaseUrlWithConnectionLimit(databaseUrl, limit),
+        },
+      },
+    });
+  }
+  return emailCronPrismaClient;
 }
 
 const transientPrismaErrors = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"]);

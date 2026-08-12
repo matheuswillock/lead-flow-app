@@ -97,8 +97,10 @@ export class ResendWebhookUseCase {
           svixId,
         })
 
-        try {
-          await radarService.handleEmailWebhookEvent({
+        // Radar/engagement fora do caminho crítico do webhook: não segurar a
+        // conexão do after-hook enquanto recalcula score (P2024 sob rajada).
+        void radarService
+          .handleEmailWebhookEvent({
             teamId: log.teamId,
             recipientEmail: log.recipientEmail,
             recipientName: log.recipientName,
@@ -108,9 +110,9 @@ export class ResendWebhookUseCase {
             occurredAt,
             metadata,
           })
-        } catch (radarError) {
-          console.error("[ResendWebhookUseCase][radar]", radarError)
-        }
+          .catch((radarError) => {
+            console.error("[ResendWebhookUseCase][radar]", radarError)
+          })
 
         return new Output(true, ["Evento de email processado"], [], { handled: true, target: "email_log" })
       }
