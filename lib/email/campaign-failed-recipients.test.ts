@@ -22,13 +22,40 @@ describe("selectFailedRecipientEmailsForRetry", () => {
     expect(selectFailedRecipientEmailsForRetry(logs)).toEqual(["a@test.com"])
   })
 
-  it("normaliza e-mail e ignora queued sem failed", () => {
+  it("normaliza e-mail e ignora queued sem failed (default: includeStuckQueued false)", () => {
     const logs: CampaignFailedRecipientLogRow[] = [
       { recipientEmail: "  F@Test.com ", status: "failed" },
       { recipientEmail: "queued@test.com", status: "queued" },
     ]
 
     expect(selectFailedRecipientEmailsForRetry(logs)).toEqual(["f@test.com"])
+  })
+
+  it("includeStuckQueued: true trata queued travado como elegível (regressão Golden Cross)", () => {
+    // Dispatch travou por timeout (recoverStuckSendingCampaigns) e o EmailLog nunca
+    // saiu de `queued` — sem includeStuckQueued esse destinatário nunca é retomado.
+    const logs: CampaignFailedRecipientLogRow[] = [
+      { recipientEmail: "queued@test.com", status: "queued" },
+      { recipientEmail: "failed@test.com", status: "failed" },
+    ]
+
+    expect(
+      selectFailedRecipientEmailsForRetry(logs, { includeStuckQueued: true })
+    ).toEqual(["failed@test.com", "queued@test.com"])
+  })
+
+  it("includeStuckQueued: true ainda exclui queued com sucesso/suppressed no mesmo e-mail", () => {
+    const logs: CampaignFailedRecipientLogRow[] = [
+      { recipientEmail: "a@test.com", status: "queued" },
+      { recipientEmail: "a@test.com", status: "delivered" },
+      { recipientEmail: "b@test.com", status: "queued" },
+      { recipientEmail: "b@test.com", status: "suppressed" },
+      { recipientEmail: "c@test.com", status: "queued" },
+    ]
+
+    expect(
+      selectFailedRecipientEmailsForRetry(logs, { includeStuckQueued: true })
+    ).toEqual(["c@test.com"])
   })
 })
 
@@ -61,6 +88,24 @@ describe("resolveRetryRecipientEmails", () => {
     })
 
     expect(result).toEqual(["a@test.com"])
+  })
+
+  it("includeStuckQueued: true inclui destinatários queued travados junto com failed", () => {
+    const logs: CampaignFailedRecipientLogRow[] = [
+      { recipientEmail: "queued@test.com", status: "queued" },
+      { recipientEmail: "failed@test.com", status: "failed" },
+      { recipientEmail: "sent@test.com", status: "sent" },
+    ]
+
+    const result = resolveRetryRecipientEmails({
+      hasAnyLog: true,
+      hasRetriableStatus: true,
+      logs,
+      resolvedAudienceEmails: ["queued@test.com", "failed@test.com", "sent@test.com"],
+      includeStuckQueued: true,
+    })
+
+    expect(result).toEqual(["failed@test.com", "queued@test.com"])
   })
 
   it("não devolve a audiência inteira quando o status não é retriável", () => {
