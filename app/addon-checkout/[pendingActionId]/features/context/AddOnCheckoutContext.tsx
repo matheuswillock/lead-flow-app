@@ -134,6 +134,12 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
     async (input: AddOnCheckoutSubmitInput) => {
       if (!state.data?.pendingActionId) return;
 
+      if (state.data.checkoutSource === "platform_purchase") {
+        throw new Error(
+          "A geração de pagamento para compras genéricas ainda não está disponível. A ativação acontece após confirmação do pagamento."
+        );
+      }
+
       dispatch({ type: "SET_PROCESSING", payload: true });
       try {
         const paymentData = await addOnCheckoutService.createPayment(
@@ -150,11 +156,21 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_PROCESSING", payload: false });
       }
     },
-    [state.data?.pendingActionId, startPolling]
+    [state.data?.pendingActionId, state.data?.checkoutSource, startPolling]
   );
 
   const refreshPaymentStatus = useCallback(async () => {
     if (!state.data?.pendingActionId) return;
+    if (state.data.checkoutSource === "platform_purchase") {
+      // Reconsulta PlatformPurchase até existir endpoint de status/pagamento genérico.
+      try {
+        const data = await addOnCheckoutService.fetchCheckoutData(state.data.pendingActionId);
+        dispatch({ type: "SET_DATA", payload: data });
+      } catch (error) {
+        console.error("Error refreshing platform checkout:", error);
+      }
+      return;
+    }
     try {
       const status = await addOnCheckoutService.checkPaymentStatus(state.data.pendingActionId);
       dispatch({ type: "SET_PAYMENT_STATUS", payload: status });
@@ -164,7 +180,7 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Error refreshing payment status:", error);
     }
-  }, [state.data?.pendingActionId]);
+  }, [state.data?.pendingActionId, state.data?.checkoutSource]);
 
   useEffect(() => {
     return () => clearPolling();

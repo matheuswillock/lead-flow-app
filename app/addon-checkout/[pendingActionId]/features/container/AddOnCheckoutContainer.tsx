@@ -51,12 +51,20 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     const startDate = new Date()
     const dueDate = addMonths(startDate, Math.max(1, data.pricing.remainingMonths ?? 1))
     const totalCharge = data.pricing.totalCharge ?? 0
+    const isPlatformPurchase = data.checkoutSource === "platform_purchase"
 
-    const title = data.addonType === "team" ? "Add-on Time" : "Add-on Usuário"
-    const subtitle =
-      data.pricing.remainingMonths > 1
-        ? `Cobranca proporcional por ${data.pricing.remainingMonths} meses`
-        : "Cobranca proporcional"
+    const title = isPlatformPurchase
+      ? "Finalizar compra"
+      : data.addonType === "team"
+        ? "Add-on Time"
+        : "Add-on Usuário"
+    const subtitle = isPlatformPurchase
+      ? data.purchaseType === "email_credits"
+        ? `Créditos de e-mail — ${data.addonLabel}`
+        : data.addonDetail
+      : data.pricing.remainingMonths > 1
+        ? `Cobrança proporcional por ${data.pricing.remainingMonths} meses`
+        : "Cobrança proporcional"
 
     const invoiceItems = [
       {
@@ -69,25 +77,32 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       },
     ]
 
-    const compositionRows = [
-      ...invoiceItems.map((item) => ({
-        label: `${item.title} (${item.quantity}x)`,
-        value: formatCurrency(item.totalAmountMonthly),
-      })),
-      {
-        label: "Meses restantes",
-        value: `${data.pricing.remainingMonths} mes${data.pricing.remainingMonths === 1 ? "" : "es"}`,
-      },
-      { label: "Total", value: formatCurrency(totalCharge), emphasize: true },
-    ]
+    const compositionRows = isPlatformPurchase
+      ? [
+          { label: "Produto", value: data.addonLabel },
+          { label: "Créditos", value: data.addonDetail },
+          { label: "Ciclo", value: "Mensal" },
+          { label: "Total", value: formatCurrency(totalCharge), emphasize: true },
+        ]
+      : [
+          ...invoiceItems.map((item) => ({
+            label: `${item.title} (${item.quantity}x)`,
+            value: formatCurrency(item.totalAmountMonthly),
+          })),
+          {
+            label: "Meses restantes",
+            value: `${data.pricing.remainingMonths} mês${data.pricing.remainingMonths === 1 ? "" : "es"}`,
+          },
+          { label: "Total", value: formatCurrency(totalCharge), emphasize: true },
+        ]
 
     return {
       presetBillingType: preset,
       title,
       subtitle,
       includedTitle: data.addonLabel,
-      includedSubtitle: data.addonDetail,
-      compositionTitle: "COMPOSICAO DO PLANO",
+      includedSubtitle: data.activationHint ?? data.addonDetail,
+      compositionTitle: isPlatformPurchase ? "Resumo" : "COMPOSIÇÃO DO PLANO",
       compositionRows,
       invoiceItems,
       invoiceSummary: {
@@ -96,12 +111,16 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
         billingHint: preset === "CREDIT_CARD" ? "Cartão de crédito" : "PIX",
       },
       monthlyTotalLabel: "Total Mensal",
-      monthlyTotalValue: `${formatCurrency(data.pricing.monthlyPrice)} / mes`,
+      monthlyTotalValue: `${formatCurrency(data.pricing.monthlyPrice)} / mês`,
       totalTitle: "TOTAL",
-      totalSubtitle: "Pagamento único",
+      totalSubtitle: isPlatformPurchase
+        ? (data.activationHint ?? "A ativação acontece após confirmação do pagamento.")
+        : "Pagamento único",
       totalValue: formatCurrency(totalCharge),
-      totalHint: preset === "CREDIT_CARD" ? `em ate ${Math.max(1, data.pricing.maxInstallments)}x no cartao` : "via PIX",
-      startLabel: "Inicio",
+      totalHint: preset === "CREDIT_CARD"
+        ? `em até ${Math.max(1, data.pricing.maxInstallments)}x no cartão`
+        : "via PIX",
+      startLabel: "Início",
       startValue: formatDate(startDate),
       dueLabel: "Vencimento",
       dueValue: formatDate(dueDate),
