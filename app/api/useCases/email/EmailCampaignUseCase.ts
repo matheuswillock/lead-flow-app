@@ -90,6 +90,7 @@ import {
   buildCampaignDispatchProgress,
   buildCampaignDispatchProgressSummary,
   buildCumulativeCampaignDispatchProgress,
+  isDispatchLogAccepted,
   type CampaignDispatchProgress,
   type CampaignDispatchProgressStatus,
   type DispatchLogCounters,
@@ -510,16 +511,36 @@ export class EmailCampaignUseCase {
     )
     if (candidates.length === 0) return overrides
 
-    const countersByCampaignId = await this.aggregateCumulativeLogCountersByCampaignId(
-      ctx.teamId,
-      candidates.map((campaign) => campaign.id)
-    )
+    // Busca os logs crus (não só os contadores) para conseguir: (a) distinguir
+    // "sem log nenhum" de "0 aceites confirmados" e (b) preservar o horário real
+    // do último envio aceito em vez de usar o momento da leitura.
+    const logs = await this.db.emailLog.findMany({
+      where: { teamId: ctx.teamId, campaignId: { in: candidates.map((campaign) => campaign.id) } },
+      select: {
+        campaignId: true,
+        recipientEmail: true,
+        status: true,
+        sentAt: true,
+        resendEmailId: true,
+      },
+    })
+
+    const logsByCampaignId = new Map<string, typeof logs>()
+    for (const log of logs) {
+      if (!log.campaignId) continue
+      const bucket = logsByCampaignId.get(log.campaignId) ?? []
+      bucket.push(log)
+      logsByCampaignId.set(log.campaignId, bucket)
+    }
 
     for (const campaign of candidates) {
-      const counters = countersByCampaignId.get(campaign.id)
-      if (!counters) continue
+      const campaignLogs = logsByCampaignId.get(campaign.id)
+      // Sem nenhuma evidência de log (ex.: dispatch de backfill criado a partir do
+      // status antigo, sem EmailLog associado), não há base para reconciliar —
+      // preserva o status persistido em vez de presumir falha.
+      if (!campaignLogs || campaignLogs.length === 0) continue
 
-      const { acceptedCount } = counters
+      const { acceptedCount } = aggregateCumulativeDispatchLogCounters(campaignLogs)
       const correctStatus: EmailCampaignStatus =
         acceptedCount >= campaign.totalRecipients
           ? "sent"
@@ -529,13 +550,21 @@ export class EmailCampaignUseCase {
 
       if (correctStatus === campaign.status) continue
 
+      const lastAcceptedAt = campaignLogs
+        .filter((log) => isDispatchLogAccepted(log))
+        .map((log) => (log.sentAt ? new Date(log.sentAt) : null))
+        .filter((value): value is Date => value !== null)
+        .sort((a, b) => b.getTime() - a.getTime())[0]
+
       try {
         await this.db.emailCampaign.update({
           where: { id: campaign.id },
           data: {
             status: correctStatus,
             totalSent: acceptedCount,
-            ...(correctStatus === "sent" ? { errorMessage: null, sentAt: new Date() } : {}),
+            ...(correctStatus === "sent"
+              ? { errorMessage: null, ...(lastAcceptedAt ? { sentAt: lastAcceptedAt } : {}) }
+              : {}),
           },
         })
         overrides.set(campaign.id, { status: correctStatus, totalSent: acceptedCount })

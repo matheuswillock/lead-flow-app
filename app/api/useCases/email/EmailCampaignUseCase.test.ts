@@ -1700,6 +1700,63 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     )
     expect(reconcileUpdate?.[0].data.status).toBe("sent")
     expect(reconcileUpdate?.[0].data.totalSent).toBe(2211)
+    // sentAt deve refletir o horário real do envio (log), não o momento da leitura.
+    expect((reconcileUpdate?.[0].data.sentAt as Date).toISOString()).toBe(
+      "2026-08-11T14:05:00.000Z"
+    )
+  })
+
+  it("list NÃO reconcilia campanha terminal sem nenhum EmailLog (evita falso-positivo de falha)", async () => {
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where && "parentCampaignId" in (whereArgs.where ?? {}) && whereArgs.where.parentCampaignId != null) {
+        return []
+      }
+      return [
+        {
+          id: "camp-legado-sem-logs",
+          name: "Campanha Legada",
+          status: "sent",
+          scheduledAt: null,
+          sentAt: new Date("2025-01-01T00:00:00.000Z"),
+          totalRecipients: 500,
+          totalSent: 500,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 1,
+          createdAt: new Date("2025-01-01T00:00:00.000Z"),
+          createdBy: "profile-1",
+          managedByBackofficeUserId: null,
+          templateId: "tpl-1",
+          contactListId: "list-1",
+          radarSegmentSlug: null,
+          audienceContactIds: ["c1"],
+          errorMessage: null,
+          _count: { subCampaigns: 0 },
+        },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    // Dispatch de backfill sem nenhum EmailLog associado (ex.: campanha migrada de
+    // um sistema antigo). Sem evidência de log, o status persistido deve prevalecer.
+    emailLogFindManyMock.mockImplementation(async () => [])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+
+    expect(output.isValid).toBe(true)
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.status).toBe("sent")
+    expect(campaign.totalSent).toBe(500)
+
+    const campaignUpdateCalls = emailCampaignUpdateMock.mock.calls as unknown as Array<
+      [{ where: { id: string }; data: Record<string, unknown> }]
+    >
+    expect(
+      campaignUpdateCalls.some((call) => call[0].where.id === "camp-legado-sem-logs")
+    ).toBe(false)
   })
 
   it("startManualDispatch persiste retryFailedOnly true quando solicitado", async () => {
