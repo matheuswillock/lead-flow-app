@@ -21,8 +21,9 @@ export type EffectiveRadarOutboxThroughput = {
 };
 
 /**
- * Precedência: linha ativa no backoffice → env → defaults do código.
- * Sempre clampado aos min/max canônicos (não dá para “furar” o teto pela UI/DB).
+ * Precedência: linha ativa salva no backoffice → env → defaults do código.
+ * Sem seed automático na migration: envs de throttle permanecem válidos até o
+ * primeiro save explícito na UI. Sempre clampado aos min/max canônicos.
  */
 export async function resolveEffectiveRadarOutboxThroughput(): Promise<EffectiveRadarOutboxThroughput> {
   const row = await prisma.backofficeRadarOutboxThroughputConfig

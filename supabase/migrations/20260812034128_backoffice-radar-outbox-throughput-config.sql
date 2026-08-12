@@ -1,5 +1,6 @@
 -- Vazão do outbox Radar D9: knobs operacionais editáveis no backoffice.
--- Singleton ativo; cron sync-email-contacts lê batchSize/concurrency a cada tick.
+-- Sem linha ativa até o primeiro save; cron lê batchSize/concurrency a cada tick
+-- com precedência: backoffice ativo → env → defaults do código.
 
 CREATE TABLE IF NOT EXISTS "public"."backoffice_radar_outbox_throughput_configs" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -34,10 +35,6 @@ CREATE POLICY "Deny all JWT on backoffice_radar_outbox_throughput_configs"
   USING (false)
   WITH CHECK (false);
 
--- Seed singleton (defaults alinhados ao T4) se ainda não houver linha ativa.
-INSERT INTO "public"."backoffice_radar_outbox_throughput_configs"
-  ("id", "batchSize", "concurrency", "isActive", "createdAt", "updatedAt")
-SELECT gen_random_uuid(), 250, 8, true, now(), now()
-WHERE NOT EXISTS (
-  SELECT 1 FROM "public"."backoffice_radar_outbox_throughput_configs" WHERE "isActive" = true
-);
+-- Sem seed ativo: até o primeiro save no backoffice, o cron continua em
+-- env (RADAR_EMAIL_CONTACT_SYNC_OUTBOX_BATCH_SIZE / RADAR_SYNC_CONCURRENCY)
+-- ou nos defaults do código. Seedar 250/8 ativo sobrescreveria throttles de env.

@@ -38,7 +38,8 @@ export class BackofficeRadarOutboxThroughputUseCase {
           cronCadence: "*/5 * * * *",
           cronRunsPerHour: RADAR_OUTBOX_THROUGHPUT_LIMITS.cronRunsPerHour,
           formula: "throughput_hora ≈ batchSize × 12 (cron a cada 5 min)",
-          precedence: "backoffice (linha ativa) → env → defaults do código",
+          precedence:
+            "backoffice (linha ativa salva na UI) → env → defaults do código; sem seed automático",
           connectionBudgetHint: "orçamento ≈ concurrency + 1 conexão por tick",
         },
       });

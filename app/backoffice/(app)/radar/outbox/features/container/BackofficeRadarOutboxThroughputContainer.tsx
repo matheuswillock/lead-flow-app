@@ -83,6 +83,11 @@ export function BackofficeRadarOutboxThroughputContainer() {
               <strong>{snapshot.howItWorks.precedence}</strong>. Orçamento de pool ≈{" "}
               {snapshot.howItWorks.connectionBudgetHint}.
             </p>
+            <p>
+              Enquanto ninguém salvar nesta tela, o cron segue os envs{" "}
+              <code className="text-xs">RADAR_EMAIL_CONTACT_SYNC_OUTBOX_BATCH_SIZE</code> /{" "}
+              <code className="text-xs">RADAR_SYNC_CONCURRENCY</code> (ou defaults 250/8).
+            </p>
           </div>
         </AlertDescription>
       </Alert>
