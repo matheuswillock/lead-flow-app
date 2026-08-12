@@ -258,6 +258,67 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         });
       }
     }
+
+    const isPlatformPurchaseRef =
+      !!externalReference && externalReference.startsWith("platform-purchase-");
+    if (isPlatformPurchaseRef && (isPaid || paymentStatus === "CONFIRMED")) {
+      try {
+        const { platformCheckoutUseCase } = await import(
+          "@/app/api/useCases/platformCheckout/PlatformCheckoutUseCase"
+        );
+        const purchaseResult = await platformCheckoutUseCase.applyPaidPurchase({
+          externalReference,
+          asaasPaymentId: paymentId,
+        });
+
+        if (!purchaseResult.isValid) {
+          console.error("[AsaasWebhookRoute][process] platform purchase failed", {
+            eventId,
+            errorMessages: purchaseResult.errorMessages,
+            paymentId,
+            externalReference,
+          });
+        } else {
+          console.info("[AsaasWebhookRoute][process] platform purchase applied", {
+            eventId,
+            paymentId,
+            externalReference,
+            successMessages: purchaseResult.successMessages,
+          });
+
+          const details = purchaseResult.result as
+            | { purchaseType?: string; checkoutId?: string; productSlug?: string }
+            | null
+            | undefined;
+
+          if (details?.purchaseType === "email_credits") {
+            const { applyEmailCreditsPaidPurchaseUseCase } = await import(
+              "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
+            );
+            const creditResult = await applyEmailCreditsPaidPurchaseUseCase.apply({
+              paymentId,
+              externalReference,
+              checkoutId: details.checkoutId,
+              productSlug: details.productSlug,
+            });
+            console.info("[AsaasWebhookRoute][process][EmailCredits]", {
+              eventId,
+              handled: creditResult.handled,
+              applied: creditResult.applied,
+              alreadyApplied: creditResult.alreadyApplied,
+              teamId: creditResult.teamId ?? null,
+              plan: creditResult.plan ?? null,
+            });
+          }
+        }
+      } catch (error) {
+        rethrowIfPrerenderInterrupted(error);
+        console.error("[AsaasWebhookRoute][process] platform purchase error", {
+          eventId,
+          error,
+        });
+      }
+    }
   }
 
   if (isPaid && body?.payment?.subscription) {
