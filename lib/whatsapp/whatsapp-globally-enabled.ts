@@ -1,13 +1,18 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 
-const CACHE_TTL_MS = 5 * 60 * 1000
+const CACHE_TTL_MS = 15 * 60 * 1000
 
 let cache: { value: boolean; expiresAt: number } | null = null
 
+/** @internal — only for unit tests */
+export function resetWhatsAppGloballyEnabledCacheForTests(): void {
+  cache = null
+}
+
 /**
  * Checks whether the WhatsApp feature is globally active in backoffice_features.
- * Result is cached for 5 minutes per function instance to avoid a DB hit on every cron tick.
- * Fails open (returns true) on DB error so crons are not silently halted by transient issues.
+ * Result is cached for 15 minutes per function instance to avoid a DB hit on every cron tick.
+ * Fails closed (returns false) on DB error so pool pressure cannot re-enable disabled crons.
  */
 export async function isWhatsAppGloballyEnabled(): Promise<boolean> {
   const now = Date.now()
@@ -24,7 +29,7 @@ export async function isWhatsAppGloballyEnabled(): Promise<boolean> {
     cache = { value, expiresAt: now + CACHE_TTL_MS }
     return value
   } catch (error) {
-    console.error("[isWhatsAppGloballyEnabled] DB error, failing open:", error)
-    return true
+    console.error("[isWhatsAppGloballyEnabled] DB error, failing closed:", error)
+    return false
   }
 }
