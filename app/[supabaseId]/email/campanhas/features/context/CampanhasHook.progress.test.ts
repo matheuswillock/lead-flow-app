@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test"
-import { isNewTerminalDispatch } from "@/lib/email/campaign-dispatch-terminal"
+import {
+  isNewTerminalDispatch,
+  PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
+} from "@/lib/email/campaign-dispatch-terminal"
 
 /**
  * Contrato de polling/force para CampanhasHook — exercita a lógica pura de assinatura
@@ -114,5 +117,65 @@ describe("toast fantasma de retry (isNewTerminalDispatch)", () => {
         preAttemptDispatchId: null,
       })
     ).toBe(true)
+  })
+})
+
+/** Mesma lógica de captura de `handleSend` (CampanhasHook.ts:~525-531) isolada para teste. */
+function captureRetryPreAttemptDispatchId(params: {
+  subCampaigns: Array<{ id: string; latestDispatch?: { dispatchId: string } | null }> | undefined
+  targetSubId: string
+}) {
+  const subCampaignsLoaded = Boolean(params.subCampaigns)
+  const preAttemptSub = params.subCampaigns?.find((sub) => sub.id === params.targetSubId)
+  return subCampaignsLoaded
+    ? (preAttemptSub?.latestDispatch?.dispatchId ?? null)
+    : PRE_ATTEMPT_DISPATCH_ID_UNKNOWN
+}
+
+describe("toast fantasma de retry — corrida de carregamento otimista (openView)", () => {
+  it("regressão: clique de retry antes do getById resolver não gera toast fantasma", () => {
+    // openView() abre o painel otimisticamente sem `.subCampaigns` — se o usuário clica
+    // em "Reenviar apenas falhas" nesse instante, antes não sabíamos o dispatchId anterior
+    // e usávamos `null`, fazendo o guard tratar o dispatch antigo inalterado como "novo".
+    const preAttemptId = captureRetryPreAttemptDispatchId({
+      subCampaigns: undefined,
+      targetSubId: "sub-1",
+    })
+    expect(preAttemptId).toBe(PRE_ATTEMPT_DISPATCH_ID_UNKNOWN)
+
+    // Polling observa o MESMO dispatch antigo (retry ainda nem terminou de processar
+    // no servidor) — com o fix, isso não deve mais disparar o toast fantasma.
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: "dispatch-antigo-inalterado",
+        preAttemptDispatchId: preAttemptId,
+      })
+    ).toBe(false)
+  })
+
+  it("caso normal: subCampaigns já carregado captura o dispatchId real (não o sentinel)", () => {
+    const preAttemptId = captureRetryPreAttemptDispatchId({
+      subCampaigns: [
+        { id: "sub-1", latestDispatch: { dispatchId: "dispatch-antigo" } },
+        { id: "sub-2", latestDispatch: null },
+      ],
+      targetSubId: "sub-1",
+    })
+    expect(preAttemptId).toBe("dispatch-antigo")
+
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: "dispatch-novo",
+        preAttemptDispatchId: preAttemptId,
+      })
+    ).toBe(true)
+  })
+
+  it("subCampaigns carregado mas sem dispatch anterior → null (não o sentinel)", () => {
+    const preAttemptId = captureRetryPreAttemptDispatchId({
+      subCampaigns: [{ id: "sub-1", latestDispatch: null }],
+      targetSubId: "sub-1",
+    })
+    expect(preAttemptId).toBeNull()
   })
 })

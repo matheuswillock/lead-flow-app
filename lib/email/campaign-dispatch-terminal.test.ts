@@ -2,9 +2,48 @@ import { describe, expect, it } from "bun:test"
 import {
   applyDispatchTerminalToast,
   buildDispatchTerminalToast,
+  isNewTerminalDispatch,
+  PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   resolveCampaignDispatchTerminal,
 } from "./campaign-dispatch-terminal"
 import { formatCampaignDispatchProgressLabel } from "./campaign-dispatch-progress"
+
+describe("isNewTerminalDispatch", () => {
+  it("true quando o dispatchId observado difere do pré-tentativa", () => {
+    expect(
+      isNewTerminalDispatch({ observedDispatchId: "d2", preAttemptDispatchId: "d1" })
+    ).toBe(true)
+  })
+
+  it("false quando o dispatchId observado é o mesmo do pré-tentativa (nada novo)", () => {
+    expect(
+      isNewTerminalDispatch({ observedDispatchId: "d1", preAttemptDispatchId: "d1" })
+    ).toBe(false)
+  })
+
+  it("false quando não há dispatchId observado", () => {
+    expect(
+      isNewTerminalDispatch({ observedDispatchId: null, preAttemptDispatchId: "d1" })
+    ).toBe(false)
+  })
+
+  it("true quando pré-tentativa é null (sem dispatch anterior conhecido) e observa um novo", () => {
+    expect(
+      isNewTerminalDispatch({ observedDispatchId: "d1", preAttemptDispatchId: null })
+    ).toBe(true)
+  })
+
+  it("PRE_ATTEMPT_DISPATCH_ID_UNKNOWN sempre falha fechado, mesmo com dispatchId observado (regressão toast fantasma)", () => {
+    // Corrida: detalhe da campanha ainda não carregou quando o usuário clicou em
+    // retry — não sabemos qual era o dispatch anterior, então nunca tratamos como novo.
+    expect(
+      isNewTerminalDispatch({
+        observedDispatchId: "d-antigo-inalterado",
+        preAttemptDispatchId: PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
+      })
+    ).toBe(false)
+  })
+})
 
 describe("resolveCampaignDispatchTerminal", () => {
   it("retorna null enquanto status=sending — nunca inventa full por ausência", () => {
