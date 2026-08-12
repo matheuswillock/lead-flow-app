@@ -17,25 +17,27 @@ const { FeatureAccessService } = await import("./FeatureAccessService")
 const PROFILE_ID = "profile-1"
 const MANAGER_ID = "profile-1"
 const TEAM_ID = "team-1"
-const EMAIL_FEATURE_ID = "feature-email"
 const EMAIL_CAMPAIGNS_FEATURE_ID = "feature-email-campaigns"
 
 function makeFeature(
-  overrides: Partial<ActiveFeatureRecord> = {}
+  overrides: Partial<ActiveFeatureRecord> & Record<string, unknown> = {}
 ): ActiveFeatureRecord {
   return {
-    id: EMAIL_FEATURE_ID,
-    slug: "email",
-    name: "Email",
+    id: EMAIL_CAMPAIGNS_FEATURE_ID,
+    slug: "email-campaigns",
+    name: "Campanhas",
     parentId: null,
     inheritParentSettings: false,
     betaEnabled: true,
-    chargeDuringBeta: false,
-    accessMode: "PUBLIC",
+    accessMode: "ADDON",
     defaultAccessLevel: "FULL",
     billedSeparately: false,
-    productSlug: null,
-    accessRules: [],
+    productSlug: "email",
+    chargeDuringBeta: false,
+    accessRules: [
+      { principal: "MASTER", accessLevel: "FULL" },
+      { principal: "MANAGER", accessLevel: "FULL" },
+    ],
     ...overrides,
   } as ActiveFeatureRecord
 }
@@ -100,60 +102,18 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   }
 }
 
-describe("FeatureAccessService.resolveAllowedSlugs beta gate", () => {
+describe("FeatureAccessService chargeDuringBeta", () => {
   let repository: FakeFeatureAccessRepository
   let service: InstanceType<typeof FeatureAccessService>
 
   beforeEach(() => {
     repository = new FakeFeatureAccessRepository()
     service = new FeatureAccessService(repository)
-  })
-
-  it("bloqueia feature PUBLIC em beta quando o time não está elegível no Grupo Beta", async () => {
-    repository.features = [makeFeature()]
-
-    const access = await service.resolveAllowedSlugs({
-      profileId: PROFILE_ID,
-      managerId: MANAGER_ID,
-      activeTeamId: TEAM_ID,
-    })
-
-    expect(access.slugs).not.toContain("email")
-    expect(access.betaSlugs).not.toContain("email")
-    expect(access.betaLabelSlugs).not.toContain("email")
-  })
-
-  it("bloqueia feature ADDON em beta mesmo quando existe produto pago mas o time não está elegível", async () => {
-    repository.features = [
-      makeFeature({
-        accessMode: "ADDON",
-        productSlug: "email",
-      }),
-    ]
-    repository.ownerSubscriptions = [{ product: { featureSlugs: ["email"] } }]
-
-    const access = await service.resolveAllowedSlugs({
-      profileId: PROFILE_ID,
-      managerId: MANAGER_ID,
-      activeTeamId: TEAM_ID,
-    })
-
-    expect(access.slugs).not.toContain("email")
-    expect(access.betaSlugs).not.toContain("email")
-    expect(access.betaLabelSlugs).not.toContain("email")
-  })
-
-  it("libera feature ADDON em beta quando há produto pago e o time está elegível", async () => {
-    repository.features = [
-      makeFeature({
-        id: EMAIL_CAMPAIGNS_FEATURE_ID,
-        slug: "email-campaigns",
-        accessMode: "ADDON",
-        productSlug: "email",
-      }),
-    ]
-    repository.ownerSubscriptions = [{ product: { featureSlugs: ["email"] } }]
     repository.betaEligibleFeatureIds = new Set([EMAIL_CAMPAIGNS_FEATURE_ID])
+  })
+
+  it("T01: beta gratuito com grant libera acesso sem produto pago", async () => {
+    repository.features = [makeFeature({ chargeDuringBeta: false })]
 
     const access = await service.resolveAllowedSlugs({
       profileId: PROFILE_ID,
@@ -164,5 +124,61 @@ describe("FeatureAccessService.resolveAllowedSlugs beta gate", () => {
     expect(access.slugs).toContain("email-campaigns")
     expect(access.betaSlugs).toContain("email-campaigns")
     expect(access.betaLabelSlugs).toContain("email-campaigns")
+  })
+
+  it("T02: beta cobrado sem produto pago não libera uso gratuito", async () => {
+    repository.features = [makeFeature({ chargeDuringBeta: true })]
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).not.toContain("email-campaigns")
+    expect(access.betaSlugs).toContain("email-campaigns")
+    expect(access.betaLabelSlugs).not.toContain("email-campaigns")
+  })
+
+  it("T03: beta cobrado com produto/assinatura ativa libera acesso", async () => {
+    repository.features = [makeFeature({ chargeDuringBeta: true })]
+    repository.ownerSubscriptions = [{ product: { featureSlugs: ["email"] } }]
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("email-campaigns")
+    expect(access.betaSlugs).toContain("email-campaigns")
+    expect(access.betaLabelSlugs).toContain("email-campaigns")
+  })
+
+  it("T05: resolveEmailBetaAccess retorna isenção para beta gratuito", async () => {
+    repository.features = [makeFeature({ chargeDuringBeta: false })]
+
+    const isExempt = await service.resolveEmailBetaAccess({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      isMaster: true,
+      teamId: TEAM_ID,
+    })
+
+    expect(isExempt).toBe(true)
+  })
+
+  it("T06: resolveEmailBetaAccess não retorna isenção para beta cobrado", async () => {
+    repository.features = [makeFeature({ chargeDuringBeta: true })]
+    repository.ownerSubscriptions = [{ product: { featureSlugs: ["email"] } }]
+
+    const isExempt = await service.resolveEmailBetaAccess({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      isMaster: true,
+      teamId: TEAM_ID,
+    })
+
+    expect(isExempt).toBe(false)
   })
 })
