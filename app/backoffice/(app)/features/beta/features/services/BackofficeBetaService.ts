@@ -21,12 +21,19 @@ export class BackofficeBetaService implements IBackofficeBetaService {
       slug: string
       name: string
       betaEnabled: boolean
+      chargeDuringBeta?: boolean
       inheritParentSettings: boolean
       grants: BetaGrantItem[]
     }>
     return all
       .filter((f) => isBetaGroupEligible(f))
-      .map((f) => ({ id: f.id, slug: f.slug, name: f.name, grants: f.grants }))
+      .map((f) => ({
+        id: f.id,
+        slug: f.slug,
+        name: f.name,
+        chargeDuringBeta: f.chargeDuringBeta === true,
+        grants: f.grants,
+      }))
   }
 
   async listBetaUsers(featureId: string): Promise<BetaGrantItem[]> {

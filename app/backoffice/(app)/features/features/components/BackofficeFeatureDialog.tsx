@@ -20,7 +20,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
 import { useBackofficeFeature } from "../context/BackofficeFeatureContext"
+import {
+  CHARGE_DURING_BETA_HINT,
+  getChargeDuringBetaClientHint,
+  isChargeDuringBetaSaveBlocked,
+  isChargeDuringBetaVisible,
+} from "../utils/backofficeFeatureForm"
 
 const ACCESS_PRINCIPALS = [
   { principal: "MASTER", label: "Master" },
@@ -53,6 +60,12 @@ export function BackofficeFeatureDialog() {
   const isChildFeature = Boolean(formData.parentId || dialogFeature?.parentId)
   const isInheritingFromParent = isChildFeature && formData.inheritParentSettings
   const isBilledSeparatelyDisabled = isSaving || !isChildFeature || isInheritingFromParent
+  const showChargeDuringBeta =
+    isChargeDuringBetaVisible(formData.betaEnabled) || isInheritingFromParent
+  const chargeDuringBetaHint = getChargeDuringBetaClientHint(formData)
+  const chargeDuringBetaInvalid = chargeDuringBetaHint !== null
+  const saveBlocked =
+    isSaving || !formData.name.trim() || isChargeDuringBetaSaveBlocked(formData)
 
   return (
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
@@ -143,7 +156,7 @@ export function BackofficeFeatureDialog() {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">Herdar configurações do pai</span>
               <span className="text-xs text-muted-foreground">
-                Sub-funcionalidades podem usar modo, produto, beta e regras do pai automaticamente.
+                Sub-funcionalidades podem usar modo, produto, beta, cobrança beta e regras do pai automaticamente.
               </span>
             </div>
             <Switch
@@ -197,10 +210,20 @@ export function BackofficeFeatureDialog() {
               onChange={(e) => setFormField("productSlug", e.target.value)}
               placeholder="Ex: crm"
               disabled={isSaving || isInheritingFromParent}
-              className="font-mono text-xs"
+              className={cn(
+                "font-mono text-xs",
+                chargeDuringBetaInvalid && "border-destructive"
+              )}
             />
-            <p className="text-xs text-muted-foreground">
-              Slug de um produto cadastrado em Precificação. Deixe vazio para acesso sem produto.
+            <p
+              className={cn(
+                "text-xs",
+                chargeDuringBetaInvalid ? "text-amber-600" : "text-muted-foreground"
+              )}
+            >
+              {chargeDuringBetaInvalid
+                ? "Informe um produto para cobrar esta funcionalidade durante o beta."
+                : "Slug de um produto cadastrado em Precificação. Deixe vazio para acesso sem produto."}
             </p>
           </div>
 
@@ -220,7 +243,7 @@ export function BackofficeFeatureDialog() {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">Beta</span>
               <span className="text-xs text-muted-foreground">
-                Liberar apenas para usuários com grant de beta
+                Liberar apenas para masters configurados no Grupo Beta e respeitar o escopo de times.
               </span>
             </div>
             <Switch
@@ -230,11 +253,42 @@ export function BackofficeFeatureDialog() {
             />
           </div>
 
+          {showChargeDuringBeta && (
+            <div
+              className={cn(
+                "flex items-center justify-between rounded-md border px-3 py-2.5",
+                chargeDuringBetaInvalid && "border-destructive/50 bg-destructive/5"
+              )}
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Cobrar durante o beta</span>
+                <span
+                  className={cn(
+                    "text-xs",
+                    chargeDuringBetaInvalid ? "text-amber-600" : "text-muted-foreground"
+                  )}
+                >
+                  {chargeDuringBetaHint ?? CHARGE_DURING_BETA_HINT}
+                </span>
+                {isInheritingFromParent && (
+                  <span className="text-xs text-muted-foreground">
+                    Cobrança beta herdada da funcionalidade pai.
+                  </span>
+                )}
+              </div>
+              <Switch
+                checked={formData.chargeDuringBeta}
+                onCheckedChange={(v) => setFormField("chargeDuringBeta", v)}
+                disabled={isSaving || isInheritingFromParent}
+              />
+            </div>
+          )}
+
           <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">Ativo</span>
               <span className="text-xs text-muted-foreground">
-                Funcionalidade desativada não é avaliada no acesso
+                Funcionalidade desativada não é avaliada no acesso.
               </span>
             </div>
             <Switch
@@ -249,7 +303,7 @@ export function BackofficeFeatureDialog() {
           <Button variant="outline" onClick={closeDialog} disabled={isSaving}>
             Cancelar
           </Button>
-          <Button onClick={submitForm} disabled={isSaving || !formData.name.trim()}>
+          <Button onClick={submitForm} disabled={saveBlocked}>
             {isSaving && <Loader2 data-icon="inline-start" className="animate-spin" />}
             {isEdit ? "Salvar" : "Criar"}
           </Button>
