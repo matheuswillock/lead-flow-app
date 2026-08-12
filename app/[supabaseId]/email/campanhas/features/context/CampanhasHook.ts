@@ -20,6 +20,8 @@ import {
   buildDispatchTerminalToast,
   isNewTerminalDispatch,
   resolveCampaignDispatchTerminal,
+  PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
+  type PreAttemptDispatchId,
 } from "@/lib/email/campaign-dispatch-terminal"
 import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
 
@@ -323,7 +325,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const sendingSubCampaignParentIdRef = useRef<string | null>(null)
   // dispatchId da sub-campanha logo antes de um retry. O polling só emite toast terminal
   // se observar um dispatchId diferente (fail-closed contra o toast fantasma do erro antigo).
-  const retryPreAttemptDispatchIdRef = useRef<string | null>(null)
+  const retryPreAttemptDispatchIdRef = useRef<PreAttemptDispatchId>(null)
   const fetchingRef = useRef(false)
   const pendingForceRefreshRef = useRef(false)
   const lastCampaignsKeyRef = useRef("")
@@ -522,8 +524,14 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } else {
       // Captura o dispatchId atual da sub ANTES do retry: o polling otimista dispara
       // imediatamente e veria o `failed` + erro antigo; só emite toast se o dispatchId mudar.
+      // Se `subCampaigns` ainda não carregou (openView é otimista, ver `getById` async),
+      // não sabemos qual era o dispatch anterior — usar o sentinel "unknown" em vez de
+      // `null`, senão o guard fail-closed vira fail-open e dispara o toast fantasma.
+      const subCampaignsLoaded = Boolean(detailCampaign?.subCampaigns)
       const preAttemptSub = detailCampaign?.subCampaigns?.find((sub) => sub.id === id)
-      retryPreAttemptDispatchIdRef.current = preAttemptSub?.latestDispatch?.dispatchId ?? null
+      retryPreAttemptDispatchIdRef.current = subCampaignsLoaded
+        ? (preAttemptSub?.latestDispatch?.dispatchId ?? null)
+        : PRE_ATTEMPT_DISPATCH_ID_UNKNOWN
       sendingSubCampaignParentIdRef.current = detailCampaign?.id ?? null
       sendingIdRef.current = null
       sendingCampaignSnapshotRef.current = null
