@@ -56,6 +56,25 @@ mock.module("@/app/api/useCases/radar/SyncEmailContactToRadarUseCase", () => ({
   },
 }));
 
+mock.module("@/lib/email/resolve-radar-outbox-throughput", () => ({
+  resolveEffectiveRadarOutboxThroughput: async () => ({
+    batchSize: 250,
+    concurrency: 8,
+    source: "env" as const,
+    theoreticalThroughputPerHour: 3000,
+    limits: {
+      minBatchSize: 1,
+      maxBatchSize: 500,
+      defaultBatchSize: 250,
+      minConcurrency: 1,
+      maxConcurrency: 16,
+      defaultConcurrency: 8,
+      cronRunsPerHour: 12,
+    },
+    updatedAt: null,
+  }),
+}));
+
 const { ProcessEmailContactRadarSyncOutboxUseCase } = await import(
   "./ProcessEmailContactRadarSyncOutboxUseCase"
 );

@@ -12931,6 +12931,62 @@
           ]
         },
         {
+          "name": "Backoffice Radar Outbox Throughput",
+          "item": [
+            {
+              "name": "GET Radar Outbox Throughput",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/radar/outbox-throughput",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "radar",
+                    "outbox-throughput"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "PATCH Radar Outbox Throughput",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/radar/outbox-throughput",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "radar",
+                    "outbox-throughput"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"batchSize\": 250,\n  \"concurrency\": 8\n}"
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
           "name": "Backoffice Contracts",
           "item": [
             {
