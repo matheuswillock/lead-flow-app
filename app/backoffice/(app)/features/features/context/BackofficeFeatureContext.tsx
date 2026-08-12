@@ -5,6 +5,10 @@ import type { ReactNode } from "react"
 import type { IBackofficeFeatureService } from "../services/IBackofficeFeatureService"
 import type { AccessRuleFormEntry, BackofficeFeatureFormData, BackofficeFeatureItem } from "./BackofficeFeatureTypes"
 import { EMPTY_FEATURE_FORM } from "./BackofficeFeatureTypes"
+import {
+  applyBetaEnabledChange,
+  isChargeDuringBetaSaveBlocked,
+} from "../utils/backofficeFeatureForm"
 import { toast } from "sonner"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
@@ -111,6 +115,7 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
       accessMode: feature.accessMode,
       defaultAccessLevel: feature.defaultAccessLevel,
       betaEnabled: feature.betaEnabled,
+      chargeDuringBeta: feature.chargeDuringBeta ?? false,
       inheritParentSettings: feature.inheritParentSettings,
       billedSeparately: feature.billedSeparately,
       isActive: feature.isActive,
@@ -134,7 +139,12 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
       field: keyof BackofficeFeatureFormData,
       value: string | boolean | AccessRuleFormEntry[]
     ) => {
-      setFormData((prev) => ({ ...prev, [field]: value }))
+      setFormData((prev) => {
+        if (field === "betaEnabled" && typeof value === "boolean") {
+          return applyBetaEnabledChange(prev, value)
+        }
+        return { ...prev, [field]: value }
+      })
     },
     []
   )
@@ -159,6 +169,10 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
 
   const submitForm = useCallback(async () => {
     if (isSaving) return
+    if (isChargeDuringBetaSaveBlocked(formData)) {
+      toast.error("Para ligar esta opção, selecione um produto válido em Precificação.")
+      return
+    }
     setIsSaving(true)
     try {
       if (dialogMode === "create") {
