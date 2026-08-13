@@ -21,7 +21,7 @@ type CreateFromCampaignInput = {
 
 /**
  * D14: Cria segmento a partir de campanha de e-mail, extraindo condições
- * de evento (opened, clicked, form.started sem complete) e mesclando com
+ * de evento (form.started sem form.completed) e mesclando com
  * condições adicionais fornecidas pelo usuário.
  */
 export class CreateSegmentFromCampaignUseCase {

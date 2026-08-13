@@ -2,7 +2,8 @@ import type { RadarSegmentCondition } from "@/lib/radar/segment-dsl"
 
 /**
  * Condições padrão ao gerar segmento a partir de uma campanha enviada:
- * abriu/clicou o e-mail + engajou no form (started) sem completar.
+ * engajou no form (started) sem completar.
+ * Open/click ficam fora do AND obrigatório — use additionalRules se precisar.
  */
 export function extractCampaignEventConditions(
   campaignId: string,
@@ -14,20 +15,6 @@ export function extractCampaignEventConditions(
   const windowDays = Math.max(30, daysSinceSent + 7)
 
   return [
-    {
-      kind: "event",
-      eventType: "email.opened",
-      occurrence: "occurred",
-      windowDays,
-      campaignId,
-    },
-    {
-      kind: "event",
-      eventType: "email.clicked",
-      occurrence: "occurred",
-      windowDays,
-      campaignId,
-    },
     {
       kind: "event",
       eventType: "form.started",

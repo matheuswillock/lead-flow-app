@@ -62,15 +62,13 @@ describe("hierarchical segment generation (merge helpers)", () => {
       "11111111-1111-1111-1111-111111111111",
       new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
     )
-    expect(conditions).toHaveLength(4)
+    expect(conditions).toHaveLength(2)
     expect(conditions.map((c) => (c.kind === "event" ? c.eventType : ""))).toEqual([
-      "email.opened",
-      "email.clicked",
       "form.started",
       "form.completed",
     ])
-    const started = conditions[2]
-    const completed = conditions[3]
+    const started = conditions[0]
+    const completed = conditions[1]
     if (started?.kind !== "event" || completed?.kind !== "event") {
       throw new Error("expected event conditions")
     }
