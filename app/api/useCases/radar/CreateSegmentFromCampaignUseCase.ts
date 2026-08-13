@@ -2,10 +2,11 @@ import { Output } from "@/lib/output"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { emailCampaignRepository } from "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
+import { extractCampaignEventConditions } from "@/lib/radar/campaign-segment-preset"
 import {
   parseRadarSegmentRules,
-  type RadarSegmentRules,
   type RadarSegmentCondition,
+  type RadarSegmentRules,
   RADAR_SEGMENT_MAX_CONDITIONS,
 } from "@/lib/radar/segment-dsl"
 import type { Prisma } from "@prisma/client"
@@ -20,41 +21,10 @@ type CreateFromCampaignInput = {
 
 /**
  * D14: Cria segmento a partir de campanha de e-mail, extraindo condições
- * de evento (opened, clicked) automaticamente e mesclando com condições
- * adicionais fornecidas pelo usuário.
+ * de evento (form.started sem form.completed) e mesclando com
+ * condições adicionais fornecidas pelo usuário.
  */
 export class CreateSegmentFromCampaignUseCase {
-  /**
-   * Extrai condições de evento da campanha (opened/clicked nos últimos N dias).
-   * Retorna array vazio se a campanha não tiver eventos rastreáveis.
-   */
-  private extractCampaignEventConditions(
-    campaignId: string,
-    sentAt: Date | null
-  ): RadarSegmentCondition[] {
-    if (!sentAt) return []
-
-    const daysSinceSent = Math.ceil((Date.now() - sentAt.getTime()) / (1000 * 60 * 60 * 24))
-    const windowDays = Math.max(30, daysSinceSent + 7)
-
-    return [
-      {
-        kind: "event",
-        eventType: "email.opened",
-        occurrence: "occurred",
-        windowDays,
-        campaignId,
-      },
-      {
-        kind: "event",
-        eventType: "email.clicked",
-        occurrence: "occurred",
-        windowDays,
-        campaignId,
-      },
-    ]
-  }
-
   /**
    * Mescla condições da campanha com condições adicionais do usuário.
    * Valida limite de 10 condições totais.
@@ -101,7 +71,7 @@ export class CreateSegmentFromCampaignUseCase {
         )
       }
 
-      const campaignConditions = this.extractCampaignEventConditions(campaign.id, campaign.sentAt)
+      const campaignConditions = extractCampaignEventConditions(campaign.id, campaign.sentAt)
 
       let mergedRules: RadarSegmentRules
       try {

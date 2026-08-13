@@ -41,9 +41,11 @@ class SyncPublicFormMetricToRadarUseCase {
       }
 
       const occurredAt = input.occurredAt ?? new Date()
+      const campaignId = this.extractCampaignId(input.origin)
       const metadata: Prisma.InputJsonValue = {
         formId: input.formId,
         publicationId: input.publicationId,
+        ...(campaignId ? { campaignId } : {}),
         ...(input.questionId ? { questionId: input.questionId } : {}),
         ...(input.leadId ? { leadId: input.leadId } : {}),
         ...(input.origin && typeof input.origin === "object" && input.origin !== null
@@ -79,6 +81,13 @@ class SyncPublicFormMetricToRadarUseCase {
     const raw = (origin as Record<string, unknown>).recipientEmail
     if (typeof raw !== "string" || !raw.trim()) return null
     return raw.trim().toLowerCase()
+  }
+
+  private extractCampaignId(origin: unknown): string | null {
+    if (!origin || typeof origin !== "object") return null
+    const raw = (origin as Record<string, unknown>).campaignId
+    if (typeof raw !== "string" || !raw.trim()) return null
+    return raw.trim()
   }
 
   private async resolveProfileId(input: SyncPublicFormMetricToRadarInput): Promise<string | null> {

@@ -106,7 +106,12 @@ export function translateEvent(
     : {}
 
   const campaignFilter = condition.campaignId
-    ? { metadata: { path: ["campaignId"], equals: condition.campaignId } }
+    ? {
+        OR: [
+          { metadata: { path: ["campaignId"], equals: condition.campaignId } },
+          { metadata: { path: ["origin", "campaignId"], equals: condition.campaignId } },
+        ],
+      }
     : {}
 
   const eventFilter = {
