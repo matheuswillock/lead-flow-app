@@ -195,6 +195,7 @@ export type CampanhasActions = {
   handleSaveCampaign: () => Promise<void>
   handleMaterializeRadarSegment: () => Promise<void>
   openView: (campaign: Campaign) => void
+  openViewById: (id: string) => Promise<void>
   openEditById: (id: string) => Promise<void>
   closeDetail: () => void
   setSheetTab: (tab: CampaignSheetTab) => void
@@ -901,17 +902,36 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     console.info("[useCampanhas] handleArchive", id)
     try {
       await service.archive(supabaseId, activeTeamId, id)
-      setCampaigns((prev) => prev.filter((c) => c.id !== id))
-      setTotal((prev) => Math.max(0, prev - 1))
-      if (detailCampaign?.id === id) setDetailCampaign(null)
+      if (
+        detailCampaign?.id === id ||
+        detailCampaign?.parentCampaignId === id ||
+        detailCampaign?.subCampaigns?.some((sub) => sub.id === id)
+      ) {
+        setDetailCampaign(null)
+      }
       toast.success("Campanha arquivada")
+      lastCampaignsKeyRef.current = ""
+      void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
       console.error("[useCampanhas] handleArchive error", err)
       toast.error("Erro ao arquivar campanha")
     } finally {
       setArchivingId(null)
     }
-  }, [activeTeamId, detailCampaign?.id, supabaseId])
+  }, [
+    activeTeamId,
+    detailCampaign?.id,
+    detailCampaign?.parentCampaignId,
+    detailCampaign?.subCampaigns,
+    fetchCampaigns,
+    page,
+    pageSize,
+    nameFilter,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    supabaseId,
+  ])
 
   const setWizardDescription = useCallback((v: string) => {
     setWizardDescriptionState(v)
@@ -1132,8 +1152,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     const allSchedulesSame =
       children.length <= 1 ||
       childScheduleKeys.every((key) => key === childScheduleKeys[0])
-    const isUniformConfig =
-      children.length > 1 && allTemplatesSame && (allSchedulesSame || hasUniformInterval)
+    const uniformTemplate = children.length <= 1 || allTemplatesSame
+    const uniformSchedule =
+      children.length <= 1 || allSchedulesSame || hasUniformInterval
 
     const baseName = (campaign.name ?? "").trim()
     const prefixedName =
@@ -1148,7 +1169,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardName(prefixedName)
     setWizardDescriptionState(campaign.description ?? "")
     setWizardTemplateId(
-      isUniformConfig
+      uniformTemplate
         ? (resolvedChildTemplates[0] || templateId)
         : children.length > 1 && resolvedChildTemplates[0]
           ? resolvedChildTemplates[0]
@@ -1161,13 +1182,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     setWizardRecipientSource(campaign.radarSegmentSlug ? "radar_segment" : "contact_list")
     setWizardRadarSegmentSlug(campaign.radarSegmentSlug ?? "")
     setWizardScheduledAt(firstScheduled)
-    setWizardUniformScheduleState(isUniformConfig)
-    setWizardUniformTemplateState(isUniformConfig || children.length <= 1)
+    setWizardUniformScheduleState(uniformSchedule)
+    setWizardUniformTemplateState(uniformTemplate)
     setWizardScheduleIntervalDays(intervalDays)
     setWizardSubCampaignSchedules(subSchedules)
     setWizardSubCampaignListIds(subListIds)
     setWizardSubCampaignNames(subNames)
-    setWizardSubCampaignTemplateIds(isUniformConfig ? {} : subTemplateIds)
+    setWizardSubCampaignTemplateIds(uniformTemplate ? {} : subTemplateIds)
     setWizardLinkedForm(campaign.linkedForm ?? null)
     ensureWizardOptionsFromCampaign(campaign)
   }, [ensureWizardOptionsFromCampaign])
@@ -1288,47 +1309,21 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
 
   const setWizardUniformTemplate = useCallback((uniform: boolean) => {
     setWizardUniformTemplateState(uniform)
-    setWizardUniformScheduleState(uniform)
 
     const plan = wizardPreviewPlanRef.current
     const globalTemplate = wizardTemplateId
-    const globalStart = wizardScheduledAtRef.current
 
     if (uniform) {
       setWizardSubCampaignTemplateIds({})
-      if (plan && plan.subCampaigns.length > 1 && globalStart) {
-        setWizardSubCampaignSchedules(
-          syncSubCampaignSchedules({
-            plan,
-            prev: [],
-            fallbackStart: globalStart,
-            intervalDays: wizardScheduleIntervalDaysRef.current,
-          })
-        )
-      } else if (uniform) {
-        setWizardSubCampaignSchedules([])
-      }
       return
     }
 
-    // Segregado: pré-preencher cards com template/horário globais atuais
-    if (plan && plan.subCampaigns.length > 1) {
-      if (globalTemplate) {
-        const seeded: Record<number, string> = {}
-        for (const sub of plan.subCampaigns) {
-          seeded[sub.index] = globalTemplate
-        }
-        setWizardSubCampaignTemplateIds(seeded)
+    if (plan && plan.subCampaigns.length > 1 && globalTemplate) {
+      const seeded: Record<number, string> = {}
+      for (const sub of plan.subCampaigns) {
+        seeded[sub.index] = globalTemplate
       }
-      setWizardSubCampaignSchedules((prev) => {
-        const synced = syncSubCampaignSchedules({
-          plan,
-          prev,
-          fallbackStart: globalStart,
-          intervalDays: wizardScheduleIntervalDaysRef.current,
-        })
-        return schedulesEqual(prev, synced) ? prev : synced
-      })
+      setWizardSubCampaignTemplateIds(seeded)
     }
   }, [wizardTemplateId])
 
@@ -1379,7 +1374,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         listStrategy: wizardListStrategy,
         radarSegmentSlug: wizardRadarSegmentSlug,
         scheduledAt: wizardScheduledAt,
-        uniformSchedule: false,
+        uniformSchedule: wizardUniformSchedule,
         scheduleIntervalDays: wizardScheduleIntervalDays,
         subCampaignSchedules: wizardSubCampaignSchedules,
       })
@@ -1424,7 +1419,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     try {
       const planSubs = wizardPreviewPlan?.subCampaigns ?? []
       let resolvedSchedules = wizardSubCampaignSchedules
-      if (wizardUniformTemplate && planSubs.length > 1 && wizardScheduledAt) {
+      if (wizardUniformSchedule && planSubs.length > 1 && wizardScheduledAt) {
         resolvedSchedules = syncSubCampaignSchedules({
           plan: wizardPreviewPlan!,
           prev: [],
@@ -1454,7 +1449,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         saveAsRadarSegment: wizardSaveAsRadarSegment,
         saveAsRadarSegmentName: wizardSaveAsRadarSegmentName,
         scheduledAt: wizardScheduledAt,
-        uniformSchedule: false,
+        uniformSchedule: wizardUniformSchedule,
         scheduleIntervalDays: wizardScheduleIntervalDays,
         subCampaignSchedules: resolvedSchedules,
         subCampaignTemplates,
@@ -1575,6 +1570,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     wizardSubCampaignSchedules,
     wizardSubCampaignTemplateIds,
     wizardTemplateId,
+    wizardUniformSchedule,
     wizardUniformTemplate,
   ])
 
@@ -1613,6 +1609,18 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         console.error("[useCampanhas] openView getById error", err)
       })
   }, [activeTeamId, supabaseId])
+
+  const openViewById = useCallback(async (id: string) => {
+    try {
+      const detailed = await service.getById(supabaseId, activeTeamId, id)
+      setDetailCampaign(detailed)
+      setSheetTab("campaign")
+    } catch (err) {
+      console.error("[useCampanhas] openViewById getById error", err)
+      const message = err instanceof Error ? err.message : "Erro ao carregar campanha"
+      toast.error(message)
+    }
+  }, [activeTeamId, service, supabaseId])
 
   const openEditById = useCallback(async (id: string) => {
     try {
@@ -1719,6 +1727,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     handleSaveCampaign,
     handleMaterializeRadarSegment,
     openView,
+    openViewById,
     openEditById,
     closeDetail,
     setSheetTab,
