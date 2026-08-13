@@ -630,11 +630,21 @@ export default function LeadDialog({
         provider?: string;
         source?: string;
         formName?: string;
+        campaignName?: string;
       };
       const channel = typeof payload.channel === "string" ? payload.channel.toLowerCase() : "";
       const provider = typeof payload.provider === "string" ? payload.provider.toLowerCase() : "";
       const source = typeof payload.source === "string" ? payload.source.trim() : "";
       const formName = typeof payload.formName === "string" ? payload.formName.trim() : "";
+      const campaignName =
+        typeof payload.campaignName === "string" ? payload.campaignName.trim() : "";
+
+      if (channel === "email_campaign_form") {
+        return {
+          label: campaignName || formName || source || "Campanha de e-mail",
+          variant: "secondary",
+        };
+      }
 
       if (channel === "public_form" || channel === "public_lead_form") {
         return { label: formName || source || "Formulário público", variant: "secondary" };

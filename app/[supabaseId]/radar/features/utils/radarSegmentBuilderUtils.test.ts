@@ -250,6 +250,7 @@ describe("eventTypePrefixToChannel", () => {
 
   it("mapeia prefixos de formulário para Formulário", () => {
     expect(eventTypePrefixToChannel("form.viewed")).toBe("Formulário")
+    expect(eventTypePrefixToChannel("form.started")).toBe("Formulário")
     expect(eventTypePrefixToChannel("form.completed")).toBe("Formulário")
   })
 

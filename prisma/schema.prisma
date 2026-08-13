@@ -90,6 +90,7 @@ enum LeadOriginChannel {
   studio_webhook
   meta_webhook
   whatsapp_manual
+  email_campaign
 }
 
 enum BackofficeLeadStatus {

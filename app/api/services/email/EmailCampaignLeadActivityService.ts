@@ -7,6 +7,7 @@ export type RecordCampaignDispatchLeadActivityInput = {
   dispatchId: string
   recipientEmail: string
   subject: string
+  campaignName?: string | null
 }
 
 export class EmailCampaignLeadActivityService {
@@ -15,6 +16,7 @@ export class EmailCampaignLeadActivityService {
     if (!leadId) return
 
     const trimmedSubject = input.subject.trim() || "Sem assunto"
+    const campaignName = input.campaignName?.trim() || undefined
 
     await createIdempotentLeadActivity({
       leadId,
@@ -26,6 +28,7 @@ export class EmailCampaignLeadActivityService {
         campaignId: input.campaignId,
         subject: trimmedSubject,
         dispatchId: input.dispatchId,
+        ...(campaignName ? { campaignName } : {}),
       },
     })
   }

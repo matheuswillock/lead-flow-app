@@ -1,4 +1,4 @@
-import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadCustomFieldType, LeadOriginChannel, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export type Lead = {
   id: string;
@@ -25,6 +25,8 @@ export type Lead = {
   meetingPresenceConfirmed: boolean;
   meetingPresenceConfirmedAt: string | null;
   isTransfer: boolean;
+  originChannel: LeadOriginChannel | null;
+  originMetadata: { attribution?: string } | null;
   followUpAt?: string | null;
   followUpNotes?: string | null;
   followUpSourceStatus?: LeadStatus | null;

@@ -6,6 +6,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Filter, Table2, User, Plus } from "lucide-react";
 import usePipelineContext from "../context/PipelineHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
+import { LeadsSingleFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsSingleFilter";
+import { LEAD_ORIGIN_FILTER_OPTIONS, parseLeadOriginFilter } from "@/lib/leads/origin-filter";
 
 interface PipelineHeaderProps {
   title?: string;
@@ -27,8 +29,8 @@ export default function PipelineHeader({
         setAssignedUser, 
         onlyMeetingsHeld,
         setOnlyMeetingsHeld,
-        onlyTransfer,
-        setOnlyTransfer,
+        originFilter,
+        setOriginFilter,
         taskOwners,
         user,
         userLoading,
@@ -116,18 +118,12 @@ export default function PipelineHeader({
               <SelectItem value="held">Reuniões realizadas</SelectItem>
             </SelectContent>
           </Select>
-          <Select
-            value={onlyTransfer ? "transfer" : "all"}
-            onValueChange={(value) => setOnlyTransfer(value === "transfer")}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas transferências</SelectItem>
-              <SelectItem value="transfer">Transferência</SelectItem>
-            </SelectContent>
-          </Select>
+          <LeadsSingleFilter
+            title="Origem"
+            options={[...LEAD_ORIGIN_FILTER_OPTIONS]}
+            value={originFilter}
+            onChange={(value) => setOriginFilter(parseLeadOriginFilter(value))}
+          />
 
           <Button 
             onClick={openNewLeadDialog}

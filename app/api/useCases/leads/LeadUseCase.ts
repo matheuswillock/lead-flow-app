@@ -22,6 +22,7 @@ import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { TransferLeadBetweenTeamsRequest } from "../../v1/leads/DTO/requestToTransferLeadBetweenTeams";
 import type { TransferLeadBetweenTeamsResult } from "../../v1/leads/DTO/transferLeadBetweenTeamsResult";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
+import { extractOriginAttribution } from "@/lib/leads/origin-filter";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
@@ -2451,6 +2452,8 @@ export class LeadUseCase implements ILeadUseCase {
         ? lead.meetingPresenceConfirmedAt.toISOString()
         : null,
       isTransfer: lead.isTransfer === true,
+      originChannel: lead.originChannel ?? null,
+      originMetadata: extractOriginAttribution(lead.originMetadata),
       followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
       followUpNotes: lead.followUpNotes ?? null,
       followUpSourceStatus: lead.followUpSourceStatus ?? null,
