@@ -8,7 +8,7 @@
       "computedHash": "6280018b559b3a932bf0f610146978ca3416e2b2bf21f62c45dbad4d3ccd1282"
     },
     "ai-agents-sync": {
-      "source": "local",
+      "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/ai-agents-sync/SKILL.md",
       "computedHash": "5abb594d1cf1897bba64a799d995f0dc1913f8159ea957db9f2b86d806a2501e"
@@ -62,19 +62,19 @@
       "computedHash": "331f720e2fa97b68cacdae44384878071e8cac6013479edea68f4c8eca308852"
     },
     "corretor-studio-backend": {
-      "source": "local",
+      "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-backend/SKILL.md",
       "computedHash": "653fb4bd7b12b8c941b72b3e57402607559fe25b5535fc9c8f9fc705f644a6ea"
     },
     "corretor-studio-design": {
-      "source": "local",
+      "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-design/SKILL.md",
       "computedHash": "3dca9b9e7a5b7c137c4202a4d9b1fa4387bc324a6e78fed7364d6c2f76d9fbb5"
     },
     "corretor-studio-frontend": {
-      "source": "local",
+      "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-frontend/SKILL.md",
       "computedHash": "b19d2641b52fcd655a5a23a54da7b9fd1b13ca9d5d1545b8b9edc7c3aa6f89d4"
@@ -122,7 +122,7 @@
       "computedHash": "287a2a03662770ed09fdc1c8f53a2d6a4d9931b50edad794897929a41b5cbdf7"
     },
     "project-context-doc": {
-      "source": "local",
+      "source": "./local",
       "sourceType": "local",
       "skillPath": ".agents/skills/project-context-doc/SKILL.md",
       "computedHash": "84b101a717a94e49237575f00cf51c7ca870b7366eeb4350314132d4e35b3cbb"
@@ -155,13 +155,13 @@
       "source": "supabase/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/supabase/SKILL.md",
-      "computedHash": "61638e85394d2e39d1109cbf607593afb9733e0de19cdf0b52ec9bc32d95ea74"
+      "computedHash": "583344c20e90f3654dbb0632f088d89fd9f1dde8ac85e8a644dd12eee59b1380"
     },
     "supabase-postgres-best-practices": {
       "source": "supabase/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
-      "computedHash": "3639bed1f40b3fbadae79fee631c42c89b2d1f5c30b05d5aa3cca06422a6bbbc"
+      "computedHash": "e14e276241805c97dbcfe40dcbea1a3035269cc7293cac4b1832dda41a835e60"
     },
     "supabase-server": {
       "source": "supabase/server",
@@ -170,7 +170,7 @@
       "computedHash": "9200bfa8369cbba7055a914a5587e4dfed2147d3037cd655b9b95faf8aef8724"
     },
     "visual-feature-planner": {
-      "source": "local",
+      "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/visual-feature-planner/SKILL.md",
       "computedHash": "5354edfb8a0a284cc2c7acaac385a8eb790245d364c63eb748dbb1801ba19466"
