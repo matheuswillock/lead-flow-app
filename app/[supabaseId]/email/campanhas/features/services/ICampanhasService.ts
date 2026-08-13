@@ -50,6 +50,7 @@ export interface ICampanhasService {
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
+  getTemplateById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Template>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
   getCampaignLogs(supabaseId: string, teamId: string | null | undefined, campaignId: string, params: { page: number; pageSize: number; search?: string; status?: string[] }): Promise<{ logs: CampaignEmailLog[]; total: number; page: number; pageSize: number; totalPages: number }>
   getCampaignLogDetail(supabaseId: string, teamId: string | null | undefined, logId: string): Promise<CampaignLogDetail>

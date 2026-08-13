@@ -55,6 +55,7 @@ export type SubCampaignSummary = {
   subCampaignIndex: number | null
   contactListId?: string | null
   templateId?: string
+  template?: { id: string; name: string; subject?: string } | null
   errorMessage?: string | null
   failedRetryRecipientCount?: number
   activeDispatch?: CampaignDispatchProgress | null
@@ -119,6 +120,8 @@ export type Template = {
   id: string
   name: string
   subject: string
+  html?: string | null
+  versionNumber?: number
   status?: 'draft' | 'published'
   isCurrentPublished?: boolean
   linkedForm?: { id: string; name: string; publicId: string } | null
