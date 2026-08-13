@@ -25,8 +25,8 @@ export type Lead = {
   meetingPresenceConfirmed: boolean;
   meetingPresenceConfirmedAt: string | null;
   isTransfer: boolean;
-  originChannel?: LeadOriginChannel | null;
-  originMetadata?: { attribution?: string } | null;
+  originChannel: LeadOriginChannel | null;
+  originMetadata: { attribution?: string } | null;
   followUpAt?: string | null;
   followUpNotes?: string | null;
   followUpSourceStatus?: LeadStatus | null;
