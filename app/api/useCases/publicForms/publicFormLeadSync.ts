@@ -15,6 +15,7 @@ import {
 } from "@/lib/public-forms/lead-identity"
 import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
 import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
+import { isEmailCampaignFormOrigin } from "@/lib/public-forms/origin"
 import type {
   PublicFormAnswerInput,
   PublicFormSnapshot,
@@ -82,6 +83,7 @@ export async function upsertLeadFromFormAnswers(input: {
   publicationId: string
   origin: Record<string, unknown>
   extraNotes?: string[]
+  allowCreate?: boolean
 }): Promise<UpsertLeadResult | null> {
   const extracted = extractLeadDataFromSnapshot(input.snapshot, input.answers, input.visibleIds)
   if (input.extraNotes?.length) {
@@ -114,10 +116,12 @@ export async function upsertLeadFromFormAnswers(input: {
   }
 
   if (!canCreateLeadFromExtracted(extracted)) return null
+  if (input.allowCreate === false) return null
   if (!input.form.team.master.supabaseId) {
     throw new Error("Master do time sem identificação de autenticação")
   }
 
+  const fromEmailCampaign = isEmailCampaignFormOrigin(input.origin)
   const createData: CreateLeadRequest = {
     name: extracted.name,
     email: extracted.email || undefined,
@@ -150,12 +154,23 @@ export async function upsertLeadFromFormAnswers(input: {
     soldPlan: undefined,
     customFields: extracted.custom,
     confirmDuplicate: true,
-    originChannel: "public_form",
+    originChannel: fromEmailCampaign ? "email_campaign" : "public_form",
     originMetadata: {
       source: input.form.name,
       formId: input.form.id,
       formPublicId: input.form.publicId,
       firstFormAt: new Date().toISOString(),
+      ...(fromEmailCampaign
+        ? {
+            attribution: "email_campaign",
+            ...(typeof input.origin.emailLogId === "string"
+              ? { emailLogId: input.origin.emailLogId }
+              : {}),
+            ...(typeof input.origin.campaignId === "string"
+              ? { campaignId: input.origin.campaignId }
+              : {}),
+          }
+        : {}),
     },
   }
 
@@ -165,10 +180,12 @@ export async function upsertLeadFromFormAnswers(input: {
     input.form.teamId,
     {
       authorAsStudio: true,
-      body: "Lead criado via formulário público",
+      body: fromEmailCampaign
+        ? "Lead criado via atribuição de campanha de e-mail"
+        : "Lead criado via formulário público",
       payload: {
         kind: "lead_creation",
-        channel: "public_form",
+        channel: fromEmailCampaign ? "email_campaign_form" : "public_form",
         formName: input.form.name,
         formId: input.form.id,
         formPublicId: input.form.publicId,

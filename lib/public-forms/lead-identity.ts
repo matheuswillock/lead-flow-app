@@ -92,8 +92,56 @@ export function extractLeadDataFromSnapshot(
   return { native, custom, notes, name, email, phone, normalizedPhone }
 }
 
+const ROLE_LOCAL_PARTS = new Set([
+  "financeiro",
+  "contato",
+  "comercial",
+  "rh",
+  "adm",
+  "admin",
+  "atendimento",
+  "sac",
+  "vendas",
+  "suporte",
+  "noreply",
+  "no-reply",
+  "marketing",
+  "fiscal",
+  "compras",
+  "secretaria",
+])
+
+const COMPANY_SUFFIX_RE = /\b(ltda|eireli|s\.?a\.?|s\/a|me|epp|ss)\b/i
+
+export function isValidPersonLeadName(name: string, email?: string): boolean {
+  const trimmed = name.trim()
+  if (!trimmed) return false
+  if (trimmed.includes("@")) return false
+
+  const emailNorm = email?.trim().toLowerCase()
+  if (emailNorm) {
+    if (trimmed.toLowerCase() === emailNorm) return false
+    const local = emailNorm.split("@")[0] ?? ""
+    if (local && trimmed.toLowerCase() === local) return false
+  }
+
+  if (COMPANY_SUFFIX_RE.test(trimmed)) return false
+  if (/^[a-z0-9]+\.[a-z0-9.]+$/i.test(trimmed) && !trimmed.includes(" ")) return false
+
+  const words = trimmed.split(/\s+/).filter((word) => /[a-zA-ZÀ-ÿ]{2,}/.test(word))
+  if (words.length < 2) return false
+
+  const firstWord = words[0]?.toLowerCase()
+  if (firstWord && ROLE_LOCAL_PARTS.has(firstWord)) return false
+  return true
+}
+
+export function isBrazilianMobilePhone(normalizedDigits: string): boolean {
+  return /^\d{11}$/.test(normalizedDigits) && normalizedDigits[2] === "9"
+}
+
 export function canCreateLeadFromExtracted(data: ExtractedLeadData): boolean {
-  return Boolean(data.name && data.normalizedPhone)
+  return isValidPersonLeadName(data.name, data.email) && isBrazilianMobilePhone(data.normalizedPhone)
 }
 
 export function canUpdateLeadFromExtracted(data: ExtractedLeadData): boolean {

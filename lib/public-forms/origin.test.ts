@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { sanitizePublicFormOrigin } from "./origin"
+import { isEmailCampaignFormOrigin, sanitizePublicFormOrigin } from "./origin"
 
 describe("sanitizePublicFormOrigin", () => {
   it("remove query strings, fragmentos e tokens com possível PII", () => {
@@ -36,5 +36,12 @@ describe("sanitizePublicFormOrigin", () => {
 
   it("ignora URLs inválidas", () => {
     expect(sanitizePublicFormOrigin({ landingUrl: "não é url" })).toEqual({})
+  })
+
+  it("detecta origem de campanha de e-mail", () => {
+    expect(isEmailCampaignFormOrigin({ emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" })).toBe(true)
+    expect(isEmailCampaignFormOrigin({ source: "email_campaign" })).toBe(true)
+    expect(isEmailCampaignFormOrigin({ source: "instagram" })).toBe(false)
+    expect(isEmailCampaignFormOrigin({})).toBe(false)
   })
 })
