@@ -3231,6 +3231,7 @@ model EmailContact {
   @@unique([listId, email])
   @@index([listId, isUnsubscribed])
   @@index([listId, isBounced])
+  @@index([email])
   @@map("corretor_studio_email_contacts")
 }
 

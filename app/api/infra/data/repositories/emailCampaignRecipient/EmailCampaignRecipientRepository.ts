@@ -19,21 +19,31 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     })
   }
 
-  async findActiveRecipientsForTeam(teamId: string): Promise<CampaignRecipientRecord[]> {
+  private async findBlocklistedEmails(teamId: string): Promise<string[]> {
     const blocklisted = await prisma.emailContact.findMany({
       where: {
         list: { teamId, isArchived: false, isBlocklist: true },
       },
       select: { email: true },
     })
-    const blocklistedEmails = blocklisted.map((item) => item.email)
+    return blocklisted.map((item) => item.email)
+  }
+
+  private activeRecipientWhere(blocklistedEmails: string[]) {
+    return {
+      isUnsubscribed: false,
+      isBounced: false,
+      isComplained: false,
+      ...(blocklistedEmails.length > 0 ? { email: { notIn: blocklistedEmails } } : {}),
+    }
+  }
+
+  async findActiveRecipientsForTeam(teamId: string): Promise<CampaignRecipientRecord[]> {
+    const blocklistedEmails = await this.findBlocklistedEmails(teamId)
 
     const recipients = await prisma.emailContact.findMany({
       where: {
-        isUnsubscribed: false,
-        isBounced: false,
-        isComplained: false,
-        ...(blocklistedEmails.length > 0 ? { email: { notIn: blocklistedEmails } } : {}),
+        ...this.activeRecipientWhere(blocklistedEmails),
         list: {
           teamId,
           isArchived: false,
@@ -52,6 +62,31 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     }))
   }
 
+  async countActiveRecipientsForTeam(teamId: string): Promise<number> {
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE l."teamId" = ${teamId}::uuid
+        AND l."isArchived" = false
+        AND l."isBlocklist" = false
+        AND c."isUnsubscribed" = false
+        AND c."isBounced" = false
+        AND c."isComplained" = false
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "corretor_studio_email_contacts" b
+          INNER JOIN "corretor_studio_email_contact_lists" bl ON bl.id = b."listId"
+          WHERE bl."teamId" = ${teamId}::uuid
+            AND bl."isArchived" = false
+            AND bl."isBlocklist" = true
+            AND b.email = c.email
+        )
+    `
+
+    return Number(rows[0]?.count ?? 0)
+  }
+
   async findActiveRecipientsForList(contactListId: string): Promise<CampaignRecipientRecord[]> {
     const list = await prisma.emailContactList.findFirst({
       where: { id: contactListId, isArchived: false },
@@ -61,21 +96,12 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
       return []
     }
 
-    const blocklisted = await prisma.emailContact.findMany({
-      where: {
-        list: { teamId: list.teamId, isArchived: false, isBlocklist: true },
-      },
-      select: { email: true },
-    })
-    const blocklistedEmails = blocklisted.map((item) => item.email)
+    const blocklistedEmails = await this.findBlocklistedEmails(list.teamId)
 
     const recipients = await prisma.emailContact.findMany({
       where: {
         listId: contactListId,
-        isUnsubscribed: false,
-        isBounced: false,
-        isComplained: false,
-        ...(blocklistedEmails.length > 0 ? { email: { notIn: blocklistedEmails } } : {}),
+        ...this.activeRecipientWhere(blocklistedEmails),
       },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: recipientSelect,
@@ -87,6 +113,25 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
       name: recipient.name,
       customFields: recipient.customFields as Record<string, unknown> | null,
     }))
+  }
+
+  async countActiveRecipientsForList(contactListId: string): Promise<number> {
+    const list = await prisma.emailContactList.findFirst({
+      where: { id: contactListId, isArchived: false },
+      select: { id: true, teamId: true, isBlocklist: true },
+    })
+    if (!list || list.isBlocklist) {
+      return 0
+    }
+
+    const blocklistedEmails = await this.findBlocklistedEmails(list.teamId)
+
+    return prisma.emailContact.count({
+      where: {
+        listId: contactListId,
+        ...this.activeRecipientWhere(blocklistedEmails),
+      },
+    })
   }
 
   async findActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipientRecord[]> {
