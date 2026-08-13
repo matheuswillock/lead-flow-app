@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client"
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
 import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService"
 import { Output } from "@/lib/output"
-import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
+import { isEmailCampaignFormOrigin, sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
 import type { PublicFormProgressInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 import {
@@ -53,6 +53,7 @@ export class PublicFormProgressUseCase {
         visibleIds: visible,
         publicationId: current.publicationId,
         origin: origin as Record<string, unknown>,
+        allowCreate: !isEmailCampaignFormOrigin(origin),
       })
       leadId = upserted?.lead.id ?? null
     } catch (error) {

@@ -1,25 +1,17 @@
-import { LeadStatus, Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import type { Lead } from "@prisma/client"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
-import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
-import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase"
-import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase"
-import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
 import { findMatchingLead } from "@/app/api/useCases/publicForms/publicFormLeadSync"
-import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
+import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
 import { Output } from "@/lib/output"
 import {
   extractPhoneFromCustomFields,
   FORM_START_ACTIVITY_BODY,
-  formatEmailCampaignLeadCreatedActivityBody,
   parseEmailLogIdFromOrigin,
   resolveAttributionDisplayName,
 } from "@/lib/public-forms/email-campaign-attribution"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
-import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
-
-const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
 
 export type ResolveEmailCampaignFormAttributionInput = {
   teamId: string
@@ -45,8 +37,9 @@ function json(value: unknown): Prisma.InputJsonValue {
 }
 
 /**
- * Resolve `cs_el` → EmailLog → lead CRM + atividades de início + identidade Radar.
+ * Resolve `cs_el` → EmailLog → lead CRM existente + atividades de início + identidade Radar.
  * Premissa: EmailLog.id é o PID por destinatário no disparo da campanha.
+ * Lead CRM novo só nasce no submit do formulário (`upsertLeadFromFormAnswers`).
  */
 class ResolveEmailCampaignFormAttributionUseCase {
   async execute(input: ResolveEmailCampaignFormAttributionInput): Promise<Output> {
@@ -85,39 +78,20 @@ class ResolveEmailCampaignFormAttributionUseCase {
       const normalizedPhone = phone ? normalizeLeadPhoneDigits(phone) : ""
       enrichedOrigin.recipientEmail = email
 
-      let lead: Lead | null = null
-      if (input.eventType === "form_started" || input.eventType === "form_completed") {
-        lead = await this.upsertLeadFromEmailRecipient({
-          teamId: input.teamId,
-          formId: input.formId,
-          formName: input.formName,
-          formPublicId: input.formPublicId,
-          publicationId: input.publicationId,
-          name,
-          email,
-          phone: phone ?? "",
-          normalizedPhone,
-          campaignId: log.campaignId,
-          campaignName: log.campaignName,
-          emailLogId: log.id,
-          origin: enrichedOrigin,
-        })
-      } else if (input.eventType === "form_viewed") {
-        const match = await findMatchingLead(input.teamId, {
-          native: {
-            ...(name ? { name } : {}),
-            ...(email ? { email } : {}),
-            ...(phone ? { phone: phone ?? "" } : {}),
-          },
-          custom: {},
-          notes: [],
-          name,
-          email,
-          phone: phone ?? "",
-          normalizedPhone,
-        })
-        lead = match ?? null
-      }
+      const match = await findMatchingLead(input.teamId, {
+        native: {
+          ...(name ? { name } : {}),
+          ...(email ? { email } : {}),
+          ...(phone ? { phone: phone ?? "" } : {}),
+        },
+        custom: {},
+        notes: [],
+        name,
+        email,
+        phone: phone ?? "",
+        normalizedPhone,
+      })
+      const lead: Lead | null = match ?? null
 
       if (lead) {
         if (input.eventType === "form_started") {
@@ -174,124 +148,6 @@ class ResolveEmailCampaignFormAttributionUseCase {
     }
 
     return publicFormsRepository.findRadarPhoneByEmail(teamId, email)
-  }
-
-  private async upsertLeadFromEmailRecipient(input: {
-    teamId: string
-    formId: string
-    formName: string
-    formPublicId: string
-    publicationId: string
-    name: string
-    email: string
-    phone: string
-    normalizedPhone: string
-    campaignId: string | null
-    campaignName: string | null
-    emailLogId: string
-    origin: Record<string, unknown>
-  }): Promise<Lead | null> {
-    const form = await publicFormsRepository.findFormSubmissionContext(input.formId)
-    if (!form?.team.master.supabaseId) return null
-
-    const match = await findMatchingLead(input.teamId, {
-      native: {
-        ...(input.name ? { name: input.name } : {}),
-        ...(input.email ? { email: input.email } : {}),
-        ...(input.phone ? { phone: input.phone } : {}),
-      },
-      custom: {},
-      notes: [],
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      normalizedPhone: input.normalizedPhone,
-    })
-
-    if (match) {
-      const data: Prisma.LeadUncheckedUpdateInput = {
-        updatedBy: form.team.master.id,
-      }
-      if (!match.email && input.email) data.email = input.email
-      if (!match.phone && input.phone) data.phone = input.phone
-      if (!data.email && !data.phone) return match
-      return publicFormsRepository.updateLead(match.id, data)
-    }
-
-    // Regra CRM: lead só nasce com nome + telefone válidos (sem telefone → só Radar por e-mail).
-    const trimmedName = input.name.trim()
-    if (trimmedName.length < 2 || !input.normalizedPhone) {
-      console.info(
-        "[ResolveEmailCampaignFormAttributionUseCase][createLead] skip: nome/telefone insuficientes",
-        { emailLogId: input.emailLogId, hasName: trimmedName.length >= 2, hasPhone: Boolean(input.normalizedPhone) }
-      )
-      return null
-    }
-
-    const createData: CreateLeadRequest = {
-      name: trimmedName,
-      email: input.email,
-      phone: input.normalizedPhone || input.phone,
-      cnpj: undefined,
-      age: undefined,
-      currentHealthPlan: undefined,
-      currentValue: undefined,
-      referenceHospital: undefined,
-      currentTreatment: undefined,
-      meetingDate: undefined,
-      meetingTitle: undefined,
-      meetingNotes: undefined,
-      meetingLink: undefined,
-      notes: undefined,
-      ...resolvePublicFormLeadAssignment(form),
-      status: LeadStatus.new_opportunity,
-      ticket: undefined,
-      contractDueDate: undefined,
-      soldPlan: undefined,
-      customFields: undefined,
-      confirmDuplicate: true,
-      originChannel: "public_form",
-      originMetadata: {
-        source: input.formName,
-        formId: input.formId,
-        formPublicId: input.formPublicId,
-        emailLogId: input.emailLogId,
-        campaignId: input.campaignId,
-        firstFormAt: new Date().toISOString(),
-        attribution: "email_campaign",
-      },
-    }
-
-    const output = await leadUseCase.createLead(
-      form.team.master.supabaseId,
-      createData,
-      input.teamId,
-      {
-        authorAsStudio: true,
-        body: formatEmailCampaignLeadCreatedActivityBody(input.campaignName),
-        payload: {
-          kind: "lead_creation",
-          channel: "email_campaign_form",
-          formName: input.formName,
-          formId: input.formId,
-          formPublicId: input.formPublicId,
-          publicationId: input.publicationId,
-          emailLogId: input.emailLogId,
-          campaignId: input.campaignId,
-          campaignName: input.campaignName,
-          origin: json(input.origin),
-        },
-      },
-      { autoScheduleMeeting: false }
-    )
-    if (!output.isValid) {
-      console.error(
-        "[ResolveEmailCampaignFormAttributionUseCase][createLead]",
-        output.errorMessages.join("; ")
-      )
-      return null
-    }
-    return output.result as Lead
   }
 
   private async ensureLeadActivity(input: {
