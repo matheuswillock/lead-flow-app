@@ -1,5 +1,10 @@
 import type { ColumnKey } from "../context/BoardTypes";
 import {
+  leadOriginFilterLabel,
+  resolveLeadOriginFilter,
+  type LeadOriginFilterValue,
+} from "@/lib/leads/origin-filter";
+import {
   sortCustomFieldFiltersForComparison,
   type CustomFieldFilterState,
   type CustomFieldSortState,
@@ -12,6 +17,7 @@ export type BoardFiltersState = {
   closerFilter: string[];
   onlyMeetingsHeld: boolean;
   onlyTransfer: boolean;
+  originFilter: LeadOriginFilterValue | "";
   periodStart: string;
   periodEnd: string;
   customFieldFilters: CustomFieldFilterState[];
@@ -25,6 +31,7 @@ export const DEFAULT_BOARD_FILTERS: BoardFiltersState = {
   closerFilter: [],
   onlyMeetingsHeld: false,
   onlyTransfer: false,
+  originFilter: "",
   periodStart: "",
   periodEnd: "",
   customFieldFilters: [],
@@ -42,7 +49,8 @@ export function normalizeBoardPresetFilters(raw: unknown): BoardFiltersState {
     statusFilter: Array.isArray(data.statusFilter) ? (data.statusFilter as ColumnKey[]) : [],
     closerFilter: Array.isArray(data.closerFilter) ? data.closerFilter : [],
     onlyMeetingsHeld: data.onlyMeetingsHeld === true,
-    onlyTransfer: data.onlyTransfer === true,
+    onlyTransfer: resolveLeadOriginFilter(data.originFilter, data.onlyTransfer === true) === "transfer",
+    originFilter: resolveLeadOriginFilter(data.originFilter, data.onlyTransfer === true),
     periodStart: typeof data.periodStart === "string" ? data.periodStart : "",
     periodEnd: typeof data.periodEnd === "string" ? data.periodEnd : "",
     customFieldFilters: Array.isArray(data.customFieldFilters) ? data.customFieldFilters : [],
@@ -62,6 +70,7 @@ function normalizeForComparison(filters: BoardFiltersState): BoardFiltersState {
     periodEnd: filters.periodEnd || "",
     onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
     onlyTransfer: filters.onlyTransfer === true,
+    originFilter: resolveLeadOriginFilter(filters.originFilter, filters.onlyTransfer),
     customFieldFilters: sortCustomFieldFiltersForComparison(
       filters.customFieldFilters
     ) as CustomFieldFilterState[],
@@ -87,7 +96,9 @@ export function boardPresetDescriptionLabel(filters: BoardFiltersState) {
     );
   }
   if (filters.onlyMeetingsHeld) parts.push("Reuniões realizadas");
-  if (filters.onlyTransfer) parts.push("Transferência");
+  const originLabel = leadOriginFilterLabel(filters.originFilter);
+  if (originLabel) parts.push(`Origem: ${originLabel}`);
+  else if (filters.onlyTransfer) parts.push("Transferência");
   if (filters.customFieldFilters.length) parts.push(`Campos personalizados: ${filters.customFieldFilters.length}`);
   if (filters.customFieldSort) parts.push(`Ordenado por campo personalizado (${filters.customFieldSort.direction})`);
   if (parts.length === 0) return "Sem filtros aplicados";

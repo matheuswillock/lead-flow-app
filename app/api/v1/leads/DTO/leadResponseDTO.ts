@@ -1,4 +1,4 @@
-import type { LeadCustomFieldType, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
+import type { LeadCustomFieldType, LeadOriginChannel, LeadProposalReviewStatus, LeadStatus, MeetingHeald } from '@prisma/client';
 
 export interface LeadTagDTO {
   id: string;
@@ -31,6 +31,8 @@ export interface LeadResponseDTO {
   meetingPresenceConfirmed: boolean;
   meetingPresenceConfirmedAt: string | null;
   isTransfer: boolean;
+  originChannel: LeadOriginChannel | null;
+  originMetadata: { attribution?: string } | null;
   followUpAt?: string | null;
   followUpNotes?: string | null;
   followUpSourceStatus?: LeadStatus | null;

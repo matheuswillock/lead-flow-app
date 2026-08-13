@@ -286,6 +286,7 @@ const CANONICAL_RADAR_EVENT_TYPES = [
   "lead.milestone.contract_finalized",
   "profile.first_contact",
   "form.viewed",
+  "form.started",
   "form.completed",
   "pixel.pageview",
   "pixel.click",

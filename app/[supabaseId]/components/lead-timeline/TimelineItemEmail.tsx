@@ -4,6 +4,7 @@ import { renderActivityBodyWithMentions } from "./TimelineActivityReactions"
 type EmailPayload = {
   subject?: string
   campaignId?: string
+  campaignName?: string
 }
 
 type TimelineItemEmailProps = {
@@ -15,6 +16,8 @@ type TimelineItemEmailProps = {
 export function TimelineItemEmail({ body, payload, mentionRegex }: TimelineItemEmailProps) {
   const emailPayload = payload && typeof payload === "object" ? (payload as EmailPayload) : null
   const subject = emailPayload?.subject?.trim()
+  const campaignName = emailPayload?.campaignName?.trim()
+  const campaignLabel = campaignName || (emailPayload?.campaignId ? "Campanha de e-mail" : null)
 
   return (
     <div className="col-span-2 flex flex-col gap-1">
@@ -24,8 +27,8 @@ export function TimelineItemEmail({ body, payload, mentionRegex }: TimelineItemE
           {renderActivityBodyWithMentions(body, mentionRegex)}
         </p>
       ) : null}
-      {emailPayload?.campaignId ? (
-        <p className="text-xs text-muted-foreground">Campanha de e-mail</p>
+      {campaignLabel ? (
+        <p className="text-xs text-muted-foreground">{campaignLabel}</p>
       ) : null}
     </div>
   )

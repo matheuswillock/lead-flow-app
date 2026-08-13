@@ -4,6 +4,8 @@ import {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
+  isBrazilianMobilePhone,
+  isValidPersonLeadName,
 } from "./lead-identity"
 import type { PublicFormSnapshot } from "./types"
 
@@ -77,18 +79,26 @@ function snapshot(): PublicFormSnapshot {
 }
 
 describe("lead identity from public forms", () => {
-  it("exige nome e telefone para criar lead", () => {
+  it("exige nome completo e celular para criar lead", () => {
     const extracted = extractLeadDataFromSnapshot(snapshot(), [
-      { questionId: nameId, value: "Maria" },
+      { questionId: nameId, value: "Maria Silva" },
       { questionId: phoneId, value: "(11) 98888-7777" },
     ])
     expect(canCreateLeadFromExtracted(extracted)).toBe(true)
     expect(canUpdateLeadFromExtracted(extracted)).toBe(true)
   })
 
-  it("não cria lead sem telefone", () => {
+  it("não cria lead com nome de uma palavra", () => {
     const extracted = extractLeadDataFromSnapshot(snapshot(), [
       { questionId: nameId, value: "Maria" },
+      { questionId: phoneId, value: "(11) 98888-7777" },
+    ])
+    expect(canCreateLeadFromExtracted(extracted)).toBe(false)
+  })
+
+  it("não cria lead sem telefone", () => {
+    const extracted = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Maria Silva" },
       { questionId: emailId, value: "maria@example.com" },
     ])
     expect(canCreateLeadFromExtracted(extracted)).toBe(false)
@@ -101,5 +111,21 @@ describe("lead identity from public forms", () => {
     ])
     expect(canCreateLeadFromExtracted(extracted)).toBe(false)
     expect(canUpdateLeadFromExtracted(extracted)).toBe(true)
+  })
+
+  it("rejeita nome que é e-mail, local-part ou razão social", () => {
+    expect(isValidPersonLeadName("andressa.kaminski@primavsa.com.br")).toBe(false)
+    expect(isValidPersonLeadName("andressa.kaminski", "andressa.kaminski@primavsa.com.br")).toBe(
+      false
+    )
+    expect(isValidPersonLeadName("financeiro@3pbrasil.com.br")).toBe(false)
+    expect(isValidPersonLeadName("CONSORCIO CR ALMEIDA-CONSBEM LTDA")).toBe(false)
+    expect(isValidPersonLeadName("Maria Silva")).toBe(true)
+  })
+
+  it("aceita celular BR e rejeita telefone fixo", () => {
+    expect(isBrazilianMobilePhone("11988857773")).toBe(true)
+    expect(isBrazilianMobilePhone("1138971122")).toBe(false)
+    expect(isBrazilianMobilePhone("1130740604")).toBe(false)
   })
 })

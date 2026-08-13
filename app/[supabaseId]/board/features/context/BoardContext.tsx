@@ -28,6 +28,11 @@ import type {
   CustomFieldFilterState,
   CustomFieldSortState,
 } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
+import {
+  leadMatchesOriginFilter,
+  resolveLeadOriginFilter,
+  type LeadOriginFilterValue,
+} from "@/lib/leads/origin-filter";
 import type { CustomFieldFilterInput } from "@/lib/leadCustomFields/customFieldQuery";
 import {
   createLeadTimeRulesVersion,
@@ -131,6 +136,8 @@ interface IBoardContextState {
   setOnlyMeetingsHeld: (value: boolean) => void;
   onlyTransfer: boolean;
   setOnlyTransfer: (value: boolean) => void;
+  originFilter: LeadOriginFilterValue | "";
+  setOriginFilter: (value: LeadOriginFilterValue | "") => void;
   leadCardDisplay: LeadCardDisplaySettings;
   setLeadCardDisplay: Dispatch<SetStateAction<LeadCardDisplaySettings>>;
   data: Record<ColumnKey, Lead[]>;
@@ -275,7 +282,13 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [onlyTransfer, setOnlyTransfer] = useState(false);
+  const [originFilter, setOriginFilterState] = useState<LeadOriginFilterValue | "">("");
   const [onlyDraft, setOnlyDraft] = useState(false);
+
+  const setOriginFilter = useCallback((value: LeadOriginFilterValue | "") => {
+    setOriginFilterState(value);
+    setOnlyTransfer(value === "transfer");
+  }, []);
   const [leadCardDisplay, setLeadCardDisplay] = useState<LeadCardDisplaySettings>(
     DEFAULT_LEAD_CARD_DISPLAY
   );
@@ -330,7 +343,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setScheduledPeriodStart(externalFilters.scheduledPeriodStart);
     setScheduledPeriodEnd(externalFilters.scheduledPeriodEnd);
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
-    setOnlyTransfer(externalFilters.onlyTransfer);
+    const resolvedOrigin = resolveLeadOriginFilter(
+      externalFilters.originFilter,
+      externalFilters.onlyTransfer,
+    );
+    setOriginFilterState(resolvedOrigin);
+    setOnlyTransfer(resolvedOrigin === "transfer" || externalFilters.onlyTransfer);
     setOnlyDraft(externalFilters.onlyDraft);
     setCustomFieldFilters(externalFilters.customFieldFilters);
     setCustomFieldSort(externalFilters.customFieldSort);
@@ -1554,7 +1572,16 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const inCloser = (l: Lead) =>
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
-    const inTransfer = (l: Lead) => !onlyTransfer || l.isTransfer === true;
+    const activeOrigin = resolveLeadOriginFilter(originFilter, onlyTransfer);
+    const inOrigin = (l: Lead) =>
+      leadMatchesOriginFilter(
+        {
+          originChannel: l.originChannel,
+          originMetadata: l.originMetadata,
+          isTransfer: l.isTransfer === true,
+        },
+        activeOrigin,
+      );
     const inDraft = (l: Lead) => {
       const isDraftLeadRow = l.status === null || l.status === undefined;
       if (onlyDraft) return isDraftLeadRow;
@@ -1590,7 +1617,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               inResponsible(l) &&
               inCloser(l) &&
               inMeetingsHeld(l) &&
-              inTransfer(l) &&
+              inOrigin(l) &&
               inDraft(l) &&
               inPeriod(l) &&
               inScheduledPeriod(l)
@@ -1606,6 +1633,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     closerFilter,
     onlyMeetingsHeld,
     onlyTransfer,
+    originFilter,
     onlyDraft,
     periodStart,
     periodEnd,
@@ -1637,8 +1665,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       onlyMeetingsHeld,
       setOnlyMeetingsHeld,
       onlyTransfer,
-    onlyDraft,
+      onlyDraft,
       setOnlyTransfer,
+      originFilter,
+      setOriginFilter,
       leadCardDisplay,
       setLeadCardDisplay,
       data,
@@ -1702,7 +1732,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       query,
       onlyMeetingsHeld,
       onlyTransfer,
-    onlyDraft,
+      onlyDraft,
+      originFilter,
+      setOriginFilter,
       leadCardDisplay,
       data,
       filtered,

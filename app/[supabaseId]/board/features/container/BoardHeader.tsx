@@ -14,9 +14,11 @@ import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
+import { LeadsSingleFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsSingleFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFilterPresetsSheet } from "@/app/[supabaseId]/components/leads-filters/LeadsFilterPresetsSheet";
 import { LeadsCustomFieldFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsCustomFieldFilter";
+import { LEAD_ORIGIN_FILTER_OPTIONS, parseLeadOriginFilter } from "@/lib/leads/origin-filter";
 import { Separator } from "@/components/ui/separator";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
@@ -71,6 +73,8 @@ export default function BoardHeader({
     setOnlyMeetingsHeld,
     onlyTransfer,
     setOnlyTransfer,
+    originFilter,
+    setOriginFilter,
     statusLabels,
     data,
     isLoading,
@@ -117,6 +121,7 @@ export default function BoardHeader({
       closerFilter,
       onlyMeetingsHeld,
       onlyTransfer,
+      originFilter,
       periodStart,
       periodEnd,
       customFieldFilters,
@@ -129,6 +134,7 @@ export default function BoardHeader({
       customFieldSort,
       onlyMeetingsHeld,
       onlyTransfer,
+      originFilter,
       periodEnd,
       periodStart,
       query,
@@ -148,7 +154,8 @@ export default function BoardHeader({
     setStatusFilter(filters.statusFilter);
     setCloserFilter(filters.closerFilter);
     setOnlyMeetingsHeld(filters.onlyMeetingsHeld);
-    setOnlyTransfer(filters.onlyTransfer);
+    setOriginFilter(filters.originFilter);
+    setOnlyTransfer(filters.originFilter === "transfer" || filters.onlyTransfer);
     setPeriodStart(filters.periodStart);
     setPeriodEnd(filters.periodEnd);
     setCustomFieldFilters(filters.customFieldFilters);
@@ -213,6 +220,7 @@ export default function BoardHeader({
     statusFilter.length > 0 ||
     closerFilter.length > 0 ||
     onlyMeetingsHeld ||
+    Boolean(originFilter) ||
     onlyTransfer ||
     Boolean(periodStart) ||
     Boolean(periodEnd) ||
@@ -225,6 +233,7 @@ export default function BoardHeader({
     setStatusFilter([]);
     setCloserFilter([]);
     setOnlyMeetingsHeld(false);
+    setOriginFilter("");
     setOnlyTransfer(false);
     setPeriodStart("");
     setPeriodEnd("");
@@ -330,8 +339,12 @@ export default function BoardHeader({
             onChangeStatuses={(values) => setStatusFilter(values as typeof statusFilter)}
             meetingHeld={onlyMeetingsHeld}
             onToggleMeetingHeld={setOnlyMeetingsHeld}
-            transfer={onlyTransfer}
-            onToggleTransfer={setOnlyTransfer}
+          />
+          <LeadsSingleFilter
+            title="Origem"
+            options={[...LEAD_ORIGIN_FILTER_OPTIONS]}
+            value={originFilter}
+            onChange={(value) => setOriginFilter(parseLeadOriginFilter(value))}
           />
           {responsibleOptions.length > 0 && (
             <LeadsMultiFilter

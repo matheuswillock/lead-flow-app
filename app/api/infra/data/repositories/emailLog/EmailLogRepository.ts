@@ -31,7 +31,7 @@ export class EmailLogRepository implements IEmailLogRepository {
   }
 
   async findCampaignLogForAttribution(teamId: string, emailLogId: string) {
-    return prisma.emailLog.findFirst({
+    const log = await prisma.emailLog.findFirst({
       where: {
         id: emailLogId,
         teamId,
@@ -43,8 +43,18 @@ export class EmailLogRepository implements IEmailLogRepository {
         dispatchId: true,
         recipientEmail: true,
         recipientName: true,
+        campaign: { select: { name: true } },
       },
     })
+    if (!log) return null
+    return {
+      id: log.id,
+      campaignId: log.campaignId,
+      dispatchId: log.dispatchId,
+      recipientEmail: log.recipientEmail,
+      recipientName: log.recipientName,
+      campaignName: log.campaign?.name ?? null,
+    }
   }
 
   async hasDuplicateEvent(logId: string, eventType: EmailEventType, occurredAt: Date) {
