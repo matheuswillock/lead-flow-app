@@ -26,6 +26,10 @@ import {
   type FormEngagementScoreRule,
   type WeightMap,
 } from "@/lib/radar/engagement-score"
+import {
+  publishRadarEngagementScoreUpdate,
+  RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG,
+} from "@/lib/queues/radar-engagement-score-updates"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
@@ -38,15 +42,6 @@ type EngagementWeightsConfigCache = {
 }
 
 let engagementWeightsConfigCache: EngagementWeightsConfigCache | null = null
-
-/** Coalesce fire-and-forget engagement recalcs to limit pool storms (T7b). */
-const ENGAGEMENT_SCORE_MAX_IN_FLIGHT = Math.max(
-  1,
-  Number(process.env.RADAR_ENGAGEMENT_SCORE_MAX_IN_FLIGHT ?? 2)
-)
-const engagementScorePending = new Map<string, { profileId: string; teamId: string }>()
-const engagementScoreQueued = new Set<string>()
-let engagementScoreInFlight = 0
 
 export type RadarTeamScope = {
   teamId: string
@@ -1062,40 +1057,20 @@ export class RadarRepository {
   }
 
   /**
-   * Agenda recálculo de engajamento fora do caminho quente (webhook/cron/UI).
-   * Deduplica por perfil e limita concorrência para não saturar o pool.
+   * Agenda recálculo de engajamento via Vercel Queue (fora do caminho quente).
+   * Idempotency key `${teamId}:${profileId}` coalesca publishes no broker.
+   * Se o publish falhar, faz fallback direto para `updateEngagementScore`.
    */
   scheduleEngagementScoreUpdate(profileId: string, teamId: string): void {
-    const key = `${teamId}:${profileId}`
-    engagementScorePending.set(key, { profileId, teamId })
-    if (engagementScoreQueued.has(key)) return
-    engagementScoreQueued.add(key)
-    queueMicrotask(() => {
-      void this.drainEngagementScoreQueue()
+    void publishRadarEngagementScoreUpdate({ profileId, teamId }).catch((error) => {
+      console.error(
+        `[RadarRepository][scheduleEngagementScoreUpdate] ${RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG}`,
+        error
+      )
+      void this.updateEngagementScore(profileId, teamId).catch((fallbackError) => {
+        console.error("[RadarRepository][updateEngagementScore]", fallbackError)
+      })
     })
-  }
-
-  private async drainEngagementScoreQueue(): Promise<void> {
-    while (engagementScorePending.size > 0 && engagementScoreInFlight < ENGAGEMENT_SCORE_MAX_IN_FLIGHT) {
-      const next = engagementScorePending.entries().next().value as
-        | [string, { profileId: string; teamId: string }]
-        | undefined
-      if (!next) break
-      const [key, job] = next
-      engagementScorePending.delete(key)
-      engagementScoreQueued.delete(key)
-      engagementScoreInFlight += 1
-      void this.updateEngagementScore(job.profileId, job.teamId)
-        .catch((error) => {
-          console.error("[RadarRepository][updateEngagementScore]", error)
-        })
-        .finally(() => {
-          engagementScoreInFlight -= 1
-          if (engagementScorePending.size > 0) {
-            void this.drainEngagementScoreQueue()
-          }
-        })
-    }
   }
 
   /**

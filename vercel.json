@@ -14,6 +14,17 @@
           "maxConcurrency": 1
         }
       ]
+    },
+    "app/api/queues/radar-engagement-score-updates/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "radar-engagement-score-updates",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 1
+        }
+      ]
     }
   },
   "crons": [
@@ -95,7 +106,7 @@
     },
     {
       "path": "/api/v1/integrations/webhooks/cron/process-outbox",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/document-request-reminders",

@@ -82,14 +82,17 @@ import {
   CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
   CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
   CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+  CAMPAIGN_RETRY_STUCK_LOG_STATUS,
   resolveRetryRecipientEmails,
   selectFailedRecipientEmailsForRetry,
 } from "@/lib/email/campaign-failed-recipients"
+import { suggestUnsubscribeTokenHint } from "@/lib/email/unsubscribe-link-embed"
 import {
   aggregateCumulativeDispatchLogCounters,
   buildCampaignDispatchProgress,
   buildCampaignDispatchProgressSummary,
   buildCumulativeCampaignDispatchProgress,
+  isDispatchLogAccepted,
   type CampaignDispatchProgress,
   type CampaignDispatchProgressStatus,
   type DispatchLogCounters,
@@ -487,6 +490,98 @@ export class EmailCampaignUseCase {
     }
 
     return result
+  }
+
+  /**
+   * Self-healing: campanhas-folha com status terminal (`sent`/`failed`/`partially_sent`)
+   * podem divergir da realidade quando um erro pós-disparo grava um status incorreto
+   * (ex.: falha ao processar a resposta do provedor após o envio real já ter sido aceito).
+   * Recalcula o status real a partir dos `EmailLog` cumulativos e corrige o registro
+   * quando diverge, retornando os valores corrigidos para uso imediato na resposta.
+   */
+  private async reconcileLeafCampaignStatuses(
+    ctx: TeamContext,
+    campaigns: Array<{ id: string; status: EmailCampaignStatus; totalRecipients: number }>
+  ): Promise<Map<string, { status: EmailCampaignStatus; totalSent: number }>> {
+    const overrides = new Map<string, { status: EmailCampaignStatus; totalSent: number }>()
+
+    // Nota: não filtramos por dispatchCount > 0 aqui — esse campo pode ficar
+    // stale/zerado exatamente nos cenários que esta função existe para corrigir
+    // (ex.: increment de dispatchCount que falhou apesar do envio real ter
+    // ocorrido). O guard abaixo ("sem log nenhum → pula") já protege contra
+    // falso-positivo em campanhas sem nenhuma evidência real de envio.
+    const candidates = campaigns.filter(
+      (campaign) =>
+        TERMINAL_DISPATCH_FEEDBACK_STATUSES.has(campaign.status) && campaign.totalRecipients > 0
+    )
+    if (candidates.length === 0) return overrides
+
+    // Busca os logs crus (não só os contadores) para conseguir: (a) distinguir
+    // "sem log nenhum" de "0 aceites confirmados" e (b) preservar o horário real
+    // do último envio aceito em vez de usar o momento da leitura.
+    const logs = await this.db.emailLog.findMany({
+      where: { teamId: ctx.teamId, campaignId: { in: candidates.map((campaign) => campaign.id) } },
+      select: {
+        campaignId: true,
+        recipientEmail: true,
+        status: true,
+        sentAt: true,
+        resendEmailId: true,
+      },
+    })
+
+    const logsByCampaignId = new Map<string, typeof logs>()
+    for (const log of logs) {
+      if (!log.campaignId) continue
+      const bucket = logsByCampaignId.get(log.campaignId) ?? []
+      bucket.push(log)
+      logsByCampaignId.set(log.campaignId, bucket)
+    }
+
+    for (const campaign of candidates) {
+      const campaignLogs = logsByCampaignId.get(campaign.id)
+      // Sem nenhuma evidência de log (ex.: dispatch de backfill criado a partir do
+      // status antigo, sem EmailLog associado), não há base para reconciliar —
+      // preserva o status persistido em vez de presumir falha.
+      if (!campaignLogs || campaignLogs.length === 0) continue
+
+      const { acceptedCount } = aggregateCumulativeDispatchLogCounters(campaignLogs)
+      const correctStatus: EmailCampaignStatus =
+        acceptedCount >= campaign.totalRecipients
+          ? "sent"
+          : acceptedCount === 0
+            ? "failed"
+            : "partially_sent"
+
+      if (correctStatus === campaign.status) continue
+
+      const lastAcceptedAt = campaignLogs
+        .filter((log) => isDispatchLogAccepted(log))
+        .map((log) => (log.sentAt ? new Date(log.sentAt) : null))
+        .filter((value): value is Date => value !== null)
+        .sort((a, b) => b.getTime() - a.getTime())[0]
+
+      try {
+        await this.db.emailCampaign.update({
+          where: { id: campaign.id },
+          data: {
+            status: correctStatus,
+            totalSent: acceptedCount,
+            ...(correctStatus === "sent"
+              ? { errorMessage: null, ...(lastAcceptedAt ? { sentAt: lastAcceptedAt } : {}) }
+              : {}),
+          },
+        })
+        overrides.set(campaign.id, { status: correctStatus, totalSent: acceptedCount })
+      } catch (error) {
+        console.error("[EmailCampaignUseCase][reconcileLeafCampaignStatuses]", {
+          campaignId: campaign.id,
+          error,
+        })
+      }
+    }
+
+    return overrides
   }
 
   private async resolvePublishedTemplate(templateId: string, teamId: string) {
@@ -926,6 +1021,53 @@ export class EmailCampaignUseCase {
         .filter((campaign) => campaign._count.subCampaigns > 0)
         .map((campaign) => campaign.id)
 
+      const childCampaignsForProgress =
+        parentIdsWithSubs.length > 0
+          ? await this.db.emailCampaign.findMany({
+              where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
+              select: {
+                id: true,
+                status: true,
+                parentCampaignId: true,
+                totalRecipients: true,
+                dispatchCount: true,
+              },
+            })
+          : []
+
+      // Self-healing: corrige status terminal (folhas + sub-campanhas) que divergiu dos
+      // EmailLog reais antes de agregar o status da campanha-pai, para que a agregação
+      // abaixo já parta de dados corretos.
+      const leafReconcileOverrides = await this.reconcileLeafCampaignStatuses(ctx, [
+        ...campaigns
+          .filter((campaign) => campaign._count.subCampaigns === 0)
+          .map((campaign) => ({
+            id: campaign.id,
+            status: campaign.status,
+            totalRecipients: campaign.totalRecipients,
+          })),
+        ...childCampaignsForProgress.map((child) => ({
+          id: child.id,
+          status: child.status,
+          totalRecipients: child.totalRecipients,
+        })),
+      ])
+      for (const child of childCampaignsForProgress) {
+        const override = leafReconcileOverrides.get(child.id)
+        if (override) child.status = override.status
+      }
+
+      const parentStatusOverrides = new Map<string, EmailCampaignStatus>()
+      await Promise.all(
+        parentIdsWithSubs.map(async (parentId) => {
+          const refreshed = await this.refreshParentCampaignStatus(parentId).catch((error) => {
+            console.error("[EmailCampaignUseCase][list][refreshParent]", { parentId, error })
+            return null
+          })
+          if (refreshed) parentStatusOverrides.set(parentId, refreshed.status)
+        })
+      )
+
       const childAggregates =
         parentIdsWithSubs.length > 0
           ? await this.db.emailCampaign.groupBy({
@@ -939,14 +1081,6 @@ export class EmailCampaignUseCase {
                 totalBounced: true,
                 dispatchCount: true,
               },
-            })
-          : []
-
-      const childCampaignsForProgress =
-        parentIdsWithSubs.length > 0
-          ? await this.db.emailCampaign.findMany({
-              where: { parentCampaignId: { in: parentIdsWithSubs }, teamId: ctx.teamId },
-              select: { id: true, status: true, parentCampaignId: true, totalRecipients: true },
             })
           : []
 
@@ -1004,6 +1138,21 @@ export class EmailCampaignUseCase {
         )
       )
 
+      // Contagem precisa por logs (substitui a fórmula frouxa `totalRecipients - totalSent`)
+      // para o diálogo de "Reenviar apenas falhas" — calculada sobre o status já
+      // corrigido pela reconciliação acima, não o `campaign.status` bruto.
+      const failedRetryCandidates = campaigns
+        .filter((campaign) => {
+          if (campaign._count.subCampaigns > 0) return false
+          const effectiveStatus = leafReconcileOverrides.get(campaign.id)?.status ?? campaign.status
+          return RETRY_FAILED_ONLY_STATUSES.has(effectiveStatus)
+        })
+        .map((campaign) => ({ id: campaign.id, totalRecipients: campaign.totalRecipients }))
+      const failedRetryCountsByCampaignId = await this.computeFailedRetryRecipientCountsBatch(
+        ctx,
+        failedRetryCandidates
+      )
+
       const creatorsById = new Map(creators.map((creator) => [creator.id, creator]))
       const templatesById = new Map(templates.map((template) => [template.id, template]))
       const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
@@ -1012,10 +1161,13 @@ export class EmailCampaignUseCase {
         campaigns: campaigns.map((campaign) => {
           const childSum = aggregatesByParent.get(campaign.id)
           const subCampaignCount = campaign._count.subCampaigns
+          const leafOverride = subCampaignCount === 0 ? leafReconcileOverrides.get(campaign.id) : undefined
+          const effectiveStatus =
+            parentStatusOverrides.get(campaign.id) ?? leafOverride?.status ?? campaign.status
           const totalRecipients = dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients
-          const totalSent = childSum?.totalSent ?? campaign.totalSent
+          const totalSent = childSum?.totalSent ?? leafOverride?.totalSent ?? campaign.totalSent
           const isLeafRetryStatus =
-            subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+            subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(effectiveStatus)
 
           const leafProgress = progressByCampaignId.get(campaign.id)
           const childProgresses =
@@ -1044,7 +1196,7 @@ export class EmailCampaignUseCase {
           return resolveEmailCreator({
             id: campaign.id,
             name: campaign.name,
-            status: campaign.status,
+            status: effectiveStatus,
             scheduledAt: campaign.scheduledAt,
             sentAt: campaign.sentAt,
             totalRecipients,
@@ -1059,13 +1211,12 @@ export class EmailCampaignUseCase {
             template: templatesById.get(campaign.templateId) ?? null,
             contactList: campaign.contactListId ? contactListsById.get(campaign.contactListId) ?? null : null,
             radarSegmentSlug: campaign.radarSegmentSlug,
-            errorMessage: campaign.errorMessage,
+            errorMessage: leafOverride?.status === "sent" ? null : campaign.errorMessage,
             subCampaignCount,
             isParentCampaign: subCampaignCount > 0,
             managedByCorretorStudio: Boolean(campaign.managedByBackofficeUserId),
-            // Aproximação rápida na listagem; getById calcula o valor exato pelos logs.
             failedRetryRecipientCount: isLeafRetryStatus
-              ? Math.max(0, totalRecipients - totalSent)
+              ? failedRetryCountsByCampaignId.get(campaign.id) ?? 0
               : undefined,
             activeDispatch: subCampaignCount === 0 ? leafProgress?.activeDispatch ?? null : null,
             latestDispatch: subCampaignCount === 0 ? leafProgress?.latestDispatch ?? null : null,
@@ -1104,6 +1255,7 @@ export class EmailCampaignUseCase {
               totalOpened: true,
               totalClicked: true,
               totalBounced: true,
+              dispatchCount: true,
               subCampaignIndex: true,
               contactListId: true,
               templateId: true,
@@ -1119,6 +1271,52 @@ export class EmailCampaignUseCase {
       }
 
       const isParent = campaign.subCampaigns.length > 0
+
+      // Self-healing: corrige status terminal desatualizado antes de montar a resposta.
+      if (isParent) {
+        const subOverrides = await this.reconcileLeafCampaignStatuses(
+          ctx,
+          campaign.subCampaigns.map((sub) => ({
+            id: sub.id,
+            status: sub.status,
+            totalRecipients: sub.totalRecipients,
+          }))
+        )
+        for (const sub of campaign.subCampaigns) {
+          const override = subOverrides.get(sub.id)
+          if (override) {
+            sub.status = override.status
+            sub.totalSent = override.totalSent
+          }
+        }
+        const refreshedParent = await this.refreshParentCampaignStatus(campaign.id).catch(
+          (error) => {
+            console.error("[EmailCampaignUseCase][getById][refreshParent]", {
+              campaignId: campaign.id,
+              error,
+            })
+            return null
+          }
+        )
+        if (refreshedParent) {
+          campaign.status = refreshedParent.status
+          campaign.dispatchCount = refreshedParent.dispatchCount
+        }
+      } else {
+        const overrides = await this.reconcileLeafCampaignStatuses(ctx, [
+          {
+            id: campaign.id,
+            status: campaign.status,
+            totalRecipients: campaign.totalRecipients,
+          },
+        ])
+        const override = overrides.get(campaign.id)
+        if (override) {
+          campaign.status = override.status
+          campaign.totalSent = override.totalSent
+          if (override.status === "sent") campaign.errorMessage = null
+        }
+      }
       const hasAudienceSnapshot = campaign.audienceContactIds.length > 0
       const activeRecipientCount =
         isParent || hasAudienceSnapshot
@@ -1926,6 +2124,12 @@ export class EmailCampaignUseCase {
     return byEmail
   }
 
+  private buildUnresolvedTokensErrorMessage(unresolvedTokens: string[]): string {
+    const base = `Variáveis sem valor suficiente: ${unresolvedTokens.map((token) => `{{${token}}}`).join(", ")}`
+    const hint = suggestUnsubscribeTokenHint(unresolvedTokens)
+    return hint ? `${base}. ${hint}` : base
+  }
+
   private buildDispatchFailureDetail(
     providerErrors: DispatchProviderError[],
     abortedReason?: "domain_not_verified"
@@ -2043,7 +2247,10 @@ export class EmailCampaignUseCase {
    * Lista e-mails da campanha elegíveis para "Redisparar falhas".
    * Ver critério em `lib/email/campaign-failed-recipients.ts`.
    */
-  private async resolveFailedRetryRecipientEmails(campaignId: string): Promise<string[]> {
+  private async resolveFailedRetryRecipientEmails(
+    campaignId: string,
+    includeStuckQueued = false
+  ): Promise<string[]> {
     const logs = await this.db.emailLog.findMany({
       where: {
         campaignId,
@@ -2052,13 +2259,14 @@ export class EmailCampaignUseCase {
             CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
             ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
             ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+            ...(includeStuckQueued ? [CAMPAIGN_RETRY_STUCK_LOG_STATUS] : []),
           ],
         },
       },
       select: { recipientEmail: true, status: true },
     })
 
-    return selectFailedRecipientEmailsForRetry(logs)
+    return selectFailedRecipientEmailsForRetry(logs, { includeStuckQueued })
   }
 
   /**
@@ -2080,6 +2288,7 @@ export class EmailCampaignUseCase {
             CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
             ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
             ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+            ...(hasRetriableStatus ? [CAMPAIGN_RETRY_STUCK_LOG_STATUS] : []),
           ],
         },
       },
@@ -2095,6 +2304,10 @@ export class EmailCampaignUseCase {
         hasRetriableStatus,
         logs,
         resolvedAudienceEmails,
+        // A campanha só chega aqui em retryFailedOnly já em status terminal
+        // (failed/partially_sent) — nunca "sending" (esse caso é exclusivo do
+        // resumeOrphanSendingDispatches), então `queued` remanescente é órfão real.
+        includeStuckQueued: hasRetriableStatus,
       }),
       hadAnyLog: hasAnyLog,
     }
@@ -2109,12 +2322,82 @@ export class EmailCampaignUseCase {
     campaignId: string
     fallbackAudienceCount: number
   }): Promise<number> {
-    const failedByLogs = await this.resolveFailedRetryRecipientEmails(params.campaignId)
+    // Só chamado para campanhas em status terminal retriável (ver call sites),
+    // então `queued` remanescente é órfão real, não "em andamento".
+    const failedByLogs = await this.resolveFailedRetryRecipientEmails(params.campaignId, true)
     if (failedByLogs.length > 0) return failedByLogs.length
 
     const hasAnyLog =
       (await this.db.emailLog.count({ where: { campaignId: params.campaignId } })) > 0
     return hasAnyLog ? 0 : Math.max(0, params.fallbackAudienceCount)
+  }
+
+  /**
+   * Versão em lote de `computeFailedRetryRecipientCount`, usada em `list()` para
+   * substituir a fórmula frouxa `totalRecipients - totalSent` — mesma fonte de
+   * verdade (por logs, com `includeStuckQueued`) usada no disparo real, sem N+1.
+   * Só deve receber candidatos já confirmados em status terminal retriável.
+   */
+  private async computeFailedRetryRecipientCountsBatch(
+    ctx: TeamContext,
+    candidates: Array<{ id: string; totalRecipients: number }>
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>()
+    if (candidates.length === 0) return counts
+
+    const candidateIds = candidates.map((candidate) => candidate.id)
+
+    const [logs, logCountsByCampaign] = await Promise.all([
+      this.db.emailLog.findMany({
+        where: {
+          teamId: ctx.teamId,
+          campaignId: { in: candidateIds },
+          status: {
+            in: [
+              CAMPAIGN_RETRY_FAILURE_LOG_STATUS,
+              CAMPAIGN_RETRY_STUCK_LOG_STATUS,
+              ...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES,
+              ...CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES,
+            ],
+          },
+        },
+        select: { campaignId: true, recipientEmail: true, status: true },
+      }),
+      this.db.emailLog.groupBy({
+        by: ["campaignId"],
+        where: { teamId: ctx.teamId, campaignId: { in: candidateIds } },
+        _count: { _all: true },
+      }),
+    ])
+
+    const hasAnyLogSet = new Set(
+      logCountsByCampaign
+        .map((row) => row.campaignId)
+        .filter((campaignId): campaignId is string => Boolean(campaignId))
+    )
+
+    const logsByCampaignId = new Map<string, typeof logs>()
+    for (const log of logs) {
+      if (!log.campaignId) continue
+      const bucket = logsByCampaignId.get(log.campaignId) ?? []
+      bucket.push(log)
+      logsByCampaignId.set(log.campaignId, bucket)
+    }
+
+    for (const candidate of candidates) {
+      const failedByLogs = selectFailedRecipientEmailsForRetry(
+        logsByCampaignId.get(candidate.id) ?? [],
+        { includeStuckQueued: true }
+      )
+      if (failedByLogs.length > 0) {
+        counts.set(candidate.id, failedByLogs.length)
+        continue
+      }
+      const hasAnyLog = hasAnyLogSet.has(candidate.id)
+      counts.set(candidate.id, hasAnyLog ? 0 : Math.max(0, candidate.totalRecipients))
+    }
+
+    return counts
   }
 
   async countFailedRetryRecipients(campaignId: string, ctx: TeamContext): Promise<number> {
@@ -2325,7 +2608,7 @@ export class EmailCampaignUseCase {
         return new Output(
           false,
           [],
-          [`Variáveis sem valor suficiente: ${unresolvedTokens.map((token) => `{{${token}}}`).join(", ")}`],
+          [this.buildUnresolvedTokensErrorMessage(unresolvedTokens)],
           null
         )
       }
@@ -3046,17 +3329,27 @@ export class EmailCampaignUseCase {
           const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
           const terminal = resolveCampaignStatusAfterDispatch(sentCount)
           // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
-          await this.commitDispatchTerminalState({
+          const updatedCampaign = await this.commitDispatchTerminalState({
             campaignId: dispatch.campaignId,
             dispatchId: dispatch.id,
             totalRecipients: dispatch.totalRecipients,
             sentCount,
             terminal,
-            incrementSent: false,
+            incrementSent: true,
             setDispatchTotalSent: true,
             setSentAt: terminal.campaignStatus === "sent" ? now : undefined,
-            incrementDispatchCount: false,
+            incrementDispatchCount: true,
           })
+          if (updatedCampaign.parentCampaignId) {
+            await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch(
+              (refreshError) => {
+                console.error(
+                  "[EmailCampaignUseCase][resumeOrphanSendingDispatches][refreshParent]",
+                  refreshError
+                )
+              }
+            )
+          }
           resumed += 1
           continue
         }
@@ -3427,7 +3720,7 @@ export class EmailCampaignUseCase {
         if (unresolvedTokens.length > 0) {
           await this.markScheduledCampaignFailed(
             campaign.id,
-            `Variáveis sem valor suficiente: ${unresolvedTokens.map((token) => `{{${token}}}`).join(", ")}`
+            this.buildUnresolvedTokensErrorMessage(unresolvedTokens)
           )
           continue
         }
@@ -3679,12 +3972,14 @@ export class EmailCampaignUseCase {
     return dayTotal > limits.maxRecipientsPerSub
   }
 
-  private async refreshParentCampaignStatus(parentCampaignId: string): Promise<void> {
+  private async refreshParentCampaignStatus(
+    parentCampaignId: string
+  ): Promise<{ status: EmailCampaignStatus; totalSent: number; dispatchCount: number } | null> {
     const children = await this.db.emailCampaign.findMany({
       where: { parentCampaignId },
       select: { status: true, totalSent: true, totalDelivered: true, totalOpened: true, totalClicked: true, totalBounced: true, dispatchCount: true, sentAt: true },
     })
-    if (children.length === 0) return
+    if (children.length === 0) return null
 
     const statuses = new Set(children.map((child) => child.status))
     let parentStatus: EmailCampaignStatus = "scheduled"
@@ -3734,6 +4029,8 @@ export class EmailCampaignUseCase {
         ...(parentStatus === "sent" && lastSentAt ? { sentAt: lastSentAt } : {}),
       },
     })
+
+    return { status: parentStatus, totalSent: totals.totalSent, dispatchCount: totals.dispatchCount }
   }
 
   async cancel(id: string, ctx: TeamContext): Promise<Output> {

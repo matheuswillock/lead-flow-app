@@ -142,8 +142,12 @@ export function MonacoCodeEditor({
 }: MonacoCodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<MonacoEditorNamespace.IStandaloneCodeEditor | null>(null)
+  const isMountedRef = useRef(true)
+  const readyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const unreadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [containerHeight, setContainerHeight] = useState(0)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [isContainerReady, setIsContainerReady] = useState(false)
 
   const { resolvedTheme } = useTheme()
   const editorTheme =
@@ -178,6 +182,10 @@ export function MonacoCodeEditor({
 
   const handleMount = useCallback(
     (editor: MonacoEditorNamespace.IStandaloneCodeEditor, monaco: typeof Monaco) => {
+      if (!isMountedRef.current) {
+        editor.dispose()
+        return
+      }
       editorRef.current = editor
       onMount?.(editor, monaco)
     },
@@ -185,23 +193,76 @@ export function MonacoCodeEditor({
   )
 
   useEffect(() => {
+    isMountedRef.current = true
     const el = containerRef.current
     if (!el) return
 
+    const clearTimers = () => {
+      if (readyTimerRef.current) {
+        clearTimeout(readyTimerRef.current)
+        readyTimerRef.current = null
+      }
+      if (unreadyTimerRef.current) {
+        clearTimeout(unreadyTimerRef.current)
+        unreadyTimerRef.current = null
+      }
+    }
+
     const updateSize = () => {
+      if (!isMountedRef.current) return
       const rect = el.getBoundingClientRect()
-      setContainerHeight(Math.floor(rect.height))
-      setContainerWidth(Math.floor(rect.width))
+      const nextHeight = Math.floor(rect.height)
+      const nextWidth = Math.floor(rect.width)
+      const hasSize = nextHeight > 0 && nextWidth > 0
+
+      if (hasSize) {
+        setContainerHeight(nextHeight)
+        setContainerWidth(nextWidth)
+        if (unreadyTimerRef.current) {
+          clearTimeout(unreadyTimerRef.current)
+          unreadyTimerRef.current = null
+        }
+        if (!readyTimerRef.current) {
+          readyTimerRef.current = setTimeout(() => {
+            readyTimerRef.current = null
+            if (!isMountedRef.current) return
+            setIsContainerReady(true)
+          }, 120)
+        }
+        return
+      }
+
+      if (readyTimerRef.current) {
+        clearTimeout(readyTimerRef.current)
+        readyTimerRef.current = null
+      }
+      if (!unreadyTimerRef.current) {
+        unreadyTimerRef.current = setTimeout(() => {
+          unreadyTimerRef.current = null
+          if (!isMountedRef.current) return
+          setIsContainerReady(false)
+        }, 120)
+      }
     }
 
     updateSize()
     const ro = new ResizeObserver(() => updateSize())
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => {
+      isMountedRef.current = false
+      clearTimers()
+      ro.disconnect()
+    }
   }, [])
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false
+      try {
+        editorRef.current?.dispose()
+      } catch {
+        // Monaco may already be torn down by @monaco-editor/react unmount.
+      }
       editorRef.current = null
     }
   }, [])
@@ -213,7 +274,6 @@ export function MonacoCodeEditor({
         ? 'bg-[#05050A]'
         : 'bg-[#111111]'
   const shouldShowPlaceholder = !readOnly && value.trim().length === 0 && Boolean(placeholder)
-  const isContainerReady = containerHeight > 0 && containerWidth > 0
   const resolvedHeight = typeof height === 'number' ? height : containerHeight
 
   return (
@@ -245,3 +305,4 @@ export function MonacoCodeEditor({
     </div>
   )
 }
+
