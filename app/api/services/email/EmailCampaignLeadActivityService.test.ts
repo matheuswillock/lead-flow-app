@@ -41,6 +41,7 @@ describe("EmailCampaignLeadActivityService", () => {
       dispatchId: "dispatch-1",
       recipientEmail: "lead@test.com",
       subject: "Campanha de teste",
+      campaignName: "Alto Padrão · Form 1 · Dia 1",
     })
 
     expect(createIdempotentLeadActivity).toHaveBeenCalledWith(
@@ -54,6 +55,7 @@ describe("EmailCampaignLeadActivityService", () => {
           campaignId: "campaign-1",
           subject: "Campanha de teste",
           dispatchId: "dispatch-1",
+          campaignName: "Alto Padrão · Form 1 · Dia 1",
         },
       })
     )

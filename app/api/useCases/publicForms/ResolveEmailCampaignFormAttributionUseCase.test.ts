@@ -13,12 +13,14 @@ const findCampaignLogForAttribution = mock(
       dispatchId: "dispatch-1",
       recipientEmail: "destinatario@exemplo.com",
       recipientName: "Destinatário",
+      campaignName: "Alto Padrão · Form 1 · Dia 1",
     }) as {
       id: string
       campaignId: string | null
       dispatchId: string | null
       recipientEmail: string
       recipientName: string | null
+      campaignName: string | null
     } | null
 )
 
@@ -129,6 +131,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
       dispatchId: "dispatch-1",
       recipientEmail: "destinatario@exemplo.com",
       recipientName: "Destinatário",
+      campaignName: "Alto Padrão · Form 1 · Dia 1",
     }))
     findFormSubmissionContext.mockImplementation(async () => ({
       id: FORM_ID,
@@ -191,10 +194,19 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
 
     expect(completed.isValid).toBe(true)
     expect(createLead).toHaveBeenCalledTimes(1)
-    const createArgs = createLead.mock.calls[0] as unknown as [string, { name: string; phone: string }]
+    const createArgs = createLead.mock.calls[0] as unknown as [
+      string,
+      { name: string; phone: string },
+      string,
+      { body: string; payload: { campaignName?: string | null } },
+    ]
     expect(createArgs[1]).toMatchObject({
       name: "Destinatário",
       phone: "11999998888",
+    })
+    expect(createArgs[3]).toMatchObject({
+      body: "Lead criado via atribuição de campanha de e-mail [Alto Padrão · Form 1 · Dia 1]",
+      payload: expect.objectContaining({ campaignName: "Alto Padrão · Form 1 · Dia 1" }),
     })
     expect(completed.result).toMatchObject({
       leadId: "lead-created-1",
@@ -233,6 +245,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
       dispatchId: "dispatch-1",
       recipientEmail: "x@exemplo.com",
       recipientName: " ",
+      campaignName: "Alto Padrão · Form 1 · Dia 1",
     }))
 
     const output = await resolveEmailCampaignFormAttributionUseCase.execute({

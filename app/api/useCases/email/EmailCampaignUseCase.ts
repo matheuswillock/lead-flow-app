@@ -2224,19 +2224,28 @@ export class EmailCampaignUseCase {
         ),
       }))
 
-    void withConcurrencyLimit(jobs, EMAIL_LOG_WRITE_CONCURRENCY_LIMIT, async (job) => {
-      try {
-        await emailCampaignLeadActivityService.recordDispatchForRecipient({
-          teamId: params.teamId,
-          campaignId: params.campaignId,
-          dispatchId: params.dispatchId,
-          recipientEmail: job.recipientEmail,
-          subject: job.subject,
-        })
-      } catch (activityError) {
-        console.error("[EmailCampaignUseCase][recordDispatchLeadActivities]", activityError)
-      }
-    })
+    void (async () => {
+      const campaign = await this.db.emailCampaign.findFirst({
+        where: { id: params.campaignId, teamId: params.teamId },
+        select: { name: true },
+      })
+      const campaignName = campaign?.name?.trim() || undefined
+
+      await withConcurrencyLimit(jobs, EMAIL_LOG_WRITE_CONCURRENCY_LIMIT, async (job) => {
+        try {
+          await emailCampaignLeadActivityService.recordDispatchForRecipient({
+            teamId: params.teamId,
+            campaignId: params.campaignId,
+            dispatchId: params.dispatchId,
+            recipientEmail: job.recipientEmail,
+            subject: job.subject,
+            campaignName,
+          })
+        } catch (activityError) {
+          console.error("[EmailCampaignUseCase][recordDispatchLeadActivities]", activityError)
+        }
+      })
+    })()
   }
 
   private async reserveTeamCreditsForDispatch(
