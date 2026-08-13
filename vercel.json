@@ -25,6 +25,17 @@
           "maxConcurrency": 1
         }
       ]
+    },
+    "app/api/queues/resend-webhook-radar-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "resend-webhook-radar-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 4
+        }
+      ]
     }
   },
   "crons": [
