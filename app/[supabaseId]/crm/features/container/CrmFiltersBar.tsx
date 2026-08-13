@@ -15,12 +15,19 @@ import { DEFAULT_CRM_FILTERS, type CrmFiltersState, isCrmFiltersEmpty } from "..
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
+import { LeadsSingleFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsSingleFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { LeadsFilterPresetsSheet } from "@/app/[supabaseId]/components/leads-filters/LeadsFilterPresetsSheet";
 import { LeadsCustomFieldFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsCustomFieldFilter";
 import { sortCustomFieldFiltersForComparison } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
 import { Separator } from "@/components/ui/separator";
 import { useActiveLeadCustomFieldDefinitions } from "@/hooks/useActiveLeadCustomFieldDefinitions";
+import {
+  LEAD_ORIGIN_FILTER_OPTIONS,
+  leadOriginFilterLabel,
+  parseLeadOriginFilter,
+  resolveLeadOriginFilter,
+} from "@/lib/leads/origin-filter";
 
 const STATUS_OPTIONS = [
   { value: "new_opportunity", label: "Nova oportunidade" },
@@ -54,35 +61,42 @@ type CrmFilterPreset = {
 export const normalizeCrmPresetFilters = (raw: unknown): CrmFiltersState => {
   if (!raw || typeof raw !== "object") return DEFAULT_CRM_FILTERS;
   const data = raw as Partial<CrmFiltersState>;
+  const originFilter = resolveLeadOriginFilter(data.originFilter, data.onlyTransfer === true);
   return {
     ...DEFAULT_CRM_FILTERS,
     ...data,
     statusFilter: Array.isArray(data.statusFilter) ? data.statusFilter : [],
     assignedUsers: Array.isArray(data.assignedUsers) ? data.assignedUsers : [],
     closerFilter: Array.isArray(data.closerFilter) ? data.closerFilter : [],
+    onlyTransfer: originFilter === "transfer",
+    originFilter,
     customFieldFilters: Array.isArray(data.customFieldFilters) ? data.customFieldFilters : [],
     customFieldSort:
       data.customFieldSort && typeof data.customFieldSort === "object" ? data.customFieldSort : null,
   };
 };
 
-const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersState => ({
-  ...DEFAULT_CRM_FILTERS,
-  ...filters,
-  query: filters.query.trim(),
-  statusFilter: [...filters.statusFilter].sort(),
-  assignedUsers: [...filters.assignedUsers].sort(),
-  closerFilter: [...filters.closerFilter].sort(),
-  periodStart: filters.periodStart || "",
-  periodEnd: filters.periodEnd || "",
-  scheduledPeriodStart: filters.scheduledPeriodStart || "",
-  scheduledPeriodEnd: filters.scheduledPeriodEnd || "",
-  onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
-  onlyTransfer: filters.onlyTransfer === true,
-  onlyDraft: filters.onlyDraft === true,
-  customFieldFilters: sortCustomFieldFiltersForComparison(filters.customFieldFilters) as CrmFiltersState["customFieldFilters"],
-  customFieldSort: filters.customFieldSort ?? null,
-});
+const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersState => {
+  const originFilter = resolveLeadOriginFilter(filters.originFilter, filters.onlyTransfer);
+  return {
+    ...DEFAULT_CRM_FILTERS,
+    ...filters,
+    query: filters.query.trim(),
+    statusFilter: [...filters.statusFilter].sort(),
+    assignedUsers: [...filters.assignedUsers].sort(),
+    closerFilter: [...filters.closerFilter].sort(),
+    periodStart: filters.periodStart || "",
+    periodEnd: filters.periodEnd || "",
+    scheduledPeriodStart: filters.scheduledPeriodStart || "",
+    scheduledPeriodEnd: filters.scheduledPeriodEnd || "",
+    onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
+    onlyTransfer: originFilter === "transfer",
+    originFilter,
+    onlyDraft: filters.onlyDraft === true,
+    customFieldFilters: sortCustomFieldFiltersForComparison(filters.customFieldFilters) as CrmFiltersState["customFieldFilters"],
+    customFieldSort: filters.customFieldSort ?? null,
+  };
+};
 
 const areCrmFiltersEqual = (left: CrmFiltersState, right: CrmFiltersState) =>
   JSON.stringify(normalizeFiltersForComparison(left)) ===
@@ -215,7 +229,9 @@ export function CrmFiltersBar() {
       );
     }
     if (queryJson.onlyMeetingsHeld) parts.push("Reuniões realizadas");
-    if (queryJson.onlyTransfer) parts.push("Transferência");
+    const originLabel = leadOriginFilterLabel(queryJson.originFilter);
+    if (originLabel) parts.push(`Origem: ${originLabel}`);
+    else if (queryJson.onlyTransfer) parts.push("Transferência");
     if (queryJson.onlyDraft) parts.push("Rascunhos");
     if (queryJson.customFieldFilters.length) {
       parts.push(`Campos personalizados: ${queryJson.customFieldFilters.length}`);
@@ -243,10 +259,21 @@ export function CrmFiltersBar() {
         onToggleMeetingHeld={(value) =>
           setCrmFilter("onlyMeetingsHeld", value)
         }
-        transfer={crmFilters.onlyTransfer}
-        onToggleTransfer={(value) => setCrmFilter("onlyTransfer", value)}
         draft={crmFilters.onlyDraft}
         onToggleDraft={(value) => setCrmFilter("onlyDraft", value)}
+      />
+      <LeadsSingleFilter
+        title="Origem"
+        options={[...LEAD_ORIGIN_FILTER_OPTIONS]}
+        value={resolveLeadOriginFilter(crmFilters.originFilter, crmFilters.onlyTransfer)}
+        onChange={(value) => {
+          const originFilter = parseLeadOriginFilter(value);
+          setCrmFilters({
+            ...crmFilters,
+            originFilter,
+            onlyTransfer: originFilter === "transfer",
+          });
+        }}
       />
       {responsibleOptions.length > 0 && (
         <LeadsMultiFilter

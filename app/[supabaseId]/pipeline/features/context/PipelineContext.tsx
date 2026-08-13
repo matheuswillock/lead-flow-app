@@ -24,6 +24,11 @@ import {
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates";
 import type { CustomFieldFilterState } from "@/app/[supabaseId]/components/leads-filters/customFieldFilterTypes";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import {
+  leadMatchesOriginFilter,
+  resolveLeadOriginFilter,
+  type LeadOriginFilterValue,
+} from "@/lib/leads/origin-filter";
 
 // Referência estável — evita recriar `loadLeads` (e a instabilidade em cascata
 // no efeito que o dispara) a cada render quando externalFilters está ausente.
@@ -100,6 +105,8 @@ interface IPipelineContextState {
   setOnlyMeetingsHeld: (value: boolean) => void;
   onlyTransfer: boolean;
   setOnlyTransfer: (value: boolean) => void;
+  originFilter: LeadOriginFilterValue | "";
+  setOriginFilter: (value: LeadOriginFilterValue | "") => void;
   onlyDraft: boolean;
   setOnlyDraft: (value: boolean) => void;
   allLeads: Lead[]; // Todos os leads em um array flat
@@ -203,7 +210,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [onlyTransfer, setOnlyTransfer] = useState(false);
+  const [originFilter, setOriginFilterState] = useState<LeadOriginFilterValue | "">("");
   const [onlyDraft, setOnlyDraft] = useState(false);
+
+  const setOriginFilter = useCallback((value: LeadOriginFilterValue | "") => {
+    setOriginFilterState(value);
+    setOnlyTransfer(value === "transfer");
+  }, []);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [periodStart, setPeriodStart] = useState<string>("");
   const [periodEnd, setPeriodEnd] = useState<string>("");
@@ -787,8 +800,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       externalFilters !== undefined ? externalFilters.scheduledPeriodEnd : "";
     const activeMeetingsHeld =
       externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
-    const activeTransfer =
-      externalFilters !== undefined ? externalFilters.onlyTransfer : onlyTransfer;
+    const activeOrigin = resolveLeadOriginFilter(
+      externalFilters !== undefined ? externalFilters.originFilter : originFilter,
+      externalFilters !== undefined ? externalFilters.onlyTransfer : onlyTransfer,
+    );
     const activeDraft =
       externalFilters !== undefined ? externalFilters.onlyDraft : onlyDraft;
 
@@ -846,7 +861,14 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       }
 
       const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
-      const matchesTransfer = !activeTransfer || lead.isTransfer === true;
+      const matchesOrigin = leadMatchesOriginFilter(
+        {
+          originChannel: lead.originChannel,
+          originMetadata: lead.originMetadata,
+          isTransfer: lead.isTransfer === true,
+        },
+        activeOrigin,
+      );
 
       return (
         matchesQuery &&
@@ -854,12 +876,12 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         matchesResponsible &&
         matchesCloser &&
         matchesMeetingsHeld &&
-        matchesTransfer &&
+        matchesOrigin &&
         matchesPeriod &&
         matchesScheduledPeriod
       );
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, onlyDraft, periodStart, periodEnd, tz]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, originFilter, onlyDraft, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
@@ -880,6 +902,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOnlyMeetingsHeld,
     onlyTransfer,
     setOnlyTransfer,
+    originFilter,
+    setOriginFilter,
     onlyDraft,
     setOnlyDraft,
     allLeads,

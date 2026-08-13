@@ -895,6 +895,17 @@
                       "    pm.expect(response.result).to.have.property('total');",
                       "    pm.expect(response.result).to.have.property('page');",
                       "    pm.expect(response.result).to.have.property('limit');",
+                      "});",
+                      "",
+                      "pm.test('Leads expõem originChannel e originMetadata', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response.isValid).to.be.true;",
+                      "    const leads = response.result && response.result.leads;",
+                      "    pm.expect(leads).to.be.an('array');",
+                      "    if (leads.length > 0) {",
+                      "        pm.expect(leads[0]).to.have.property('originChannel');",
+                      "        pm.expect(leads[0]).to.have.property('originMetadata');",
+                      "    }",
                       "});"
                     ]
                   }
@@ -947,6 +958,13 @@
                       "    pm.expect(response.isValid).to.be.true;",
                       "    pm.expect(response.result).to.have.property('id');",
                       "    pm.expect(response.result.name).to.eql('João Silva');",
+                      "});",
+                      "",
+                      "pm.test('Lead expõe originChannel e originMetadata', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response.isValid).to.be.true;",
+                      "    pm.expect(response.result).to.have.property('originChannel');",
+                      "    pm.expect(response.result).to.have.property('originMetadata');",
                       "});"
                     ]
                   }
@@ -996,6 +1014,13 @@
                       "    pm.expect(response.result.attachments).to.be.an('array');",
                       "    pm.expect(response.result.teamMembers).to.be.an('array');",
                       "    pm.expect(response.result.transferTargets).to.be.an('array');",
+                      "});",
+                      "",
+                      "pm.test('Lead agregada expõe originChannel e originMetadata', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response.isValid).to.be.true;",
+                      "    pm.expect(response.result.lead).to.have.property('originChannel');",
+                      "    pm.expect(response.result.lead).to.have.property('originMetadata');",
                       "});"
                     ]
                   }
@@ -4272,7 +4297,7 @@
                         "leads"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/leads/route.ts"
+                    "description": "Auto-generated from app/api/v1/leads/route.ts. Resposta do Lead inclui `originChannel` (LeadOriginChannel|null) e `originMetadata` ({ attribution?: string }|null) para filtro de origem no CRM."
                   },
                   "response": []
                 },
@@ -4356,7 +4381,7 @@
                         "{{id}}"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/leads/[id]/route.ts"
+                    "description": "Auto-generated from app/api/v1/leads/[id]/route.ts. Resposta do Lead inclui `originChannel` (LeadOriginChannel|null) e `originMetadata` ({ attribution?: string }|null) para filtro de origem no CRM."
                   },
                   "response": []
                 },
