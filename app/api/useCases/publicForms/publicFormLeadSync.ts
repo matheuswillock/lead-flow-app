@@ -15,6 +15,8 @@ import {
 } from "@/lib/public-forms/lead-identity"
 import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
 import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
+import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
+import { formatEmailCampaignLeadCreatedActivityBody } from "@/lib/public-forms/email-campaign-attribution"
 import { isEmailCampaignFormOrigin } from "@/lib/public-forms/origin"
 import type {
   PublicFormAnswerInput,
@@ -122,6 +124,14 @@ export async function upsertLeadFromFormAnswers(input: {
   }
 
   const fromEmailCampaign = isEmailCampaignFormOrigin(input.origin)
+  let campaignName: string | null = null
+  if (fromEmailCampaign && typeof input.origin.emailLogId === "string") {
+    const log = await emailLogRepository.findCampaignLogForAttribution(
+      input.form.teamId,
+      input.origin.emailLogId,
+    )
+    campaignName = log?.campaignName ?? null
+  }
   const createData: CreateLeadRequest = {
     name: extracted.name,
     email: extracted.email || undefined,
@@ -181,7 +191,7 @@ export async function upsertLeadFromFormAnswers(input: {
     {
       authorAsStudio: true,
       body: fromEmailCampaign
-        ? "Lead criado via atribuição de campanha de e-mail"
+        ? formatEmailCampaignLeadCreatedActivityBody(campaignName)
         : "Lead criado via formulário público",
       payload: {
         kind: "lead_creation",
@@ -195,6 +205,17 @@ export async function upsertLeadFromFormAnswers(input: {
         scoreBand: input.scoreBandLabel ?? null,
         origin: json(input.origin),
         submittedAt: new Date().toISOString(),
+        ...(fromEmailCampaign
+          ? {
+              ...(typeof input.origin.emailLogId === "string"
+                ? { emailLogId: input.origin.emailLogId }
+                : {}),
+              ...(typeof input.origin.campaignId === "string"
+                ? { campaignId: input.origin.campaignId }
+                : {}),
+              campaignName,
+            }
+          : {}),
       },
     },
     { autoScheduleMeeting: false },

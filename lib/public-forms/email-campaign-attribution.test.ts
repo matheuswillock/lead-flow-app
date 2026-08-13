@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   extractPhoneFromCustomFields,
+  formatEmailCampaignLeadCreatedActivityBody,
   parseEmailLogIdFromOrigin,
   parseRecipientEmailFromOrigin,
   resolveAttributionDisplayName,
@@ -32,5 +33,17 @@ describe("email-campaign-attribution", () => {
   it("resolve nome com fallback do e-mail", () => {
     expect(resolveAttributionDisplayName("Ana", "ana@x.com")).toBe("Ana")
     expect(resolveAttributionDisplayName(null, "ana@x.com")).toBe("ana")
+  })
+
+  it("formata atividade de criação com nome da campanha", () => {
+    expect(formatEmailCampaignLeadCreatedActivityBody("Alto Padrão · Form 1 · Dia 1")).toBe(
+      "Lead criado via atribuição de campanha de e-mail [Alto Padrão · Form 1 · Dia 1]"
+    )
+    expect(formatEmailCampaignLeadCreatedActivityBody("  ")).toBe(
+      "Lead criado via atribuição de campanha de e-mail"
+    )
+    expect(formatEmailCampaignLeadCreatedActivityBody(null)).toBe(
+      "Lead criado via atribuição de campanha de e-mail"
+    )
   })
 })

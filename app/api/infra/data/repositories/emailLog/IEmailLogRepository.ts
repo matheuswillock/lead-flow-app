@@ -47,6 +47,7 @@ export type CampaignEmailLogAttributionRecord = {
   dispatchId: string | null
   recipientEmail: string
   recipientName: string | null
+  campaignName: string | null
 }
 
 export interface IEmailLogRepository {
