@@ -10,7 +10,7 @@ export type EmailContactRadarSyncOutboxClaimRow = {
 export type UpsertRadarSyncOutboxEntry = {
   emailContactId: string;
   teamId: string;
-  emailImportJobId: string;
+  emailImportJobId?: string | null;
 };
 
 export type EmailContactRadarSyncOutboxBacklogSnapshot = {
@@ -21,6 +21,7 @@ export type EmailContactRadarSyncOutboxBacklogSnapshot = {
 
 export interface IEmailContactRadarSyncOutboxRepository {
   upsertPendingForContacts(entries: UpsertRadarSyncOutboxEntry[]): Promise<void>;
+  enqueueMissingForList(teamId: string, listId: string): Promise<number>;
   claimDue(limit: number): Promise<EmailContactRadarSyncOutboxClaimRow[]>;
   requeueIfProcessing(ids: string[]): Promise<void>;
   markSent(id: string, generation: number): Promise<boolean>;

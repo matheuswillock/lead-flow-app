@@ -276,4 +276,21 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       maxPendingAgeSeconds: 3600,
     });
   });
+
+  it("enqueueMissingForList consulta contatos sem identity e upserta outbox", async () => {
+    queryRawMock.mockImplementation(async () => [{ id: "contact-missing-1" }, { id: "contact-missing-2" }]);
+
+    const repo = new EmailContactRadarSyncOutboxRepository();
+    const enqueued = await repo.enqueueMissingForList("team-1", "list-1");
+
+    expect(enqueued).toBe(2);
+    expect(queryRawMock).toHaveBeenCalled();
+    expect(upsertMock).toHaveBeenCalledTimes(2);
+    const first = upsertMock.mock.calls[0]?.[0] as unknown as {
+      create: { emailContactId: string; teamId: string; emailImportJobId: string | null };
+    };
+    expect(first.create.emailContactId).toBe("contact-missing-1");
+    expect(first.create.teamId).toBe("team-1");
+    expect(first.create.emailImportJobId).toBeNull();
+  });
 });

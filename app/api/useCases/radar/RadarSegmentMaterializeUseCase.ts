@@ -3,6 +3,7 @@ import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { featureAccessUseCase } from "@/app/api/useCases/featureAccess/FeatureAccessUseCase"
 import { radarMaterializeRepository } from "@/app/api/infra/data/repositories/radar/RadarMaterializeRepository"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
+import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
 import {
@@ -118,6 +119,24 @@ export class RadarSegmentMaterializeUseCase {
       }
 
       await radarMaterializeRepository.updateListTotalContacts(list.id, imported)
+
+      try {
+        const enqueued = await emailContactRadarSyncOutboxRepository.enqueueMissingForList(
+          input.teamId,
+          list.id
+        )
+        if (enqueued > 0) {
+          console.info("[RadarSegmentMaterializeUseCase] outbox Radar enfileirado", {
+            listId: list.id,
+            enqueued,
+          })
+        }
+      } catch (outboxError) {
+        console.error(
+          "[RadarSegmentMaterializeUseCase] falha ao enfileirar sync Radar",
+          outboxError
+        )
+      }
 
       return new Output(
         true,

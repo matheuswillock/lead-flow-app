@@ -75,6 +75,7 @@ import {
   type SubCampaignScheduleInput,
 } from "@/lib/email/campaign-plan"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
@@ -750,6 +751,23 @@ export class EmailCampaignUseCase {
     })
 
     await emailContactListRepository.updateContactCount(list.id, created.length)
+
+    if (created.length > 0) {
+      try {
+        await emailContactRadarSyncOutboxRepository.upsertPendingForContacts(
+          created.map((row) => ({
+            emailContactId: row.id,
+            teamId: params.teamId,
+            emailImportJobId: null,
+          }))
+        )
+      } catch (outboxError) {
+        console.error(
+          "[EmailCampaignUseCase] falha ao enfileirar sync Radar da lista snapshot",
+          outboxError
+        )
+      }
+    }
 
     return {
       contactIds: [...withIds.map((contact) => contact.contactId), ...created.map((row) => row.id)],

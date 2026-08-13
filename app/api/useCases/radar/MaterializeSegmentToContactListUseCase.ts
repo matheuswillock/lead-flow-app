@@ -10,6 +10,7 @@ import { isRadarSegmentSlug } from "@/lib/radar/segment-config"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 
 export type MaterializeSegmentResult = {
   listId: string
@@ -125,6 +126,24 @@ class MaterializeSegmentToContactListUseCase {
       }
 
       await emailContactListRepository.updateContactCount(listId, contactCount)
+
+      try {
+        const enqueued = await emailContactRadarSyncOutboxRepository.enqueueMissingForList(
+          teamId,
+          listId
+        )
+        if (enqueued > 0) {
+          console.info("[MaterializeSegmentToContactListUseCase] outbox Radar enfileirado", {
+            listId,
+            enqueued,
+          })
+        }
+      } catch (outboxError) {
+        console.error(
+          "[MaterializeSegmentToContactListUseCase] falha ao enfileirar sync Radar",
+          outboxError
+        )
+      }
 
       const result: MaterializeSegmentResult = { listId, contactCount }
       return new Output(true, [`Lista criada com ${contactCount} contato(s)`], [], result)
