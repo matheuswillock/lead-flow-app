@@ -2084,11 +2084,99 @@ export class RadarRepository {
   }
 
   async findEmailContactIdsByListIds(teamId: string, listIds: string[]): Promise<string[]> {
+    if (listIds.length === 0) return []
     const contacts = await this.db.emailContact.findMany({
       where: { listId: { in: listIds }, list: { teamId } },
       select: { id: true },
     })
     return contacts.map((contact) => contact.id)
+  }
+
+  /**
+   * Subquery de perfis ligados a listas de e-mail — só faz bind dos listIds
+   * (evita P2035 / bind limit 32767 sobre dezenas de milhares de contactIds).
+   * Inclui fallback por e-mail para contatos ainda sem identity `email_contact_id`.
+   */
+  private emailContactListMatchedProfilesSql(teamId: string, listIds: string[]): Prisma.Sql {
+    const listIdSql = Prisma.join(listIds.map((id) => Prisma.sql`${id}::uuid`))
+    return Prisma.sql`
+      SELECT DISTINCT profile_id AS "profileId"
+      FROM (
+        SELECT i."profileId" AS profile_id
+        FROM "corretor_studio_radar_identities" i
+        INNER JOIN "corretor_studio_email_contacts" c
+          ON c.id::text = i."normalizedValue"
+        WHERE i."teamId" = ${teamId}::uuid
+          AND i.type = 'email_contact_id'
+          AND c."listId" IN (${listIdSql})
+
+        UNION
+
+        SELECT i."profileId" AS profile_id
+        FROM "corretor_studio_radar_identities" i
+        INNER JOIN "corretor_studio_email_contacts" c
+          ON lower(c.email) = i."normalizedValue"
+        WHERE i."teamId" = ${teamId}::uuid
+          AND i.type = 'email'
+          AND c."listId" IN (${listIdSql})
+
+        UNION
+
+        SELECT sl."profileId" AS profile_id
+        FROM "corretor_studio_radar_source_links" sl
+        INNER JOIN "corretor_studio_email_contacts" c
+          ON c.id::text = sl."sourceId"
+        WHERE sl."teamId" = ${teamId}::uuid
+          AND sl."sourceType" = 'email_contact'
+          AND c."listId" IN (${listIdSql})
+      ) matched
+    `
+  }
+
+  async findProfileIdsByEmailContactListIds(
+    teamId: string,
+    listIds: string[]
+  ): Promise<string[]> {
+    if (listIds.length === 0) return []
+
+    const rows = await this.db.$queryRaw<Array<{ profileId: string }>>(
+      this.emailContactListMatchedProfilesSql(teamId, listIds)
+    )
+    return rows.map((row) => row.profileId)
+  }
+
+  async countProfilesByEmailContactListIds(teamId: string, listIds: string[]): Promise<number> {
+    if (listIds.length === 0) return 0
+
+    const rows = await this.db.$queryRaw<Array<{ total: number | bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::int AS total
+      FROM (
+        ${this.emailContactListMatchedProfilesSql(teamId, listIds)}
+      ) matched_count
+    `)
+    return Number(rows[0]?.total ?? 0)
+  }
+
+  async listProfileIdsByEmailContactListIds(
+    teamId: string,
+    listIds: string[],
+    pagination?: { skip: number; take: number }
+  ): Promise<string[]> {
+    if (listIds.length === 0) return []
+
+    const limitSql =
+      pagination != null
+        ? Prisma.sql`ORDER BY "profileId" ASC LIMIT ${pagination.take} OFFSET ${pagination.skip}`
+        : Prisma.sql`ORDER BY "profileId" ASC`
+
+    const rows = await this.db.$queryRaw<Array<{ profileId: string }>>(Prisma.sql`
+      SELECT "profileId"
+      FROM (
+        ${this.emailContactListMatchedProfilesSql(teamId, listIds)}
+      ) matched_page
+      ${limitSql}
+    `)
+    return rows.map((row) => row.profileId)
   }
 
   /**

@@ -281,8 +281,51 @@ async function translateEmailContactList(
   teamId: string,
   condition: Extract<RadarSegmentCondition, { kind: "email_contact_list" }>
 ): Promise<Prisma.RadarProfileWhereInput> {
-  const contactIds = await radarRepository.findEmailContactIdsByListIds(teamId, condition.listIds)
-  return { identities: { some: { type: "email_contact_id", normalizedValue: { in: contactIds } } } }
+  const profileIds = await radarRepository.findProfileIdsByEmailContactListIds(
+    teamId,
+    condition.listIds
+  )
+  return profileIdInFilter(profileIds)
+}
+
+/**
+ * Evita P2035 (limite ~32767 binds) ao filtrar por muitos profileIds.
+ * Contagens só com `email_contact_list` usam SQL dedicado (sem este filtro).
+ */
+const PROFILE_ID_IN_CHUNK = 5_000
+
+function profileIdInFilter(profileIds: string[]): Prisma.RadarProfileWhereInput {
+  if (profileIds.length === 0) {
+    // Prisma `in: []` não casa nada — equivalente a false.
+    return { id: { in: [] } }
+  }
+  if (profileIds.length <= PROFILE_ID_IN_CHUNK) {
+    return { id: { in: profileIds } }
+  }
+  const chunks: string[][] = []
+  for (let i = 0; i < profileIds.length; i += PROFILE_ID_IN_CHUNK) {
+    chunks.push(profileIds.slice(i, i + PROFILE_ID_IN_CHUNK))
+  }
+  // Se a soma dos chunks passar ~32k binds, preferir regras sole `email_contact_list`
+  // (caminho SQL em countProfiles/listProfileIds) ou reduzir o conjunto a montante.
+  return { OR: chunks.map((ids) => ({ id: { in: ids } })) }
+}
+
+/** Segmento só com `email_contact_list` (união) — usa SQL sem materializar IDs no Prisma. */
+function trySoleEmailContactListIds(rules: RadarSegmentRules): string[] | null {
+  if (rules.conditions.length === 0) return null
+  if (!rules.conditions.every((condition) => condition.kind === "email_contact_list")) {
+    return null
+  }
+  // `match: all` com várias listas exige interseção — cai no caminho Prisma composto.
+  if (rules.match === "all" && rules.conditions.length > 1) return null
+  return [
+    ...new Set(
+      rules.conditions.flatMap((condition) =>
+        condition.kind === "email_contact_list" ? condition.listIds : []
+      )
+    ),
+  ]
 }
 
 async function translateEmailContactField(
@@ -295,7 +338,29 @@ async function translateEmailContactField(
     condition.operator,
     condition.value
   )
-  return { identities: { some: { type: "email_contact_id", normalizedValue: { in: contactIds } } } }
+  return emailContactIdIdentityFilter(contactIds)
+}
+
+function emailContactIdIdentityFilter(contactIds: string[]): Prisma.RadarProfileWhereInput {
+  if (contactIds.length === 0) return { id: { in: [] } }
+  if (contactIds.length <= PROFILE_ID_IN_CHUNK) {
+    return {
+      identities: {
+        some: { type: "email_contact_id", normalizedValue: { in: contactIds } },
+      },
+    }
+  }
+  const chunks: string[][] = []
+  for (let i = 0; i < contactIds.length; i += PROFILE_ID_IN_CHUNK) {
+    chunks.push(contactIds.slice(i, i + PROFILE_ID_IN_CHUNK))
+  }
+  return {
+    OR: chunks.map((ids) => ({
+      identities: {
+        some: { type: "email_contact_id", normalizedValue: { in: ids } },
+      },
+    })),
+  }
 }
 
 /** Exposto para testes — `in` exclui naturalmente `engagementBand` null. */
@@ -374,6 +439,10 @@ export interface IRadarSegmentQueryService {
  */
 class RadarSegmentQueryService implements IRadarSegmentQueryService {
   async countProfiles(scope: RadarTeamScope, rules: RadarSegmentRules): Promise<number> {
+    const soleListIds = trySoleEmailContactListIds(rules)
+    if (soleListIds) {
+      return radarRepository.countProfilesByEmailContactListIds(scope.teamId, soleListIds)
+    }
     const where = await buildProfileWhere(scope.teamId, rules)
     return radarRepository.countProfilesByWhere(where)
   }
@@ -383,6 +452,14 @@ class RadarSegmentQueryService implements IRadarSegmentQueryService {
     rules: RadarSegmentRules,
     pagination?: { skip: number; take: number }
   ): Promise<string[]> {
+    const soleListIds = trySoleEmailContactListIds(rules)
+    if (soleListIds) {
+      return radarRepository.listProfileIdsByEmailContactListIds(
+        scope.teamId,
+        soleListIds,
+        pagination
+      )
+    }
     const where = await buildProfileWhere(scope.teamId, rules)
     return radarRepository.listProfileIdsByWhere(where, pagination)
   }
