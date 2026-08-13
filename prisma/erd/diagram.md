@@ -76,6 +76,7 @@ legacy_public_widget legacy_public_widget
 studio_webhook studio_webhook
 meta_webhook meta_webhook
 whatsapp_manual whatsapp_manual
+email_campaign email_campaign
         }
     
 

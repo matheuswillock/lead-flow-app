@@ -22,13 +22,13 @@ describe("buildLeadSyncAlerts", () => {
       "Nome ausente",
       "E-mail ausente",
       "Telefone ausente",
-      "Não foi possível criar o lead: informe nome e telefone",
+      "Não foi possível criar o lead: informe nome completo e celular",
     ])
   })
 
   it("permite criar lead quando há nome e telefone", () => {
     const alerts = buildLeadSyncAlerts(
-      extracted({ name: "Maria", phone: "(11) 99999-9999", normalizedPhone: "11999999999" }),
+      extracted({ name: "Maria Silva", phone: "(11) 99999-9999", normalizedPhone: "11999999999" }),
       undefined,
     )
     expect(alerts).toEqual(["E-mail não informado (lead criado com telefone)"])

@@ -174,7 +174,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
     })
   })
 
-  it("form_completed após form_viewed (mesmo emailLogId) → cria Lead e mantém recipientEmail", async () => {
+  it("form_completed após form_viewed (mesmo emailLogId) → não cria Lead na atribuição", async () => {
     findRadarPhoneByEmail.mockImplementation(async () => "11999998888")
 
     const viewed = await resolveEmailCampaignFormAttributionUseCase.execute({
@@ -190,20 +190,29 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
     })
 
     expect(completed.isValid).toBe(true)
-    expect(createLead).toHaveBeenCalledTimes(1)
-    const createArgs = createLead.mock.calls[0] as unknown as [string, { name: string; phone: string }]
-    expect(createArgs[1]).toMatchObject({
-      name: "Destinatário",
-      phone: "11999998888",
-    })
+    expect(createLead).not.toHaveBeenCalled()
     expect(completed.result).toMatchObject({
-      leadId: "lead-created-1",
+      leadId: null,
       emailLogId: EMAIL_LOG_ID,
       enrichedOrigin: expect.objectContaining({
         recipientEmail: "destinatario@exemplo.com",
         emailLogId: EMAIL_LOG_ID,
       }),
     })
+  })
+
+  it("form_started com telefone na lista e sem lead existente → não cria Lead", async () => {
+    findRadarPhoneByEmail.mockImplementation(async () => "1138971122")
+
+    const output = await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_started",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(createLead).not.toHaveBeenCalled()
+    expect(createLeadActivityNote).not.toHaveBeenCalled()
+    expect(output.result).toMatchObject({ leadId: null })
   })
 
   it("form_completed sem telefone válido → não cria Lead (regra nome+telefone)", async () => {

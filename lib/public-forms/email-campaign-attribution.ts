@@ -7,6 +7,16 @@ const UUID_RE =
 
 export const FORM_START_ACTIVITY_BODY = "Início do preenchimento do formulário"
 export const FORM_COMPLETE_ACTIVITY_BODY = "Fim do preenchimento do formulário"
+export const EMAIL_CAMPAIGN_LEAD_CREATED_ACTIVITY_PREFIX =
+  "Lead criado via atribuição de campanha de e-mail"
+
+export function formatEmailCampaignLeadCreatedActivityBody(
+  campaignName?: string | null
+): string {
+  const trimmed = campaignName?.trim()
+  if (!trimmed) return EMAIL_CAMPAIGN_LEAD_CREATED_ACTIVITY_PREFIX
+  return `${EMAIL_CAMPAIGN_LEAD_CREATED_ACTIVITY_PREFIX} [${trimmed}]`
+}
 
 export type EmailCampaignAttributionOrigin = {
   emailLogId?: string
