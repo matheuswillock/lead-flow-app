@@ -13,11 +13,15 @@ const prisma = new PrismaClient()
  *   --day YYYY-MM-DD | --from / --to | env FAKE_EMAIL_ATTRIBUTION_FROM/TO
  *   Sem flags: lista todos os afetados (comportamento original).
  *
+ * Avalanche (12–13/08/2026):
+ *   bun run cleanup:fake-email-attribution-leads -- --avalanche
+ *
  * Uso:
  *   bun run audit:fake-email-attribution-leads
  *   bun run audit:fake-email-attribution-leads -- --day 2026-08-05
+ *   bun run audit:fake-email-attribution-leads -- --from 2026-08-12 --to 2026-08-13
  *
- * Cleanup (dry-run): bun run cleanup:fake-email-attribution-leads
+ * Cleanup (dry-run): bun run cleanup:fake-email-attribution-leads -- --avalanche
  */
 
 const DEFAULT_INCIDENT_DAY = "2026-08-05";
