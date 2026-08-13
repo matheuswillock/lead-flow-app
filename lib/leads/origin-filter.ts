@@ -3,6 +3,7 @@ export const LEAD_ORIGIN_FILTER_OPTIONS = [
   { value: "public_form", label: "Formulário público" },
   { value: "email_campaign", label: "Campanha de e-mail" },
   { value: "transfer", label: "Transferência" },
+  { value: "other", label: "Outros" },
 ] as const
 
 export type LeadOriginFilterValue = (typeof LEAD_ORIGIN_FILTER_OPTIONS)[number]["value"]
@@ -18,7 +19,8 @@ export function parseLeadOriginFilter(value: unknown): LeadOriginFilterValue | "
     value === "manual" ||
     value === "public_form" ||
     value === "email_campaign" ||
-    value === "transfer"
+    value === "transfer" ||
+    value === "other"
   ) {
     return value
   }
@@ -55,13 +57,30 @@ export function leadMatchesOriginFilter(
 
   const attribution = originAttribution(lead.originMetadata)
   if (originFilter === "email_campaign") {
-    return lead.originChannel === "email_campaign" || attribution === "email_campaign"
+    return (
+      lead.originChannel === "email_campaign" ||
+      lead.originChannel === "email_campaign_form" ||
+      attribution === "email_campaign"
+    )
   }
   if (originFilter === "public_form") {
     return lead.originChannel === "public_form" && attribution !== "email_campaign"
   }
   if (originFilter === "manual") {
     return lead.originChannel === "manual" || lead.originChannel == null
+  }
+  if (originFilter === "other") {
+    // csv_import, meta/studio webhooks, whatsapp_manual, legacy_public_widget, etc.
+    if (lead.originChannel == null || lead.originChannel === "manual") return false
+    if (
+      lead.originChannel === "email_campaign" ||
+      lead.originChannel === "email_campaign_form" ||
+      attribution === "email_campaign"
+    ) {
+      return false
+    }
+    if (lead.originChannel === "public_form") return false
+    return true
   }
   return true
 }

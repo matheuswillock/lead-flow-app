@@ -9,6 +9,7 @@ import {
 describe("lead origin filter", () => {
   it("parseia valores conhecidos e rejeita o restante", () => {
     expect(parseLeadOriginFilter("email_campaign")).toBe("email_campaign")
+    expect(parseLeadOriginFilter("other")).toBe("other")
     expect(parseLeadOriginFilter("nope")).toBe("")
   })
 
@@ -66,6 +67,61 @@ describe("lead origin filter", () => {
       leadMatchesOriginFilter(
         { originChannel: null, originMetadata: null, isTransfer: false },
         "manual",
+      ),
+    ).toBe(true)
+  })
+
+  it("outros cobre csv_import e webhooks, sem os buckets nomeados", () => {
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "csv_import", originMetadata: null, isTransfer: false },
+        "other",
+      ),
+    ).toBe(true)
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "meta_webhook", originMetadata: null, isTransfer: false },
+        "other",
+      ),
+    ).toBe(true)
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "studio_webhook", originMetadata: null, isTransfer: false },
+        "other",
+      ),
+    ).toBe(true)
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "manual", originMetadata: null, isTransfer: false },
+        "other",
+      ),
+    ).toBe(false)
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "public_form", originMetadata: null, isTransfer: false },
+        "other",
+      ),
+    ).toBe(false)
+    expect(
+      leadMatchesOriginFilter(
+        {
+          originChannel: "public_form",
+          originMetadata: { attribution: "email_campaign" },
+          isTransfer: false,
+        },
+        "other",
+      ),
+    ).toBe(false)
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "email_campaign_form", originMetadata: null, isTransfer: false },
+        "other",
+      ),
+    ).toBe(false)
+    expect(
+      leadMatchesOriginFilter(
+        { originChannel: "email_campaign_form", originMetadata: null, isTransfer: false },
+        "email_campaign",
       ),
     ).toBe(true)
   })
