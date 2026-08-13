@@ -8,6 +8,19 @@ import {
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { resendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
 import { radarService } from "@/app/api/services/radar/RadarService"
+import type { ResendWebhookRadarEventPayload } from "@/lib/queues/resend-webhook-radar-events"
+
+const RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG =
+  "resend_webhook_radar_queue_publish_failed"
+
+async function defaultPublishRadarEvent(
+  payload: ResendWebhookRadarEventPayload
+): Promise<{ messageId: string | null }> {
+  const { publishResendWebhookRadarEvent } = await import(
+    "@/lib/queues/resend-webhook-radar-events"
+  )
+  return publishResendWebhookRadarEvent(payload)
+}
 
 const BATCH_SIZE = 10
 const MAX_REQUESTS_PER_SECOND = 8
@@ -26,7 +39,10 @@ function isRateLimitError(message: string | null | undefined): boolean {
 
 export class EmailOrphanEventService {
   constructor(
-    private readonly enrichmentService: IResendEmailEnrichmentService = resendEmailEnrichmentService
+    private readonly enrichmentService: IResendEmailEnrichmentService = resendEmailEnrichmentService,
+    private readonly publishRadarEvent: (
+      payload: ResendWebhookRadarEventPayload
+    ) => Promise<{ messageId: string | null }> = defaultPublishRadarEvent
   ) {}
 
   async queueOrphanEvent(input: {
@@ -79,18 +95,36 @@ export class EmailOrphanEventService {
 
           // Mesmos side effects Radar do fluxo normal (ResendWebhookUseCase), para opens/clicks/bounces recuperados.
           try {
-            await radarService.handleEmailWebhookEvent({
+            await this.publishRadarEvent({
               teamId: existingLog.teamId,
               recipientEmail: existingLog.recipientEmail,
               recipientName: existingLog.recipientName,
               logId: existingLog.id,
               campaignId: existingLog.campaignId,
               eventType,
-              occurredAt: event.occurredAt,
+              occurredAt: event.occurredAt.toISOString(),
               metadata: {},
+              emailOrphanEventId: event.id,
             })
-          } catch (radarError) {
-            console.error("[EmailOrphanEventService][radar]", radarError)
+          } catch (publishError) {
+            console.error(
+              `[EmailOrphanEventService][radar] ${RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG}`,
+              publishError
+            )
+            try {
+              await radarService.handleEmailWebhookEvent({
+                teamId: existingLog.teamId,
+                recipientEmail: existingLog.recipientEmail,
+                recipientName: existingLog.recipientName,
+                logId: existingLog.id,
+                campaignId: existingLog.campaignId,
+                eventType,
+                occurredAt: event.occurredAt,
+                metadata: {},
+              })
+            } catch (radarError) {
+              console.error("[EmailOrphanEventService][radar]", radarError)
+            }
           }
         }
         await prisma.emailOrphanEvent.update({
