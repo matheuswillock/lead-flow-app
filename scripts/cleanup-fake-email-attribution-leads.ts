@@ -1,13 +1,21 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 
 /**
- * E6 — Cleanup de leads fantasma criados por atribuição de e-mail em `form_viewed`
- * (ResolveEmailCampaignFormAttributionUseCase), sem PublicFormSubmission real.
+ * Cleanup de leads fantasma criados por atribuição de e-mail em `form_started` /
+ * `form_viewed` (ResolveEmailCampaignFormAttributionUseCase), sem PublicFormSubmission.
  *
  * Critério (mesmo do audit `scripts/audit-fake-email-attribution-leads.ts`):
  *   - originMetadata.attribution === "email_campaign"
  *   - nenhuma PublicFormSubmission aponta para o leadId
- *   - createdAt dentro da janela UTC configurável (default: dia do incidente 2026-08-05)
+ *   - createdAt dentro da janela UTC configurável
+ *   - opcional: teamId (--teamId / --avalanche)
+ *
+ * Avalanche (13/08/2026) — campanha "Alto Padrão · Form 1 · Dia 1":
+ *   - teamId: aef1bfe7-d1fc-4085-879e-81d51a0cc9b8
+ *   - janela UTC: 2026-08-12 .. 2026-08-13
+ *   - evidência: 4 starts / 0 completes → 4 leads CRM com e-mail no nome e telefone fixo
+ *   - dry-run: bun run cleanup:fake-email-attribution-leads -- --avalanche
+ *   - NÃO apagar Radar: os perfis engajados (form.started) devem permanecer
  *
  * Dry-run por padrão. NÃO toca RadarProfile / RadarEvent / RadarIdentity.
  *
@@ -19,21 +27,37 @@ import { Prisma, PrismaClient } from "@prisma/client";
  * referrerLeadId em outros leads: SetNull.
  *
  * GATE `--apply`:
- *   Só executar DEPOIS de E1 em produção + autorização explícita do owner.
- *   Sem E1, o bug recria leads na hora seguinte.
+ *   Só executar DEPOIS do gatilho de criação (form_completed + validação) em produção
+ *   + autorização explícita do owner. Sem o fix, o bug recria leads na hora seguinte.
+ *   Este PR NÃO roda `--apply` no remoto.
  *
  * Uso:
  *   bun run cleanup:fake-email-attribution-leads
  *   bun run cleanup:fake-email-attribution-leads -- --help
+ *   bun run cleanup:fake-email-attribution-leads -- --avalanche
+ *   bun run cleanup:fake-email-attribution-leads -- --from 2026-08-12 --to 2026-08-13 --teamId aef1bfe7-d1fc-4085-879e-81d51a0cc9b8
  *   bun run cleanup:fake-email-attribution-leads -- --day 2026-08-05
- *   bun run cleanup:fake-email-attribution-leads -- --from 2026-08-05 --to 2026-08-05
- *   bun run cleanup:fake-email-attribution-leads -- --apply
+ *   bun run cleanup:fake-email-attribution-leads -- --apply   # só com OK do owner
  *
  * Env (alternativa às flags de data):
  *   FAKE_EMAIL_ATTRIBUTION_FROM / FAKE_EMAIL_ATTRIBUTION_TO (YYYY-MM-DD, UTC)
+ *   FAKE_EMAIL_ATTRIBUTION_TEAM_ID (UUID)
  */
 
+/** Incidente inicial (Kathrein / genérico) — default histórico do script. */
 const DEFAULT_INCIDENT_DAY = "2026-08-05";
+
+/**
+ * Avalanche de Vendas Unipessoal Ltda — janela do incidente 12–13/08/2026.
+ * Preset `--avalanche` aplica estas constantes.
+ */
+const AVALANCHE_TEAM_ID = "aef1bfe7-d1fc-4085-879e-81d51a0cc9b8";
+const AVALANCHE_FROM_DAY = "2026-08-12";
+const AVALANCHE_TO_DAY = "2026-08-13";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const prisma = new PrismaClient();
 
 type DateWindow = { fromInclusive: Date; toExclusive: Date; fromDay: string; toDay: string };
@@ -41,12 +65,16 @@ type DateWindow = { fromInclusive: Date; toExclusive: Date; fromDay: string; toD
 function printHelp(): void {
   console.info(`Usage:
   bun run cleanup:fake-email-attribution-leads [-- --help]
+  bun run cleanup:fake-email-attribution-leads [-- --avalanche]
   bun run cleanup:fake-email-attribution-leads [-- --day YYYY-MM-DD]
   bun run cleanup:fake-email-attribution-leads [-- --from YYYY-MM-DD --to YYYY-MM-DD]
+  bun run cleanup:fake-email-attribution-leads [-- --teamId UUID]
   bun run cleanup:fake-email-attribution-leads [-- --apply]
 
-Default: dry-run, janela UTC = ${DEFAULT_INCIDENT_DAY} (dia do incidente).
---apply: hard-delete dos leads selecionados. Só após E1 em prod + OK do owner.
+Default: dry-run, janela UTC = ${DEFAULT_INCIDENT_DAY}.
+--avalanche: dry-run na janela ${AVALANCHE_FROM_DAY}..${AVALANCHE_TO_DAY} + teamId Avalanche
+  (${AVALANCHE_TEAM_ID}). Não apaga Radar.
+--apply: hard-delete dos leads selecionados. Só após fix de criação em prod + OK do owner.
 Nunca altera RadarProfile/RadarEvent.`);
 }
 
@@ -67,13 +95,17 @@ function utcNextDay(day: string): Date {
 }
 
 function resolveDateWindow(args: string[]): DateWindow {
+  const avalanche = args.includes("--avalanche");
   const dayIdx = args.indexOf("--day");
   const fromIdx = args.indexOf("--from");
   const toIdx = args.indexOf("--to");
 
   let fromDay =
-    process.env.FAKE_EMAIL_ATTRIBUTION_FROM?.trim() || DEFAULT_INCIDENT_DAY;
-  let toDay = process.env.FAKE_EMAIL_ATTRIBUTION_TO?.trim() || fromDay;
+    process.env.FAKE_EMAIL_ATTRIBUTION_FROM?.trim() ||
+    (avalanche ? AVALANCHE_FROM_DAY : DEFAULT_INCIDENT_DAY);
+  let toDay =
+    process.env.FAKE_EMAIL_ATTRIBUTION_TO?.trim() ||
+    (avalanche ? AVALANCHE_TO_DAY : fromDay);
 
   if (dayIdx !== -1) {
     const raw = args[dayIdx + 1];
@@ -105,8 +137,39 @@ function resolveDateWindow(args: string[]): DateWindow {
   return { fromInclusive, toExclusive, fromDay, toDay };
 }
 
-/** Mesmo critério do audit + filtro de createdAt na janela UTC. */
-function buildWhere(window: DateWindow): Prisma.LeadWhereInput {
+function resolveTeamId(args: string[]): string | null {
+  if (args.includes("--avalanche")) {
+    const teamIdx = args.indexOf("--teamId");
+    if (teamIdx !== -1) {
+      const raw = args[teamIdx + 1];
+      if (!raw) throw new Error("--teamId requer UUID");
+      if (!UUID_RE.test(raw)) throw new Error(`--teamId inválido: "${raw}"`);
+      return raw;
+    }
+    return AVALANCHE_TEAM_ID;
+  }
+
+  const teamIdx = args.indexOf("--teamId");
+  if (teamIdx !== -1) {
+    const raw = args[teamIdx + 1];
+    if (!raw) throw new Error("--teamId requer UUID");
+    if (!UUID_RE.test(raw)) throw new Error(`--teamId inválido: "${raw}"`);
+    return raw;
+  }
+
+  const envTeam = process.env.FAKE_EMAIL_ATTRIBUTION_TEAM_ID?.trim();
+  if (envTeam) {
+    if (!UUID_RE.test(envTeam)) {
+      throw new Error(`FAKE_EMAIL_ATTRIBUTION_TEAM_ID inválido: "${envTeam}"`);
+    }
+    return envTeam;
+  }
+
+  return null;
+}
+
+/** Mesmo critério do audit + filtro de createdAt na janela UTC (+ teamId opcional). */
+function buildWhere(window: DateWindow, teamId: string | null): Prisma.LeadWhereInput {
   return {
     originMetadata: { path: ["attribution"], equals: "email_campaign" },
     publicFormSubmissions: { none: {} },
@@ -114,6 +177,7 @@ function buildWhere(window: DateWindow): Prisma.LeadWhereInput {
       gte: window.fromInclusive,
       lt: window.toExclusive,
     },
+    ...(teamId ? { teamId } : {}),
   };
 }
 
@@ -127,19 +191,26 @@ async function main(): Promise<void> {
 
   const shouldApply = args.includes("--apply");
   const window = resolveDateWindow(args);
-  const where = buildWhere(window);
+  const teamId = resolveTeamId(args);
+  const where = buildWhere(window, teamId);
 
   console.info(
-    `[cleanup-fake-email-attribution-leads] mode=${shouldApply ? "APPLY" : "dry-run"} windowUTC=${window.fromDay}..${window.toDay} (gte ${window.fromInclusive.toISOString()} lt ${window.toExclusive.toISOString()})`,
+    `[cleanup-fake-email-attribution-leads] mode=${shouldApply ? "APPLY" : "dry-run"} windowUTC=${window.fromDay}..${window.toDay} (gte ${window.fromInclusive.toISOString()} lt ${window.toExclusive.toISOString()})${teamId ? ` teamId=${teamId}` : ""}`,
   );
+
+  if (args.includes("--avalanche")) {
+    console.info(
+      "[cleanup-fake-email-attribution-leads] Preset Avalanche: CRM only; Radar engajados (form.started) permanecem intactos.",
+    );
+  }
 
   if (shouldApply) {
     console.info(
-      "[cleanup-fake-email-attribution-leads] AVISO: --apply ativo. Exige E1 já em produção + OK do owner. Radar NÃO será tocado.",
+      "[cleanup-fake-email-attribution-leads] AVISO: --apply ativo. Exige fix de criação já em produção + OK do owner. Radar NÃO será tocado.",
     );
   } else {
     console.info(
-      "[cleanup-fake-email-attribution-leads] Dry-run (padrão). Para mutar: --apply somente após E1 em prod + autorização do owner.",
+      "[cleanup-fake-email-attribution-leads] Dry-run (padrão). Para mutar: --apply somente após fix em prod + autorização do owner.",
     );
   }
 
@@ -221,7 +292,7 @@ async function main(): Promise<void> {
 
   if (!shouldApply) {
     console.info(
-      `\n[cleanup-fake-email-attribution-leads] Dry-run concluído. Nenhuma exclusão. Reexecute com --apply para deletar ${affected.length} lead(s).`,
+      `\n[cleanup-fake-email-attribution-leads] Dry-run concluído. Nenhuma exclusão. Reexecute com --apply para deletar ${affected.length} lead(s) (somente com autorização do owner).`,
     );
     return;
   }

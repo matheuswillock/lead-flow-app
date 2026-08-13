@@ -11,16 +11,31 @@ const prisma = new PrismaClient()
  *
  * Janela de data (opcional, alinhada ao cleanup E6):
  *   --day YYYY-MM-DD | --from / --to | env FAKE_EMAIL_ATTRIBUTION_FROM/TO
+ *   --avalanche | --teamId UUID | env FAKE_EMAIL_ATTRIBUTION_TEAM_ID
  *   Sem flags: lista todos os afetados (comportamento original).
+ *
+ * Avalanche (12–13/08/2026):
+ *   bun run audit:fake-email-attribution-leads -- --avalanche
+ *   (equivale a --from 2026-08-12 --to 2026-08-13 + teamId Avalanche)
  *
  * Uso:
  *   bun run audit:fake-email-attribution-leads
  *   bun run audit:fake-email-attribution-leads -- --day 2026-08-05
+ *   bun run audit:fake-email-attribution-leads -- --avalanche
+ *   bun run audit:fake-email-attribution-leads -- --from 2026-08-12 --to 2026-08-13
  *
- * Cleanup (dry-run): bun run cleanup:fake-email-attribution-leads
+ * Cleanup (dry-run): bun run cleanup:fake-email-attribution-leads -- --avalanche
  */
 
 const DEFAULT_INCIDENT_DAY = "2026-08-05";
+
+/** Mesmas constantes do cleanup — preset `--avalanche`. */
+const AVALANCHE_TEAM_ID = "aef1bfe7-d1fc-4085-879e-81d51a0cc9b8";
+const AVALANCHE_FROM_DAY = "2026-08-12";
+const AVALANCHE_TO_DAY = "2026-08-13";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function parseDayArg(value: string, flagName: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -44,21 +59,23 @@ function resolveOptionalDateWindow(args: string[]): {
   fromDay: string;
   toDay: string;
 } | null {
+  const avalanche = args.includes("--avalanche");
   const dayIdx = args.indexOf("--day");
   const fromIdx = args.indexOf("--from");
   const toIdx = args.indexOf("--to");
   const envFrom = process.env.FAKE_EMAIL_ATTRIBUTION_FROM?.trim();
   const envTo = process.env.FAKE_EMAIL_ATTRIBUTION_TO?.trim();
 
-  const hasCli = dayIdx !== -1 || fromIdx !== -1 || toIdx !== -1;
+  const hasCli = avalanche || dayIdx !== -1 || fromIdx !== -1 || toIdx !== -1;
   const hasEnv = Boolean(envFrom || envTo);
 
   if (!hasCli && !hasEnv) {
     return null;
   }
 
-  let fromDay = envFrom || DEFAULT_INCIDENT_DAY;
-  let toDay = envTo || fromDay;
+  let fromDay =
+    envFrom || (avalanche ? AVALANCHE_FROM_DAY : DEFAULT_INCIDENT_DAY);
+  let toDay = envTo || (avalanche ? AVALANCHE_TO_DAY : fromDay);
 
   if (dayIdx !== -1) {
     const raw = args[dayIdx + 1];
@@ -89,11 +106,45 @@ function resolveOptionalDateWindow(args: string[]): {
   return { fromInclusive, toExclusive, fromDay, toDay };
 }
 
+function resolveTeamId(args: string[]): string | null {
+  if (args.includes("--avalanche")) {
+    const teamIdx = args.indexOf("--teamId");
+    if (teamIdx !== -1) {
+      const raw = args[teamIdx + 1];
+      if (!raw) throw new Error("--teamId requer UUID");
+      if (!UUID_RE.test(raw)) throw new Error(`--teamId inválido: "${raw}"`);
+      return raw;
+    }
+    return AVALANCHE_TEAM_ID;
+  }
+
+  const teamIdx = args.indexOf("--teamId");
+  if (teamIdx !== -1) {
+    const raw = args[teamIdx + 1];
+    if (!raw) throw new Error("--teamId requer UUID");
+    if (!UUID_RE.test(raw)) throw new Error(`--teamId inválido: "${raw}"`);
+    return raw;
+  }
+
+  const envTeam = process.env.FAKE_EMAIL_ATTRIBUTION_TEAM_ID?.trim();
+  if (envTeam) {
+    if (!UUID_RE.test(envTeam)) {
+      throw new Error(`FAKE_EMAIL_ATTRIBUTION_TEAM_ID inválido: "${envTeam}"`);
+    }
+    return envTeam;
+  }
+
+  return null;
+}
+
 /** Critério compartilhado com cleanup-fake-email-attribution-leads.ts */
-function buildWhere(window: {
-  fromInclusive: Date;
-  toExclusive: Date;
-} | null): Prisma.LeadWhereInput {
+function buildWhere(
+  window: {
+    fromInclusive: Date;
+    toExclusive: Date;
+  } | null,
+  teamId: string | null,
+): Prisma.LeadWhereInput {
   return {
     originMetadata: { path: ["attribution"], equals: "email_campaign" },
     publicFormSubmissions: { none: {} },
@@ -105,21 +156,29 @@ function buildWhere(window: {
           },
         }
       : {}),
+    ...(teamId ? { teamId } : {}),
   };
 }
 
 async function main() {
   const args = process.argv.slice(2);
   const window = resolveOptionalDateWindow(args);
-  const where = buildWhere(window);
+  const teamId = resolveTeamId(args);
+  const where = buildWhere(window, teamId);
 
   if (window) {
     console.info(
-      `[audit-fake-email-attribution-leads] filtro UTC ${window.fromDay}..${window.toDay} (gte ${window.fromInclusive.toISOString()} lt ${window.toExclusive.toISOString()})`,
+      `[audit-fake-email-attribution-leads] filtro UTC ${window.fromDay}..${window.toDay} (gte ${window.fromInclusive.toISOString()} lt ${window.toExclusive.toISOString()})${teamId ? ` teamId=${teamId}` : ""}`,
     );
   } else {
     console.info(
-      "[audit-fake-email-attribution-leads] sem filtro de data (todos os afetados)",
+      `[audit-fake-email-attribution-leads] sem filtro de data (todos os afetados)${teamId ? ` teamId=${teamId}` : ""}`,
+    );
+  }
+
+  if (args.includes("--avalanche")) {
+    console.info(
+      "[audit-fake-email-attribution-leads] Preset Avalanche: janela 12–13/08/2026 + teamId Avalanche (mesmo do cleanup).",
     );
   }
 
