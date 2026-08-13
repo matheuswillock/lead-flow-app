@@ -39,14 +39,14 @@ export class EmailContactRadarSyncOutboxRepository
           create: {
             emailContactId: entry.emailContactId,
             teamId: entry.teamId,
-            emailImportJobId: entry.emailImportJobId,
+            emailImportJobId: entry.emailImportJobId ?? null,
             status: "pending",
             attemptCount: 0,
             nextAttemptAt: now,
           },
           update: {
             teamId: entry.teamId,
-            emailImportJobId: entry.emailImportJobId,
+            emailImportJobId: entry.emailImportJobId ?? null,
             status: "pending",
             attemptCount: 0,
             nextAttemptAt: now,
@@ -56,6 +56,36 @@ export class EmailContactRadarSyncOutboxRepository
         })
       )
     );
+  }
+
+  /**
+   * Enfileira sync Radar para contatos da lista que ainda não têm identity
+   * `email_contact_id` (ex.: materialização / lista criada fora do import D9).
+   */
+  async enqueueMissingForList(teamId: string, listId: string): Promise<number> {
+    const missing = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT c.id
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE l."teamId" = ${teamId}::uuid
+        AND c."listId" = ${listId}::uuid
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "corretor_studio_radar_identities" i
+          WHERE i."teamId" = ${teamId}::uuid
+            AND i.type = 'email_contact_id'
+            AND i."normalizedValue" = c.id::text
+        )
+    `;
+
+    await this.upsertPendingForContacts(
+      missing.map((row) => ({
+        emailContactId: row.id,
+        teamId,
+        emailImportJobId: null,
+      }))
+    );
+    return missing.length;
   }
 
   private async recoverStaleProcessingClaims(now: Date): Promise<void> {
