@@ -636,6 +636,10 @@ export default function LeadDialog({
       const source = typeof payload.source === "string" ? payload.source.trim() : "";
       const formName = typeof payload.formName === "string" ? payload.formName.trim() : "";
 
+      if (channel === "email_campaign_form") {
+        return { label: formName || source || "Campanha de e-mail", variant: "secondary" };
+      }
+
       if (channel === "public_form" || channel === "public_lead_form") {
         return { label: formName || source || "Formulário público", variant: "secondary" };
       }
