@@ -5,6 +5,7 @@ type AppendArg = {
   eventType: string
   sourceType: string
   sourceId: string
+  metadata?: Record<string, unknown>
 }
 
 const findProfileByIdentity = mock(
@@ -155,6 +156,24 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(resolveProfileForEmail).toHaveBeenCalledTimes(1)
     expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
     expect(lastAppendArg().profileId).toBe("email-profile-1")
+  })
+
+  it("grava campaignId no topo do metadata (além de origin)", async () => {
+    await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "form_started",
+      eventKey: "vs-abc:form_started:form",
+      origin: {
+        recipientEmail: "lead@campanha.com",
+        campaignId: "camp-1",
+        emailLogId: "log-1",
+      },
+    })
+
+    expect(lastAppendArg().metadata).toMatchObject({
+      campaignId: "camp-1",
+      origin: expect.objectContaining({ campaignId: "camp-1" }),
+    })
   })
 
   it("form_viewed com leadId (atribuição e-mail) → identidade lead_id", async () => {

@@ -13,7 +13,7 @@ describe("translateEvent", () => {
     })
   })
 
-  it("com campaignId filtra metadata.path campaignId", () => {
+  it("com campaignId filtra metadata no topo ou em origin (eventos legado)", () => {
     const campaignId = "11111111-1111-4111-8111-111111111111"
     const where = translateEvent({
       kind: "event",
@@ -25,25 +25,31 @@ describe("translateEvent", () => {
       events: {
         some: {
           eventType: "email.clicked",
-          metadata: { path: ["campaignId"], equals: campaignId },
+          OR: [
+            { metadata: { path: ["campaignId"], equals: campaignId } },
+            { metadata: { path: ["origin", "campaignId"], equals: campaignId } },
+          ],
         },
       },
     })
   })
 
-  it("not_occurred com campaignId usa events.none", () => {
+  it("not_occurred com campaignId usa events.none no topo ou origin", () => {
     const campaignId = "22222222-2222-4222-8222-222222222222"
     const where = translateEvent({
       kind: "event",
-      eventType: "email.opened",
+      eventType: "form.completed",
       occurrence: "not_occurred",
       campaignId,
     })
     expect(where).toEqual({
       events: {
         none: {
-          eventType: "email.opened",
-          metadata: { path: ["campaignId"], equals: campaignId },
+          eventType: "form.completed",
+          OR: [
+            { metadata: { path: ["campaignId"], equals: campaignId } },
+            { metadata: { path: ["origin", "campaignId"], equals: campaignId } },
+          ],
         },
       },
     })

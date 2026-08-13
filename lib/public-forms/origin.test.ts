@@ -41,6 +41,8 @@ describe("sanitizePublicFormOrigin", () => {
   it("detecta origem de campanha de e-mail", () => {
     expect(isEmailCampaignFormOrigin({ emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" })).toBe(true)
     expect(isEmailCampaignFormOrigin({ source: "email_campaign" })).toBe(true)
+    expect(isEmailCampaignFormOrigin({ attribution: "email_campaign" })).toBe(true)
+    expect(isEmailCampaignFormOrigin({ campaignId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" })).toBe(false)
     expect(isEmailCampaignFormOrigin({ source: "instagram" })).toBe(false)
     expect(isEmailCampaignFormOrigin({})).toBe(false)
   })

@@ -20,7 +20,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export function isEmailCampaignFormOrigin(origin: Record<string, unknown> | null | undefined): boolean {
   if (!origin || typeof origin !== "object") return false
   if (origin.source === "email_campaign" || origin.attribution === "email_campaign") return true
-  return typeof origin.emailLogId === "string" || typeof origin.campaignId === "string"
+  return typeof origin.emailLogId === "string"
 }
 
 export function sanitizePublicFormOrigin(origin: Record<string, unknown>) {

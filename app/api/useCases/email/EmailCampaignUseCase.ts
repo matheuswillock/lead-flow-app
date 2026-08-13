@@ -186,6 +186,7 @@ export type UpdateCampaignInput = Partial<CreateCampaignInput> & {
 
 export type ManualDispatchJob = {
   campaignId: string
+  campaignName: string
   dispatchId: string
   dispatchNumber: number
   teamId: string
@@ -2205,6 +2206,7 @@ export class EmailCampaignUseCase {
   private recordDispatchLeadActivities(params: {
     teamId: string
     campaignId: string
+    campaignName?: string
     dispatchId: string
     recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
     dispatchedEmails: Set<string>
@@ -2212,6 +2214,7 @@ export class EmailCampaignUseCase {
     globalDefaults: Record<string, string>
     templateVariables: ReturnType<EmailCampaignRecipientService["parseTemplateVariables"]>
   }): void {
+    const campaignName = params.campaignName?.trim() || undefined
     const jobs = params.recipients
       .filter((recipient) => params.dispatchedEmails.has(recipient.email))
       .map((recipient) => ({
@@ -2232,6 +2235,7 @@ export class EmailCampaignUseCase {
           dispatchId: params.dispatchId,
           recipientEmail: job.recipientEmail,
           subject: job.subject,
+          campaignName,
         })
       } catch (activityError) {
         console.error("[EmailCampaignUseCase][recordDispatchLeadActivities]", activityError)
@@ -2723,6 +2727,7 @@ export class EmailCampaignUseCase {
 
       const job: ManualDispatchJob = {
         campaignId: campaign.id,
+        campaignName: campaign.name,
         dispatchId: dispatchRecord.id,
         dispatchNumber,
         teamId: ctx.teamId,
@@ -2887,6 +2892,7 @@ export class EmailCampaignUseCase {
         this.recordDispatchLeadActivities({
           teamId: job.teamId,
           campaignId: job.campaignId,
+          campaignName: job.campaignName,
           dispatchId: job.dispatchId,
           recipients: job.recipients,
           dispatchedEmails,
@@ -3351,6 +3357,7 @@ export class EmailCampaignUseCase {
         contactListId: true,
         radarSegmentSlug: true,
         templateId: true,
+        campaign: { select: { name: true } },
       },
       orderBy: { updatedAt: "asc" },
       take: maxDispatches,
@@ -3455,6 +3462,7 @@ export class EmailCampaignUseCase {
 
         const job: ManualDispatchJob = {
           campaignId: dispatch.campaignId,
+          campaignName: dispatch.campaign.name,
           dispatchId: dispatch.id,
           dispatchNumber: dispatch.dispatchNumber,
           teamId: dispatch.teamId,
@@ -3890,6 +3898,7 @@ export class EmailCampaignUseCase {
         this.recordDispatchLeadActivities({
           teamId: campaign.teamId,
           campaignId: campaign.id,
+          campaignName: campaign.name,
           dispatchId: dispatchRecord.id,
           recipients: recipientsList,
           dispatchedEmails,
