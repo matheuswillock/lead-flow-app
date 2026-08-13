@@ -1,4 +1,4 @@
-import type { BackofficeEmailDispatchEventType } from "@prisma/client"
+import type { BackofficeEmailDispatchEventType, EmailEventType } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { backofficeEmailDispatchUseCase } from "@/app/api/useCases/backofficeEmailDispatch/BackofficeEmailDispatchUseCase"
@@ -12,6 +12,7 @@ import {
 import {
   radarService,
 } from "@/app/api/services/radar/RadarService"
+import type { ResendWebhookRadarEventPayload } from "@/lib/queues/resend-webhook-radar-events"
 import {
   resendDomainWebhookUseCase,
 } from "@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase"
@@ -26,6 +27,18 @@ const ORPHAN_BACKFILL_EVENTS = new Set([
   "email.suppressed",
 ])
 
+const RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG =
+  "resend_webhook_radar_queue_publish_failed"
+
+async function defaultPublishRadarEvent(
+  payload: ResendWebhookRadarEventPayload
+): Promise<{ messageId: string | null }> {
+  const { publishResendWebhookRadarEvent } = await import(
+    "@/lib/queues/resend-webhook-radar-events"
+  )
+  return publishResendWebhookRadarEvent(payload)
+}
+
 export type HandleResendWebhookInput = {
   event: ResendWebhookPayload
   svixId?: string | null
@@ -33,7 +46,10 @@ export type HandleResendWebhookInput = {
 
 export class ResendWebhookUseCase {
   constructor(
-    private readonly webhookService: ResendWebhookService = resendWebhookService
+    private readonly webhookService: ResendWebhookService = resendWebhookService,
+    private readonly publishRadarEvent: (
+      payload: ResendWebhookRadarEventPayload
+    ) => Promise<{ messageId: string | null }> = defaultPublishRadarEvent
   ) {}
 
   async handle(input: HandleResendWebhookInput): Promise<Output> {
@@ -97,22 +113,38 @@ export class ResendWebhookUseCase {
           svixId,
         })
 
-        // Radar/engagement fora do caminho crítico do webhook: não segurar a
-        // conexão do after-hook enquanto recalcula score (P2024 sob rajada).
-        void radarService
-          .handleEmailWebhookEvent({
-            teamId: log.teamId,
-            recipientEmail: log.recipientEmail,
-            recipientName: log.recipientName,
-            logId: log.id,
-            campaignId: log.campaignId,
-            eventType,
-            occurredAt,
-            metadata,
-          })
-          .catch((radarError) => {
-            console.error("[ResendWebhookUseCase][radar]", radarError)
-          })
+        // Radar/engagement fora do isolate do webhook: fila própria (P2024 sob rajada).
+        const radarPayload = {
+          teamId: log.teamId,
+          recipientEmail: log.recipientEmail,
+          recipientName: log.recipientName,
+          logId: log.id,
+          campaignId: log.campaignId,
+          eventType,
+          occurredAt: occurredAt.toISOString(),
+          metadata,
+          svixId: svixId ?? null,
+        }
+        void this.publishRadarEvent(radarPayload).catch((publishError) => {
+          console.error(
+            `[ResendWebhookUseCase][radar] ${RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG}`,
+            publishError
+          )
+          void radarService
+            .handleEmailWebhookEvent({
+              teamId: radarPayload.teamId,
+              recipientEmail: radarPayload.recipientEmail,
+              recipientName: radarPayload.recipientName,
+              logId: radarPayload.logId,
+              campaignId: radarPayload.campaignId,
+              eventType: radarPayload.eventType,
+              occurredAt,
+              metadata: radarPayload.metadata,
+            })
+            .catch((radarError) => {
+              console.error("[ResendWebhookUseCase][radar]", radarError)
+            })
+        })
 
         return new Output(true, ["Evento de email processado"], [], { handled: true, target: "email_log" })
       }
@@ -175,6 +207,19 @@ export class ResendWebhookUseCase {
 
     console.info("[ResendWebhookUseCase] Registro não encontrado para resendEmailId:", resendEmailId)
     return new Output(true, [], [], { handled: false, reason: "not_found" })
+  }
+
+  async handleRadarQueueEvent(input: {
+    teamId: string
+    recipientEmail: string
+    recipientName?: string | null
+    logId: string
+    campaignId?: string | null
+    eventType: EmailEventType
+    occurredAt: Date
+    metadata?: Record<string, unknown>
+  }): Promise<void> {
+    await radarService.handleEmailWebhookEvent(input)
   }
 }
 
