@@ -509,24 +509,43 @@ export function CampaignDetailSheet({
       }}
     >
       <SheetContent className="flex w-full flex-col gap-0 sm:max-w-5xl">
-        <SheetHeader className="gap-1 border-b pb-4">
-          <SheetTitle className="pr-8">{detailCampaign?.name ?? "Campanha"}</SheetTitle>
-          <SheetDescription className="flex flex-wrap items-center gap-2">
-            {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} /> : null}
-            {isParentCampaign && detailCampaign?.status === "partially_sent" &&
-             detailCampaign.partiallySentCount != null &&
-             detailCampaign.partiallySentTotal != null ? (
-              <Badge variant="outline" className="border-semantic-warning-border text-semantic-warning">
-                {detailCampaign.partiallySentCount} de {detailCampaign.partiallySentTotal} partes enviadas
-              </Badge>
-            ) : isParentCampaign ? (
-              <Badge variant="secondary">
-                {detailCampaign?.subCampaignCount ?? detailCampaign?.subCampaigns?.length ?? 0}{" "}
-                partes
-              </Badge>
-            ) : null}
-            <span>Campanha atual.</span>
-          </SheetDescription>
+        <SheetHeader className="gap-3 border-b pb-4">
+          <div className="flex flex-col gap-3 pr-8 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <SheetTitle>{detailCampaign?.name ?? "Campanha"}</SheetTitle>
+              <SheetDescription className="flex flex-wrap items-center gap-2">
+                {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} /> : null}
+                {isParentCampaign && detailCampaign?.status === "partially_sent" &&
+                 detailCampaign.partiallySentCount != null &&
+                 detailCampaign.partiallySentTotal != null ? (
+                  <Badge variant="outline" className="border-semantic-warning-border text-semantic-warning">
+                    {detailCampaign.partiallySentCount} de {detailCampaign.partiallySentTotal} partes enviadas
+                  </Badge>
+                ) : isParentCampaign ? (
+                  <Badge variant="secondary">
+                    {detailCampaign?.subCampaignCount ?? detailCampaign?.subCampaigns?.length ?? 0}{" "}
+                    partes
+                  </Badge>
+                ) : null}
+                <span>Campanha atual.</span>
+              </SheetDescription>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {parentCampaignId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void openViewById(parentCampaignId)}
+                >
+                  <ArrowLeft data-icon="inline-start" />
+                  Voltar à campanha pai
+                </Button>
+              ) : null}
+              <Button variant="outline" size="sm" onClick={closeDetail}>
+                Fechar
+              </Button>
+            </div>
+          </div>
           {detailCampaign ? (
             <CampaignDispatchProgressLine
               progress={resolveCampaignDispatchProgressDisplay(detailCampaign)}
@@ -704,67 +723,124 @@ export function CampaignDetailSheet({
 
                 <Separator className="mb-4" />
 
-                <div className="grid gap-3 text-sm sm:grid-cols-2">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-muted-foreground">Nome</span>
-                    <span className="font-medium">{detailCampaign.name}</span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-sm font-medium">Detalhes da campanha</span>
+                    {!readOnly ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            aria-label="Mais ações"
+                          >
+                            <MoreHorizontal />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => void openDuplicateWizard(detailCampaign)}
+                          >
+                            <Copy />
+                            Duplicar
+                          </DropdownMenuItem>
+                          {canEdit ? (
+                            <DropdownMenuItem
+                              onClick={() => void openEditWizard(detailCampaign)}
+                            >
+                              <Pencil />
+                              Editar
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canSendByStatus ? (
+                            canSendLeaf ? (
+                              <DropdownMenuItem
+                                onClick={() => setLeafSendConfirmOpen(true)}
+                              >
+                                <Send />
+                                {leafSendActionLabel}
+                              </DropdownMenuItem>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="w-full">
+                                    <DropdownMenuItem
+                                      disabled
+                                      className="pointer-events-none w-full"
+                                    >
+                                      <Send />
+                                      {leafSendActionLabel}
+                                    </DropdownMenuItem>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-sm">
+                                  {leafSendBlockReason ??
+                                    "Ative um plano em Assinaturas para disparar campanhas"}
+                                </TooltipContent>
+                              </Tooltip>
+                            )
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-muted-foreground">Template</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{templateName}</span>
-                      {templateId ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void handlePreviewTemplate()}
-                          disabled={templatePreviewLoading}
-                        >
-                          {templatePreviewLoading ? (
-                            <Loader2 data-icon="inline-start" className="animate-spin" />
-                          ) : (
-                            <Eye data-icon="inline-start" />
+
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Nome</span>
+                      <span className="font-medium">{detailCampaign.name}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Template</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{templateName}</span>
+                        {templateId ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handlePreviewTemplate()}
+                            disabled={templatePreviewLoading}
+                          >
+                            {templatePreviewLoading ? (
+                              <Loader2 data-icon="inline-start" className="animate-spin" />
+                            ) : (
+                              <Eye data-icon="inline-start" />
+                            )}
+                            Visualizar
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">Lista / audiência</span>
+                      <span className="font-medium">{audienceLabel(detailCampaign)}</span>
+                    </div>
+                    {detailCampaign.linkedForm ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-muted-foreground">Formulário vinculado</span>
+                        <span className="font-medium">{detailCampaign.linkedForm.name}</span>
+                      </div>
+                    ) : null}
+                    {!isParentCampaign && detailCampaign.scheduledAt ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-muted-foreground">Agendamento</span>
+                        <span className="font-medium">
+                          {formatIntimezone(
+                            new Date(detailCampaign.scheduledAt),
+                            "dd/MM/yyyy HH:mm",
+                            tz
                           )}
-                          Visualizar
-                        </Button>
-                      ) : null}
-                    </div>
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-muted-foreground">Lista / audiência</span>
-                    <span className="font-medium">{audienceLabel(detailCampaign)}</span>
-                  </div>
-                  {detailCampaign.linkedForm ? (
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Formulário vinculado</span>
-                      <span className="font-medium">{detailCampaign.linkedForm.name}</span>
-                    </div>
-                  ) : null}
-                  {!isParentCampaign && detailCampaign.scheduledAt ? (
-                    <div className="flex flex-col gap-1">
-                      <span className="text-muted-foreground">Agendamento</span>
-                      <span className="font-medium">
-                        {formatIntimezone(new Date(detailCampaign.scheduledAt), "dd/MM/yyyy HH:mm", tz)}
-                      </span>
-                    </div>
-                  ) : null}
                 </div>
               </div>
 
-              <SheetFooter className="mt-4 border-t pt-4">
-                {parentCampaignId ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => void openViewById(parentCampaignId)}
-                  >
-                    <ArrowLeft data-icon="inline-start" />
-                    Voltar à campanha pai
-                  </Button>
-                ) : null}
-                <Button variant="outline" onClick={closeDetail}>
-                  Fechar
-                </Button>
+              <SheetFooter className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
                 {canCancel && !readOnly ? (
                   <Button
                     variant="destructive"
@@ -778,44 +854,6 @@ export function CampaignDetailSheet({
                         ? "Cancelar envio"
                         : "Cancelar agendamento"}
                   </Button>
-                ) : null}
-                {!readOnly ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => void openDuplicateWizard(detailCampaign)}
-                  >
-                    <Copy data-icon="inline-start" />
-                    Duplicar
-                  </Button>
-                ) : null}
-                {canEdit && !readOnly ? (
-                  <Button onClick={() => void openEditWizard(detailCampaign)}>
-                    <Pencil data-icon="inline-start" />
-                    Editar
-                  </Button>
-                ) : null}
-                {canSendByStatus && !readOnly ? (
-                  canSendLeaf ? (
-                    <Button onClick={() => setLeafSendConfirmOpen(true)}>
-                      <Send data-icon="inline-start" />
-                      {leafSendActionLabel}
-                    </Button>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button disabled>
-                            <Send data-icon="inline-start" />
-                            {leafSendActionLabel}
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-sm">
-                        {leafSendBlockReason ??
-                          "Ative um plano em Assinaturas para disparar campanhas"}
-                      </TooltipContent>
-                    </Tooltip>
-                  )
                 ) : null}
                 <Button
                   variant="secondary"
