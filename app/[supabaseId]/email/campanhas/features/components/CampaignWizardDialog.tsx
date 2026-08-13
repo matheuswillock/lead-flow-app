@@ -219,6 +219,7 @@ export function CampaignWizardDialog() {
     setWizardSaveAsRadarSegmentName,
     setWizardScheduledAt,
     applyUniformScheduledAt,
+    setWizardUniformSchedule,
     setWizardUniformTemplate,
     setWizardSubCampaignSchedule,
     setWizardSubCampaignListId,
@@ -232,7 +233,8 @@ export function CampaignWizardDialog() {
 
   const [strategyDialogOpen, setStrategyDialogOpen] = useState(false)
   const [pendingListSelection, setPendingListSelection] = useState<string[]>([])
-  const [uniformConfirmOpen, setUniformConfirmOpen] = useState(false)
+  const [uniformTemplateConfirmOpen, setUniformTemplateConfirmOpen] = useState(false)
+  const [uniformScheduleConfirmOpen, setUniformScheduleConfirmOpen] = useState(false)
   const prevPreviewSubCountRef = useRef(0)
 
   const selectedTemplate = templates.find((template) => template.id === wizardTemplateId) ?? null
@@ -335,14 +337,16 @@ export function CampaignWizardDialog() {
     )
 
   const allSubSchedulesFilled =
-    previewSubCount <= 1 || wizardSubCampaignSchedules.length === previewSubCount
+    previewSubCount <= 1 ||
+    (wizardUniformSchedule
+      ? Boolean(wizardScheduledAt)
+      : wizardSubCampaignSchedules.length === previewSubCount)
 
   const subcampanhasParseSuccess =
     (previewSubCount <= 1 || wizardUniformTemplate
       ? templateParse.success
       : allSubTemplatesFilled) &&
-    allSubSchedulesFilled &&
-    (previewSubCount <= 1 || !wizardUniformTemplate || Boolean(wizardScheduledAt))
+    allSubSchedulesFilled
 
   const lockedTabs = useMemo<WizardTabId[]>(() => {
     const locked: WizardTabId[] = []
@@ -408,49 +412,72 @@ export function CampaignWizardDialog() {
     const prev = prevPreviewSubCountRef.current
     if (previewSubCount > 1 && prev <= 1 && wizardMode === "create") {
       setWizardUniformTemplate(false)
+      setWizardUniformSchedule(false)
     }
     prevPreviewSubCountRef.current = previewSubCount
-  }, [previewSubCount, setWizardUniformTemplate, wizardMode, wizardOpen])
+  }, [
+    previewSubCount,
+    setWizardUniformSchedule,
+    setWizardUniformTemplate,
+    wizardMode,
+    wizardOpen,
+  ])
 
-  function subConfigsDiverge(): boolean {
+  function templatesDiverge(): boolean {
     if (previewSubCount <= 1) return false
     const templateIds = Array.from({ length: previewSubCount }, (_, i) =>
       wizardSubCampaignTemplateIds[i + 1] ?? ""
     )
+    return templateIds.some(Boolean) && templateIds.some((id) => id !== templateIds[0])
+  }
+
+  function schedulesDiverge(): boolean {
+    if (previewSubCount <= 1) return false
     const schedules = Array.from({ length: previewSubCount }, (_, i) =>
       wizardSubCampaignSchedules.find((entry) => entry.index === i + 1)?.scheduledAt.getTime() ?? null
     )
-    const templatesDiffer =
-      templateIds.some(Boolean) && templateIds.some((id) => id !== templateIds[0])
-    const schedulesDiffer =
+    return (
       schedules.some((value) => value != null) &&
       schedules.some((value) => value !== schedules[0])
-    return templatesDiffer || schedulesDiffer
+    )
   }
 
-  function handleUniformToggle(next: boolean) {
+  function handleUniformTemplateToggle(next: boolean) {
     if (formDisabled) return
-    if (next && subConfigsDiverge()) {
-      setUniformConfirmOpen(true)
+    if (next && templatesDiverge()) {
+      setUniformTemplateConfirmOpen(true)
       return
     }
     setWizardUniformTemplate(next)
   }
 
-  function confirmUniformOverwrite() {
-    // Ao confirmar, sobe o primeiro template/horário preenchido para o global
+  function handleUniformScheduleToggle(next: boolean) {
+    if (formDisabled) return
+    if (next && schedulesDiverge()) {
+      setUniformScheduleConfirmOpen(true)
+      return
+    }
+    setWizardUniformSchedule(next)
+  }
+
+  function confirmUniformTemplateOverwrite() {
     const firstTemplate =
       wizardSubCampaignTemplateIds[1] ||
       Object.values(wizardSubCampaignTemplateIds)[0] ||
       wizardTemplateId
     if (firstTemplate) setWizardTemplateId(firstTemplate)
+    setWizardUniformTemplate(true)
+    setUniformTemplateConfirmOpen(false)
+  }
+
+  function confirmUniformScheduleOverwrite() {
     const firstSchedule =
       wizardSubCampaignSchedules.find((entry) => entry.index === 1)?.scheduledAt ||
       wizardSubCampaignSchedules[0]?.scheduledAt ||
       wizardScheduledAt
     if (firstSchedule) applyUniformScheduledAt(firstSchedule)
-    setWizardUniformTemplate(true)
-    setUniformConfirmOpen(false)
+    setWizardUniformSchedule(true)
+    setUniformScheduleConfirmOpen(false)
   }
 
   function handleListToggle(listId: string, checked: boolean) {
@@ -722,82 +749,102 @@ export function CampaignWizardDialog() {
                 {wizardActiveTab === "subcampanhas" ? (
                   <FieldGroup>
                     {previewSubCount > 1 ? (
-                      <Field orientation="horizontal">
-                        <div className="flex flex-1 flex-col gap-1">
-                          <FieldLabel htmlFor="wizard-uniform-template-schedule">
-                            Usar o mesmo template e agendamento para todas as campanhas
-                          </FieldLabel>
-                          <FieldDescription>
-                            Com isso ativado, a configuração fica igual à de uma campanha única.
-                            Desative para definir template e horário em cada sub-campanha.
-                          </FieldDescription>
-                        </div>
-                        <Switch
-                          id="wizard-uniform-template-schedule"
-                          checked={wizardUniformTemplate}
-                          onCheckedChange={handleUniformToggle}
-                          disabled={formDisabled}
-                        />
-                      </Field>
+                      <>
+                        <Field orientation="horizontal">
+                          <div className="flex flex-1 flex-col gap-1">
+                            <FieldLabel htmlFor="wizard-uniform-template">
+                              Mesmo template para todas as sub-campanhas
+                            </FieldLabel>
+                            <FieldDescription>
+                              Desmarque para escolher um template diferente em cada sub-campanha.
+                            </FieldDescription>
+                          </div>
+                          <Switch
+                            id="wizard-uniform-template"
+                            checked={wizardUniformTemplate}
+                            onCheckedChange={handleUniformTemplateToggle}
+                            disabled={formDisabled}
+                          />
+                        </Field>
+                        <Field orientation="horizontal">
+                          <div className="flex flex-1 flex-col gap-1">
+                            <FieldLabel htmlFor="wizard-uniform-schedule">
+                              Mesmo horário para todas as sub-campanhas
+                            </FieldLabel>
+                            <FieldDescription>
+                              Desmarque para definir data e hora individualmente em cada
+                              sub-campanha.
+                            </FieldDescription>
+                          </div>
+                          <Switch
+                            id="wizard-uniform-schedule"
+                            checked={wizardUniformSchedule}
+                            onCheckedChange={handleUniformScheduleToggle}
+                            disabled={formDisabled}
+                          />
+                        </Field>
+                      </>
                     ) : null}
 
                     {previewSubCount <= 1 || wizardUniformTemplate ? (
-                      <>
-                        <Field>
-                          <FieldLabel>Template *</FieldLabel>
-                          <Select
-                            value={wizardTemplateId}
-                            onValueChange={setWizardTemplateId}
-                            disabled={formDisabled}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione um template..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                {templates.map((template) => (
-                                  <SelectItem key={template.id} value={template.id}>
-                                    {template.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                          {selectedTemplate ? (
-                            <FieldDescription>Assunto: {selectedTemplate.subject}</FieldDescription>
-                          ) : null}
-                          <FieldDescription>
-                            Formulário vinculado:{" "}
-                            {wizardLinkedForm
-                              ? wizardLinkedForm.name
-                              : "Nenhum formulário detectado"}
-                          </FieldDescription>
-                        </Field>
+                      <Field>
+                        <FieldLabel>Template *</FieldLabel>
+                        <Select
+                          value={wizardTemplateId}
+                          onValueChange={setWizardTemplateId}
+                          disabled={formDisabled}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um template..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {templates.map((template) => (
+                                <SelectItem key={template.id} value={template.id}>
+                                  {template.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        {selectedTemplate ? (
+                          <FieldDescription>Assunto: {selectedTemplate.subject}</FieldDescription>
+                        ) : null}
+                        <FieldDescription>
+                          Formulário vinculado:{" "}
+                          {wizardLinkedForm
+                            ? wizardLinkedForm.name
+                            : "Nenhum formulário detectado"}
+                        </FieldDescription>
+                      </Field>
+                    ) : null}
 
-                        <Field>
-                          <DateTimePicker
-                            date={wizardScheduledAt}
-                            onDateChange={
-                              previewSubCount > 1 ? applyUniformScheduledAt : setWizardScheduledAt
-                            }
-                            label={
-                              previewSubCount > 1
-                                ? "Agendamento inicial *"
-                                : "Agendamento (opcional)"
-                            }
-                            disabled={formDisabled}
-                            disablePastDates
-                            tz={tz}
-                          />
-                          {previewSubCount > 1 ? (
-                            <FieldDescription>
-                              As demais sub-campanhas seguem o intervalo de{" "}
-                              {wizardScheduleIntervalDays} dia
-                              {wizardScheduleIntervalDays === 1 ? "" : "s"} a partir desta data.
-                            </FieldDescription>
-                          ) : null}
-                        </Field>
-                      </>
+                    {previewSubCount <= 1 || wizardUniformSchedule ? (
+                      <Field>
+                        <DateTimePicker
+                          date={wizardScheduledAt}
+                          onDateChange={
+                            previewSubCount > 1 && wizardUniformSchedule
+                              ? applyUniformScheduledAt
+                              : setWizardScheduledAt
+                          }
+                          label={
+                            previewSubCount > 1 && wizardUniformSchedule
+                              ? "Agendamento inicial *"
+                              : "Agendamento (opcional)"
+                          }
+                          disabled={formDisabled}
+                          disablePastDates
+                          tz={tz}
+                        />
+                        {previewSubCount > 1 && wizardUniformSchedule ? (
+                          <FieldDescription>
+                            As demais sub-campanhas seguem o intervalo de{" "}
+                            {wizardScheduleIntervalDays} dia
+                            {wizardScheduleIntervalDays === 1 ? "" : "s"} a partir desta data.
+                          </FieldDescription>
+                        ) : null}
+                      </Field>
                     ) : null}
 
                     {wizardPreviewLoading ? (
@@ -807,7 +854,7 @@ export function CampaignWizardDialog() {
                       </div>
                     ) : null}
 
-                    {wizardPreviewPlan && wizardPreviewPlan.subCampaigns.length > 1 && wizardUniformTemplate ? (
+                    {wizardPreviewPlan && wizardPreviewPlan.subCampaigns.length > 1 ? (
                       <div className="flex flex-col gap-2">
                         <FieldLabel>Sub-campanhas</FieldLabel>
                         <Table>
@@ -818,6 +865,12 @@ export function CampaignWizardDialog() {
                               <TableHead>Destinatários</TableHead>
                               {wizardListStrategy === "per_list" ? (
                                 <TableHead>Lista</TableHead>
+                              ) : null}
+                              {!wizardUniformTemplate ? (
+                                <TableHead>Template *</TableHead>
+                              ) : null}
+                              {!wizardUniformSchedule ? (
+                                <TableHead>Agendamento *</TableHead>
                               ) : null}
                             </TableRow>
                           </TableHeader>
@@ -885,134 +938,61 @@ export function CampaignWizardDialog() {
                                       </Select>
                                     </TableCell>
                                   ) : null}
+                                  {!wizardUniformTemplate ? (
+                                    <TableCell className="max-w-52">
+                                      <Select
+                                        value={wizardSubCampaignTemplateIds[sub.index] ?? ""}
+                                        onValueChange={(v) =>
+                                          setWizardSubCampaignTemplateId(sub.index, v)
+                                        }
+                                        disabled={formDisabled}
+                                      >
+                                        <SelectTrigger className="w-44">
+                                          <SelectValue placeholder="Selecione..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectGroup>
+                                            {templates.map((template) => (
+                                              <SelectItem key={template.id} value={template.id}>
+                                                {template.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                    </TableCell>
+                                  ) : null}
+                                  {!wizardUniformSchedule ? (
+                                    <TableCell>
+                                      <DateTimePicker
+                                        date={
+                                          wizardSubCampaignSchedules.find(
+                                            (entry) => entry.index === sub.index
+                                          )?.scheduledAt
+                                        }
+                                        onDateChange={(date) =>
+                                          setWizardSubCampaignSchedule(sub.index, date)
+                                        }
+                                        label=""
+                                        disabled={formDisabled}
+                                        disablePastDates
+                                        tz={tz}
+                                      />
+                                    </TableCell>
+                                  ) : null}
                                 </TableRow>
                               )
                             })}
                           </TableBody>
                         </Table>
-                      </div>
-                    ) : null}
-
-                    {wizardPreviewPlan &&
-                    wizardPreviewPlan.subCampaigns.length > 1 &&
-                    !wizardUniformTemplate ? (
-                      <div className="flex flex-col gap-3">
-                        {wizardPreviewPlan.subCampaigns.map((sub) => {
-                          const resolvedName =
-                            wizardSubCampaignNames[sub.index] ?? sub.name
-                          const selectedListId =
-                            wizardSubCampaignListIds[sub.index] ?? sub.contactListId ?? ""
-                          const selectedTemplateId =
-                            wizardSubCampaignTemplateIds[sub.index] ?? ""
-                          const cardTemplate =
-                            templates.find((template) => template.id === selectedTemplateId) ??
-                            null
-
-                          return (
-                            <div
-                              key={sub.index}
-                              className="flex flex-col gap-3 rounded-lg border bg-card p-4"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-medium">
-                                  Sub-campanha #{sub.index}
-                                </span>
-                                <span className="text-sm tabular-nums text-muted-foreground">
-                                  {sub.totalRecipients.toLocaleString("pt-BR")} destinatários
-                                </span>
-                              </div>
-
-                              <Field>
-                                <FieldLabel>Nome *</FieldLabel>
-                                <Input
-                                  value={resolvedName}
-                                  onChange={(event) =>
-                                    setWizardSubCampaignName(sub.index, event.target.value)
-                                  }
-                                  disabled={formDisabled}
-                                  aria-label={`Nome da sub-campanha ${sub.index}`}
-                                />
-                              </Field>
-
-                              {wizardListStrategy === "per_list" ? (
-                                <Field>
-                                  <FieldLabel>Lista</FieldLabel>
-                                  <Select
-                                    value={selectedListId}
-                                    onValueChange={(v) =>
-                                      setWizardSubCampaignListId(sub.index, v)
-                                    }
-                                    disabled={formDisabled}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Selecione a lista..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {contactLists.map((list) => (
-                                        <SelectItem key={list.id} value={list.id}>
-                                          {list.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </Field>
-                              ) : null}
-
-                              <Field>
-                                <FieldLabel>Template *</FieldLabel>
-                                <Select
-                                  value={selectedTemplateId}
-                                  onValueChange={(v) =>
-                                    setWizardSubCampaignTemplateId(sub.index, v)
-                                  }
-                                  disabled={formDisabled}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Selecione um template..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectGroup>
-                                      {templates.map((template) => (
-                                        <SelectItem key={template.id} value={template.id}>
-                                          {template.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                                {cardTemplate ? (
-                                  <FieldDescription>
-                                    Assunto: {cardTemplate.subject}
-                                  </FieldDescription>
-                                ) : null}
-                                <FieldDescription>
-                                  Formulário vinculado:{" "}
-                                  {cardTemplate?.linkedForm?.name ??
-                                    "Nenhum formulário detectado"}
-                                </FieldDescription>
-                              </Field>
-
-                              <Field>
-                                <DateTimePicker
-                                  date={
-                                    wizardSubCampaignSchedules.find(
-                                      (entry) => entry.index === sub.index
-                                    )?.scheduledAt
-                                  }
-                                  onDateChange={(date) =>
-                                    setWizardSubCampaignSchedule(sub.index, date)
-                                  }
-                                  label="Agendamento *"
-                                  disabled={formDisabled}
-                                  disablePastDates
-                                  tz={tz}
-                                />
-                              </Field>
-                            </div>
-                          )
-                        })}
                         <FieldDescription>
-                          Informe template e data/hora de envio para cada sub-campanha.
+                          {!wizardUniformTemplate && !wizardUniformSchedule
+                            ? "Informe template e data/hora de envio para cada sub-campanha."
+                            : !wizardUniformTemplate
+                              ? "Informe o template de cada sub-campanha. O horário é compartilhado."
+                              : !wizardUniformSchedule
+                                ? "Informe data e hora de envio para cada sub-campanha. O template é compartilhado."
+                                : "Template e horário compartilhados. Ajuste nomes (e listas, se aplicável) abaixo."}
                         </FieldDescription>
                       </div>
                     ) : null}
@@ -1152,19 +1132,37 @@ export function CampaignWizardDialog() {
         onSelectStrategy={handleStrategySelect}
       />
 
-      <AlertDialog open={uniformConfirmOpen} onOpenChange={setUniformConfirmOpen}>
+      <AlertDialog open={uniformTemplateConfirmOpen} onOpenChange={setUniformTemplateConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unificar template e agendamento?</AlertDialogTitle>
+            <AlertDialogTitle>Unificar templates?</AlertDialogTitle>
             <AlertDialogDescription>
-              As sub-campanhas têm templates ou horários diferentes. Ao unificar, a configuração
-              global substitui as escolhas individuais.
+              As sub-campanhas têm templates diferentes. Ao unificar, o template global substitui
+              as escolhas individuais.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmUniformOverwrite}>
-              Unificar
+            <AlertDialogAction onClick={confirmUniformTemplateOverwrite}>
+              Unificar templates
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={uniformScheduleConfirmOpen} onOpenChange={setUniformScheduleConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unificar horários?</AlertDialogTitle>
+            <AlertDialogDescription>
+              As sub-campanhas têm horários diferentes. Ao unificar, o agendamento global
+              substitui as escolhas individuais.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUniformScheduleOverwrite}>
+              Unificar horários
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1260,6 +1260,7 @@ export class EmailCampaignUseCase {
               contactListId: true,
               templateId: true,
               errorMessage: true,
+              template: { select: { id: true, name: true, subject: true } },
             },
             orderBy: { subCampaignIndex: "asc" },
           },
@@ -2042,6 +2043,30 @@ export class EmailCampaignUseCase {
             ],
             null
           )
+        }
+      }
+
+      const childTemplateOverrides = new Set(
+        (data.subCampaignUpdates ?? [])
+          .filter((entry) => entry.templateId !== undefined)
+          .map((entry) => entry.id)
+      )
+
+      if (
+        isParentCampaign &&
+        data.templateId !== undefined &&
+        childTemplateOverrides.size === 0
+      ) {
+        const publishedTemplate = await this.findCurrentPublishedTemplate(data.templateId, ctx.teamId)
+        if (publishedTemplate) {
+          await this.db.emailCampaign.updateMany({
+            where: {
+              parentCampaignId: id,
+              teamId: ctx.teamId,
+              status: { in: ["draft", "scheduled"] },
+            },
+            data: { templateId: publishedTemplate.id },
+          })
         }
       }
 
@@ -3982,18 +4007,23 @@ export class EmailCampaignUseCase {
     if (children.length === 0) return null
 
     const statuses = new Set(children.map((child) => child.status))
+    const activeStatuses = new Set(
+      children.filter((child) => child.status !== "archived").map((child) => child.status)
+    )
     let parentStatus: EmailCampaignStatus = "scheduled"
-    if (statuses.has("sending")) {
+    if ([...statuses].every((status) => status === "archived")) {
+      parentStatus = "archived"
+    } else if (activeStatuses.has("sending")) {
       parentStatus = "sending"
-    } else if (statuses.has("scheduled") || statuses.has("draft")) {
+    } else if (activeStatuses.has("scheduled") || activeStatuses.has("draft")) {
       parentStatus = "scheduled"
-    } else if ([...statuses].every((status) => status === "canceled")) {
+    } else if ([...activeStatuses].every((status) => status === "canceled")) {
       parentStatus = "canceled"
-    } else if (statuses.has("failed") && !statuses.has("sent") && !statuses.has("partially_sent")) {
+    } else if (activeStatuses.has("failed") && !activeStatuses.has("sent") && !activeStatuses.has("partially_sent")) {
       parentStatus = "failed"
-    } else if (statuses.has("failed") && (statuses.has("sent") || statuses.has("partially_sent"))) {
+    } else if (activeStatuses.has("failed") && (activeStatuses.has("sent") || activeStatuses.has("partially_sent"))) {
       parentStatus = "partially_sent"
-    } else if (statuses.has("sent") || statuses.has("partially_sent") || statuses.has("canceled")) {
+    } else if (activeStatuses.has("sent") || activeStatuses.has("partially_sent") || activeStatuses.has("canceled")) {
       parentStatus = "sent"
     }
 
@@ -4180,16 +4210,41 @@ export class EmailCampaignUseCase {
     try {
       const existing = await this.db.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["sent", "failed", "partially_sent"] } },
+        select: {
+          id: true,
+          parentCampaignId: true,
+          _count: { select: { subCampaigns: true } },
+        },
       })
 
       if (!existing) {
         return new Output(false, [], ["Campanha não encontrada ou não pode ser arquivada"], null)
       }
 
-      await this.db.emailCampaign.update({
-        where: { id },
-        data: { status: "archived" },
-      })
+      if (existing._count.subCampaigns > 0) {
+        await this.db.$transaction([
+          this.db.emailCampaign.updateMany({
+            where: {
+              parentCampaignId: id,
+              teamId: ctx.teamId,
+              status: { not: "archived" },
+            },
+            data: { status: "archived" },
+          }),
+          this.db.emailCampaign.update({
+            where: { id },
+            data: { status: "archived" },
+          }),
+        ])
+      } else {
+        await this.db.emailCampaign.update({
+          where: { id },
+          data: { status: "archived" },
+        })
+        if (existing.parentCampaignId) {
+          await this.refreshParentCampaignStatus(existing.parentCampaignId)
+        }
+      }
 
       return new Output(true, ["Campanha arquivada com sucesso"], [], null)
     } catch (error) {

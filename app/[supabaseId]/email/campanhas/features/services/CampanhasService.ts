@@ -44,6 +44,7 @@ export interface ICampanhasService {
   }): Promise<Campaign>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
+  getTemplateById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Template>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
   getCampaignLogs(supabaseId: string, teamId: string | null | undefined, campaignId: string, params: { page: number; pageSize: number; search?: string; status?: string[] }): Promise<{ logs: CampaignEmailLog[]; total: number; page: number; pageSize: number; totalPages: number }>
   getCampaignLogDetail(supabaseId: string, teamId: string | null | undefined, logId: string): Promise<CampaignLogDetail>
@@ -205,6 +206,17 @@ export class CampanhasService implements ICampanhasService {
     if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
     if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
     return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published' && t.isCurrentPublished)
+  }
+
+  async getTemplateById(supabaseId: string, teamId: string | null | undefined, id: string) {
+    const res = await fetch(`${this.baseUrl}/templates/${id}`, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    return json.result as Template
   }
 
   async getContactLists(supabaseId: string, teamId: string | null | undefined) {

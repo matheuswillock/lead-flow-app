@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { BarChart3, CalendarX, Copy, GitBranch, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText } from "lucide-react"
+import { BarChart3, CalendarX, Copy, Eye, GitBranch, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -56,6 +56,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { buildCampaignRadarSegmentSlug } from "@/lib/radar/segment-audience"
 import { GenerateSegmentDialog } from "@/app/[supabaseId]/radar/features/components/GenerateSegmentDialog"
+import { DispatchEmailPreviewDialog } from "./analytics/DispatchEmailPreviewDialog"
+import type { DispatchPreviewData } from "./analytics/AnalyticsTypes"
+import { CampanhasService } from "../services/CampanhasService"
+import { toast } from "sonner"
+
+const detailSheetCampanhasService = new CampanhasService()
 
 type CampaignAnalyticsTarget = {
   id: string
@@ -185,6 +191,7 @@ function SubCampaignActionsMenu({
   canSendCampaign,
   sendBlockReason,
   sendingId,
+  openViewById,
   openEditById,
   handleSend,
   onOpenAnalytics,
@@ -193,6 +200,7 @@ function SubCampaignActionsMenu({
   canSendCampaign: boolean
   sendBlockReason?: string
   sendingId: string | null
+  openViewById: (id: string) => Promise<void>
   openEditById: (id: string) => Promise<void>
   handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
@@ -250,6 +258,10 @@ function SubCampaignActionsMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => void openViewById(subCampaign.id)}>
+            <Eye />
+            Ver detalhes
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => void openEditById(subCampaign.id)} disabled={!canEdit}>
             <Pencil />
             Editar
@@ -358,7 +370,7 @@ export function CampaignDetailSheet({
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const { tz } = useTimezone()
-  const { host, readOnly, skipBetaGate } = useStudioEmailRuntime()
+  const { host, readOnly, skipBetaGate, teamId } = useStudioEmailRuntime()
   const params = useParams<{ supabaseId?: string }>()
   const supabaseId = params.supabaseId
   const {
@@ -369,6 +381,7 @@ export function CampaignDetailSheet({
     credits,
     openEditWizard,
     openDuplicateWizard,
+    openViewById,
     openEditById,
     handleSend,
     handleCancel,
@@ -377,6 +390,9 @@ export function CampaignDetailSheet({
   const [leafSending, setLeafSending] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [generateSegmentOpen, setGenerateSegmentOpen] = useState(false)
+  const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false)
+  const [templatePreviewLoading, setTemplatePreviewLoading] = useState(false)
+  const [templatePreview, setTemplatePreview] = useState<DispatchPreviewData | null>(null)
   // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
     !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
@@ -389,10 +405,38 @@ export function CampaignDetailSheet({
   const isParentCampaign = Boolean(
     detailCampaign?.isParentCampaign || (detailCampaign?.subCampaignCount ?? 0) > 0
   )
+  const parentCampaignId = detailCampaign?.parentCampaignId ?? null
   const canEdit =
-    detailCampaign &&
-    !isParentCampaign &&
-    ["draft", "scheduled"].includes(detailCampaign.status)
+    detailCampaign != null && ["draft", "scheduled"].includes(detailCampaign.status)
+  const templateId = detailCampaign?.template?.id ?? detailCampaign?.templateId ?? null
+  const templateName = detailCampaign?.template?.name ?? "—"
+
+  async function handlePreviewTemplate() {
+    if (!supabaseId || !templateId) return
+    setTemplatePreviewLoading(true)
+    setTemplatePreviewOpen(true)
+    try {
+      const template = await detailSheetCampanhasService.getTemplateById(
+        supabaseId,
+        teamId,
+        templateId
+      )
+      setTemplatePreview({
+        subject: template.subject,
+        html: template.html?.trim() ? template.html : "",
+        templateVersionNumber: template.versionNumber ?? 1,
+        templateName: template.name,
+      })
+    } catch (err) {
+      console.error("[CampaignDetailSheet] previewTemplate error", err)
+      toast.error("Erro ao carregar prévia do template")
+      setTemplatePreviewOpen(false)
+      setTemplatePreview(null)
+    } finally {
+      setTemplatePreviewLoading(false)
+    }
+  }
+
   const canCancel =
     detailCampaign &&
     !isParentCampaign &&
@@ -642,6 +686,7 @@ export function CampaignDetailSheet({
                                     canSendCampaign={canSendCampaign}
                                     sendBlockReason={subSendBlockReason}
                                     sendingId={sendingId}
+                                    openViewById={openViewById}
                                     openEditById={openEditById}
                                     handleSend={handleSend}
                                     onOpenAnalytics={onOpenAnalytics}
@@ -666,7 +711,25 @@ export function CampaignDetailSheet({
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Template</span>
-                    <span className="font-medium">{detailCampaign.template?.name ?? "—"}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{templateName}</span>
+                      {templateId ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handlePreviewTemplate()}
+                          disabled={templatePreviewLoading}
+                        >
+                          {templatePreviewLoading ? (
+                            <Loader2 data-icon="inline-start" className="animate-spin" />
+                          ) : (
+                            <Eye data-icon="inline-start" />
+                          )}
+                          Visualizar
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-muted-foreground">Lista / audiência</span>
@@ -690,6 +753,15 @@ export function CampaignDetailSheet({
               </div>
 
               <SheetFooter className="mt-4 border-t pt-4">
+                {parentCampaignId ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => void openViewById(parentCampaignId)}
+                  >
+                    <ArrowLeft data-icon="inline-start" />
+                    Voltar à campanha pai
+                  </Button>
+                ) : null}
                 <Button variant="outline" onClick={closeDetail}>
                   Fechar
                 </Button>
@@ -884,6 +956,15 @@ export function CampaignDetailSheet({
                 sourceType="campaign"
                 sourceName={detailCampaign.name}
                 campaignId={detailCampaign.id}
+              />
+
+              <DispatchEmailPreviewDialog
+                open={templatePreviewOpen}
+                onOpenChange={(open) => {
+                  setTemplatePreviewOpen(open)
+                  if (!open) setTemplatePreview(null)
+                }}
+                preview={templatePreview}
               />
           </div>
         ) : null}
