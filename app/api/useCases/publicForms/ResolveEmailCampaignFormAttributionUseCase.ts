@@ -12,6 +12,7 @@ import { Output } from "@/lib/output"
 import {
   extractPhoneFromCustomFields,
   FORM_START_ACTIVITY_BODY,
+  formatEmailCampaignLeadCreatedActivityBody,
   parseEmailLogIdFromOrigin,
   resolveAttributionDisplayName,
 } from "@/lib/public-forms/email-campaign-attribution"
@@ -97,6 +98,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
           phone: phone ?? "",
           normalizedPhone,
           campaignId: log.campaignId,
+          campaignName: log.campaignName,
           emailLogId: log.id,
           origin: enrichedOrigin,
         })
@@ -185,6 +187,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
     phone: string
     normalizedPhone: string
     campaignId: string | null
+    campaignName: string | null
     emailLogId: string
     origin: Record<string, unknown>
   }): Promise<Lead | null> {
@@ -265,7 +268,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
       input.teamId,
       {
         authorAsStudio: true,
-        body: "Lead criado via atribuição de campanha de e-mail",
+        body: formatEmailCampaignLeadCreatedActivityBody(input.campaignName),
         payload: {
           kind: "lead_creation",
           channel: "email_campaign_form",
@@ -275,6 +278,7 @@ class ResolveEmailCampaignFormAttributionUseCase {
           publicationId: input.publicationId,
           emailLogId: input.emailLogId,
           campaignId: input.campaignId,
+          campaignName: input.campaignName,
           origin: json(input.origin),
         },
       },
