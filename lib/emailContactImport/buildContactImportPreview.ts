@@ -15,6 +15,8 @@ export type ContactImportPreview = {
   importableCount: number;
   skippedCount: number;
   skippedIssues: ContactImportSkippedIssue[];
+  /** Linhas com e-mail válido — únicas que devem ser enfileiradas na importação. */
+  importableRows: EmailContactImportRow[];
   preview: Array<{ line?: number; email: string; name?: string }>;
 };
 
@@ -45,6 +47,7 @@ export function buildContactImportPreview(
     importableCount: importable.length,
     skippedCount: skippedIssues.length,
     skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PREVIEW_LIMIT),
+    importableRows: importable,
     preview: importable.slice(0, PREVIEW_LIMIT).map((row) => ({
       line: row.line,
       email: row.email.trim().toLowerCase(),

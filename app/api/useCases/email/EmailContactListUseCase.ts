@@ -576,7 +576,19 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Não é possível adicionar contatos à lista de bloqueados"], null)
       }
 
-      const normalizedEmail = this.normalizeEmail(email)
+      const emailValidation = isValidResendRecipientEmail(email)
+      if (!emailValidation.ok) {
+        return new Output(
+          false,
+          [],
+          [
+            `E-mail inválido. Este contato não será adicionado à base. (${emailValidation.reason})`,
+          ],
+          null
+        )
+      }
+
+      const normalizedEmail = emailValidation.email
       const existingContact = await prisma.emailContact.findUnique({
         where: { listId_email: { listId, email: normalizedEmail } },
       })

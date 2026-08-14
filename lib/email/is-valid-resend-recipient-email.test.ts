@@ -72,6 +72,21 @@ describe("isValidResendRecipientEmail", () => {
       reason: "Formato de e-mail inválido",
     })
   })
+
+  it("rejeita local-part com ponto no início, fim ou consecutivo (caso Resend 422)", () => {
+    expect(isValidResendRecipientEmail("mjc.f.@terra.com.br")).toEqual({
+      ok: false,
+      reason: "Formato de e-mail inválido",
+    })
+    expect(isValidResendRecipientEmail(".mjc@terra.com.br")).toEqual({
+      ok: false,
+      reason: "Formato de e-mail inválido",
+    })
+    expect(isValidResendRecipientEmail("mjc..f@terra.com.br")).toEqual({
+      ok: false,
+      reason: "Formato de e-mail inválido",
+    })
+  })
 })
 
 describe("format helpers", () => {
