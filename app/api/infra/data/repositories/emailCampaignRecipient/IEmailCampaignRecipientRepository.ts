@@ -12,6 +12,8 @@ export interface IEmailCampaignRecipientRepository {
   ): Promise<{ id: string; isSystemDefault: boolean } | null>
   findActiveRecipientsForTeam(teamId: string): Promise<CampaignRecipientRecord[]>
   findActiveRecipientsForList(contactListId: string): Promise<CampaignRecipientRecord[]>
+  countActiveRecipientsForTeam(teamId: string): Promise<number>
+  countActiveRecipientsForList(contactListId: string): Promise<number>
   findActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipientRecord[]>
   findGlobalVariableDefaults(teamId: string): Promise<Record<string, string>>
 }

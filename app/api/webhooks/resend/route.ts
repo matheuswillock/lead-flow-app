@@ -48,8 +48,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (inFlight >= MAX_CONCURRENT) {
-      console.info("[ResendWebhookRoute][POST] Semáforo cheio:", event.type, svixId)
-      return NextResponse.json({ received: false }, { status: 503 })
+      console.info("[ResendWebhookRoute][POST] Semáforo cheio, persistindo no outbox:", event.type, svixId)
+      try {
+        await resendWebhookProcessingFailureRepository.upsertFromProcessingFailure({
+          svixId,
+          eventType: event.type,
+          payload: event as Prisma.InputJsonValue,
+          lastError: "Semáforo do webhook saturado; processamento adiado",
+        })
+      } catch (outboxError) {
+        console.error("[ResendWebhookRoute][POST][saturated][outbox]", outboxError)
+      }
+      // Sempre 200: a Resend só reenvia em resposta não-2xx. Devolver 503 aqui
+      // realimenta o loop de retry que satura o semáforo (200k retries/24h).
+      return NextResponse.json({ received: true }, { status: 200 })
     }
 
     inFlight++
