@@ -1,23 +1,33 @@
-import { after } from "next/server"
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { syncPortfolioToRadarUseCase } from "@/app/api/useCases/radar/SyncPortfolioToRadarUseCase"
+import {
+  enqueueRadarProfileSync,
+  type EnqueueRadarProfileSyncOptions,
+} from "@/app/api/useCases/radar/enqueueRadarProfileSync"
 
 /**
- * Dispara o sync inline do Radar para uma carteira, fire-and-forget.
- * Compartilhado por todo ponto que escreve `LeadPortfolio` (PortfolioUseCase
- * e a finalização de contrato) — extraído para função standalone em vez de
- * método privado de uma única classe depois que um segundo caminho de
- * escrita apareceu (finalize/route.ts) sem essa chamada.
+ * Dispara o sync inline do Radar para uma carteira.
+ * Compartilhado por todo ponto que escreve `LeadPortfolio`.
+ * Publica na fila `radar-profile-sync` (sem `after()`). O caller deve `await`.
  */
-export function syncPortfolioToRadarInline(portfolioId: string, teamId: string | null | undefined): void {
+export async function syncPortfolioToRadarInline(
+  portfolioId: string,
+  teamId: string | null | undefined,
+  options: EnqueueRadarProfileSyncOptions = {}
+): Promise<void> {
   if (!teamId) return
-  after(async () => {
-    try {
-      const hasFeature = await teamHasRadarFeature(teamId)
-      if (!hasFeature) return
-      await syncPortfolioToRadarUseCase.execute({ portfolioId, teamId })
-    } catch (error) {
-      console.error("[syncPortfolioToRadarInline]", error)
-    }
-  })
+  try {
+    await enqueueRadarProfileSync(
+      { source: "portfolio", teamId, sourceId: portfolioId },
+      {
+        ...options,
+        fallback:
+          options.fallback ??
+          (async () => {
+            await syncPortfolioToRadarUseCase.execute({ portfolioId, teamId })
+          }),
+      }
+    )
+  } catch (error) {
+    console.error("[syncPortfolioToRadarInline]", error)
+  }
 }

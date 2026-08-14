@@ -176,7 +176,7 @@ export class ImportMappedPortfolioClientsUseCase implements IImportMappedPortfol
       if (cnpj) existingCnpjs.add(cnpj);
     }
 
-    syncFinalizedToRadarInlineBatch({ teamId: ctx.teamId, leadIds: importedLeadIds });
+    await syncFinalizedToRadarInlineBatch({ teamId: ctx.teamId, leadIds: importedLeadIds });
 
     const result: ImportMappedPortfolioClientsResult = {
       created,

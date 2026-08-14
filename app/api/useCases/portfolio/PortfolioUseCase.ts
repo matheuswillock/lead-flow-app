@@ -85,8 +85,8 @@ export class PortfolioUseCase implements IPortfolioUseCase {
   ): Promise<Output> {
     try {
       const result = await portfolioService.createPortfolioEntry(teamId, profileId, data);
-      syncPortfolioToRadarInline(result.portfolioId, teamId);
-      syncFinalizedToRadarInline({ teamId, leadId: result.leadId });
+      await syncPortfolioToRadarInline(result.portfolioId, teamId);
+      await syncFinalizedToRadarInline({ teamId, leadId: result.leadId });
       return new Output(true, ['Cliente adicionado na carteira com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao criar cliente na carteira:', error);
@@ -141,7 +141,7 @@ export class PortfolioUseCase implements IPortfolioUseCase {
         isCloser,
         data
       );
-      syncPortfolioToRadarInline(result.portfolioId, teamId);
+      await syncPortfolioToRadarInline(result.portfolioId, teamId);
       return new Output(true, ['Carteira atualizada com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao atualizar carteira:', error);
@@ -190,8 +190,8 @@ export class PortfolioUseCase implements IPortfolioUseCase {
         isCloser,
         payload
       );
-      syncPortfolioToRadarInline(result.portfolioId, teamId);
-      syncFinalizedToRadarInline({ teamId, leadId });
+      await syncPortfolioToRadarInline(result.portfolioId, teamId);
+      await syncFinalizedToRadarInline({ teamId, leadId });
       return new Output(true, ['Dados atualizados com sucesso'], [], result);
     } catch (error) {
       console.error('[PortfolioUseCase] Erro ao atualizar detalhe:', error);
