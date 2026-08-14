@@ -10,6 +10,25 @@ import {
 import { sanitizeDbText, stripHtmlTags } from "@/lib/whatsapp/sanitize-db-text"
 import { WebhookPayloadRejectedError } from "@/lib/whatsapp/webhook-processing-errors"
 import type { Prisma, WhatsAppMessageStatus } from "@prisma/client"
+import type { WhatsappRadarEventPayload } from "@/lib/queues/whatsapp-radar-events"
+
+const WHATSAPP_RADAR_EVENTS_QUEUE_PUBLISH_FAILED_TAG =
+  "whatsapp_radar_events_queue_publish_failed"
+
+type PublishWhatsappRadarEvent = (
+  payload: WhatsappRadarEventPayload
+) => Promise<{ messageId: string | null }>
+
+async function defaultPublish(
+  payload: WhatsappRadarEventPayload
+): Promise<{ messageId: string | null }> {
+  const { publishWhatsappRadarEvent } = await import("@/lib/queues/whatsapp-radar-events")
+  return publishWhatsappRadarEvent(payload)
+}
+
+export type ProcessOpenWaWebhookDeps = {
+  publish?: PublishWhatsappRadarEvent
+}
 
 interface ProcessOpenWaWebhookInput {
   teamId: string
@@ -25,7 +44,10 @@ function ackToStatus(ack: number): WhatsAppMessageStatus | null {
 }
 
 export class ProcessOpenWaWebhookUseCase {
-  constructor(private readonly repository: IWhatsAppRepository = whatsAppRepository) {}
+  constructor(
+    private readonly repository: IWhatsAppRepository = whatsAppRepository,
+    private readonly deps: ProcessOpenWaWebhookDeps = {}
+  ) {}
 
   async execute(input: ProcessOpenWaWebhookInput): Promise<Output> {
     try {
@@ -113,7 +135,7 @@ export class ProcessOpenWaWebhookUseCase {
     const messageType = event.hasMedia ? "IMAGE" : "TEXT"
     const contentText = sanitizeDbText(event.body)
 
-    await this.repository.createMessage({
+    const created = await this.repository.createMessage({
       conversation: { connect: { id: conversation.id } },
       team: { connect: { id: teamId } },
       config: { connect: { id: configId } },
@@ -139,6 +161,29 @@ export class ProcessOpenWaWebhookUseCase {
         ? {}
         : { unreadCount: { increment: 1 } }),
     })
+
+    const payload: WhatsappRadarEventPayload = {
+      source: "message",
+      teamId,
+      messageId: created.id,
+    }
+    const publish = this.deps.publish ?? defaultPublish
+    try {
+      await publish(payload)
+    } catch (error) {
+      console.error(
+        `[ProcessOpenWaWebhookUseCase][handleMessage] ${WHATSAPP_RADAR_EVENTS_QUEUE_PUBLISH_FAILED_TAG}`,
+        error
+      )
+      const { syncWhatsappMessageToRadarUseCase } = await import(
+        "@/app/api/useCases/whatsapp/SyncWhatsappMessageToRadarUseCase"
+      )
+      await syncWhatsappMessageToRadarUseCase.execute({
+        teamId,
+        message: created,
+        conversation,
+      })
+    }
   }
 
   private async handleAck(

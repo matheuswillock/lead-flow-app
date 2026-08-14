@@ -5,6 +5,7 @@ import { RADAR_IMPORT_SOCIOS_PROFILE_DATA_KEY } from "@/lib/radarImport/radarImp
 
 const claimPendingJobMock = mock(async () => null as null | Record<string, unknown>)
 const updateJobMock = mock(async () => ({}))
+const findByIdMock = mock(async () => null as null | Record<string, unknown>)
 const createJobMock = mock(async () => ({ id: "job-1", importId: "imp-1" }))
 const findByImportIdMock = mock(async () => null)
 const findProfileDataMock = mock(
@@ -32,6 +33,7 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarImportJobRepository", 
   radarImportJobRepository: {
     claimPendingJob: claimPendingJobMock,
     updateJob: updateJobMock,
+    findById: findByIdMock,
     create: createJobMock,
     findByImportId: findByImportIdMock,
     findProfileData: findProfileDataMock,
@@ -84,6 +86,12 @@ mock.module("@/app/api/services/radar/RadarService", () => ({
   },
 }))
 
+const enqueueRadarProfileSyncMock = mock(async () => {})
+
+mock.module("@/app/api/useCases/radar/enqueueRadarProfileSync", () => ({
+  enqueueRadarProfileSync: enqueueRadarProfileSyncMock,
+}))
+
 const { RadarBaseImportUseCase } = await import("@/app/api/useCases/radar/RadarBaseImportUseCase")
 const { withTransientTransactionRetry } = await import(
   "@/lib/prisma/retry-transient-transaction"
@@ -97,26 +105,32 @@ function p2028() {
 }
 
 describe("RadarBaseImportUseCase.processPendingJobs", () => {
+  const publishBatch = mock(async () => ({ messageId: "mid-1" }))
+
   beforeEach(() => {
     claimPendingJobMock.mockClear()
     claimPendingJobMock.mockImplementation(async () => null)
     updateJobMock.mockClear()
+    findByIdMock.mockClear()
     downloadRadarImportPayloadMock.mockClear()
     downloadRadarImportPayloadMock.mockImplementation(async () =>
       JSON.stringify({ columns: ["nome", "email"], rows: [], sourceFormat: "csv" })
     )
+    publishBatch.mockClear()
+    publishBatch.mockImplementation(async () => ({ messageId: "mid-1" }))
   })
 
   it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {
-    const useCase = new RadarBaseImportUseCase()
+    const useCase = new RadarBaseImportUseCase({ publishBatch })
     const output = await useCase.processPendingJobs()
     expect(output.isValid).toBe(true)
     expect(output.successMessages).toContain("Nenhum job pendente")
     expect((output.result as { processedJobs: number }).processedJobs).toBe(0)
     expect(claimPendingJobMock).toHaveBeenCalledTimes(1)
+    expect(publishBatch).not.toHaveBeenCalled()
   })
 
-  it("T1: reexecuta claim após P2028 e processa o job", async () => {
+  it("T1: reexecuta claim após P2028 e enfileira o lote sem processRow", async () => {
     claimPendingJobMock.mockImplementation(async () => {
       if (claimPendingJobMock.mock.calls.length === 1) throw p2028()
       return {
@@ -136,11 +150,14 @@ describe("RadarBaseImportUseCase.processPendingJobs", () => {
       }
     })
 
-    const useCase = new RadarBaseImportUseCase()
+    const useCase = new RadarBaseImportUseCase({ publishBatch })
     const output = await useCase.processPendingJobs()
 
     expect(output.isValid).toBe(true)
     expect(claimPendingJobMock).toHaveBeenCalledTimes(2)
+    expect(publishBatch).toHaveBeenCalledWith({ jobId: "job-1", batchIndex: 0 })
+    expect(resolveProfileForEmailMock).not.toHaveBeenCalled()
+    expect(resolveProfileForPhoneMock).not.toHaveBeenCalled()
   })
 
   it("T2: esgota retries de P2028 e retorna mensagem com code", async () => {
@@ -148,7 +165,7 @@ describe("RadarBaseImportUseCase.processPendingJobs", () => {
       throw p2028()
     })
 
-    const useCase = new RadarBaseImportUseCase()
+    const useCase = new RadarBaseImportUseCase({ publishBatch })
     const output = await useCase.processPendingJobs()
 
     expect(output.isValid).toBe(false)
@@ -166,7 +183,7 @@ describe("RadarBaseImportUseCase.processPendingJobs", () => {
       })
     })
 
-    const useCase = new RadarBaseImportUseCase()
+    const useCase = new RadarBaseImportUseCase({ publishBatch })
     const output = await useCase.processPendingJobs()
 
     expect(output.isValid).toBe(false)
@@ -362,5 +379,76 @@ describe("RadarBaseImportUseCase.processRow gender resolution", () => {
       "base.segmento": "Industrial",
       [RADAR_IMPORT_SOCIOS_PROFILE_DATA_KEY]: "Maria Silva",
     })
+  })
+})
+
+describe("RadarBaseImportUseCase.processClaimedBatch", () => {
+  const publishBatch = mock(async () => ({ messageId: "mid-1" }))
+
+  function job(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "job-1",
+      importId: "imp-1",
+      teamId: "team-1",
+      requestedBy: "profile-1",
+      storagePath: "path",
+      fieldMapping: { name: "nome", phone: "telefone" },
+      status: "processing",
+      processedRows: 0,
+      createdCount: 0,
+      enrichedCount: 0,
+      skippedCount: 0,
+      deferredCount: 0,
+      skippedIssues: [],
+      failedBatches: [],
+      ...overrides,
+    }
+  }
+
+  beforeEach(() => {
+    findByIdMock.mockClear()
+    updateJobMock.mockClear()
+    enqueueRadarProfileSyncMock.mockClear()
+    publishBatch.mockClear()
+    publishBatch.mockImplementation(async () => ({ messageId: "mid-1" }))
+    resolveProfileForPhoneMock.mockClear()
+    resolveProfileForPhoneMock.mockImplementation(async () => ({
+      profile: { id: "profile-1" },
+      wasExisting: false,
+    }))
+    downloadRadarImportPayloadMock.mockClear()
+    downloadRadarImportPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        columns: ["nome", "telefone"],
+        rows: [{ line: 2, values: { nome: "Ana Silva", telefone: "11987654321" } }],
+        sourceFormat: "csv",
+      })
+    )
+  })
+
+  it("avança o checkpoint processedRows", async () => {
+    findByIdMock.mockImplementation(async () => job())
+    const useCase = new RadarBaseImportUseCase({ publishBatch })
+    const output = await useCase.processClaimedBatch({ jobId: "job-1", batchIndex: 0 })
+    expect(output.isValid).toBe(true)
+    expect(updateJobMock).toHaveBeenCalled()
+    const checkpoint = updateJobMock.mock.calls.find((call) => {
+      const data = (call as unknown as [string, { processedRows?: number }])[1]
+      return data.processedRows === 1
+    })
+    expect(checkpoint).toBeDefined()
+    expect(enqueueRadarProfileSyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "bulk_import_finalize", teamId: "team-1" }),
+      expect.anything()
+    )
+  })
+
+  it("replay do mesmo batchIndex não duplica created", async () => {
+    findByIdMock.mockImplementation(async () => job({ processedRows: 1, createdCount: 1 }))
+    const useCase = new RadarBaseImportUseCase({ publishBatch })
+    const output = await useCase.processClaimedBatch({ jobId: "job-1", batchIndex: 0 })
+    expect(output.isValid).toBe(true)
+    expect(resolveProfileForPhoneMock).not.toHaveBeenCalled()
+    expect(enqueueRadarProfileSyncMock).toHaveBeenCalled()
   })
 })

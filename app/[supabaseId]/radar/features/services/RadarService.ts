@@ -22,10 +22,21 @@ import type {
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 async function parseOutput<T>(res: Response): Promise<T> {
+  const json = (await res.json().catch(() => null)) as {
+    isValid?: boolean
+    errorMessages?: string[]
+    result?: T
+  } | null
+
+  if (json && typeof json.isValid === "boolean") {
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.join(", ") || `HTTP ${res.status}`)
+    }
+    return json.result as T
+  }
+
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const json = await res.json()
-  if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro na requisição")
-  return json.result as T
+  throw new Error("Resposta inválida da API")
 }
 
 export class RadarFrontendService implements IRadarService {
