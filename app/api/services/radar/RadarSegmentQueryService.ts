@@ -294,26 +294,12 @@ async function translateEmailContactList(
 }
 
 /**
- * Evita P2035 (limite ~32767 binds) ao filtrar por muitos profileIds.
- * Contagens só com `email_contact_list` usam SQL dedicado (sem este filtro).
+ * Filtro Prisma por profileIds. NÃO usar para conjuntos grandes — `countProfiles` /
+ * `listProfileIds` desviam para SQL (`INTERSECT` / `ANY($n::uuid[])`) e evitam P2035.
  */
-const PROFILE_ID_IN_CHUNK = 5_000
-
 function profileIdInFilter(profileIds: string[]): Prisma.RadarProfileWhereInput {
-  if (profileIds.length === 0) {
-    // Prisma `in: []` não casa nada — equivalente a false.
-    return { id: { in: [] } }
-  }
-  if (profileIds.length <= PROFILE_ID_IN_CHUNK) {
-    return { id: { in: profileIds } }
-  }
-  const chunks: string[][] = []
-  for (let i = 0; i < profileIds.length; i += PROFILE_ID_IN_CHUNK) {
-    chunks.push(profileIds.slice(i, i + PROFILE_ID_IN_CHUNK))
-  }
-  // Se a soma dos chunks passar ~32k binds, preferir regras sole `email_contact_list`
-  // (caminho SQL em countProfiles/listProfileIds) ou reduzir o conjunto a montante.
-  return { OR: chunks.map((ids) => ({ id: { in: ids } })) }
+  // Prisma `in: []` não casa nada — equivalente a false.
+  return { id: { in: profileIds } }
 }
 
 /** Segmento só com `email_contact_list` (união) — usa SQL sem materializar IDs no Prisma. */
@@ -322,7 +308,7 @@ function trySoleEmailContactListIds(rules: RadarSegmentRules): string[] | null {
   if (!rules.conditions.every((condition) => condition.kind === "email_contact_list")) {
     return null
   }
-  // `match: all` com várias listas exige interseção — cai no caminho Prisma composto.
+  // `match: all` com várias listas exige interseção — caminho SQL dedicado.
   if (rules.match === "all" && rules.conditions.length > 1) return null
   return [
     ...new Set(
@@ -331,6 +317,74 @@ function trySoleEmailContactListIds(rules: RadarSegmentRules): string[] | null {
       )
     ),
   ]
+}
+
+/** `match: all` + várias `email_contact_list` — INTERSECT SQL, sem Prisma `in`. */
+function tryEmailContactListIntersectionGroups(rules: RadarSegmentRules): string[][] | null {
+  if (rules.conditions.length <= 1) return null
+  if (rules.match !== "all") return null
+  if (!rules.conditions.every((condition) => condition.kind === "email_contact_list")) {
+    return null
+  }
+  return rules.conditions.map((condition) =>
+    condition.kind === "email_contact_list" ? [...new Set(condition.listIds)] : []
+  )
+}
+
+function hasEmailContactListOrField(rules: RadarSegmentRules): boolean {
+  return rules.conditions.some(
+    (condition) => condition.kind === "email_contact_list" || condition.kind === "email_contact_field"
+  )
+}
+
+function emailContactListGroups(rules: RadarSegmentRules): string[][] {
+  const listConditions = rules.conditions.filter(
+    (condition): condition is Extract<RadarSegmentCondition, { kind: "email_contact_list" }> =>
+      condition.kind === "email_contact_list"
+  )
+  if (listConditions.length === 0) return []
+  if (rules.match === "any") {
+    return [[...new Set(listConditions.flatMap((condition) => condition.listIds))]]
+  }
+  return listConditions.map((condition) => [...new Set(condition.listIds)])
+}
+
+async function resolveEmailContactIdGroups(
+  teamId: string,
+  rules: RadarSegmentRules
+): Promise<string[][]> {
+  const fieldConditions = rules.conditions.filter(
+    (condition): condition is Extract<RadarSegmentCondition, { kind: "email_contact_field" }> =>
+      condition.kind === "email_contact_field"
+  )
+  if (fieldConditions.length === 0) return []
+
+  const groups = await Promise.all(
+    fieldConditions.map((condition) =>
+      radarRepository.findEmailContactIdsByCustomField(
+        teamId,
+        condition.fieldKey,
+        condition.operator,
+        condition.value
+      )
+    )
+  )
+
+  if (rules.match === "any") {
+    return [[...new Set(groups.flat())]]
+  }
+  return groups
+}
+
+async function otherConditionsWhere(
+  teamId: string,
+  rules: RadarSegmentRules
+): Promise<Prisma.RadarProfileWhereInput | null> {
+  const otherConditions = rules.conditions.filter(
+    (condition) => condition.kind !== "email_contact_list" && condition.kind !== "email_contact_field"
+  )
+  if (otherConditions.length === 0) return null
+  return buildProfileWhere(teamId, { match: rules.match, conditions: otherConditions })
 }
 
 async function translateEmailContactField(
@@ -346,25 +400,16 @@ async function translateEmailContactField(
   return emailContactIdIdentityFilter(contactIds)
 }
 
+/**
+ * Filtro Prisma por `email_contact_id`. NÃO usar para conjuntos grandes —
+ * `countProfiles` / `listProfileIds` usam `ANY($n::text[])` na identity.
+ */
 function emailContactIdIdentityFilter(contactIds: string[]): Prisma.RadarProfileWhereInput {
   if (contactIds.length === 0) return { id: { in: [] } }
-  if (contactIds.length <= PROFILE_ID_IN_CHUNK) {
-    return {
-      identities: {
-        some: { type: "email_contact_id", normalizedValue: { in: contactIds } },
-      },
-    }
-  }
-  const chunks: string[][] = []
-  for (let i = 0; i < contactIds.length; i += PROFILE_ID_IN_CHUNK) {
-    chunks.push(contactIds.slice(i, i + PROFILE_ID_IN_CHUNK))
-  }
   return {
-    OR: chunks.map((ids) => ({
-      identities: {
-        some: { type: "email_contact_id", normalizedValue: { in: ids } },
-      },
-    })),
+    identities: {
+      some: { type: "email_contact_id", normalizedValue: { in: contactIds } },
+    },
   }
 }
 
@@ -448,6 +493,24 @@ class RadarSegmentQueryService implements IRadarSegmentQueryService {
     if (soleListIds) {
       return radarRepository.countProfilesByEmailContactListIds(scope.teamId, soleListIds)
     }
+
+    const intersectionGroups = tryEmailContactListIntersectionGroups(rules)
+    if (intersectionGroups) {
+      return radarRepository.countProfilesByEmailContactListIntersection(
+        scope.teamId,
+        intersectionGroups
+      )
+    }
+
+    if (hasEmailContactListOrField(rules)) {
+      const where = await otherConditionsWhere(scope.teamId, rules)
+      return radarRepository.countProfilesByWhereWithAnyFilters(scope.teamId, where, {
+        combine: rules.match === "all" ? "intersect" : "union",
+        listIdGroups: emailContactListGroups(rules),
+        emailContactIdGroups: await resolveEmailContactIdGroups(scope.teamId, rules),
+      })
+    }
+
     const where = await buildProfileWhere(scope.teamId, rules)
     return radarRepository.countProfilesByWhere(where)
   }
@@ -465,6 +528,30 @@ class RadarSegmentQueryService implements IRadarSegmentQueryService {
         pagination
       )
     }
+
+    const intersectionGroups = tryEmailContactListIntersectionGroups(rules)
+    if (intersectionGroups) {
+      return radarRepository.listProfileIdsByEmailContactListIntersection(
+        scope.teamId,
+        intersectionGroups,
+        pagination
+      )
+    }
+
+    if (hasEmailContactListOrField(rules)) {
+      const where = await otherConditionsWhere(scope.teamId, rules)
+      return radarRepository.listProfileIdsByWhereWithAnyFilters(
+        scope.teamId,
+        where,
+        {
+          combine: rules.match === "all" ? "intersect" : "union",
+          listIdGroups: emailContactListGroups(rules),
+          emailContactIdGroups: await resolveEmailContactIdGroups(scope.teamId, rules),
+        },
+        pagination
+      )
+    }
+
     const where = await buildProfileWhere(scope.teamId, rules)
     return radarRepository.listProfileIdsByWhere(where, pagination)
   }
