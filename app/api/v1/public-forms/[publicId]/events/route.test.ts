@@ -60,8 +60,9 @@ describe("POST /api/v1/public-forms/[publicId]/events", () => {
 
     const res = await POST(makeRequest({
       visitorSessionId: VALID_SESSION,
-      eventType: "form_started",
-      eventKey: `${VALID_SESSION}:form_started:form`,
+      eventType: "question_viewed",
+      questionId: "11111111-1111-4111-8111-111111111111",
+      eventKey: `${VALID_SESSION}:question_viewed:q1`,
       origin: {},
     }), { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) })
 
@@ -69,6 +70,24 @@ describe("POST /api/v1/public-forms/[publicId]/events", () => {
     const body = (await res.json()) as { result: { accepted?: boolean; queued?: boolean } }
     expect(body.result.accepted).toBe(true)
     expect(body.result.queued).toBeUndefined()
+    expect(recordMetric).toHaveBeenCalledTimes(1)
+    expect(recordMetric.mock.calls[0]?.[1]).toMatchObject({ eventType: "question_viewed" })
+  })
+
+  it("form_started é crítico: chama recordMetric (queue-first) e retorna 202 queued", async () => {
+    recordMetric.mockResolvedValueOnce(new Output(true, [], [], { queued: true, messageId: "msg-started" }))
+
+    const res = await POST(makeRequest({
+      visitorSessionId: VALID_SESSION,
+      eventType: "form_started",
+      eventKey: `${VALID_SESSION}:form_started:form`,
+      origin: {},
+    }), { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) })
+
+    expect(res.status).toBe(202)
+    const body = (await res.json()) as { result: { accepted?: boolean; queued?: boolean } }
+    expect(body.result.queued).toBe(true)
+    expect(body.result.accepted).toBeUndefined()
     expect(recordMetric).toHaveBeenCalledTimes(1)
     expect(recordMetric.mock.calls[0]?.[1]).toMatchObject({ eventType: "form_started" })
   })
