@@ -5342,12 +5342,16 @@ model AsaasWebhookEvent {
   eventType    String?                 @map("eventType") @db.Text
   payload      Json
   status       AsaasWebhookEventStatus @default(pending)
-  errorMessage String?                 @map("errorMessage") @db.Text
-  receivedAt   DateTime                @default(now()) @map("receivedAt") @db.Timestamptz(6)
-  processedAt  DateTime?               @map("processedAt") @db.Timestamptz(6)
-  updatedAt    DateTime                @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  errorMessage  String?                 @map("errorMessage") @db.Text
+  attemptCount  Int                     @default(0) @map("attemptCount")
+  nextAttemptAt DateTime                @default(now()) @map("nextAttemptAt") @db.Timestamptz(6)
+  failureReason String?                 @map("failureReason") @db.Text
+  receivedAt    DateTime                @default(now()) @map("receivedAt") @db.Timestamptz(6)
+  processedAt   DateTime?               @map("processedAt") @db.Timestamptz(6)
+  updatedAt     DateTime                @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
   @@index([status, receivedAt(sort: Desc)], map: "asaas_webhook_events_status_received_at_idx")
+  @@index([status, nextAttemptAt], map: "asaas_webhook_events_status_next_attempt_at_idx")
   @@map("asaas_webhook_events")
 }
 

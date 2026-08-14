@@ -113,6 +113,17 @@
           "maxConcurrency": 4
         }
       ]
+    },
+    "app/api/queues/asaas-webhook-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "asaas-webhook-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
     }
   },
   "crons": [
@@ -222,6 +233,10 @@
     },
     {
       "path": "/api/v1/email/cron/retry-resend-webhook-failures",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/integrations/webhooks/cron/retry-asaas-webhook-failures",
       "schedule": "*/5 * * * *"
     },
     {
