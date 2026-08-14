@@ -3768,6 +3768,9 @@ completed completed
     Json payload 
     AsaasWebhookEventStatus status 
     String errorMessage "❓"
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String failureReason "❓"
     DateTime receivedAt 
     DateTime processedAt "❓"
     DateTime updatedAt 

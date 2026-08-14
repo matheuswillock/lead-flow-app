@@ -6,8 +6,9 @@ import {
   asaasWebhookEventRepository,
 } from "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
+import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
+import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import {
-  processAsaasWebhookEvent,
   resolveAsaasWebhookEventId,
   type AsaasWebhookBody,
 } from "./processAsaasWebhookEvent";
@@ -74,24 +75,30 @@ export async function POST(request: NextRequest) {
 
     after(async () => {
       try {
-        await processAsaasWebhookEvent(body);
-        await asaasWebhookEventRepository.markProcessed(eventId);
+        const publishResult = await publishWithRetry(() =>
+          publishAsaasWebhookEvent({ eventId, body })
+        );
+        if (!publishResult.ok) {
+          const message = getErrorMessage(publishResult.error);
+          console.error("[AsaasWebhookRoute][after][publish-exhausted]", {
+            eventId,
+            attempts: publishResult.attempts,
+            error: message,
+          });
+          Sentry.captureException(publishResult.error, {
+            tags: { route: "AsaasWebhookRoute", phase: "after-publish-exhausted" },
+            extra: { eventId, event: body.event, paymentId: body.payment?.id, attempts: publishResult.attempts },
+          });
+          await asaasWebhookEventRepository.markFailed(eventId, message, "queue_publish_failed").catch((markError) => {
+            console.error("[AsaasWebhookRoute][after] falha ao marcar evento como failed", { eventId, markError });
+          });
+        }
       } catch (error) {
         rethrowIfPrerenderInterrupted(error);
-        const message = getErrorMessage(error);
-        console.error("[AsaasWebhookRoute][after] falha no processamento", {
-          eventId,
-          error: message,
-        });
+        console.error("[AsaasWebhookRoute][after] erro inesperado ao publicar", { eventId, error });
         Sentry.captureException(error, {
           tags: { route: "AsaasWebhookRoute", phase: "after" },
           extra: { eventId, event: body.event, paymentId: body.payment?.id },
-        });
-        await asaasWebhookEventRepository.markFailed(eventId, message).catch((markError) => {
-          console.error("[AsaasWebhookRoute][after] falha ao marcar evento como failed", {
-            eventId,
-            markError,
-          });
         });
       }
     });
