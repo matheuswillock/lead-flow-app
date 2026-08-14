@@ -42,6 +42,18 @@ export function isValidResendRecipientEmail(
     return { ok: false, reason: "Formato de e-mail inválido" }
   }
 
+  const atIndex = email.indexOf("@")
+  const localPart = atIndex >= 0 ? email.slice(0, atIndex) : ""
+  // Resend rejeita local-part com ponto no início/fim ou consecutivos (ex.: mjc.f.@…).
+  if (
+    !localPart ||
+    localPart.startsWith(".") ||
+    localPart.endsWith(".") ||
+    localPart.includes("..")
+  ) {
+    return { ok: false, reason: "Formato de e-mail inválido" }
+  }
+
   return { ok: true, email }
 }
 
