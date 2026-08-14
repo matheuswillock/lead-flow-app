@@ -6,7 +6,7 @@ import {
   type RadarSegmentRules,
   RADAR_SEGMENT_MAX_CONDITIONS,
 } from "@/lib/radar/segment-dsl"
-import type { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
 type CreateChildSegmentInput = {
   ctx: TeamAccess
@@ -114,6 +114,12 @@ export class CreateChildSegmentUseCase {
       )
     } catch (error) {
       console.error("[CreateChildSegmentUseCase][execute]", error)
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        return new Output(false, [], ["Já existe um segmento com esse nome"], null)
+      }
       if (error instanceof Error && error.message.includes("Já existe um segmento com esse nome")) {
         return new Output(false, [], [error.message], null)
       }
