@@ -2,8 +2,9 @@ import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import { radarService } from "@/app/api/services/radar/RadarService"
 import { isValidRadarFieldKey } from "@/lib/radar/field-catalog"
+import { enqueueRadarProfileSync } from "@/app/api/useCases/radar/enqueueRadarProfileSync"
+import { syncRadarProfileDataForTeamUseCase } from "@/app/api/useCases/radar/SyncRadarProfileDataForTeamUseCase"
 
 export type EmailVariableType = "string" | "number"
 export type EmailVariableValueSource = "STATIC" | "RADAR"
@@ -66,17 +67,14 @@ function validateInput(input: UpsertEmailVariableInput): string | null {
 
 async function refreshRadarProfileData(ctx: TeamContext) {
   try {
-    await radarService.syncProfileDataForTeam({
-      teamId: ctx.teamId,
-      ctx: {
-        profileId: ctx.profileId,
-        userTimezone: ctx.userTimezone,
-        teamMember: {
-          role: ctx.teamMember.role,
-          functions: ctx.teamMember.functions,
+    await enqueueRadarProfileSync(
+      { source: "email_settings", teamId: ctx.teamId, sourceId: ctx.teamId },
+      {
+        fallback: async () => {
+          await syncRadarProfileDataForTeamUseCase.execute({ teamId: ctx.teamId })
         },
-      },
-    })
+      }
+    )
   } catch (error) {
     console.error("[EmailTeamVariablesUseCase][refreshRadarProfileData]", error)
   }

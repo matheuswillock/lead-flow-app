@@ -1,5 +1,4 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { after } from "next/server";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository";
 import { ILeadUseCase } from "./ILeadUseCase";
@@ -46,8 +45,7 @@ import {
   type CustomFieldFilterInput,
   type CustomFieldSortInput,
 } from "@/lib/leadCustomFields/customFieldQuery";
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature";
-import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase";
+import { syncLeadToRadarInline } from "@/app/api/useCases/radar/syncLeadToRadarInline";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import {
   resolveTransferScheduleInput,
@@ -566,7 +564,7 @@ export class LeadUseCase implements ILeadUseCase {
         );
       }
 
-      this.syncLeadToRadarInline(lead.id, teamId);
+      await syncLeadToRadarInline(lead.id, teamId);
 
       return new Output(
         true,
@@ -1283,7 +1281,7 @@ export class LeadUseCase implements ILeadUseCase {
         data.phone !== undefined ||
         data.cnpj !== undefined
       ) {
-        this.syncLeadToRadarInline(id, leadForDraft.teamId);
+        await syncLeadToRadarInline(id, leadForDraft.teamId);
       }
 
       return new Output(
@@ -1785,7 +1783,7 @@ export class LeadUseCase implements ILeadUseCase {
             console.error("[OutboundEventPublisher] Falha ao enfileirar evento:", error);
           });
 
-          this.syncLeadToRadarInline(id, existingLead.teamId);
+          await syncLeadToRadarInline(id, existingLead.teamId);
         }
       }
 
@@ -2393,27 +2391,6 @@ export class LeadUseCase implements ILeadUseCase {
         definitionId: definitionByKey.get(key)!.id,
         value: value as never,
       }));
-  }
-
-  /**
-   * Push inline fire-and-forget do CRM para o Radar (D8) — não bloqueia nem
-   * falha a operação principal do lead. Só dispara com o add-on ativo; as
-   * rotas /api/v1/radar/sync/** seguem servindo como backfill.
-   * Agendado via `after()` (não apenas uma promise solta): na Vercel, o
-   * runtime pode encerrar a função assim que a resposta é enviada, matando
-   * um `.catch()` não registrado antes de ele completar.
-   */
-  private syncLeadToRadarInline(leadId: string, teamId: string | null | undefined): void {
-    if (!teamId) return;
-    after(async () => {
-      try {
-        const hasFeature = await teamHasRadarFeature(teamId);
-        if (!hasFeature) return;
-        await syncLeadToRadarUseCase.execute({ leadId, teamId });
-      } catch (error) {
-        console.error("[LeadUseCase][syncLeadToRadarInline]", error);
-      }
-    });
   }
 
   private async attachCustomFieldsToDto(leadId: string, dto: LeadResponseDTO): Promise<LeadResponseDTO> {

@@ -259,9 +259,9 @@ export async function POST(
     invalidateLeadCache({ leadId, teamId });
     invalidatePortfolioCache({ teamId, leadId });
     if (createdOrUpdatedPortfolioId) {
-      syncPortfolioToRadarInline(createdOrUpdatedPortfolioId, teamId);
+      await syncPortfolioToRadarInline(createdOrUpdatedPortfolioId, teamId);
     }
-    syncFinalizedToRadarInline({ teamId, finalizedId: result.leadFinalized.id });
+    await syncFinalizedToRadarInline({ teamId, finalizedId: result.leadFinalized.id });
     return NextResponse.json(
       new Output(true, ['Contrato finalizado com sucesso'], [], result),
       { status: 200 }

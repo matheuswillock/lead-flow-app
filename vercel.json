@@ -47,6 +47,50 @@
           "maxConcurrency": 2
         }
       ]
+    },
+    "app/api/queues/radar-profile-sync/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "radar-profile-sync",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
+    "app/api/queues/radar-pixel-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "radar-pixel-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
+    "app/api/queues/radar-bulk-import/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "radar-bulk-import",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
+    "app/api/queues/whatsapp-radar-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "whatsapp-radar-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
     }
   },
   "crons": [
