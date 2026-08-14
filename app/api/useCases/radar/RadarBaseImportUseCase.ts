@@ -496,7 +496,7 @@ export class RadarBaseImportUseCase {
     await radarService.syncProfileDataForTeam({ teamId: job.teamId, ctx })
 
     const message =
-      `Importação da base "${job.importId}" concluída: ${job.createdCount} criados, ${job.enrichedCount} enriquecidos, ${job.skippedCount} ignorados, ${job.deferredCount} adiados.`
+      `Importação da base "${job.importId}" concluída: ${job.createdCount} criados, ${job.enrichedCount} enriquecidos, ${job.skippedCount} ignorados (não entram na base), ${job.deferredCount} adiados.`
 
     await notificationService.createSystemNotification({
       recipientProfileId: job.requestedBy,
