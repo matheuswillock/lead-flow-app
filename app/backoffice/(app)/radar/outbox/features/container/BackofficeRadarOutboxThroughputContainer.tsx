@@ -70,7 +70,7 @@ export function BackofficeRadarOutboxThroughputContainer() {
           <div className="flex flex-col gap-2 text-sm">
             <p>
               O cron <code className="text-xs">{snapshot.howItWorks.cronPath}</code> roda a cada{" "}
-              <strong>5 minutos</strong> ({snapshot.howItWorks.cronRunsPerHour}×/hora), reivindica um
+              <strong>15 minutos</strong> ({snapshot.howItWorks.cronRunsPerHour}×/hora), reivindica um
               lote de contatos <em>pending</em> da outbox e sincroniza no Radar.
             </p>
             <p>

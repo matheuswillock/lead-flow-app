@@ -41,8 +41,9 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
     const throughput = await resolveEffectiveRadarOutboxThroughput();
     const batchSize = throughput.batchSize;
     const source = options?.source ?? "cron";
-    /** Fila: isolate com `connection_limit=1` — sem Promise.all de 8 syncs no mesmo isolate. */
-    const concurrency = source === "queue" ? 1 : throughput.concurrency;
+    /** Fila: isolate com `connection_limit=1`. Cron: safety-net, teto 2 (SKIP LOCKED). */
+    const concurrency =
+      source === "queue" ? 1 : Math.min(throughput.concurrency, 2);
     const startedAt = Date.now();
     let claimedIds: string[] = [];
 
