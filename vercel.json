@@ -36,6 +36,17 @@
           "maxConcurrency": 4
         }
       ]
+    },
+    "app/api/queues/radar-email-contact-sync/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "radar-email-contact-sync",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
     }
   },
   "crons": [
