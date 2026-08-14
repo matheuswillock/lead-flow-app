@@ -2,9 +2,11 @@ import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { consumeRadarPixelRateLimit } from "@/lib/radar/pixel-rate-limit"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
+import type { RadarPixelEventPayload } from "@/lib/queues/radar-pixel-events"
 
 const PIXEL_RATE_LIMIT = { limit: 60, windowMs: 60_000 }
 const ALLOWED_EVENT_TYPES = new Set(["pixel.pageview", "pixel.click"])
+const RADAR_PIXEL_EVENTS_QUEUE_PUBLISH_FAILED_TAG = "radar_pixel_events_queue_publish_failed"
 
 function isOriginAllowed(origin: string | null, allowedOrigins: string[]): boolean {
   if (allowedOrigins.length === 0) return true
@@ -34,7 +36,22 @@ export type RadarPixelHitResult =
   | { status: "origin_not_allowed" }
   | { status: "rate_limited"; retryAfterSeconds: number }
 
-class RadarPixelHitUseCase {
+type PublishRadarPixelEvent = (
+  payload: RadarPixelEventPayload
+) => Promise<{ messageId: string | null }>
+
+async function defaultPublish(payload: RadarPixelEventPayload): Promise<{ messageId: string | null }> {
+  const { publishRadarPixelEvent } = await import("@/lib/queues/radar-pixel-events")
+  return publishRadarPixelEvent(payload)
+}
+
+export type RadarPixelHitDeps = {
+  publish?: PublishRadarPixelEvent
+}
+
+export class RadarPixelHitUseCase {
+  constructor(private readonly deps: RadarPixelHitDeps = {}) {}
+
   async execute(input: RadarPixelHitInput): Promise<Output> {
     const eventType = ALLOWED_EVENT_TYPES.has(input.eventType) ? input.eventType : "pixel.pageview"
 
@@ -62,41 +79,65 @@ class RadarPixelHitUseCase {
       return new Output(false, [], ["Rate limit excedido"], result)
     }
 
+    const payload: RadarPixelEventPayload = {
+      teamId: config.teamId,
+      publicToken: input.publicToken,
+      eventType,
+      visitorSession: input.visitorSession,
+      origin: input.origin,
+      userAgent: input.userAgent,
+    }
+
+    const publish = this.deps.publish ?? defaultPublish
+    try {
+      await publish(payload)
+    } catch (error) {
+      console.error(`[RadarPixelHitUseCase][execute] ${RADAR_PIXEL_EVENTS_QUEUE_PUBLISH_FAILED_TAG}`, error)
+      await this.persistQueuedHit(payload)
+    }
+
+    const result: RadarPixelHitResult = { status: "ok" }
+    return new Output(true, ["Hit registrado"], [], result)
+  }
+
+  async persistQueuedHit(payload: RadarPixelEventPayload): Promise<Output> {
+    const eventType = ALLOWED_EVENT_TYPES.has(payload.eventType) ? payload.eventType : "pixel.pageview"
     const now = new Date()
+    const dayKey = now.toISOString().slice(0, 10)
 
     const [{ profile }] = await Promise.all([
       radarRepository.resolveProfileForVisitorSession({
-        teamId: config.teamId,
-        visitorSession: input.visitorSession,
+        teamId: payload.teamId,
+        visitorSession: payload.visitorSession,
         lastSeenAt: now,
       }),
       radarRepository.logPixelHit({
-        teamId: config.teamId,
+        teamId: payload.teamId,
         eventType,
-        visitorSession: input.visitorSession,
-        origin: input.origin,
-        userAgent: input.userAgent,
+        visitorSession: payload.visitorSession,
+        origin: payload.origin,
+        userAgent: payload.userAgent,
       }),
     ])
 
     await Promise.all([
       radarRepository.upsertSourceLink({
         profileId: profile.id,
-        teamId: config.teamId,
+        teamId: payload.teamId,
         sourceType: "pixel_hit",
-        sourceId: input.visitorSession,
-        sourceMetadata: { origin: input.origin, publicToken: input.publicToken },
+        sourceId: payload.visitorSession,
+        sourceMetadata: { origin: payload.origin, publicToken: payload.publicToken },
       }),
       radarRepository.appendEventIfNew({
         profileId: profile.id,
-        teamId: config.teamId,
+        teamId: payload.teamId,
         eventType,
         sourceType: "pixel_hit",
-        sourceId: `${input.visitorSession}:${eventType}:${now.toISOString()}`,
+        sourceId: `${payload.visitorSession}:${eventType}:${dayKey}`,
         occurredAt: now,
-        metadata: { origin: input.origin, publicToken: input.publicToken },
+        metadata: { origin: payload.origin, publicToken: payload.publicToken },
       }),
-      radarRepository.touchPixelLastUsed(config.teamId),
+      radarRepository.touchPixelLastUsed(payload.teamId),
     ])
 
     const result: RadarPixelHitResult = { status: "ok" }
