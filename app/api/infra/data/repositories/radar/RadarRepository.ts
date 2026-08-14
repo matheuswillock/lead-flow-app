@@ -2180,6 +2180,168 @@ export class RadarRepository {
   }
 
   /**
+   * Subquery de perfis com identity `email_contact_id` — um único bind via
+   * `ANY($1::text[])` (evita P2035 ao filtrar dezenas de milhares de contactIds).
+   */
+  private emailContactIdMatchedProfilesSql(teamId: string, contactIds: string[]): Prisma.Sql {
+    return Prisma.sql`
+      SELECT DISTINCT i."profileId" AS "profileId"
+      FROM "corretor_studio_radar_identities" i
+      WHERE i."teamId" = ${teamId}::uuid
+        AND i.type = 'email_contact_id'
+        AND i."normalizedValue" = ANY(${contactIds}::text[])
+    `
+  }
+
+  private combineProfileIdSourcesSql(
+    sources: Prisma.Sql[],
+    combine: "intersect" | "union"
+  ): Prisma.Sql {
+    if (sources.length === 1) return sources[0]
+    const separator = combine === "intersect" ? " INTERSECT " : " UNION "
+    return Prisma.join(
+      sources.map((source) => Prisma.sql`(SELECT "profileId" FROM (${source}) part)`),
+      separator
+    )
+  }
+
+  private async countProfilesByProfileIdSources(
+    sources: Prisma.Sql[],
+    combine: "intersect" | "union"
+  ): Promise<number> {
+    if (sources.length === 0) return 0
+    const rows = await this.db.$queryRaw<Array<{ total: number | bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::int AS total
+      FROM (
+        ${this.combineProfileIdSourcesSql(sources, combine)}
+      ) combined_count
+    `)
+    return Number(rows[0]?.total ?? 0)
+  }
+
+  private async listProfileIdsByProfileIdSources(
+    sources: Prisma.Sql[],
+    combine: "intersect" | "union",
+    pagination?: { skip: number; take: number }
+  ): Promise<string[]> {
+    if (sources.length === 0) return []
+
+    const limitSql =
+      pagination != null
+        ? Prisma.sql`ORDER BY "profileId" ASC LIMIT ${pagination.take} OFFSET ${pagination.skip}`
+        : Prisma.sql`ORDER BY "profileId" ASC`
+
+    const rows = await this.db.$queryRaw<Array<{ profileId: string }>>(Prisma.sql`
+      SELECT "profileId"
+      FROM (
+        ${this.combineProfileIdSourcesSql(sources, combine)}
+      ) combined_page
+      ${limitSql}
+    `)
+    return rows.map((row) => row.profileId)
+  }
+
+  private async buildSegmentAnyFilterSources(
+    teamId: string,
+    where: Prisma.RadarProfileWhereInput | null,
+    options: {
+      combine: "intersect" | "union"
+      listIdGroups?: string[][]
+      emailContactIdGroups?: string[][]
+    }
+  ): Promise<Prisma.Sql[] | null> {
+    const sources: Prisma.Sql[] = []
+
+    if (where) {
+      const otherIds = await this.listProfileIdsByWhere(where)
+      if (options.combine === "intersect" && otherIds.length === 0) return null
+      if (otherIds.length > 0) {
+        sources.push(Prisma.sql`
+          SELECT p.id AS "profileId"
+          FROM "corretor_studio_radar_profiles" p
+          WHERE p."teamId" = ${teamId}::uuid
+            AND p.id = ANY(${otherIds}::uuid[])
+        `)
+      }
+    }
+
+    for (const listIds of options.listIdGroups ?? []) {
+      if (listIds.length === 0) {
+        if (options.combine === "intersect") return null
+        continue
+      }
+      sources.push(this.emailContactListMatchedProfilesSql(teamId, listIds))
+    }
+
+    for (const contactIds of options.emailContactIdGroups ?? []) {
+      if (contactIds.length === 0) {
+        if (options.combine === "intersect") return null
+        continue
+      }
+      sources.push(this.emailContactIdMatchedProfilesSql(teamId, contactIds))
+    }
+
+    return sources
+  }
+
+  async countProfilesByEmailContactListIntersection(
+    teamId: string,
+    listIdGroups: string[][]
+  ): Promise<number> {
+    if (listIdGroups.length === 0 || listIdGroups.some((group) => group.length === 0)) return 0
+    const sources = listIdGroups.map((listIds) =>
+      this.emailContactListMatchedProfilesSql(teamId, listIds)
+    )
+    return this.countProfilesByProfileIdSources(sources, "intersect")
+  }
+
+  async listProfileIdsByEmailContactListIntersection(
+    teamId: string,
+    listIdGroups: string[][],
+    pagination?: { skip: number; take: number }
+  ): Promise<string[]> {
+    if (listIdGroups.length === 0 || listIdGroups.some((group) => group.length === 0)) return []
+    const sources = listIdGroups.map((listIds) =>
+      this.emailContactListMatchedProfilesSql(teamId, listIds)
+    )
+    return this.listProfileIdsByProfileIdSources(sources, "intersect", pagination)
+  }
+
+  /**
+   * Caminho composto (listas + outras regras, ou `email_contact_field` com
+   * dezenas de milhares de IDs): combina subqueries SQL com `INTERSECT`/`UNION`
+   * e `ANY($n::uuid[])` / `ANY($n::text[])` — um bind por array, nunca OR de IN.
+   */
+  async countProfilesByWhereWithAnyFilters(
+    teamId: string,
+    where: Prisma.RadarProfileWhereInput | null,
+    options: {
+      combine: "intersect" | "union"
+      listIdGroups?: string[][]
+      emailContactIdGroups?: string[][]
+    }
+  ): Promise<number> {
+    const sources = await this.buildSegmentAnyFilterSources(teamId, where, options)
+    if (sources == null) return 0
+    return this.countProfilesByProfileIdSources(sources, options.combine)
+  }
+
+  async listProfileIdsByWhereWithAnyFilters(
+    teamId: string,
+    where: Prisma.RadarProfileWhereInput | null,
+    options: {
+      combine: "intersect" | "union"
+      listIdGroups?: string[][]
+      emailContactIdGroups?: string[][]
+    },
+    pagination?: { skip: number; take: number }
+  ): Promise<string[]> {
+    const sources = await this.buildSegmentAnyFilterSources(teamId, where, options)
+    if (sources == null) return []
+    return this.listProfileIdsByProfileIdSources(sources, options.combine, pagination)
+  }
+
+  /**
    * D6: `customFields` é um Json livre (chaves vêm do cabeçalho do arquivo
    * importado, sem catálogo fixo) — diferente de `LeadCustomFieldValue`
    * (linha EAV por definição), não dá pra filtrar via um path Prisma

@@ -16,6 +16,7 @@ const mapEventTypeMock = mock((type: string) => {
   return map[type] ?? null
 })
 const handleEmailWebhookEventMock = mock(async () => {})
+const publishResendWebhookRadarEventMock = mock(async () => ({ messageId: "mid-1" }))
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -163,6 +164,8 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     findByResendEmailIdMock.mockResolvedValue(null)
     processEmailLogWebhookMock.mockClear()
     handleEmailWebhookEventMock.mockClear()
+    publishResendWebhookRadarEventMock.mockClear()
+    publishResendWebhookRadarEventMock.mockResolvedValue({ messageId: "mid-1" })
   })
 
   it("processa órfão quando enrichment resolve logId", async () => {
@@ -220,23 +223,25 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
       fetchEmailMetadata: async () => null,
       createOrphanTeamEmailLogFromResendEmail: async () => null,
     }
-    const service = new EmailOrphanEventService(enrichment)
+    const service = new EmailOrphanEventService(enrichment, publishResendWebhookRadarEventMock)
 
     const result = await service.processPendingBatch()
 
     expect(result.processed).toBe(1)
     expect(processEmailLogWebhookMock).toHaveBeenCalledTimes(1)
-    expect(handleEmailWebhookEventMock).toHaveBeenCalledTimes(1)
-    expect(handleEmailWebhookEventMock).toHaveBeenCalledWith(
+    expect(publishResendWebhookRadarEventMock).toHaveBeenCalledTimes(1)
+    expect(publishResendWebhookRadarEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         teamId: "team-1",
         recipientEmail: "lead@test.com",
         logId: "log-race",
         campaignId: "camp-1",
         eventType: "opened",
-        occurredAt,
+        occurredAt: occurredAt.toISOString(),
+        emailOrphanEventId: "orphan-recovered",
       })
     )
+    expect(handleEmailWebhookEventMock).not.toHaveBeenCalled()
   })
 
   it("marca como skipped após esgotar tentativas sem team_id", async () => {

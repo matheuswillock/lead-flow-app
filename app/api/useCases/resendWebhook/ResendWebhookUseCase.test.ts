@@ -31,6 +31,8 @@ mock.module("@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignU
   },
 }))
 
+const publishResendWebhookRadarEventMock = mock(async () => ({ messageId: "mid-1" }))
+
 mock.module("@/app/api/services/radar/RadarService", () => ({
   radarService: {
     handleEmailWebhookEvent: mock(async () => {}),
@@ -58,7 +60,7 @@ function createWebhookService(): ResendWebhookService {
 
 describe("ResendWebhookUseCase", () => {
   it("ignora evento sem email_id", async () => {
-    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
     const output = await useCase.handle({
       event: { type: "email.delivered", data: { created_at: new Date().toISOString() } },
     })
@@ -69,7 +71,7 @@ describe("ResendWebhookUseCase", () => {
 
   it("enfileira órfão quando log não existe em evento de backfill", async () => {
     queueOrphanEventMock.mockClear()
-    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
     await useCase.handle({
       event: {
         type: "email.delivered",
@@ -87,6 +89,7 @@ describe("ResendWebhookUseCase", () => {
 
   it("processa log existente sem enfileirar órfão", async () => {
     queueOrphanEventMock.mockClear()
+    publishResendWebhookRadarEventMock.mockClear()
     findByResendEmailIdMock.mockResolvedValueOnce({
       id: "log-1",
       teamId: "team-1",
@@ -102,7 +105,7 @@ describe("ResendWebhookUseCase", () => {
       complainedAt: null,
     })
 
-    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
     const output = await useCase.handle({
       event: {
         type: "email.delivered",
@@ -112,6 +115,14 @@ describe("ResendWebhookUseCase", () => {
 
     expect(queueOrphanEventMock).not.toHaveBeenCalled()
     expect(processEmailLogWebhookMock).toHaveBeenCalled()
+    expect(publishResendWebhookRadarEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamId: "team-1",
+        recipientEmail: "a@test.com",
+        logId: "log-1",
+        eventType: "delivered",
+      })
+    )
     expect((output.result as { handled: boolean }).handled).toBe(true)
   })
 
@@ -124,7 +135,7 @@ describe("ResendWebhookUseCase", () => {
       new (await import("@/lib/output")).Output(true, [], [], { handled: true })
     )
 
-    const useCase = new ResendWebhookUseCase(createWebhookService())
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
     const output = await useCase.handle({
       event: {
         type: "email.delivered",

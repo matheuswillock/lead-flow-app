@@ -58,6 +58,20 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     return this.dedupeRecipients(await this.repository.findActiveRecipientsForList(contactListId))
   }
 
+  async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {
+    const contactList = await this.repository.findContactListMeta(teamId, contactListId)
+
+    if (!contactList) {
+      return 0
+    }
+
+    if (contactList.isSystemDefault) {
+      return this.repository.countActiveRecipientsForTeam(teamId)
+    }
+
+    return this.repository.countActiveRecipientsForList(contactListId)
+  }
+
   async listActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipient[]> {
     if (contactIds.length === 0) return []
     return this.dedupeRecipients(await this.repository.findActiveRecipientsByIds(contactIds))

@@ -29,6 +29,8 @@ mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientServ
     buildCampaignDispatchInput = buildCampaignDispatchInputMock
     findUnresolvedTokensForRecipients = findUnresolvedTokensMock
     listActiveRecipients = listActiveRecipientsMock
+    countActiveRecipients = async (...args: unknown[]) =>
+      (await listActiveRecipientsMock(...args)).length
   },
 }))
 
