@@ -109,4 +109,32 @@ describe("PublicFormsUseCase.recordMetric queue-first", () => {
     expect(output.result).toEqual({ code: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG })
     expect(recordMetricService).not.toHaveBeenCalled()
   })
+
+  it("persistQueuedMetric chama recordMetric com radarMode inline", async () => {
+    const accepted = await useCase.persistQueuedMetric(VALID_PUBLIC_ID, {
+      visitorSessionId: VALID_SESSION,
+      eventType: "form_viewed",
+      eventKey: `${VALID_SESSION}:form_viewed:form`,
+      origin: {},
+    })
+    expect(accepted).toBe(true)
+    expect(recordMetricService).toHaveBeenCalledTimes(1)
+    expect(recordMetricService).toHaveBeenCalledWith(
+      VALID_PUBLIC_ID,
+      expect.objectContaining({ eventType: "form_viewed" }),
+      { radarMode: "inline" },
+    )
+  })
+
+  it("persistQueuedMetric propaga erro do Radar para retry do consumer", async () => {
+    recordMetricService.mockRejectedValueOnce(new Error("Perfil Radar não resolvido"))
+    await expect(
+      useCase.persistQueuedMetric(VALID_PUBLIC_ID, {
+        visitorSessionId: VALID_SESSION,
+        eventType: "form_completed",
+        eventKey: `${VALID_SESSION}:form_completed:form`,
+        origin: {},
+      }),
+    ).rejects.toThrow("Perfil Radar não resolvido")
+  })
 })

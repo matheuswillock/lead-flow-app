@@ -41,7 +41,11 @@ export interface IPublicFormsService {
   ): Promise<unknown>
   getPublic(publicId: string): Promise<unknown>
   getAvailabilityContext(publicId: string): Promise<unknown>
-  recordMetric(publicId: string, input: PublicFormMetricEventInput): Promise<boolean>
+  recordMetric(
+    publicId: string,
+    input: PublicFormMetricEventInput,
+    options?: { radarMode?: "inline" | "after" | "skip" },
+  ): Promise<boolean>
   analytics(
     teamId: string,
     id: string,
