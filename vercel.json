@@ -102,6 +102,17 @@
           "maxConcurrency": 1
         }
       ]
+    },
+    "app/api/queues/resend-webhook-emaillog-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "resend-webhook-emaillog-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 4
+        }
+      ]
     }
   },
   "crons": [
