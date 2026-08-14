@@ -3367,6 +3367,8 @@ export class EmailCampaignUseCase {
         contactListId: true,
         radarSegmentSlug: true,
         templateId: true,
+        reservedCredits: true,
+        hasCampaignsBetaAccess: true,
         campaign: { select: { name: true } },
       },
       orderBy: { updatedAt: "asc" },
@@ -3446,11 +3448,7 @@ export class EmailCampaignUseCase {
           console.error(
             `[EmailCampaignUseCase][resumeOrphanSendingDispatches] dispatchId=${dispatch.id} bloqueado por domínio: ${orphanFromGuard.message}`
           )
-          await this.markScheduledCampaignFailed(dispatch.campaignId, orphanFromGuard.message)
-          await this.db.emailCampaignDispatch.update({
-            where: { id: dispatch.id },
-            data: { status: "failed", errorMessage: orphanFromGuard.message },
-          })
+          await this.failDispatchOnDomainGuard(dispatch, orphanFromGuard.message)
           continue
         }
 
@@ -3581,11 +3579,7 @@ export class EmailCampaignUseCase {
       console.error(
         `[EmailCampaignUseCase][processDispatchQueueBatch] dispatchId=${dispatch.id} bloqueado por domínio: ${fromGuard.message}`
       )
-      await this.markScheduledCampaignFailed(dispatch.campaignId, fromGuard.message)
-      await this.db.emailCampaignDispatch.update({
-        where: { id: dispatch.id },
-        data: { status: "failed", errorMessage: fromGuard.message },
-      })
+      await this.failDispatchOnDomainGuard(dispatch, fromGuard.message)
       return new Output(false, [], [fromGuard.message], { dispatchId: dispatch.id, hasMore: false })
     }
 
@@ -3705,16 +3699,19 @@ export class EmailCampaignUseCase {
    * snapshot persistido em `reservedCredits`/`hasCampaignsBetaAccess` (a
    * reserva pode ter ocorrido num isolate/invocação diferente do finalize).
    */
-  private async finalizeDispatchQueueBatch(dispatch: {
-    id: string
-    campaignId: string
-    teamId: string
-    totalRecipients?: number
-    reservedCredits: number
-    hasCampaignsBetaAccess: boolean
-  }): Promise<Output> {
+  private async finalizeDispatchQueueBatch(
+    dispatch: {
+      id: string
+      campaignId: string
+      teamId: string
+      totalRecipients?: number
+      reservedCredits: number
+      hasCampaignsBetaAccess: boolean
+    },
+    failureDetail?: string
+  ): Promise<Output> {
     const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
-    const terminal = resolveCampaignStatusAfterDispatch(sentCount)
+    const terminal = resolveCampaignStatusAfterDispatch(sentCount, failureDetail)
 
     const updatedCampaign = await this.commitDispatchTerminalState({
       campaignId: dispatch.campaignId,
@@ -3755,6 +3752,42 @@ export class EmailCampaignUseCase {
       [],
       { dispatchId: dispatch.id, sent: sentCount, hasMore: false }
     )
+  }
+
+  /**
+   * Fecha um dispatch preso por um guard de domínio
+   * (`assertCampaignFromIsSendable`) que falhou no meio do processamento em
+   * fila (`processDispatchQueueBatch`/`resumeOrphanSendingDispatches`). Sem
+   * isso, os `EmailLog` `queued` daquele dispatch ficam presos para sempre,
+   * os créditos reservados nunca voltam pro time, e
+   * `reclaimCompletedDispatchesWithQueuedLogs` reabre o dispatch a cada tick
+   * do cron — reproduzindo dentro deste próprio PR o bug GRU 01/02 que ele
+   * corrige (loop `failed` → reclaim → `failed` sem nunca resolver).
+   */
+  private async failDispatchOnDomainGuard(
+    dispatch: {
+      id: string
+      campaignId: string
+      teamId: string
+      totalRecipients?: number
+      reservedCredits: number
+      hasCampaignsBetaAccess: boolean
+    },
+    guardMessage: string
+  ): Promise<void> {
+    for (;;) {
+      const queuedLogs = await this.db.emailLog.findMany({
+        where: { dispatchId: dispatch.id, status: "queued" },
+        select: { id: true },
+        take: DISPATCH_QUEUE_BATCH_SIZE,
+      })
+      if (queuedLogs.length === 0) break
+      await withConcurrencyLimit(queuedLogs, EMAIL_LOG_WRITE_CONCURRENCY_LIMIT, async (log) => {
+        await teamEmailDispatchLogger.markTeamEmailLogFailed(log.id, guardMessage)
+      })
+    }
+
+    await this.finalizeDispatchQueueBatch(dispatch, guardMessage)
   }
 
   /**
