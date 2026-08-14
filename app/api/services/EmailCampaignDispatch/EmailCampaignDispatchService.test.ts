@@ -280,17 +280,17 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(secondKey).toEqual(firstKey)
   })
 
-  it("D11 — Resend 422 Invalid `to` (mensagem real): providerErrors com statusCode e e-mails do chunk", async () => {
+  it("D11 — Resend 422 Invalid `to`: bisect isola destinatários e falha um a um", async () => {
     const resendMessage =
       "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format."
-    batchSendMock.mockResolvedValueOnce({
+    batchSendMock.mockImplementation(async () => ({
       data: null as unknown as Array<{ id?: string }>,
       error: {
         name: "validation_error",
         message: resendMessage,
         statusCode: 422,
       },
-    })
+    }))
 
     const onChunkDispatched = mock(async () => {})
     const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
@@ -298,9 +298,104 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.sent).toBe(0)
     expect(result.failed).toBe(3)
     expect(onChunkDispatched).not.toHaveBeenCalled()
+    expect(batchSendMock.mock.calls.length).toBeGreaterThan(1)
+    expect(result.providerErrors).toHaveLength(3)
+    expect(
+      result.providerErrors.every((error) =>
+        error.message.startsWith("E-mail rejeitado pelo Resend (Invalid to):")
+      )
+    ).toBe(true)
+    expect(result.providerErrors.flatMap((error) => error.emails).sort()).toEqual([
+      "r0@test.com",
+      "r1@test.com",
+      "r2@test.com",
+    ])
+  })
+
+  it("D11b — 422 Invalid `to` com 1 inválido: válidos enviados após bisect", async () => {
+    const resendMessage =
+      "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format."
+    const recipients = [
+      {
+        email: "ok1@test.com",
+        name: "A",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "bad@test.com",
+        name: "B",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "ok2@test.com",
+        name: "C",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const payload = args[0] as Array<{ to: string }>
+      const emails = payload.map((entry) => entry.to)
+      if (emails.includes("bad@test.com")) {
+        return {
+          data: null as unknown as Array<{ id?: string }>,
+          error: {
+            name: "validation_error",
+            message: resendMessage,
+            statusCode: 422,
+          },
+        }
+      }
+      return {
+        data: emails.map((_, i) => ({ id: `re_${i}` })),
+        error: null,
+      }
+    })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({
+      ...makeBaseParams(recipients),
+      onChunkDispatched,
+    })
+
+    expect(result.sent).toBe(2)
+    expect(result.failed).toBe(1)
     expect(result.providerErrors).toEqual([
       {
-        message: resendMessage,
+        message: "E-mail rejeitado pelo Resend (Invalid to): bad@test.com",
+        statusCode: 422,
+        emails: ["bad@test.com"],
+      },
+    ])
+    expect(result.dispatched.map((entry) => entry.email).sort()).toEqual([
+      "ok1@test.com",
+      "ok2@test.com",
+    ])
+  })
+
+  it("D11c — 422 sem Invalid to: falha o chunk inteiro sem bisect", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: null as unknown as Array<{ id?: string }>,
+      error: {
+        name: "validation_error",
+        message: "Template variables are invalid",
+        statusCode: 422,
+      },
+    })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({ ...makeBaseParams(), onChunkDispatched })
+
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+    expect(result.sent).toBe(0)
+    expect(result.failed).toBe(3)
+    expect(onChunkDispatched).not.toHaveBeenCalled()
+    expect(result.providerErrors).toEqual([
+      {
+        message: "Template variables are invalid",
         statusCode: 422,
         emails: ["r0@test.com", "r1@test.com", "r2@test.com"],
       },

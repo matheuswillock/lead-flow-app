@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email";
 import { useContactsContext } from "../context/ContactsContext";
 
 type ContactAddModalProps = {
@@ -37,9 +39,17 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) return;
 
+    const validation = isValidResendRecipientEmail(trimmedEmail);
+    if (!validation.ok) {
+      toast.error(
+        `E-mail inválido. Este contato não será adicionado à base. (${validation.reason})`
+      );
+      return;
+    }
+
     setLoading(true);
     try {
-      await handleAddContact(trimmedEmail, name.trim() || undefined);
+      await handleAddContact(validation.email, name.trim() || undefined);
       setOpen(false);
       resetForm();
     } catch {

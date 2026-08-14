@@ -139,8 +139,6 @@ export function ContactImportDialog({
     });
   };
 
-  const buildMappedRows = () => buildMappedContactRows(rows, columns, mapping);
-
   const importPreview = useMemo(
     () => buildContactImportPreview(buildMappedContactRows(rows, columns, mapping)),
     [rows, columns, mapping]
@@ -153,19 +151,25 @@ export function ContactImportDialog({
       return;
     }
 
-    const mappedRows = buildMappedRows();
     if (importPreview.importableCount === 0) {
       toast.error("Nenhuma linha do arquivo tem um e-mail válido na coluna mapeada");
       return;
     }
+
+    // Só enfileira linhas com e-mail válido; inválidos ficam de fora da base.
+    const rowsToImport = importPreview.importableRows;
 
     setIsSubmitting(true);
     try {
       if (segmentId) {
         await service.setListRadarSegment(listId, segmentId);
       }
-      await service.importMapped(listId, mappedRows);
-      toast.success("Processando importação em segundo plano");
+      await service.importMapped(listId, rowsToImport);
+      const skippedNote =
+        importPreview.skippedCount > 0
+          ? ` ${importPreview.skippedCount} linha(s) com e-mail inválido não serão importadas.`
+          : "";
+      toast.success(`Processando importação em segundo plano.${skippedNote}`);
       if (onImportComplete) {
         await onImportComplete();
       }

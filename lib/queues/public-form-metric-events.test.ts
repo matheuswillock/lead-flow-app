@@ -52,11 +52,11 @@ describe("publishPublicFormMetricEvent", () => {
 })
 
 describe("public-form-metric-events helpers", () => {
-  it("classifica apenas form_viewed, question_answered e form_completed como críticos", () => {
+  it("classifica form_viewed, form_started, question_answered e form_completed como críticos", () => {
     expect(isCriticalPublicFormMetricEvent("form_viewed")).toBe(true)
+    expect(isCriticalPublicFormMetricEvent("form_started")).toBe(true)
     expect(isCriticalPublicFormMetricEvent("question_answered")).toBe(true)
     expect(isCriticalPublicFormMetricEvent("form_completed")).toBe(true)
-    expect(isCriticalPublicFormMetricEvent("form_started")).toBe(false)
     expect(isCriticalPublicFormMetricEvent("question_viewed")).toBe(false)
     expect(isCriticalPublicFormMetricEvent("question_skipped")).toBe(false)
     expect(isCriticalPublicFormMetricEvent("lead_created")).toBe(false)
