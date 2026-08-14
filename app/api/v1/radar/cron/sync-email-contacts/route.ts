@@ -19,7 +19,7 @@ async function handleSyncEmailContactsCron(request: NextRequest) {
       cronKey: "radar-sync-email-contacts",
       cronPath: "/api/v1/radar/cron/sync-email-contacts",
     },
-    () => processEmailContactRadarSyncOutboxUseCase.execute(),
+    () => processEmailContactRadarSyncOutboxUseCase.execute({ source: "cron" }),
     {
       onFailure: getDefaultCronSlackCallback(),
     }

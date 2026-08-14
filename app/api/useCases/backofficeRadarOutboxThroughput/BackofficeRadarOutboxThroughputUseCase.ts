@@ -35,9 +35,9 @@ export class BackofficeRadarOutboxThroughputUseCase {
         limits: RADAR_OUTBOX_THROUGHPUT_LIMITS,
         howItWorks: {
           cronPath: "/api/v1/radar/cron/sync-email-contacts",
-          cronCadence: "*/5 * * * *",
+          cronCadence: "*/15 * * * *",
           cronRunsPerHour: RADAR_OUTBOX_THROUGHPUT_LIMITS.cronRunsPerHour,
-          formula: "throughput_hora ≈ batchSize × 12 (cron a cada 5 min)",
+          formula: "throughput_hora ≈ batchSize × 4 (cron a cada 15 min)",
           precedence:
             "backoffice (linha ativa salva na UI) → env → defaults do código; sem seed automático",
           connectionBudgetHint: "orçamento ≈ concurrency + 1 conexão por tick",
