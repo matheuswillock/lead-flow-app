@@ -2762,6 +2762,8 @@ completed completed
     EmailCampaignDispatchStatus status 
     EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme 
     Boolean retryFailedOnly 
+    Int reservedCredits 
+    Boolean hasCampaignsBetaAccess 
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 
