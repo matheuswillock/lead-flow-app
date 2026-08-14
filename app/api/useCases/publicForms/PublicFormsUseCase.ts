@@ -295,13 +295,13 @@ export class PublicFormsUseCase {
 
   /**
    * Persistência idempotente usada pelo consumer da Vercel Queue.
-   * Reutiliza `recordMetric` do service (upsert por eventKey + side-effects).
-   * Erros transitórios propagam para o retry do `handleCallback`.
+   * Persiste e aguarda o espelho Radar no mesmo isolate (sem `after()`).
+   * Erros transitórios (Prisma ou Radar) propagam para o retry do `handleCallback`.
    */
   async persistQueuedMetric(publicId: string, input: PublicFormMetricEventInput): Promise<boolean> {
     if (!isValidPublicFormId(publicId)) return false
     return withPrismaRetry(
-      () => publicFormsService.recordMetric(publicId, input),
+      () => publicFormsService.recordMetric(publicId, input, { radarMode: "inline" }),
       { retries: 1, label: "publicForms.persistQueuedMetric" },
     )
   }

@@ -19,13 +19,16 @@ import {
   findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
-import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import { FORM_COMPLETE_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
 import {
   buildPublicFormMetricEventKey,
 } from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
+import {
+  buildPublicFormMetricQueuePayload,
+  publishServerPublicFormMetricEvent,
+} from "@/lib/queues/public-form-metric-events"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -377,16 +380,15 @@ export class PublicFormSubmissionUseCase {
       })
 
       for (const event of metricEvents) {
-        syncPublicFormMetricToRadarInline({
-          teamId: form.teamId,
-          eventType: event.eventType,
-          eventKey: event.eventKey,
-          visitorSessionId: event.visitorSessionId,
-          formId: event.formId,
-          publicationId: event.publicationId,
-          leadId: resolvedLeadId,
-          origin: event.radarOrigin ?? origin,
-        })
+        await publishServerPublicFormMetricEvent(
+          buildPublicFormMetricQueuePayload(form.publicId, {
+            visitorSessionId: event.visitorSessionId,
+            eventType: event.eventType,
+            eventKey: event.eventKey,
+            origin: event.radarOrigin ?? origin,
+          }),
+          "PublicFormSubmissionUseCase",
+        )
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao processar respostas"
@@ -417,17 +419,17 @@ export class PublicFormSubmissionUseCase {
       })
 
       const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(job.snapshot.formId)
-      if (teamCtx?.teamId) {
+      if (teamCtx?.publicId) {
         for (const event of fallbackMetricEvents) {
-          syncPublicFormMetricToRadarInline({
-            teamId: teamCtx.teamId,
-            eventType: event.eventType,
-            eventKey: event.eventKey,
-            visitorSessionId: event.visitorSessionId,
-            formId: event.formId,
-            publicationId: event.publicationId,
-            origin: fallbackOrigin,
-          })
+          await publishServerPublicFormMetricEvent(
+            buildPublicFormMetricQueuePayload(teamCtx.publicId, {
+              visitorSessionId: event.visitorSessionId,
+              eventType: event.eventType,
+              eventKey: event.eventKey,
+              origin: fallbackOrigin,
+            }),
+            "PublicFormSubmissionUseCase",
+          )
         }
       }
     }

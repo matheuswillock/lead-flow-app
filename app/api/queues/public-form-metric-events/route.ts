@@ -1,4 +1,4 @@
-import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase"
+import { publicFormsUseCase, PublicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase"
 import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
 import {
   handlePublicFormMetricEventsCallback,
@@ -21,6 +21,7 @@ type QueueMessageMetadata = {
 export async function processPublicFormMetricQueueMessage(
   message: PublicFormMetricQueuePayload,
   metadata: QueueMessageMetadata,
+  useCase: Pick<PublicFormsUseCase, "persistQueuedMetric"> = publicFormsUseCase,
 ): Promise<void> {
   console.info("[PublicFormMetricEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -50,7 +51,7 @@ export async function processPublicFormMetricQueueMessage(
   }
 
   try {
-    const accepted = await publicFormsUseCase.persistQueuedMetric(message.publicId, input)
+    const accepted = await useCase.persistQueuedMetric(message.publicId, input)
     if (!accepted) {
       // Formulário indisponível / publicação encerrada — sem sentido retry infinito.
       console.info("[PublicFormMetricEventsQueueRoute][POST] form unavailable, acking", {
