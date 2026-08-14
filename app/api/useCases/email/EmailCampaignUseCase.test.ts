@@ -194,6 +194,15 @@ mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
   notifyCampaignDispatchFailure: mock(async () => {}),
 }))
 
+// --- Fila email-campaign-dispatch (Fase 4 / PR1) — evita bater no @vercel/queue
+// real (que precisa de OIDC token e só funciona dentro de uma Vercel Function).
+const publishEmailCampaignDispatchWakeMock = mock(async (..._args: unknown[]) => ({
+  messageId: "msg-1",
+}))
+mock.module("@/lib/queues/email-campaign-dispatch", () => ({
+  publishEmailCampaignDispatchWake: publishEmailCampaignDispatchWakeMock,
+}))
+
 // =============================================================================
 // Importação dinâmica — APÓS todos os mocks
 // =============================================================================
@@ -350,6 +359,7 @@ const allMocks = [
   listActiveRecipientsMock,
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
+  publishEmailCampaignDispatchWakeMock,
 ]
 
 // =============================================================================
@@ -1285,7 +1295,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
   })
 
   // --- Site B: resumeOrphanSendingDispatches ---
-  it("D13f — órfão domínio null + sender arbitrário → nunca envia, marca failed, não conta resumed", async () => {
+  it("D13f — órfão domínio null + sender arbitrário → nunca envia, marca failed, não conta resumed, resolve o EmailLog queued e libera créditos (bugfix: credit leak + reclaim loop)", async () => {
     emailCampaignDispatchFindManyMock.mockImplementation(async () => [
       {
         id: "dispatch-orphan",
@@ -1300,16 +1310,29 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
         contactListId: "list-1",
         radarSegmentSlug: null,
         templateId: "tpl-1",
+        reservedCredits: 1,
+        hasCampaignsBetaAccess: false,
       },
     ])
-    emailLogFindManyMock.mockImplementation(async () => [
-      {
-        id: "log-q",
-        recipientEmail: "r0@test.com",
-        recipientName: "R0",
-        status: "queued",
-      },
-    ])
+    // 1ª chamada (resumeOrphanSendingDispatches lendo o lote órfão) e 2ª chamada
+    // (1ª iteração do while de failDispatchOnDomainGuard) ainda veem o log
+    // "queued"; da 3ª em diante ele já foi resolvido (markTeamEmailLogFailed)
+    // e o while precisa parar — sem isso o loop nunca termina.
+    let queuedLogFetches = 0
+    emailLogFindManyMock.mockImplementation(async () => {
+      queuedLogFetches += 1
+      if (queuedLogFetches <= 2) {
+        return [
+          {
+            id: "log-q",
+            recipientEmail: "r0@test.com",
+            recipientName: "R0",
+            status: "queued",
+          },
+        ]
+      }
+      return []
+    })
     emailTeamSenderFindFirstMock.mockImplementation(async () => ({
       name: "Vendas",
       email: "vendas@empresaxyz.com.br",
@@ -1322,6 +1345,14 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
 
     expect(resumed).toBe(0)
     expect(dispatchBatchMock).not.toHaveBeenCalled()
+
+    // Bugfix: o EmailLog "queued" preso pelo guard de domínio precisa ser
+    // resolvido (não pode ficar "queued" para sempre).
+    expect(markTeamEmailLogFailedMock).toHaveBeenCalledWith(
+      "log-q",
+      CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE
+    )
+
     expect(emailCampaignUpdateMock).toHaveBeenCalled()
     const updateData = (emailCampaignUpdateMock.mock.calls[0] as unknown as [
       { data: { status?: string; errorMessage?: string } },
@@ -1329,6 +1360,10 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     expect(updateData.status).toBe("failed")
     expect(updateData.errorMessage).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
     expect(emailCampaignDispatchUpdateMock).toHaveBeenCalled()
+
+    // Bugfix: créditos reservados (1) precisam voltar pro time, já que
+    // sentCount=0 (nenhum e-mail chegou a ser enviado pelo guard bloqueado).
+    expect(releaseCreditsMock).toHaveBeenCalledWith("team-1", 1)
   })
 
   it("D13g — órfão sem logs queued restantes: incrementa totais e atualiza status do pai (regressão Mulheres 05)", async () => {
@@ -1417,6 +1452,80 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
       (call) => call[0].where.id === "parent-1"
     )
     expect(parentUpdateCall?.[0].data.status).toBe("sent")
+  })
+
+  // --- Site consumer: processDispatchQueueBatch (Fase 4 / PR1) ---
+  it("D13h — processDispatchQueueBatch bloqueado por domínio: resolve o EmailLog queued e libera créditos, sem republicar wake (bugfix: credit leak + reclaim loop)", async () => {
+    // D13g deixou emailLogCountMock fixo em 269 (implementation não é resetada
+    // por mockClear); zera aqui para countSuccessfulDispatchLogs refletir que
+    // nenhum e-mail deste dispatch foi enviado antes do guard bloquear.
+    emailLogCountMock.mockImplementation(async () => 0)
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-queue-1",
+      campaignId: "camp-1",
+      teamId: "team-1",
+      dispatchNumber: 1,
+      batchIdempotencyScheme: "positional",
+      templateHtml: "<p>Hi</p>",
+      templateSubject: "S",
+      totalRecipients: 1,
+      contactListId: "list-1",
+      templateId: "tpl-1",
+      reservedCredits: 1,
+      hasCampaignsBetaAccess: false,
+      campaign: { name: "Campanha Teste" },
+    }))
+    // 1ª chamada (lote lido pelo processDispatchQueueBatch) e 2ª chamada (1ª
+    // iteração do while de failDispatchOnDomainGuard) ainda veem o log
+    // "queued"; da 3ª em diante ele já foi resolvido — sem isso o while
+    // nunca termina.
+    let queuedLogFetches = 0
+    emailLogFindManyMock.mockImplementation(async () => {
+      queuedLogFetches += 1
+      if (queuedLogFetches <= 2) {
+        return [
+          {
+            id: "log-q2",
+            recipientEmail: "r0@test.com",
+            recipientName: "R0",
+            status: "queued",
+          },
+        ]
+      }
+      return []
+    })
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-queue-1")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE)
+    expect((output.result as { hasMore?: boolean } | null)?.hasMore).toBe(false)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    // Guard bloqueado é terminal — não deve republicar wake pra reprocessar o mesmo lote.
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
+
+    // Bugfix: o EmailLog "queued" preso pelo guard de domínio precisa ser
+    // resolvido — sem isso ele fica "queued" pra sempre e
+    // reclaimCompletedDispatchesWithQueuedLogs reabre o dispatch em loop.
+    expect(markTeamEmailLogFailedMock).toHaveBeenCalledWith(
+      "log-q2",
+      CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE
+    )
+
+    expect(emailCampaignDispatchUpdateMock).toHaveBeenCalled()
+    const dispatchUpdateData = (emailCampaignDispatchUpdateMock.mock.calls[0] as unknown as [
+      { data: { status?: string } },
+    ])[0].data
+    expect(dispatchUpdateData.status).toBe("failed")
+
+    // Bugfix: créditos reservados (1) precisam voltar pro time, já que
+    // sentCount=0 (nenhum e-mail chegou a ser enviado pelo guard bloqueado).
+    expect(releaseCreditsMock).toHaveBeenCalledWith("team-1", 1)
   })
 })
 
