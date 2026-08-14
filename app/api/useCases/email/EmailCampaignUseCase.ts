@@ -627,8 +627,7 @@ export class EmailCampaignUseCase {
       return recipients.length
     }
     if (!options.contactListId) return 0
-    const recipients = await this.recipientService.listActiveRecipients(teamId, options.contactListId)
-    return recipients.length
+    return this.recipientService.countActiveRecipients(teamId, options.contactListId)
   }
 
   private async loadListAudiences(
