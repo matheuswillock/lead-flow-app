@@ -4,6 +4,7 @@ import type { PublicFormMetricQueuePayload } from "@/lib/queues/public-form-metr
 const persistQueuedMetric = mock(async (_publicId: string, _input: unknown) => true)
 
 mock.module("@/app/api/useCases/publicForms/PublicFormsUseCase", () => ({
+  PublicFormsUseCase: class PublicFormsUseCase {},
   publicFormsUseCase: { persistQueuedMetric },
 }))
 
@@ -83,5 +84,17 @@ describe("processPublicFormMetricQueueMessage", () => {
       metadata,
     )
     expect(persistQueuedMetric).not.toHaveBeenCalled()
+  })
+
+  it("payload server-side lead_created persiste via UseCase", async () => {
+    await processPublicFormMetricQueueMessage(
+      { ...baseMessage(), eventType: "lead_created", eventKey: "session_abcdefghij:lead_created:form" },
+      metadata,
+    )
+    expect(persistQueuedMetric).toHaveBeenCalledTimes(1)
+    expect(persistQueuedMetric.mock.calls[0]?.[1]).toMatchObject({
+      eventType: "lead_created",
+      eventKey: "session_abcdefghij:lead_created:form",
+    })
   })
 })

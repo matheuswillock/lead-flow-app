@@ -27,12 +27,23 @@ export const CRITICAL_PUBLIC_FORM_METRIC_EVENT_TYPES = [
 export type CriticalPublicFormMetricEventType =
   (typeof CRITICAL_PUBLIC_FORM_METRIC_EVENT_TYPES)[number];
 
+/** Tipos persistidos no servidor (submission) e publicados na mesma fila — não são queue-first no POST público. */
+export type ServerPublicFormMetricEventType =
+  | "lead_created"
+  | "lead_attached"
+  | "meeting_scheduled";
+
+export type PublicFormMetricQueueEventType =
+  | CriticalPublicFormMetricEventType
+  | "form_started"
+  | ServerPublicFormMetricEventType;
+
 const queue = new QueueClient({ region: "gru1" });
 
 export type PublicFormMetricQueuePayload = {
   publicId: string;
   eventKey: string;
-  eventType: CriticalPublicFormMetricEventType | "form_started";
+  eventType: PublicFormMetricQueueEventType;
   questionId: string | null;
   visitorSessionId: string;
   origin: Record<string, unknown>;
@@ -50,7 +61,7 @@ export function isCriticalPublicFormMetricEvent(
 export function buildPublicFormMetricQueuePayload(
   publicId: string,
   input: PublicFormMetricEventInput & {
-    eventType: CriticalPublicFormMetricEventType;
+    eventType: PublicFormMetricQueueEventType;
   },
 ): PublicFormMetricQueuePayload {
   return {
@@ -71,6 +82,24 @@ export async function publishPublicFormMetricEvent(
     idempotencyKey: payload.eventKey,
     retentionSeconds: PUBLIC_FORM_METRIC_EVENTS_RETENTION_SECONDS,
   });
+}
+
+/** Publish após persist local no servidor. Falha de fila não reverte o persist — o cron/retry do consumer não se aplica; loga a tag. */
+export async function publishServerPublicFormMetricEvent(
+  payload: PublicFormMetricQueuePayload,
+  logPrefix: string,
+): Promise<void> {
+  try {
+    await publishPublicFormMetricEvent(payload);
+  } catch (error) {
+    console.error(`[${logPrefix}] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`, {
+      tag: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
+      publicId: payload.publicId,
+      eventType: payload.eventType,
+      eventKey: payload.eventKey,
+      error,
+    });
+  }
 }
 
 export const { handleCallback: handlePublicFormMetricEventsCallback } = queue;

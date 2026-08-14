@@ -13,6 +13,12 @@ import { computeEmailContactRadarSyncOutboxNextAttemptAt } from "@/lib/email/ema
 import { RADAR_OUTBOX_CRON_RUNS_PER_HOUR } from "@/lib/email/email-contact-radar-sync-outbox-config";
 import { resolveEffectiveRadarOutboxThroughput } from "@/lib/email/resolve-radar-outbox-throughput";
 
+export type ProcessEmailContactRadarSyncOutboxSource = "cron" | "queue";
+
+export type ProcessEmailContactRadarSyncOutboxOptions = {
+  source?: ProcessEmailContactRadarSyncOutboxSource;
+};
+
 export class ProcessEmailContactRadarSyncOutboxUseCase {
   private readonly radarService: RadarService;
 
@@ -31,10 +37,12 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
     return chunks;
   }
 
-  async execute(): Promise<Output> {
+  async execute(options?: ProcessEmailContactRadarSyncOutboxOptions): Promise<Output> {
     const throughput = await resolveEffectiveRadarOutboxThroughput();
     const batchSize = throughput.batchSize;
-    const concurrency = throughput.concurrency;
+    const source = options?.source ?? "cron";
+    /** Fila: isolate com `connection_limit=1` — sem Promise.all de 8 syncs no mesmo isolate. */
+    const concurrency = source === "queue" ? 1 : throughput.concurrency;
     const startedAt = Date.now();
     let claimedIds: string[] = [];
 
@@ -69,6 +77,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
       const theoreticalThroughputPerHour = claimed.length * RADAR_OUTBOX_CRON_RUNS_PER_HOUR;
 
       console.info("[ProcessEmailContactRadarSyncOutboxUseCase] Lote processado", {
+        source,
         claimed: claimed.length,
         sent,
         retried,
@@ -89,6 +98,7 @@ export class ProcessEmailContactRadarSyncOutboxUseCase {
         [`${sent} sync(s) concluído(s), ${retried} reenfileirado(s), ${failed} falha(s) definitiva(s)`],
         [],
         {
+          source,
           claimed: claimed.length,
           sent,
           retried,

@@ -11,8 +11,11 @@ import {
   extractLeadDataFromSnapshot,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
-import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
+import {
+  buildPublicFormMetricQueuePayload,
+  publishServerPublicFormMetricEvent,
+} from "@/lib/queues/public-form-metric-events"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -96,18 +99,19 @@ export class PublicFormProgressUseCase {
           answerValue: answer.value,
         } as Prisma.InputJsonValue,
       })
-      if (form.teamId) {
-        syncPublicFormMetricToRadarInline({
-          teamId: form.teamId,
-          eventType: "question_answered",
-          eventKey,
+      await publishServerPublicFormMetricEvent(
+        buildPublicFormMetricQueuePayload(form.publicId, {
           visitorSessionId: input.visitorSessionId,
-          formId: snapshot.formId,
-          publicationId: current.publicationId,
+          eventType: "question_answered",
           questionId: answer.questionId,
-          origin,
-        })
-      }
+          eventKey,
+          origin: {
+            ...(origin as Record<string, unknown>),
+            answerValue: answer.value,
+          },
+        }),
+        "PublicFormProgressUseCase",
+      )
     }
 
     return new Output(

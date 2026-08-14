@@ -11,6 +11,7 @@ mock.module("@vercel/queue", () => ({
 
 const {
   publishPublicFormMetricEvent,
+  publishServerPublicFormMetricEvent,
   isCriticalPublicFormMetricEvent,
   buildPublicFormMetricQueuePayload,
   PUBLIC_FORM_METRIC_EVENTS_TOPIC,
@@ -58,6 +59,20 @@ describe("public-form-metric-events helpers", () => {
     expect(isCriticalPublicFormMetricEvent("form_started")).toBe(false)
     expect(isCriticalPublicFormMetricEvent("question_viewed")).toBe(false)
     expect(isCriticalPublicFormMetricEvent("question_skipped")).toBe(false)
+    expect(isCriticalPublicFormMetricEvent("lead_created")).toBe(false)
+    expect(isCriticalPublicFormMetricEvent("lead_attached")).toBe(false)
+    expect(isCriticalPublicFormMetricEvent("meeting_scheduled")).toBe(false)
+  })
+
+  it("buildPublicFormMetricQueuePayload aceita tipos server-side", () => {
+    const payload = buildPublicFormMetricQueuePayload("11111111-1111-4111-8111-111111111111", {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "lead_created",
+      eventKey: "key-lead",
+      origin: { source: "submission" },
+    })
+    expect(payload.eventType).toBe("lead_created")
+    expect(payload.eventKey).toBe("key-lead")
   })
 
   it("buildPublicFormMetricQueuePayload usa eventKey e origin", () => {
@@ -72,5 +87,53 @@ describe("public-form-metric-events helpers", () => {
     expect(payload.questionId).toBe("11111111-1111-4111-8111-111111111111")
     expect(payload.origin).toEqual({ utmSource: "email" })
     expect(payload.receivedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+})
+
+describe("publishServerPublicFormMetricEvent", () => {
+  beforeEach(() => {
+    send.mockReset()
+    send.mockResolvedValue({ messageId: "mid-1" })
+  })
+
+  it("publica com idempotencyKey = eventKey", async () => {
+    await publishServerPublicFormMetricEvent(
+      {
+        publicId: "11111111-1111-4111-8111-111111111111",
+        eventKey: "session:lead_created:form",
+        eventType: "lead_created",
+        questionId: null,
+        visitorSessionId: "session_abcdefghij",
+        origin: {},
+        receivedAt: "2026-08-14T12:00:00.000Z",
+      },
+      "PublicFormSubmissionUseCase",
+    )
+    expect(send).toHaveBeenCalledTimes(1)
+    const call = send.mock.calls[0] as unknown as [
+      string,
+      { eventType: string },
+      { idempotencyKey: string },
+    ]
+    expect(call[1].eventType).toBe("lead_created")
+    expect(call[2].idempotencyKey).toBe("session:lead_created:form")
+  })
+
+  it("falha de publish não propaga (log + ack local)", async () => {
+    send.mockRejectedValueOnce(new Error("queue down"))
+    await expect(
+      publishServerPublicFormMetricEvent(
+        {
+          publicId: "11111111-1111-4111-8111-111111111111",
+          eventKey: "session:form_completed:form",
+          eventType: "form_completed",
+          questionId: null,
+          visitorSessionId: "session_abcdefghij",
+          origin: {},
+          receivedAt: "2026-08-14T12:00:00.000Z",
+        },
+        "PublicFormSubmissionUseCase",
+      ),
+    ).resolves.toBeUndefined()
   })
 })

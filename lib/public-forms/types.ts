@@ -169,6 +169,9 @@ export type PublicFormMetricEventInput = {
     | "question_answered"
     | "question_skipped"
     | "form_completed"
+    | "lead_created"
+    | "lead_attached"
+    | "meeting_scheduled"
   questionId?: string
   eventKey: string
   origin?: Record<string, unknown>
