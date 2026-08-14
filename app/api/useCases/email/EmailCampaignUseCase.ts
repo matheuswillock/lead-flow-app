@@ -98,12 +98,21 @@ import {
   type CampaignDispatchProgressStatus,
   type DispatchLogCounters,
 } from "@/lib/email/campaign-dispatch-progress"
+import {
+  publishEmailCampaignDispatchWake,
+} from "@/lib/queues/email-campaign-dispatch"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
 const ORPHAN_RESUME_MIN_AGE_MS = 2 * 60 * 1000
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
+/** Lote máximo de destinatários `queued` processado por invocação do consumer da fila (Fase 4 / PR1). */
+const DISPATCH_QUEUE_BATCH_SIZE = 500
+/** Quantos dispatches "completed com queued sobrando" (GRU 01/02) o cron reabre por tick. */
+const DEFAULT_RECLAIM_QUEUED_BATCH_SIZE = 5
+/** Status de `EmailCampaignDispatch` (não confundir com `EmailCampaignStatus` — não tem "partially_sent"). */
+const TERMINAL_DISPATCH_STATUSES_FOR_RECLAIM = ["completed", "failed"] as const
 const MANUAL_DISPATCH_STATUSES = ["draft", "scheduled", "sent", "failed", "partially_sent"] as const
 const MANUAL_DISPATCH_STATUS_SET = new Set<EmailCampaignStatus>(MANUAL_DISPATCH_STATUSES)
 const RETRY_FAILED_ONLY_STATUSES = new Set<EmailCampaignStatus>(["failed", "partially_sent"])
@@ -2705,6 +2714,8 @@ export class EmailCampaignUseCase {
           status: "sending",
           batchIdempotencyScheme: "contentHash",
           retryFailedOnly,
+          reservedCredits,
+          hasCampaignsBetaAccess,
         },
       })
 
@@ -3443,55 +3454,15 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
-
-        const recipients = await this.rebuildRecipientsForOrphanResume({
-          teamId: dispatch.teamId,
-          contactListId: dispatch.contactListId,
-          queuedLogs,
-        })
-
-        const publishedTemplate = await this.resolvePublishedTemplate(
-          dispatch.templateId,
-          dispatch.teamId
-        )
-        const templateVariables = this.recipientService.parseTemplateVariables(
-          publishedTemplate?.variables ?? []
-        )
-
-        const job: ManualDispatchJob = {
-          campaignId: dispatch.campaignId,
-          campaignName: dispatch.campaign.name,
-          dispatchId: dispatch.id,
-          dispatchNumber: dispatch.dispatchNumber,
-          teamId: dispatch.teamId,
-          previousStatus: "sent",
-          reservedCredits: 0,
-          hasCampaignsBetaAccess: true,
-          recipients,
-          subject: dispatch.templateSubject,
-          html: dispatch.templateHtml,
-          from: formatCampaignFromHeader(fromResolved),
-          replyTo: teamSettings?.replyTo ?? null,
-          globalDefaults,
-          templateVariables,
-          logIdsByEmail: queuedLogs.map((log) => ({
-            email: log.recipientEmail,
-            logId: log.id,
-          })),
-          totalRecipients: dispatch.totalRecipients,
-          retryFailedOnly: false,
-          status: "sending",
-          batchIdempotencyScheme: dispatch.batchIdempotencyScheme,
-          enableContentHashFallbackOnIdempotencyConflict:
-            dispatch.batchIdempotencyScheme === "positional",
-        }
-
-        console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando", {
+        // Fase 4 / PR1: não chama mais `completeManualDispatch` (dispatchBatch
+        // síncrono, mesma causa dos timeouts que este método existe para corrigir).
+        // Só valida o domínio (acima) e republica o wake da fila; quem envia é o
+        // consumer `processDispatchQueueBatch`, em lotes limitados.
+        console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando via fila", {
           dispatchId: dispatch.id,
           queued: queuedLogs.length,
         })
-        await this.completeManualDispatch(job)
+        await this.publishDispatchWake(dispatch.id, "cron-start")
         resumed += 1
       } catch (error) {
         console.error("[EmailCampaignUseCase][resumeOrphanSendingDispatches]", {
@@ -3502,6 +3473,337 @@ export class EmailCampaignUseCase {
     }
 
     return resumed
+  }
+
+  /**
+   * Publica (ou republica) o wake da fila `email-campaign-dispatch` para um dispatch.
+   * Falha de publish aqui não derruba o caller: o cron `recoverStuck`/reclaim
+   * é a rede de segurança que reabre dispatches travados sem wake.
+   */
+  private async publishDispatchWake(
+    dispatchId: string,
+    reason: "start" | "cron-start" | "cron-reclaim" | "continue",
+    remainingCount?: number
+  ): Promise<void> {
+    try {
+      await publishEmailCampaignDispatchWake({ dispatchId, reason, remainingCount })
+    } catch (error) {
+      console.error("[EmailCampaignUseCase][publishDispatchWake]", {
+        dispatchId,
+        reason,
+        error,
+      })
+    }
+  }
+
+  /**
+   * Consumer da fila `email-campaign-dispatch` (Fase 4 / PR1): processa **um lote**
+   * (até `DISPATCH_QUEUE_BATCH_SIZE`) de destinatários `queued` do dispatch e, se
+   * sobrar mais, republica o wake em vez de tentar enviar tudo numa única invocação
+   * (causa dos timeouts/504 do cron `dispatch-scheduled` e do `after()` do `/send`).
+   *
+   * Reconstrói o `ManualDispatchJob` do lote a partir do `dispatchId` + logs `queued`,
+   * no mesmo padrão de `resumeOrphanSendingDispatches`. Só chama
+   * `commitDispatchTerminalState` quando não sobrar nenhum `queued` (última chamada),
+   * nunca em lote parcial — senão o dispatch seria fechado prematuramente e o
+   * restante dos destinatários nunca seria enviado.
+   */
+  async processDispatchQueueBatch(
+    dispatchId: string,
+    options?: { batchSize?: number }
+  ): Promise<Output> {
+    const batchSize = options?.batchSize ?? DISPATCH_QUEUE_BATCH_SIZE
+
+    const dispatch = await this.db.emailCampaignDispatch.findFirst({
+      where: { id: dispatchId, status: "sending" },
+      select: {
+        id: true,
+        campaignId: true,
+        teamId: true,
+        dispatchNumber: true,
+        batchIdempotencyScheme: true,
+        templateHtml: true,
+        templateSubject: true,
+        totalRecipients: true,
+        contactListId: true,
+        templateId: true,
+        reservedCredits: true,
+        hasCampaignsBetaAccess: true,
+        campaign: { select: { name: true } },
+      },
+    })
+
+    if (!dispatch) {
+      console.info("[EmailCampaignUseCase][processDispatchQueueBatch] dispatch já finalizado ou inexistente", {
+        dispatchId,
+      })
+      return new Output(true, ["Disparo já finalizado"], [], { dispatchId, hasMore: false })
+    }
+
+    const queuedLogs = await this.db.emailLog.findMany({
+      where: { dispatchId: dispatch.id, status: "queued" },
+      select: { id: true, recipientEmail: true, recipientName: true },
+      orderBy: { id: "asc" },
+      take: batchSize,
+    })
+
+    if (queuedLogs.length === 0) {
+      return this.finalizeDispatchQueueBatch(dispatch)
+    }
+
+    let teamSettings = null
+    try {
+      teamSettings = await this.db.emailTeamSettings.findUnique({ where: { teamId: dispatch.teamId } })
+    } catch {
+      teamSettings = null
+    }
+
+    const defaultSender = await this.db.emailTeamSender
+      .findFirst({
+        where: { teamId: dispatch.teamId, isDefault: true },
+        select: { name: true, email: true },
+      })
+      .catch(() => null)
+
+    const fromResolved = resolveCampaignFrom({
+      domainName: teamSettings?.resendDomainName,
+      legacyFromName: teamSettings?.fromName,
+      legacyFromEmail: teamSettings?.fromEmail,
+      defaultSender,
+    })
+
+    const fromGuard = assertCampaignFromIsSendable({
+      resolved: fromResolved,
+      domainName: teamSettings?.resendDomainName,
+      domainStatus: teamSettings?.resendDomainStatus,
+    })
+    if (!fromGuard.ok) {
+      console.error(
+        `[EmailCampaignUseCase][processDispatchQueueBatch] dispatchId=${dispatch.id} bloqueado por domínio: ${fromGuard.message}`
+      )
+      await this.markScheduledCampaignFailed(dispatch.campaignId, fromGuard.message)
+      await this.db.emailCampaignDispatch.update({
+        where: { id: dispatch.id },
+        data: { status: "failed", errorMessage: fromGuard.message },
+      })
+      return new Output(false, [], [fromGuard.message], { dispatchId: dispatch.id, hasMore: false })
+    }
+
+    const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
+    const publishedTemplate = await this.resolvePublishedTemplate(dispatch.templateId, dispatch.teamId)
+    const templateVariables = this.recipientService.parseTemplateVariables(publishedTemplate?.variables ?? [])
+
+    const recipients = await this.rebuildRecipientsForOrphanResume({
+      teamId: dispatch.teamId,
+      contactListId: dispatch.contactListId,
+      queuedLogs,
+    })
+
+    const logIdsByEmail = new Map(queuedLogs.map((log) => [log.recipientEmail.trim().toLowerCase(), log.id]))
+
+    const { valid: validRecipients, invalid: invalidRecipients } =
+      this.partitionRecipientsByEmailValidity(recipients)
+
+    const dispatchResult =
+      validRecipients.length > 0
+        ? await this.dispatchService.dispatchBatch({
+            from: formatCampaignFromHeader(fromResolved),
+            replyTo: teamSettings?.replyTo ?? null,
+            recipients: validRecipients,
+            subject: dispatch.templateSubject,
+            html: dispatch.templateHtml,
+            campaignId: dispatch.campaignId,
+            teamId: dispatch.teamId,
+            dispatchId: dispatch.id,
+            dispatchNumber: dispatch.dispatchNumber,
+            batchIdempotencyScheme: dispatch.batchIdempotencyScheme,
+            enableContentHashFallbackOnIdempotencyConflict:
+              dispatch.batchIdempotencyScheme === "positional",
+            globalDefaults,
+            templateVariables,
+            logIdByEmail: logIdsByEmail,
+            onChunkDispatched: async (chunkDispatched) => {
+              const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
+                const logId = logIdsByEmail.get(email)
+                return logId ? [{ logId, resendEmailId: resendId }] : []
+              })
+              if (sentEntries.length > 0) {
+                await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
+              }
+            },
+          })
+        : {
+            sent: 0,
+            failed: invalidRecipients.length,
+            dispatched: [] as Array<{ email: string; resendId: string }>,
+            providerErrors: invalidRecipients.map((recipient) => ({
+              message: formatInvalidRecipientFailureMessage(recipient.email, recipient.reason),
+              emails: [recipient.email],
+            })),
+          }
+
+    const failureReasonByEmail = this.buildFailureReasonByEmail(dispatchResult.providerErrors)
+    for (const recipient of invalidRecipients) {
+      if (!failureReasonByEmail.has(recipient.email)) {
+        failureReasonByEmail.set(
+          recipient.email,
+          formatInvalidRecipientFailureMessage(recipient.email, recipient.reason)
+        )
+      }
+    }
+
+    const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
+    this.recordDispatchLeadActivities({
+      teamId: dispatch.teamId,
+      campaignId: dispatch.campaignId,
+      campaignName: dispatch.campaign.name,
+      dispatchId: dispatch.id,
+      recipients,
+      dispatchedEmails,
+      subject: dispatch.templateSubject,
+      globalDefaults,
+      templateVariables,
+    })
+    await withConcurrencyLimit(
+      recipients.filter((recipient) => !dispatchedEmails.has(recipient.email)),
+      EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
+      async (recipient) => {
+        const logId = logIdsByEmail.get(recipient.email)
+        if (!logId) return
+        await teamEmailDispatchLogger.markTeamEmailLogFailed(
+          logId,
+          failureReasonByEmail.get(recipient.email) ?? "Falha no envio via Resend"
+        )
+      }
+    )
+
+    const remaining = await this.db.emailLog.count({
+      where: { dispatchId: dispatch.id, status: "queued" },
+    })
+
+    if (remaining > 0) {
+      console.info("[EmailCampaignUseCase][processDispatchQueueBatch] lote processado, republicando wake", {
+        dispatchId: dispatch.id,
+        batchSent: dispatchResult.sent,
+        remaining,
+      })
+      await this.publishDispatchWake(dispatch.id, "continue", remaining)
+      return new Output(
+        true,
+        [`Lote processado: ${dispatchResult.sent} enviado(s), ${remaining} restante(s)`],
+        [],
+        { dispatchId: dispatch.id, batchSent: dispatchResult.sent, remaining, hasMore: true }
+      )
+    }
+
+    return this.finalizeDispatchQueueBatch(dispatch)
+  }
+
+  /**
+   * Fecha o dispatch quando não sobra nenhum log `queued` (última chamada do
+   * consumer para esse `dispatchId`). Libera créditos não usados com o
+   * snapshot persistido em `reservedCredits`/`hasCampaignsBetaAccess` (a
+   * reserva pode ter ocorrido num isolate/invocação diferente do finalize).
+   */
+  private async finalizeDispatchQueueBatch(dispatch: {
+    id: string
+    campaignId: string
+    teamId: string
+    totalRecipients?: number
+    reservedCredits: number
+    hasCampaignsBetaAccess: boolean
+  }): Promise<Output> {
+    const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
+    const terminal = resolveCampaignStatusAfterDispatch(sentCount)
+
+    const updatedCampaign = await this.commitDispatchTerminalState({
+      campaignId: dispatch.campaignId,
+      dispatchId: dispatch.id,
+      totalRecipients: dispatch.totalRecipients,
+      sentCount,
+      terminal,
+      incrementSent: true,
+      setDispatchTotalSent: true,
+      setSentAt: terminal.campaignStatus === "sent" ? new Date() : undefined,
+      incrementDispatchCount: true,
+    })
+
+    if (updatedCampaign.parentCampaignId) {
+      await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch((refreshError) => {
+        console.error("[EmailCampaignUseCase][finalizeDispatchQueueBatch][refreshParent]", refreshError)
+      })
+    }
+
+    await this.releaseUnusedTeamCredits(
+      dispatch.teamId,
+      dispatch.reservedCredits,
+      sentCount,
+      dispatch.hasCampaignsBetaAccess
+    ).catch((releaseError) => {
+      console.error("[EmailCampaignUseCase][finalizeDispatchQueueBatch][releaseCredits]", releaseError)
+    })
+
+    console.info("[EmailCampaignUseCase][finalizeDispatchQueueBatch] dispatch finalizado", {
+      dispatchId: dispatch.id,
+      sentCount,
+      campaignStatus: terminal.campaignStatus,
+    })
+
+    return new Output(
+      true,
+      [`Disparo finalizado: ${sentCount} enviado(s)`],
+      [],
+      { dispatchId: dispatch.id, sent: sentCount, hasMore: false }
+    )
+  }
+
+  /**
+   * Reabre (volta para `sending`) e republica o wake de dispatches já
+   * `sent`/`partially_sent`/`failed` que ainda têm logs `queued` sobrando
+   * (GRU 01/02: cron antigo marcava a campanha como concluída sem drenar
+   * o restante). Chamado pelo cron `dispatch-scheduled` a cada tick.
+   */
+  async reclaimCompletedDispatchesWithQueuedLogs(options?: { maxDispatches?: number }): Promise<number> {
+    const maxDispatches = options?.maxDispatches ?? DEFAULT_RECLAIM_QUEUED_BATCH_SIZE
+
+    const staleDispatches = await this.db.emailCampaignDispatch.findMany({
+      where: {
+        status: { in: [...TERMINAL_DISPATCH_STATUSES_FOR_RECLAIM] },
+        logs: { some: { status: "queued" } },
+      },
+      select: { id: true, campaignId: true },
+      orderBy: { updatedAt: "asc" },
+      take: maxDispatches,
+    })
+
+    let reclaimed = 0
+    for (const dispatch of staleDispatches) {
+      try {
+        await this.db.$transaction([
+          this.db.emailCampaignDispatch.update({
+            where: { id: dispatch.id },
+            data: { status: "sending", errorMessage: null },
+          }),
+          this.db.emailCampaign.update({
+            where: { id: dispatch.campaignId },
+            data: { status: "sending", errorMessage: null },
+          }),
+        ])
+        await this.publishDispatchWake(dispatch.id, "cron-reclaim")
+        reclaimed += 1
+        console.info("[EmailCampaignUseCase][reclaimCompletedDispatchesWithQueuedLogs] reaberto", {
+          dispatchId: dispatch.id,
+          campaignId: dispatch.campaignId,
+        })
+      } catch (error) {
+        console.error("[EmailCampaignUseCase][reclaimCompletedDispatchesWithQueuedLogs]", {
+          dispatchId: dispatch.id,
+          error,
+        })
+      }
+    }
+
+    return reclaimed
   }
 
   /**
@@ -3598,6 +3900,9 @@ export class EmailCampaignUseCase {
     const maxCampaigns = options?.maxCampaigns ?? DEFAULT_SCHEDULED_BATCH_SIZE
 
     await this.recoverStuckSendingCampaigns(now)
+    await this.reclaimCompletedDispatchesWithQueuedLogs().catch((error) => {
+      console.error("[EmailCampaignUseCase][dispatchScheduled][reclaim]", error)
+    })
 
     const campaigns = await this.db.emailCampaign.findMany({
       where: {
@@ -3794,7 +4099,6 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        let sentCount = 0
         try {
         const dispatchRecord = await this.db.emailCampaignDispatch.create({
           data: {
@@ -3815,13 +4119,12 @@ export class EmailCampaignUseCase {
             status: "sending",
             batchIdempotencyScheme: "contentHash",
             retryFailedOnly: false,
+            reservedCredits,
+            hasCampaignsBetaAccess,
           },
         })
 
         const recipientsList = dispatchInput.recipients
-        const { valid: validRecipients, invalid: invalidRecipients } =
-          this.partitionRecipientsByEmailValidity(recipientsList)
-
         const logInputs = recipientsList.map((recipient) => ({
           teamId: campaign.teamId,
           campaignId: campaign.id,
@@ -3838,124 +4141,27 @@ export class EmailCampaignUseCase {
           sourceType: "campaign",
           sourceId: campaign.id,
         }))
-        const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
-        const logIdsByEmail = new Map(createdLogs.map(({ email, logId }) => [email, logId]))
+        await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
 
-        const dispatchResult =
-          validRecipients.length > 0
-            ? await this.dispatchService.dispatchBatch({
-                from: dispatchInput.from,
-                replyTo: dispatchInput.replyTo,
-                recipients: validRecipients,
-                subject: dispatchInput.subject,
-                html: dispatchInput.html,
-                campaignId: campaign.id,
-                teamId: campaign.teamId,
-                dispatchId: dispatchRecord.id,
-                dispatchNumber,
-                batchIdempotencyScheme: "contentHash",
-                globalDefaults: dispatchInput.globalDefaults,
-                templateVariables: dispatchInput.templateVariables,
-                logIdByEmail: logIdsByEmail,
-                onChunkDispatched: async (chunkDispatched) => {
-                  const sentEntries = chunkDispatched.flatMap(({ email, resendId }) => {
-                    const logId = logIdsByEmail.get(email)
-                    return logId ? [{ logId, resendEmailId: resendId }] : []
-                  })
-                  if (sentEntries.length > 0) {
-                    await teamEmailDispatchLogger.markManyTeamEmailLogsSent(sentEntries)
-                  }
-                },
-              })
-            : {
-                sent: 0,
-                failed: invalidRecipients.length,
-                dispatched: [] as Array<{ email: string; resendId: string }>,
-                providerErrors: invalidRecipients.map((recipient) => ({
-                  message: formatInvalidRecipientFailureMessage(
-                    recipient.email,
-                    recipient.reason
-                  ),
-                  emails: [recipient.email],
-                })),
-                abortedReason: undefined as "domain_not_verified" | undefined,
-              }
-
-        sentCount = dispatchResult.sent
-
-        const failureReasonByEmail = this.buildFailureReasonByEmail(dispatchResult.providerErrors)
-        for (const recipient of invalidRecipients) {
-          if (!failureReasonByEmail.has(recipient.email)) {
-            failureReasonByEmail.set(
-              recipient.email,
-              formatInvalidRecipientFailureMessage(recipient.email, recipient.reason)
-            )
-          }
-        }
-
-        const dispatchedEmails = new Set(dispatchResult.dispatched.map((entry) => entry.email))
-        this.recordDispatchLeadActivities({
-          teamId: campaign.teamId,
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          dispatchId: dispatchRecord.id,
-          recipients: recipientsList,
-          dispatchedEmails,
-          subject: dispatchInput.subject,
-          globalDefaults: dispatchInput.globalDefaults,
-          templateVariables: dispatchInput.templateVariables,
-        })
-        await withConcurrencyLimit(
-          recipientsList.filter((recipient) => !dispatchedEmails.has(recipient.email)),
-          EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
-          async (recipient) => {
-            const logId = logIdsByEmail.get(recipient.email)
-            if (!logId) return
-            await teamEmailDispatchLogger.markTeamEmailLogFailed(
-              logId,
-              failureReasonByEmail.get(recipient.email) ?? "Falha no envio via Resend"
-            )
-          }
+        // Fase 4 / PR1: não chama mais `dispatchBatch` aqui (mesma causa dos
+        // timeouts do cron de 60s em campanhas grandes). Só publica o wake —
+        // quem envia é o consumer `processDispatchQueueBatch`, em lotes.
+        await this.publishDispatchWake(dispatchRecord.id, "cron-start")
+        dispatched++
+        const scheduledLabel = campaign.scheduledAt
+          ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
+          : "sem data"
+        console.info(
+          `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} encaminhada para a fila: ${recipientsList.length} destinatário(s) (agendada ${scheduledLabel} ${ownerTz})`
         )
-
-        const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors, dispatchResult.abortedReason)
-        const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent, failureDetail)
-
-        // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
-        await this.commitDispatchTerminalState({
-          campaignId: campaign.id,
-          dispatchId: dispatchRecord.id,
-          totalRecipients: recipientsList.length,
-          sentCount: dispatchResult.sent,
-          terminal,
-          incrementSent: true,
-          setDispatchTotalSent: true,
-        })
-
-        if (terminal.campaignStatus === "sent") {
-          dispatched++
-          const scheduledLabel = campaign.scheduledAt
-            ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
-            : "sem data"
-          console.info(
-            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} disparada: ${dispatchResult.sent} e-mails (agendada ${scheduledLabel} ${ownerTz})`
-          )
-        } else {
-          console.error(
-            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} motivo=${terminal.errorMessage ?? EMAIL_CAMPAIGN_FAILURE_MESSAGES.RESEND_ZERO}`
-          )
-        }
-
-        if (campaign.parentCampaignId) {
-          await this.refreshParentCampaignStatus(campaign.parentCampaignId)
-        }
-        } finally {
+        } catch (createDispatchError) {
           await this.releaseUnusedTeamCredits(
             campaign.teamId,
             reservedCredits,
-            sentCount,
+            0,
             hasCampaignsBetaAccess
-          )
+          ).catch(() => null)
+          throw createDispatchError
         }
       } catch (campaignError) {
         console.error(`[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id}`, campaignError)
