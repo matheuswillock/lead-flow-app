@@ -60,15 +60,17 @@ describe("ProcessOpenWaWebhookUseCase", () => {
     )
   })
 
-  it("message inbound cria conversa+mensagem", async () => {
+  it("message inbound cria conversa+mensagem e publica messageId", async () => {
     const findOrCreateConversation = mock(async () => ({
       id: "conv-1",
       contactName: null,
       contactId: null,
     }))
     const createMessage = mock(async () => ({ id: "msg-1" }))
+    const publish = mock(async () => ({ messageId: "mid-1" }))
     const uc = new ProcessOpenWaWebhookUseCase(
-      buildRepo({ findOrCreateConversation, createMessage })
+      buildRepo({ findOrCreateConversation, createMessage }),
+      { publish }
     )
     const output = await uc.execute({
       teamId: "team-1",
@@ -91,6 +93,11 @@ describe("ProcessOpenWaWebhookUseCase", () => {
     expect(output.isValid).toBe(true)
     expect(findOrCreateConversation).toHaveBeenCalled()
     expect(createMessage).toHaveBeenCalled()
+    expect(publish).toHaveBeenCalledWith({
+      source: "message",
+      teamId: "team-1",
+      messageId: "msg-1",
+    })
   })
 
   it("message_ack atualiza status outbound", async () => {
