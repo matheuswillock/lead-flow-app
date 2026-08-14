@@ -2824,6 +2824,7 @@ completed completed
     Int attemptCount 
     DateTime nextAttemptAt 
     String lastError "❓"
+    String failureReason "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
