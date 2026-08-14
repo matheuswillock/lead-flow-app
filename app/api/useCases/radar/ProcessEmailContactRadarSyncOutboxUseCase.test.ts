@@ -129,6 +129,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
     expect(markSentMock).toHaveBeenCalledWith("outbox-1", 0);
     expect(getBacklogSnapshotMock).toHaveBeenCalledTimes(1);
     expect(output.result).toMatchObject({
+      source: "cron",
       claimed: 1,
       sent: 1,
       batchSize: 250,
@@ -200,5 +201,47 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
     expect(syncExecuteMock).toHaveBeenCalledTimes(12);
     expect(maxInFlight).toBeLessThanOrEqual(8);
     expect(maxInFlight).toBeGreaterThan(1);
+  });
+
+  it("source=queue força concurrency 1 e mantém batchSize efetivo", async () => {
+    claimDueMock.mockImplementation(async (limit?: number) => {
+      expect(limit).toBe(250);
+      return Array.from({ length: 4 }, (_, i) => ({
+        id: `outbox-q-${i}`,
+        emailContactId: `contact-q-${i}`,
+        teamId: "team-1",
+        emailImportJobId: "job-1",
+        attemptCount: 0,
+        generation: 0,
+      }));
+    });
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    syncExecuteMock.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight -= 1;
+      return {
+        isValid: true,
+        successMessages: [],
+        errorMessages: [],
+        result: { errors: 0 },
+      };
+    });
+
+    const useCase = new ProcessEmailContactRadarSyncOutboxUseCase();
+    const output = await useCase.execute({ source: "queue" });
+
+    expect(output.isValid).toBe(true);
+    expect(syncExecuteMock).toHaveBeenCalledTimes(4);
+    expect(maxInFlight).toBe(1);
+    expect(output.result).toMatchObject({
+      source: "queue",
+      claimed: 4,
+      batchSize: 250,
+      concurrency: 1,
+    });
   });
 });
