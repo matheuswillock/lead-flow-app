@@ -20,6 +20,7 @@ export const PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG =
  */
 export const CRITICAL_PUBLIC_FORM_METRIC_EVENT_TYPES = [
   "form_viewed",
+  "form_started",
   "question_answered",
   "form_completed",
 ] as const;
@@ -35,7 +36,6 @@ export type ServerPublicFormMetricEventType =
 
 export type PublicFormMetricQueueEventType =
   | CriticalPublicFormMetricEventType
-  | "form_started"
   | ServerPublicFormMetricEventType;
 
 const queue = new QueueClient({ region: "gru1" });

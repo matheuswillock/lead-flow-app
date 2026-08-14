@@ -7,8 +7,9 @@ import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
 const publishPublicFormMetricEvent = mock(async () => ({ messageId: "msg-queue-1" }))
 const isCriticalPublicFormMetricEvent = mock((eventType: string) =>
   eventType === "form_viewed" ||
-  eventType === "question_answered" ||
-  eventType === "form_completed",
+    eventType === "form_started" ||
+    eventType === "question_answered" ||
+    eventType === "form_completed",
 )
 const buildPublicFormMetricQueuePayload = mock(
   (publicId: string, input: PublicFormMetricEventInput) => ({
@@ -51,7 +52,7 @@ const VALID_PUBLIC_ID = "11111111-1111-4111-8111-111111111111"
 const VALID_SESSION = "session_abcdefghij"
 
 function criticalInput(
-  eventType: "form_viewed" | "question_answered" | "form_completed",
+  eventType: "form_viewed" | "form_started" | "question_answered" | "form_completed",
 ): PublicFormMetricEventInput {
   return {
     visitorSessionId: VALID_SESSION,
@@ -92,14 +93,23 @@ describe("PublicFormsUseCase.recordMetric queue-first", () => {
   it("evento não crítico usa caminho direto recordMetric", async () => {
     const output = await useCase.recordMetric(VALID_PUBLIC_ID, {
       visitorSessionId: VALID_SESSION,
-      eventType: "form_started",
-      eventKey: `${VALID_SESSION}:form_started:form`,
+      eventType: "question_viewed",
+      eventKey: `${VALID_SESSION}:question_viewed:q1`,
+      questionId: "11111111-1111-4111-8111-111111111111",
       origin: {},
     })
     expect(output.isValid).toBe(true)
     expect(output.result).toEqual({ accepted: true })
     expect(publishPublicFormMetricEvent).not.toHaveBeenCalled()
     expect(recordMetricService).toHaveBeenCalledTimes(1)
+  })
+
+  it("form_started é crítico: publica na fila sem chamar o service", async () => {
+    const output = await useCase.recordMetric(VALID_PUBLIC_ID, criticalInput("form_started"))
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject({ queued: true, messageId: "msg-queue-1" })
+    expect(publishPublicFormMetricEvent).toHaveBeenCalledTimes(1)
+    expect(recordMetricService).not.toHaveBeenCalled()
   })
 
   it("falha de publish instrumenta tag e não chama recordMetric", async () => {
