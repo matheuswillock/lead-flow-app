@@ -1,4 +1,3 @@
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
 import {
   enqueueRadarProfileSync,
