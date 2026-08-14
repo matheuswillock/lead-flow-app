@@ -45,11 +45,13 @@ export class ResendWebhookProcessingFailureRepository
         attemptCount: 1,
         nextAttemptAt: now,
         lastError: input.lastError,
+        failureReason: input.failureReason,
       },
       update: {
         eventType: input.eventType,
         payload: input.payload,
         lastError: input.lastError,
+        failureReason: input.failureReason,
         status: "pending",
         nextAttemptAt: now,
       },

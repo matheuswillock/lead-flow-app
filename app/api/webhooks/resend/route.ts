@@ -2,13 +2,14 @@
 import { after, NextResponse, type NextRequest } from "next/server"
 import { Webhook } from "svix"
 import type { Prisma } from "@prisma/client"
-import { resendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
 import {
   formatProcessingError,
   resendWebhookProcessingFailureRepository,
 } from "@/app/api/infra/data/repositories/resendWebhookProcessingFailure/ResendWebhookProcessingFailureRepository"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { publishWithRetry } from "@/lib/queues/publish-with-retry"
+import { publishResendWebhookEmailLogEvent } from "@/lib/queues/resend-webhook-emaillog-events"
 
 /** Backpressure por isolate: default 2 reduz pressão no pool sob rajada Resend. */
 const MAX_CONCURRENT = Math.max(1, Number(process.env.RESEND_WEBHOOK_MAX_CONCURRENT ?? 2))
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest) {
           eventType: event.type,
           payload: event as Prisma.InputJsonValue,
           lastError: "Semáforo do webhook saturado; processamento adiado",
+          failureReason: "semaphore_saturated",
         })
       } catch (outboxError) {
         console.error("[ResendWebhookRoute][POST][saturated][outbox]", outboxError)
@@ -67,18 +69,27 @@ export async function POST(request: NextRequest) {
     inFlight++
     after(async () => {
       try {
-        await resendWebhookUseCase.handle({ event, svixId })
-      } catch (error) {
-        console.error("[ResendWebhookRoute][POST][after]", error)
-        try {
-          await resendWebhookProcessingFailureRepository.upsertFromProcessingFailure({
+        const publishResult = await publishWithRetry(() =>
+          publishResendWebhookEmailLogEvent({ event, svixId })
+        )
+        if (!publishResult.ok) {
+          console.error("[ResendWebhookRoute][POST][after][publish-exhausted]", {
             svixId,
             eventType: event.type,
-            payload: event as Prisma.InputJsonValue,
-            lastError: formatProcessingError(error),
+            attempts: publishResult.attempts,
+            error: publishResult.error,
           })
-        } catch (outboxError) {
-          console.error("[ResendWebhookRoute][POST][after][outbox]", outboxError)
+          try {
+            await resendWebhookProcessingFailureRepository.upsertFromProcessingFailure({
+              svixId,
+              eventType: event.type,
+              payload: event as Prisma.InputJsonValue,
+              lastError: formatProcessingError(publishResult.error),
+              failureReason: "queue_publish_failed",
+            })
+          } catch (outboxError) {
+            console.error("[ResendWebhookRoute][POST][after][outbox]", outboxError)
+          }
         }
       } finally {
         inFlight--

@@ -13,6 +13,7 @@ export type UpsertResendWebhookProcessingFailureInput = {
   eventType: string;
   payload: Prisma.InputJsonValue;
   lastError: string;
+  failureReason: "queue_publish_failed" | "semaphore_saturated";
 };
 
 export interface IResendWebhookProcessingFailureRepository {

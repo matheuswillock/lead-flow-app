@@ -3458,6 +3458,7 @@ model ResendWebhookProcessingFailure {
   attemptCount Int                                  @default(1)
   nextAttemptAt DateTime                            @default(now()) @db.Timestamptz(6)
   lastError    String?                              @db.Text
+  failureReason String?                             @db.Text
   createdAt    DateTime                             @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime                             @updatedAt @db.Timestamptz(6)
 
