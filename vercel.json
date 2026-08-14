@@ -91,6 +91,17 @@
           "maxConcurrency": 2
         }
       ]
+    },
+    "app/api/queues/email-campaign-dispatch/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "email-campaign-dispatch",
+          "retryAfterSeconds": 30,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 1
+        }
+      ]
     }
   },
   "crons": [

@@ -1,4 +1,4 @@
-import { after, NextResponse, type NextRequest } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import {
@@ -6,6 +6,7 @@ import {
   type ManualDispatchJob,
 } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { publishEmailCampaignDispatchWake } from "@/lib/queues/email-campaign-dispatch"
 
 export const maxDuration = 300
 
@@ -40,15 +41,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(output, { status })
     }
 
+    // Fase 4 / PR1: só publica o wake da fila `email-campaign-dispatch` — quem
+    // envia via Resend é o consumer (`processDispatchQueueBatch`), fora deste
+    // isolate de 300s. Se o publish falhar, `resumeOrphanSendingDispatches`
+    // (cron) é a rede de segurança que reabre e republica o wake.
     const job = output.result as ManualDispatchJob
-    after(async () => {
-      try {
-        await useCase.completeManualDispatch(job)
-      } catch (error) {
-        rethrowIfPrerenderInterrupted(error)
-        console.error("[EmailCampaignSendRoute][after]", error)
-      }
-    })
+    try {
+      await publishEmailCampaignDispatchWake({ dispatchId: job.dispatchId, reason: "start" })
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error)
+      console.error("[EmailCampaignSendRoute][publishWake]", error)
+    }
 
     return NextResponse.json(
       new Output(true, output.successMessages, [], {

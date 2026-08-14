@@ -1,10 +1,11 @@
-import { after, type NextRequest } from "next/server"
+import { type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import {
   backofficeStudioEmailUseCase,
 } from "@/app/api/useCases/backofficeStudioEmail/BackofficeStudioEmailUseCase"
 import type { ManualDispatchJob } from "@/app/api/useCases/email/EmailCampaignUseCase"
+import { publishEmailCampaignDispatchWake } from "@/lib/queues/email-campaign-dispatch"
 import {
   resolveStudioEmailActor,
   studioEmailError,
@@ -42,15 +43,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return studioEmailJson(output, status, status)
     }
 
+    // Fase 4 / PR1: só publica o wake — mesmo caminho do /send de produto.
     const job = output.result as ManualDispatchJob
-    after(async () => {
-      try {
-        await backofficeStudioEmailUseCase.completeManualDispatch(job)
-      } catch (error) {
-        rethrowIfPrerenderInterrupted(error)
-        console.error("[BackofficeStudioEmailCampaignSendRoute][after]", error)
-      }
-    })
+    try {
+      await publishEmailCampaignDispatchWake({ dispatchId: job.dispatchId, reason: "start" })
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error)
+      console.error("[BackofficeStudioEmailCampaignSendRoute][publishWake]", error)
+    }
 
     return studioEmailJson(
       new Output(true, output.successMessages, [], {
