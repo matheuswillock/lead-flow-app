@@ -4,7 +4,6 @@ import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { radarImportJobRepository } from "@/app/api/infra/data/repositories/radar/RadarImportJobRepository"
 import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
-import { radarService } from "@/app/api/services/radar/RadarService"
 import { notificationService } from "@/app/api/services/notifications/NotificationService"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { generateRadarImportId } from "@/lib/radar/generate-import-id"
@@ -44,8 +43,28 @@ import {
 
 const BATCH_SIZE = 500
 const MAX_BATCH_ATTEMPTS = 3
-const MAX_PROCESSING_MS = 45_000
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
+const RADAR_BULK_IMPORT_QUEUE_PUBLISH_FAILED_TAG = "radar_bulk_import_queue_publish_failed"
+
+type RadarBulkImportPayload = {
+  jobId: string
+  batchIndex: number
+}
+
+type PublishRadarBulkImportBatch = (
+  payload: RadarBulkImportPayload
+) => Promise<{ messageId: string | null }>
+
+async function defaultPublishBatch(
+  payload: RadarBulkImportPayload
+): Promise<{ messageId: string | null }> {
+  const { publishRadarBulkImportBatch } = await import("@/lib/queues/radar-bulk-import")
+  return publishRadarBulkImportBatch(payload)
+}
+
+export type RadarBaseImportDeps = {
+  publishBatch?: PublishRadarBulkImportBatch
+}
 const PREVIEW_ROW_LIMIT = 5
 
 type StoredImportPayload = {
@@ -66,6 +85,12 @@ type FailedBatchEntry = {
 }
 
 export class RadarBaseImportUseCase {
+  constructor(private readonly deps: RadarBaseImportDeps = {}) {}
+
+  private publishBatch(payload: RadarBulkImportPayload) {
+    return (this.deps.publishBatch ?? defaultPublishBatch)(payload)
+  }
+
   private parseStoredPayload(raw: string): StoredImportPayload {
     return JSON.parse(raw) as StoredImportPayload
   }
@@ -468,32 +493,37 @@ export class RadarBaseImportUseCase {
     return value as FailedBatchEntry[]
   }
 
-  private parseAttemptsByBatch(value: Prisma.JsonValue | null): Record<string, number> {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {}
-    return value as Record<string, number>
-  }
-
-  private async finalizeJob(
-    job: {
-      id: string
-      importId: string
-      teamId: string
-      requestedBy: string
-      createdCount: number
-      enrichedCount: number
-      skippedCount: number
-      deferredCount: number
-      skippedIssues: Prisma.JsonValue | null
-      failedBatches: Prisma.JsonValue | null
-    },
-    ctx: TeamAccess
-  ): Promise<void> {
+  private async finalizeJob(job: {
+    id: string
+    importId: string
+    teamId: string
+    requestedBy: string
+    createdCount: number
+    enrichedCount: number
+    skippedCount: number
+    deferredCount: number
+    skippedIssues: Prisma.JsonValue | null
+    failedBatches: Prisma.JsonValue | null
+  }): Promise<void> {
     const failedBatches = this.parseFailedBatches(job.failedBatches)
     const status = failedBatches.length > 0 ? "completed_with_errors" : "completed"
 
     await radarImportJobRepository.updateJob(job.id, { status })
 
-    await radarService.syncProfileDataForTeam({ teamId: job.teamId, ctx })
+    const { enqueueRadarProfileSync } = await import(
+      "@/app/api/useCases/radar/enqueueRadarProfileSync"
+    )
+    await enqueueRadarProfileSync(
+      { source: "bulk_import_finalize", teamId: job.teamId },
+      {
+        fallback: async () => {
+          const { syncRadarProfileDataForTeamUseCase } = await import(
+            "@/app/api/useCases/radar/SyncRadarProfileDataForTeamUseCase"
+          )
+          await syncRadarProfileDataForTeamUseCase.execute({ teamId: job.teamId })
+        },
+      }
+    )
 
     const message =
       `Importação da base "${job.importId}" concluída: ${job.createdCount} criados, ${job.enrichedCount} enriquecidos, ${job.skippedCount} ignorados (não entram na base), ${job.deferredCount} adiados.`
@@ -518,8 +548,6 @@ export class RadarBaseImportUseCase {
   }
 
   async processPendingJobs(): Promise<Output> {
-    const startedAt = Date.now()
-
     try {
       const claimed = await withTransientTransactionRetry(
         () => radarImportJobRepository.claimPendingJob(),
@@ -530,159 +558,23 @@ export class RadarBaseImportUseCase {
         return new Output(true, ["Nenhum job pendente"], [], { processedJobs: 0 })
       }
 
-      let raw: string
-      let payload: StoredImportPayload
+      const batchIndex = Math.floor(claimed.processedRows / BATCH_SIZE)
+      const payload = { jobId: claimed.id, batchIndex }
+
       try {
-        raw = await downloadRadarImportPayload(claimed.storagePath)
-        payload = this.parseStoredPayload(raw)
-      } catch (setupError) {
-        console.error(`[RadarBaseImport][${claimed.importId}] Falha no setup do job`, setupError)
-        await radarImportJobRepository.updateJob(claimed.id, { status: "failed" })
-        return new Output(false, [], ["Falha ao carregar payload do job"], null)
+        await this.publishBatch(payload)
+      } catch (error) {
+        console.error(
+          `[RadarBaseImportUseCase][processPendingJobs] ${RADAR_BULK_IMPORT_QUEUE_PUBLISH_FAILED_TAG}`,
+          error
+        )
+        return this.processClaimedBatch(payload)
       }
 
-      const fieldMapping = claimed.fieldMapping as Record<string, string>
-
-      let processedRows = claimed.processedRows
-      let createdCount = claimed.createdCount
-      let enrichedCount = claimed.enrichedCount
-      let skippedCount = claimed.skippedCount
-      let deferredCount = claimed.deferredCount
-      const skippedIssues: SkippedImportIssue[] = Array.isArray(claimed.skippedIssues)
-        ? (claimed.skippedIssues as SkippedImportIssue[])
-        : []
-      const failedBatches = this.parseFailedBatches(claimed.failedBatches)
-      const attemptsByBatch: Record<string, number> = {}
-      const seenKeys = new Set<string>()
-
-      const totalBatches = Math.ceil(payload.rows.length / BATCH_SIZE) || 0
-      let batchIndex = Math.floor(processedRows / BATCH_SIZE)
-
-      const ctx = {
-        profileId: claimed.requestedBy,
-        teamId: claimed.teamId,
-      } as TeamAccess
-
-      while (batchIndex < totalBatches) {
-        if (Date.now() - startedAt > MAX_PROCESSING_MS) {
-          await radarImportJobRepository.updateJob(claimed.id, {
-            status: "pending",
-            processedRows,
-            createdCount,
-            enrichedCount,
-            skippedCount,
-            deferredCount,
-            skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT) as unknown as Prisma.InputJsonValue,
-            failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
-          })
-          return new Output(true, ["Job re-enfileirado por tempo"], [], {
-            importId: claimed.importId,
-            resumedAtBatch: batchIndex + 1,
-          })
-        }
-
-        const batchKey = String(batchIndex)
-        const currentAttempts = attemptsByBatch[batchKey] ?? 0
-        const batch = payload.rows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
-
-        // Snapshot counters before processing; restore on failure to prevent double-counting
-        const batchCheckpoint = {
-          processedRows,
-          createdCount,
-          enrichedCount,
-          skippedCount,
-          deferredCount,
-          skippedIssuesLength: skippedIssues.length,
-        }
-
-        try {
-          for (const row of batch) {
-            const result = await this.processRow(
-              claimed.teamId,
-              claimed.id,
-              row,
-              fieldMapping,
-              seenKeys
-            )
-            if (result.outcome === "created") createdCount += 1
-            if (result.outcome === "enriched") enrichedCount += 1
-            if (result.outcome === "skipped") {
-              skippedCount += 1
-              if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
-                skippedIssues.push(result.issue)
-              }
-            }
-            if (result.outcome === "deferred") {
-              deferredCount += 1
-              if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
-                skippedIssues.push(result.issue)
-              }
-            }
-            processedRows += 1
-          }
-
-          console.info(
-            `[RadarBaseImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — sucesso`
-          )
-          batchIndex += 1
-        } catch (error) {
-          // Restore to pre-batch state so a retry starts the batch cleanly
-          processedRows = batchCheckpoint.processedRows
-          createdCount = batchCheckpoint.createdCount
-          enrichedCount = batchCheckpoint.enrichedCount
-          skippedCount = batchCheckpoint.skippedCount
-          deferredCount = batchCheckpoint.deferredCount
-          skippedIssues.splice(batchCheckpoint.skippedIssuesLength)
-
-          const nextAttempt = currentAttempts + 1
-          attemptsByBatch[batchKey] = nextAttempt
-          const reason = error instanceof Error ? error.message : "Erro desconhecido"
-
-          console.error(
-            `[RadarBaseImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — falha, tentativa ${nextAttempt}/${MAX_BATCH_ATTEMPTS} — ${reason}`
-          )
-
-          if (nextAttempt >= MAX_BATCH_ATTEMPTS) {
-            failedBatches.push({ batchIndex, attempts: nextAttempt, lastError: reason })
-            processedRows += batch.length
-            batchIndex += 1
-          }
-        }
-
-        await radarImportJobRepository.updateJob(claimed.id, {
-          processedRows,
-          createdCount,
-          enrichedCount,
-          skippedCount,
-          deferredCount,
-          skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
-          failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
-        })
-      }
-
-      await this.finalizeJob(
-        {
-          id: claimed.id,
-          importId: claimed.importId,
-          teamId: claimed.teamId,
-          requestedBy: claimed.requestedBy,
-          createdCount,
-          enrichedCount,
-          skippedCount,
-          deferredCount,
-          skippedIssues: skippedIssues as unknown as Prisma.JsonValue,
-          failedBatches: failedBatches as unknown as Prisma.JsonValue,
-        },
-        ctx
-      )
-
-      return new Output(true, ["Job processado"], [], {
+      return new Output(true, ["Lote enfileirado"], [], {
         importId: claimed.importId,
-        created: createdCount,
-        enriched: enrichedCount,
-        skipped: skippedCount,
-        deferred: deferredCount,
-        failedBatches: failedBatches.length,
+        jobId: claimed.id,
+        batchIndex,
       })
     } catch (error) {
       console.error("[RadarBaseImportUseCase][processPendingJobs]", error)
@@ -694,6 +586,169 @@ export class RadarBaseImportUseCase {
       )
     }
   }
+
+  async processClaimedBatch(
+    input: RadarBulkImportPayload,
+    options: { deliveryCount?: number } = {}
+  ): Promise<Output> {
+    const job = await radarImportJobRepository.findById(input.jobId)
+    if (!job) {
+      return new Output(false, [], ["Job de importação não encontrado"], null)
+    }
+    if (job.status === "completed" || job.status === "completed_with_errors" || job.status === "failed") {
+      return new Output(true, ["Job já finalizado"], [], { jobId: job.id, skipped: true })
+    }
+
+    let stored: StoredImportPayload
+    try {
+      stored = this.parseStoredPayload(await downloadRadarImportPayload(job.storagePath))
+    } catch (setupError) {
+      console.error(`[RadarBaseImport][${job.importId}] Falha no setup do job`, setupError)
+      await radarImportJobRepository.updateJob(job.id, { status: "failed" })
+      return new Output(false, [], ["Falha ao carregar payload do job"], null)
+    }
+
+    const fieldMapping = job.fieldMapping as Record<string, string>
+    const totalBatches = Math.ceil(stored.rows.length / BATCH_SIZE) || 0
+    const batchIndex = input.batchIndex
+
+    if (totalBatches === 0 || job.processedRows >= stored.rows.length) {
+      await this.finalizeJob(job)
+      return new Output(true, ["Job processado"], [], {
+        importId: job.importId,
+        created: job.createdCount,
+        enriched: job.enrichedCount,
+        skipped: job.skippedCount,
+        deferred: job.deferredCount,
+      })
+    }
+
+    if (batchIndex < 0 || batchIndex >= totalBatches) {
+      return new Output(false, [], ["batchIndex inválido"], null)
+    }
+
+    const batchEnd = Math.min((batchIndex + 1) * BATCH_SIZE, stored.rows.length)
+    if (job.processedRows >= batchEnd) {
+      const nextIndex = Math.floor(job.processedRows / BATCH_SIZE)
+      if (job.processedRows >= stored.rows.length) {
+        await this.finalizeJob(job)
+        return new Output(true, ["Job processado"], [], { importId: job.importId, replayed: true })
+      }
+      await this.publishNextOrRequeue(job.id, nextIndex)
+      return new Output(true, ["Lote já processado"], [], {
+        importId: job.importId,
+        batchIndex,
+        replayed: true,
+      })
+    }
+
+    let processedRows = job.processedRows
+    let createdCount = job.createdCount
+    let enrichedCount = job.enrichedCount
+    let skippedCount = job.skippedCount
+    let deferredCount = job.deferredCount
+    const skippedIssues: SkippedImportIssue[] = Array.isArray(job.skippedIssues)
+      ? ([...job.skippedIssues] as SkippedImportIssue[])
+      : []
+    const failedBatches = this.parseFailedBatches(job.failedBatches)
+    const seenKeys = new Set<string>()
+    const batch = stored.rows.slice(batchIndex * BATCH_SIZE, batchEnd)
+    const deliveryCount = Math.max(1, options.deliveryCount ?? 1)
+
+    try {
+      for (const row of batch) {
+        const result = await this.processRow(
+          job.teamId,
+          job.id,
+          row,
+          fieldMapping,
+          seenKeys
+        )
+        if (result.outcome === "created") createdCount += 1
+        if (result.outcome === "enriched") enrichedCount += 1
+        if (result.outcome === "skipped") {
+          skippedCount += 1
+          if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
+            skippedIssues.push(result.issue)
+          }
+        }
+        if (result.outcome === "deferred") {
+          deferredCount += 1
+          if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
+            skippedIssues.push(result.issue)
+          }
+        }
+        processedRows += 1
+      }
+
+      console.info(
+        `[RadarBaseImport][${job.importId}] Lote ${batchIndex + 1}/${totalBatches} — sucesso`
+      )
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Erro desconhecido"
+      console.error(
+        `[RadarBaseImport][${job.importId}] Lote ${batchIndex + 1}/${totalBatches} — falha, tentativa ${deliveryCount}/${MAX_BATCH_ATTEMPTS} — ${reason}`
+      )
+      if (deliveryCount < MAX_BATCH_ATTEMPTS) {
+        throw error
+      }
+      failedBatches.push({ batchIndex, attempts: deliveryCount, lastError: reason })
+      processedRows = batchEnd
+    }
+
+    await radarImportJobRepository.updateJob(job.id, {
+      processedRows,
+      createdCount,
+      enrichedCount,
+      skippedCount,
+      deferredCount,
+      skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT) as unknown as Prisma.InputJsonValue,
+      failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
+    })
+
+    if (processedRows >= stored.rows.length) {
+      await this.finalizeJob({
+        id: job.id,
+        importId: job.importId,
+        teamId: job.teamId,
+        requestedBy: job.requestedBy,
+        createdCount,
+        enrichedCount,
+        skippedCount,
+        deferredCount,
+        skippedIssues: skippedIssues as unknown as Prisma.JsonValue,
+        failedBatches: failedBatches as unknown as Prisma.JsonValue,
+      })
+      return new Output(true, ["Job processado"], [], {
+        importId: job.importId,
+        created: createdCount,
+        enriched: enrichedCount,
+        skipped: skippedCount,
+        deferred: deferredCount,
+        failedBatches: failedBatches.length,
+      })
+    }
+
+    await this.publishNextOrRequeue(job.id, batchIndex + 1)
+    return new Output(true, ["Lote processado"], [], {
+      importId: job.importId,
+      batchIndex,
+      processedRows,
+    })
+  }
+
+  private async publishNextOrRequeue(jobId: string, batchIndex: number): Promise<void> {
+    try {
+      await this.publishBatch({ jobId, batchIndex })
+    } catch (error) {
+      console.error(
+        `[RadarBaseImportUseCase][publishNextOrRequeue] ${RADAR_BULK_IMPORT_QUEUE_PUBLISH_FAILED_TAG}`,
+        error
+      )
+      await radarImportJobRepository.updateJob(jobId, { status: "pending" })
+    }
+  }
+
 }
 
 export const radarBaseImportUseCase = new RadarBaseImportUseCase()

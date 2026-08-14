@@ -47,6 +47,10 @@ export class RadarImportJobRepository {
     })
   }
 
+  async findById(id: string) {
+    return prisma.radarImportJob.findUnique({ where: { id } })
+  }
+
   async updateJob(id: string, data: Prisma.RadarImportJobUpdateInput) {
     return prisma.radarImportJob.update({ where: { id }, data })
   }
