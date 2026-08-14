@@ -21,6 +21,7 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
+import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { instantiatePublicFormTemplateDraft } from "@/lib/public-forms/instantiate-template-draft"
 import { publicFormDraftSchema } from "@/lib/public-forms/validation"
@@ -384,7 +385,11 @@ export class PublicFormsService implements IPublicFormsService {
     return form ? { ...current, snapshot, ...form } : null
   }
 
-  async recordMetric(publicId: string, input: PublicFormMetricEventInput) {
+  async recordMetric(
+    publicId: string,
+    input: PublicFormMetricEventInput,
+    options?: { radarMode?: "inline" | "after" | "skip" },
+  ) {
     const current = (await this.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
@@ -440,9 +445,9 @@ export class PublicFormsService implements IPublicFormsService {
       origin: json(origin),
     })
 
-    // D8: espelha a métrica já persistida no Radar (fire-and-forget).
-    if (teamCtx?.teamId) {
-      syncPublicFormMetricToRadarInline({
+    const radarMode = options?.radarMode ?? "after"
+    if (teamCtx?.teamId && radarMode !== "skip") {
+      const radarInput = {
         teamId: teamCtx.teamId,
         eventType: input.eventType,
         eventKey: input.eventKey,
@@ -452,7 +457,17 @@ export class PublicFormsService implements IPublicFormsService {
         questionId: input.questionId,
         leadId,
         origin,
-      })
+      }
+      if (radarMode === "inline") {
+        const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)
+        if (!radarResult.isValid) {
+          throw new Error(
+            radarResult.errorMessages.join("; ") || "Falha ao espelhar métrica de formulário no Radar",
+          )
+        }
+      } else {
+        syncPublicFormMetricToRadarInline(radarInput)
+      }
     }
 
     return true
