@@ -10,6 +10,15 @@ import type {
 /** Rows stuck in `processing` longer than this are treated as abandoned leases. */
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
 
+type PublishWake = () => Promise<unknown>;
+
+async function defaultPublishWake(): Promise<unknown> {
+  const { publishRadarEmailContactSyncWake } = await import(
+    "@/lib/queues/radar-email-contact-sync"
+  );
+  return publishRadarEmailContactSyncWake();
+}
+
 type ClaimRawRow = {
   id: string;
   emailContactId: string;
@@ -28,6 +37,8 @@ type BacklogRawRow = {
 export class EmailContactRadarSyncOutboxRepository
   implements IEmailContactRadarSyncOutboxRepository
 {
+  constructor(private readonly publishWake: PublishWake = defaultPublishWake) {}
+
   async upsertPendingForContacts(entries: UpsertRadarSyncOutboxEntry[]): Promise<void> {
     if (entries.length === 0) return;
 
@@ -56,6 +67,7 @@ export class EmailContactRadarSyncOutboxRepository
         })
       )
     );
+    await this.notifyWake();
   }
 
   /**
@@ -250,6 +262,18 @@ export class EmailContactRadarSyncOutboxRepository
     }
 
     return { pending, processing, maxPendingAgeSeconds };
+  }
+
+  /** Um wake por chamada de lote. Falha de publish não reverte o upsert — o cron republica. */
+  private async notifyWake(): Promise<void> {
+    try {
+      await this.publishWake();
+    } catch (error) {
+      console.error(
+        "[EmailContactRadarSyncOutboxRepository] radar_email_contact_sync_queue_publish_failed",
+        { tag: "radar_email_contact_sync_queue_publish_failed", error }
+      );
+    }
   }
 }
 

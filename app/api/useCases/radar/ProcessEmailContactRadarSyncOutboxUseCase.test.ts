@@ -69,7 +69,7 @@ mock.module("@/lib/email/resolve-radar-outbox-throughput", () => ({
       minConcurrency: 1,
       maxConcurrency: 16,
       defaultConcurrency: 8,
-      cronRunsPerHour: 12,
+      cronRunsPerHour: 4,
     },
     updatedAt: null,
   }),
@@ -133,8 +133,8 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
       claimed: 1,
       sent: 1,
       batchSize: 250,
-      concurrency: 8,
-      theoreticalThroughputPerHour: 12,
+      concurrency: 2,
+      theoreticalThroughputPerHour: 4,
       backlog: { pending: 40, processing: 1, maxPendingAgeSeconds: 120 },
     });
   });
@@ -199,7 +199,7 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
     await useCase.execute();
 
     expect(syncExecuteMock).toHaveBeenCalledTimes(12);
-    expect(maxInFlight).toBeLessThanOrEqual(8);
+    expect(maxInFlight).toBeLessThanOrEqual(2);
     expect(maxInFlight).toBeGreaterThan(1);
   });
 
@@ -242,6 +242,44 @@ describe("ProcessEmailContactRadarSyncOutboxUseCase", () => {
       claimed: 4,
       batchSize: 250,
       concurrency: 1,
+    });
+  });
+
+  it("source=cron limita concurrency a 2 mesmo com throughput 8", async () => {
+    claimDueMock.mockImplementation(async () =>
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `outbox-c-${i}`,
+        emailContactId: `contact-c-${i}`,
+        teamId: "team-1",
+        emailImportJobId: "job-1",
+        attemptCount: 0,
+        generation: 0,
+      }))
+    );
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    syncExecuteMock.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight -= 1;
+      return {
+        isValid: true,
+        successMessages: [],
+        errorMessages: [],
+        result: { errors: 0 },
+      };
+    });
+
+    const useCase = new ProcessEmailContactRadarSyncOutboxUseCase();
+    const output = await useCase.execute({ source: "cron" });
+
+    expect(output.isValid).toBe(true);
+    expect(maxInFlight).toBe(2);
+    expect(output.result).toMatchObject({
+      source: "cron",
+      concurrency: 2,
     });
   });
 });

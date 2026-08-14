@@ -31,6 +31,11 @@ import {
   formatInvalidRecipientFailureMessage,
   isValidResendRecipientEmail,
 } from "@/lib/email/is-valid-resend-recipient-email"
+import {
+  formatResendInvalidToIsolatedFailureMessage,
+  isResendInvalidToValidationError,
+  splitBatchForInvalidToBisect,
+} from "@/lib/email/resend-batch-invalid-to-bisect"
 import type {
   DispatchBatchResult,
   DispatchProviderError,
@@ -38,6 +43,8 @@ import type {
 } from "./IEmailCampaignDispatchService"
 
 const BATCH_SIZE = 100
+/** Limite de sublotes enfileirados por bisect (proteção contra loop). */
+const MAX_INVALID_TO_BISECT_QUEUE = BATCH_SIZE * 2
 
 /** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
 function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
@@ -172,10 +179,20 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     const enableContentHashFallbackOnIdempotencyConflict =
       params.enableContentHashFallbackOnIdempotencyConflict ?? false
 
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const sortedChunk = [...chunks[chunkIndex]].sort((a, b) =>
+    type Recipient = (typeof sendable)[number]
+    type ChunkWorkItem = { sortedChunk: Recipient[]; chunkIndex: number }
+
+    const chunkQueue: ChunkWorkItem[] = chunks.map((chunk, chunkIndex) => ({
+      sortedChunk: [...chunk].sort((a, b) =>
         a.email.localeCompare(b.email, undefined, { sensitivity: "base" })
-      )
+      ),
+      chunkIndex,
+    }))
+
+    while (chunkQueue.length > 0) {
+      const { sortedChunk, chunkIndex } = chunkQueue.shift()!
+      if (sortedChunk.length === 0) continue
+
       const chunkEmails = sortedChunk.map((recipient) => recipient.email)
       const entityIdAttempts = buildBatchIdempotencyEntityIdAttempts({
         scheme: batchIdempotencyScheme,
@@ -240,6 +257,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         })
 
       let chunkAccepted = false
+      let shouldBisectInvalidTo = false
       entityIdLoop: for (const batchIdempotencyEntityId of entityIdAttempts) {
         for (let attempt = 0; attempt < MAX_BATCH_SEND_ATTEMPTS; attempt++) {
           if (attempt > 0) {
@@ -275,6 +293,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                 batchIdempotencyEntityId,
                 attempt: attempt + 1,
                 statusCode: errorStatusCode,
+                chunkSize: sortedChunk.length,
               })
               const retryable = isRetryableResendBatchError({
                 statusCode: errorStatusCode,
@@ -290,6 +309,28 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                   batchIdempotencyEntityId !== entityIdAttempts[entityIdAttempts.length - 1]
                 ) {
                   continue entityIdLoop
+                }
+                if (
+                  isResendInvalidToValidationError(errorStatusCode, errorMessage) &&
+                  sortedChunk.length > 1
+                ) {
+                  shouldBisectInvalidTo = true
+                  chunkDispatched = []
+                  break entityIdLoop
+                }
+                if (
+                  isResendInvalidToValidationError(errorStatusCode, errorMessage) &&
+                  sortedChunk.length === 1
+                ) {
+                  const alone = sortedChunk[0]!
+                  result.failed += 1
+                  result.providerErrors.push({
+                    message: formatResendInvalidToIsolatedFailureMessage(alone.email),
+                    statusCode: errorStatusCode,
+                    emails: [alone.email],
+                  })
+                  chunkDispatched = []
+                  break entityIdLoop
                 }
                 result.failed += sortedChunk.length
                 result.providerErrors.push({
@@ -360,6 +401,41 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             }
           }
         }
+      }
+
+      if (shouldBisectInvalidTo) {
+        const [left, right] = splitBatchForInvalidToBisect(sortedChunk)
+        console.info("[EmailCampaignDispatchService][dispatchBatch] bisect Invalid to", {
+          campaignId: params.campaignId,
+          dispatchId: params.dispatchId,
+          chunkIndex,
+          originalSize: sortedChunk.length,
+          leftSize: left.length,
+          rightSize: right.length,
+          queueSize: chunkQueue.length,
+        })
+        if (chunkQueue.length + 2 > MAX_INVALID_TO_BISECT_QUEUE) {
+          console.error(
+            "[EmailCampaignDispatchService][dispatchBatch] limite de bisect atingido; falhando lote",
+            { campaignId: params.campaignId, dispatchId: params.dispatchId, chunkIndex }
+          )
+          result.failed += sortedChunk.length
+          result.providerErrors.push({
+            message:
+              "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.",
+            statusCode: 422,
+            emails: sortedChunk.map((recipient) => recipient.email),
+          })
+          continue
+        }
+        // Processa esquerda antes da direita (DFS).
+        if (right.length > 0) {
+          chunkQueue.unshift({ sortedChunk: right, chunkIndex })
+        }
+        if (left.length > 0) {
+          chunkQueue.unshift({ sortedChunk: left, chunkIndex })
+        }
+        continue
       }
 
       if (!chunkAccepted && chunkDispatched.length === 0) {

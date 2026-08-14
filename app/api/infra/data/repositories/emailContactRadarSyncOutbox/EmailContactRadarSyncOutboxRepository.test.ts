@@ -29,6 +29,7 @@ const updateManyMock = mock(async (_args?: {
 }));
 const countMock = mock(async (_args?: { where?: { emailImportJobId?: string } }) => 0);
 const queryRawMock = mock(async (): Promise<unknown[]> => []);
+const publishWake = mock(async () => ({ messageId: "mid-wake" }));
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -54,13 +55,15 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     updateManyMock.mockClear();
     countMock.mockClear();
     queryRawMock.mockClear();
+    publishWake.mockClear();
+    publishWake.mockResolvedValue({ messageId: "mid-wake" });
     findManyMock.mockImplementation(async () => []);
     updateManyMock.mockImplementation(async () => ({ count: 0 }));
     queryRawMock.mockImplementation(async () => []);
   });
 
   it("upsertPendingForContacts reativa linha sent/failed para pending com attemptCount 0 e incrementa generation", async () => {
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
 
     await repo.upsertPendingForContacts([
       {
@@ -92,6 +95,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     expect(args.update.emailImportJobId).toBe("job-new");
     expect(args.update.lastError).toBeNull();
     expect(args.update.generation).toEqual({ increment: 1 });
+    expect(publishWake).toHaveBeenCalledTimes(1);
   });
 
   it("claimDue usa SKIP LOCKED e não duplica item entre claims concorrentes", async () => {
@@ -113,7 +117,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       ];
     });
 
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
     const [claimA, claimB] = await Promise.all([repo.claimDue(10), repo.claimDue(10)]);
 
     const allClaimed = [...claimA, ...claimB];
@@ -144,7 +148,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       return { count: 0 };
     });
 
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
     const staleWorker = await repo.markSent("outbox-1", 1);
     const currentWorker = await repo.markSent("outbox-1", 2);
 
@@ -202,7 +206,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
 
     queryRawMock.mockImplementation(async () => []);
 
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
     await repo.claimDue(10);
 
     const staleWorker = await repo.markSent("outbox-stale", 0);
@@ -243,13 +247,13 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
 
     queryRawMock.mockImplementation(async () => []);
 
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
     await repo.claimDue(10);
   });
 
   it("countPendingByImportJobId escopa por emailImportJobId, não por lista", async () => {
     countMock.mockImplementation(async () => 7);
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
 
     const pending = await repo.countPendingByImportJobId("job-current");
 
@@ -267,7 +271,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
       { status: "processing", total: 8, oldestAgeSeconds: 90 },
     ]);
 
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
     const snapshot = await repo.getBacklogSnapshot();
 
     expect(snapshot).toEqual({
@@ -280,7 +284,7 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
   it("enqueueMissingForList consulta contatos sem identity e upserta outbox", async () => {
     queryRawMock.mockImplementation(async () => [{ id: "contact-missing-1" }, { id: "contact-missing-2" }]);
 
-    const repo = new EmailContactRadarSyncOutboxRepository();
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
     const enqueued = await repo.enqueueMissingForList("team-1", "list-1");
 
     expect(enqueued).toBe(2);
@@ -292,5 +296,22 @@ describe("EmailContactRadarSyncOutboxRepository", () => {
     expect(first.create.emailContactId).toBe("contact-missing-1");
     expect(first.create.teamId).toBe("team-1");
     expect(first.create.emailImportJobId).toBeNull();
+    expect(publishWake).toHaveBeenCalledTimes(1);
+  });
+
+  it("upsertPendingForContacts vazio não publica wake", async () => {
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
+    await repo.upsertPendingForContacts([]);
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(publishWake).not.toHaveBeenCalled();
+  });
+
+  it("enqueueMissingForList vazio não publica wake", async () => {
+    queryRawMock.mockImplementation(async () => []);
+    const repo = new EmailContactRadarSyncOutboxRepository(publishWake);
+    const enqueued = await repo.enqueueMissingForList("team-1", "list-1");
+    expect(enqueued).toBe(0);
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(publishWake).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,8 @@
 /**
  * Controles de vazão do outbox Radar D9 (EmailContactRadarSyncOutbox).
  *
- * Decisão T4: manter RADAR_SYNC_CONCURRENCY=8 (já em prod) e subir o batch
- * padrão para 250 (~3000/h com cron a cada 5 min), acima da meta 2300/h.
+ * Decisão T4: batch padrão 250. Cron safety-net a cada 15 min (4×/hora)
+ * → ~1000/h pelo cron; a fila `radar-email-contact-sync` drena o restante.
  * Orçamento de conexões do worker ≈ concurrency (syncs em paralelo) + 1
  * (claim/métricas); não reutilizar IMPORT_CRON_CONNECTION_LIMIT.
  *
@@ -18,8 +18,8 @@ export const RADAR_SYNC_MIN_CONCURRENCY = 1;
 export const RADAR_SYNC_DEFAULT_CONCURRENCY = 8;
 export const RADAR_SYNC_MAX_CONCURRENCY = 16;
 
-/** Cron a cada 5 minutos → 12 execuções/hora. */
-export const RADAR_OUTBOX_CRON_RUNS_PER_HOUR = 12;
+/** Cron a cada 15 minutos → 4 execuções/hora. */
+export const RADAR_OUTBOX_CRON_RUNS_PER_HOUR = 4;
 
 export type RadarOutboxThroughputLimits = {
   minBatchSize: number;

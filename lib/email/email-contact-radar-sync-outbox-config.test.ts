@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   RADAR_EMAIL_CONTACT_SYNC_OUTBOX_DEFAULT_BATCH_SIZE,
+  RADAR_OUTBOX_CRON_RUNS_PER_HOUR,
   RADAR_SYNC_DEFAULT_CONCURRENCY,
+  estimateRadarOutboxThroughputPerHour,
   resolveRadarEmailContactSyncOutboxBatchSize,
   resolveRadarSyncConcurrency,
 } from "./email-contact-radar-sync-outbox-config";
@@ -48,5 +50,10 @@ describe("email-contact-radar-sync-outbox-config", () => {
         RADAR_SYNC_CONCURRENCY: "abc",
       })
     ).toBe(8);
+  });
+
+  it("estima throughput com cron */15 (4 ticks/hora)", () => {
+    expect(RADAR_OUTBOX_CRON_RUNS_PER_HOUR).toBe(4);
+    expect(estimateRadarOutboxThroughputPerHour(250)).toBe(1000);
   });
 });
