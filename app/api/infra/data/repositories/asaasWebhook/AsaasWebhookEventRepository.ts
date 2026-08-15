@@ -160,8 +160,11 @@ export class AsaasWebhookEventRepository implements IAsaasWebhookEventRepository
 
     const due = await prisma.asaasWebhookEvent.findMany({
       where: {
-        status: { in: ["pending", "failed"] },
         nextAttemptAt: { lte: now },
+        OR: [
+          { status: "pending" },
+          { status: "failed", attemptCount: { lt: ASAAS_WEBHOOK_EVENT_MAX_ATTEMPTS } },
+        ],
       },
       orderBy: { nextAttemptAt: "asc" },
       take: limit,
