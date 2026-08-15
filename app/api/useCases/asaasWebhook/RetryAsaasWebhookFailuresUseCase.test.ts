@@ -11,7 +11,7 @@ const markRetryOrFailedMock = mock(
   async (): Promise<"retried" | "failed"> => "retried"
 );
 const requeueIfProcessingMock = mock(async () => {});
-const processAsaasWebhookEventMock = mock(async () => {});
+const publishAsaasWebhookEventMock = mock(async () => ({ messageId: "msg-1" }));
 
 mock.module(
   "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository",
@@ -25,25 +25,25 @@ mock.module(
   })
 );
 
-mock.module("@/app/api/webhooks/asaas/processAsaasWebhookEvent", () => ({
-  processAsaasWebhookEvent: processAsaasWebhookEventMock,
+mock.module("@/lib/queues/asaas-webhook-events", () => ({
+  publishAsaasWebhookEvent: publishAsaasWebhookEventMock,
 }));
 
 const { RetryAsaasWebhookFailuresUseCase } = await import("./RetryAsaasWebhookFailuresUseCase");
 
-describe("RetryAsaasWebhookFailuresUseCase", () => {
+describe("RetryAsaasWebhookFailuresUseCase (republish-to-queue)", () => {
   beforeEach(() => {
     claimDueMock.mockClear();
     markProcessedMock.mockClear();
     markRetryOrFailedMock.mockClear();
     requeueIfProcessingMock.mockClear();
-    processAsaasWebhookEventMock.mockClear();
+    publishAsaasWebhookEventMock.mockClear();
     claimDueMock.mockImplementation(async () => []);
-    processAsaasWebhookEventMock.mockImplementation(async () => {});
+    publishAsaasWebhookEventMock.mockImplementation(async () => ({ messageId: "msg-1" }));
     markRetryOrFailedMock.mockImplementation(async () => "retried");
   });
 
-  it("marca processed quando reprocessamento tem sucesso", async () => {
+  it("republica na fila e marca processed quando o publish tem sucesso", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-1",
@@ -57,13 +57,33 @@ describe("RetryAsaasWebhookFailuresUseCase", () => {
     const result = await useCase.execute();
 
     expect(result.isValid).toBe(true);
-    expect(processAsaasWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(publishAsaasWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(publishAsaasWebhookEventMock).toHaveBeenCalledWith({
+      eventId: "row-1",
+      body: { event: "PAYMENT_RECEIVED" },
+    });
     expect(markProcessedMock).toHaveBeenCalledWith("row-1");
     expect(markRetryOrFailedMock).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({ claimed: 1, resolved: 1, retried: 0, failed: 0 });
   });
 
-  it("reenfileira após falha transitória", async () => {
+  it("não chama processamento de negócio direto — só publica na fila", async () => {
+    claimDueMock.mockImplementation(async () => [
+      {
+        id: "row-1",
+        eventType: "PAYMENT_RECEIVED",
+        payload: { event: "PAYMENT_RECEIVED" },
+        attemptCount: 1,
+      },
+    ]);
+
+    const useCase = new RetryAsaasWebhookFailuresUseCase();
+    await useCase.execute();
+
+    expect(publishAsaasWebhookEventMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reenfileira após as 3 tentativas de publish falharem", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-2",
@@ -72,8 +92,8 @@ describe("RetryAsaasWebhookFailuresUseCase", () => {
         attemptCount: 2,
       },
     ]);
-    processAsaasWebhookEventMock.mockImplementation(async () => {
-      throw new Error("timeout de pool");
+    publishAsaasWebhookEventMock.mockImplementation(async () => {
+      throw new Error("timeout de rede");
     });
     markRetryOrFailedMock.mockImplementation(async () => "retried");
 
@@ -81,12 +101,12 @@ describe("RetryAsaasWebhookFailuresUseCase", () => {
     const result = await useCase.execute();
 
     expect(result.isValid).toBe(true);
-    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-2", 3, "timeout de pool");
+    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-2", 3, expect.any(String));
     expect(markProcessedMock).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({ claimed: 1, resolved: 0, retried: 1, failed: 0 });
   });
 
-  it("marca failed após esgotar tentativas", async () => {
+  it("marca failed após esgotar tentativas de publish", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-3",
@@ -95,7 +115,7 @@ describe("RetryAsaasWebhookFailuresUseCase", () => {
         attemptCount: 5,
       },
     ]);
-    processAsaasWebhookEventMock.mockImplementation(async () => {
+    publishAsaasWebhookEventMock.mockImplementation(async () => {
       throw new Error("erro permanente");
     });
     markRetryOrFailedMock.mockImplementation(async () => "failed");
@@ -104,7 +124,7 @@ describe("RetryAsaasWebhookFailuresUseCase", () => {
     const result = await useCase.execute();
 
     expect(result.isValid).toBe(true);
-    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-3", 6, "erro permanente");
+    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-3", 6, expect.any(String));
     expect(markProcessedMock).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({ claimed: 1, resolved: 0, retried: 0, failed: 1 });
   });
@@ -122,5 +142,22 @@ describe("RetryAsaasWebhookFailuresUseCase", () => {
     expect(requeueIfProcessingMock).toHaveBeenCalledWith([]);
     expect(markProcessedMock).not.toHaveBeenCalled();
     expect(markRetryOrFailedMock).not.toHaveBeenCalled();
+  });
+
+  it("processa múltiplas linhas em paralelo (chunks de concorrência)", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({
+      id: `row-${i}`,
+      eventType: "PAYMENT_RECEIVED",
+      payload: { event: "PAYMENT_RECEIVED" },
+      attemptCount: 1,
+    }));
+    claimDueMock.mockImplementation(async () => rows);
+
+    const useCase = new RetryAsaasWebhookFailuresUseCase();
+    const result = await useCase.execute();
+
+    expect(result.isValid).toBe(true);
+    expect(publishAsaasWebhookEventMock).toHaveBeenCalledTimes(5);
+    expect(markProcessedMock).toHaveBeenCalledTimes(5);
   });
 });

@@ -5,17 +5,14 @@ const claimDueMock = mock(async () => [] as PublicFormQueueEventFailureClaimRow[
 const markResolvedMock = mock(async () => {})
 const markRetryOrFailedMock = mock(async (): Promise<"retried" | "failed"> => "retried")
 const requeueIfProcessingMock = mock(async () => {})
-const persistQueuedMetricMock = mock(async () => true)
-const processInBackgroundMock = mock(async () => {})
+const publishPublicFormMetricEventMock = mock(async () => ({ messageId: "msg-1" }))
+const publishPublicFormSubmissionEventMock = mock(async () => ({ messageId: "msg-1" }))
 
-// PublicFormSubmissionUseCase.ts carrega uma cadeia pesada de serviços
-// (lead/agenda/Google) que não pode ser importada em teste sem mock — o
-// singleton exportado nunca deve ser instanciado de verdade aqui.
-mock.module("@/app/api/useCases/publicForms/PublicFormSubmissionUseCase", () => ({
-  publicFormSubmissionUseCase: { processInBackground: processInBackgroundMock },
+mock.module("@/lib/queues/public-form-metric-events", () => ({
+  publishPublicFormMetricEvent: publishPublicFormMetricEventMock,
 }))
-mock.module("@/app/api/useCases/publicForms/PublicFormsUseCase", () => ({
-  publicFormsUseCase: { persistQueuedMetric: persistQueuedMetricMock },
+mock.module("@/lib/queues/public-form-submission-events", () => ({
+  publishPublicFormSubmissionEvent: publishPublicFormSubmissionEventMock,
 }))
 
 const { RetryPublicFormQueueEventFailuresUseCase } = await import(
@@ -30,24 +27,21 @@ const repository = {
   upsertFromProcessingFailure: mock(async () => {}),
 }
 
-const metricsUseCase = { persistQueuedMetric: persistQueuedMetricMock }
-const submissionUseCase = { processInBackground: processInBackgroundMock }
-
-describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
+describe("RetryPublicFormQueueEventFailuresUseCase (republish-to-queue)", () => {
   beforeEach(() => {
     claimDueMock.mockClear()
     markResolvedMock.mockClear()
     markRetryOrFailedMock.mockClear()
     requeueIfProcessingMock.mockClear()
-    persistQueuedMetricMock.mockClear()
-    processInBackgroundMock.mockClear()
+    publishPublicFormMetricEventMock.mockClear()
+    publishPublicFormSubmissionEventMock.mockClear()
     claimDueMock.mockImplementation(async () => [])
-    persistQueuedMetricMock.mockImplementation(async () => true)
-    processInBackgroundMock.mockImplementation(async () => {})
+    publishPublicFormMetricEventMock.mockImplementation(async () => ({ messageId: "msg-1" }))
+    publishPublicFormSubmissionEventMock.mockImplementation(async () => ({ messageId: "msg-1" }))
     markRetryOrFailedMock.mockImplementation(async () => "retried")
   })
 
-  it("kind=metric: reprocessa via persistQueuedMetric e marca resolved", async () => {
+  it("kind=metric: republica na fila public-form-metric-events e marca resolved", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-1",
@@ -66,24 +60,19 @@ describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
       },
     ])
 
-    const useCase = new RetryPublicFormQueueEventFailuresUseCase(
-      repository,
-      metricsUseCase,
-      submissionUseCase,
-    )
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
-    expect(persistQueuedMetricMock).toHaveBeenCalledWith(
-      "pub-1",
-      expect.objectContaining({ eventType: "form_completed", visitorSessionId: "session-1" }),
+    expect(publishPublicFormMetricEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ publicId: "pub-1", eventType: "form_completed" }),
     )
-    expect(processInBackgroundMock).not.toHaveBeenCalled()
+    expect(publishPublicFormSubmissionEventMock).not.toHaveBeenCalled()
     expect(markResolvedMock).toHaveBeenCalledWith("row-1")
     expect(result.result).toMatchObject({ claimed: 1, resolved: 1, retried: 0, failed: 0 })
   })
 
-  it("kind=submission: reprocessa via processInBackground e marca resolved", async () => {
+  it("kind=submission: republica na fila public-form-submission-events e marca resolved", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-2",
@@ -104,23 +93,19 @@ describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
       },
     ])
 
-    const useCase = new RetryPublicFormQueueEventFailuresUseCase(
-      repository,
-      metricsUseCase,
-      submissionUseCase,
-    )
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
-    expect(processInBackgroundMock).toHaveBeenCalledWith(
+    expect(publishPublicFormSubmissionEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ submissionId: "sub-1", requestKey: "req-abc" }),
     )
-    expect(persistQueuedMetricMock).not.toHaveBeenCalled()
+    expect(publishPublicFormMetricEventMock).not.toHaveBeenCalled()
     expect(markResolvedMock).toHaveBeenCalledWith("row-2")
     expect(result.result).toMatchObject({ claimed: 1, resolved: 1, retried: 0, failed: 0 })
   })
 
-  it("reenfileira após falha transitória", async () => {
+  it("reenfileira após falha transitória de publish", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-3",
@@ -130,25 +115,21 @@ describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
         attemptCount: 2,
       },
     ])
-    processInBackgroundMock.mockImplementation(async () => {
-      throw new Error("timeout de pool")
+    publishPublicFormSubmissionEventMock.mockImplementation(async () => {
+      throw new Error("timeout de rede")
     })
     markRetryOrFailedMock.mockImplementation(async () => "retried")
 
-    const useCase = new RetryPublicFormQueueEventFailuresUseCase(
-      repository,
-      metricsUseCase,
-      submissionUseCase,
-    )
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
-    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-3", 3, "timeout de pool")
+    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-3", 3, expect.any(String))
     expect(markResolvedMock).not.toHaveBeenCalled()
     expect(result.result).toMatchObject({ claimed: 1, resolved: 0, retried: 1, failed: 0 })
   })
 
-  it("marca failed após esgotar tentativas", async () => {
+  it("marca failed após esgotar tentativas de publish", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-4",
@@ -166,20 +147,16 @@ describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
         attemptCount: 5,
       },
     ])
-    persistQueuedMetricMock.mockImplementation(async () => {
+    publishPublicFormMetricEventMock.mockImplementation(async () => {
       throw new Error("erro permanente")
     })
     markRetryOrFailedMock.mockImplementation(async () => "failed")
 
-    const useCase = new RetryPublicFormQueueEventFailuresUseCase(
-      repository,
-      metricsUseCase,
-      submissionUseCase,
-    )
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
-    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-4", 6, "erro permanente")
+    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-4", 6, expect.any(String))
     expect(markResolvedMock).not.toHaveBeenCalled()
     expect(result.result).toMatchObject({ claimed: 1, resolved: 0, retried: 0, failed: 1 })
   })
@@ -189,11 +166,7 @@ describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
       throw new Error("falha no claim")
     })
 
-    const useCase = new RetryPublicFormQueueEventFailuresUseCase(
-      repository,
-      metricsUseCase,
-      submissionUseCase,
-    )
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(false)
@@ -203,5 +176,31 @@ describe("RetryPublicFormQueueEventFailuresUseCase (PR2.3)", () => {
     expect(requeueIfProcessingMock).toHaveBeenCalledWith([])
     expect(markResolvedMock).not.toHaveBeenCalled()
     expect(markRetryOrFailedMock).not.toHaveBeenCalled()
+  })
+
+  it("processa múltiplas linhas em paralelo (chunks de concorrência)", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({
+      id: `row-${i}`,
+      kind: "metric" as const,
+      idempotencyKey: `session-${i}:form_completed:form`,
+      payload: {
+        publicId: "pub-1",
+        eventKey: `session-${i}:form_completed:form`,
+        eventType: "form_completed",
+        questionId: null,
+        visitorSessionId: `session-${i}`,
+        origin: {},
+        receivedAt: "2026-08-15T00:00:00.000Z",
+      },
+      attemptCount: 1,
+    }))
+    claimDueMock.mockImplementation(async () => rows)
+
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
+    const result = await useCase.execute()
+
+    expect(result.isValid).toBe(true)
+    expect(publishPublicFormMetricEventMock).toHaveBeenCalledTimes(5)
+    expect(markResolvedMock).toHaveBeenCalledTimes(5)
   })
 })
