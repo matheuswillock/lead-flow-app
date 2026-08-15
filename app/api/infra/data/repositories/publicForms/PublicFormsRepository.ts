@@ -518,7 +518,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
 
       if (!isStaleQuestionFk) throw error
 
-      console.warn("[PublicFormsRepository][upsertMetricEvent] questionId obsoleto, gravando sem o FK (questionSnapshot preserva os dados)", {
+      console.info("[PublicFormsRepository][upsertMetricEvent] questionId obsoleto, gravando sem o FK (questionSnapshot preserva os dados)", {
         eventKey: input.eventKey,
         questionId: input.questionId,
       })
