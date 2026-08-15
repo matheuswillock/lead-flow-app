@@ -19,6 +19,7 @@ type EmailCreditBillingType = "PIX" | "CREDIT_CARD"
 import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAccessService"
 import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
 import { resolveTimezone } from "@/lib/dates"
+import { assertResendDomainTrackingReady } from "@/lib/email/campaign-dispatch-guards"
 
 export class EmailCreditUseCase {
   constructor(
@@ -46,6 +47,28 @@ export class EmailCreditUseCase {
       used: dailyDispatch.used,
       remaining: dailyDispatch.remaining,
       isUnlimited: dailyDispatch.isUnlimited,
+    }
+  }
+
+  private async buildTrackingDispatchGate(teamId: string) {
+    const settings = await prisma.emailTeamSettings.findUnique({
+      where: { teamId },
+      select: {
+        resendDomainName: true,
+        resendDomainStatus: true,
+        resendOpenTracking: true,
+        resendClickTracking: true,
+      },
+    })
+    const tracking = assertResendDomainTrackingReady({
+      domainName: settings?.resendDomainName,
+      domainStatus: settings?.resendDomainStatus,
+      openTracking: settings?.resendOpenTracking,
+      clickTracking: settings?.resendClickTracking,
+    })
+    return {
+      trackingDispatchBlocked: !tracking.ok,
+      ...(tracking.ok ? {} : { trackingDispatchBlockReason: tracking.message }),
     }
   }
 
@@ -141,6 +164,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
+          ...(await this.buildTrackingDispatchGate(ctx.teamId)),
         })
       }
 
@@ -160,6 +184,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
+          ...(await this.buildTrackingDispatchGate(ctx.teamId)),
         })
       }
 
@@ -176,6 +201,7 @@ export class EmailCreditUseCase {
         pricePerMonth: status.plan ? PLAN_PRICES[status.plan] : null,
         availablePlans: this.getAvailablePlans(),
         dailyDispatch: await this.buildDailyDispatchStatus(ctx),
+        ...(await this.buildTrackingDispatchGate(ctx.teamId)),
       })
     } catch (error) {
       console.error("[EmailCreditUseCase][getStatus]", error)

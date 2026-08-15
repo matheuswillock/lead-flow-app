@@ -114,6 +114,8 @@ export type CreditStatus = {
     remaining: number | null
     isUnlimited: boolean
   }
+  trackingDispatchBlocked?: boolean
+  trackingDispatchBlockReason?: string
 }
 
 export type Template = {
