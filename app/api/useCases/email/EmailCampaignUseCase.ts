@@ -27,8 +27,10 @@ import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipi
 import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
+  assertResendDomainTrackingReady,
   checkDispatchWindow,
   getResendDomainDispatchWarnings,
+  resendDomainTrackingInputFromSettings,
   resolveCampaignStatusAfterDispatch,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
@@ -2595,6 +2597,13 @@ export class EmailCampaignUseCase {
         return new Output(false, [], [fromGuard.message], null)
       }
 
+      const trackingGuard = assertResendDomainTrackingReady(
+        resendDomainTrackingInputFromSettings(teamSettings)
+      )
+      if (!trackingGuard.ok) {
+        return new Output(false, [], [trackingGuard.message], null)
+      }
+
       // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
       // Evita reenviar a lista inteira e duplicar quem já chegou ao provedor.
       const retryFailedOnly =
@@ -2733,7 +2742,9 @@ export class EmailCampaignUseCase {
       }))
       const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
 
-      const dispatchWarnings = getResendDomainDispatchWarnings(teamSettings?.resendDomainStatus)
+      const dispatchWarnings = getResendDomainDispatchWarnings(
+        resendDomainTrackingInputFromSettings(teamSettings)
+      )
 
       const job: ManualDispatchJob = {
         campaignId: campaign.id,
@@ -3452,6 +3463,17 @@ export class EmailCampaignUseCase {
           continue
         }
 
+        const orphanTrackingGuard = assertResendDomainTrackingReady(
+          resendDomainTrackingInputFromSettings(teamSettings)
+        )
+        if (!orphanTrackingGuard.ok) {
+          console.error(
+            `[EmailCampaignUseCase][resumeOrphanSendingDispatches] dispatchId=${dispatch.id} bloqueado por tracking: ${orphanTrackingGuard.message}`
+          )
+          await this.failDispatchOnDomainGuard(dispatch, orphanTrackingGuard.message)
+          continue
+        }
+
         // Fase 4 / PR1: não chama mais `completeManualDispatch` (dispatchBatch
         // síncrono, mesma causa dos timeouts que este método existe para corrigir).
         // Só valida o domínio (acima) e republica o wake da fila; quem envia é o
@@ -3581,6 +3603,17 @@ export class EmailCampaignUseCase {
       )
       await this.failDispatchOnDomainGuard(dispatch, fromGuard.message)
       return new Output(false, [], [fromGuard.message], { dispatchId: dispatch.id, hasMore: false })
+    }
+
+    const trackingGuard = assertResendDomainTrackingReady(
+      resendDomainTrackingInputFromSettings(teamSettings)
+    )
+    if (!trackingGuard.ok) {
+      console.error(
+        `[EmailCampaignUseCase][processDispatchQueueBatch] dispatchId=${dispatch.id} bloqueado por tracking: ${trackingGuard.message}`
+      )
+      await this.failDispatchOnDomainGuard(dispatch, trackingGuard.message)
+      return new Output(false, [], [trackingGuard.message], { dispatchId: dispatch.id, hasMore: false })
     }
 
     const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
@@ -3979,14 +4012,15 @@ export class EmailCampaignUseCase {
               replyTo: true,
               resendDomainName: true,
               resendDomainStatus: true,
+              resendOpenTracking: true,
+              resendClickTracking: true,
             },
           })
           .catch(() => null)
 
         const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
-          teamSettings?.resendDomainStatus
+          resendDomainTrackingInputFromSettings(teamSettings)
         )
-        // Cron has no HTTP consumer — tracking warnings are observability-only (see EMAIL_SPEC D12).
         if (scheduledDispatchWarnings.length > 0) {
           console.info(
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} aviso: ${scheduledDispatchWarnings.join(" ")}`
@@ -4069,6 +4103,20 @@ export class EmailCampaignUseCase {
         })
         if (!scheduledFromGuard.ok) {
           await this.markScheduledCampaignFailed(campaign.id, scheduledFromGuard.message)
+          continue
+        }
+
+        const scheduledTrackingGuard = assertResendDomainTrackingReady(
+          resendDomainTrackingInputFromSettings(teamSettings)
+        )
+        if (!scheduledTrackingGuard.ok) {
+          await this.db.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: "scheduled" },
+          })
+          console.info(
+            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: ${scheduledTrackingGuard.message}`
+          )
           continue
         }
 

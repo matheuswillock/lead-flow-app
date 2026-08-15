@@ -7,34 +7,52 @@ import type {
   IPublicFormQueueEventFailureRepository,
   PublicFormQueueEventFailureClaimRow,
 } from "@/app/api/infra/data/repositories/publicFormQueueEventFailure/IPublicFormQueueEventFailureRepository"
+import { publishWithRetry } from "@/lib/queues/publish-with-retry"
 import {
-  publicFormsUseCase,
-  PublicFormsUseCase,
-} from "@/app/api/useCases/publicForms/PublicFormsUseCase"
-import {
-  publicFormSubmissionUseCase,
-  PublicFormSubmissionUseCase,
-  type PublicFormSubmissionBackgroundJob,
-} from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
-import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
-import type { PublicFormMetricQueuePayload } from "@/lib/queues/public-form-metric-events"
-
-const BATCH_SIZE = 20
+  publishPublicFormMetricEvent,
+  type PublicFormMetricQueuePayload,
+} from "@/lib/queues/public-form-metric-events"
+import { publishPublicFormSubmissionEvent } from "@/lib/queues/public-form-submission-events"
+import type { PublicFormSubmissionBackgroundJob } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
 
 /**
- * PR2.3 — cron de retry compartilhado entre os dois pontos de fila de
- * formulários públicos (métricas + submissão), espelhando
+ * Tamanho do lote por execução do cron (a cada 5 min). Reprocessar aqui virou
+ * só um `publish` na fila (chamada de rede, sem transação Postgres/lead
+ * matching), então o lote pode ser bem maior que um processamento direto sem
+ * estourar `maxDuration` do cron. Ajustável via env (mesmo padrão de
+ * RetryResendWebhookFailuresUseCase / RetryAsaasWebhookFailuresUseCase).
+ */
+const DEFAULT_BATCH_SIZE = 1000
+const BATCH_SIZE = Math.max(
+  1,
+  Number(process.env.PUBLIC_FORM_QUEUE_EVENT_RETRY_BATCH_SIZE ?? DEFAULT_BATCH_SIZE),
+)
+
+/** Quantos `publish` concorrentes por vez, para não estourar o rate limit da Vercel Queues. */
+const PUBLISH_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.PUBLIC_FORM_QUEUE_EVENT_RETRY_CONCURRENCY ?? 25),
+)
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+/**
+ * PR2.3 + follow-up: cron de retry compartilhado entre os dois pontos de fila
+ * de formulários públicos (métricas + submissão), espelhando
  * RetryAsaasWebhookFailuresUseCase/RetryResendWebhookFailuresUseCase.
- * `row.kind` decide qual use case de negócio reprocessa o payload.
+ * `row.kind` decide em qual fila republicar o payload — o processamento de
+ * negócio (`persistQueuedMetric`/`processInBackground`) continua só nos
+ * consumers das filas, nunca direto no isolate do cron.
  */
 export class RetryPublicFormQueueEventFailuresUseCase {
   constructor(
     private readonly repository: IPublicFormQueueEventFailureRepository = publicFormQueueEventFailureRepository,
-    private readonly metricsUseCase: Pick<PublicFormsUseCase, "persistQueuedMetric"> = publicFormsUseCase,
-    private readonly submissionUseCase: Pick<
-      PublicFormSubmissionUseCase,
-      "processInBackground"
-    > = publicFormSubmissionUseCase,
   ) {}
 
   private parseJsonPayload<T>(payload: PublicFormQueueEventFailureClaimRow["payload"]): T {
@@ -44,21 +62,34 @@ export class RetryPublicFormQueueEventFailuresUseCase {
     return JSON.parse(String(payload)) as T
   }
 
-  private async reprocess(row: PublicFormQueueEventFailureClaimRow): Promise<void> {
+  private async republish(row: PublicFormQueueEventFailureClaimRow): Promise<void> {
     if (row.kind === "metric") {
       const payload = this.parseJsonPayload<PublicFormMetricQueuePayload>(row.payload)
-      await this.metricsUseCase.persistQueuedMetric(payload.publicId, {
-        visitorSessionId: payload.visitorSessionId,
-        eventType: payload.eventType,
-        questionId: payload.questionId ?? undefined,
-        eventKey: payload.eventKey,
-        origin: payload.origin ?? {},
-      } as PublicFormMetricEventInput)
+      const result = await publishWithRetry(() => publishPublicFormMetricEvent(payload))
+      if (!result.ok) {
+        throw result.error instanceof Error ? result.error : new Error(formatProcessingError(result.error))
+      }
       return
     }
 
     const job = this.parseJsonPayload<PublicFormSubmissionBackgroundJob>(row.payload)
-    await this.submissionUseCase.processInBackground(job)
+    const result = await publishWithRetry(() => publishPublicFormSubmissionEvent(job))
+    if (!result.ok) {
+      throw result.error instanceof Error ? result.error : new Error(formatProcessingError(result.error))
+    }
+  }
+
+  private async retryOne(
+    row: PublicFormQueueEventFailureClaimRow,
+  ): Promise<"resolved" | "retried" | "failed"> {
+    try {
+      await this.republish(row)
+      await this.repository.markResolved(row.id)
+      return "resolved"
+    } catch (error) {
+      const nextAttemptCount = row.attemptCount + 1
+      return this.repository.markRetryOrFailed(row.id, nextAttemptCount, formatProcessingError(error))
+    }
   }
 
   async execute(): Promise<Output> {
@@ -72,23 +103,12 @@ export class RetryPublicFormQueueEventFailuresUseCase {
       let retried = 0
       let failed = 0
 
-      for (const row of claimed) {
-        try {
-          await this.reprocess(row)
-          await this.repository.markResolved(row.id)
-          resolved += 1
-        } catch (error) {
-          const nextAttemptCount = row.attemptCount + 1
-          const outcome = await this.repository.markRetryOrFailed(
-            row.id,
-            nextAttemptCount,
-            formatProcessingError(error),
-          )
-          if (outcome === "failed") {
-            failed += 1
-          } else {
-            retried += 1
-          }
+      for (const batch of chunk(claimed, PUBLISH_CONCURRENCY)) {
+        const outcomes = await Promise.all(batch.map((row) => this.retryOne(row)))
+        for (const outcome of outcomes) {
+          if (outcome === "resolved") resolved += 1
+          else if (outcome === "failed") failed += 1
+          else retried += 1
         }
       }
 
@@ -102,7 +122,7 @@ export class RetryPublicFormQueueEventFailuresUseCase {
       return new Output(
         true,
         [
-          `${resolved} evento(s) resolvido(s), ${retried} reenfileirado(s), ${failed} falha(s) definitiva(s)`,
+          `${resolved} evento(s) republicado(s) na fila, ${retried} reenfileirado(s) no outbox, ${failed} falha(s) definitiva(s)`,
         ],
         [],
         { claimed: claimed.length, resolved, retried, failed },

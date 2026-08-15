@@ -2,13 +2,28 @@ import { formatLocalDateValue, getMinutesInTz } from "@/lib/dates"
 
 export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: string }
 
-export const RESEND_DOMAIN_TRACKING_DEGRADED_WARNING =
-  "Tracking de abertura/clique indisponível neste domínio (CNAME pendente)."
+export const RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE =
+  "Com domínio próprio, é obrigatório habilitar as métricas de abertura e clique. Nenhum disparo será liberado até que as métricas estejam ativas e o DNS de tracking esteja verificado."
+
+/** @deprecated Use RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE — same copy after tracking became a hard gate. */
+export const RESEND_DOMAIN_TRACKING_DEGRADED_WARNING = RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE
+
+export type ResendDomainTrackingInput = {
+  domainName?: string | null
+  domainStatus?: string | null
+  openTracking?: boolean | null
+  clickTracking?: boolean | null
+}
+
+export type ResendDomainTrackingCheck =
+  | { ok: true }
+  | { ok: false; message: string }
 
 /**
  * Statuses that allow campaign dispatch with a custom Resend domain.
  * `partially_verified` / `partially_failed` mean sending DNS (DKIM/SPF) is ok
  * while tracking may be pending or degraded — Resend still accepts sends.
+ * Campaign dispatch additionally requires `assertResendDomainTrackingReady`.
  */
 export function isResendDomainSendCapable(status: string | null | undefined): boolean {
   return (
@@ -23,14 +38,41 @@ export function isResendDomainTrackingCapable(status: string | null | undefined)
   return status === "verified"
 }
 
-/** Non-blocking warnings when the team can send but open/click tracking is not fully verified. */
-export function getResendDomainDispatchWarnings(
-  status: string | null | undefined
-): string[] {
-  if (isResendDomainSendCapable(status) && !isResendDomainTrackingCapable(status)) {
-    return [RESEND_DOMAIN_TRACKING_DEGRADED_WARNING]
+export function resendDomainTrackingInputFromSettings(settings: {
+  resendDomainName?: string | null
+  resendDomainStatus?: string | null
+  resendOpenTracking?: boolean | null
+  resendClickTracking?: boolean | null
+} | null | undefined): ResendDomainTrackingInput {
+  return {
+    domainName: settings?.resendDomainName,
+    domainStatus: settings?.resendDomainStatus,
+    openTracking: settings?.resendOpenTracking,
+    clickTracking: settings?.resendClickTracking,
   }
-  return []
+}
+
+/**
+ * Custom domains must have at least one tracking metric enabled and a fully
+ * verified Resend status (CNAME included) before campaign dispatch.
+ * Teams without a custom domain are not gated.
+ */
+export function assertResendDomainTrackingReady(
+  params: ResendDomainTrackingInput
+): ResendDomainTrackingCheck {
+  if (!params.domainName?.trim()) return { ok: true }
+
+  const metricsEnabled = Boolean(params.openTracking || params.clickTracking)
+  if (!metricsEnabled || !isResendDomainTrackingCapable(params.domainStatus)) {
+    return { ok: false, message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE }
+  }
+  return { ok: true }
+}
+
+/** Warnings when campaign dispatch is blocked by the tracking gate. */
+export function getResendDomainDispatchWarnings(params: ResendDomainTrackingInput): string[] {
+  const result = assertResendDomainTrackingReady(params)
+  return result.ok ? [] : [result.message]
 }
 
 export type DispatchWindowCheckResult =
