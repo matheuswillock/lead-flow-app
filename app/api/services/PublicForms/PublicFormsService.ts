@@ -395,10 +395,10 @@ export class PublicFormsService implements IPublicFormsService {
       snapshot: PublicFormSnapshot
     } | null
     if (!current) return false
-    if (
-      input.questionId &&
-      !current.snapshot.questions.some((item) => item.id === input.questionId)
-    ) {
+    const matchedQuestion = input.questionId
+      ? current.snapshot.questions.find((item) => item.id === input.questionId)
+      : undefined
+    if (input.questionId && !matchedQuestion) {
       return false
     }
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
@@ -439,6 +439,11 @@ export class PublicFormsService implements IPublicFormsService {
       formId: current.snapshot.formId,
       publicationId: current.publicationId,
       questionId: input.questionId,
+      // Cópia congelada da pergunta, resolvida a partir do snapshot da
+      // publicação vigente (mesmo padrão de `PublicFormAnswer.questionSnapshot`)
+      // — preserva a rastreabilidade do evento mesmo que a pergunta viva
+      // seja editada/removida depois.
+      questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,

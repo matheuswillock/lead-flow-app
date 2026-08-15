@@ -5787,6 +5787,7 @@ model PublicFormMetricEvent {
   formId           String                @db.Uuid
   publicationId    String                @db.Uuid
   questionId       String?               @db.Uuid
+  questionSnapshot Json?
   visitorSessionId String                @db.Text
   eventType        PublicFormMetricType
   eventKey         String                @unique @db.Text

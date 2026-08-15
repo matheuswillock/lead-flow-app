@@ -476,24 +476,58 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     formId: string
     publicationId: string
     questionId?: string | null
+    questionSnapshot?: Prisma.InputJsonValue | null
     visitorSessionId: string
     eventType: import("@prisma/client").PublicFormMetricType
     eventKey: string
     origin: Prisma.InputJsonValue
   }) {
-    await prisma.publicFormMetricEvent.upsert({
-      where: { eventKey: input.eventKey },
-      create: {
-        formId: input.formId,
-        publicationId: input.publicationId,
-        questionId: input.questionId,
-        visitorSessionId: input.visitorSessionId,
-        eventType: input.eventType,
-        eventKey: input.eventKey,
-        origin: input.origin,
-      },
-      update: {},
+    const create = (questionId: string | null | undefined) => ({
+      formId: input.formId,
+      publicationId: input.publicationId,
+      questionId,
+      questionSnapshot: input.questionSnapshot ?? Prisma.JsonNull,
+      visitorSessionId: input.visitorSessionId,
+      eventType: input.eventType,
+      eventKey: input.eventKey,
+      origin: input.origin,
     })
+
+    try {
+      await prisma.publicFormMetricEvent.upsert({
+        where: { eventKey: input.eventKey },
+        create: create(input.questionId),
+        update: {},
+      })
+    } catch (error) {
+      // A pergunta viva (`PublicFormQuestion`) pode ser editada/removida
+      // entre o disparo do evento (no navegador, usando a publicação
+      // congelada que ele carregou) e o consumo da fila — o `questionId`
+      // vira uma FK obsoleta. Isso é permanente (não transiente): sem esse
+      // fallback, a fila reentrega para sempre (visto em produção com
+      // deliveryCount >100) sem nunca conseguir persistir. `questionSnapshot`
+      // já carrega a cópia congelada da pergunta (resolvida a partir do
+      // `snapshot` da publicação, mesmo padrão de `PublicFormAnswer`), então
+      // soltar o FK aqui não perde rastreabilidade — só a conveniência de
+      // join "ao vivo".
+      const isStaleQuestionFk =
+        input.questionId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2003" &&
+        String(error.meta?.constraint ?? "").includes("questionId")
+
+      if (!isStaleQuestionFk) throw error
+
+      console.info("[PublicFormsRepository][upsertMetricEvent] questionId obsoleto, gravando sem o FK (questionSnapshot preserva os dados)", {
+        eventKey: input.eventKey,
+        questionId: input.questionId,
+      })
+      await prisma.publicFormMetricEvent.upsert({
+        where: { eventKey: input.eventKey },
+        create: create(null),
+        update: {},
+      })
+    }
   }
 
   async findAnalyticsPublications(teamId: string, id: string) {
