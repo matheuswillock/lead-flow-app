@@ -135,7 +135,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
       try {
         const updated = await service.sendNow(id)
         setCampaigns((prev) => prev.map((c) => (c.id === id ? updated : c)))
-        toast.success("Campanha enviada com sucesso")
+        toast.success("Envio iniciado — acompanhe o progresso na lista")
       } catch (err) {
         console.error("[BackofficeEmailCampaignsContext][sendNow]", err)
         toast.error(err instanceof Error ? err.message : "Erro ao enviar campanha")

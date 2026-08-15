@@ -132,18 +132,13 @@ export class BackofficeEmailCampaignRepository implements IBackofficeEmailCampai
     return prisma.backofficeEmailCampaign.findUnique({ where: { id } })
   }
 
-  async recoverStuck(olderThan: Date): Promise<number> {
-    const result = await prisma.backofficeEmailCampaign.updateMany({
+  async findStuckSending(olderThan: Date): Promise<BackofficeEmailCampaign[]> {
+    return prisma.backofficeEmailCampaign.findMany({
       where: {
         status: BackofficeEmailCampaignStatus.sending,
         updatedAt: { lt: olderThan },
       },
-      data: {
-        status: BackofficeEmailCampaignStatus.failed,
-        errorMessage: "Disparo travado por mais de 30 minutos — marcado como falho automaticamente",
-      },
     })
-    return result.count
   }
 
   async incrementCounters(

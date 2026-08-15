@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   CreateBackofficeEmailLogInput,
   IBackofficeEmailLogRepository,
+  QueuedBackofficeEmailLogRow,
 } from "./IBackofficeEmailLogRepository"
 
 const STATUS_PRIORITY: BackofficeEmailLogStatus[] = [
@@ -76,6 +77,30 @@ export class BackofficeEmailLogRepository implements IBackofficeEmailLogReposito
       data: {
         ...(shouldUpdateStatus ? { status } : {}),
         ...(timestampField && occurredAt ? { [timestampField]: occurredAt } : {}),
+      },
+    })
+  }
+
+  async findQueuedByDispatchId(dispatchId: string, take: number): Promise<QueuedBackofficeEmailLogRow[]> {
+    return prisma.backofficeEmailLog.findMany({
+      where: { dispatchId, status: BackofficeEmailLogStatus.queued },
+      select: { id: true, contactId: true, recipientEmail: true },
+      orderBy: { id: "asc" },
+      take,
+    })
+  }
+
+  async countQueuedByDispatchId(dispatchId: string): Promise<number> {
+    return prisma.backofficeEmailLog.count({
+      where: { dispatchId, status: BackofficeEmailLogStatus.queued },
+    })
+  }
+
+  async countSentByDispatchId(dispatchId: string): Promise<number> {
+    return prisma.backofficeEmailLog.count({
+      where: {
+        dispatchId,
+        status: { notIn: [BackofficeEmailLogStatus.queued, BackofficeEmailLogStatus.failed] },
       },
     })
   }

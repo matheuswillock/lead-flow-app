@@ -35,16 +35,30 @@ import {
   type BackofficeEmailCampaignDispatchService,
 } from "@/app/api/services/backofficeEmailCampaign/BackofficeEmailCampaignDispatchService"
 import { backofficeEmailTemplatesService } from "@/app/api/services/backofficeEmailTemplates/BackofficeEmailTemplatesService"
+import {
+  publishBackofficeEmailCampaignDispatchWake,
+  type BackofficeEmailCampaignDispatchWakePayload,
+} from "@/lib/queues/backoffice-email-campaign-dispatch"
 import type {
   ApplyBackofficeResendWebhookEventInput,
   BackofficeLeadForCampaignSubscription,
   IBackofficeEmailCampaignUseCase,
   UpsertBackofficeEmailCampaignData,
 } from "./IBackofficeEmailCampaignUseCase"
+import type { BackofficeEmailCampaignDispatch } from "@prisma/client"
 
 const DEFAULT_LIVE_CAMPAIGN_HOUR_UTC = 16 // 13:00 America/Sao_Paulo
 const DEFAULT_FROM_EMAIL = process.env.BACKOFFICE_EMAIL_CAMPAIGN_FROM_EMAIL ?? "contato@corretorstudio.com"
 const DEFAULT_FROM_NAME = process.env.BACKOFFICE_EMAIL_CAMPAIGN_FROM_NAME ?? "Corretor Studio"
+
+/**
+ * Lote por invocação do consumer (fila `backoffice-email-campaign-dispatch`).
+ * Mesmo racional do PR1 do produto (`DISPATCH_QUEUE_BATCH_SIZE`): publish é
+ * uma chamada de rede, então o gargalo real é o Resend (chunk de 50 no
+ * `BackofficeEmailCampaignDispatchService`), não o Postgres — 500 por lote
+ * cabe folgado no `maxDuration=300` do consumer.
+ */
+const DISPATCH_QUEUE_BATCH_SIZE = 500
 
 // `eventType` chega já normalizado pelo ResendWebhookUseCase (ex.: "sent", "opened"),
 // não no formato bruto do Resend (ex.: "email.opened").
@@ -205,8 +219,13 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
       return new Output(false, [], ["Campanha já está sendo enviada ou não pode ser enviada"], null)
     }
 
-    const result = await this.dispatchCampaign(campaign, backofficeUserId)
-    return result
+    const prepared = await this.prepareDispatch(campaign, backofficeUserId)
+    if (!prepared.ok) return prepared.output
+
+    await this.publishDispatchWake(prepared.dispatchId, "start")
+
+    const sending = (await this.campaignRepository.findById(id)) ?? campaign
+    return new Output(true, ["Envio iniciado — acompanhe o progresso na lista"], [], sending)
   }
 
   async listDispatches(id: string): Promise<Output> {
@@ -259,17 +278,84 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
     for (const campaign of due) {
       const claimed = await this.campaignRepository.claimForDispatch(campaign.id)
       if (!claimed) continue
-      await this.dispatchCampaign(campaign, null)
-      dispatched += 1
+
+      const prepared = await this.prepareDispatch(campaign, null)
+      if (prepared.ok) {
+        await this.publishDispatchWake(prepared.dispatchId, "cron-start")
+        dispatched += 1
+      }
     }
 
     return new Output(true, [], [], { dispatched, total: due.length })
   }
 
+  /**
+   * Campanhas em `sending` há mais de `STUCK_SENDING_THRESHOLD_MS`: com o
+   * disparo agora sendo processado em lotes pela fila, "sending" há muito
+   * tempo não significa mais travado por padrão — pode só ser uma lista
+   * grande ainda em processamento. Só marca `failed` quando não existe
+   * nenhum dispatch de fato (órfã real); se existir um dispatch `sending`,
+   * republica o wake (`cron-reclaim`) se ainda houver logs `queued`, ou
+   * finaliza se o dispatch já esgotou os `queued` mas nunca chegou a
+   * fechar (crash entre o último lote e o finalize). Se o dispatch mais
+   * recente já estiver `completed`/`failed` mas a campanha continuar
+   * `sending`, é o mesmo crash só que **depois** do `updateStatus` do
+   * dispatch e **antes** do `markSent`/`markFailed` da campanha em
+   * `finalizeDispatchQueueBatch` — reconcilia rodando `finalizeDispatchQueueBatch`
+   * de novo (idempotente) em vez de sobrescrever um envio bem-sucedido com
+   * `markFailed`.
+   */
   async recoverStuckDispatches(): Promise<Output> {
     const olderThan = new Date(Date.now() - STUCK_SENDING_THRESHOLD_MS)
-    const count = await this.campaignRepository.recoverStuck(olderThan)
-    return new Output(true, [], [], { recovered: count })
+    const stuckCampaigns = await this.campaignRepository.findStuckSending(olderThan)
+
+    let reclaimed = 0
+    let failed = 0
+
+    for (const campaign of stuckCampaigns) {
+      const dispatches = await this.dispatchRepository.findByCampaignId(campaign.id)
+      const sendingDispatch = dispatches.find((dispatch) => dispatch.status === "sending")
+
+      if (!sendingDispatch) {
+        const terminalDispatch = dispatches.find(
+          (dispatch) => dispatch.status === "completed" || dispatch.status === "failed"
+        )
+
+        if (terminalDispatch) {
+          console.info(
+            "[BackofficeEmailCampaignUseCase][recoverStuckDispatches] dispatch já finalizado mas campanha ainda em sending — reconciliando",
+            { campaignId: campaign.id, dispatchId: terminalDispatch.id, dispatchStatus: terminalDispatch.status }
+          )
+          await this.finalizeDispatchQueueBatch(terminalDispatch, campaign)
+          reclaimed += 1
+          continue
+        }
+
+        await this.campaignRepository.markFailed(
+          campaign.id,
+          "Disparo travado sem dispatch ativo — marcado como falho automaticamente"
+        )
+        failed += 1
+        continue
+      }
+
+      const remaining = await this.logRepository.countQueuedByDispatchId(sendingDispatch.id)
+      if (remaining > 0) {
+        console.info("[BackofficeEmailCampaignUseCase][recoverStuckDispatches] republicando wake", {
+          campaignId: campaign.id,
+          dispatchId: sendingDispatch.id,
+          remaining,
+        })
+        await this.publishDispatchWake(sendingDispatch.id, "cron-reclaim", remaining)
+        reclaimed += 1
+        continue
+      }
+
+      await this.finalizeDispatchQueueBatch(sendingDispatch, campaign)
+      reclaimed += 1
+    }
+
+    return new Output(true, [], [], { reclaimed, failed, total: stuckCampaigns.length })
   }
 
   async subscribeFromLead(lead: BackofficeLeadForCampaignSubscription): Promise<Output> {
@@ -353,13 +439,19 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
     return new Output(true, [], [], { handled: true }) as Output & { result: { handled: boolean } }
   }
 
-  private async dispatchCampaign(
+  /**
+   * Prepara o disparo (template, destinatários, dispatch + logs `queued`) sem
+   * chamar Resend — quem envia de fato é só o consumer da fila
+   * (`processDispatchQueueBatch`). Mesma separação prepare/send do PR1 do
+   * produto (`startManualDispatch` vs `processDispatchQueueBatch`).
+   */
+  private async prepareDispatch(
     campaign: BackofficeEmailCampaign,
     triggeredByBackofficeUserId: string | null
-  ): Promise<Output> {
+  ): Promise<{ ok: true; dispatchId: string } | { ok: false; output: Output }> {
     if (!campaign.resendTemplateId) {
       await this.campaignRepository.markFailed(campaign.id, "Nenhum template configurado")
-      return new Output(false, [], ["Nenhum template configurado"], null)
+      return { ok: false, output: new Output(false, [], ["Nenhum template configurado"], null) }
     }
 
     let template: { subject: string | null; html: string }
@@ -368,13 +460,13 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao buscar template no Resend"
       await this.campaignRepository.markFailed(campaign.id, message)
-      return new Output(false, [], [message], null)
+      return { ok: false, output: new Output(false, [], [message], null) }
     }
 
     const contacts = await this.contactRepository.listActiveByListId(campaign.contactListId)
     if (contacts.length === 0) {
       await this.campaignRepository.markFailed(campaign.id, "Nenhum destinatário ativo na lista")
-      return new Output(false, [], ["Nenhum destinatário ativo na lista"], null)
+      return { ok: false, output: new Output(false, [], ["Nenhum destinatário ativo na lista"], null) }
     }
 
     const dispatch = await this.dispatchRepository.create({
@@ -385,7 +477,7 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
       triggeredByBackofficeUserId,
     })
 
-    const logs = await this.logRepository.createQueuedBatch(
+    await this.logRepository.createQueuedBatch(
       contacts.map((contact) => ({
         campaignId: campaign.id,
         dispatchId: dispatch.id,
@@ -394,11 +486,67 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
       }))
     )
 
-    const recipients = contacts.map((contact, index) => ({
-      logId: logs[index]?.id ?? "",
-      contactId: contact.id,
-      email: contact.email,
-      name: contact.name,
+    await this.dispatchRepository.updateCounters(dispatch.id, { totalRecipients: contacts.length })
+
+    return { ok: true, dispatchId: dispatch.id }
+  }
+
+  private async publishDispatchWake(
+    dispatchId: string,
+    reason: BackofficeEmailCampaignDispatchWakePayload["reason"],
+    remainingCount?: number
+  ): Promise<void> {
+    try {
+      await publishBackofficeEmailCampaignDispatchWake({ dispatchId, reason, remainingCount })
+    } catch (error) {
+      console.error("[BackofficeEmailCampaignUseCase][publishDispatchWake] falha ao publicar wake", {
+        dispatchId,
+        reason,
+        error,
+      })
+    }
+  }
+
+  /**
+   * Consumer da fila `backoffice-email-campaign-dispatch`: processa **um
+   * lote** (até `DISPATCH_QUEUE_BATCH_SIZE`) de logs `queued` do dispatch e,
+   * se sobrar mais, republica o wake em vez de tentar a lista inteira numa
+   * única invocação (causa dos timeouts do cron/`send-now` síncronos).
+   */
+  async processDispatchQueueBatch(
+    dispatchId: string,
+    options?: { batchSize?: number }
+  ): Promise<Output> {
+    const batchSize = options?.batchSize ?? DISPATCH_QUEUE_BATCH_SIZE
+
+    const dispatch = await this.dispatchRepository.findById(dispatchId)
+    if (!dispatch || dispatch.status !== "sending") {
+      console.info(
+        "[BackofficeEmailCampaignUseCase][processDispatchQueueBatch] dispatch já finalizado ou inexistente",
+        { dispatchId }
+      )
+      return new Output(true, ["Disparo já finalizado"], [], { dispatchId, hasMore: false })
+    }
+
+    const campaign = await this.campaignRepository.findById(dispatch.campaignId)
+    if (!campaign) {
+      console.error(
+        "[BackofficeEmailCampaignUseCase][processDispatchQueueBatch] campanha não encontrada para o dispatch",
+        { dispatchId, campaignId: dispatch.campaignId }
+      )
+      return new Output(false, [], ["Campanha não encontrada para o disparo"], { dispatchId, hasMore: false })
+    }
+
+    const queuedLogs = await this.logRepository.findQueuedByDispatchId(dispatchId, batchSize)
+
+    if (queuedLogs.length === 0) {
+      return this.finalizeDispatchQueueBatch(dispatch, campaign)
+    }
+
+    const recipients = queuedLogs.map((log) => ({
+      logId: log.id,
+      contactId: log.contactId,
+      email: log.recipientEmail,
     }))
 
     const result = await this.dispatchService.dispatchBatch({
@@ -409,30 +557,77 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
         ? `${campaign.fromName ?? DEFAULT_FROM_NAME} <${campaign.fromEmail}>`
         : `${DEFAULT_FROM_NAME} <${DEFAULT_FROM_EMAIL}>`,
       replyTo: campaign.replyTo,
-      subject: template.subject ?? campaign.name,
-      html: template.html,
+      subject: dispatch.templateSubjectSnapshot,
+      html: dispatch.templateHtmlSnapshot,
       recipients,
     })
 
-    await this.dispatchRepository.updateCounters(dispatch.id, {
-      totalRecipients: contacts.length,
-      totalSent: result.sent,
-    })
+    await this.dispatchRepository.incrementCounters(dispatch.id, { totalSent: result.sent })
+
+    const remaining = await this.logRepository.countQueuedByDispatchId(dispatchId)
+
+    if (remaining > 0) {
+      console.info(
+        "[BackofficeEmailCampaignUseCase][processDispatchQueueBatch] lote processado, republicando wake",
+        { dispatchId, batchSent: result.sent, remaining }
+      )
+      await this.publishDispatchWake(dispatchId, "continue", remaining)
+      return new Output(
+        true,
+        [`Lote processado: ${result.sent} enviado(s), ${remaining} restante(s)`],
+        [],
+        { dispatchId, batchSent: result.sent, remaining, hasMore: true }
+      )
+    }
+
+    return this.finalizeDispatchQueueBatch(dispatch, campaign)
+  }
+
+  /**
+   * Fecha o dispatch quando não sobra nenhum log `queued` (última chamada do
+   * consumer, ou reclaim do cron que descobriu um dispatch já esgotado).
+   * Falha total (nenhum envio confirmado) marca a campanha `failed`; qualquer
+   * envio confirmado marca `sent`, com o total de falhas registrado no
+   * `errorMessage` do dispatch (mesmo comportamento do fluxo síncrono antigo).
+   */
+  private async finalizeDispatchQueueBatch(
+    dispatch: BackofficeEmailCampaignDispatch,
+    campaign: BackofficeEmailCampaign
+  ): Promise<Output> {
+    const sentCount = await this.logRepository.countSentByDispatchId(dispatch.id)
+    const failedCount = Math.max(0, dispatch.totalRecipients - sentCount)
+    const totalFailure = sentCount === 0 && dispatch.totalRecipients > 0
+
     await this.dispatchRepository.updateStatus(
       dispatch.id,
-      result.sent === 0 && result.failed > 0 ? "failed" : "completed",
-      result.failed > 0 ? `${result.failed} envio(s) falharam` : null
+      totalFailure ? "failed" : "completed",
+      failedCount > 0 ? `${failedCount} envio(s) falharam` : null
     )
 
-    if (result.sent === 0 && result.failed > 0) {
-      await this.campaignRepository.markFailed(campaign.id, `${result.failed} envio(s) falharam`)
-      return new Output(false, [], ["Falha ao enviar a campanha"], null)
+    if (totalFailure) {
+      const updated = await this.campaignRepository.markFailed(
+        campaign.id,
+        `${failedCount} envio(s) falharam`
+      )
+      console.info(
+        "[BackofficeEmailCampaignUseCase][finalizeDispatchQueueBatch] dispatch finalizado com falha total",
+        { dispatchId: dispatch.id }
+      )
+      return new Output(false, [], ["Falha ao enviar a campanha"], updated)
     }
 
     const updated = await this.campaignRepository.markSent(campaign.id, campaign.dispatchCount + 1, {
-      totalRecipients: contacts.length,
-      totalSent: result.sent,
+      totalRecipients: dispatch.totalRecipients,
+      totalSent: sentCount,
     })
+
+    console.info("[BackofficeEmailCampaignUseCase][finalizeDispatchQueueBatch] dispatch finalizado", {
+      dispatchId: dispatch.id,
+      sentCount,
+      failedCount,
+      campaignStatus: updated.status,
+    })
+
     return new Output(true, ["Campanha enviada com sucesso"], [], updated)
   }
 }
