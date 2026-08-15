@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { Output } from "@/lib/output";
 
 const claimDueMock = mock(async () => [] as Array<{
   id: string;
@@ -13,7 +12,7 @@ const markRetryOrFailedMock = mock(
   async (): Promise<"retried" | "failed"> => "retried"
 );
 const requeueIfProcessingMock = mock(async () => {});
-const handleMock = mock(async () => new Output(true, [], [], null));
+const publishResendWebhookEmailLogEventMock = mock(async () => ({ messageId: "msg-1" }));
 
 mock.module(
   "@/app/api/infra/data/repositories/resendWebhookProcessingFailure/ResendWebhookProcessingFailureRepository",
@@ -29,25 +28,25 @@ mock.module(
   })
 );
 
-mock.module("@/app/api/useCases/resendWebhook/ResendWebhookUseCase", () => ({
-  resendWebhookUseCase: { handle: handleMock },
+mock.module("@/lib/queues/resend-webhook-emaillog-events", () => ({
+  publishResendWebhookEmailLogEvent: publishResendWebhookEmailLogEventMock,
 }));
 
 const { RetryResendWebhookFailuresUseCase } = await import("./RetryResendWebhookFailuresUseCase");
 
-describe("RetryResendWebhookFailuresUseCase (D11)", () => {
+describe("RetryResendWebhookFailuresUseCase (D11 + republish-to-queue)", () => {
   beforeEach(() => {
     claimDueMock.mockClear();
     markResolvedMock.mockClear();
     markRetryOrFailedMock.mockClear();
     requeueIfProcessingMock.mockClear();
-    handleMock.mockClear();
+    publishResendWebhookEmailLogEventMock.mockClear();
     claimDueMock.mockImplementation(async () => []);
-    handleMock.mockImplementation(async () => new Output(true, [], [], null));
+    publishResendWebhookEmailLogEventMock.mockImplementation(async () => ({ messageId: "msg-1" }));
     markRetryOrFailedMock.mockImplementation(async () => "retried");
   });
 
-  it("marca resolved quando reprocessamento tem sucesso", async () => {
+  it("republica na fila e marca resolved quando o publish tem sucesso", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-1",
@@ -62,12 +61,33 @@ describe("RetryResendWebhookFailuresUseCase (D11)", () => {
     const result = await useCase.execute();
 
     expect(result.isValid).toBe(true);
-    expect(handleMock).toHaveBeenCalledTimes(1);
+    expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledTimes(1);
+    expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledWith({
+      event: { type: "email.sent" },
+      svixId: "svix-1",
+    });
     expect(markResolvedMock).toHaveBeenCalledWith("row-1");
     expect(markRetryOrFailedMock).not.toHaveBeenCalled();
   });
 
-  it("reenfileira após falha transitória", async () => {
+  it("não chama processamento de negócio direto — só publica na fila", async () => {
+    claimDueMock.mockImplementation(async () => [
+      {
+        id: "row-1",
+        svixId: "svix-1",
+        eventType: "email.sent",
+        payload: { type: "email.sent" },
+        attemptCount: 1,
+      },
+    ]);
+
+    const useCase = new RetryResendWebhookFailuresUseCase();
+    await useCase.execute();
+
+    expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reenfileira no outbox após as 3 tentativas de publish falharem", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-2",
@@ -77,8 +97,8 @@ describe("RetryResendWebhookFailuresUseCase (D11)", () => {
         attemptCount: 2,
       },
     ]);
-    handleMock.mockImplementation(async () => {
-      throw new Error("timeout de pool");
+    publishResendWebhookEmailLogEventMock.mockImplementation(async () => {
+      throw new Error("timeout de rede");
     });
     markRetryOrFailedMock.mockImplementation(async () => "retried");
 
@@ -86,10 +106,11 @@ describe("RetryResendWebhookFailuresUseCase (D11)", () => {
     const result = await useCase.execute();
 
     expect(result.isValid).toBe(true);
-    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-2", 3, "timeout de pool");
+    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-2", 3, expect.any(String));
+    expect(markResolvedMock).not.toHaveBeenCalled();
   });
 
-  it("marca failed após esgotar tentativas", async () => {
+  it("marca failed após esgotar tentativas de publish", async () => {
     claimDueMock.mockImplementation(async () => [
       {
         id: "row-3",
@@ -99,7 +120,7 @@ describe("RetryResendWebhookFailuresUseCase (D11)", () => {
         attemptCount: 5,
       },
     ]);
-    handleMock.mockImplementation(async () => {
+    publishResendWebhookEmailLogEventMock.mockImplementation(async () => {
       throw new Error("erro permanente");
     });
     markRetryOrFailedMock.mockImplementation(async () => "failed");
@@ -108,6 +129,24 @@ describe("RetryResendWebhookFailuresUseCase (D11)", () => {
     const result = await useCase.execute();
 
     expect(result.isValid).toBe(true);
-    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-3", 6, "erro permanente");
+    expect(markRetryOrFailedMock).toHaveBeenCalledWith("row-3", 6, expect.any(String));
+  });
+
+  it("processa múltiplas linhas em paralelo (chunks de concorrência)", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({
+      id: `row-${i}`,
+      svixId: `svix-${i}`,
+      eventType: "email.opened",
+      payload: { type: "email.opened" },
+      attemptCount: 1,
+    }));
+    claimDueMock.mockImplementation(async () => rows);
+
+    const useCase = new RetryResendWebhookFailuresUseCase();
+    const result = await useCase.execute();
+
+    expect(result.isValid).toBe(true);
+    expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledTimes(5);
+    expect(markResolvedMock).toHaveBeenCalledTimes(5);
   });
 });
