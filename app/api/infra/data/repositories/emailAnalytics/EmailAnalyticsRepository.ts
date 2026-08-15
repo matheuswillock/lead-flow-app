@@ -116,7 +116,12 @@ export interface IEmailAnalyticsRepository {
     teamId: string
     campaignIds: string[]
   }): Promise<Array<{ id: string; name: string }>>
-  findResendDomainStatus(teamId: string): Promise<string | null>
+  findResendDomainTracking(teamId: string): Promise<{
+    domainName: string | null
+    domainStatus: string | null
+    openTracking: boolean
+    clickTracking: boolean
+  }>
 }
 
 export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
@@ -403,13 +408,27 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     })
   }
 
-  async findResendDomainStatus(teamId: string): Promise<string | null> {
+  async findResendDomainTracking(teamId: string): Promise<{
+    domainName: string | null
+    domainStatus: string | null
+    openTracking: boolean
+    clickTracking: boolean
+  }> {
     const settings = await prisma.emailTeamSettings.findUnique({
       where: { teamId },
-      select: { resendDomainName: true, resendDomainStatus: true },
+      select: {
+        resendDomainName: true,
+        resendDomainStatus: true,
+        resendOpenTracking: true,
+        resendClickTracking: true,
+      },
     })
-    if (!settings?.resendDomainName) return null
-    return settings.resendDomainStatus
+    return {
+      domainName: settings?.resendDomainName ?? null,
+      domainStatus: settings?.resendDomainStatus ?? null,
+      openTracking: Boolean(settings?.resendOpenTracking),
+      clickTracking: Boolean(settings?.resendClickTracking),
+    }
   }
 }
 

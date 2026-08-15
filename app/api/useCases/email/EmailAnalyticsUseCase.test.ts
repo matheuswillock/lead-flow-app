@@ -17,7 +17,12 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
     countFormEvents: mock(async () => 0),
     findCampaignTemplateHtml: mock(async () => null),
     findCampaignNames: mock(async () => []),
-    findResendDomainStatus: mock(async () => null),
+    findResendDomainTracking: mock(async () => ({
+      domainName: null,
+      domainStatus: null,
+      openTracking: false,
+      clickTracking: false,
+    })),
     ...overrides,
   } as IEmailAnalyticsRepository
 }
@@ -152,7 +157,12 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
 
   it("A6b — expõe aviso quando domínio permite envio mas tracking não está pleno", async () => {
     const repo = buildRepo({
-      findResendDomainStatus: mock(async () => "partially_verified"),
+      findResendDomainTracking: mock(async () => ({
+        domainName: "example.com",
+        domainStatus: "partially_verified",
+        openTracking: true,
+        clickTracking: true,
+      })),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })

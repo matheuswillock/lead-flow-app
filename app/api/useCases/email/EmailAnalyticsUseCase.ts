@@ -157,10 +157,10 @@ export class EmailAnalyticsUseCase {
   }
 
   private async resolveTrackingMeta(teamId: string) {
-    const resendDomainStatus = await this.repository.findResendDomainStatus(teamId)
+    const snapshot = await this.repository.findResendDomainTracking(teamId)
     return {
-      resendDomainTrackingCapable: isResendDomainTrackingCapable(resendDomainStatus),
-      trackingWarnings: getResendDomainDispatchWarnings(resendDomainStatus),
+      resendDomainTrackingCapable: isResendDomainTrackingCapable(snapshot.domainStatus),
+      trackingWarnings: getResendDomainDispatchWarnings(snapshot),
     }
   }
 

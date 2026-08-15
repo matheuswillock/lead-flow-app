@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import {
+  assertResendDomainTrackingReady,
   checkDispatchWindow,
   getResendDomainDispatchWarnings,
   isResendDomainSendCapable,
   isResendDomainTrackingCapable,
-  RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
+  RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
   resolveCampaignStatusAfterDispatch,
 } from "./campaign-dispatch-guards"
 
@@ -52,17 +53,95 @@ describe("isResendDomainTrackingCapable", () => {
   })
 })
 
+describe("assertResendDomainTrackingReady", () => {
+  it("permite time sem domínio próprio", () => {
+    expect(assertResendDomainTrackingReady({})).toEqual({ ok: true })
+    expect(assertResendDomainTrackingReady({ domainName: null })).toEqual({ ok: true })
+    expect(assertResendDomainTrackingReady({ domainName: "   " })).toEqual({ ok: true })
+  })
+
+  it("bloqueia quando métricas estão desligadas", () => {
+    expect(
+      assertResendDomainTrackingReady({
+        domainName: "example.com",
+        domainStatus: "verified",
+        openTracking: false,
+        clickTracking: false,
+      })
+    ).toEqual({ ok: false, message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE })
+  })
+
+  it("bloqueia partially_failed e partially_verified mesmo com métricas ligadas", () => {
+    const base = {
+      domainName: "example.com",
+      openTracking: true,
+      clickTracking: true,
+    }
+    expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_failed" })).toEqual({
+      ok: false,
+      message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+    })
+    expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_verified" })).toEqual({
+      ok: false,
+      message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+    })
+  })
+
+  it("permite verified com pelo menos uma métrica ligada", () => {
+    expect(
+      assertResendDomainTrackingReady({
+        domainName: "example.com",
+        domainStatus: "verified",
+        openTracking: true,
+        clickTracking: false,
+      })
+    ).toEqual({ ok: true })
+    expect(
+      assertResendDomainTrackingReady({
+        domainName: "example.com",
+        domainStatus: "verified",
+        openTracking: false,
+        clickTracking: true,
+      })
+    ).toEqual({ ok: true })
+  })
+})
+
 describe("getResendDomainDispatchWarnings", () => {
-  it("avisa quando envio é permitido mas tracking não está pleno", () => {
-    expect(getResendDomainDispatchWarnings("partially_failed")).toEqual([
-      RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
-    ])
-    expect(getResendDomainDispatchWarnings("partially_verified")).toEqual([
-      RESEND_DOMAIN_TRACKING_DEGRADED_WARNING,
-    ])
-    expect(getResendDomainDispatchWarnings("verified")).toEqual([])
-    expect(getResendDomainDispatchWarnings("pending")).toEqual([])
-    expect(getResendDomainDispatchWarnings("failed")).toEqual([])
+  it("avisa quando o gate de tracking bloqueia o disparo", () => {
+    expect(
+      getResendDomainDispatchWarnings({
+        domainName: "example.com",
+        domainStatus: "partially_failed",
+        openTracking: true,
+        clickTracking: true,
+      })
+    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    expect(
+      getResendDomainDispatchWarnings({
+        domainName: "example.com",
+        domainStatus: "partially_verified",
+        openTracking: true,
+        clickTracking: true,
+      })
+    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    expect(
+      getResendDomainDispatchWarnings({
+        domainName: "example.com",
+        domainStatus: "verified",
+        openTracking: false,
+        clickTracking: false,
+      })
+    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    expect(
+      getResendDomainDispatchWarnings({
+        domainName: "example.com",
+        domainStatus: "verified",
+        openTracking: true,
+        clickTracking: true,
+      })
+    ).toEqual([])
+    expect(getResendDomainDispatchWarnings({})).toEqual([])
   })
 })
 
