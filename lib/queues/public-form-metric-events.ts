@@ -15,8 +15,10 @@ export const PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG =
   "public_form_metric_queue_publish_failed";
 
 /**
- * Eventos de funil no caminho queue-first (sem Prisma no happy path da rota pública).
- * Demais tipos permanecem no caminho direto via `recordMetric`.
+ * PR2.3: bifurcação crítico/não-crítico removida — TODO eventType de funil
+ * (visitante) é queue-first, sem Prisma no happy path da rota pública.
+ * Mantido por compatibilidade/documentação; não é mais usado para decidir
+ * caminho direto vs. fila em `PublicFormsUseCase.recordMetric`.
  */
 export const CRITICAL_PUBLIC_FORM_METRIC_EVENT_TYPES = [
   "form_viewed",
@@ -35,7 +37,7 @@ export type ServerPublicFormMetricEventType =
   | "meeting_scheduled";
 
 export type PublicFormMetricQueueEventType =
-  | CriticalPublicFormMetricEventType
+  | PublicFormMetricEventInput["eventType"]
   | ServerPublicFormMetricEventType;
 
 const queue = new QueueClient({ region: "gru1" });

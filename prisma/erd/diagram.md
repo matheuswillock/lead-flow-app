@@ -923,6 +923,22 @@ skipped skipped
     
 
 
+        public_form_queue_event_kind {
+            metric metric
+submission submission
+        }
+    
+
+
+        public_form_queue_event_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
+        }
+    
+
+
         resend_webhook_processing_failure_status {
             pending pending
 processing processing
@@ -2830,6 +2846,21 @@ completed completed
     }
   
 
+  "corretor_studio_public_form_queue_event_failures" {
+    String id "🗝️"
+    PublicFormQueueEventKind kind 
+    String idempotencyKey 
+    Json payload 
+    PublicFormQueueEventFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    String failureReason "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_products" {
     String id "🗝️"
     String name 
@@ -4353,6 +4384,8 @@ completed completed
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "email_orphan_events" |o--|| "EmailOrphanEventStatus" : "enum:status"
     "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
+    "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventKind" : "enum:kind"
+    "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

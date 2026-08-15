@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import {
   buildPublicFormPreviewSnapshot,
@@ -16,10 +17,14 @@ import { validatePublicFormDraft } from "@/lib/public-forms/validate-public-form
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
 import {
   buildPublicFormMetricQueuePayload,
-  isCriticalPublicFormMetricEvent,
   publishPublicFormMetricEvent,
   PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/public-form-metric-events"
+import { publishWithRetry } from "@/lib/queues/publish-with-retry"
+import {
+  formatProcessingError,
+  publicFormQueueEventFailureRepository,
+} from "@/app/api/infra/data/repositories/publicFormQueueEventFailure/PublicFormQueueEventFailureRepository"
 
 function isManager(access: TeamAccess) {
   return access.isMaster || access.teamMember.role === "manager"
@@ -237,59 +242,59 @@ export class PublicFormsUseCase {
       : new Output(false, [], ["Formulário indisponível"], null)
   }
 
+  /**
+   * PR2.3: todo eventType (antes só os críticos de funil) publica direto na
+   * fila `public-form-metric-events` — sem Prisma no caminho feliz. Se as 3
+   * tentativas de publish (publish-with-retry) esgotarem, cai no outbox
+   * compartilhado (`PublicFormQueueEventFailure`, kind=metric) em vez de só
+   * logar e perder o evento.
+   */
   async recordMetric(publicId: string, input: PublicFormMetricEventInput) {
     if (!isValidPublicFormId(publicId)) {
       return new Output(false, [], ["Formulário indisponível"], null)
     }
 
-    // Queue-first para eventos críticos de funil: sem Prisma no caminho feliz.
-    if (isCriticalPublicFormMetricEvent(input.eventType)) {
-      const payload = buildPublicFormMetricQueuePayload(publicId, {
-        ...input,
-        eventType: input.eventType,
-      })
-      try {
-        const { messageId } = await publishPublicFormMetricEvent(payload)
-        console.info("[PublicFormsUseCase][recordMetric] queued critical metric", {
-          publicId,
-          eventType: input.eventType,
-          eventKey: input.eventKey,
-          messageId,
-        })
-        return new Output(true, [], [], { queued: true, messageId })
-      } catch (error) {
-        console.error(
-          `[PublicFormsUseCase][recordMetric] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`,
-          {
-            tag: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
-            publicId,
-            eventType: input.eventType,
-            eventKey: input.eventKey,
-            error,
-          },
-        )
-        return new Output(false, [], ["Falha ao enfileirar evento de métrica"], {
-          code: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
-        })
-      }
-    }
+    const payload = buildPublicFormMetricQueuePayload(publicId, {
+      ...input,
+      eventType: input.eventType,
+    })
 
-    try {
-      const accepted = await withPrismaRetry(
-        () => publicFormsService.recordMetric(publicId, input),
-        { retries: 1, label: "publicForms.recordMetric" },
-      )
-      return accepted
-        ? new Output(true, [], [], { accepted: true })
-        : new Output(false, [], ["Formulário indisponível"], null)
-    } catch (error) {
-      console.error("[PublicFormsUseCase][recordMetric] direct path failed", {
+    const publishResult = await publishWithRetry(() => publishPublicFormMetricEvent(payload))
+    if (publishResult.ok) {
+      console.info("[PublicFormsUseCase][recordMetric] queued metric", {
         publicId,
         eventType: input.eventType,
         eventKey: input.eventKey,
-        error,
+        messageId: publishResult.result.messageId,
       })
-      return new Output(false, [], ["Falha ao registrar evento de métrica"], null)
+      return new Output(true, [], [], { queued: true, messageId: publishResult.result.messageId })
+    }
+
+    console.error(
+      `[PublicFormsUseCase][recordMetric] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`,
+      {
+        tag: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
+        publicId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        attempts: publishResult.attempts,
+        error: publishResult.error,
+      },
+    )
+    try {
+      await publicFormQueueEventFailureRepository.upsertFromProcessingFailure({
+        kind: "metric",
+        idempotencyKey: input.eventKey,
+        payload: payload as unknown as Prisma.InputJsonValue,
+        lastError: formatProcessingError(publishResult.error),
+        failureReason: "queue_publish_failed",
+      })
+      return new Output(true, [], [], { queued: false, fallback: true })
+    } catch (outboxError) {
+      console.error("[PublicFormsUseCase][recordMetric][outbox]", outboxError)
+      return new Output(false, [], ["Falha ao enfileirar evento de métrica"], {
+        code: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
+      })
     }
   }
 
