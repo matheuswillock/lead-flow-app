@@ -10,14 +10,20 @@ import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import { publishResendWebhookEmailLogEvent } from "@/lib/queues/resend-webhook-emaillog-events";
 
 /**
- * Tamanho do lote por execução do cron (a cada 5 min). Reprocessar aqui virou
+ * Tamanho do lote por execução do cron (a cada 2 min). Reprocessar aqui virou
  * só um `publish` na fila (chamada de rede, sem transação Postgres) — bem
  * mais barato que o antigo `resendWebhookUseCase.handle()` direto, então o
  * lote pode ser bem maior que os antigos 20/execução (240/h) sem estourar
  * `maxDuration=60` do cron. Ajustável via env para reagir a picos de outbox
  * sem precisar de deploy.
+ *
+ * O `claimDue` do repositório agora reserva o lote com uma única query
+ * atômica (`FOR UPDATE SKIP LOCKED`) em vez de N `updateMany` sequenciais,
+ * então o teto prático de `maxDuration=60` passou a ser dominado pela fase
+ * de publish (chunk de `PUBLISH_CONCURRENCY`), não pelo claim — por isso o
+ * valor padrão pôde dobrar de 1000 para 2000 sem risco de timeout.
  */
-const DEFAULT_BATCH_SIZE = 1000;
+const DEFAULT_BATCH_SIZE = 2000;
 const BATCH_SIZE = Math.max(
   1,
   Number(process.env.RESEND_WEBHOOK_RETRY_BATCH_SIZE ?? DEFAULT_BATCH_SIZE)

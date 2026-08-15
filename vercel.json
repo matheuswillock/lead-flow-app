@@ -255,7 +255,7 @@
     },
     {
       "path": "/api/v1/email/cron/retry-resend-webhook-failures",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/v1/integrations/webhooks/cron/retry-asaas-webhook-failures",
