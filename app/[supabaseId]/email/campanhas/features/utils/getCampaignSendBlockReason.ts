@@ -1,5 +1,6 @@
 import type { CreditStatus } from "../context/CampanhasTypes"
 import { formatDailyLimitDispatchBlockMessage } from "@/lib/email/campaign-limits"
+import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 
 type CampaignRecipientTarget = {
   totalRecipients: number
@@ -30,6 +31,10 @@ export function getCampaignSendBlockReason(params: {
   bypassPlanGate?: boolean
 }): string | undefined {
   const { campaign, credits, bypassPlanGate = false } = params
+
+  if (credits?.trackingDispatchBlocked) {
+    return credits.trackingDispatchBlockReason ?? RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE
+  }
 
   const dailyBlockReason = resolveDailyDispatchBlockReason(campaign, credits)
   if (dailyBlockReason) return dailyBlockReason

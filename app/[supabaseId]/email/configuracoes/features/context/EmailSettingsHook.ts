@@ -133,8 +133,14 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainClickTracking, setDomainClickTracking] = useState(false)
   const [domainTrackingSubdomain, setDomainTrackingSubdomain] = useState<string | null>(null)
   const domainDispatchWarnings = useMemo(
-    () => getResendDomainDispatchWarnings(domainStatus),
-    [domainStatus]
+    () =>
+      getResendDomainDispatchWarnings({
+        domainName,
+        domainStatus,
+        openTracking: domainOpenTracking,
+        clickTracking: domainClickTracking,
+      }),
+    [domainName, domainStatus, domainOpenTracking, domainClickTracking]
   )
   const [domainEvents, setDomainEvents] = useState<DomainEvent[]>([])
   const [connectingDomain, setConnectingDomain] = useState(false)

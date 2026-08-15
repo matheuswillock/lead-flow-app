@@ -56,6 +56,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { DomainRecord, ResendDomainStatus } from "../context/EmailSettingsTypes"
 import { DomainEventsTimeline } from "./DomainEventsTimeline"
@@ -271,8 +272,8 @@ export function CustomDomainCard() {
           {domainDispatchWarnings.length > 0 ? (
             <Alert className="border-semantic-warning/30 bg-semantic-warning-surface text-foreground">
               <ShieldAlert className="size-4 text-semantic-warning" />
-              <AlertTitle>Tracking de abertura/clique limitado</AlertTitle>
-              <AlertDescription>{domainDispatchWarnings.join(" ")}</AlertDescription>
+              <AlertTitle>Habilite as métricas de tracking</AlertTitle>
+              <AlertDescription>{RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE}</AlertDescription>
             </Alert>
           ) : null}
           <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">

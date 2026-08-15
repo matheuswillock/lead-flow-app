@@ -20,6 +20,7 @@ import {
 import {
   getResendDomainDispatchWarnings,
   isResendDomainTrackingCapable,
+  resendDomainTrackingInputFromSettings,
 } from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
@@ -227,7 +228,9 @@ export class EmailTeamSettingsUseCase {
       resendOpenTracking: settings?.resendOpenTracking ?? DEFAULTS.resendOpenTracking,
       resendClickTracking: settings?.resendClickTracking ?? DEFAULTS.resendClickTracking,
       resendDomainTrackingCapable: isResendDomainTrackingCapable(settings?.resendDomainStatus),
-      resendDomainDispatchWarnings: getResendDomainDispatchWarnings(settings?.resendDomainStatus),
+      resendDomainDispatchWarnings: getResendDomainDispatchWarnings(
+        resendDomainTrackingInputFromSettings(settings)
+      ),
       domainEvents,
       senders,
       defaultSenderId: defaultSender?.id ?? null,
