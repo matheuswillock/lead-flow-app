@@ -227,6 +227,14 @@ export interface IPublicFormsRepository {
     formId: string
     publicationId: string
     questionId?: string | null
+    /**
+     * Cópia congelada da pergunta (do `snapshot` da publicação vigente no
+     * momento do evento), mesmo padrão de `PublicFormAnswer.questionSnapshot`.
+     * Preserva a rastreabilidade do evento mesmo se a pergunta viva
+     * (`PublicFormQuestion`) for editada/removida depois — `questionId` é só
+     * um FK best-effort para join em analytics "ao vivo".
+     */
+    questionSnapshot?: Prisma.InputJsonValue | null
     visitorSessionId: string
     eventType: PublicFormMetricType
     eventKey: string

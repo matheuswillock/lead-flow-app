@@ -3991,6 +3991,7 @@ completed completed
 
   "corretor_studio_public_form_metric_events" {
     String id "🗝️"
+    Json questionSnapshot "❓"
     String visitorSessionId 
     PublicFormMetricType eventType 
     String eventKey 

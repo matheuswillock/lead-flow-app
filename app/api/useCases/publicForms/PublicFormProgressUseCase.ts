@@ -87,10 +87,12 @@ export class PublicFormProgressUseCase {
 
     for (const answer of visibleAnswers) {
       const eventKey = `${input.visitorSessionId}:progress:${answer.questionId}`
+      const question = snapshot.questions.find((item) => item.id === answer.questionId)
       await publicFormsRepository.upsertMetricEvent({
         formId: snapshot.formId,
         publicationId: current.publicationId,
         questionId: answer.questionId,
+        questionSnapshot: question ? json(question) : null,
         visitorSessionId: input.visitorSessionId,
         eventType: "question_answered",
         eventKey,
