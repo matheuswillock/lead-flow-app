@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { Prisma } from "@prisma/client"
 
-const upsertMock = mock(async () => ({}) as unknown)
+type UpsertMetricEventArgs = {
+  where: { eventKey: string }
+  create: { questionId: string | null; questionSnapshot: unknown }
+  update: Record<string, never>
+}
+
+const upsertMock = mock(async (_args: UpsertMetricEventArgs) => ({}) as unknown)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -36,6 +42,12 @@ describe("PublicFormsRepository.upsertMetricEvent", () => {
     upsertMock.mockImplementation(async () => ({}) as unknown)
   })
 
+  function lastCreateArg(callIndex: number) {
+    const call = upsertMock.mock.calls[callIndex]
+    if (!call) throw new Error(`Expected call at index ${callIndex}`)
+    return call[0].create
+  }
+
   it("persiste normalmente quando o questionId ainda existe (sem retry)", async () => {
     const repo = new PublicFormsRepository()
     const questionSnapshot = { id: "question-1", title: "Pergunta" }
@@ -47,8 +59,7 @@ describe("PublicFormsRepository.upsertMetricEvent", () => {
     })
 
     expect(upsertMock).toHaveBeenCalledTimes(1)
-    const createArg = (upsertMock.mock.calls[0]?.[0] as { create: { questionId: string; questionSnapshot: unknown } })
-      .create
+    const createArg = lastCreateArg(0)
     expect(createArg.questionId).toBe("question-1")
     expect(createArg.questionSnapshot).toEqual(questionSnapshot)
   })
@@ -70,9 +81,7 @@ describe("PublicFormsRepository.upsertMetricEvent", () => {
     })
 
     expect(upsertMock).toHaveBeenCalledTimes(2)
-    const retryCreateArg = (
-      upsertMock.mock.calls[1]?.[0] as { create: { questionId: string | null; questionSnapshot: unknown } }
-    ).create
+    const retryCreateArg = lastCreateArg(1)
     expect(retryCreateArg.questionId).toBeNull()
     expect(retryCreateArg.questionSnapshot).toEqual(questionSnapshot)
   })

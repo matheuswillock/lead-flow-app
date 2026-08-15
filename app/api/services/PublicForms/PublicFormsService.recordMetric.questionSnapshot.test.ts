@@ -24,7 +24,12 @@ const findAvailabilityTeamContext = mock(async () => ({
   emailCampaignTrackingEnabled: false,
   team: { master: { timezone: "America/Sao_Paulo" } },
 }))
-const upsertMetricEvent = mock(async () => {})
+type UpsertMetricEventArgs = {
+  questionId?: string | null
+  questionSnapshot?: unknown
+}
+
+const upsertMetricEvent = mock(async (_args: UpsertMetricEventArgs) => {})
 
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
@@ -72,9 +77,10 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
 
     expect(accepted).toBe(true)
     expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
-    const call = upsertMetricEvent.mock.calls[0]?.[0] as { questionSnapshot: unknown; questionId: string }
-    expect(call.questionId).toBe(QUESTION_ID)
-    expect(call.questionSnapshot).toEqual(questionFromSnapshot)
+    const call = upsertMetricEvent.mock.calls[0]
+    if (!call) throw new Error("Expected upsertMetricEvent to have been called")
+    expect(call[0].questionId).toBe(QUESTION_ID)
+    expect(call[0].questionSnapshot).toEqual(questionFromSnapshot)
   })
 
   it("retorna false (sem persistir) quando questionId não existe no snapshot vigente", async () => {
@@ -102,7 +108,8 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
 
     await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })
 
-    const call = upsertMetricEvent.mock.calls[0]?.[0] as { questionSnapshot: unknown }
-    expect(call.questionSnapshot).toBeNull()
+    const call = upsertMetricEvent.mock.calls[0]
+    if (!call) throw new Error("Expected upsertMetricEvent to have been called")
+    expect(call[0].questionSnapshot).toBeNull()
   })
 })
