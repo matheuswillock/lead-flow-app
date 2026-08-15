@@ -48,7 +48,10 @@ export async function POST(
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)
     ?.background
   if (background) {
-    after(() => publicFormSubmissionUseCase.processInBackground(background))
+    // PR2.3: after() só publica na fila (sem lead match/agendamento no isolate
+    // do HTTP). Publish-with-retry + outbox fallback vivem no UseCase, não na
+    // route (governança: route só chama UseCase).
+    after(() => publicFormSubmissionUseCase.queueForBackgroundProcessing(background))
   }
 
   return NextResponse.json(

@@ -2,15 +2,10 @@ import { describe, it, expect, mock, beforeEach } from "bun:test"
 import {
   PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/public-form-metric-events"
+import { DEFAULT_PUBLISH_RETRY_ATTEMPTS } from "@/lib/queues/publish-with-retry"
 import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
 
 const publishPublicFormMetricEvent = mock(async () => ({ messageId: "msg-queue-1" }))
-const isCriticalPublicFormMetricEvent = mock((eventType: string) =>
-  eventType === "form_viewed" ||
-    eventType === "form_started" ||
-    eventType === "question_answered" ||
-    eventType === "form_completed",
-)
 const buildPublicFormMetricQueuePayload = mock(
   (publicId: string, input: PublicFormMetricEventInput) => ({
     publicId,
@@ -23,13 +18,24 @@ const buildPublicFormMetricQueuePayload = mock(
   }),
 )
 const recordMetricService = mock(async () => true)
+const upsertFromProcessingFailureMock = mock(async () => {})
 
 mock.module("@/lib/queues/public-form-metric-events", () => ({
   publishPublicFormMetricEvent,
-  isCriticalPublicFormMetricEvent,
   buildPublicFormMetricQueuePayload,
   PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
 }))
+
+mock.module(
+  "@/app/api/infra/data/repositories/publicFormQueueEventFailure/PublicFormQueueEventFailureRepository",
+  () => ({
+    formatProcessingError: (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    publicFormQueueEventFailureRepository: {
+      upsertFromProcessingFailure: upsertFromProcessingFailureMock,
+    },
+  }),
+)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
@@ -51,8 +57,8 @@ const { PublicFormsUseCase } = await import("./PublicFormsUseCase")
 const VALID_PUBLIC_ID = "11111111-1111-4111-8111-111111111111"
 const VALID_SESSION = "session_abcdefghij"
 
-function criticalInput(
-  eventType: "form_viewed" | "form_started" | "question_answered" | "form_completed",
+function metricInput(
+  eventType: PublicFormMetricEventInput["eventType"],
 ): PublicFormMetricEventInput {
   return {
     visitorSessionId: VALID_SESSION,
@@ -62,20 +68,20 @@ function criticalInput(
   }
 }
 
-describe("PublicFormsUseCase.recordMetric queue-first", () => {
+describe("PublicFormsUseCase.recordMetric queue-first (PR2.3: sem bypass direto)", () => {
   const useCase = new PublicFormsUseCase()
 
   beforeEach(() => {
     publishPublicFormMetricEvent.mockReset()
     publishPublicFormMetricEvent.mockResolvedValue({ messageId: "msg-queue-1" })
-    isCriticalPublicFormMetricEvent.mockClear()
     buildPublicFormMetricQueuePayload.mockClear()
     recordMetricService.mockReset()
     recordMetricService.mockResolvedValue(true)
+    upsertFromProcessingFailureMock.mockReset()
   })
 
-  it("evento crítico publica na fila sem chamar publicFormsService.recordMetric", async () => {
-    const output = await useCase.recordMetric(VALID_PUBLIC_ID, criticalInput("form_viewed"))
+  it("evento antes crítico (form_viewed) publica na fila sem chamar publicFormsService.recordMetric", async () => {
+    const output = await useCase.recordMetric(VALID_PUBLIC_ID, metricInput("form_viewed"))
     expect(output.isValid).toBe(true)
     expect(output.result).toMatchObject({ queued: true, messageId: "msg-queue-1" })
     expect(publishPublicFormMetricEvent).toHaveBeenCalledTimes(1)
@@ -90,7 +96,7 @@ describe("PublicFormsUseCase.recordMetric queue-first", () => {
     expect(recordMetricService).not.toHaveBeenCalled()
   })
 
-  it("evento não crítico usa caminho direto recordMetric", async () => {
+  it("evento antes não-crítico (question_viewed) também publica na fila agora — sem bypass direto", async () => {
     const output = await useCase.recordMetric(VALID_PUBLIC_ID, {
       visitorSessionId: VALID_SESSION,
       eventType: "question_viewed",
@@ -99,25 +105,43 @@ describe("PublicFormsUseCase.recordMetric queue-first", () => {
       origin: {},
     })
     expect(output.isValid).toBe(true)
-    expect(output.result).toEqual({ accepted: true })
-    expect(publishPublicFormMetricEvent).not.toHaveBeenCalled()
-    expect(recordMetricService).toHaveBeenCalledTimes(1)
+    expect(output.result).toMatchObject({ queued: true, messageId: "msg-queue-1" })
+    expect(publishPublicFormMetricEvent).toHaveBeenCalledTimes(1)
+    expect(recordMetricService).not.toHaveBeenCalled()
   })
 
-  it("form_started é crítico: publica na fila sem chamar o service", async () => {
-    const output = await useCase.recordMetric(VALID_PUBLIC_ID, criticalInput("form_started"))
+  it("form_started publica na fila sem chamar o service", async () => {
+    const output = await useCase.recordMetric(VALID_PUBLIC_ID, metricInput("form_started"))
     expect(output.isValid).toBe(true)
     expect(output.result).toMatchObject({ queued: true, messageId: "msg-queue-1" })
     expect(publishPublicFormMetricEvent).toHaveBeenCalledTimes(1)
     expect(recordMetricService).not.toHaveBeenCalled()
   })
 
-  it("falha de publish instrumenta tag e não chama recordMetric", async () => {
-    publishPublicFormMetricEvent.mockRejectedValueOnce(new Error("queue down"))
-    const output = await useCase.recordMetric(VALID_PUBLIC_ID, criticalInput("form_completed"))
+  it("publish falha 3x → grava no outbox com queue_publish_failed e ainda responde sucesso ao cliente", async () => {
+    publishPublicFormMetricEvent.mockRejectedValue(new Error("queue down"))
+    const output = await useCase.recordMetric(VALID_PUBLIC_ID, metricInput("form_completed"))
+
+    expect(publishPublicFormMetricEvent).toHaveBeenCalledTimes(DEFAULT_PUBLISH_RETRY_ATTEMPTS)
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject({ queued: false, fallback: true })
+    expect(upsertFromProcessingFailureMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "metric",
+        idempotencyKey: `${VALID_SESSION}:form_completed:form`,
+        failureReason: "queue_publish_failed",
+      }),
+    )
+    expect(recordMetricService).not.toHaveBeenCalled()
+  })
+
+  it("publish falha 3x e outbox também falha → devolve erro ao cliente (evento não fica sem rastro)", async () => {
+    publishPublicFormMetricEvent.mockRejectedValue(new Error("queue down"))
+    upsertFromProcessingFailureMock.mockRejectedValueOnce(new Error("db down"))
+
+    const output = await useCase.recordMetric(VALID_PUBLIC_ID, metricInput("form_completed"))
     expect(output.isValid).toBe(false)
     expect(output.result).toEqual({ code: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG })
-    expect(recordMetricService).not.toHaveBeenCalled()
   })
 
   it("persistQueuedMetric chama recordMetric com radarMode inline", async () => {
