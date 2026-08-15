@@ -29,6 +29,7 @@ import {
   buildPublicFormMetricQueuePayload,
   publishServerPublicFormMetricEvent,
 } from "@/lib/queues/public-form-metric-events"
+import { queueSubmissionForBackgroundProcessing } from "@/lib/public-forms/queue-submission-for-background-processing"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -500,6 +501,18 @@ export class PublicFormSubmissionUseCase {
     })
     if (!scheduleOutput.isValid) throw new Error(scheduleOutput.errorMessages.join("; "))
     return true
+  }
+
+  /**
+   * PR2.3: chamado pelo `after()` da rota de submissão. Só publica na fila
+   * `public-form-submission-events` (sem lead match/agendamento no isolate
+   * HTTP) — o outbox só recebe linha se as 3 tentativas de publish esgotarem.
+   * Delegado a um módulo próprio (ver comentário lá) para ficar testável
+   * sem a cadeia pesada de dependências deste UseCase, e para manter a
+   * governança de acesso a dados só via UseCase/Service na route.
+   */
+  async queueForBackgroundProcessing(job: PublicFormSubmissionBackgroundJob): Promise<void> {
+    await queueSubmissionForBackgroundProcessing(job)
   }
 }
 

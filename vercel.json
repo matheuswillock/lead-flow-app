@@ -113,6 +113,28 @@
           "maxConcurrency": 4
         }
       ]
+    },
+    "app/api/queues/asaas-webhook-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "asaas-webhook-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
+    "app/api/queues/public-form-submission-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "public-form-submission-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
     }
   },
   "crons": [
@@ -225,8 +247,16 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/integrations/webhooks/cron/retry-asaas-webhook-failures",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/email/cron/reconcile-resend-domain-status",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/v1/public-forms/cron/retry-queue-event-failures",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
