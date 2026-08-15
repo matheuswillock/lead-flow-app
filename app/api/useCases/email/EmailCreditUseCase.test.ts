@@ -16,6 +16,9 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     team: {
       findUnique: teamFindUniqueMock,
     },
+    emailTeamSettings: {
+      findUnique: mock(async () => null),
+    },
   },
 }))
 
