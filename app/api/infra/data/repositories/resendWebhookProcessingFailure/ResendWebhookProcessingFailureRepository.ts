@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import type { Prisma } from "@prisma/client";
 import {
   computeResendWebhookProcessingFailureNextAttemptAt,
   RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS,
@@ -9,6 +10,14 @@ import type {
   ResendWebhookProcessingFailureClaimRow,
   UpsertResendWebhookProcessingFailureInput,
 } from "./IResendWebhookProcessingFailureRepository";
+
+type ClaimRawRow = {
+  id: string;
+  svixId: string;
+  eventType: string;
+  payload: Prisma.JsonValue;
+  attemptCount: number | bigint;
+};
 
 function formatProcessingError(error: unknown): string {
   if (error instanceof Error) {
@@ -86,37 +95,54 @@ export class ResendWebhookProcessingFailureRepository
     }
   }
 
+  /**
+   * Claim atômico via `FOR UPDATE SKIP LOCKED` (mesmo padrão de
+   * `TeamWebhookOutboxRepository`/`EmailContactRadarSyncOutboxRepository`).
+   * Substitui o antigo `findMany` + N `updateMany` sequenciais — com
+   * `limit` na casa dos milhares isso significava milhares de round-trips
+   * ao Postgres só para reservar o lote, o que limitava o quanto o batch
+   * podia crescer sem estourar o `maxDuration` do cron. Agora é 1 round-trip
+   * só, e `SKIP LOCKED` também evita corrida caso o cron rode mais vezes
+   * por hora e duas execuções se sobreponham.
+   */
   async claimDue(limit: number): Promise<ResendWebhookProcessingFailureClaimRow[]> {
+    const safeLimit = Math.max(0, Math.floor(limit));
+    if (safeLimit === 0) return [];
+
     const now = new Date();
     await this.recoverStaleProcessingClaims(now);
 
-    const due = await prisma.resendWebhookProcessingFailure.findMany({
-      where: {
-        status: "pending",
-        nextAttemptAt: { lte: now },
-      },
-      orderBy: { nextAttemptAt: "asc" },
-      take: limit,
-      select: {
-        id: true,
-        svixId: true,
-        eventType: true,
-        payload: true,
-        attemptCount: true,
-      },
-    });
+    const rows = await prisma.$queryRaw<ClaimRawRow[]>`
+      WITH claimed AS (
+        SELECT id
+        FROM corretor_studio_resend_webhook_processing_failures
+        WHERE status = 'pending'::resend_webhook_processing_failure_status
+          AND "nextAttemptAt" <= ${now}
+        ORDER BY "nextAttemptAt" ASC
+        LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE corretor_studio_resend_webhook_processing_failures o
+      SET
+        status = 'processing'::resend_webhook_processing_failure_status,
+        "updatedAt" = ${now}
+      FROM claimed
+      WHERE o.id = claimed.id
+      RETURNING
+        o.id,
+        o."svixId" AS "svixId",
+        o."eventType" AS "eventType",
+        o.payload,
+        o."attemptCount" AS "attemptCount"
+    `;
 
-    const claimed: ResendWebhookProcessingFailureClaimRow[] = [];
-    for (const row of due) {
-      const updated = await prisma.resendWebhookProcessingFailure.updateMany({
-        where: { id: row.id, status: "pending" },
-        data: { status: "processing" },
-      });
-      if (updated.count === 1) {
-        claimed.push(row);
-      }
-    }
-    return claimed;
+    return rows.map((row) => ({
+      id: row.id,
+      svixId: row.svixId,
+      eventType: row.eventType,
+      payload: row.payload,
+      attemptCount: Number(row.attemptCount),
+    }));
   }
 
   async markResolved(id: string): Promise<void> {
