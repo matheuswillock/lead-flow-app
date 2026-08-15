@@ -7,6 +7,12 @@ export interface CreateBackofficeEmailLogInput {
   recipientEmail: string
 }
 
+export type QueuedBackofficeEmailLogRow = {
+  id: string
+  contactId: string
+  recipientEmail: string
+}
+
 export interface IBackofficeEmailLogRepository {
   createQueuedBatch(entries: CreateBackofficeEmailLogInput[]): Promise<BackofficeEmailLog[]>
   findByDispatchId(dispatchId: string): Promise<BackofficeEmailLog[]>
@@ -19,4 +25,9 @@ export interface IBackofficeEmailLogRepository {
     timestampField?: "sentAt" | "deliveredAt" | "openedAt" | "clickedAt" | "bouncedAt" | "complainedAt",
     occurredAt?: Date
   ): Promise<void>
+  /** Lote limitado de destinatários `queued` do dispatch (consumer da fila, PR queue-first). */
+  findQueuedByDispatchId(dispatchId: string, take: number): Promise<QueuedBackofficeEmailLogRow[]>
+  countQueuedByDispatchId(dispatchId: string): Promise<number>
+  /** Conta logs que saíram de `queued` sem terminar em `failed` (enviados com sucesso, mesmo que bounced/complained depois). */
+  countSentByDispatchId(dispatchId: string): Promise<number>
 }

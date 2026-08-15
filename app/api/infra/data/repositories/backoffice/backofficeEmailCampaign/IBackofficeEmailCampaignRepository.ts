@@ -48,7 +48,8 @@ export interface IBackofficeEmailCampaignRepository {
   ): Promise<BackofficeEmailCampaign>
   markFailed(id: string, errorMessage: string): Promise<BackofficeEmailCampaign>
   cancel(id: string): Promise<BackofficeEmailCampaign | null>
-  recoverStuck(olderThan: Date): Promise<number>
+  /** Campanhas em `sending` há mais que o threshold — cron decide reclaim (fila) vs failed (sem dispatch ativo). */
+  findStuckSending(olderThan: Date): Promise<BackofficeEmailCampaign[]>
   incrementCounters(
     id: string,
     counters: UpdateBackofficeEmailCampaignCountersInput

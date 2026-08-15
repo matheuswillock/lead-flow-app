@@ -15,6 +15,7 @@ import type {
 } from "./CampanhasTypes"
 import { radarFrontendService } from "@/app/[supabaseId]/radar/features/services/RadarService"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
+import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import {
   applyDispatchTerminalToast,
   buildDispatchTerminalToast,
@@ -507,6 +508,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       return
     }
 
+    if (credits?.trackingDispatchBlocked) {
+      toast.error(credits.trackingDispatchBlockReason ?? RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+      return
+    }
+
     const campaignToSend = campaigns.find((campaign) => campaign.id === id)
     const isDetailSubCampaign = Boolean(detailCampaign?.subCampaigns?.some((sub) => sub.id === id))
     const retryFailedOnly = options?.retryFailedOnly === true
@@ -620,7 +626,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         setSendingId(null)
       }
     }
-  }, [activeTeamId, bypassCreditsCheck, campaigns, credits?.hasSubscription, credits?.isBetaExempt, detailCampaign, fetchCampaigns, fetchCredits, skipBetaGate, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
+  }, [activeTeamId, bypassCreditsCheck, campaigns, credits?.hasSubscription, credits?.isBetaExempt, credits?.trackingDispatchBlocked, credits?.trackingDispatchBlockReason, detailCampaign, fetchCampaigns, fetchCredits, skipBetaGate, page, pageSize, nameFilter, dateFrom, dateTo, statusFilter, supabaseId])
 
   useEffect(() => {
     const trackedId = sendingId

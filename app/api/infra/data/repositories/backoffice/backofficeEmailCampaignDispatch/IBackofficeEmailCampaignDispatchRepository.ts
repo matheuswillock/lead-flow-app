@@ -23,6 +23,7 @@ export interface UpdateBackofficeEmailCampaignDispatchCountersInput {
 
 export interface IBackofficeEmailCampaignDispatchRepository {
   create(data: CreateBackofficeEmailCampaignDispatchInput): Promise<BackofficeEmailCampaignDispatch>
+  findById(id: string): Promise<BackofficeEmailCampaignDispatch | null>
   findByCampaignId(campaignId: string): Promise<BackofficeEmailCampaignDispatch[]>
   updateStatus(
     id: string,

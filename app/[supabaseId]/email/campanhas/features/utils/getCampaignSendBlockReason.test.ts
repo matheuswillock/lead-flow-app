@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { getCampaignSendBlockReason } from "./getCampaignSendBlockReason"
 import type { CreditStatus } from "../context/CampanhasTypes"
+import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 
 function makeCredits(overrides: Partial<CreditStatus> = {}): CreditStatus {
   return {
@@ -77,5 +78,26 @@ describe("getCampaignSendBlockReason", () => {
     })
 
     expect(reason).toBe("Ative um plano em Assinaturas para disparar campanhas")
+  })
+
+  it("blocks when custom-domain tracking is not ready", () => {
+    const reason = getCampaignSendBlockReason({
+      campaign: { totalRecipients: 50 },
+      credits: makeCredits({
+        trackingDispatchBlocked: true,
+        trackingDispatchBlockReason: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+      }),
+    })
+
+    expect(reason).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+  })
+
+  it("uses tracking required copy when blocked without a reason payload", () => {
+    const reason = getCampaignSendBlockReason({
+      campaign: { totalRecipients: 50 },
+      credits: makeCredits({ trackingDispatchBlocked: true }),
+    })
+
+    expect(reason).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
   })
 })

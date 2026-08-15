@@ -34,6 +34,10 @@ export class BackofficeEmailCampaignDispatchRepository
     })
   }
 
+  async findById(id: string): Promise<BackofficeEmailCampaignDispatch | null> {
+    return prisma.backofficeEmailCampaignDispatch.findUnique({ where: { id } })
+  }
+
   async findByCampaignId(campaignId: string): Promise<BackofficeEmailCampaignDispatch[]> {
     return prisma.backofficeEmailCampaignDispatch.findMany({
       where: { campaignId },

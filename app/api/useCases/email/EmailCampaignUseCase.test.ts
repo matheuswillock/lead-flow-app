@@ -44,6 +44,11 @@ mock.module("@/app/api/services/EmailCredit/EmailCreditService", () => ({
     releaseCredits = releaseCreditsMock
     formatInsufficientCreditsMessage = formatInsufficientMock
   },
+  emailCreditService: {
+    reserveCredits: reserveCreditsMock,
+    releaseCredits: releaseCreditsMock,
+    formatInsufficientCreditsMessage: formatInsufficientMock,
+  },
 }))
 
 // --- TeamEmailDispatchLogger ---
@@ -209,7 +214,7 @@ mock.module("@/lib/queues/email-campaign-dispatch", () => ({
 const { EmailCampaignUseCase, EMAIL_CAMPAIGN_FAILURE_MESSAGES } = await import(
   "./EmailCampaignUseCase"
 )
-const { RESEND_DOMAIN_TRACKING_DEGRADED_WARNING } = await import(
+const { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } = await import(
   "@/lib/email/campaign-dispatch-guards"
 )
 const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
@@ -1014,9 +1019,9 @@ describe("EmailCampaignUseCase.send", () => {
   })
 
   // ---------------------------------------------------------------------------
-  // D12 — domínio partially_failed permite disparo com aviso
+  // Tracking gate — domínio próprio sem métricas/CNAME bloqueia disparo
   // ---------------------------------------------------------------------------
-  it("D12 — domínio partially_failed → dispara com aviso de tracking degradado", async () => {
+  it("domínio partially_failed → bloqueia disparo até tracking estar pronto", async () => {
     const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
@@ -1024,6 +1029,8 @@ describe("EmailCampaignUseCase.send", () => {
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
       resendDomainName: "backstageclub.com.br",
       resendDomainStatus: "partially_failed",
+      resendOpenTracking: true,
+      resendClickTracking: true,
       fromName: "Test",
       fromEmail: "test@backstageclub.com.br",
       replyTo: null,
@@ -1035,15 +1042,13 @@ describe("EmailCampaignUseCase.send", () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
-    expect(output.isValid).toBe(true)
-    expect(output.successMessages.some((m) => m.includes("segundo plano"))).toBe(true)
-    expect(output.successMessages).toContain(RESEND_DOMAIN_TRACKING_DEGRADED_WARNING)
-    expect(output.result?.warnings).toEqual([RESEND_DOMAIN_TRACKING_DEGRADED_WARNING])
-    expect(emailCampaignUpdateManyMock).toHaveBeenCalled()
-    expect(reserveCreditsMock).toHaveBeenCalled()
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 
-  it("D12 — domínio partially_verified → dispara com aviso de tracking degradado", async () => {
+  it("domínio partially_verified → bloqueia disparo até tracking estar pronto", async () => {
     const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
@@ -1051,6 +1056,62 @@ describe("EmailCampaignUseCase.send", () => {
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
       resendDomainName: "example.com",
       resendDomainStatus: "partially_verified",
+      resendOpenTracking: true,
+      resendClickTracking: true,
+      fromName: "Test",
+      fromEmail: "test@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+
+  it("domínio verified com métricas desligadas → bloqueia disparo", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "verified",
+      resendOpenTracking: false,
+      resendClickTracking: false,
+      fromName: "Test",
+      fromEmail: "test@example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+  })
+
+  it("domínio verified com métricas ligadas → permite disparo", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "example.com",
+      resendDomainStatus: "verified",
+      resendOpenTracking: true,
+      resendClickTracking: true,
       fromName: "Test",
       fromEmail: "test@example.com",
       replyTo: null,
@@ -1063,8 +1124,10 @@ describe("EmailCampaignUseCase.send", () => {
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
     expect(output.isValid).toBe(true)
-    expect(output.successMessages).toContain(RESEND_DOMAIN_TRACKING_DEGRADED_WARNING)
-    expect(output.result?.warnings).toEqual([RESEND_DOMAIN_TRACKING_DEGRADED_WARNING])
+    expect(output.successMessages.some((m) => m.includes("segundo plano"))).toBe(true)
+    expect(output.result?.warnings ?? []).toEqual([])
+    expect(emailCampaignUpdateManyMock).toHaveBeenCalled()
+    expect(reserveCreditsMock).toHaveBeenCalled()
   })
 
   // ---------------------------------------------------------------------------

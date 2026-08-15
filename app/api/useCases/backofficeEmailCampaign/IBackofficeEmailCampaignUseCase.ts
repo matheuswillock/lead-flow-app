@@ -36,6 +36,8 @@ export interface IBackofficeEmailCampaignUseCase {
   ensureUpcomingLiveCampaignExists(): Promise<Output>
   dispatchDueCampaigns(now?: Date): Promise<Output>
   recoverStuckDispatches(): Promise<Output>
+  /** Consumer da fila `backoffice-email-campaign-dispatch`: processa um lote de logs `queued`. */
+  processDispatchQueueBatch(dispatchId: string, options?: { batchSize?: number }): Promise<Output>
   subscribeFromLead(lead: BackofficeLeadForCampaignSubscription): Promise<Output>
   applyResendWebhookEvent(
     input: ApplyBackofficeResendWebhookEventInput
