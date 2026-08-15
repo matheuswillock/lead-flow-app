@@ -293,11 +293,17 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
    * Campanhas em `sending` há mais de `STUCK_SENDING_THRESHOLD_MS`: com o
    * disparo agora sendo processado em lotes pela fila, "sending" há muito
    * tempo não significa mais travado por padrão — pode só ser uma lista
-   * grande ainda em processamento. Só marca `failed` quando não sobra
-   * nenhum dispatch `sending` de fato (órfã); caso contrário republica o
-   * wake (`cron-reclaim`) se ainda houver logs `queued`, ou finaliza se o
-   * dispatch já esgotou os `queued` mas nunca chegou a fechar (crash entre
-   * o último lote e o finalize).
+   * grande ainda em processamento. Só marca `failed` quando não existe
+   * nenhum dispatch de fato (órfã real); se existir um dispatch `sending`,
+   * republica o wake (`cron-reclaim`) se ainda houver logs `queued`, ou
+   * finaliza se o dispatch já esgotou os `queued` mas nunca chegou a
+   * fechar (crash entre o último lote e o finalize). Se o dispatch mais
+   * recente já estiver `completed`/`failed` mas a campanha continuar
+   * `sending`, é o mesmo crash só que **depois** do `updateStatus` do
+   * dispatch e **antes** do `markSent`/`markFailed` da campanha em
+   * `finalizeDispatchQueueBatch` — reconcilia rodando `finalizeDispatchQueueBatch`
+   * de novo (idempotente) em vez de sobrescrever um envio bem-sucedido com
+   * `markFailed`.
    */
   async recoverStuckDispatches(): Promise<Output> {
     const olderThan = new Date(Date.now() - STUCK_SENDING_THRESHOLD_MS)
@@ -311,6 +317,20 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
       const sendingDispatch = dispatches.find((dispatch) => dispatch.status === "sending")
 
       if (!sendingDispatch) {
+        const terminalDispatch = dispatches.find(
+          (dispatch) => dispatch.status === "completed" || dispatch.status === "failed"
+        )
+
+        if (terminalDispatch) {
+          console.info(
+            "[BackofficeEmailCampaignUseCase][recoverStuckDispatches] dispatch já finalizado mas campanha ainda em sending — reconciliando",
+            { campaignId: campaign.id, dispatchId: terminalDispatch.id, dispatchStatus: terminalDispatch.status }
+          )
+          await this.finalizeDispatchQueueBatch(terminalDispatch, campaign)
+          reclaimed += 1
+          continue
+        }
+
         await this.campaignRepository.markFailed(
           campaign.id,
           "Disparo travado sem dispatch ativo — marcado como falho automaticamente"

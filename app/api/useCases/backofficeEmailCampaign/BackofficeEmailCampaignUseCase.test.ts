@@ -353,10 +353,10 @@ describe("BackofficeEmailCampaignUseCase — recoverStuckDispatches", () => {
     expect(publishWakeMock).not.toHaveBeenCalled()
   })
 
-  it("marca failed quando a campanha travada não tem nenhum dispatch sending (órfã)", async () => {
+  it("marca failed quando a campanha travada não tem nenhum dispatch (órfã real)", async () => {
     const repos = makeRepositories()
     repos.campaignRepository.findStuckSending.mockImplementation(async () => [buildCampaign()])
-    repos.dispatchRepository.findByCampaignId.mockImplementation(async () => [buildDispatch({ status: "completed" })])
+    repos.dispatchRepository.findByCampaignId.mockImplementation(async () => [])
     const useCase = makeUseCase(repos)
 
     const result = await useCase.recoverStuckDispatches()
@@ -366,5 +366,36 @@ describe("BackofficeEmailCampaignUseCase — recoverStuckDispatches", () => {
       "campaign-1",
       "Disparo travado sem dispatch ativo — marcado como falho automaticamente"
     )
+  })
+
+  it("reconcilia (não marca failed) quando o dispatch já está completed mas a campanha ficou sending por crash antes do markSent", async () => {
+    const repos = makeRepositories()
+    repos.campaignRepository.findStuckSending.mockImplementation(async () => [buildCampaign()])
+    repos.dispatchRepository.findByCampaignId.mockImplementation(async () => [
+      buildDispatch({ status: "completed" }),
+    ])
+    repos.logRepository.countSentByDispatchId.mockImplementation(async () => 2)
+    const useCase = makeUseCase(repos)
+
+    const result = await useCase.recoverStuckDispatches()
+
+    expect(result.result).toMatchObject({ reclaimed: 1, failed: 0, total: 1 })
+    expect(repos.campaignRepository.markFailed).not.toHaveBeenCalled()
+    expect(repos.campaignRepository.markSent).toHaveBeenCalledTimes(1)
+  })
+
+  it("reconcilia como failed quando o dispatch já está failed mas a campanha ficou sending por crash antes do markFailed", async () => {
+    const repos = makeRepositories()
+    repos.campaignRepository.findStuckSending.mockImplementation(async () => [buildCampaign()])
+    repos.dispatchRepository.findByCampaignId.mockImplementation(async () => [
+      buildDispatch({ status: "failed", totalRecipients: 2 }),
+    ])
+    repos.logRepository.countSentByDispatchId.mockImplementation(async () => 0)
+    const useCase = makeUseCase(repos)
+
+    const result = await useCase.recoverStuckDispatches()
+
+    expect(result.result).toMatchObject({ reclaimed: 1, failed: 0, total: 1 })
+    expect(repos.campaignRepository.markFailed).toHaveBeenCalledWith("campaign-1", "2 envio(s) falharam")
   })
 })
