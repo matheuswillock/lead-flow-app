@@ -46,6 +46,22 @@ const BATCH_SIZE = 100
 /** Limite de sublotes enfileirados por bisect (proteção contra loop). */
 const MAX_INVALID_TO_BISECT_QUEUE = BATCH_SIZE * 2
 
+/**
+ * Concorrência de chunks de 100 destinatários dentro do mesmo `dispatchBatch`
+ * (cada chunk é 1 chamada `resend.batch.send`). Default 1 preserva o
+ * comportamento sequencial atual — só subir depois de confirmar o rate limit
+ * real da conta no dashboard da Resend (header `ratelimit-limit` na resposta
+ * da API; default documentado hoje é 10 req/s por time, mas pode variar por
+ * plano). Não consome orçamento de conexão Postgres: os chunks concorrentes
+ * seguem no mesmo isolate/consumer da fila `email-campaign-dispatch`
+ * (`maxConcurrency: 1` em `vercel.json`), com o mesmo Prisma client.
+ */
+function resolveDispatchChunkConcurrency(): number {
+  const raw = Number(process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY ?? 1)
+  if (!Number.isFinite(raw) || raw < 1) return 1
+  return Math.trunc(raw)
+}
+
 /** Traduz erros conhecidos do Resend para mensagens amigáveis ao usuário. */
 function resolveResendBatchErrorMessage(rawMessage: string, statusCode?: number): string {
   if (statusCode === 403 && isDomainNotVerifiedError(rawMessage)) {
@@ -136,6 +152,9 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     if (!resend) {
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
     }
+    // Captura local narrowed: `processChunkItem` roda em workers concorrentes (closure),
+    // e o TS não propaga o `if (!resend)` acima para dentro de funções aninhadas.
+    const resendClient = resend
 
     const logIdByEmail =
       params.logIdByEmail instanceof Map
@@ -189,9 +208,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       chunkIndex,
     }))
 
-    while (chunkQueue.length > 0) {
-      const { sortedChunk, chunkIndex } = chunkQueue.shift()!
-      if (sortedChunk.length === 0) continue
+    const processChunkItem = async ({ sortedChunk, chunkIndex }: ChunkWorkItem): Promise<void> => {
+      if (sortedChunk.length === 0) return
 
       const chunkEmails = sortedChunk.map((recipient) => recipient.email)
       const entityIdAttempts = buildBatchIdempotencyEntityIdAttempts({
@@ -274,7 +292,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                     `attempt-${attempt}`,
                   )
 
-            const batchResult = await resend.batch.send(batchPayload, { idempotencyKey })
+            const batchResult = await resendClient.batch.send(batchPayload, { idempotencyKey })
 
             if (batchResult.error) {
               console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
@@ -426,7 +444,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             statusCode: 422,
             emails: sortedChunk.map((recipient) => recipient.email),
           })
-          continue
+          return
         }
         // Processa esquerda antes da direita (DFS).
         if (right.length > 0) {
@@ -435,17 +453,28 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         if (left.length > 0) {
           chunkQueue.unshift({ sortedChunk: left, chunkIndex })
         }
-        continue
+        return
       }
 
       if (!chunkAccepted && chunkDispatched.length === 0) {
-        continue
+        return
       }
 
       if (chunkDispatched.length > 0) {
         await params.onChunkDispatched?.(chunkDispatched)
       }
     }
+
+    const concurrency = resolveDispatchChunkConcurrency()
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        while (chunkQueue.length > 0) {
+          const item = chunkQueue.shift()
+          if (!item) break
+          await processChunkItem(item)
+        }
+      })
+    )
 
     return result
   }
