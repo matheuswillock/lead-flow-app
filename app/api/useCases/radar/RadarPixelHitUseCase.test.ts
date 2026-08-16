@@ -1,5 +1,4 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
-import { Output } from "@/lib/output"
 import type { RadarPixelEventPayload } from "@/lib/queues/radar-pixel-events"
 
 const findPixelConfigByPublicToken = mock(async () => ({
