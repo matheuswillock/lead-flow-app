@@ -472,6 +472,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async questionExists(id: string): Promise<boolean> {
+    const found = await prisma.publicFormQuestion.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+    return found !== null
+  }
+
   async upsertMetricEvent(input: {
     formId: string
     publicationId: string

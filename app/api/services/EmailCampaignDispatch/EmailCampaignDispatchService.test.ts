@@ -1,4 +1,4 @@
-import { describe, expect, it, mock, beforeEach } from "bun:test"
+import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test"
 
 // ---------- mocks (antes de qualquer import do módulo) ----------
 
@@ -643,5 +643,132 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     ).rejects.toThrow("db write failed")
 
     expect(onChunkDispatched).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------- EmailCampaignDispatchService.dispatchBatch — concorrência de chunks ----------
+
+describe("EmailCampaignDispatchService.dispatchBatch — EMAIL_DISPATCH_CHUNK_CONCURRENCY", () => {
+  let service: InstanceType<typeof EmailCampaignDispatchService>
+
+  beforeEach(() => {
+    service = new EmailCampaignDispatchService()
+    batchSendMock.mockClear()
+  })
+
+  afterEach(() => {
+    delete process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY
+  })
+
+  function mockBatchSendWithConcurrencyTracking(delayMs: number) {
+    let inFlight = 0
+    let maxInFlight = 0
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      inFlight--
+      const payload = args[0] as Array<{ to: string }>
+      return { data: payload.map((_, i) => ({ id: `re_${i}` })), error: null }
+    })
+    return () => maxInFlight
+  }
+
+  it("sem env var: comportamento default preservado — no máximo 1 chunk em voo por vez", async () => {
+    const getMaxInFlight = mockBatchSendWithConcurrencyTracking(5)
+
+    const result = await service.dispatchBatch(makeBaseParams(makeRecipients(300)))
+
+    expect(batchSendMock).toHaveBeenCalledTimes(3)
+    expect(getMaxInFlight()).toBe(1)
+    expect(result.sent).toBe(300)
+    expect(result.failed).toBe(0)
+  })
+
+  it("EMAIL_DISPATCH_CHUNK_CONCURRENCY=3: até 3 chunks em voo simultaneamente, sem duplicar nem perder envios", async () => {
+    process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY = "3"
+    const getMaxInFlight = mockBatchSendWithConcurrencyTracking(15)
+
+    const result = await service.dispatchBatch(makeBaseParams(makeRecipients(500)))
+
+    expect(batchSendMock).toHaveBeenCalledTimes(5)
+    expect(getMaxInFlight()).toBeGreaterThan(1)
+    expect(getMaxInFlight()).toBeLessThanOrEqual(3)
+    expect(result.sent).toBe(500)
+    expect(result.failed).toBe(0)
+  })
+
+  it("concorrência maior que o número de chunks não gera chamadas extras", async () => {
+    process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY = "10"
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const payload = args[0] as Array<{ to: string }>
+      return { data: payload.map((_, i) => ({ id: `re_${i}` })), error: null }
+    })
+
+    const result = await service.dispatchBatch(makeBaseParams(makeRecipients(150)))
+
+    expect(batchSendMock).toHaveBeenCalledTimes(2)
+    expect(result.sent).toBe(150)
+    expect(result.failed).toBe(0)
+  })
+
+  it("valores inválidos (0, negativo, não numérico) fazem fallback seguro para concorrência 1", async () => {
+    for (const invalid of ["0", "-2", "abc"]) {
+      process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY = invalid
+      batchSendMock.mockClear()
+      const getMaxInFlight = mockBatchSendWithConcurrencyTracking(5)
+
+      const result = await service.dispatchBatch(makeBaseParams(makeRecipients(200)))
+
+      expect(getMaxInFlight()).toBe(1)
+      expect(result.sent).toBe(200)
+    }
+  })
+
+  it("bisect (422 Invalid to) permanece correto com concorrência > 1", async () => {
+    process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY = "2"
+    const resendMessage =
+      "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format."
+    const recipients = [
+      {
+        email: "ok1@test.com",
+        name: "A",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "bad@test.com",
+        name: "B",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+      {
+        email: "ok2@test.com",
+        name: "C",
+        contactId: null as string | null,
+        customFields: null as Record<string, unknown> | null,
+      },
+    ]
+
+    batchSendMock.mockImplementation(async (...args: unknown[]) => {
+      const payload = args[0] as Array<{ to: string }>
+      const emails = payload.map((entry) => entry.to)
+      if (emails.includes("bad@test.com")) {
+        return {
+          data: null as unknown as Array<{ id?: string }>,
+          error: { name: "validation_error", message: resendMessage, statusCode: 422 },
+        }
+      }
+      return { data: emails.map((_, i) => ({ id: `re_${i}` })), error: null }
+    })
+
+    const result = await service.dispatchBatch(makeBaseParams(recipients))
+
+    expect(result.sent).toBe(2)
+    expect(result.failed).toBe(1)
+    expect(result.dispatched.map((entry) => entry.email).sort()).toEqual([
+      "ok1@test.com",
+      "ok2@test.com",
+    ])
   })
 })

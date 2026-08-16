@@ -5,8 +5,12 @@ const claimDueMock = mock(async () => [] as PublicFormQueueEventFailureClaimRow[
 const markResolvedMock = mock(async () => {})
 const markRetryOrFailedMock = mock(async (): Promise<"retried" | "failed"> => "retried")
 const requeueIfProcessingMock = mock(async () => {})
-const publishPublicFormMetricEventMock = mock(async () => ({ messageId: "msg-1" }))
-const publishPublicFormSubmissionEventMock = mock(async () => ({ messageId: "msg-1" }))
+const publishPublicFormMetricEventMock = mock(
+  async (_payload: unknown, _options?: { idempotencyKey?: string }) => ({ messageId: "msg-1" }),
+)
+const publishPublicFormSubmissionEventMock = mock(
+  async (_payload: unknown, _options?: { idempotencyKey?: string }) => ({ messageId: "msg-1" }),
+)
 
 mock.module("@/lib/queues/public-form-metric-events", () => ({
   publishPublicFormMetricEvent: publishPublicFormMetricEventMock,
@@ -66,6 +70,7 @@ describe("RetryPublicFormQueueEventFailuresUseCase (republish-to-queue)", () => 
     expect(result.isValid).toBe(true)
     expect(publishPublicFormMetricEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ publicId: "pub-1", eventType: "form_completed" }),
+      { idempotencyKey: "session-1:form_completed:form:outbox-retry:row-1:1" },
     )
     expect(publishPublicFormSubmissionEventMock).not.toHaveBeenCalled()
     expect(markResolvedMock).toHaveBeenCalledWith("row-1")
@@ -99,6 +104,7 @@ describe("RetryPublicFormQueueEventFailuresUseCase (republish-to-queue)", () => 
     expect(result.isValid).toBe(true)
     expect(publishPublicFormSubmissionEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ submissionId: "sub-1", requestKey: "req-abc" }),
+      { idempotencyKey: "req-abc:outbox-retry:row-2:1" },
     )
     expect(publishPublicFormMetricEventMock).not.toHaveBeenCalled()
     expect(markResolvedMock).toHaveBeenCalledWith("row-2")
@@ -176,6 +182,35 @@ describe("RetryPublicFormQueueEventFailuresUseCase (republish-to-queue)", () => 
     expect(requeueIfProcessingMock).toHaveBeenCalledWith([])
     expect(markResolvedMock).not.toHaveBeenCalled()
     expect(markRetryOrFailedMock).not.toHaveBeenCalled()
+  })
+
+  it("usa idempotencyKey própria por tentativa, nunca reaproveitando a eventKey original (evita dedupe silencioso na Vercel Queues)", async () => {
+    claimDueMock.mockImplementation(async () => [
+      {
+        id: "row-5",
+        kind: "metric",
+        idempotencyKey: "session-5:form_completed:form",
+        payload: {
+          publicId: "pub-1",
+          eventKey: "session-5:form_completed:form",
+          eventType: "form_completed",
+          questionId: null,
+          visitorSessionId: "session-5",
+          origin: {},
+          receivedAt: "2026-08-15T00:00:00.000Z",
+        },
+        attemptCount: 3,
+      },
+    ])
+
+    const useCase = new RetryPublicFormQueueEventFailuresUseCase(repository)
+    await useCase.execute()
+
+    const call = publishPublicFormMetricEventMock.mock.calls[0] as
+      | [unknown, { idempotencyKey: string }]
+      | undefined
+    expect(call?.[1].idempotencyKey).toBe("session-5:form_completed:form:outbox-retry:row-5:3")
+    expect(call?.[1].idempotencyKey).not.toBe("session-5:form_completed:form")
   })
 
   it("processa múltiplas linhas em paralelo (chunks de concorrência)", async () => {

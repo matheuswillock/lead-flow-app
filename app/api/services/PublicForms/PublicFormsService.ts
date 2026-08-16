@@ -401,6 +401,20 @@ export class PublicFormsService implements IPublicFormsService {
     if (input.questionId && !matchedQuestion) {
       return false
     }
+
+    // O snapshot congelado da publicação vigente valida que a pergunta
+    // existia NO MOMENTO da publicação — mas o form pode ter sido editado
+    // depois (mesma publicação ainda vigente) e a pergunta viva
+    // (`PublicFormQuestion`) já ter sido apagada/substituída por outro id.
+    // Checar isso aqui evita depender só do catch de P2003 dentro de
+    // `upsertMetricEvent` como única rede de segurança contra a FK obsoleta.
+    const liveQuestionId =
+      matchedQuestion && input.questionId
+        ? (await publicFormsRepository.questionExists(input.questionId))
+          ? input.questionId
+          : null
+        : input.questionId
+
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
     let leadId: string | null = null
 
@@ -438,7 +452,7 @@ export class PublicFormsService implements IPublicFormsService {
     await publicFormsRepository.upsertMetricEvent({
       formId: current.snapshot.formId,
       publicationId: current.publicationId,
-      questionId: input.questionId,
+      questionId: liveQuestionId,
       // Cópia congelada da pergunta, resolvida a partir do snapshot da
       // publicação vigente (mesmo padrão de `PublicFormAnswer.questionSnapshot`)
       // — preserva a rastreabilidade do evento mesmo que a pergunta viva

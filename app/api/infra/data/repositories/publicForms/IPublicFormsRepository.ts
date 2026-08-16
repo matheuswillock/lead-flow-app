@@ -223,6 +223,15 @@ export interface IPublicFormsRepository {
     teamId: string
     team: { master: { timezone: string | null } }
   } | null>
+  /**
+   * Checagem contra a tabela viva `PublicFormQuestion` — o snapshot congelado
+   * da publicação (usado para validar `matchedQuestion` em `recordMetric`)
+   * pode conter um `questionId` que já foi apagado/substituído depois que o
+   * form foi editado, mesmo com a publicação vigente ainda sendo a mesma.
+   * Usado para evitar depender só do catch de P2003 em `upsertMetricEvent`
+   * como rede de segurança.
+   */
+  questionExists(id: string): Promise<boolean>
   upsertMetricEvent(input: {
     formId: string
     publicationId: string

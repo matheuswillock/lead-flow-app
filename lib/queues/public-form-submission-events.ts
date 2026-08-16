@@ -16,9 +16,10 @@ const queue = new QueueClient({ region: "gru1" })
 
 export async function publishPublicFormSubmissionEvent(
   payload: PublicFormSubmissionBackgroundJob,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC, payload, {
-    idempotencyKey: payload.requestKey,
+    idempotencyKey: options?.idempotencyKey ?? payload.requestKey,
     retentionSeconds: PUBLIC_FORM_SUBMISSION_EVENTS_RETENTION_SECONDS,
   })
 }

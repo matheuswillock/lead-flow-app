@@ -30,12 +30,14 @@ type UpsertMetricEventArgs = {
 }
 
 const upsertMetricEvent = mock(async (_args: UpsertMetricEventArgs) => {})
+const questionExists = mock(async (_id: string) => true)
 
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
     findPublishedByPublicId,
     findAvailabilityTeamContext,
     upsertMetricEvent,
+    questionExists,
   },
 }))
 
@@ -62,6 +64,8 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
     findPublishedByPublicId.mockClear()
     findAvailabilityTeamContext.mockClear()
     upsertMetricEvent.mockClear()
+    questionExists.mockClear()
+    questionExists.mockResolvedValue(true)
   })
 
   it("resolve questionSnapshot a partir do snapshot da publicação vigente quando questionId existe", async () => {
@@ -96,6 +100,28 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
 
     expect(accepted).toBe(false)
     expect(upsertMetricEvent).not.toHaveBeenCalled()
+  })
+
+  it("questionId presente no snapshot mas ausente na tabela viva: persiste com questionId null preservando o questionSnapshot", async () => {
+    questionExists.mockResolvedValueOnce(false)
+
+    const input: PublicFormMetricEventInput = {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "question_answered",
+      eventKey: "session_abcdefghij:question_answered:q1",
+      questionId: QUESTION_ID,
+      origin: {},
+    }
+
+    const accepted = await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })
+
+    expect(accepted).toBe(true)
+    expect(questionExists).toHaveBeenCalledWith(QUESTION_ID)
+    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
+    const call = upsertMetricEvent.mock.calls[0]
+    if (!call) throw new Error("Expected upsertMetricEvent to have been called")
+    expect(call[0].questionId).toBeNull()
+    expect(call[0].questionSnapshot).toEqual(questionFromSnapshot)
   })
 
   it("questionSnapshot é null quando o evento não referencia uma pergunta", async () => {
