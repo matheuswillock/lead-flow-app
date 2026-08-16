@@ -13,21 +13,6 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface CampaignSummary {
-  id: string;
-  name: string;
-  createdAt: Date;
-  scheduledAt: Date | null;
-  status: string;
-  totalRecipients: number;
-  totalSent: number;
-  totalDelivered: number;
-  totalOpened: number;
-  totalClicked: number;
-  totalBounced: number;
-  errorMessage: string | null;
-}
-
 async function main() {
   console.log('═══════════════════════════════════════════════════');
   console.log('🔍 INVESTIGAÇÃO: Campanhas Rede Dor (Multiskill)');

@@ -13,8 +13,6 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const TARGET_TEAMS = ['Katherein Antunes', 'MultiSkill', 'Avalanche de Vendas Unipessoal Ltda'];
-
 async function main() {
   console.log('═══════════════════════════════════════════════════');
   console.log('🔍 AUDITORIA: Eventos Radar (3 Times)');
