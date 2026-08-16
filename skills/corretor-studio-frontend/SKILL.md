@@ -7,16 +7,21 @@ description: Guia obrigatório para construção de novas features de Frontend n
 
 Produz uma feature de frontend completa e consistente com a arquitetura do lead-flow-app.
 
-## Processo obrigatório (6 passos)
+## Processo obrigatório (7 passos)
 
 1. Ler contexto e verificar código similar
-2. Gerar scaffold
-3. Implementar Context (Types → Hook → Context)
-4. Implementar Service (Interface + Implementação)
-5. Implementar Container e componentes visuais
-6. Validar e commitar
+2. Escrever a spec E2E **antes** do JSX (TDD) — ver `agents.md` § E2E Tests
+3. Gerar scaffold
+4. Implementar Context (Types → Hook → Context)
+5. Implementar Service (Interface + Implementação)
+6. Implementar Container e componentes visuais
+7. Validar e commitar
 
 ---
+
+## Passo 0 — Spec E2E antes do JSX (MUST)
+
+Ler a seção **E2E Tests (FOR NEW FEATURES)** em `agents.md`. Copiar `e2e/specs/_template.spec.ts` para o path da convenção (`product` / `backoffice` / `checkout` / `public`). A spec precisa ficar vermelha antes de qualquer Container. Feature de cobrança chama `assertAsaasSandbox()` (`e2e/support/asaas.ts`) e **MUST NOT** usar Asaas de produção. Página `page.tsx` nova sem spec falha `bun run governance:check-e2e-pages`.
 
 ## Passo 1 — Ler contexto e verificar código similar
 
@@ -264,6 +269,7 @@ Executar obrigatoriamente antes de qualquer commit:
 bun run typecheck
 bun run lint
 bun run governance:check
+bun run governance:check-e2e-pages
 ```
 
 Formato de commit obrigatório:
