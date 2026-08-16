@@ -35,6 +35,21 @@ const PUBLISH_CONCURRENCY = Math.max(
   Number(process.env.RESEND_WEBHOOK_RETRY_CONCURRENCY ?? 25)
 );
 
+/**
+ * Orçamento de wall-clock para a fase de publish, abaixo do `maxDuration=60`
+ * da rota (`app/api/v1/email/cron/retry-resend-webhook-failures/route.ts`),
+ * deixando margem para overhead de request/response e para o `withCronAudit`.
+ * Se o publish estiver lento (rate limit da Vercel Queues, retries do
+ * `publishWithRetry`), o loop para antes do próximo chunk e devolve as
+ * linhas ainda não processadas para `pending` via `requeueIfProcessing`, em
+ * vez de deixar o isolate ser matado e essas linhas esperarem o lease de
+ * `STALE_PROCESSING_MS` expirar sozinho.
+ */
+const WALL_CLOCK_BUDGET_MS = Math.max(
+  1,
+  Number(process.env.RESEND_WEBHOOK_RETRY_WALL_CLOCK_BUDGET_MS ?? 45_000)
+);
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -45,7 +60,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 export class RetryResendWebhookFailuresUseCase {
   constructor(
-    private readonly repository: ResendWebhookProcessingFailureRepository = resendWebhookProcessingFailureRepository
+    private readonly repository: ResendWebhookProcessingFailureRepository = resendWebhookProcessingFailureRepository,
+    private readonly clock: () => number = Date.now
   ) {}
 
   private parsePayload(payload: ResendWebhookProcessingFailureClaimRow["payload"]): ResendWebhookPayload {
@@ -92,14 +108,29 @@ export class RetryResendWebhookFailuresUseCase {
     let claimedIds: string[] = [];
 
     try {
+      const startedAt = this.clock();
       const claimed = await this.repository.claimDue(BATCH_SIZE);
       claimedIds = claimed.map((row) => row.id);
 
       let resolved = 0;
       let retried = 0;
       let failed = 0;
+      let truncatedByBudget = false;
+      let requeued = 0;
 
-      for (const batch of chunk(claimed, PUBLISH_CONCURRENCY)) {
+      const chunks = chunk(claimed, PUBLISH_CONCURRENCY);
+      for (let i = 0; i < chunks.length; i += 1) {
+        if (this.clock() - startedAt > WALL_CLOCK_BUDGET_MS) {
+          truncatedByBudget = true;
+          const remainingIds = chunks.slice(i).flat().map((row) => row.id);
+          if (remainingIds.length > 0) {
+            await this.repository.requeueIfProcessing(remainingIds);
+            requeued = remainingIds.length;
+          }
+          break;
+        }
+
+        const batch = chunks[i] ?? [];
         const outcomes = await Promise.all(batch.map((row) => this.retryOne(row)));
         for (const outcome of outcomes) {
           if (outcome === "resolved") resolved += 1;
@@ -113,15 +144,20 @@ export class RetryResendWebhookFailuresUseCase {
         resolved,
         retried,
         failed,
+        truncatedByBudget,
+        requeued,
       });
 
       return new Output(
         true,
         [
-          `${resolved} evento(s) republicado(s) na fila, ${retried} reenfileirado(s) no outbox, ${failed} falha(s) definitiva(s)`,
+          `${resolved} evento(s) republicado(s) na fila, ${retried} reenfileirado(s) no outbox, ${failed} falha(s) definitiva(s)` +
+            (truncatedByBudget
+              ? `, orçamento de wall-clock excedido — ${requeued} reenfileirado(s) sem processar`
+              : ""),
         ],
         [],
-        { claimed: claimed.length, resolved, retried, failed }
+        { claimed: claimed.length, resolved, retried, failed, truncatedByBudget, requeued }
       );
     } catch (error) {
       console.error("[RetryResendWebhookFailuresUseCase][execute]", error);

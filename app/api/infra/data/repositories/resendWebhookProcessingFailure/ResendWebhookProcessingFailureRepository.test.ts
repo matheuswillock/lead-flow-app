@@ -1,15 +1,37 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS } from "@/lib/email/resend-webhook-processing-failure-backoff";
 
-const findManyMock = mock(async () => [] as Array<Record<string, unknown>>);
+/** Espelha o valor privado do repositório só para checar o cálculo de `staleBefore` nos testes. */
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
 const updateManyMock = mock(async () => ({ count: 1 }));
 const upsertMock = mock(async () => ({}));
 const findUniqueMock = mock(async () => null);
-const queryRawMock = mock(async (): Promise<unknown[]> => []);
+
+/**
+ * `claimDue` faz duas chamadas de `$queryRaw` (recovery de leases travados +
+ * claim atômico). Como as duas passam pelo mesmo método mockado do prisma,
+ * dividimos em dois mocks dedicados (`staleRecoveryQueryMock` /
+ * `claimQueryMock`) e um dispatcher que decide qual chamar inspecionando o
+ * texto do SQL — assim cada teste consegue inspecionar params/retorno de
+ * cada query isoladamente, sem depender da ordem das chamadas.
+ */
+const staleRecoveryQueryMock = mock(async (..._args: unknown[]): Promise<unknown[]> => []);
+const claimQueryMock = mock(async (..._args: unknown[]): Promise<unknown[]> => []);
+
+const queryRawMock = mock(
+  async (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]> => {
+    const sql = strings.join("");
+    if (sql.includes("WITH claimed AS")) {
+      return claimQueryMock(...values);
+    }
+    return staleRecoveryQueryMock(...values);
+  }
+);
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
     resendWebhookProcessingFailure: {
-      findMany: findManyMock,
       updateMany: updateManyMock,
       upsert: upsertMock,
       findUnique: findUniqueMock,
@@ -24,73 +46,82 @@ const { ResendWebhookProcessingFailureRepository } = await import(
 
 describe("ResendWebhookProcessingFailureRepository (D11)", () => {
   beforeEach(() => {
-    findManyMock.mockClear();
     updateManyMock.mockClear();
     upsertMock.mockClear();
     findUniqueMock.mockClear();
     queryRawMock.mockClear();
-    findManyMock.mockImplementation(async () => []);
+    staleRecoveryQueryMock.mockClear();
+    claimQueryMock.mockClear();
     updateManyMock.mockImplementation(async () => ({ count: 1 }));
-    queryRawMock.mockImplementation(async () => []);
+    staleRecoveryQueryMock.mockImplementation(async () => []);
+    claimQueryMock.mockImplementation(async () => []);
   });
 
-  it("claimDue recupera linhas processing abandonadas antes de reivindicar pending", async () => {
-    findManyMock.mockImplementation(async (args?: { where?: { status?: string } }) => {
-      if (args?.where?.status === "processing") {
-        return [{ id: "row-stale", attemptCount: 1 }];
-      }
-      return [];
-    });
+  it("claimDue chama a query de recovery de leases travados com staleBefore e MAX_ATTEMPTS corretos", async () => {
+    const repo = new ResendWebhookProcessingFailureRepository();
+    const before = Date.now();
+    await repo.claimDue(10);
+    const after = Date.now();
 
-    updateManyMock.mockImplementation(async (args?: {
-      where?: { id?: string; status?: string };
-      data?: { status?: string; attemptCount?: number };
-    }) => {
-      if (args?.where?.id === "row-stale" && args?.where?.status === "processing") {
-        expect(args.data?.attemptCount).toBe(2);
-        expect(args.data?.status).toBe("pending");
-        return { count: 1 };
-      }
-      return { count: 0 };
-    });
+    expect(staleRecoveryQueryMock).toHaveBeenCalledTimes(1);
+    const [maxAttempts1, maxAttempts2, now, staleBefore] = staleRecoveryQueryMock.mock
+      .calls[0] as [number, number, Date, Date];
+
+    expect(maxAttempts1).toBe(RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS);
+    expect(maxAttempts2).toBe(RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS);
+    expect(now.getTime()).toBeGreaterThanOrEqual(before);
+    expect(now.getTime()).toBeLessThanOrEqual(after);
+    expect(staleBefore.getTime()).toBe(now.getTime() - STALE_PROCESSING_MS);
+  });
+
+  it("recovery de leases travados é uma única query atômica — não chama findMany/updateMany por linha", async () => {
+    staleRecoveryQueryMock.mockImplementation(async () => [
+      { id: "row-stale", status: "pending" },
+    ]);
 
     const repo = new ResendWebhookProcessingFailureRepository();
     await repo.claimDue(10);
 
-    expect(findManyMock).toHaveBeenCalled();
-    const staleQuery = (findManyMock.mock.calls as unknown as Array<
-      [{ where: { status: string; updatedAt: { lt: Date } } }]
-    >).find((call) => call[0]?.where?.status === "processing");
-    expect(staleQuery).toBeDefined();
-    expect(queryRawMock).toHaveBeenCalled();
+    expect(staleRecoveryQueryMock).toHaveBeenCalledTimes(1);
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 
-  it("recuperação de claim travado marca failed quando attemptCount atinge o teto", async () => {
-    findManyMock.mockImplementation(async (args?: { where?: { status?: string } }) => {
-      if (args?.where?.status === "processing") {
-        return [{ id: "row-exhausted", attemptCount: 4 }];
-      }
-      return [];
-    });
-
-    updateManyMock.mockImplementation(async (args?: {
-      where?: { id?: string; status?: string };
-      data?: { status?: string; attemptCount?: number };
-    }) => {
-      if (args?.where?.id === "row-exhausted" && args?.where?.status === "processing") {
-        expect(args.data?.attemptCount).toBe(5);
-        expect(args.data?.status).toBe("failed");
-        return { count: 1 };
-      }
-      return { count: 0 };
-    });
+  it("loga quantas linhas de recovery foram reenfileiradas (pending) vs esgotadas (failed)", async () => {
+    const consoleInfoSpy = spyOn(console, "info").mockImplementation(() => {});
+    staleRecoveryQueryMock.mockImplementation(async () => [
+      { id: "row-a", status: "pending" },
+      { id: "row-b", status: "failed" },
+      { id: "row-c", status: "pending" },
+    ]);
 
     const repo = new ResendWebhookProcessingFailureRepository();
     await repo.claimDue(10);
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      "[ResendWebhookProcessingFailureRepository] Leases abandonados recuperados",
+      { total: 3, requeued: 2, exhausted: 1 }
+    );
+
+    consoleInfoSpy.mockRestore();
+  });
+
+  it("não loga recovery quando não há leases travados", async () => {
+    const consoleInfoSpy = spyOn(console, "info").mockImplementation(() => {});
+    staleRecoveryQueryMock.mockImplementation(async () => []);
+
+    const repo = new ResendWebhookProcessingFailureRepository();
+    await repo.claimDue(10);
+
+    expect(consoleInfoSpy).not.toHaveBeenCalledWith(
+      "[ResendWebhookProcessingFailureRepository] Leases abandonados recuperados",
+      expect.anything()
+    );
+
+    consoleInfoSpy.mockRestore();
   });
 
   it("claimDue usa uma única query atômica (FOR UPDATE SKIP LOCKED) para reservar o lote", async () => {
-    queryRawMock.mockImplementation(async () => [
+    claimQueryMock.mockImplementation(async () => [
       {
         id: "row-1",
         svixId: "svix-1",
@@ -103,7 +134,7 @@ describe("ResendWebhookProcessingFailureRepository (D11)", () => {
     const repo = new ResendWebhookProcessingFailureRepository();
     const claimed = await repo.claimDue(2000);
 
-    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    expect(claimQueryMock).toHaveBeenCalledTimes(1);
     expect(updateManyMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: "row-1" }) })
     );
@@ -123,10 +154,12 @@ describe("ResendWebhookProcessingFailureRepository (D11)", () => {
     const claimed = await repo.claimDue(0);
     expect(claimed).toEqual([]);
     expect(queryRawMock).not.toHaveBeenCalled();
+    expect(staleRecoveryQueryMock).not.toHaveBeenCalled();
+    expect(claimQueryMock).not.toHaveBeenCalled();
   });
 
   it("claimDue converte attemptCount bigint retornado pelo Postgres para number", async () => {
-    queryRawMock.mockImplementation(async () => [
+    claimQueryMock.mockImplementation(async () => [
       {
         id: "row-2",
         svixId: "svix-2",
