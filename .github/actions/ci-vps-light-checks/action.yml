@@ -19,11 +19,14 @@ outputs:
   api-masking-check:
     description: Outcome do governance:check-api-masking
     value: ${{ steps.resolve.outputs['api-masking-check'] }}
+  e2e-pages-check:
+    description: Outcome do governance:check-e2e-pages
+    value: ${{ steps.resolve.outputs['e2e-pages-check'] }}
   lint:
     description: Outcome do lint
     value: ${{ steps.resolve.outputs.lint }}
   passed:
-    description: true quando governance, api-masking e lint passaram
+    description: true quando governance, api-masking, e2e-pages e lint passaram
     value: ${{ steps.resolve.outputs.passed }}
   tests-result:
     description: Outcome agregado dos testes
@@ -77,6 +80,19 @@ runs:
       shell: bash
       run: bun run governance:check-api-masking
 
+    - name: E2E Page Coverage
+      id: e2e-pages-check
+      if: inputs.strict-governance != 'true'
+      continue-on-error: true
+      shell: bash
+      run: bun run governance:check-e2e-pages
+
+    - name: E2E Page Coverage
+      id: e2e-pages-check-strict
+      if: inputs.strict-governance == 'true'
+      shell: bash
+      run: bun run governance:check-e2e-pages
+
     - name: Governance Allowlist Warnings
       if: inputs.strict-governance != 'true'
       continue-on-error: true
@@ -110,20 +126,23 @@ runs:
           sync_outcome="${{ steps['governance-sync-strict'].outcome }}"
           check_outcome="${{ steps['governance-check-strict'].outcome }}"
           api_masking_outcome="${{ steps['api-masking-check-strict'].outcome }}"
+          e2e_pages_outcome="${{ steps['e2e-pages-check-strict'].outcome }}"
           lint_outcome="${{ steps['lint-strict'].outcome }}"
         else
           sync_outcome="${{ steps['governance-sync'].outcome }}"
           check_outcome="${{ steps['governance-check'].outcome }}"
           api_masking_outcome="${{ steps['api-masking-check'].outcome }}"
+          e2e_pages_outcome="${{ steps['e2e-pages-check'].outcome }}"
           lint_outcome="${{ steps.lint.outcome }}"
         fi
 
         echo "governance-sync=${sync_outcome}" >> "$GITHUB_OUTPUT"
         echo "governance-check=${check_outcome}" >> "$GITHUB_OUTPUT"
         echo "api-masking-check=${api_masking_outcome}" >> "$GITHUB_OUTPUT"
+        echo "e2e-pages-check=${e2e_pages_outcome}" >> "$GITHUB_OUTPUT"
         echo "lint=${lint_outcome}" >> "$GITHUB_OUTPUT"
 
-        if [[ "$sync_outcome" == "success" && "$check_outcome" == "success" && "$api_masking_outcome" == "success" && "$lint_outcome" == "success" ]]; then
+        if [[ "$sync_outcome" == "success" && "$check_outcome" == "success" && "$api_masking_outcome" == "success" && "$e2e_pages_outcome" == "success" && "$lint_outcome" == "success" ]]; then
           echo "passed=true" >> "$GITHUB_OUTPUT"
         else
           echo "passed=false" >> "$GITHUB_OUTPUT"
