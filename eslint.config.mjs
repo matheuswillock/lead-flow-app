@@ -30,6 +30,7 @@ export default [
       '.windsurf/**',
       '.zencoder/**',
       'skills/**',
+      'e2e/**',
       'deploy/openwa-gateway/**',
     ],
   },
