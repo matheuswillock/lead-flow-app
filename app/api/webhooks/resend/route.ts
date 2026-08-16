@@ -11,8 +11,19 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 import { publishWithRetry } from "@/lib/queues/publish-with-retry"
 import { publishResendWebhookEmailLogEvent } from "@/lib/queues/resend-webhook-emaillog-events"
 
-/** Backpressure por isolate: default 2 reduz pressão no pool sob rajada Resend. */
-const MAX_CONCURRENT = Math.max(1, Number(process.env.RESEND_WEBHOOK_MAX_CONCURRENT ?? 2))
+/**
+ * Backpressure por isolate. Desde a PR2.1 (#842) o `after()` só publica na
+ * fila (`queue.send()`, chamada de rede) — o `$transaction` Postgres saiu do
+ * caminho síncrono do webhook. O único Postgres tocado aqui é o fallback de
+ * outbox (`upsertFromProcessingFailure`), e só quando o `publish` esgota 3
+ * tentativas; mesmo nesse caso o client compartilhado do isolate já usa
+ * `connection_limit=1`, então subir este valor não reserva conexões extras
+ * do orçamento do pool (diferente de `maxConcurrency` de fila em
+ * `vercel.json`). Default 4 (dobrado de 2 em 2026-08-16, aprovado para teste
+ * em produção com observação — ver nota "Pool de Conexões", seção
+ * "Latência do pipeline de e-mail").
+ */
+const MAX_CONCURRENT = Math.max(1, Number(process.env.RESEND_WEBHOOK_MAX_CONCURRENT ?? 4))
 let inFlight = 0
 
 export async function POST(request: NextRequest) {
