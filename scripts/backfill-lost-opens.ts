@@ -19,16 +19,6 @@ const prisma = new PrismaClient();
 const MULTISKILL_TEAM_ID = '7b577c22-5513-42cc-ab19-2bf867e14ebc';
 const START_DATE = new Date('2026-08-06T00:00:00Z');
 
-interface RadarEventWithProfile {
-  id: string;
-  eventType: string;
-  occurredAt: Date;
-  metadata: any;
-  profile: {
-    teamId: string;
-  };
-}
-
 async function main() {
   console.log('═══════════════════════════════════════════════════');
   console.log('🔧 BACKFILL: Eventos de Abertura Perdidos');
@@ -166,18 +156,6 @@ async function main() {
     });
 
     for (const campaign of affectedCampaigns) {
-      const metrics = await prisma.emailLog.groupBy({
-        by: ['campaignId'],
-        where: { campaignId: campaign.id },
-        _count: {
-          id: true,
-        },
-        _sum: {
-          // Prisma não suporta SUM de campos booleanos diretamente
-          // então vamos fazer uma query raw para contar
-        },
-      });
-
       const openedCount = await prisma.emailLog.count({
         where: {
           campaignId: campaign.id,
