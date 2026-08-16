@@ -19,6 +19,11 @@ type ClaimRawRow = {
   attemptCount: number | bigint;
 };
 
+type StaleRecoveryRawRow = {
+  id: string;
+  status: "pending" | "failed";
+};
+
 function formatProcessingError(error: unknown): string {
   if (error instanceof Error) {
     return error.message.slice(0, 2000);
@@ -67,30 +72,43 @@ export class ResendWebhookProcessingFailureRepository
     });
   }
 
+  /**
+   * Recuperação de leases abandonados via uma única query SQL atômica
+   * (mesmo padrão de nomes físicos do `claimDue` abaixo), em vez do antigo
+   * `findMany` + N `updateMany` sequenciais — com o lote de `claimDue`
+   * podendo chegar a milhares de linhas, um único round-trip evita que a
+   * fase de recovery vire o novo gargalo de latência do claim.
+   */
   private async recoverStaleProcessingClaims(now: Date): Promise<void> {
     const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS);
-    const staleRows = await prisma.resendWebhookProcessingFailure.findMany({
-      where: {
-        status: "processing",
-        updatedAt: { lt: staleBefore },
-      },
-      select: { id: true, attemptCount: true },
-    });
 
-    for (const row of staleRows) {
-      const nextAttemptCount = row.attemptCount + 1;
-      const exhausted = nextAttemptCount >= RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS;
+    const recovered = await prisma.$queryRaw<StaleRecoveryRawRow[]>`
+      UPDATE corretor_studio_resend_webhook_processing_failures
+      SET
+        "attemptCount" = "attemptCount" + 1,
+        status = CASE
+          WHEN "attemptCount" + 1 >= ${RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS}
+          THEN 'failed'::resend_webhook_processing_failure_status
+          ELSE 'pending'::resend_webhook_processing_failure_status
+        END,
+        "lastError" = CASE
+          WHEN "attemptCount" + 1 >= ${RESEND_WEBHOOK_PROCESSING_FAILURE_MAX_ATTEMPTS}
+          THEN 'Lease de processamento expirado; tentativas esgotadas'
+          ELSE 'Lease de processamento expirado; reenfileirado'
+        END,
+        "nextAttemptAt" = ${now}
+      WHERE status = 'processing'::resend_webhook_processing_failure_status
+        AND "updatedAt" < ${staleBefore}
+      RETURNING id, status
+    `;
 
-      await prisma.resendWebhookProcessingFailure.updateMany({
-        where: { id: row.id, status: "processing" },
-        data: {
-          status: exhausted ? "failed" : "pending",
-          attemptCount: nextAttemptCount,
-          lastError: exhausted
-            ? "Lease de processamento expirado; tentativas esgotadas"
-            : "Lease de processamento expirado; reenfileirado",
-          nextAttemptAt: now,
-        },
+    if (recovered.length > 0) {
+      const requeued = recovered.filter((row) => row.status === "pending").length;
+      const exhausted = recovered.filter((row) => row.status === "failed").length;
+      console.info("[ResendWebhookProcessingFailureRepository] Leases abandonados recuperados", {
+        total: recovered.length,
+        requeued,
+        exhausted,
       });
     }
   }

@@ -149,4 +149,62 @@ describe("RetryResendWebhookFailuresUseCase (D11 + republish-to-queue)", () => {
     expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledTimes(5);
     expect(markResolvedMock).toHaveBeenCalledTimes(5);
   });
+
+  it("interrompe o loop antes do próximo chunk e reenfileira o restante quando o orçamento de wall-clock é excedido", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      id: `row-${i}`,
+      svixId: `svix-${i}`,
+      eventType: "email.opened",
+      payload: { type: "email.opened" },
+      attemptCount: 1,
+    }));
+    claimDueMock.mockImplementation(async () => rows);
+
+    let clockCalls = 0;
+    const clock = () => {
+      clockCalls += 1;
+      // 1ª chamada = startedAt; 2ª chamada = checagem antes do 1º chunk (25
+      // linhas, dentro do orçamento); 3ª chamada em diante = checagem antes
+      // do 2º chunk (5 linhas restantes), já acima do orçamento padrão de 45s.
+      return clockCalls <= 2 ? 0 : 46_000;
+    };
+
+    const useCase = new RetryResendWebhookFailuresUseCase(undefined, clock);
+    const result = await useCase.execute();
+
+    expect(result.isValid).toBe(true);
+    expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledTimes(25);
+    expect(markResolvedMock).toHaveBeenCalledTimes(25);
+    expect(requeueIfProcessingMock).toHaveBeenCalledWith(rows.slice(25).map((row) => row.id));
+    expect(result.result).toMatchObject({
+      claimed: 30,
+      resolved: 25,
+      truncatedByBudget: true,
+      requeued: 5,
+    });
+  });
+
+  it("não trunca nem reenfileira quando o processamento termina dentro do orçamento de wall-clock", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      id: `row-${i}`,
+      svixId: `svix-${i}`,
+      eventType: "email.opened",
+      payload: { type: "email.opened" },
+      attemptCount: 1,
+    }));
+    claimDueMock.mockImplementation(async () => rows);
+
+    const useCase = new RetryResendWebhookFailuresUseCase(undefined, () => 0);
+    const result = await useCase.execute();
+
+    expect(result.isValid).toBe(true);
+    expect(publishResendWebhookEmailLogEventMock).toHaveBeenCalledTimes(30);
+    expect(requeueIfProcessingMock).not.toHaveBeenCalled();
+    expect(result.result).toMatchObject({
+      claimed: 30,
+      resolved: 30,
+      truncatedByBudget: false,
+      requeued: 0,
+    });
+  });
 });
