@@ -49,6 +49,27 @@ describe("publishPublicFormMetricEvent", () => {
       retentionSeconds: PUBLIC_FORM_METRIC_EVENTS_RETENTION_SECONDS,
     })
   })
+
+  it("aceita idempotencyKey explícita (usada pelo republish do outbox) sobrepondo a eventKey", async () => {
+    const payload = {
+      publicId: "11111111-1111-4111-8111-111111111111",
+      eventKey: "idem-key-1234567890",
+      eventType: "form_viewed" as const,
+      questionId: null,
+      visitorSessionId: "session_abcdefghij",
+      origin: {},
+      receivedAt: "2026-08-11T12:00:00.000Z",
+    }
+    await publishPublicFormMetricEvent(payload, {
+      idempotencyKey: "idem-key-1234567890:outbox-retry:row-1:2",
+    })
+    const call = send.mock.calls[0] as unknown as [
+      string,
+      typeof payload,
+      { idempotencyKey: string; retentionSeconds: number },
+    ]
+    expect(call[2].idempotencyKey).toBe("idem-key-1234567890:outbox-retry:row-1:2")
+  })
 })
 
 describe("public-form-metric-events helpers", () => {

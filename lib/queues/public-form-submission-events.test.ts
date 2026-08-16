@@ -58,4 +58,16 @@ describe("publishPublicFormSubmissionEvent", () => {
     const result = await publishPublicFormSubmissionEvent(basePayload)
     expect(result).toEqual({ messageId: "mid-queued" })
   })
+
+  it("aceita idempotencyKey explícita (usada pelo republish do outbox) sobrepondo a requestKey", async () => {
+    await publishPublicFormSubmissionEvent(basePayload, {
+      idempotencyKey: "req-abc:outbox-retry:row-1:2",
+    })
+    const call = send.mock.calls[0] as unknown as [
+      string,
+      typeof basePayload,
+      { idempotencyKey: string; retentionSeconds: number },
+    ]
+    expect(call[2].idempotencyKey).toBe("req-abc:outbox-retry:row-1:2")
+  })
 })

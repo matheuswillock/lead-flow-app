@@ -62,10 +62,29 @@ export class RetryPublicFormQueueEventFailuresUseCase {
     return JSON.parse(String(payload)) as T
   }
 
+  /**
+   * A Vercel Queues deduplica `send()` pela `idempotencyKey` — reusar a
+   * mesma `eventKey`/`requestKey` da publicação original (já entregue e
+   * eventualmente acked pelo consumer, inclusive em `delivery_count_exceeded`)
+   * arriscaria um no-op silencioso: o `send()` "sucede" sem realmente
+   * enfileirar uma mensagem nova, o outbox marca `resolved`, e o evento nunca
+   * é reprocessado. Cada tentativa de republish a partir do outbox usa uma
+   * idempotencyKey própria (linha + tentativa) para garantir que a Vercel
+   * Queues sempre trate como uma mensagem nova; a dedupe de negócio continua
+   * garantida pela constraint única em `eventKey`/`requestKey` no Postgres.
+   */
+  private retryIdempotencyKey(row: PublicFormQueueEventFailureClaimRow): string {
+    return `${row.idempotencyKey}:outbox-retry:${row.id}:${row.attemptCount}`
+  }
+
   private async republish(row: PublicFormQueueEventFailureClaimRow): Promise<void> {
+    const idempotencyKey = this.retryIdempotencyKey(row)
+
     if (row.kind === "metric") {
       const payload = this.parseJsonPayload<PublicFormMetricQueuePayload>(row.payload)
-      const result = await publishWithRetry(() => publishPublicFormMetricEvent(payload))
+      const result = await publishWithRetry(() =>
+        publishPublicFormMetricEvent(payload, { idempotencyKey }),
+      )
       if (!result.ok) {
         throw result.error instanceof Error ? result.error : new Error(formatProcessingError(result.error))
       }
@@ -73,7 +92,9 @@ export class RetryPublicFormQueueEventFailuresUseCase {
     }
 
     const job = this.parseJsonPayload<PublicFormSubmissionBackgroundJob>(row.payload)
-    const result = await publishWithRetry(() => publishPublicFormSubmissionEvent(job))
+    const result = await publishWithRetry(() =>
+      publishPublicFormSubmissionEvent(job, { idempotencyKey }),
+    )
     if (!result.ok) {
       throw result.error instanceof Error ? result.error : new Error(formatProcessingError(result.error))
     }
