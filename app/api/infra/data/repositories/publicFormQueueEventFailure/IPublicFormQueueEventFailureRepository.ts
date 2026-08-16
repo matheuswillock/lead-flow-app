@@ -13,7 +13,7 @@ export type UpsertPublicFormQueueEventFailureInput = {
   idempotencyKey: string
   payload: Prisma.InputJsonValue
   lastError: string
-  failureReason: "queue_publish_failed"
+  failureReason: "queue_publish_failed" | "delivery_count_exceeded"
 }
 
 export interface IPublicFormQueueEventFailureRepository {
