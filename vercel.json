@@ -110,7 +110,7 @@
           "topic": "resend-webhook-emaillog-events",
           "retryAfterSeconds": 60,
           "initialDelaySeconds": 0,
-          "maxConcurrency": 4
+          "maxConcurrency": 12
         }
       ]
     },
