@@ -79,9 +79,10 @@ export function buildPublicFormMetricQueuePayload(
 
 export async function publishPublicFormMetricEvent(
   payload: PublicFormMetricQueuePayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(PUBLIC_FORM_METRIC_EVENTS_TOPIC, payload, {
-    idempotencyKey: payload.eventKey,
+    idempotencyKey: options?.idempotencyKey ?? payload.eventKey,
     retentionSeconds: PUBLIC_FORM_METRIC_EVENTS_RETENTION_SECONDS,
   });
 }
