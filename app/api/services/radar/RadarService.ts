@@ -37,6 +37,7 @@ import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipi
 import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
 import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
 import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
+import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
   formatDisplayPhone,
