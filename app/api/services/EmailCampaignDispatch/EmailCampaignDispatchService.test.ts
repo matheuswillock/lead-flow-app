@@ -30,7 +30,7 @@ mock.module("@/lib/email", () => ({
 
 mock.module("@/lib/email/campaign-unsubscribe-footer", () => ({
   buildCampaignUnsubscribeUrl: () => "https://test.com/unsub/token",
-  appendCampaignUnsubscribeFooter: (html: string) => html,
+  appendCampaignUnsubscribeFooter: (html: string) => `${html}<!--AUTO_FOOTER-->`,
   buildListUnsubscribeHeaders: () => ({ "List-Unsubscribe": "<https://test.com/unsub>" }),
 }))
 
@@ -115,6 +115,31 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.dispatched).toHaveLength(3)
     expect(onChunkDispatched).toHaveBeenCalledTimes(1)
     expect((onChunkDispatched.mock.calls[0] as unknown[][])[0]).toHaveLength(3)
+  })
+
+  it("não duplica footer quando o HTML usa alias unsubscribe_url", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: [{ id: "re_0" }],
+      error: null,
+    })
+
+    await service.dispatchBatch({
+      ...makeBaseParams([
+        {
+          email: "r0@test.com",
+          name: "R0",
+          contactId: "contact-1",
+          customFields: null,
+        },
+      ]),
+      html: '<p>Cancele em <a href="{{unsubscribe_url}}">sair</a></p>',
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    expect(payload[0]?.html).toContain("https://test.com/unsub/token")
+    expect(payload[0]?.html).not.toContain("{{unsubscribe_url}}")
+    expect(payload[0]?.html).not.toContain("<!--AUTO_FOOTER-->")
   })
 
   it("D2 — 200 destinatários → 2 chunks de 100, onChunkDispatched chamado 2×", async () => {
