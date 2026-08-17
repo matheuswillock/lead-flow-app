@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
+import { shouldSkipRealtimeSubscribe } from '@/lib/supabase/realtime-guard'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { useUserContext } from '@/app/context/UserContext'
 import { WHATSAPP_UNREAD_CHANGED_EVENT } from '@/lib/whatsapp/unread-events'
@@ -59,6 +60,7 @@ export function useWhatsAppUnreadCount({ enabled }: { enabled: boolean }) {
   // Standalone Realtime channel so the sidebar badge updates on all routes,
   // not only while the /whatsapp page provider is mounted.
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) return
     if (!enabled || !activeTeamId) return
 
     const supabase = createSupabaseBrowser()

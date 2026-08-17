@@ -1,8 +1,12 @@
+import type { LocalStackMode } from "./lib/local-stack";
+
 export type DevLocalOptions = {
   skipClone: boolean;
+  clone: boolean;
   noStart: boolean;
   forceTurbo: boolean;
   fullSupabase: boolean;
+  stackMode: LocalStackMode;
   startEvolution: boolean;
   startN8n: boolean;
   nextArgs: string[];
@@ -17,11 +21,14 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
   const requestedStacks = new Set<"evolution" | "n8n">();
 
   let skipClone = false;
+  let clone = false;
   let noStart = false;
   let skipEvolution = false;
   let skipN8n = false;
   let forceTurbo = false;
   let fullSupabase = false;
+  let hybridRequested = false;
+  let dbOnlyRequested = false;
 
   for (const arg of rawArgs) {
     if (arg === "--") continue;
@@ -30,12 +37,24 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
       skipClone = true;
       continue;
     }
+    if (arg === "--clone") {
+      clone = true;
+      continue;
+    }
     if (arg === "--no-start") {
       noStart = true;
       continue;
     }
     if (arg === "--full-supabase") {
       fullSupabase = true;
+      continue;
+    }
+    if (arg === "--hybrid") {
+      hybridRequested = true;
+      continue;
+    }
+    if (arg === "--db-only") {
+      dbOnlyRequested = true;
       continue;
     }
     if (arg === "--skip-evo") {
@@ -73,6 +92,15 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
   if (requestedStacks.has("evolution") && skipEvolution) {
     errors.push("Cannot request Evolution and pass --skip-evo at the same time.");
   }
+  if (hybridRequested && dbOnlyRequested) {
+    errors.push("Cannot pass --hybrid and --db-only at the same time.");
+  }
+  if (hybridRequested && fullSupabase) {
+    errors.push("Cannot pass --hybrid and --full-supabase at the same time.");
+  }
+  if (clone && skipClone) {
+    errors.push("Cannot pass --clone and --skip-clone at the same time.");
+  }
 
   const unknownStackLikeArgs = nextArgs.filter((arg) => {
     if (arg.startsWith("-")) return false;
@@ -82,11 +110,15 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
     errors.push(`Unexpected stack option: ${unknownStackLikeArgs.join(", ")}`);
   }
 
+  const stackMode: LocalStackMode = hybridRequested ? "hybrid" : "db-only";
+
   return {
     skipClone,
+    clone,
     noStart,
     forceTurbo,
     fullSupabase,
+    stackMode,
     startEvolution: requestedStacks.has("evolution") && !skipEvolution,
     startN8n: requestedStacks.has("n8n") && !skipN8n,
     nextArgs,

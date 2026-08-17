@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import { shouldSkipRealtimeSubscribe } from "@/lib/supabase/realtime-guard";
 
 export type LeadActivityRealtimeRow = {
   id: string;
@@ -86,6 +87,7 @@ export function useLeadActivitiesRealtime({
   }, [onSyncRequested]);
 
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) return;
     if (!enabled || !leadId) return;
 
     const supabase = createSupabaseBrowser();
