@@ -382,6 +382,78 @@ describe("RadarBaseImportUseCase.processRow gender resolution", () => {
   })
 })
 
+describe("RadarBaseImportUseCase.processRow e-mail inválido", () => {
+  const teamId = "team-1"
+  const importJobId = "job-1"
+
+  async function processRow(
+    row: ParsedRadarImportRow,
+    fieldMapping: Record<string, string>
+  ) {
+    const useCase = new RadarBaseImportUseCase() as unknown as {
+      processRow: (
+        teamId: string,
+        importJobId: string,
+        row: ParsedRadarImportRow,
+        fieldMapping: Record<string, string>,
+        seenKeys: Set<string>
+      ) => Promise<{ outcome: string; issue?: { reason: string } }>
+    }
+    return useCase.processRow(teamId, importJobId, row, fieldMapping, new Set())
+  }
+
+  beforeEach(() => {
+    resolveProfileForPhoneMock.mockClear()
+    resolveProfileForPhoneMock.mockImplementation(async () => ({
+      profile: { id: "profile-1" },
+      wasExisting: false,
+    }))
+    resolveProfileForEmailMock.mockClear()
+    findProfileDataMock.mockImplementation(async () => null)
+    updateProfileDataMock.mockClear()
+    upsertSourceLinkMock.mockClear()
+    appendEventIfNewMock.mockClear()
+  })
+
+  it("telefone+nome válidos com e-mail morto: importa sem o e-mail", async () => {
+    const result = await processRow(
+      {
+        line: 2,
+        values: {
+          nome: "Maria Silva",
+          telefone: "11987654321",
+          email: "ana@gamil.com",
+        },
+      },
+      { name: "nome", phone: "telefone", email: "email" }
+    )
+
+    expect(result.outcome).toBe("created")
+    expect(result.issue?.reason).toBe("Domínio com erro de digitação")
+    expect(resolveProfileForPhoneMock).toHaveBeenCalled()
+    const input = resolveProfileForPhoneMock.mock.calls[0] as unknown as [
+      { primaryEmail: string | null },
+    ]
+    expect(input[0].primaryEmail).toBeNull()
+    expect(resolveProfileForEmailMock).not.toHaveBeenCalled()
+  })
+
+  it("só e-mail morto: recusa a linha", async () => {
+    const result = await processRow(
+      {
+        line: 3,
+        values: { email: "ana@ig.com.br" },
+      },
+      { email: "email" }
+    )
+
+    expect(result.outcome).toBe("skipped")
+    expect(result.issue?.reason).toBe("Provedor de e-mail desativado")
+    expect(resolveProfileForPhoneMock).not.toHaveBeenCalled()
+    expect(resolveProfileForEmailMock).not.toHaveBeenCalled()
+  })
+})
+
 describe("RadarBaseImportUseCase.processClaimedBatch", () => {
   const publishBatch = mock(async () => ({ messageId: "mid-1" }))
 

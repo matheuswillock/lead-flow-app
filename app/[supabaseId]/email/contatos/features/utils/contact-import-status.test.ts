@@ -125,4 +125,16 @@ describe("resolveContactImportProgressLabel", () => {
 
     expect(label).toBe("2 contato(s) com falha no Radar")
   })
+
+  it("no término explica recusas por e-mail inválido", () => {
+    const label = resolveContactImportProgressLabel(
+      makeActiveImport({
+        status: "completed",
+        processedRows: 1500,
+        totalRows: 1500,
+        skippedCount: 12,
+      })
+    )
+    expect(label).toBe("12 e-mails não incluídos porque não são e-mails válidos")
+  })
 })

@@ -49,7 +49,7 @@ export type EmailEvent = {
   id: string
   type: EmailEventType
   occurredAt: string
-  metadata: Record<string, string> | null
+  metadata: Record<string, string | string[] | undefined> | null
 }
 
 export type LogDetail = EmailLog & { events: EmailEvent[] }

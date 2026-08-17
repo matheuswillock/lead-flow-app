@@ -156,18 +156,19 @@ export function ContactImportDialog({
       return;
     }
 
-    // Só enfileira linhas com e-mail válido; inválidos ficam de fora da base.
-    const rowsToImport = importPreview.importableRows;
-
     setIsSubmitting(true);
     try {
       if (segmentId) {
         await service.setListRadarSegment(listId, segmentId);
       }
-      await service.importMapped(listId, rowsToImport);
+      await service.importMapped(listId, importPreview.importableRows);
       const skippedNote =
         importPreview.skippedCount > 0
-          ? ` ${importPreview.skippedCount} linha(s) com e-mail inválido não serão importadas.`
+          ? ` ${
+              importPreview.skippedCount === 1
+                ? "1 e-mail não será incluído porque não é um e-mail válido."
+                : `${importPreview.skippedCount} e-mails não serão incluídos porque não são e-mails válidos.`
+            }`
           : "";
       toast.success(`Processando importação em segundo plano.${skippedNote}`);
       if (onImportComplete) {

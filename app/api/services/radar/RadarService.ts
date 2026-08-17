@@ -36,7 +36,7 @@ import {
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
 import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
   formatDisplayPhone,
@@ -658,14 +658,21 @@ export class RadarService {
     counters: SyncCounters
   ): Promise<void> {
     try {
-      const normalizedEmail = normalizeRadarEmail(contact.email)
+      const emailValidation = evaluateEmailForAudience(contact.email)
+      const sendableEmail =
+        emailValidation.ok && !contact.isBounced ? emailValidation.email : null
 
       const phoneFromCustom = contact.name
-        ? await this.repo.findLeadPhoneByEmail(scope.teamId, normalizedEmail)
+        ? await this.repo.findLeadPhoneByEmail(scope.teamId, contact.email.trim().toLowerCase())
         : null
       const hasValidPhone = Boolean(
         contact.name && phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)
       )
+
+      if (!sendableEmail && !hasValidPhone) {
+        counters.skipped += 1
+        return
+      }
 
       const resolved = hasValidPhone
         ? await this.repo.resolveProfileForPhone({
@@ -676,13 +683,13 @@ export class RadarService {
             displayPhone: formatDisplayPhone(phoneFromCustom!.phone),
             phoneValue: phoneFromCustom!.phone,
             phoneSource: "email",
-            primaryEmail: contact.email,
-            normalizedPrimaryEmail: normalizedEmail,
+            primaryEmail: sendableEmail,
+            normalizedPrimaryEmail: sendableEmail,
             lastSeenAt: contact.updatedAt,
           })
         : await this.repo.resolveProfileForEmail({
             teamId: scope.teamId,
-            normalizedEmail,
+            normalizedEmail: sendableEmail ?? "",
             emailValue: contact.email,
             displayName: contact.name?.trim() ?? null,
             normalizedName: contact.name ? normalizeRadarName(contact.name) : null,
@@ -694,14 +701,16 @@ export class RadarService {
       if (resolved.wasExisting) counters.enriched += 1
       else counters.created += 1
 
-      await this.repo.upsertIdentity({
-        profileId: profile.id,
-        teamId: scope.teamId,
-        type: "email",
-        value: contact.email,
-        normalizedValue: normalizedEmail,
-        source: "email",
-      })
+      if (sendableEmail) {
+        await this.repo.upsertIdentity({
+          profileId: profile.id,
+          teamId: scope.teamId,
+          type: "email",
+          value: contact.email,
+          normalizedValue: sendableEmail,
+          source: "email",
+        })
+      }
 
       await this.repo.upsertIdentity({
         profileId: profile.id,
