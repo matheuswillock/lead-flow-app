@@ -1,0 +1,123 @@
+---
+description: Analisa performance de campanhas de e-mail e formulários (funil completo) do Corretor Studio — opens, clicks, bounces, form starts/completes — com benchmarks do domínio e diagnóstico de causa-raiz
+---
+
+# Campanha Performance — Corretor Studio
+
+## Propósito
+
+Análise **somente leitura** de performance de campanhas de e-mail + funil de formulários do Corretor Studio. Diagnostica causa-raiz de conversão baixa, categoriza bounce, compara contra benchmarks já validados pelo time e devolve um relatório com sugestões acionáveis. **Nunca executa mutações** — toda correção proposta é apresentada como sugestão, nunca aplicada.
+
+## Prioridade de fontes de dados
+
+Sempre tentar os endpoints REST do produto **antes** de qualquer SQL cru:
+
+1. `GET /api/v1/email/analytics`
+2. `GET /api/v1/email/analytics/overview`
+3. `GET /api/v1/email/analytics/compare`
+4. `GET /api/v1/email/analytics/top-templates`
+5. `GET /api/v1/email/campaigns/[id]`, `.../dispatches`, `.../dispatches/[dispatchId]/preview`
+6. `GET /api/v1/teams/[teamId]/public-forms/[formId]/analytics` (aceita `from`/`to`/`publicationId` — funil views→starts→completes)
+7. Equivalentes em `/api/v1/backoffice/...` para visão cross-team/admin
+
+**SQL cru via Supabase MCP** (`execute_sql`) só quando a análise ad-hoc não é coberta por nenhum endpoint acima (ex.: categorizar bounces por `bounceType`/domínio, cruzar CTA do template com `publicId` do form). Regras obrigatórias ao usar SQL cru:
+
+- Confirmar o projeto Supabase via `list_projects` antes de rodar qualquer query — nunca confiar cegamente em um ref hardcoded (é produção).
+- Usar exclusivamente os nomes físicos `@@map`/`@map` do schema (ver cheat sheet abaixo) — **nunca** nomes de model Prisma em SQL raw.
+- Query é sempre `SELECT`. Nunca `INSERT`/`UPDATE`/`DELETE`.
+
+## Cheat sheet de tabelas físicas (`@@map`)
+
+| Model Prisma | Tabela física | Campos-chave para análise |
+|---|---|---|
+| EmailCampaign | `corretor_studio_email_campaigns` | status, scheduledAt, sentAt, totalRecipients/Sent/Delivered/Opened/Clicked/Bounced/Complained, templateId, contactListId, parentCampaignId/subCampaignIndex |
+| EmailCampaignDispatch | `corretor_studio_email_campaign_dispatches` | contadores por sub-lote de disparo |
+| EmailTemplate | `corretor_studio_email_templates` | status, isCurrentPublished, approvalStatus |
+| PublicForm | `corretor_studio_public_forms` | status, approvalStatus, publicId (via publication ativa) |
+| PublicFormQuestion | `corretor_studio_public_form_questions` | position |
+| PublicFormSubmission | `corretor_studio_public_form_submissions` | completionStatus, submittedAt, leadId |
+| PublicFormMetricEvent | `corretor_studio_public_form_metric_events` | eventType (viewed/started/completed), publicationId, createdAt |
+| EmailContact | `corretor_studio_email_contacts` | isUnsubscribed, isBounced, isComplained |
+| EmailContactList | `corretor_studio_email_contact_lists` | totalContacts, isBlocklist |
+| EmailLog | `corretor_studio_email_logs` | status, sentAt/deliveredAt/openedAt/clickedAt/bouncedAt/complainedAt, campaignId, dispatchId |
+| EmailEvent | `corretor_studio_email_events` | type, occurredAt, **metadata JSON** (`bounceType`/`bounceSubType`/`bounceMessage` vivem dentro do metadata, não são colunas dedicadas) |
+| TeamRadarSegment | `corretor_studio_radar_segments` | sourceType, sourceCampaignId (não confundir com esta skill — Radar aqui é lead-tracking/pixel consent, domínio diferente) |
+
+## Guardrails de governança (MUST — copiados do CLAUDE.md)
+
+- MUST usar apenas nomes físicos `@@map`/`@map` em SQL raw, nunca nomes de model Prisma.
+- MUST NOT inventar tabelas/colunas/enums "parecidos" com o domínio.
+- MUST preferir Prisma Client / REST endpoints a SQL raw; se SQL via Supabase MCP for inevitável, todo identificador deve bater com `@map`/`@@map` do schema.
+- MUST NOT rodar `db:migrate:push`, `UPDATE`/`DELETE`/`INSERT`, ou qualquer escrita contra o banco remoto sem autorização **explícita** do owner na conversa atual (dry-run é sempre permitido).
+- Esta skill é **read + suggest-only**. Nunca executa mutações, mesmo se solicitado implicitamente.
+- Confirmar o projeto Supabase via `list_projects` antes de qualquer SQL raw — nunca confiar cegamente em ref hardcoded (é produção).
+
+## Benchmarks do domínio
+
+Validados pelo time em campanhas reais — tratar como ground truth, não re-derivar.
+
+| Métrica | Bom | Ruim | Nota |
+|---|---|---|---|
+| Lead válido | evento `form_started` | `email opened` | open é vanity metric, não conta como lead |
+| Form start rate (views→starts) | >40% | <10% | <10% quase sempre = CTA quebrado (form draft/genérico/arquivado) ou oferta desalinhada entre e-mail e capa do form |
+| Click rate | >10% | <3% | vertical PME saúde (planos de saúde para corretores) |
+| Bounce rate (por disparo) | — | >4% | limite de conta exigido pelo Resend |
+| Bounce rate (por campanha) | — | >5% | flag de risco de reputação |
+
+### Padrão vencedor "MultiSkill" (referência de estrutura de campanha saudável)
+
+1 template → 1 form dedicado (máx. 4 campos: idade das vidas / nome / whatsapp / e-mail opcional) → a **capa do form repete a mesma oferta do e-mail** (preço, CNPJ, condição, hospital de referência) → CTA aponta para o `publicId` exato da publicação **ativa** do form (nunca um form genérico/draft/arquivado).
+
+### Categorização de bounce (via `metadata.bounceType` + `metadata.bounceMessage`)
+
+| Padrão | Classificação | Ação |
+|---|---|---|
+| `bounceType = Permanent` | mailbox morta | ok suprimir (`isBounced = true`) |
+| `Transient` + "inbox was full" | temporário (caixa cheia) | **não** suprimir |
+| `Transient` + "content that the provider doesn't allow" (ex.: `terra.com.br`) | endereço válido, filtro de reputação/conteúdo do ISP | **não** é morto, mas infla o % — reportar separado |
+| Typo de domínio (`gamil.com`, `hotmai.com`, `ig.combr`...) | deveria ter sido barrado na pré-validação de import | apontar como falha de import, não do envio |
+
+### Root-cause pattern recorrente — checar sempre quando form start rate estiver baixo
+
+`href` do CTA do template ativo apontando para um form não-publicado/draft/arquivado/genérico. Esse bug já derrubou o funil (opens/clicks altos, form starts perto de zero) em múltiplas campanhas históricas. Verificação: comparar o `publicId` embutido no HTML do template com o `publicId` da publicação ativa do form pretendido.
+
+## Workflow de avaliação (passo a passo)
+
+1. Identificar o escopo (campanha específica, time, conta inteira, período).
+2. Puxar métricas via REST endpoints (ordem de prioridade acima).
+3. Calcular taxas (open, click, bounce, form start, form complete) e comparar aos benchmarks.
+4. Se form start rate < 10%: checar obrigatoriamente o CTA `href` do template ativo vs. `publicId` da publicação ativa do form.
+5. Se bounce rate > 4-5%: puxar `EmailEvent.metadata` e categorizar (permanent / transient-caixa-cheia / transient-conteúdo / typo).
+6. Cruzar a oferta do e-mail vs. a capa do form (preço, condição, CNPJ, hospital) quando disponível.
+7. Montar o relatório (formato abaixo) com sugestões acionáveis — nunca executar a correção.
+
+## Formato de saída do relatório
+
+```
+## Performance — [escopo] ([período])
+
+### Funil
+Views → Starts → Completes: X → Y (Z%) → W (V%)
+Opens → Clicks: A (B%) → C (D%)
+Bounce: E%  [permanent: n | transient-caixa-cheia: n | transient-conteúdo: n | typo: n]
+
+### Diagnóstico
+- [benchmark violado] → [causa provável] → [evidência: campo/tabela/query usada]
+
+### Sugestões acionáveis (NÃO EXECUTADAS)
+- [ação concreta, com endpoint/query sugerida, aguardando aprovação do owner]
+```
+
+## Quando delegar para o subagente `campanha-performance-analyst`
+
+- Análise cobrindo múltiplas campanhas/times em paralelo.
+- Histórico longo (>90 dias) ou auditoria de conta inteira (todas as campanhas, todos os forms).
+- Tarefa que pode rodar em background enquanto o usuário segue trabalhando em outra coisa.
+
+Caso contrário (uma campanha pontual, uma pergunta específica), usar esta skill inline na thread principal.
+
+## Regras de sugestão acionável
+
+- Toda sugestão de correção é **proposta**, nunca **executada**.
+- Nenhuma escrita no banco: nenhum `UPDATE`/`DELETE`/`INSERT`, nenhum `db:migrate:push`.
+- Se a correção exigir mudança de dado (ex.: republicar form, trocar CTA do template, arquivar campanha), apresentar como passo manual para o owner **ou** pedir autorização explícita antes — e mesmo com autorização, esta skill não executa a mutação sozinha; ela indica o caminho (UI ou SQL revisado) para o owner confirmar.
