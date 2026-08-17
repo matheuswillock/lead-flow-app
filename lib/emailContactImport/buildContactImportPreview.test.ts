@@ -10,7 +10,7 @@ const REAL_INVALID_PIPE_EMAILS = [
 describe("buildContactImportPreview — cenários de produção", () => {
   it("recusa os 2 e-mails com pipe que causaram 422 no Resend e importa os válidos", () => {
     const preview = buildContactImportPreview([
-      { line: 1, email: "contato@liorseguros.com", name: "Lior" },
+      { line: 1, email: "lior@liorseguros.com", name: "Lior" },
       { line: 2, email: REAL_INVALID_PIPE_EMAILS[0], name: "Carol/Hugo" },
       { line: 3, email: "ok@example.com.br", name: "Ok" },
       { line: 4, email: REAL_INVALID_PIPE_EMAILS[1], name: "Financeiro" },
@@ -31,7 +31,7 @@ describe("buildContactImportPreview — cenários de produção", () => {
       },
     ])
     expect(preview.preview.map((row) => row.email)).toEqual([
-      "contato@liorseguros.com",
+      "lior@liorseguros.com",
       "ok@example.com.br",
     ])
   })
@@ -61,5 +61,27 @@ describe("buildContactImportPreview — cenários de produção", () => {
     expect(preview.skippedIssues.every((issue) => issue.reason === "E-mail com múltiplos endereços")).toBe(
       true
     )
+  })
+
+  it("recusa typo, ISP morto e role no preview", () => {
+    const preview = buildContactImportPreview([
+      { line: 1, email: "ana@gamil.com", name: "Ana" },
+      { line: 2, email: "ana@ig.com.br", name: "Ig" },
+      { line: 3, email: "contato@empresa.com", name: "Role" },
+      { line: 4, email: "lior@liorseguros.com", name: "Lior" },
+      { line: 5, email: "ana@terra.com.br", name: "Terra" },
+    ])
+
+    expect(preview.importableCount).toBe(2)
+    expect(preview.skippedCount).toBe(3)
+    expect(preview.skippedReasonCounts).toEqual([
+      { reason: "Domínio com erro de digitação", count: 1 },
+      { reason: "Endereço genérico não permitido", count: 1 },
+      { reason: "Provedor de e-mail desativado", count: 1 },
+    ])
+    expect(preview.preview.map((row) => row.email)).toEqual([
+      "lior@liorseguros.com",
+      "ana@terra.com.br",
+    ])
   })
 })

@@ -2,7 +2,8 @@ import type { PublicFormMetricType, Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
-import { normalizeRadarEmail, normalizeRadarName } from "@/lib/radar/normalization"
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
+import { normalizeRadarName } from "@/lib/radar/normalization"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import {
   mapPublicFormMetricToRadarEventType,
@@ -104,14 +105,14 @@ class SyncPublicFormMetricToRadarUseCase {
 
     const recipientEmail = this.extractRecipientEmail(input.origin)
     if (recipientEmail) {
-      const normalizedEmail = normalizeRadarEmail(recipientEmail)
-      if (normalizedEmail) {
+      const emailValidation = evaluateEmailForAudience(recipientEmail)
+      if (emailValidation.ok) {
         const { profile } = await radarRepository.resolveProfileForEmail({
           teamId: input.teamId,
-          normalizedEmail,
+          normalizedEmail: emailValidation.email,
           emailValue: recipientEmail,
           displayName: null,
-          normalizedName: normalizeRadarName(recipientEmail.split("@")[0]),
+          normalizedName: normalizeRadarName(emailValidation.email.split("@")[0]),
           emailSource: "email_campaign_form",
           lastSeenAt: input.occurredAt ?? new Date(),
         })

@@ -35,6 +35,11 @@ export function ContactImportSummary({
           {preview.importableCount}{" "}
           {preview.importableCount === 1 ? "contato será importado" : "contatos serão importados"}{" "}
           do arquivo {fileName}.
+          {preview.skippedCount > 0
+            ? ` ${preview.skippedCount === 1
+                ? "1 e-mail não será incluído porque não é um e-mail válido."
+                : `${preview.skippedCount} e-mails não serão incluídos porque não são e-mails válidos.`}`
+            : ""}
         </AlertDescription>
       </Alert>
 

@@ -7,7 +7,7 @@ describe("EmailContactListService.parseCsv — validação Resend", () => {
   it("descarta linhas com e-mail pipe (casos reais que geraram 422)", () => {
     const csv = [
       "email,nome",
-      "contato@liorseguros.com,Lior",
+      "lior@liorseguros.com,Lior",
       "carol.ocipriani@gmail.com|hugopoli@gmail.com,Carol",
       "financeiro@newcorban.com.br|financeiro@grupodigital.com.br,Financeiro",
       "ok@example.com,Ok",
@@ -17,7 +17,7 @@ describe("EmailContactListService.parseCsv — validação Resend", () => {
 
     expect(contacts).toHaveLength(2)
     expect(contacts.map((contact) => contact.email)).toEqual([
-      "contato@liorseguros.com",
+      "lior@liorseguros.com",
       "ok@example.com",
     ])
   })
@@ -30,5 +30,17 @@ describe("EmailContactListService.parseCsv — validação Resend", () => {
     ].join("\n")
 
     expect(service.parseCsv(csv)).toEqual([])
+  })
+
+  it("descarta typo, ISP morto e role; mantém Terra", () => {
+    const csv = [
+      "email,nome",
+      "ana@gamil.com,Ana",
+      "ana@ig.com.br,Ig",
+      "contato@empresa.com,Role",
+      "ana@terra.com.br,Terra",
+    ].join("\n")
+
+    expect(service.parseCsv(csv).map((contact) => contact.email)).toEqual(["ana@terra.com.br"])
   })
 })

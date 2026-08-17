@@ -100,6 +100,36 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     batchSendMock.mockResolvedValue({ data: [], error: null })
   })
 
+  it("D1b — e-mail typo (gamil.com) falha local e não vai ao Resend", async () => {
+    batchSendMock.mockResolvedValueOnce({
+      data: [{ id: "re_ok" }],
+      error: null,
+    })
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({
+      ...makeBaseParams([
+        {
+          email: "ana@gamil.com",
+          name: "Ana",
+          contactId: "c-1",
+          customFields: null,
+        },
+        {
+          email: "ok@test.com",
+          name: "Ok",
+          contactId: "c-2",
+          customFields: null,
+        },
+      ]),
+      onChunkDispatched,
+    })
+
+    expect(result.failed).toBe(1)
+    expect(result.sent).toBe(1)
+    expect(result.providerErrors[0]?.emails).toEqual(["ana@gamil.com"])
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+  })
+
   it("D1 — happy path: 3 destinatários, 1 chunk, onChunkDispatched chamado com 3 entradas", async () => {
     batchSendMock.mockResolvedValueOnce({
       data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],

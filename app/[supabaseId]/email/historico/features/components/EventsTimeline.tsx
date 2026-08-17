@@ -58,11 +58,24 @@ export function EventsTimeline({ events }: EventsTimelineProps) {
                 Link: {event.metadata.link}
               </p>
             )}
+            {event.metadata?.bounceSubType ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Subtipo do bounce: {event.metadata.bounceSubType}
+              </p>
+            ) : null}
             {event.metadata?.bounceMessage && (
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {event.metadata.bounceMessage}
               </p>
             )}
+            {event.metadata?.bounceDiagnosticCode ? (
+              <p className="mt-0.5 text-xs text-muted-foreground break-all">
+                Diagnóstico SMTP:{" "}
+                {Array.isArray(event.metadata.bounceDiagnosticCode)
+                  ? event.metadata.bounceDiagnosticCode.join(" · ")
+                  : event.metadata.bounceDiagnosticCode}
+              </p>
+            ) : null}
           </div>
         </li>
       ))}

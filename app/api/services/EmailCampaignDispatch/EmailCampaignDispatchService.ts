@@ -29,8 +29,8 @@ import {
 } from "@/lib/email/interpolate"
 import {
   formatInvalidRecipientFailureMessage,
-  isValidResendRecipientEmail,
 } from "@/lib/email/is-valid-resend-recipient-email"
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
 import {
   formatResendInvalidToIsolatedFailureMessage,
   isResendInvalidToValidationError,
@@ -174,7 +174,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     const invalidLocalErrors: DispatchProviderError[] = []
 
     for (const recipient of params.recipients) {
-      const validation = isValidResendRecipientEmail(recipient.email)
+      const validation = evaluateEmailForAudience(recipient.email)
       if (!validation.ok) {
         result.failed += 1
         invalidLocalErrors.push({
