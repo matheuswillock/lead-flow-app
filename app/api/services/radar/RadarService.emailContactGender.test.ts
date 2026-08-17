@@ -24,7 +24,7 @@ function buildRepo(overrides: Record<string, unknown> = {}): RadarRepository {
     updateProfileGender: mock(async () => ({ count: 1 })),
     findEmailContactById: mock(async () => ({
       id: contactId,
-      email: "contato@empresa.com.br",
+      email: "ana@empresa.com.br",
       name: "Empresa SA",
       isUnsubscribed: false,
       isBounced: false,
@@ -60,7 +60,7 @@ describe("RadarService.processEmailContactForRadar gender sync (F2)", () => {
       updateProfileGender,
       findEmailContactById: mock(async () => ({
         id: contactId,
-        email: "contato@empresa.com.br",
+        email: "ana@empresa.com.br",
         name: null,
         isUnsubscribed: false,
         isBounced: false,

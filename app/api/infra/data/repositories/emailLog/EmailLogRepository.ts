@@ -8,6 +8,7 @@ import type {
 } from "./IEmailLogRepository"
 import type { EmailEventType } from "@prisma/client"
 import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry"
+import { shouldStampIsBouncedFromEventMetadata } from "@/lib/email/bounce-suppression"
 
 export class EmailLogRepository implements IEmailLogRepository {
   async findByResendEmailId(resendEmailId: string) {
@@ -124,11 +125,12 @@ export class EmailLogRepository implements IEmailLogRepository {
           })
 
           if (eventType === "bounced") {
-            // Endereço inválido é global — suprime em todas as listas.
-            await tx.emailContact.updateMany({
-              where: { email: log.recipientEmail },
-              data: { isBounced: true },
-            })
+            if (shouldStampIsBouncedFromEventMetadata(metadata)) {
+              await tx.emailContact.updateMany({
+                where: { email: log.recipientEmail },
+                data: { isBounced: true },
+              })
+            }
           }
           if (eventType === "complained") {
             // Reclamação é por time: só listas de times que já enviaram para este destinatário.

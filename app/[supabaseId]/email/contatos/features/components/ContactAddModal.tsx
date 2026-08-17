@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email";
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation";
 import { useContactsContext } from "../context/ContactsContext";
 
 type ContactAddModalProps = {
@@ -39,7 +39,7 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) return;
 
-    const validation = isValidResendRecipientEmail(trimmedEmail);
+    const validation = evaluateEmailForAudience(trimmedEmail);
     if (!validation.ok) {
       toast.error(
         `E-mail inválido. Este contato não será adicionado à base. (${validation.reason})`

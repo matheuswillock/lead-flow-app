@@ -208,6 +208,28 @@ mock.module("@/lib/queues/email-campaign-dispatch", () => ({
   publishEmailCampaignDispatchWake: publishEmailCampaignDispatchWakeMock,
 }))
 
+const findBouncedEmailsMock = mock(async (_emails: string[]) => new Set<string>())
+const createSnapshotListMock = mock(async () => ({ id: "snap-list-1" }))
+const createSnapshotContactsMock = mock(async () => 0)
+const updateSnapshotContactCountMock = mock(async () => {})
+mock.module("@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository", () => ({
+  emailContactListRepository: {
+    findBouncedEmails: findBouncedEmailsMock,
+    createList: createSnapshotListMock,
+    createContacts: createSnapshotContactsMock,
+    updateContactCount: updateSnapshotContactCountMock,
+    findExistingEmailsInList: mock(async () => new Set<string>()),
+  },
+}))
+mock.module(
+  "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository",
+  () => ({
+    emailContactRadarSyncOutboxRepository: {
+      upsertPendingForContacts: mock(async () => {}),
+    },
+  })
+)
+
 // =============================================================================
 // Importação dinâmica — APÓS todos os mocks
 // =============================================================================
@@ -365,6 +387,10 @@ const allMocks = [
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
   publishEmailCampaignDispatchWakeMock,
+  findBouncedEmailsMock,
+  createSnapshotListMock,
+  createSnapshotContactsMock,
+  updateSnapshotContactCountMock,
 ]
 
 // =============================================================================
@@ -413,6 +439,10 @@ describe("EmailCampaignUseCase.send", () => {
       providerErrors: [],
     }))
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    findBouncedEmailsMock.mockImplementation(async () => new Set<string>())
+    createSnapshotListMock.mockImplementation(async () => ({ id: "snap-list-1" }))
+    createSnapshotContactsMock.mockImplementation(async () => 0)
+    updateSnapshotContactCountMock.mockImplementation(async () => {})
     setupTemplateMock()
   })
 
@@ -1016,6 +1046,78 @@ describe("EmailCampaignUseCase.send", () => {
       "r0@test.com",
       "r1@test.com",
     ])
+  })
+
+  it("C14e — retryFailedOnly não reinsere typo nem bounceado", async () => {
+    const allRecipients = [
+      ...makeRecipients(3),
+      { email: "ana@gamil.com", name: "Ana", contactId: "c-gamil", customFields: null },
+    ]
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed" })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(allRecipients)
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "failed" },
+      { recipientEmail: "r1@test.com", status: "failed" },
+      { recipientEmail: "r2@test.com", status: "bounced" },
+      { recipientEmail: "ana@gamil.com", status: "failed" },
+    ])
+    findBouncedEmailsMock.mockImplementation(async () => new Set(["r1@test.com"]))
+    dispatchBatchMock.mockImplementation(async (params: unknown) => {
+      const typed = params as { recipients: Array<{ email: string }> }
+      return {
+        sent: typed.recipients.length,
+        failed: 0,
+        dispatched: typed.recipients.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      }
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+
+    expect(output.isValid).toBe(true)
+    const dispatchArgs = dispatchBatchMock.mock.calls[0] as unknown as [
+      { recipients: Array<{ email: string }> },
+    ]
+    expect(dispatchArgs[0].recipients.map((recipient) => recipient.email)).toEqual(["r0@test.com"])
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(1)
+  })
+
+  it("materializeMissingContactIds não cria contato sendable para typo ou bounceado", async () => {
+    findBouncedEmailsMock.mockImplementation(async () => new Set(["bounced@ok.com"]))
+
+    const uc = new EmailCampaignUseCase()
+    const result = await (
+      uc as unknown as {
+        materializeMissingContactIds: (params: {
+          teamId: string
+          profileId: string
+          campaignName: string
+          contacts: Array<{ contactId: string | null; email: string; name?: string | null }>
+        }) => Promise<{ contactIds: string[]; snapshotListId: string | null }>
+      }
+    ).materializeMissingContactIds({
+      teamId: "team-1",
+      profileId: "profile-1",
+      campaignName: "Segmento",
+      contacts: [
+        { contactId: "c-existing", email: "ok@test.com", name: "Ok" },
+        { contactId: null, email: "ana@gamil.com", name: "Ana" },
+        { contactId: null, email: "bounced@ok.com", name: "Bounce" },
+      ],
+    })
+
+    expect(createSnapshotListMock).not.toHaveBeenCalled()
+    expect(createSnapshotContactsMock).not.toHaveBeenCalled()
+    expect(result.contactIds).toEqual(["c-existing"])
+    expect(result.snapshotListId).toBeNull()
   })
 
   // ---------------------------------------------------------------------------
