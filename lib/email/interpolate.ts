@@ -1,5 +1,9 @@
 import { DEFAULT_TZ, formatIntimezone, formatLocalDateValue, formatLocalTimeValue, nowInTz } from "@/lib/dates"
-import { EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY } from "@/lib/email/unsubscribe-link-embed"
+import {
+  EMAIL_UNSUBSCRIBE_LINK_KEYS,
+  EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+  isEmailUnsubscribeLinkVariableKey,
+} from "@/lib/email/unsubscribe-link-embed"
 
 export interface EmailTemplateRecipient {
   email: string
@@ -327,9 +331,23 @@ function buildResolvedValueMap(
       if (!value) continue
       values[normalizeKey(key)] = value
     }
+    spreadUnsubscribeLinkAliases(values)
   }
 
   return values
+}
+
+/** Copia a URL nativa de descadastro para aliases (`unsubscribe_url`, `unsubscribe_link`). */
+function spreadUnsubscribeLinkAliases(values: Record<string, string>): void {
+  const native = values[EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY]
+  const canonical =
+    native && native.trim()
+      ? native
+      : EMAIL_UNSUBSCRIBE_LINK_KEYS.map((key) => values[key]).find((value) => value?.trim())
+  if (!canonical) return
+  for (const key of EMAIL_UNSUBSCRIBE_LINK_KEYS) {
+    values[key] = canonical
+  }
 }
 
 /**
@@ -390,7 +408,7 @@ const BUILTIN_RECIPIENT_KEYS = new Set([
   "nome_do_lead",
   "name",
   "email",
-  EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+  ...EMAIL_UNSUBSCRIBE_LINK_KEYS,
 ])
 
 export function applyMasterTimezoneToTemplateVariables(
@@ -421,6 +439,8 @@ export function findUnresolvedEmailTemplateTokens(
   const renderedSubject = interpolateEmailTemplate(subject, recipient, globalDefaults, definitions)
   const renderedHtml = interpolateEmailTemplate(html, recipient, globalDefaults, definitions)
   return extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
-    (token) => !BUILTIN_RECIPIENT_KEYS.has(token.toLowerCase())
+    (token) =>
+      !BUILTIN_RECIPIENT_KEYS.has(token.toLowerCase()) &&
+      !isEmailUnsubscribeLinkVariableKey(token)
   )
 }

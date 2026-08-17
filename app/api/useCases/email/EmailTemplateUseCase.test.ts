@@ -70,23 +70,23 @@ describe("EmailTemplateUseCase.approve — validação de variáveis não resolv
     transactionMock.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb(prismaMock))
   })
 
-  it("bloqueia aprovação quando o template tem token não resolvido (unsubscribe_url)", async () => {
+  it("aprova quando o template usa alias de descadastro (unsubscribe_url)", async () => {
     emailTemplateFindFirstMock.mockImplementation(async () => ({
       id: "tpl-1",
       subject: "Assunto {{nome}}",
       html: "<p>Olá {{nome}}, cancele em {{unsubscribe_url}}</p>",
       variables: [],
     }))
+    emailTemplateUpdateMock.mockImplementation(async () => ({
+      id: "tpl-1",
+      versionNumber: 1,
+    }))
 
     const uc = new EmailTemplateUseCase()
     const output = await uc.approve("tpl-1", teamCtx)
 
-    expect(output.isValid).toBe(false)
-    expect(output.errorMessages.join(" ")).toContain("Variáveis sem valor suficiente")
-    expect(output.errorMessages.join(" ")).toContain("unsubscribe_url")
-    // Sugere o token nativo da plataforma para tokens que parecem de descadastro.
-    expect(output.errorMessages.join(" ")).toContain("link_descadastro")
-    expect(emailTemplateUpdateMock).not.toHaveBeenCalled()
+    expect(output.isValid).toBe(true)
+    expect(emailTemplateUpdateMock).toHaveBeenCalled()
   })
 
   it("aprova normalmente quando só há tokens nativos (nome/email/link_descadastro)", async () => {
@@ -140,11 +140,11 @@ describe("EmailTemplateUseCase.publish — validação de variáveis não resolv
     transactionMock.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb(prismaMock))
   })
 
-  it("bloqueia publicação quando o template tem token não resolvido", async () => {
+  it("bloqueia publicação quando o template tem token custom não resolvido", async () => {
     emailTemplateFindFirstMock.mockImplementation(async () => ({
       id: "tpl-1",
       subject: "Assunto",
-      html: "<p>Cancele em {{unsubscribe_url}}</p>",
+      html: "<p>Preço {{preco_plano}}</p>",
       variables: [],
       approvalStatus: "approved",
       approvedAt: new Date(),
@@ -156,7 +156,30 @@ describe("EmailTemplateUseCase.publish — validação de variáveis não resolv
 
     expect(output.isValid).toBe(false)
     expect(output.errorMessages.join(" ")).toContain("Variáveis sem valor suficiente")
+    expect(output.errorMessages.join(" ")).toContain("preco_plano")
     expect(emailTemplateUpdateMock).not.toHaveBeenCalled()
+  })
+
+  it("publica quando o HTML usa alias unsubscribe_url", async () => {
+    emailTemplateFindFirstMock.mockImplementation(async () => ({
+      id: "tpl-1",
+      subject: "Assunto",
+      html: "<p>Cancele em {{unsubscribe_url}}</p>",
+      variables: [],
+      approvalStatus: "approved",
+      approvedAt: new Date(),
+      versionGroupId: "vg-1",
+    }))
+    emailTemplateUpdateMock.mockImplementation(async () => ({
+      id: "tpl-1",
+      versionNumber: 1,
+    }))
+
+    const uc = new EmailTemplateUseCase()
+    const output = await uc.publish("tpl-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(emailTemplateUpdateMock).toHaveBeenCalled()
   })
 
   it("publica normalmente quando não há token não resolvido", async () => {
