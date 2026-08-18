@@ -5,6 +5,8 @@ import { Output } from "@/lib/output"
 import { isEmailCampaignFormOrigin, sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
 import type { PublicFormProgressInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import { mapAnswersForPersistence } from "@/lib/public-forms/publication-snapshot"
+import { resolvePublicFormPublicationForVisitor } from "@/lib/public-forms/resolve-form-publication"
 import {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
@@ -30,7 +32,20 @@ export class PublicFormProgressUseCase {
     } | null
     if (!current) return new Output(false, [], ["Formulário indisponível"], null)
 
-    const { snapshot } = current
+    const resolved = await resolvePublicFormPublicationForVisitor({
+      current,
+      visitorSessionId: input.visitorSessionId,
+      questionIds: input.answers.map((answer) => answer.questionId),
+    })
+    if (resolved.sessionSubmission?.status === "completed") {
+      return new Output(true, [], [], {
+        submissionId: resolved.sessionSubmission.id,
+        completionStatus: "complete",
+        leadId: resolved.sessionSubmission.leadId,
+      })
+    }
+
+    const { snapshot, publicationId } = resolved
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
     const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
     const origin = sanitizePublicFormOrigin(input.origin ?? {})
@@ -44,7 +59,7 @@ export class PublicFormProgressUseCase {
           : "initial"
     }
 
-    const requestKey = `progress:${input.visitorSessionId}:${current.publicationId}`
+    const requestKey = `progress:${input.visitorSessionId}:${publicationId}`
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
 
     let leadId: string | null = null
@@ -54,7 +69,7 @@ export class PublicFormProgressUseCase {
         snapshot,
         answers: visibleAnswers,
         visibleIds: visible,
-        publicationId: current.publicationId,
+        publicationId,
         origin: origin as Record<string, unknown>,
         allowCreate: !isEmailCampaignFormOrigin(origin),
       })
@@ -64,19 +79,11 @@ export class PublicFormProgressUseCase {
       console.error("[PublicFormProgressUseCase][execute]", message)
     }
 
-    const answerPayload = visibleAnswers.map((answer) => {
-      const question = snapshot.questions.find((item) => item.id === answer.questionId)
-      if (!question) throw new Error("Snapshot de pergunta não encontrado")
-      return {
-        questionId: answer.questionId,
-        value: answer.value as Prisma.InputJsonValue,
-        questionSnapshot: json(question),
-      }
-    })
+    const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers)
 
     const submission = await publicFormsRepository.upsertProgressSubmission({
       formId: snapshot.formId,
-      publicationId: current.publicationId,
+      publicationId,
       visitorSessionId: input.visitorSessionId,
       requestKey,
       origin: origin as Prisma.InputJsonValue,
@@ -90,7 +97,7 @@ export class PublicFormProgressUseCase {
       const question = snapshot.questions.find((item) => item.id === answer.questionId)
       await publicFormsRepository.upsertMetricEvent({
         formId: snapshot.formId,
-        publicationId: current.publicationId,
+        publicationId,
         questionId: answer.questionId,
         questionSnapshot: question ? json(question) : null,
         visitorSessionId: input.visitorSessionId,
