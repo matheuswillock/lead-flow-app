@@ -86,13 +86,35 @@ export function buildE2eStorageState(
   };
 }
 
+export function buildE2eAddCookiesPayload(
+  token: string = signE2eSessionToken(),
+  baseUrl: string = resolveE2eBaseUrl(),
+): {
+  name: string;
+  value: string;
+  url: string;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "Lax";
+} {
+  const url = new URL("/", baseUrl).href;
+  return {
+    name: E2E_COOKIE_NAME,
+    value: token,
+    url,
+    httpOnly: true,
+    secure: url.startsWith("https://"),
+    sameSite: "Lax",
+  };
+}
+
 export async function injectE2eAuthCookie(
   context: CookieInjectableContext,
   options?: { token?: string; baseUrl?: string },
 ): Promise<void> {
   const baseUrl = options?.baseUrl ?? resolveE2eBaseUrl();
   const token = options?.token ?? signE2eSessionToken();
-  await context.addCookies([buildE2eAuthCookie(token, baseUrl)]);
+  await context.addCookies([buildE2eAddCookiesPayload(token, baseUrl)]);
 }
 
 export const E2E_AUTH_USER = {

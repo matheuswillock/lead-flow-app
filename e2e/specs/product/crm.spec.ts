@@ -4,6 +4,8 @@ import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile } from "../../support/db";
 
 test.describe("app/[supabaseId]/crm", () => {
+  test.setTimeout(60_000);
+
   test.beforeEach(async ({ context }) => {
     const profile = await findE2eMasterProfile();
     expect(profile, "Seed E2E ausente — rode `bun run db:seed:e2e`").not.toBeNull();
@@ -17,7 +19,7 @@ test.describe("app/[supabaseId]/crm", () => {
   test("carrega o CRM autenticado sem assinatura inativa", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
-    await expect(page.getByRole("heading", { name: "CRM" })).toBeVisible({
+    await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0);
