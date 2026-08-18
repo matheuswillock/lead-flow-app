@@ -762,6 +762,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
       const allProfileIds = [masterProfileId, ...memberProfileIds]
 
+      await tx.subscriptionStateSnapshot.deleteMany({
+        where: { profileId: { in: allProfileIds } },
+      })
+
       await tx.profile.updateMany({
         where: { managerId: { in: allProfileIds } },
         data: { managerId: null },

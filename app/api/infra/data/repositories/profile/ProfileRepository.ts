@@ -959,6 +959,16 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async deleteProfile(supabaseId: string): Promise<Profile | null> {
         try {
+            const existing = await prisma.profile.findUnique({
+                where: { supabaseId },
+                select: { id: true },
+            });
+            if (!existing) {
+                return null;
+            }
+            await prisma.subscriptionStateSnapshot.deleteMany({
+                where: { profileId: existing.id },
+            });
             const profile = await prisma.profile.delete({ where: { supabaseId } });
             return profile;
         } catch (error) {
