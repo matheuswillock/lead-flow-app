@@ -63,12 +63,13 @@ export function OperationalAccessProvider({
   )
   const [isLoading, setIsLoading] = useState(!initialAccess)
   const fetchGenerationRef = useRef(0)
+  const inFlightRef = useRef(false)
   const lastRequestKeyRef = useRef(
     initialAccess ? `${initialAccess.profileId}:${initialAccess.teamId ?? "no-team"}` : ""
   )
 
   const fetchAccess = useCallback(async (force = false) => {
-    if (!user?.id) return
+    if (!user?.id || inFlightRef.current) return
 
     const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
     const requestKeyChanged = lastRequestKeyRef.current !== requestKey
@@ -77,6 +78,7 @@ export function OperationalAccessProvider({
     if (requestKeyChanged) {
       setAccess(DEFAULT_ACCESS)
     }
+    inFlightRef.current = true
     setIsLoading(true)
 
     const generation = ++fetchGenerationRef.current
@@ -85,15 +87,27 @@ export function OperationalAccessProvider({
         cache: "no-store",
         headers: activeTeamId ? { "x-team-id": activeTeamId } : undefined,
       })
-      const data = await response.json()
+      const contentType = response.headers.get("content-type") ?? ""
+      if (!contentType.includes("application/json")) {
+        console.error(
+          "[OperationalAccessContext] Erro ao carregar acessos operacionais:",
+          new Error(`Resposta não-JSON (${response.status})`)
+        )
+        return
+      }
+      const data = (await response.json()) as {
+        isValid?: boolean
+        result?: OperationalAccessData
+      }
       if (generation !== fetchGenerationRef.current) return
       if (response.ok && data.isValid && data.result) {
-        setAccess(data.result as OperationalAccessData)
+        setAccess(data.result)
         lastRequestKeyRef.current = requestKey
       }
     } catch (error) {
       console.error("[OperationalAccessContext] Erro ao carregar acessos operacionais:", error)
     } finally {
+      inFlightRef.current = false
       if (generation !== fetchGenerationRef.current) return
       setIsLoading(false)
     }
@@ -110,13 +124,15 @@ export function OperationalAccessProvider({
     void fetchAccess()
   }, [activeTeamId, fetchAccess, initialAccess, user?.id])
 
+  const refresh = useCallback((force = true) => fetchAccess(force), [fetchAccess])
+
   const value = useMemo(
     () => ({
       access,
       isLoading,
-      refresh: (force = true) => fetchAccess(force),
+      refresh,
     }),
-    [access, fetchAccess, isLoading]
+    [access, isLoading, refresh]
   )
 
   return (

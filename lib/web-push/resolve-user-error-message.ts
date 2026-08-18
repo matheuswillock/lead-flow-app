@@ -61,6 +61,15 @@ export function resolveWebPushUserErrorMessage(
   }
 
   if (
+    includesAny(combined, [
+      "push service not available",
+      "push service error",
+    ])
+  ) {
+    return "Este navegador não tem serviço de push disponível. Tente o Chrome ou o Edge, com notificações liberadas.";
+  }
+
+  if (
     name === "NotAllowedError" ||
     includesAny(message, ["permission denied", "not allowed", "permissão"])
   ) {

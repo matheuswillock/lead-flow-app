@@ -1,10 +1,10 @@
 /**
  * Local dev orchestrator: local DB stack + optional local stacks + Next.js.
  *
- * `bun run dev` and `bun run dev:local` are aliases — both use the local
- * hybrid stack (Postgres + Realtime locais, Auth + Storage remotos), not the
- * remote DATABASE_URL from `.env`. Use `--full-supabase` for the legacy
- * `supabase start` stack (Auth/Storage/Studio locais também).
+ * `bun run dev` e `bun run dev:local` sobem Postgres local (:55322) e o Next,
+ * com Auth/Storage do `.env` remoto (modo db-only). Não usam o DATABASE_URL
+ * remoto. Realtime fica desligado. Para tempo real local: `--hybrid`. Para o
+ * stack completo (`supabase start`): `--full-supabase`.
  *
  * Optional stacks:
  *   n8n        Start N8N (Bethânia workflows).
@@ -14,14 +14,17 @@
  * Examples:
  *   bun dev
  *   bun dev -- n8n
- *   bun dev -- evolution
- *   bun dev -- total
+ *   bun dev -- --hybrid
  *   bun dev -- --full-supabase
+ *   bun dev -- --clone
  *
  * Flags:
- *   --skip-clone     Do not auto-clone even if auth.users is empty.
+ *   --db-only        Padrão: só Postgres local (explícito, idempotente).
+ *   --hybrid         Postgres + Realtime + Caddy (exige `.env.local-stack`).
+ *   --full-supabase  `supabase start` (Auth/Storage/Studio locais).
+ *   --clone          Dump remoto no lugar do seed local.
+ *   --skip-clone     Não auto-popular (nem seed nem clone).
  *   --no-start       Fail fast if the local stack is not running.
- *   --full-supabase  Use `supabase start` (stack completo) em vez do stack híbrido.
  *   --skip-evo       Legacy: keep Evolution API disabled.
  *   --skip-n8n       Legacy: keep N8N disabled.
  *   --turbo          Force Turbopack on Windows (default no Windows é Webpack por EPERM).
@@ -37,6 +40,7 @@ import { join } from "node:path";
 import {
   LOCAL_DB_URL,
   LOCAL_PROXY_URL,
+  type LocalStackMode,
   probeLocalStack,
   readRemoteStackOverrides,
   startLocalStack,
@@ -45,6 +49,7 @@ import {
 import {
   ensureBackofficeCatalog,
   EXPECTED_ACTIVE_BACKOFFICE_FEATURES,
+  countActiveBackofficeFeatures,
 } from "./lib/sync-backoffice-catalog";
 import { parseDevLocalArgs } from "./dev-local-options";
 
@@ -61,9 +66,11 @@ const rawArgs = process.argv.slice(2);
 const devOptions = parseDevLocalArgs(rawArgs);
 const {
   skipClone,
+  clone: shouldClone,
   noStart,
   forceTurbo,
   fullSupabase,
+  stackMode,
   startEvolution: shouldStartEvolution,
   startN8n: shouldStartN8n,
   nextArgs,
@@ -236,15 +243,21 @@ async function startFullSupabase(): Promise<void> {
   info("✓ Supabase started");
 }
 
-/** Stack híbrido padrão (Postgres + Realtime locais). */
-async function startHybridLocalStack(): Promise<void> {
-  info("⚠ Local stack not running — starting (`bun run local:up`)…");
-  const start = startLocalStack();
+function composeStackLabel(mode: LocalStackMode): string {
+  return mode === "hybrid" ? "Postgres + Realtime" : "Postgres (db-only)";
+}
+
+async function startComposeLocalStack(mode: LocalStackMode): Promise<void> {
+  const upHint = mode === "hybrid" ? "`bun run local:up:hybrid`" : "`bun run local:up`";
+  info(`⚠ Local stack not running — starting (${upHint})…`);
+  const start = startLocalStack(mode);
   if (start.status !== 0) {
-    fail("`docker compose -f docker-compose.local.yml up -d` failed. Check Docker is running.");
+    fail(
+      "`docker compose` falhou. No Fedora/Podman: `systemctl --user restart podman.socket`. Confira também se o Podman/Docker está no ar.",
+    );
   }
-  info("  waiting for Postgres + proxy…");
-  const ready = await waitForLocalStack();
+  info(mode === "hybrid" ? "  waiting for Postgres + proxy…" : "  waiting for Postgres…");
+  const ready = await waitForLocalStack(mode);
   if (!ready) {
     fail("Local stack did not become ready in time. Veja `bun run local:logs`.");
   }
@@ -332,7 +345,7 @@ async function ensureLocalStacks(): Promise<void> {
     shouldStartN8n ? "N8N" : undefined,
     shouldStartEvolution ? "Evolution" : undefined,
   ].filter(Boolean);
-  const dbStackLabel = fullSupabase ? "Supabase (full)" : "Postgres + Realtime";
+  const dbStackLabel = fullSupabase ? "Supabase (full)" : composeStackLabel(stackMode);
 
   step(
     optionalStacks.length > 0
@@ -340,7 +353,7 @@ async function ensureLocalStacks(): Promise<void> {
       : `Checking local stacks (${dbStackLabel} only)`,
   );
 
-  const dbStackUp = fullSupabase ? probeFullSupabase() : probeLocalStack();
+  const dbStackUp = fullSupabase ? probeFullSupabase() : probeLocalStack(stackMode);
   const evoUp = shouldStartEvolution ? probeEvolution() : true;
   const n8nUp = shouldStartN8n ? probeN8n() : true;
 
@@ -363,7 +376,7 @@ async function ensureLocalStacks(): Promise<void> {
   }
 
   const startTasks: Promise<void>[] = [];
-  if (!dbStackUp) startTasks.push(fullSupabase ? startFullSupabase() : startHybridLocalStack());
+  if (!dbStackUp) startTasks.push(fullSupabase ? startFullSupabase() : startComposeLocalStack(stackMode));
   if (shouldStartN8n && !n8nUp) startTasks.push(startN8n());
 
   if (startTasks.length > 0) {
@@ -375,62 +388,99 @@ async function ensureLocalStacks(): Promise<void> {
   }
 }
 
-function countAuthUsers(dbUrl: string): number {
+function cloneRemote() {
+  info("⚠ --clone — running `bun run db:clone:remote`…");
+  const clone = run("bun", ["run", "db:clone:remote"], { stdio: "inherit" });
+  if (clone.status !== 0) {
+    info("⚠ Clone falhou — continuando sem dados remotos.");
+    info("  Para corrigir: confira DIRECT_URL/DATABASE_URL no .env e rode `bun run db:clone:remote`.");
+    info("  Para pular o populate automático: `bun run dev -- --skip-clone`.");
+    return;
+  }
+  info("✓ Clone done");
+}
+
+function countLocalProfiles(dbUrl: string): number | null {
   const result = run("psql", [
     dbUrl,
     "-t",
     "-A",
     "-c",
-    "SELECT count(*) FROM auth.users",
+    'SELECT count(*) FROM "public"."corretor_studio_profiles"',
   ]);
-  if (result.status !== 0) {
-    fail(`Could not query local auth.users:\n${result.stderr || result.stdout}`);
-  }
+  if (result.status !== 0) return null;
   const parsed = Number(result.stdout.trim());
-  if (!Number.isFinite(parsed)) {
-    fail(`Unexpected count output: "${result.stdout}"`);
-  }
-  return parsed;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function cloneRemote() {
-  info("⚠ 0 users found — running `bun run db:clone:remote`…");
-  const clone = run("bun", ["run", "db:clone:remote"], { stdio: "inherit" });
-  if (clone.status !== 0) {
-    info("⚠ Clone falhou — continuando sem dados remotos.");
-    info("  Para corrigir: confira DIRECT_URL/DATABASE_URL no .env e rode `bun run db:clone:remote`.");
-    info("  Para pular o clone automático: `bun run dev -- --skip-clone`.");
+function needsLocalSeed(dbUrl: string): boolean {
+  try {
+    return countActiveBackofficeFeatures(dbUrl) < EXPECTED_ACTIVE_BACKOFFICE_FEATURES;
+  } catch {
+    return true;
+  }
+}
+
+function seedLocalIfNeeded(dbUrl: string) {
+  if (!needsLocalSeed(dbUrl)) {
+    info("✓ Catálogo local já populado — pulando seed.");
+    ensureBackofficeCatalogSynced(dbUrl);
     return;
   }
-  info("✓ Clone done");
+
+  info("⚠ Banco local vazio/incompleto — rodando `bun run db:seed:local`…");
+  const seed = run("bun", ["run", "db:seed:local"], {
+    stdio: "inherit",
+    env: { DATABASE_URL: dbUrl, DIRECT_URL: dbUrl },
+  });
+  if (seed.status !== 0) {
+    info("⚠ Seed local falhou. Rode `bun run db:seed:local` manualmente.");
+    return;
+  }
+  info("✓ Seed local concluído");
+}
+
+function remindLinkRemoteUser(dbUrl: string) {
+  const count = countLocalProfiles(dbUrl);
+  if (count === 0) {
+    info("⚠ Nenhum Profile local. Login no Auth remoto funciona, mas o app não acha o Profile.");
+    info("  Rode: bun run db:seed:local -- --link-remote-user voce@email");
+    info("  (concede vitalício só no Postgres local para o CRM abrir)");
+  }
 }
 
 async function runPreflight() {
   await ensureLocalStacks();
   const dbUrl = resolveActiveDbUrl();
 
-  step("Checking local auth.users");
-  const users = countAuthUsers(dbUrl);
-
-  if (users > 0) {
-    info(`✓ ${users} users present — DB is populated, skipping clone.`);
-    ensureBackofficeCatalogSynced(dbUrl);
+  if (skipClone) {
+    step("Skipping auto-populate (--skip-clone)");
+    info("⊘ Nem seed local nem clone remoto.");
+    remindLinkRemoteUser(dbUrl);
     return;
   }
 
-  if (skipClone) {
-    info("⚠ 0 users found, but --skip-clone passed. Continuing.");
+  if (shouldClone) {
+    step("Cloning remote into local Postgres (--clone)");
+    if (fullSupabase) {
+      info("⚠ `db:clone:remote` só popula o Postgres :55322 — pulando clone automático em --full-supabase.");
+    } else {
+      cloneRemote();
+    }
+    ensureBackofficeCatalogSynced(dbUrl);
+    remindLinkRemoteUser(dbUrl);
     return;
   }
 
   if (fullSupabase) {
-    // db:clone:remote só sabe popular o Postgres do stack híbrido (LOCAL_DB_URL).
-    info("⚠ 0 users found. `db:clone:remote` só popula o stack híbrido — pulando clone automático em --full-supabase.");
-    info("  Rode `bun run dev` (stack híbrido, sem --full-supabase) uma vez para clonar dados remotos, ou popule via `supabase db seed`.");
-  } else {
-    cloneRemote();
+    step("Checking local catalog (--full-supabase)");
+    ensureBackofficeCatalogSynced(dbUrl);
+    return;
   }
-  ensureBackofficeCatalogSynced(dbUrl);
+
+  step("Checking local catalog (seed, not clone)");
+  seedLocalIfNeeded(dbUrl);
+  remindLinkRemoteUser(dbUrl);
 }
 
 function ensureBackofficeCatalogSynced(dbUrl: string) {
@@ -518,7 +568,20 @@ function getFullSupabaseDatabaseOverrides(): EnvOverrides {
 }
 
 /**
- * Stack híbrido padrão: Postgres local para dados, proxy local (Caddy) para
+ * db-only (padrão): Postgres local para dados; Auth/Storage/anon/service role
+ * vêm do `.env` remoto (já carregado por dotenv). Sem proxy, sem Realtime.
+ */
+function getDbOnlyDatabaseOverrides(): EnvOverrides {
+  return {
+    DATABASE_URL: LOCAL_DB_URL,
+    DIRECT_URL: LOCAL_DB_URL,
+    SUPABASE_LOCAL_DB_ONLY: "true",
+    NEXT_PUBLIC_REALTIME_DISABLED: "true",
+  };
+}
+
+/**
+ * Stack híbrido: Postgres local para dados, proxy local (Caddy) para
  * Auth/Storage remotos + Realtime local — tudo atrás de uma única
  * NEXT_PUBLIC_SUPABASE_URL, como o supabase-js espera.
  */
@@ -553,7 +616,9 @@ function getHybridDatabaseOverrides(): EnvOverrides {
 }
 
 function getLocalDatabaseOverrides(): EnvOverrides {
-  return fullSupabase ? getFullSupabaseDatabaseOverrides() : getHybridDatabaseOverrides();
+  if (fullSupabase) return getFullSupabaseDatabaseOverrides();
+  if (stackMode === "hybrid") return getHybridDatabaseOverrides();
+  return getDbOnlyDatabaseOverrides();
 }
 
 function readEvolutionEnvValue(key: string): string | undefined {
@@ -647,6 +712,10 @@ function startNextDev(): never {
 
   step("Starting Next.js with local database overrides");
   info(`DATABASE_URL → ${localOverrides.DATABASE_URL ?? LOCAL_DB_URL}`);
+  if (localOverrides.SUPABASE_LOCAL_DB_ONLY === "true") {
+    info("Realtime desligado (db-only). Use `bun dev -- --hybrid` para tempo real.");
+    info(`NEXT_PUBLIC_SUPABASE_URL → ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "(do .env)"}`);
+  }
   if (localOverrides.NEXT_PUBLIC_SUPABASE_URL) {
     info(`NEXT_PUBLIC_SUPABASE_URL → ${localOverrides.NEXT_PUBLIC_SUPABASE_URL}`);
   }

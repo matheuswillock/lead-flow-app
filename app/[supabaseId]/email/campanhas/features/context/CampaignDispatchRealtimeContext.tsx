@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useUser } from "@/app/context/UserContext"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
+import { shouldSkipRealtimeSubscribe } from "@/lib/supabase/realtime-guard"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 import { resolveCampaignDispatchTerminal } from "@/lib/email/campaign-dispatch-terminal"
 import { takeLeavingSendingSnapshot } from "./campaign-dispatch-leaving-snapshot"
@@ -253,6 +254,7 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
   }, [])
 
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) return
     if (!activeTeamId || !user?.id) return
 
     const supabase = createSupabaseBrowser()

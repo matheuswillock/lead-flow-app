@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
+import { shouldSkipRealtimeSubscribe } from '@/lib/supabase/realtime-guard'
 import { computeWhatsAppRealtimeHealth } from '@/lib/whatsapp/realtime-health'
 import type { WhatsAppContactNameSource } from '@/app/[supabaseId]/whatsapp/features/context/WhatsAppInboxTypes'
 
@@ -229,6 +230,11 @@ export function useWhatsAppRealtime({
   const convsReconnectAttemptRef = useRef(0)
 
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) {
+      convsStatusRef.current = null
+      onRealtimeHealthChangeRef.current?.(false)
+      return
+    }
     if (!enabled || !teamId) {
       convsStatusRef.current = null
       onRealtimeHealthChangeRef.current?.(false)
@@ -343,6 +349,11 @@ export function useWhatsAppRealtime({
   const msgsReconnectAttemptRef = useRef(0)
 
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) {
+      msgsInitializingRef.current = false
+      msgsStatusRef.current = null
+      return
+    }
     if (!enabled || !teamId || !selectedConversationId) {
       msgsInitializingRef.current = false
       msgsStatusRef.current = null
@@ -483,6 +494,7 @@ export function useWhatsAppRealtime({
 
   // Canal de presença: escuta broadcasts PRESENCE_UPDATE do servidor para indicador de digitação.
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) return
     if (!enabled || !teamId) return
     const supabase = createSupabaseBrowser()
     if (!supabase) return

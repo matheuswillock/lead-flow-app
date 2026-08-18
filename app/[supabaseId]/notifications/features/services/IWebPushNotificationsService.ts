@@ -1,3 +1,4 @@
+import type { WebPushClientErrorPayload } from "@/lib/web-push/client-error-report";
 import type { WebPushConsentSource } from "@/lib/web-push/types";
 
 export type WebPushConsentStatus = "accepted" | "declined" | "dismissed";
@@ -45,4 +46,5 @@ export interface IWebPushNotificationsService {
   recordConsent(context: RequestContext, payload: WebPushConsentPayload): Promise<void>;
   subscribe(context: RequestContext, payload: WebPushSubscriptionPayload): Promise<void>;
   unsubscribe(context: RequestContext, endpoint: string): Promise<void>;
+  reportClientError(context: RequestContext, payload: WebPushClientErrorPayload): Promise<void>;
 }

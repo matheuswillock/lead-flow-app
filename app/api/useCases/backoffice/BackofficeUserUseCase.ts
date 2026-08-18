@@ -33,7 +33,7 @@ function createSupabaseAdmin() {
   const client = createGuardedSupabaseAdmin()
   if (!client) {
     throw new Error(
-      "Supabase admin indisponível: credenciais ausentes ou bloqueado no stack local híbrido (ver SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN)"
+      "Supabase admin indisponível: credenciais ausentes ou bloqueado no dev local (ver SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN)"
     )
   }
   return client

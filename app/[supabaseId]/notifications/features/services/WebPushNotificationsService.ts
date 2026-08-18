@@ -1,3 +1,4 @@
+import type { WebPushClientErrorPayload } from "@/lib/web-push/client-error-report";
 import type {
 
   IWebPushNotificationsService,
@@ -208,6 +209,40 @@ export class WebPushNotificationsService implements IWebPushNotificationsService
     if (!response.ok || !output.isValid) {
 
       throw new Error(output.errorMessages?.join(", ") || "Erro ao desativar notificações no navegador");
+
+    }
+
+  }
+
+
+
+  async reportClientError(context: RequestContext, payload: WebPushClientErrorPayload): Promise<void> {
+
+    try {
+
+      await fetch(`${API_CLIENT_BASE}/notifications/push/client-error`, {
+
+        method: "POST",
+
+        headers: {
+
+          "Content-Type": "application/json",
+
+          "x-supabase-user-id": context.supabaseId,
+
+          "x-team-id": context.teamId,
+
+        },
+
+        body: JSON.stringify(payload),
+
+        cache: "no-store",
+
+      });
+
+    } catch {
+
+      // Telemetria não deve quebrar o fluxo de ativar/desativar.
 
     }
 
