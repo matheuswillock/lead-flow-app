@@ -584,19 +584,15 @@ const teamCtx: TeamAccess = {
 
 // Configura o mock de template (2 chamadas: ref → template completo)
 function setupTemplateMock() {
-  let call = 0
-  emailTemplateFindFirstMock.mockImplementation(async () => {
-    call++
-    if (call === 1) return { versionGroupId: "vg-1" }
-    return {
-      id: "tpl-1",
-      name: "Template Test",
-      subject: "Assunto {{nome}}",
-      html: "<p>Olá {{nome}}</p>",
-      variables: [],
-      versionNumber: 1,
-    }
-  })
+  emailTemplateFindFirstMock.mockImplementation(async () => ({
+    id: "tpl-1",
+    name: "Template Test",
+    subject: "Assunto {{nome}}",
+    html: "<p>Olá {{nome}}</p>",
+    variables: [],
+    versionNumber: 1,
+    versionGroupId: "vg-1",
+  }))
 }
 
 // Todos os mocks que precisam ser resetados entre testes
@@ -1919,6 +1915,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
       parentCampaignId: null,
       audienceContactIds: [],
       createdBy: null,
+      templateId: "tpl-1",
       template: {
         id: "tpl-1",
         name: "T",
@@ -2697,6 +2694,89 @@ describe("EmailCampaignUseCase dispatch progress", () => {
       { data: { retryFailedOnly?: boolean } },
     ]
     expect(createArg[0].data.retryFailedOnly).toBe(false)
+  })
+
+  it("startManualDispatch usa o templateId pinado da campanha, não promove isCurrentPublished", async () => {
+    let call = 0
+    emailTemplateFindFirstMock.mockImplementation(async () => {
+      call += 1
+      if (call === 1) {
+        return {
+          id: "tpl-ref-1",
+          name: "Template v1",
+          subject: "Assunto v1",
+          html: "<p>versão 1</p>",
+          variables: [],
+          versionNumber: 1,
+          versionGroupId: "vg-1",
+        }
+      }
+      return {
+        id: "tpl-current",
+        name: "Template v2",
+        subject: "Assunto v2",
+        html: "<p>versão 2</p>",
+        variables: [],
+        versionNumber: 2,
+      }
+    })
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 2,
+      failed: 0,
+      dispatched: [
+        { email: "r0@test.com", resendId: "re_0" },
+        { email: "r1@test.com", resendId: "re_1" },
+      ],
+      providerErrors: [],
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(call).toBe(1)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { templateId?: string; templateVersionNumber?: number; templateHtml?: string } },
+    ]
+    expect(createArg[0].data.templateId).toBe("tpl-ref-1")
+    expect(createArg[0].data.templateVersionNumber).toBe(1)
+    expect(createArg[0].data.templateHtml).toContain("versão 1")
+  })
+
+  it("startManualDispatch cai no current published se o template pinado foi arquivado", async () => {
+    let call = 0
+    emailTemplateFindFirstMock.mockImplementation(async () => {
+      call += 1
+      if (call === 1) return null
+      if (call === 2) return { versionGroupId: "vg-1" }
+      return {
+        id: "tpl-current",
+        name: "Template v2",
+        subject: "Assunto v2",
+        html: "<p>versão 2</p>",
+        variables: [],
+        versionNumber: 2,
+      }
+    })
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 2,
+      failed: 0,
+      dispatched: [
+        { email: "r0@test.com", resendId: "re_0" },
+        { email: "r1@test.com", resendId: "re_1" },
+      ],
+      providerErrors: [],
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { templateId?: string; templateVersionNumber?: number } },
+    ]
+    expect(createArg[0].data.templateId).toBe("tpl-current")
+    expect(createArg[0].data.templateVersionNumber).toBe(2)
   })
 
   it("failed com totalSent 0 sem flag não força retryFailedOnly (primeiro Disparar)", async () => {
