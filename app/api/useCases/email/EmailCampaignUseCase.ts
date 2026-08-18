@@ -112,6 +112,7 @@ import {
 import {
   publishEmailCampaignDispatchWake,
 } from "@/lib/queues/email-campaign-dispatch"
+import { isCampaignFailedRetry } from "@/lib/email/campaign-dispatch-copy"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
@@ -1337,8 +1338,11 @@ export class EmailCampaignUseCase {
       const failedRetryCandidates = campaigns
         .filter((campaign) => {
           if (campaign._count.subCampaigns > 0) return false
-          const effectiveStatus = leafReconcileOverrides.get(campaign.id)?.status ?? campaign.status
-          return RETRY_FAILED_ONLY_STATUSES.has(effectiveStatus)
+          const override = leafReconcileOverrides.get(campaign.id)
+          return isCampaignFailedRetry({
+            status: override?.status ?? campaign.status,
+            totalSent: override?.totalSent ?? campaign.totalSent,
+          })
         })
         .map((campaign) => ({ id: campaign.id, totalRecipients: campaign.totalRecipients }))
       const failedRetryCountsByCampaignId = await this.computeFailedRetryRecipientCountsBatch(
@@ -1360,7 +1364,8 @@ export class EmailCampaignUseCase {
           const totalRecipients = dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients
           const totalSent = childSum?.totalSent ?? leafOverride?.totalSent ?? campaign.totalSent
           const isLeafRetryStatus =
-            subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(effectiveStatus)
+            subCampaignCount === 0 &&
+            isCampaignFailedRetry({ status: effectiveStatus, totalSent })
 
           const leafProgress = progressByCampaignId.get(campaign.id)
           const childProgresses =
@@ -1563,7 +1568,7 @@ export class EmailCampaignUseCase {
       )
 
       const failedRetryRecipientCount =
-        !isParent && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+        !isParent && isCampaignFailedRetry(campaign)
           ? await this.computeFailedRetryRecipientCount({
               campaignId: campaign.id,
               fallbackAudienceCount: activeRecipientCount,
@@ -1577,7 +1582,7 @@ export class EmailCampaignUseCase {
       const subFailedRetryCountById = new Map<string, number>()
       await Promise.all(
         campaign.subCampaigns
-          .filter((sub) => RETRY_FAILED_ONLY_STATUSES.has(sub.status))
+          .filter((sub) => isCampaignFailedRetry(sub))
           .map(async (sub) => {
             const count = await this.computeFailedRetryRecipientCount({
               campaignId: sub.id,
@@ -1646,7 +1651,7 @@ export class EmailCampaignUseCase {
           const subProgress = progressByCampaignId.get(sub.id)
           return {
             ...sub,
-            failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
+            failedRetryRecipientCount: isCampaignFailedRetry(sub)
               ? subFailedRetryCountById.get(sub.id) ?? 0
               : undefined,
             activeDispatch: subProgress?.activeDispatch ?? null,
@@ -2759,10 +2764,11 @@ export class EmailCampaignUseCase {
         return new Output(false, [], [trackingGuard.message], null)
       }
 
-      // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
-      // Evita reenviar a lista inteira e duplicar quem já chegou ao provedor.
+      // Retry só-falhos: flag explícito, ou failed/partially_sent com totalSent > 0
+      // (mesmo contrato de isCampaignFailedRetry). totalSent === 0 é o primeiro
+      // Disparar — audiência completa, inclusive quem ainda não foi materializado.
       const retryFailedOnly =
-        options?.retryFailedOnly === true || RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+        options?.retryFailedOnly === true || isCampaignFailedRetry(campaign)
 
       const audienceCount = await this.countDispatchAudience({
         teamId: ctx.teamId,

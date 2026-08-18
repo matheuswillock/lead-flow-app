@@ -2699,6 +2699,45 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     expect(createArg[0].data.retryFailedOnly).toBe(false)
   })
 
+  it("failed com totalSent 0 sem flag não força retryFailedOnly (primeiro Disparar)", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed", totalSent: 0 })
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "failed" },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean; totalRecipients?: number } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(false)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(2)
+  })
+
+  it("failed com totalSent > 0 sem flag ainda força retryFailedOnly", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed", totalSent: 3 })
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "failed" },
+      { recipientEmail: "r1@test.com", status: "sent" },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(true)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(1)
+  })
+
   it("list retorna latestDispatch para campanha failed com erro", async () => {
     emailCampaignFindManyMock.mockImplementation(async () => [
       {
