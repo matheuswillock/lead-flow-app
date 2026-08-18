@@ -585,6 +585,21 @@ with_operators with_operators
     
 
 
+        subscription_lifecycle_event {
+            contracted contracted
+renewed renewed
+plan_changed plan_changed
+addon_purchased addon_purchased
+overdue overdue
+reduced reduced
+cut cut
+restored restored
+free_access_granted free_access_granted
+level_transition level_transition
+        }
+    
+
+
         pending_action_type {
             create_team create_team
 add_member add_member
@@ -3076,10 +3091,19 @@ completed completed
     String id "🗝️"
     String source 
     String changeType 
+    SubscriptionLifecycleEvent eventType "❓"
     Json before "❓"
     Json after "❓"
     Json metadata "❓"
     DateTime createdAt 
+    }
+  
+
+  "corretor_studio_subscription_state_snapshots" {
+    String id "🗝️"
+    DateTime capturedAt 
+    String schemaVersion 
+    Json payload 
     }
   
 
@@ -4430,8 +4454,10 @@ completed completed
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
+    "corretor_studio_subscription_change_logs" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
+    "corretor_studio_subscription_state_snapshots" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"

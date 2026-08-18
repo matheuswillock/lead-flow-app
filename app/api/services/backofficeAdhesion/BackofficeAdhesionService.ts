@@ -28,6 +28,7 @@ import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
+import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
 import type {
   BackofficeAdhesionWithRelations,
   IBackofficeAdhesionRepository,
@@ -1925,6 +1926,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionStartDate,
         subscriptionEndDate,
         subscriptionNextDueDate: subscriptionEndDate,
+      })
+      await logSubscriptionChange({
+        profileId: createdProfile.profileId,
+        source: "backoffice_adhesion:paid",
+        eventType: "contracted",
+        after: {
+          adhesionId: adhesion.id,
+          productId: crmProduct.id,
+          subscriptionCycle: adhesion.cycle,
+        },
       })
 
       provisionedProfileId = createdProfile.profileId

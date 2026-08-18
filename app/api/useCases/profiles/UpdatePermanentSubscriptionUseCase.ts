@@ -2,6 +2,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import { auditLogService } from "@/app/api/services/audit/AuditLogService";
+import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange";
 
 /**
  * UseCase para atualizar flag de assinatura permanente.
@@ -85,6 +86,18 @@ export class UpdatePermanentSubscriptionUseCase {
           hasUnlimitedUsers: updatedProfile.hasUnlimitedUsers,
         },
         metadata: { source: "backoffice_permanent_subscription" },
+      });
+
+      await logSubscriptionChange({
+        profileId: targetProfile.id,
+        source: "backoffice_permanent_subscription",
+        actorProfileId,
+        eventType: hasPermanentSubscription ? "free_access_granted" : "cut",
+        before,
+        after: {
+          hasPermanentSubscription: updatedProfile.hasPermanentSubscription,
+          hasUnlimitedUsers: updatedProfile.hasUnlimitedUsers,
+        },
       });
 
       console.info("[UpdatePermanentSubscriptionUseCase] vitalício atualizado", {

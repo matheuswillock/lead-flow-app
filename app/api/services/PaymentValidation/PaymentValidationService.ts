@@ -14,6 +14,10 @@ import {
 } from '@/lib/billing/asaas-subscription-status';
 import { AsaasSubscriptionService } from '@/app/api/services/AsaasSubscription/AsaasSubscriptionService';
 import { billingEngineRepository } from '@/app/api/infra/data/repositories/billing/BillingEngineRepository';
+import {
+  lifecycleEventFromSubscriptionStatus,
+  logSubscriptionChange,
+} from '@/lib/billing/logSubscriptionChange';
 
 export class PaymentValidationService implements IPaymentValidationService {
   constructor(private paymentRepository: IPaymentRepository) {}
@@ -131,6 +135,16 @@ export class PaymentValidationService implements IPaymentValidationService {
           subscriptionEndDate: endDate,
         });
 
+        const eventType = lifecycleEventFromSubscriptionStatus(mappedStatus);
+        if (eventType) {
+          await logSubscriptionChange({
+            profileId: profile.id,
+            source: `asaas_webhook:${event}`,
+            eventType,
+            after: { subscriptionStatus: mappedStatus },
+          });
+        }
+
         console.info(`[PaymentValidationService] Profile vinculado no ${event}: ${profile.id} → ${mappedStatus}`);
         return { success: true, isPaid: false, paymentStatus: 'PENDING', profileUpdated: true, message: 'Assinatura vinculada ao Profile' };
       }
@@ -169,6 +183,12 @@ export class PaymentValidationService implements IPaymentValidationService {
 
             await this.paymentRepository.updateSubscriptionData(profile.id, {
               subscriptionStatus: 'past_due',
+            });
+            await logSubscriptionChange({
+              profileId: profile.id,
+              source: 'asaas_webhook:PAYMENT_OVERDUE',
+              eventType: 'overdue',
+              after: { subscriptionStatus: 'past_due' },
             });
             console.info(`[PaymentValidationService] Profile marcado como past_due por OVERDUE: ${profile.id}`);
 
@@ -214,6 +234,12 @@ export class PaymentValidationService implements IPaymentValidationService {
       if (profile && !isPartial) {
         await this.paymentRepository.updateSubscriptionData(profile.id, {
           subscriptionStatus: 'suspended',
+        });
+        await logSubscriptionChange({
+          profileId: profile.id,
+          source: `asaas_webhook:${event}`,
+          eventType: 'reduced',
+          after: { subscriptionStatus: 'suspended' },
         });
         console.info('[PaymentValidationService] refund/chargeback → suspended', {
           event,
@@ -411,6 +437,12 @@ export class PaymentValidationService implements IPaymentValidationService {
         subscriptionPlan: preservedPlan,
         subscriptionStatus: 'active',
         subscriptionStartDate: new Date(),
+      });
+      await logSubscriptionChange({
+        profileId: profile.id,
+        source: 'asaas_webhook:payment_confirmed',
+        eventType: 'restored',
+        after: { subscriptionStatus: 'active' },
       });
 
       console.info(
