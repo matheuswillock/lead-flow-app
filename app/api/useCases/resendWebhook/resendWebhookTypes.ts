@@ -10,7 +10,12 @@ export type ResendWebhookPayload = {
     to?: string[]
     tags?: Record<string, string> | Array<{ name: string; value: string }>
     click?: { link: string; userAgent: string; ipAddress: string }
-    bounce?: { message: string; type?: string }
+    bounce?: {
+      message: string
+      type?: string
+      subType?: string
+      diagnosticCode?: string[]
+    }
     records?: Array<{ status?: string }>
     open_tracking?: boolean
     click_tracking?: boolean

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { radarSegmentRulesSchema } from "@/lib/radar/segment-dsl"
+import { radarSegmentRulesSchema, radarSegmentAdditionalRulesSchema } from "@/lib/radar/segment-dsl"
 
 export const createTeamRadarSegmentSchema = z.object({
   name: z.string().trim().min(1, "name é obrigatório").max(120, "name deve ter no máximo 120 caracteres"),
@@ -16,7 +16,7 @@ export const updateTeamRadarSegmentSchema = z.object({
 
 export const previewCustomSegmentRulesSchema = z
   .object({
-    rules: radarSegmentRulesSchema.optional(),
+    rules: radarSegmentAdditionalRulesSchema.optional(),
     parentSegmentId: z.string().uuid("parentSegmentId deve ser um UUID válido").optional(),
     campaignId: z.string().uuid("campaignId deve ser um UUID válido").optional(),
   })

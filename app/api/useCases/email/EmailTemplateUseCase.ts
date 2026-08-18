@@ -22,6 +22,8 @@ import {
 } from "@/lib/email/interpolate"
 import {
   EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY,
+  isEmailUnsubscribeLinkVariableKey,
+  normalizeUnsubscribeLookalikeTokens,
   suggestUnsubscribeTokenHint,
 } from "@/lib/email/unsubscribe-link-embed"
 import { getFullUrl } from "@/lib/utils/app-url"
@@ -369,7 +371,7 @@ export class EmailTemplateUseCase {
             editorMode === "html"
               ? Prisma.JsonNull
               : ((data.mailyJson as object) ?? Prisma.JsonNull),
-          html: data.html ?? null,
+          html: data.html != null ? normalizeUnsubscribeLookalikeTokens(data.html) : null,
           editorMode,
           variables: (data.variables as object) ?? undefined,
           approvalStatus: approvalSeed.approvalStatus,
@@ -450,7 +452,9 @@ export class EmailTemplateUseCase {
           resolvedEditorMode !== "html" && { mailyJson: data.mailyJson as object }),
         ...(data.mailyJson !== undefined &&
           resolvedEditorMode === "html" && { mailyJson: Prisma.JsonNull }),
-        ...(data.html !== undefined && { html: data.html }),
+        ...(data.html !== undefined && {
+          html: data.html != null ? normalizeUnsubscribeLookalikeTokens(data.html) : data.html,
+        }),
         ...(data.editorMode !== undefined && { editorMode: data.editorMode }),
         ...(data.variables !== undefined && { variables: (data.variables as object) ?? Prisma.JsonNull }),
       }
@@ -509,7 +513,12 @@ export class EmailTemplateUseCase {
             subject: data.subject?.trim() ?? existing.subject,
             previewText: data.previewText !== undefined ? data.previewText?.trim() ?? null : existing.previewText,
             mailyJson: data.mailyJson !== undefined ? data.mailyJson as object : existing.mailyJson ?? Prisma.JsonNull,
-            html: data.html !== undefined ? data.html : existing.html,
+            html:
+              data.html !== undefined
+                ? data.html != null
+                  ? normalizeUnsubscribeLookalikeTokens(data.html)
+                  : data.html
+                : existing.html,
             editorMode: data.editorMode ?? existing.editorMode,
             variables: data.variables !== undefined ? (data.variables as object) ?? Prisma.JsonNull : existing.variables ?? Prisma.JsonNull,
             status: "draft",
@@ -675,9 +684,8 @@ export class EmailTemplateUseCase {
       )
       const unresolvedTokens = extractTemplateVariableKeys(`${renderedSubject}\n${renderedHtml}`).filter(
         (token) =>
-          !["nome", "nome_do_lead", "name", "email", EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY].includes(
-            token.toLowerCase(),
-          ),
+          !["nome", "nome_do_lead", "name", "email"].includes(token.toLowerCase()) &&
+          !isEmailUnsubscribeLinkVariableKey(token),
       )
 
       if (unresolvedTokens.length > 0) {

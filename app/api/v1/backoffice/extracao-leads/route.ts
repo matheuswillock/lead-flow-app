@@ -38,27 +38,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result.error, { status: result.status })
     }
 
-    const body = await request.json()
+    const body = await request.json() as Record<string, unknown>
+    const municipalityCodes = parseMunicipalityCodes(body)
     const filters: LeadExtractionFilters = {
-      mainCnae: body.mainCnae,
-      states: Array.isArray(body.states) ? body.states : body.state ? [body.state] : undefined,
-      municipalityCode: body.municipalityCode ? Number(body.municipalityCode) : undefined,
-      statusIds: Array.isArray(body.statusIds) ? body.statusIds : undefined,
-      natureIds: Array.isArray(body.natureIds) ? body.natureIds : undefined,
-      sizeIds: Array.isArray(body.sizeIds) ? body.sizeIds : undefined,
-      simplesOptant: body.simplesOptant,
-      simeiOptant: body.simeiOptant,
-      foundedGte: body.foundedGte,
-      foundedLte: body.foundedLte,
-      hasPhone: body.hasPhone,
-      hasEmail: body.hasEmail,
+      mainCnae: typeof body.mainCnae === "string" ? body.mainCnae : undefined,
+      states: Array.isArray(body.states)
+        ? body.states.filter((state): state is string => typeof state === "string")
+        : typeof body.state === "string"
+          ? [body.state]
+          : undefined,
+      municipalityCodes,
+      natureIds: Array.isArray(body.natureIds)
+        ? body.natureIds.filter((id): id is string => typeof id === "string")
+        : undefined,
+      sizeIds: Array.isArray(body.sizeIds)
+        ? body.sizeIds.filter((id): id is string => typeof id === "string")
+        : undefined,
+      simplesOptant: typeof body.simplesOptant === "boolean" ? body.simplesOptant : undefined,
+      simeiOptant: typeof body.simeiOptant === "boolean" ? body.simeiOptant : undefined,
+      foundedGte: typeof body.foundedGte === "string" ? body.foundedGte : undefined,
+      foundedLte: typeof body.foundedLte === "string" ? body.foundedLte : undefined,
+      hasPhone: body.hasPhone === true ? true : undefined,
+      hasEmail: body.hasEmail === true ? true : undefined,
       removeContadores: body.removeContadores === true,
     }
 
     const output = await backofficeLeadExtractionUseCase.search(
       result.access.profileId,
       filters,
-      body.limit
+      typeof body.limit === "number" || typeof body.limit === "string"
+        ? Number(body.limit)
+        : undefined
     )
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
@@ -66,4 +76,18 @@ export async function POST(request: NextRequest) {
     console.error("[BackofficeLeadExtractionRoute][POST]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
+}
+
+function parseMunicipalityCodes(body: Record<string, unknown>): number[] | undefined {
+  const rawCodes = Array.isArray(body.municipalityCodes)
+    ? body.municipalityCodes
+    : body.municipalityCode != null
+      ? [body.municipalityCode]
+      : []
+
+  const codes = rawCodes
+    .map((code) => Number(code))
+    .filter((code) => Number.isInteger(code) && code > 0)
+
+  return codes.length > 0 ? codes : undefined
 }

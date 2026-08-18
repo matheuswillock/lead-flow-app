@@ -11,7 +11,11 @@ import {
   uploadEmailImportPayload,
 } from "@/lib/email/email-import-storage"
 import { generateEmailImportId } from "@/lib/email/generate-import-id"
-import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import {
+  AUDIENCE_REASON_BOUNCED,
+  evaluateEmailForAudience,
+} from "@/lib/email/audience-prevalidation"
+import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
 import {
   formatTransientTransactionErrorMessage,
   withTransientTransactionRetry,
@@ -154,16 +158,16 @@ export class EmailContactImportUseCase {
     return { imported, updated: updateRows.length }
   }
 
-  private validateRows(rows: ImportRow[]): {
+  private async validateRows(rows: ImportRow[]): Promise<{
     validRows: ImportRow[]
     skipped: number
     skippedIssues: SkippedImportIssue[]
-  } {
-    const validRows: ImportRow[] = []
+  }> {
+    const candidates: ImportRow[] = []
     const skippedIssues: SkippedImportIssue[] = []
 
     for (const row of rows) {
-      const validation = isValidResendRecipientEmail(row.email ?? "")
+      const validation = evaluateEmailForAudience(row.email ?? "")
       if (!validation.ok) {
         skippedIssues.push({
           line: row.line,
@@ -172,12 +176,28 @@ export class EmailContactImportUseCase {
         })
         continue
       }
-      validRows.push({
+      candidates.push({
         line: row.line,
         email: validation.email,
         name: row.name?.trim() || undefined,
         customFields: row.customFields,
       })
+    }
+
+    const bouncedEmails = await emailContactListRepository.findBouncedEmails(
+      candidates.map((row) => row.email)
+    )
+    const validRows: ImportRow[] = []
+    for (const row of candidates) {
+      if (bouncedEmails.has(row.email)) {
+        skippedIssues.push({
+          line: row.line,
+          email: row.email,
+          reason: AUDIENCE_REASON_BOUNCED,
+        })
+        continue
+      }
+      validRows.push(row)
     }
 
     return {
@@ -479,7 +499,7 @@ export class EmailContactImportUseCase {
         validRows,
         skipped: initialSkipped,
         skippedIssues: initialSkippedIssues,
-      } = this.validateRows(allRows)
+      } = await this.validateRows(allRows)
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount

@@ -14815,7 +14815,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mainCnae\": \"6550200\",\n  \"states\": [\n    \"SP\",\n    \"RJ\"\n  ],\n  \"statusIds\": [\n    \"2\"\n  ],\n  \"hasPhone\": true,\n  \"hasEmail\": false,\n  \"removeContadores\": true,\n  \"limit\": 100\n}",
+              "raw": "{\n  \"mainCnae\": \"6550200\",\n  \"states\": [\n    \"SP\"\n  ],\n  \"municipalityCodes\": [\n    3550308,\n    3505708\n  ],\n  \"foundedGte\": \"2020-01-01\",\n  \"foundedLte\": \"2024-12-31\",\n  \"hasPhone\": true,\n  \"hasEmail\": false,\n  \"removeContadores\": true,\n  \"limit\": 100\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14834,7 +14834,7 @@
                 "extracao-leads"
               ]
             },
-            "description": "Pesquisa empresas pelo CNPJá com filtros de CNAE, UF, situação cadastral e outras características."
+            "description": "Pesquisa empresas pelo CNPJá. Situação cadastral é sempre Ativa (status 2). Aceita quantity via limit (1–1000, uma página), municipalityCodes (IBGE), foundedGte/foundedLte independentes, estados e CNAE."
           },
           "response": []
         },

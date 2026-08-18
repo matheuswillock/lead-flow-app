@@ -11,6 +11,7 @@ export type CreateContactListInput = {
 export type ContactRow = {
   email: string
   name?: string | null
+  isBounced?: boolean
 }
 
 class EmailContactListRepository {
@@ -35,8 +36,22 @@ class EmailContactListRepository {
     return new Set(existing.map((c) => c.email))
   }
 
+  async findBouncedEmails(emails: string[]): Promise<Set<string>> {
+    const normalized = [
+      ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ]
+    if (normalized.length === 0) return new Set()
+    const bounced = await prisma.emailContact.findMany({
+      where: { email: { in: normalized }, isBounced: true },
+      select: { email: true },
+      distinct: ["email"],
+    })
+    return new Set(bounced.map((row) => row.email.trim().toLowerCase()))
+  }
+
   async createContacts(listId: string, contacts: ContactRow[]): Promise<number> {
     if (contacts.length === 0) return 0
+    const bouncedEmails = await this.findBouncedEmails(contacts.map((contact) => contact.email))
     const result = await prisma.emailContact.createMany({
       data: contacts.map((c) => ({
         id: randomUUID(),
@@ -44,6 +59,7 @@ class EmailContactListRepository {
         email: c.email,
         name: c.name ?? null,
         customFields: Prisma.JsonNull,
+        isBounced: c.isBounced === true || bouncedEmails.has(c.email.trim().toLowerCase()),
       })),
       skipDuplicates: true,
     })

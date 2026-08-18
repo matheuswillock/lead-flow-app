@@ -1,3 +1,4 @@
+import { clampLeadExtractionLimit } from "@/lib/backoffice/lead-extraction-constants"
 import type {
   IBackofficeLeadExtractionFrontendService,
   LeadExtractionFiltersForm,
@@ -19,12 +20,15 @@ export class BackofficeLeadExtractionService implements IBackofficeLeadExtractio
   }
 
   async search(filters: LeadExtractionFiltersForm): Promise<LeadExtractionSearchResult> {
-    const payload: Record<string, unknown> = {}
+    const payload: Record<string, unknown> = {
+      limit: clampLeadExtractionLimit(filters.limit),
+    }
 
     if (filters.mainCnae) payload.mainCnae = filters.mainCnae
     if (filters.states.length > 0) payload.states = filters.states
-    if (filters.municipalityCode) payload.municipalityCode = Number(filters.municipalityCode)
-    if (filters.statusIds.length > 0) payload.statusIds = filters.statusIds
+    if (filters.municipalityCodes.length > 0) {
+      payload.municipalityCodes = filters.municipalityCodes.map(Number)
+    }
     if (filters.natureIds.length > 0) payload.natureIds = filters.natureIds
     if (filters.sizeIds.length > 0) payload.sizeIds = filters.sizeIds
     if (filters.simplesOptant === "true") payload.simplesOptant = true

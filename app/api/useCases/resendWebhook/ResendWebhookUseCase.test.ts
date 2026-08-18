@@ -45,6 +45,16 @@ mock.module("@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase", () =>
   },
 }))
 
+const queuePruneForSuppressedEmailMock = mock(() => {})
+const queuePruneForComplaintMock = mock(() => {})
+mock.module("@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase", () => ({
+  emailCampaignAudiencePruneUseCase: {
+    queuePruneForSuppressedEmail: queuePruneForSuppressedEmailMock,
+    queuePruneForComplaint: queuePruneForComplaintMock,
+    queueCampaignAudiencePrune: mock(() => {}),
+  },
+}))
+
 const { ResendWebhookUseCase } = await import("@/app/api/useCases/resendWebhook/ResendWebhookUseCase")
 
 function createWebhookService(): ResendWebhookService {
@@ -52,6 +62,7 @@ function createWebhookService(): ResendWebhookService {
     mapEventType: (type: string) => {
       if (type === "email.delivered") return "delivered"
       if (type === "email.bounced") return "bounced"
+      if (type === "email.complained") return "complained"
       return null
     },
     processEmailLogWebhook: processEmailLogWebhookMock,
@@ -126,6 +137,99 @@ describe("ResendWebhookUseCase", () => {
     expect((output.result as { handled: boolean }).handled).toBe(true)
   })
 
+  it("persiste bounceSubType e bounceDiagnosticCode no metadata", async () => {
+    processEmailLogWebhookMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-bounce",
+      teamId: "team-1",
+      status: "sent",
+      recipientEmail: "ana@terra.com.br",
+      recipientName: null,
+      campaignId: null,
+      dispatchId: null,
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      bouncedAt: null,
+      complainedAt: null,
+    })
+
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
+    await useCase.handle({
+      event: {
+        type: "email.bounced",
+        data: {
+          email_id: "re_bounce",
+          created_at: new Date().toISOString(),
+          bounce: {
+            message: "content that the provider doesn't allow",
+            type: "Transient",
+            subType: "ContentRejected",
+            diagnosticCode: ["smtp; 554 5.7.1 content rejected"],
+          },
+        },
+      },
+    })
+
+    expect(processEmailLogWebhookMock).toHaveBeenCalled()
+    const input = processEmailLogWebhookMock.mock.calls[0] as unknown as [
+      { metadata: Record<string, unknown> },
+    ]
+    expect(input[0].metadata).toEqual(
+      expect.objectContaining({
+        bounceMessage: "content that the provider doesn't allow",
+        bounceType: "Transient",
+        bounceSubType: "ContentRejected",
+        bounceDiagnosticCode: ["smtp; 554 5.7.1 content rejected"],
+      })
+    )
+  })
+
+  it("persiste MailboxFull no metadata sem omitir o subType", async () => {
+    processEmailLogWebhookMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-full",
+      teamId: "team-1",
+      status: "sent",
+      recipientEmail: "ana@gmail.com",
+      recipientName: null,
+      campaignId: null,
+      dispatchId: null,
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      bouncedAt: null,
+      complainedAt: null,
+    })
+
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
+    await useCase.handle({
+      event: {
+        type: "email.bounced",
+        data: {
+          email_id: "re_full",
+          created_at: new Date().toISOString(),
+          bounce: {
+            message: "The recipient's inbox was full.",
+            type: "Transient",
+            subType: "MailboxFull",
+          },
+        },
+      },
+    })
+
+    const input = processEmailLogWebhookMock.mock.calls[0] as unknown as [
+      { metadata: Record<string, unknown> },
+    ]
+    expect(input[0].metadata).toEqual(
+      expect.objectContaining({
+        bounceMessage: "The recipient's inbox was full.",
+        bounceType: "Transient",
+        bounceSubType: "MailboxFull",
+      })
+    )
+  })
+
   it("cai para o motor de campanhas do backoffice quando produto e dispatch transacional não encontram o log", async () => {
     findByResendEmailIdMock.mockResolvedValueOnce(null)
     applyResendWebhookEventMock.mockResolvedValueOnce(
@@ -145,5 +249,34 @@ describe("ResendWebhookUseCase", () => {
 
     expect(applyBackofficeCampaignWebhookEventMock).toHaveBeenCalled()
     expect(output.result).toEqual({ handled: true, target: "backoffice_email_campaign" })
+  })
+
+  it("dispara poda de audiência após bounce", async () => {
+    queuePruneForSuppressedEmailMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-bounce",
+      teamId: "team-1",
+      status: "sent",
+      recipientEmail: "bounce@test.com",
+      recipientName: null,
+      campaignId: "camp-1",
+      dispatchId: null,
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      bouncedAt: null,
+      complainedAt: null,
+    })
+
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
+    await useCase.handle({
+      event: {
+        type: "email.bounced",
+        data: { email_id: "re_bounce", created_at: new Date().toISOString() },
+      },
+    })
+
+    expect(processEmailLogWebhookMock).toHaveBeenCalled()
+    expect(queuePruneForSuppressedEmailMock).toHaveBeenCalledWith("bounce@test.com")
   })
 })

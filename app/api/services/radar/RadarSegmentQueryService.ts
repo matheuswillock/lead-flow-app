@@ -445,6 +445,8 @@ async function translateCondition(
       return translateEmailContactField(teamId, condition)
     case "engagement_band":
       return translateEngagementBand(condition)
+    case "condition_group":
+      return buildProfileWhere(teamId, { match: condition.match, conditions: condition.conditions })
     default: {
       const _exhaustive: never = condition
       throw new Error(`Unhandled radar segment condition: ${JSON.stringify(_exhaustive)}`)

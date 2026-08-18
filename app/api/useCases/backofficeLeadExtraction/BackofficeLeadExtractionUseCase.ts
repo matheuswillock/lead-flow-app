@@ -3,8 +3,19 @@ import { BackofficeLeadExtractionRepository } from "@/app/api/infra/data/reposit
 import type { IBackofficeLeadExtractionRepository, LeadExtractionFilters } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadExtraction/IBackofficeLeadExtractionRepository"
 import { BackofficeLeadExtractionService } from "@/app/api/services/backofficeLeadExtraction/BackofficeLeadExtractionService"
 import type { IBackofficeLeadExtractionService } from "@/app/api/services/backofficeLeadExtraction/IBackofficeLeadExtractionService"
+import {
+  BACKOFFICE_LEAD_EXTRACTION_STATUS_ATIVA,
+  clampLeadExtractionLimit,
+} from "@/lib/backoffice/lead-extraction-constants"
 
 export type { LeadExtractionFilters }
+
+function normalizeIsoDate(value: string | undefined): string | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return undefined
+  }
+  return value
+}
 
 export class BackofficeLeadExtractionUseCase {
   constructor(
@@ -15,12 +26,21 @@ export class BackofficeLeadExtractionUseCase {
   async search(profileId: string, filters: LeadExtractionFilters, limit?: number): Promise<Output> {
     let extractionId: string | null = null
     try {
-      const extraction = await this.repo.create(profileId, filters)
+      const safeLimit = clampLeadExtractionLimit(limit ?? filters.limit)
+      const normalizedFilters: LeadExtractionFilters = {
+        ...filters,
+        statusIds: [BACKOFFICE_LEAD_EXTRACTION_STATUS_ATIVA],
+        foundedGte: normalizeIsoDate(filters.foundedGte),
+        foundedLte: normalizeIsoDate(filters.foundedLte),
+        limit: safeLimit,
+      }
+
+      const extraction = await this.repo.create(profileId, normalizedFilters)
       extractionId = extraction.id
 
       await this.repo.updateStatus(extraction.id, "RUNNING")
 
-      const { items, totalCount } = await this.service.search(filters, limit)
+      const { items, totalCount } = await this.service.search(normalizedFilters, safeLimit)
 
       await this.repo.saveResults(extraction.id, items)
       await this.repo.updateStatus(extraction.id, "DONE", totalCount)
