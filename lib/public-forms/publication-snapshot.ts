@@ -28,6 +28,12 @@ export function snapshotContainsAllQuestions(snapshot: unknown, questionIds: str
   return questionIds.every((questionId) => ids.has(questionId))
 }
 
+export function questionIdFromSnapshot(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null
+  const id = (snapshot as { id?: unknown }).id
+  return typeof id === "string" && id.length > 0 ? id : null
+}
+
 export function isStaleQuestionIdForeignKey(
   error: unknown,
   questionId: string | null | undefined,

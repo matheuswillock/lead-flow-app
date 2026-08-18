@@ -5,6 +5,7 @@ import {
   listSnapshotQuestionIds,
   mapAnswersForPersistence,
   parsePublicFormSnapshot,
+  questionIdFromSnapshot,
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "./publication-snapshot"
@@ -40,6 +41,13 @@ describe("publication-snapshot", () => {
     expect(mapped).toHaveLength(1)
     expect(mapped[0]?.questionId).toBe("q-1")
     expect(mapped[0]?.questionSnapshot).toEqual(SNAPSHOT.questions[0])
+  })
+
+  it("extrai o id da pergunta a partir do snapshot", () => {
+    expect(questionIdFromSnapshot({ id: "q-1", title: "Nome" })).toBe("q-1")
+    expect(questionIdFromSnapshot({ title: "sem id" })).toBeNull()
+    expect(questionIdFromSnapshot(null)).toBeNull()
+    expect(questionIdFromSnapshot(["q-1"])).toBeNull()
   })
 
   it("reconhece P2003 de FK de questionId", () => {

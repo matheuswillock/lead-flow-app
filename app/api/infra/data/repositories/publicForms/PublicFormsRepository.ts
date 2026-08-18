@@ -16,6 +16,7 @@ import {
 } from "@/lib/public-forms/lead-transfer-submission-copy"
 import {
   isStaleQuestionIdForeignKey,
+  questionIdFromSnapshot,
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "@/lib/public-forms/publication-snapshot"
@@ -1054,9 +1055,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           score: 0,
         },
       })
-      for (const answer of data.answers) {
-        await this.writeSubmissionAnswer(tx, submission.id, answer, "create")
-      }
+      await this.syncSubmissionAnswers(tx, submission.id, data.answers)
       return submission
     })
   }
@@ -1153,7 +1152,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     for (const answer of answers) {
-      await this.writeSubmissionAnswer(tx, submissionId, answer, "upsert")
+      await this.writeSubmissionAnswer(tx, submissionId, answer)
     }
   }
 
@@ -1165,8 +1164,15 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
     },
-    strategy: "upsert" | "create",
   ) {
+    if (!answer.questionId) {
+      await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
+        value: answer.value,
+        questionSnapshot: answer.questionSnapshot,
+      })
+      return
+    }
+
     const data = {
       submissionId,
       questionId: answer.questionId,
@@ -1175,36 +1181,66 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     }
 
     try {
-      if (strategy === "upsert" && answer.questionId) {
-        await tx.publicFormAnswer.upsert({
-          where: {
-            submissionId_questionId: {
-              submissionId,
-              questionId: answer.questionId,
-            },
+      await tx.publicFormAnswer.upsert({
+        where: {
+          submissionId_questionId: {
+            submissionId,
+            questionId: answer.questionId,
           },
-          create: data,
-          update: {
-            value: answer.value,
-            questionSnapshot: answer.questionSnapshot,
-          },
-        })
-        return
-      }
-      await tx.publicFormAnswer.create({ data })
+        },
+        create: data,
+        update: {
+          value: answer.value,
+          questionSnapshot: answer.questionSnapshot,
+        },
+      })
     } catch (error) {
       if (!isStaleQuestionIdForeignKey(error, answer.questionId)) throw error
       console.info("[PublicFormsRepository][writeSubmissionAnswer] questionId obsoleto, gravando sem o FK", {
         submissionId,
         questionId: answer.questionId,
       })
-      await tx.publicFormAnswer.create({
-        data: {
-          ...data,
-          questionId: null,
-        },
+      await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
+        value: data.value,
+        questionSnapshot: data.questionSnapshot,
       })
     }
+  }
+
+  private async persistAnswerWithoutQuestionFk(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    data: {
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    },
+  ) {
+    const snapshotId = questionIdFromSnapshot(data.questionSnapshot)
+    if (snapshotId) {
+      const existing = await tx.publicFormAnswer.findMany({
+        where: { submissionId, questionId: null },
+        select: { id: true, questionSnapshot: true },
+      })
+      const match = existing.find((row) => questionIdFromSnapshot(row.questionSnapshot) === snapshotId)
+      if (match) {
+        await tx.publicFormAnswer.update({
+          where: { id: match.id },
+          data: {
+            value: data.value,
+            questionSnapshot: data.questionSnapshot,
+          },
+        })
+        return
+      }
+    }
+    await tx.publicFormAnswer.create({
+      data: {
+        submissionId,
+        questionId: null,
+        value: data.value,
+        questionSnapshot: data.questionSnapshot,
+      },
+    })
   }
 
   finalizeProgressSubmission(

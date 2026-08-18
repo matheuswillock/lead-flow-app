@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client"
 const deleteManyMock = mock(async () => ({ count: 0 }))
 const upsertMock = mock(async () => ({}))
 const createMock = mock(async () => ({}))
+const findManyMock = mock(async () => [] as Array<{ id: string; questionSnapshot: unknown }>)
+const updateMock = mock(async () => ({}))
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -12,6 +14,8 @@ mock.module("@/app/api/infra/data/prisma", () => ({
         deleteMany: typeof deleteManyMock
         upsert: typeof upsertMock
         create: typeof createMock
+        findMany: typeof findManyMock
+        update: typeof updateMock
       }
     }) => Promise<unknown>) =>
       fn({
@@ -19,6 +23,8 @@ mock.module("@/app/api/infra/data/prisma", () => ({
           deleteMany: deleteManyMock,
           upsert: upsertMock,
           create: createMock,
+          findMany: findManyMock,
+          update: updateMock,
         },
       }),
   },
@@ -39,8 +45,12 @@ describe("PublicFormsRepository.persistSubmissionAnswers P2003", () => {
     deleteManyMock.mockClear()
     upsertMock.mockClear()
     createMock.mockClear()
+    findManyMock.mockClear()
+    updateMock.mockClear()
     upsertMock.mockImplementation(async () => ({}))
     createMock.mockImplementation(async () => ({}))
+    findManyMock.mockImplementation(async () => [])
+    updateMock.mockImplementation(async () => ({}))
   })
 
   it("em FK obsoleta de questionId, grava a resposta com questionId null preservando o snapshot", async () => {
@@ -96,5 +106,31 @@ describe("PublicFormsRepository.persistSubmissionAnswers P2003", () => {
       { questionId: { notIn: ["stale-q"] } },
       { questionId: null },
     ])
+  })
+
+  it("no fallback P2003, atualiza a resposta null existente da mesma pergunta em vez de criar outra", async () => {
+    upsertMock.mockImplementationOnce(async () => {
+      throw foreignKeyError()
+    })
+    findManyMock.mockImplementation(async () => [
+      { id: "answer-null-1", questionSnapshot: { id: "stale-q", title: "Antiga" } },
+    ])
+
+    const repo = new PublicFormsRepository()
+    await repo.persistSubmissionAnswers("sub-1", [
+      {
+        questionId: "stale-q",
+        value: "nova" as Prisma.InputJsonValue,
+        questionSnapshot: { id: "stale-q", title: "Antiga" },
+      },
+    ])
+
+    expect(createMock).not.toHaveBeenCalled()
+    expect(updateMock).toHaveBeenCalledTimes(1)
+    const updateArg = updateMock.mock.calls[0] as unknown as [
+      { where: { id: string }; data: { value: unknown } },
+    ]
+    expect(updateArg[0].where.id).toBe("answer-null-1")
+    expect(updateArg[0].data.value).toBe("nova")
   })
 })
