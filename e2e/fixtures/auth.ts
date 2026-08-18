@@ -92,17 +92,7 @@ export async function injectE2eAuthCookie(
 ): Promise<void> {
   const baseUrl = options?.baseUrl ?? resolveE2eBaseUrl();
   const token = options?.token ?? signE2eSessionToken();
-  await context.addCookies([
-    {
-      name: E2E_COOKIE_NAME,
-      value: token,
-      url: baseUrl,
-      path: "/",
-      httpOnly: true,
-      secure: baseUrl.startsWith("https://"),
-      sameSite: "Lax",
-    },
-  ]);
+  await context.addCookies([buildE2eAuthCookie(token, baseUrl)]);
 }
 
 export const E2E_AUTH_USER = {
