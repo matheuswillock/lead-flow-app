@@ -768,14 +768,16 @@ export class EmailCampaignUseCase {
       return { recipients, exhausted: page.exhausted }
     }
     if (!params.contactListId) return { recipients: [], exhausted: true }
-    const recipients = await this.excludeTeamBlocklisted(
+    const listed = await this.recipientService.listActiveRecipients(
       params.teamId,
-      await this.recipientService.listActiveRecipients(params.teamId, params.contactListId, {
+      params.contactListId,
+      {
         skip: params.skip,
         take: params.take,
-      })
+      }
     )
-    return { recipients, exhausted: recipients.length < params.take }
+    const recipients = await this.excludeTeamBlocklisted(params.teamId, listed)
+    return { recipients, exhausted: listed.length < params.take }
   }
 
   private async loadListAudiences(

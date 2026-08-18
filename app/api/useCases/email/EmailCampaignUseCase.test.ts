@@ -800,6 +800,36 @@ describe("EmailCampaignUseCase.send", () => {
     ).toBe(true)
   })
 
+  it("processDispatchQueueBatch continua paginando quando a blocklist encolhe o lote da lista", async () => {
+    const recipients = makeRecipients(3)
+    listActiveRecipientsMock.mockImplementation(async () => recipients)
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set(["r0@test.com"]))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 2, reservedCredits: 2 })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: [
+          { email: "r1@test.com", resendId: "re_r1" },
+          { email: "r2@test.com", resendId: "re_r2" },
+        ],
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const first = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(first.isValid).toBe(true)
+    const queued = createQueuedLogsMock.mock.calls[0]?.[0] as Array<{ recipientEmail: string }>
+    expect(queued.map((entry) => entry.recipientEmail)).toEqual(["r1@test.com", "r2@test.com"])
+    const pageCalls = listActiveRecipientsMock.mock.calls.map(
+      (call) => call[2] as { skip?: number; take?: number } | undefined
+    )
+    expect(pageCalls.some((page) => page?.skip === 2 && page.take === 2)).toBe(true)
+  })
+
   // ---------------------------------------------------------------------------
   // C8 — tokens não resolvidos
   // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   CampaignRecipientRecord,
@@ -43,21 +44,48 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     teamId: string,
     page?: RecipientListPage
   ): Promise<CampaignRecipientRecord[]> {
-    const blocklistedEmails = await this.findBlocklistedEmails(teamId)
+    const pagination = page
+      ? Prisma.sql`OFFSET ${page.skip} LIMIT ${page.take}`
+      : Prisma.empty
 
-    const recipients = await prisma.emailContact.findMany({
-      where: {
-        ...this.activeRecipientWhere(blocklistedEmails),
-        list: {
-          teamId,
-          isArchived: false,
-          isBlocklist: false,
-        },
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-      ...(page ? { skip: page.skip, take: page.take } : {}),
-      select: recipientSelect,
-    })
+    const recipients = await prisma.$queryRaw<
+      Array<{
+        id: string
+        email: string
+        name: string | null
+        customFields: unknown
+      }>
+    >`
+      SELECT d.id, d.email, d.name, d."customFields"
+      FROM (
+        SELECT DISTINCT ON (LOWER(TRIM(c.email)))
+          c.id,
+          c.email,
+          c.name,
+          c."customFields",
+          c."updatedAt"
+        FROM "corretor_studio_email_contacts" c
+        INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+        WHERE l."teamId" = ${teamId}::uuid
+          AND l."isArchived" = false
+          AND l."isBlocklist" = false
+          AND c."isUnsubscribed" = false
+          AND c."isBounced" = false
+          AND c."isComplained" = false
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "corretor_studio_email_contacts" b
+            INNER JOIN "corretor_studio_email_contact_lists" bl ON bl.id = b."listId"
+            WHERE bl."teamId" = ${teamId}::uuid
+              AND bl."isArchived" = false
+              AND bl."isBlocklist" = true
+              AND b.email = c.email
+          )
+        ORDER BY LOWER(TRIM(c.email)), c."updatedAt" DESC, c.id ASC
+      ) d
+      ORDER BY d."updatedAt" DESC, d.id ASC
+      ${pagination}
+    `
 
     return recipients.map((recipient) => ({
       contactId: recipient.id,

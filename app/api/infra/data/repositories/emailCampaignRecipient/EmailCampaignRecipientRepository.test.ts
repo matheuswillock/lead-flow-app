@@ -11,9 +11,11 @@ const emailContactListFindFirstMock = mock(
       isSystemDefault?: boolean
     } | null
 )
-const queryRawMock = mock(async (): Promise<Array<{ count: bigint }>> => [
-  { count: BigInt(0) },
-])
+const queryRawMock = mock(
+  async (): Promise<Array<{ count: bigint } | { id: string; email: string; name: string | null; customFields: unknown }>> => [
+    { count: BigInt(0) },
+  ]
+)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -32,7 +34,14 @@ const { EmailCampaignRecipientRepository } = await import("./EmailCampaignRecipi
 
 function sqlFromQueryRawCall(call: unknown[] | undefined): string {
   const strings = call?.[0] as TemplateStringsArray | undefined
-  return strings ? Array.from(strings).join(" ") : ""
+  const fragments = strings ? Array.from(strings) : []
+  const values = (call ?? []).slice(1).map((value) => {
+    if (value && typeof value === "object" && "strings" in value) {
+      return Array.from((value as { strings: readonly string[] }).strings).join(" ")
+    }
+    return String(value)
+  })
+  return [...fragments, ...values].join(" ")
 }
 
 describe("EmailCampaignRecipientRepository counts", () => {
@@ -123,5 +132,28 @@ describe("EmailCampaignRecipientRepository counts", () => {
     expect(sql).toContain('"corretor_studio_email_contacts"')
     expect(sql).toContain('"corretor_studio_email_contact_lists"')
     expect(emailContactCountMock).not.toHaveBeenCalled()
+  })
+
+  it("findActiveRecipientsForTeam pagina e-mails distintos, não linhas brutas", async () => {
+    queryRawMock.mockImplementation(async () => [
+      {
+        id: "c-1",
+        email: "a@test.com",
+        name: "A",
+        customFields: null,
+      },
+    ])
+
+    const repo = new EmailCampaignRecipientRepository()
+    const recipients = await repo.findActiveRecipientsForTeam("team-1", { skip: 500, take: 500 })
+
+    expect(recipients).toEqual([
+      { contactId: "c-1", email: "a@test.com", name: "A", customFields: null },
+    ])
+    expect(emailContactFindManyMock).not.toHaveBeenCalled()
+    const sql = sqlFromQueryRawCall(queryRawMock.mock.calls[0] as unknown[])
+    expect(sql).toContain("DISTINCT ON (LOWER(TRIM(c.email)))")
+    expect(sql).toContain("OFFSET")
+    expect(sql).toContain("LIMIT")
   })
 })

@@ -2,7 +2,6 @@ import type { LeadStatus } from "@prisma/client"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
 import { radarSegmentQueryService } from "@/app/api/services/radar/RadarSegmentQueryService"
-import type { RadarSegmentSlug } from "@/lib/radar/segment-config"
 import { isRadarSegmentSlug, RECENT_CAMPAIGN_WINDOW_DAYS } from "@/lib/radar/segment-config"
 import { profileMatchesRadarSegment, type RadarSegmentProfileInput } from "@/lib/radar/segment-rules"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
@@ -194,7 +193,7 @@ export async function listRadarSegmentProfileEmails(
   const profiles = await radarRepository.listProfilesForSegmentation(teamId)
   const leadStatuses = await buildLeadStatusMap(teamId, profiles)
   const matched = profiles.filter((profile) =>
-    profileMatchesRadarSegment(profile, segmentSlug as RadarSegmentSlug, leadStatuses, now, recentMs)
+    profileMatchesRadarSegment(profile, segmentSlug, leadStatuses, now, recentMs)
   )
   return collectProfileEmails(matched)
 }
@@ -224,14 +223,18 @@ export async function listRadarSegmentEmailRecipientPage(
 
   if (!isRadarSegmentSlug(segmentSlug)) return { recipients: [], exhausted: true }
 
-  const profiles = await radarRepository.listProfilesForSegmentation(teamId)
+  const profileIds = await radarRepository.listProfileIdsForSegmentation(teamId)
+  const { items: windowIds, exhausted } = slicePage(profileIds, page)
+  if (windowIds.length === 0) {
+    return { recipients: [], exhausted: page ? page.skip >= profileIds.length : true }
+  }
+
+  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, windowIds)
   const leadStatuses = await buildLeadStatusMap(teamId, profiles)
   const matched = profiles.filter((profile) =>
-    profileMatchesRadarSegment(profile, segmentSlug as RadarSegmentSlug, leadStatuses, now, recentMs)
+    profileMatchesRadarSegment(profile, segmentSlug, leadStatuses, now, recentMs)
   )
-  const recipients = buildEmailRecipients(matched, leadStatuses, now, recentMs)
-  const sliced = slicePage(recipients, page)
-  return { recipients: sliced.items, exhausted: sliced.exhausted }
+  return { recipients: buildEmailRecipients(matched, leadStatuses, now, recentMs), exhausted }
 }
 
 export async function listRadarSegmentEmailRecipients(

@@ -2409,6 +2409,15 @@ export class RadarRepository {
     })
   }
 
+  async listProfileIdsForSegmentation(teamId: string): Promise<string[]> {
+    const rows = await this.db.radarProfile.findMany({
+      where: { teamId },
+      select: { id: true },
+      orderBy: { id: "asc" },
+    })
+    return rows.map((row) => row.id)
+  }
+
   async listProfilesForSegmentation(teamId: string) {
     return this.db.radarProfile.findMany({
       where: { teamId },
