@@ -164,6 +164,8 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_FAILED_RECIPIENTS:
     "Não há destinatários com falha para reenviar. Quem já recebeu não será reenviado.",
   NO_HTML: "Template sem HTML. Edite o template antes de disparar",
+  NO_TEMPLATE:
+    "O template vinculado à campanha não está mais disponível. Atualize a campanha antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
   NO_RADAR_BETA:
     "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo",
@@ -608,17 +610,11 @@ export class EmailCampaignUseCase {
     return overrides
   }
 
-  private async resolvePublishedTemplate(templateId: string, teamId: string) {
-    const ref = await this.db.emailTemplate.findFirst({
-      where: { id: templateId, teamId, isArchived: false },
-      select: { versionGroupId: true },
-    })
-    if (!ref) return null
-
+  private async findCurrentPublishedInGroup(teamId: string, versionGroupId: string) {
     return this.db.emailTemplate.findFirst({
       where: {
         teamId,
-        versionGroupId: ref.versionGroupId,
+        versionGroupId,
         status: "published",
         isCurrentPublished: true,
         approvalStatus: "approved",
@@ -635,8 +631,41 @@ export class EmailCampaignUseCase {
     })
   }
 
+  private async resolvePublishedTemplate(templateId: string, teamId: string) {
+    const templateSelect = {
+      id: true,
+      name: true,
+      subject: true,
+      html: true,
+      variables: true,
+      versionNumber: true,
+      versionGroupId: true,
+    } as const
+
+    const pinned = await this.db.emailTemplate.findFirst({
+      where: { id: templateId, teamId, isArchived: false },
+      select: templateSelect,
+    })
+    if (pinned?.html) return pinned
+
+    const groupRef =
+      pinned ??
+      (await this.db.emailTemplate.findFirst({
+        where: { id: templateId, teamId },
+        select: { versionGroupId: true },
+      }))
+    if (!groupRef) return null
+
+    return this.findCurrentPublishedInGroup(teamId, groupRef.versionGroupId)
+  }
+
   private async findCurrentPublishedTemplate(templateId: string, teamId: string) {
-    const template = await this.resolvePublishedTemplate(templateId, teamId)
+    const ref = await this.db.emailTemplate.findFirst({
+      where: { id: templateId, teamId, isArchived: false },
+      select: { versionGroupId: true },
+    })
+    if (!ref) return null
+    const template = await this.findCurrentPublishedInGroup(teamId, ref.versionGroupId)
     return template ? { id: template.id } : null
   }
 
@@ -2681,7 +2710,7 @@ export class EmailCampaignUseCase {
         return new Output(
           false,
           [],
-          ["O template vinculado à campanha não é mais a versão publicada atual. Atualize a campanha antes de disparar"],
+          [EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_TEMPLATE],
           null
         )
       }
@@ -4443,7 +4472,17 @@ export class EmailCampaignUseCase {
           }
         }
 
-        const publishedTemplate = campaign.template
+        const publishedTemplate = await this.resolvePublishedTemplate(
+          campaign.templateId,
+          campaign.teamId,
+        )
+        if (!publishedTemplate) {
+          await this.markScheduledCampaignFailed(
+            campaign.id,
+            EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_TEMPLATE,
+          )
+          continue
+        }
         if (!publishedTemplate.html) {
           await this.markScheduledCampaignFailed(campaign.id, EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_HTML)
           continue

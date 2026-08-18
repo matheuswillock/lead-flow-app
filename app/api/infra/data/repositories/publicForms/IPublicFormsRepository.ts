@@ -158,6 +158,8 @@ export type PublicFormCompleteSubmissionInput = {
   metricEvents: Array<{
     formId: string
     publicationId: string
+    questionId?: string | null
+    questionSnapshot?: Prisma.InputJsonValue | null
     visitorSessionId: string
     eventType: PublicFormMetricType
     eventKey: string
@@ -219,6 +221,27 @@ export interface IPublicFormsRepository {
     },
   ): Promise<PublicFormSettings>
   findPublishedByPublicId(publicId: string): Promise<PublicFormPublishedSnapshot | null>
+  findPublicationById(id: string): Promise<PublicFormPublishedSnapshot | null>
+  /**
+   * Publicações do form (versão desc, inclusive `endedAt` preenchido).
+   * Primeira cujo snapshot.questions[].id contém o questionId.
+   */
+  findPublicationContainingQuestion(
+    formId: string,
+    questionId: string,
+  ): Promise<PublicFormPublishedSnapshot | null>
+  /**
+   * Mesma ideia para o conjunto de respostas (todas as ids ⊆ snapshot).
+   * Prefere a mais nova que cubra o conjunto — se o vigente cobrir, usa o vigente.
+   */
+  findPublicationContainingQuestions(
+    formId: string,
+    questionIds: string[],
+  ): Promise<PublicFormPublishedSnapshot | null>
+  findLatestSessionSubmissionOnForm(
+    formId: string,
+    visitorSessionId: string,
+  ): Promise<PublicFormSubmission | null>
   findAvailabilityTeamContext(formId: string): Promise<{
     teamId: string
     team: { master: { timezone: string | null } }
