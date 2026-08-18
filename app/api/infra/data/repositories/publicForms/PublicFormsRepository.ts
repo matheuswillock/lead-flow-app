@@ -1143,7 +1143,13 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     await tx.publicFormAnswer.deleteMany({
       where: {
         submissionId,
-        ...(questionIds.length > 0 ? { questionId: { notIn: questionIds } } : {}),
+        ...(questionIds.length > 0
+          ? {
+              // `NULL NOT IN (...)` não casa no Postgres; sem este OR o fallback
+              // P2003 (questionId null) acumula duplicatas a cada progress/retry.
+              OR: [{ questionId: { notIn: questionIds } }, { questionId: null }],
+            }
+          : {}),
       },
     })
     for (const answer of answers) {

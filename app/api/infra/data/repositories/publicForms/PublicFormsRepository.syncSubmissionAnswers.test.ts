@@ -67,4 +67,34 @@ describe("PublicFormsRepository.persistSubmissionAnswers P2003", () => {
     expect(createArg[0].data.questionId).toBeNull()
     expect(createArg[0].data.questionSnapshot).toEqual(questionSnapshot)
   })
+
+  it("apaga respostas com questionId null antes de gravar, para o fallback P2003 não acumular duplicatas", async () => {
+    upsertMock.mockImplementationOnce(async () => {
+      throw foreignKeyError()
+    })
+
+    const repo = new PublicFormsRepository()
+    await repo.persistSubmissionAnswers("sub-1", [
+      {
+        questionId: "stale-q",
+        value: "ok" as Prisma.InputJsonValue,
+        questionSnapshot: { id: "stale-q" },
+      },
+    ])
+
+    expect(deleteManyMock).toHaveBeenCalledTimes(1)
+    const deleteArg = deleteManyMock.mock.calls[0] as unknown as [
+      {
+        where: {
+          submissionId: string
+          OR: Array<{ questionId: unknown }>
+        }
+      },
+    ]
+    expect(deleteArg[0].where.submissionId).toBe("sub-1")
+    expect(deleteArg[0].where.OR).toEqual([
+      { questionId: { notIn: ["stale-q"] } },
+      { questionId: null },
+    ])
+  })
 })
