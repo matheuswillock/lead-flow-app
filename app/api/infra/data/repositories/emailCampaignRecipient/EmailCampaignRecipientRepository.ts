@@ -134,6 +134,52 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     })
   }
 
+  async countSuppressedRecipientsForTeam(teamId: string): Promise<number> {
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE l."teamId" = ${teamId}::uuid
+        AND l."isArchived" = false
+        AND l."isBlocklist" = false
+        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
+    `
+    return Number(rows[0]?.count ?? 0)
+  }
+
+  async countSuppressedRecipientsForLists(teamId: string, contactListIds: string[]): Promise<number> {
+    if (contactListIds.length === 0) return 0
+
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE l."teamId" = ${teamId}::uuid
+        AND l."isArchived" = false
+        AND l."isBlocklist" = false
+        AND c."listId" = ANY(${contactListIds}::uuid[])
+        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
+    `
+    return Number(rows[0]?.count ?? 0)
+  }
+
+  async countSuppressedRecipientsForEmails(teamId: string, emails: string[]): Promise<number> {
+    const normalized = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+    if (normalized.length === 0) return 0
+
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE l."teamId" = ${teamId}::uuid
+        AND l."isArchived" = false
+        AND l."isBlocklist" = false
+        AND LOWER(TRIM(c.email)) = ANY(${normalized}::text[])
+        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
+    `
+    return Number(rows[0]?.count ?? 0)
+  }
+
   async findActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipientRecord[]> {
     if (contactIds.length === 0) return []
 

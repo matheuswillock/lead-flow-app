@@ -16,6 +16,7 @@ import type { ResendWebhookRadarEventPayload } from "@/lib/queues/resend-webhook
 import {
   resendDomainWebhookUseCase,
 } from "@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase"
+import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
 
 const ORPHAN_BACKFILL_EVENTS = new Set([
@@ -112,6 +113,12 @@ export class ResendWebhookUseCase {
           resendEventType: event.type,
           svixId,
         })
+
+        if (eventType === "bounced") {
+          emailCampaignAudiencePruneUseCase.queuePruneForSuppressedEmail(log.recipientEmail)
+        } else if (eventType === "complained") {
+          emailCampaignAudiencePruneUseCase.queuePruneForComplaint(log.recipientEmail)
+        }
 
         // Radar/engagement fora do isolate do webhook: fila própria (P2024 sob rajada).
         const radarPayload = {

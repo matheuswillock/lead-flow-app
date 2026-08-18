@@ -45,6 +45,16 @@ mock.module("@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase", () =>
   },
 }))
 
+const queuePruneForSuppressedEmailMock = mock(() => {})
+const queuePruneForComplaintMock = mock(() => {})
+mock.module("@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase", () => ({
+  emailCampaignAudiencePruneUseCase: {
+    queuePruneForSuppressedEmail: queuePruneForSuppressedEmailMock,
+    queuePruneForComplaint: queuePruneForComplaintMock,
+    queueCampaignAudiencePrune: mock(() => {}),
+  },
+}))
+
 const { ResendWebhookUseCase } = await import("@/app/api/useCases/resendWebhook/ResendWebhookUseCase")
 
 function createWebhookService(): ResendWebhookService {
@@ -52,6 +62,7 @@ function createWebhookService(): ResendWebhookService {
     mapEventType: (type: string) => {
       if (type === "email.delivered") return "delivered"
       if (type === "email.bounced") return "bounced"
+      if (type === "email.complained") return "complained"
       return null
     },
     processEmailLogWebhook: processEmailLogWebhookMock,
@@ -145,5 +156,34 @@ describe("ResendWebhookUseCase", () => {
 
     expect(applyBackofficeCampaignWebhookEventMock).toHaveBeenCalled()
     expect(output.result).toEqual({ handled: true, target: "backoffice_email_campaign" })
+  })
+
+  it("dispara poda de audiência após bounce", async () => {
+    queuePruneForSuppressedEmailMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-bounce",
+      teamId: "team-1",
+      status: "sent",
+      recipientEmail: "bounce@test.com",
+      recipientName: null,
+      campaignId: "camp-1",
+      dispatchId: null,
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      bouncedAt: null,
+      complainedAt: null,
+    })
+
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
+    await useCase.handle({
+      event: {
+        type: "email.bounced",
+        data: { email_id: "re_bounce", created_at: new Date().toISOString() },
+      },
+    })
+
+    expect(processEmailLogWebhookMock).toHaveBeenCalled()
+    expect(queuePruneForSuppressedEmailMock).toHaveBeenCalledWith("bounce@test.com")
   })
 })

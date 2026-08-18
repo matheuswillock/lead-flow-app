@@ -1016,6 +1016,7 @@ export function CampaignWizardDialog() {
                       selectedSegment={selectedSegment}
                       linkedForm={wizardLinkedForm}
                       totalRecipients={wizardPreviewPlan?.totalRecipients ?? recipientCount}
+                      suppressedExcludedCount={wizardPreviewPlan?.suppressedExcludedCount}
                       listStrategy={wizardListStrategy}
                       subCampaigns={summarySubCampaigns}
                       uniformTemplate={wizardUniformTemplate || previewSubCount <= 1}

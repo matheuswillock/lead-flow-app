@@ -23,7 +23,11 @@ import {
   isValidRadarSegmentAudience,
   radarSegmentLockKey,
 } from "@/lib/radar/segment-audience"
-import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
+import { CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE } from "@/lib/email/campaign-audience-pruning-constants"
+import {
+  listRadarSegmentEmailRecipients,
+  listRadarSegmentProfileEmails,
+} from "@/lib/radar/list-segment-recipients"
 import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import { formatIntimezone, formatLocalDateValue, resolveTimezone } from "@/lib/dates"
 import {
@@ -162,6 +166,7 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
   INTERNAL: "Erro interno durante o disparo",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
+  ALL_SUPPRESSED: CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE,
   formatDailyLimit: formatDailyLimitFailureMessage,
 } as const
 
@@ -641,6 +646,54 @@ export class EmailCampaignUseCase {
     return this.recipientService.countActiveRecipients(teamId, options.contactListId)
   }
 
+  private async countSuppressedExcluded(
+    teamId: string,
+    options: {
+      contactListIds?: string[]
+      radarSegmentSlug?: string | null
+      audienceEmails?: string[]
+    }
+  ): Promise<number> {
+    const { emailCampaignRecipientRepository } = await import(
+      "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository"
+    )
+
+    if (options.audienceEmails?.length) {
+      return emailCampaignRecipientRepository.countSuppressedRecipientsForEmails(
+        teamId,
+        options.audienceEmails
+      )
+    }
+
+    if (options.radarSegmentSlug && !(options.contactListIds?.length ?? 0)) {
+      const emails = await listRadarSegmentProfileEmails(teamId, options.radarSegmentSlug)
+      return emailCampaignRecipientRepository.countSuppressedRecipientsForEmails(teamId, emails)
+    }
+
+    if (options.contactListIds?.length) {
+      return emailCampaignRecipientRepository.countSuppressedRecipientsForLists(
+        teamId,
+        options.contactListIds
+      )
+    }
+
+    return 0
+  }
+
+  private async listAudienceEmailsForLists(teamId: string, contactListIds: string[]): Promise<string[]> {
+    if (contactListIds.length === 0) return []
+
+    const contacts = await this.db.emailContact.findMany({
+      where: {
+        listId: { in: contactListIds },
+        list: { teamId, isArchived: false, isBlocklist: false },
+      },
+      select: { email: true },
+    })
+
+    return [...new Set(contacts.map((contact) => contact.email.trim().toLowerCase()).filter(Boolean))]
+  }
+
   private async loadListAudiences(
     teamId: string,
     contactListIds: string[]
@@ -878,6 +931,9 @@ export class EmailCampaignUseCase {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           radarSegmentSlug: data.radarSegmentSlug,
         })
+        const suppressedExcludedCount = await this.countSuppressedExcluded(ctx.teamId, {
+          radarSegmentSlug: data.radarSegmentSlug,
+        })
         if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
           const limitLabel =
             maxPerSub?.toLocaleString("pt-BR") ??
@@ -902,6 +958,7 @@ export class EmailCampaignUseCase {
           ],
           needsSplit: false,
           totalRecipients,
+          suppressedExcludedCount,
           listStrategy: "single",
           sourceContactListIds: [],
           isParentCampaign: false,
@@ -930,12 +987,21 @@ export class EmailCampaignUseCase {
           ...schedule,
         })
 
+        const listEmails = await this.listAudienceEmailsForLists(ctx.teamId, contactListIds)
+        const segmentEmails = data.radarSegmentSlug
+          ? await listRadarSegmentProfileEmails(ctx.teamId, data.radarSegmentSlug)
+          : []
+        const suppressedExcludedCount = await this.countSuppressedExcluded(ctx.teamId, {
+          audienceEmails: [...new Set([...listEmails, ...segmentEmails])],
+        })
+
         // Preview é descoberta: devolve o plano dividido sem exigir horários
         // (o wizard só preenche os agendamentos depois de ver o split). A
         // validação de completude do agendamento fica no create/update.
         return new Output(true, [], [], {
           ...plan,
           audienceMode: "combined",
+          suppressedExcludedCount,
           // Não vaza placeholders no payload — create materializa de verdade
           subCampaigns: plan.subCampaigns.map((sub) => ({
             ...sub,
@@ -961,10 +1027,14 @@ export class EmailCampaignUseCase {
         ...schedule,
       })
 
+      const suppressedExcludedCount = await this.countSuppressedExcluded(ctx.teamId, {
+        contactListIds,
+      })
+
       // Preview é descoberta: devolve o plano dividido sem exigir horários
       // (o wizard só preenche os agendamentos depois de ver o split). A
       // validação de completude do agendamento fica no create/update.
-      return new Output(true, [], [], { ...plan, audienceMode: "list_only" })
+      return new Output(true, [], [], { ...plan, audienceMode: "list_only", suppressedExcludedCount })
     } catch (error) {
       console.error("[EmailCampaignUseCase][previewPlan]", error)
       return new Output(false, [], ["Erro ao calcular plano da campanha"], null)

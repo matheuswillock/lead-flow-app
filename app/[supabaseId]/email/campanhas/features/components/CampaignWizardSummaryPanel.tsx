@@ -27,6 +27,7 @@ type CampaignWizardSummaryPanelProps = {
   selectedSegment?: RadarSegmentOption | null
   linkedForm: LinkedForm
   totalRecipients: number
+  suppressedExcludedCount?: number
   listStrategy?: "single" | "merge" | "per_list"
   subCampaigns?: SummarySubCampaign[]
   uniformTemplate?: boolean
@@ -47,6 +48,7 @@ export function CampaignWizardSummaryPanel({
   selectedSegment = null,
   linkedForm,
   totalRecipients,
+  suppressedExcludedCount = 0,
   listStrategy,
   subCampaigns = [],
   uniformTemplate = true,
@@ -112,6 +114,9 @@ export function CampaignWizardSummaryPanel({
         )}
         <span>
           Total: {totalRecipients.toLocaleString("pt-BR")} destinatários
+          {suppressedExcludedCount > 0
+            ? ` · ${suppressedExcludedCount.toLocaleString("pt-BR")} e-mails excluídos (bounce, descadastro ou reclamação)`
+            : null}
           {listStrategy ? ` · Estratégia: ${LIST_STRATEGY_LABELS[listStrategy]}` : null}
         </span>
       </div>

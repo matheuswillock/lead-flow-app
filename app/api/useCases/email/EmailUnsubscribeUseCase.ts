@@ -3,6 +3,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EMAIL_BLOCKLIST_NAME } from "@/lib/email/email-contact-blocklist"
 import { parseEmailUnsubscribeToken, maskEmailForUnsubscribe } from "@/lib/email/unsubscribe-token"
+import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 
 export type EmailUnsubscribeScope = "campaign" | "all"
 
@@ -82,6 +83,21 @@ export class EmailUnsubscribeUseCase {
     }
 
     const normalizedEmail = contact.email.trim().toLowerCase()
+
+    const pruneTargets = await prisma.emailContact.findMany({
+      where:
+        scope === "all"
+          ? {
+              email: normalizedEmail,
+              list: { teamId: parsed.teamId, isArchived: false, isBlocklist: false },
+            }
+          : { id: contact.id },
+      select: {
+        id: true,
+        listId: true,
+        list: { select: { isSystemDefault: true } },
+      },
+    })
 
     const campaign = parsed.campaignId
       ? await prisma.emailCampaign.findFirst({
@@ -207,6 +223,13 @@ export class EmailUnsubscribeUseCase {
           })
         }
       }
+    })
+
+    emailCampaignAudiencePruneUseCase.queueCampaignAudiencePrune({
+      teamId: parsed.teamId,
+      emails: [normalizedEmail],
+      contactIds: pruneTargets.map((item) => item.id),
+      listIds: [...new Set(pruneTargets.map((item) => item.listId))],
     })
 
     const message =
