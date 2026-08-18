@@ -24,6 +24,8 @@ import {
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   type PreAttemptDispatchId,
 } from "@/lib/email/campaign-dispatch-terminal"
+import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
+import { shouldShowCampaignListSkeleton } from "@/lib/email/campaign-dispatch-list-skeleton"
 import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
 
 const DEFAULT_PAGE_SIZE = 10
@@ -325,6 +327,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const sendingIdRef = useRef<string | null>(null)
   const sendingCampaignSnapshotRef = useRef<Campaign | null>(null)
   const sendingSubCampaignParentIdRef = useRef<string | null>(null)
+  const campaignsRef = useRef<Campaign[]>([])
+  const postDispatchAwaitingSendingRef = useRef(false)
+  campaignsRef.current = campaigns
   // dispatchId da sub-campanha logo antes de um retry. O polling só emite toast terminal
   // se observar um dispatchId diferente (fail-closed contra o toast fantasma do erro antigo).
   const retryPreAttemptDispatchIdRef = useRef<PreAttemptDispatchId>(null)
@@ -373,7 +378,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     }
     if (!options?.force && lastCampaignsKeyRef.current === key) return
     fetchingRef.current = true
-    setLoading(true)
+    const awaitingThisFetch = postDispatchAwaitingSendingRef.current
+    const showSkeleton = shouldShowCampaignListSkeleton({
+      hasExistingRows: campaignsRef.current.length > 0,
+      isAwaitingSendingAfterDispatch: awaitingThisFetch,
+    })
+    if (showSkeleton) setLoading(true)
     console.info("[useCampanhas] fetchCampaigns", { nextPage, nextStatus, nextPageSize, nextName, nextDateFrom, nextDateTo, force: options?.force })
     try {
       const result = await service.list(
@@ -414,9 +424,11 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setPage(result.page)
       setTotalPages(result.totalPages)
       lastCampaignsKeyRef.current = key
+      if (awaitingThisFetch) postDispatchAwaitingSendingRef.current = false
     } catch (err) {
       console.error("[useCampanhas] fetchCampaigns error", err)
       toast.error("Erro ao carregar campanhas")
+      if (awaitingThisFetch) postDispatchAwaitingSendingRef.current = false
     } finally {
       setLoading(false)
       fetchingRef.current = false
@@ -437,6 +449,22 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       }
     }
   }, [activeTeamId, supabaseId, teamLoading])
+
+  useEffect(() => {
+    setCampaigns([])
+    setTotal(0)
+    setPage(1)
+    setTotalPages(1)
+    lastCampaignsKeyRef.current = ""
+    postDispatchAwaitingSendingRef.current = false
+    sendingIdRef.current = null
+    sendingCampaignSnapshotRef.current = null
+    sendingSubCampaignParentIdRef.current = null
+    dispatchSeenInListRef.current = false
+    setSendingId(null)
+    if (activeTeamId) setLoading(true)
+    else setLoading(false)
+  }, [activeTeamId])
 
   const fetchCredits = useCallback(async () => {
     if (teamLoading || !activeTeamId) return
@@ -524,6 +552,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       sendingIdRef.current = id
       sendingCampaignSnapshotRef.current = sendingSnapshot
       dispatchSeenInListRef.current = false
+      postDispatchAwaitingSendingRef.current = true
       setSendingId(id)
       setStatusFilter(["sending"])
       setPage(1)
@@ -606,17 +635,19 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
       const rawMessage = err instanceof Error ? err.message : "Erro ao disparar campanha"
+      const formattedMessage = formatCampaignDispatchErrorMessage(rawMessage) ?? rawMessage
       const message =
         /409|idempotency|idempotência/i.test(rawMessage)
           ? retryFailedOnly
             ? "Não foi possível reenviar as falhas agora. Tente novamente em instantes."
             : "Não foi possível disparar a campanha agora. Tente novamente em instantes."
-          : rawMessage || "Erro ao disparar campanha"
+          : formattedMessage || "Ocorreu um erro ao disparar a campanha"
       toast.error(message)
       if (!isDetailSubCampaign) {
         sendingIdRef.current = null
         sendingCampaignSnapshotRef.current = null
         dispatchSeenInListRef.current = false
+        postDispatchAwaitingSendingRef.current = false
         setSendingId(null)
         lastCampaignsKeyRef.current = ""
         void fetchCampaigns(1, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
@@ -649,9 +680,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       if (terminal) {
         applyDispatchTerminalToast(toast, buildDispatchTerminalToast(name, terminal))
       } else if (tracked.status === "failed") {
+        const formattedError = formatCampaignDispatchErrorMessage(tracked.errorMessage)
         toast.error(
-          tracked.errorMessage
-            ? `Disparo de "${name}" falhou: ${tracked.errorMessage}`
+          formattedError
+            ? `Disparo de "${name}" falhou: ${formattedError}`
             : `Disparo de "${name}" falhou.`
         )
       } else {
@@ -729,9 +761,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         if (terminal) {
           applyDispatchTerminalToast(toast, buildDispatchTerminalToast(tracked.name, terminal))
         } else if (tracked.status === "failed") {
+          const formattedError = formatCampaignDispatchErrorMessage(tracked.errorMessage)
           toast.error(
-            tracked.errorMessage
-              ? `Disparo de "${tracked.name}" falhou: ${tracked.errorMessage}`
+            formattedError
+              ? `Disparo de "${tracked.name}" falhou: ${formattedError}`
               : `Disparo de "${tracked.name}" falhou.`
           )
         } else {

@@ -385,3 +385,44 @@ describe("realtime UPDATE leave-sending — totalSent stale", () => {
     expect(terminal.completionKind).not.toBe(bannedHeuristicFromZeroSent)
   })
 })
+
+describe("buildDispatchTerminalToast — copy de erro interno", () => {
+  const failedTerminal = {
+    completionKind: "failed" as const,
+    status: "failed" as const,
+    acceptedCount: 0,
+    failedCount: 10,
+    totalRecipients: 10,
+    dispatchId: "d-internal",
+    retryFailedOnly: false,
+  }
+
+  it("INTERNAL antiga não aparece no toast (Lista Fria)", () => {
+    const toast = buildDispatchTerminalToast("Lista Fria", {
+      ...failedTerminal,
+      errorMessage: "Erro interno durante o disparo",
+    })
+    expect(toast.type).toBe("error")
+    expect(toast.message).toBe(
+      'Disparo de "Lista Fria" falhou: Ocorreu um erro ao disparar a campanha'
+    )
+    expect(toast.message).not.toContain("Erro interno")
+  })
+
+  it("INTERNAL nova permanece amigável", () => {
+    const toast = buildDispatchTerminalToast("Lista Fria", {
+      ...failedTerminal,
+      errorMessage: "Ocorreu um erro ao disparar a campanha",
+    })
+    expect(toast.message).toContain("Ocorreu um erro ao disparar a campanha")
+    expect(toast.message).not.toContain("Erro interno")
+  })
+
+  it("motivo específico de créditos permanece visível", () => {
+    const toast = buildDispatchTerminalToast("Newsletter", {
+      ...failedTerminal,
+      errorMessage: "créditos insuficientes",
+    })
+    expect(toast.message).toBe('Disparo de "Newsletter" falhou: créditos insuficientes')
+  })
+})
