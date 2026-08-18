@@ -26,7 +26,10 @@ interface GovernanceConfigForE2e {
 
 export function defaultSpecPathForPage(pagePath: string): string {
   const normalized = pagePath.replaceAll("\\", "/");
-  const relative = normalized.replace(/^app\//, "").replace(/\/page\.tsx$/, "");
+  const relative = normalized
+    .replace(/^app\//, "")
+    .replace(/\/page\.tsx$/, "")
+    .replace(/^page\.tsx$/, "");
   const segments = relative
     .split("/")
     .filter((segment) => segment.length > 0 && !/^\([^)]+\)$/.test(segment))

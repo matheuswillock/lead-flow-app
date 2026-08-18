@@ -67,28 +67,39 @@ export function OperationalAccessProvider({
     initialAccess ? `${initialAccess.profileId}:${initialAccess.teamId ?? "no-team"}` : ""
   )
 
-  const fetchAccess = useCallback(async () => {
+  const fetchAccess = useCallback(async (options?: { force?: boolean }) => {
     if (!user?.id || inFlightRef.current) return
 
     const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
-    if (requestKey === lastRequestKeyRef.current && !isLoading) return
+    if (!options?.force && requestKey === lastRequestKeyRef.current) return
 
     inFlightRef.current = true
     setIsLoading(true)
     try {
       const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, { cache: "no-store" })
-      const data = await response.json()
+      const contentType = response.headers.get("content-type") ?? ""
+      if (!contentType.includes("application/json")) {
+        console.error(
+          "[OperationalAccessContext] Erro ao carregar acessos operacionais:",
+          new Error(`Resposta não-JSON (${response.status})`)
+        )
+        return
+      }
+      const data = (await response.json()) as {
+        isValid?: boolean
+        result?: OperationalAccessData
+      }
       if (response.ok && data.isValid && data.result) {
-        setAccess(data.result as OperationalAccessData)
-        lastRequestKeyRef.current = requestKey
+        setAccess(data.result)
       }
     } catch (error) {
       console.error("[OperationalAccessContext] Erro ao carregar acessos operacionais:", error)
     } finally {
+      lastRequestKeyRef.current = requestKey
       inFlightRef.current = false
       setIsLoading(false)
     }
-  }, [activeTeamId, isLoading, user?.id])
+  }, [activeTeamId, user?.id])
 
   useEffect(() => {
     if (
@@ -101,13 +112,15 @@ export function OperationalAccessProvider({
     void fetchAccess()
   }, [activeTeamId, fetchAccess, initialAccess, user?.id])
 
+  const refresh = useCallback(() => fetchAccess({ force: true }), [fetchAccess])
+
   const value = useMemo(
     () => ({
       access,
       isLoading,
-      refresh: fetchAccess,
+      refresh,
     }),
-    [access, fetchAccess, isLoading]
+    [access, isLoading, refresh]
   )
 
   return (

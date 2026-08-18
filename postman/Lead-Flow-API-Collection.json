@@ -2336,6 +2336,45 @@
               "response": []
             },
             {
+              "name": "POST Push Client Error",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"enable\",\n  \"errorName\": \"AbortError\",\n  \"errorMessage\": \"Registration failed - push service not available\",\n  \"userAgent\": \"Mozilla/5.0\",\n  \"uaBrands\": \"Chromium/128, Google Chrome/128\",\n  \"uaPlatform\": \"Linux\",\n  \"uaMobile\": false,\n  \"language\": \"pt-BR\",\n  \"isSecureContext\": true,\n  \"protocol\": \"http:\",\n  \"notificationPermission\": \"granted\",\n  \"hasPushManager\": true,\n  \"hasServiceWorker\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/notifications/push/client-error",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "notifications",
+                    "push",
+                    "client-error"
+                  ]
+                },
+                "description": "Registra falha de Web Push no cliente (Vercel Runtime Logs + Sentry) com navegador/UA."
+              },
+              "response": []
+            },
+            {
               "name": "GET VAPID Public Key",
               "request": {
                 "method": "GET",
@@ -14776,7 +14815,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mainCnae\": \"6550200\",\n  \"states\": [\n    \"SP\",\n    \"RJ\"\n  ],\n  \"statusIds\": [\n    \"2\"\n  ],\n  \"hasPhone\": true,\n  \"hasEmail\": false,\n  \"removeContadores\": true,\n  \"limit\": 100\n}",
+              "raw": "{\n  \"mainCnae\": \"6550200\",\n  \"states\": [\n    \"SP\"\n  ],\n  \"municipalityCodes\": [\n    3550308,\n    3505708\n  ],\n  \"foundedGte\": \"2020-01-01\",\n  \"foundedLte\": \"2024-12-31\",\n  \"hasPhone\": true,\n  \"hasEmail\": false,\n  \"removeContadores\": true,\n  \"limit\": 100\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14795,7 +14834,7 @@
                 "extracao-leads"
               ]
             },
-            "description": "Pesquisa empresas pelo CNPJá com filtros de CNAE, UF, situação cadastral e outras características."
+            "description": "Pesquisa empresas pelo CNPJá. Situação cadastral é sempre Ativa (status 2). Aceita quantity via limit (1–1000, uma página), municipalityCodes (IBGE), foundedGte/foundedLte independentes, estados e CNAE."
           },
           "response": []
         },

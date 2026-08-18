@@ -5,13 +5,13 @@ import { createChildSegmentUseCase } from "@/app/api/useCases/radar/CreateChildS
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { invalidateRadarSegmentsCache } from "@/lib/cache/invalidation"
 import { z } from "zod"
-import { radarSegmentRulesSchema } from "@/lib/radar/segment-dsl"
+import { radarSegmentAdditionalRulesSchema } from "@/lib/radar/segment-dsl"
 
 const createChildSegmentSchema = z.object({
   parentSegmentId: z.string().uuid("parentSegmentId deve ser um UUID válido"),
   name: z.string().trim().min(1, "name é obrigatório").max(120, "name deve ter no máximo 120 caracteres"),
   description: z.string().trim().max(500).optional().nullable(),
-  childRules: radarSegmentRulesSchema,
+  childRules: radarSegmentAdditionalRulesSchema,
 })
 
 /**

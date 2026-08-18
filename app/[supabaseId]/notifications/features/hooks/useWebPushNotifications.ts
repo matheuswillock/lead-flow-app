@@ -8,6 +8,7 @@ import {
   registerWebPushServiceWorker,
   urlBase64ToUint8Array,
 } from "@/lib/web-push/client";
+import { buildWebPushClientErrorPayload } from "@/lib/web-push/client-error-report";
 import { WEB_PUSH_CONSENT_VERSION } from "@/lib/web-push/constants";
 import { resolveWebPushUserErrorMessage } from "@/lib/web-push/resolve-user-error-message";
 import type { EnableWebPushOptions } from "../services/IWebPushNotificationsService";
@@ -55,6 +56,13 @@ export function useWebPushNotifications(supabaseId: string) {
     async ({ source }: EnableWebPushOptions) => {
       if (!supabaseId || !activeTeamId) return;
       if (!isBrowserPushSupported()) {
+        void webPushNotificationsService.reportClientError(
+          { supabaseId, teamId: activeTeamId },
+          buildWebPushClientErrorPayload(
+            new Error("Browser does not support Notification or Service Worker"),
+            "enable",
+          ),
+        );
         toast.error("Seu navegador não suporta notificações push.");
         return;
       }
@@ -97,7 +105,10 @@ export function useWebPushNotifications(supabaseId: string) {
         setIsEnabled(true);
         toast.success("Notificações no navegador ativadas.");
       } catch (error) {
-        console.error("[useWebPushNotifications] Erro ao ativar:", error);
+        void webPushNotificationsService.reportClientError(
+          { supabaseId, teamId: activeTeamId },
+          buildWebPushClientErrorPayload(error, "enable"),
+        );
         toast.error(resolveWebPushUserErrorMessage(error, "enable"));
       } finally {
         setIsLoading(false);
@@ -122,7 +133,10 @@ export function useWebPushNotifications(supabaseId: string) {
       setIsEnabled(false);
       toast.success("Notificações no navegador desativadas.");
     } catch (error) {
-      console.error("[useWebPushNotifications] Erro ao desativar:", error);
+      void webPushNotificationsService.reportClientError(
+        { supabaseId, teamId: activeTeamId },
+        buildWebPushClientErrorPayload(error, "disable"),
+      );
       toast.error(resolveWebPushUserErrorMessage(error, "disable"));
     } finally {
       setIsLoading(false);

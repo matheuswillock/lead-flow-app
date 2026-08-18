@@ -36,11 +36,31 @@ mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
     emailContact: {
       findFirst: findFirstMock,
+      findMany: findManyMock,
     },
     emailCampaign: {
       findFirst: findFirstMock,
     },
     $transaction: transactionMock,
+  },
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
+  getEmailCronPrisma: () => ({
+    emailContact: {
+      findFirst: findFirstMock,
+      findMany: findManyMock,
+    },
+    emailCampaign: {
+      findFirst: findFirstMock,
+    },
+    $transaction: transactionMock,
+  }),
+}))
+
+mock.module("@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase", () => ({
+  emailCampaignAudiencePruneUseCase: {
+    queueCampaignAudiencePrune: mock(() => {}),
+    queuePruneForSuppressedEmail: mock(() => {}),
+    queuePruneForComplaint: mock(() => {}),
   },
 }))
 
@@ -89,7 +109,15 @@ describe("EmailUnsubscribeUseCase", () => {
       .mockResolvedValueOnce({ id: "blocklist-id" })
       .mockResolvedValueOnce({ id: "log-id", events: [] })
 
-    findManyMock.mockResolvedValueOnce([{ listId: "55555555-5555-4555-8555-555555555555" }])
+    findManyMock
+      .mockResolvedValueOnce([
+        {
+          id: contactId,
+          listId: "55555555-5555-4555-8555-555555555555",
+          list: { isSystemDefault: false },
+        },
+      ])
+      .mockResolvedValueOnce([{ listId: "55555555-5555-4555-8555-555555555555" }])
     countMock.mockResolvedValue(0)
 
     const output = await useCase.unsubscribe(token, "all")

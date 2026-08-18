@@ -5,7 +5,7 @@ export type { BackofficeCompanyType }
 export interface LeadExtractionFilters {
   mainCnae?: string
   states?: string[]
-  municipalityCode?: number
+  municipalityCodes?: number[]
   statusIds?: string[]
   natureIds?: string[]
   sizeIds?: string[]
@@ -16,6 +16,7 @@ export interface LeadExtractionFilters {
   hasPhone?: boolean
   hasEmail?: boolean
   removeContadores?: boolean
+  limit?: number
 }
 
 export interface LeadExtractionResultData {

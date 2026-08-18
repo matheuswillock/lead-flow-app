@@ -19,7 +19,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { LOCAL_DB_URL, assertLocalStackConfigured, probeLocalStack } from "./lib/local-stack";
+import { LOCAL_DB_URL, probeLocalPostgres } from "./lib/local-stack";
 import { resolvePostgresPassword } from "./lib/resolve-postgres-password";
 import { syncBackofficeCatalog } from "./lib/sync-backoffice-catalog";
 const DUMP_DIR = resolve(process.cwd(), "tmp", "db-clone");
@@ -400,10 +400,9 @@ function cleanup() {
 }
 
 function assertLocalStackRunning(): void {
-  assertLocalStackConfigured();
-  if (!probeLocalStack()) {
+  if (!probeLocalPostgres()) {
     console.error(
-      "\n❌ Stack local não está rodando. Execute `bun run local:up` (ou `bun run dev:local`) antes do clone.",
+      "\n❌ Postgres local não está rodando. Execute `bun run local:up` (ou `bun run dev`) antes do clone.",
     );
     process.exit(1);
   }
@@ -411,7 +410,7 @@ function assertLocalStackRunning(): void {
 
 async function main() {
   const started = Date.now();
-  console.info("Cloning remote Supabase → local hybrid stack");
+  console.info("Cloning remote Supabase → local Postgres (:55322)");
   assertLocalStackRunning();
   ensureDumpDir();
   dumpRemote();

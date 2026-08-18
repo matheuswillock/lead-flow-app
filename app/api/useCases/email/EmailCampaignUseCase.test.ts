@@ -5,6 +5,19 @@ import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 // MOCKS — declarar ANTES de qualquer await import()
 // =============================================================================
 
+// --- EmailCampaignRecipientRepository (dynamic import in previewPlan) ---
+const countSuppressedRecipientsForListsMock = mock(async () => 0)
+const countSuppressedRecipientsForEmailsMock = mock(async () => 0)
+mock.module(
+  "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository",
+  () => ({
+    emailCampaignRecipientRepository: {
+      countSuppressedRecipientsForLists: countSuppressedRecipientsForListsMock,
+      countSuppressedRecipientsForEmails: countSuppressedRecipientsForEmailsMock,
+    },
+  })
+)
+
 // --- EmailCampaignDispatchService ---
 const dispatchBatchMock = mock(async (_params: unknown) => ({
   sent: 0,
@@ -193,6 +206,7 @@ mock.module("@/lib/email/email-rbac", () => ({
 }))
 mock.module("@/lib/radar/list-segment-recipients", () => ({
   listRadarSegmentEmailRecipients: mock(async () => []),
+  listRadarSegmentProfileEmails: mock(async () => []),
 }))
 
 mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
@@ -387,6 +401,8 @@ const allMocks = [
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
   publishEmailCampaignDispatchWakeMock,
+  countSuppressedRecipientsForListsMock,
+  countSuppressedRecipientsForEmailsMock,
   findBouncedEmailsMock,
   createSnapshotListMock,
   createSnapshotContactsMock,
@@ -1741,6 +1757,10 @@ describe("EMAIL_CAMPAIGN_FAILURE_MESSAGES (contratos)", () => {
   it("NO_RECIPIENTS_LIST contém 'contato'", () => {
     expect(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST).toContain("contato")
   })
+
+  it("ALL_SUPPRESSED referencia cancelamento por supressão total", () => {
+    expect(EMAIL_CAMPAIGN_FAILURE_MESSAGES.ALL_SUPPRESSED).toContain("bounce")
+  })
 })
 
 describe("EmailCampaignUseCase.previewPlan", () => {
@@ -1810,6 +1830,25 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     expect(output.isValid).toBe(true)
     const result = output.result as { subCampaigns: unknown[] }
     expect(result.subCampaigns.length).toBe(2)
+  })
+
+  it("inclui suppressedExcludedCount no preview de lista", async () => {
+    listActiveRecipientsMock.mockImplementation(async () => makeRecipients(100))
+    countSuppressedRecipientsForListsMock.mockImplementation(async () => 12)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.previewPlan(
+      {
+        name: "Com suprimidos",
+        templateId: "00000000-0000-4000-8000-000000000001",
+        contactListId: "00000000-0000-4000-8000-000000000001",
+      },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(true)
+    const result = output.result as { suppressedExcludedCount?: number }
+    expect(result.suppressedExcludedCount).toBe(12)
   })
 })
 
