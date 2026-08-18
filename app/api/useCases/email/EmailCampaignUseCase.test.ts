@@ -251,10 +251,8 @@ const listRadarSegmentEmailRecipientsMock = mock(
   async () => [] as Array<{ email: string; name: string | null; customFields: Record<string, unknown> | null }>
 )
 const listRadarSegmentProfileEmailsMock = mock(async () => [] as string[])
-mock.module("@/lib/radar/list-segment-recipients", () => ({
-  listRadarSegmentEmailRecipients: listRadarSegmentEmailRecipientsMock,
-  listRadarSegmentProfileEmails: listRadarSegmentProfileEmailsMock,
-  listRadarSegmentEmailRecipientPage: async (
+const listRadarSegmentEmailRecipientPageMock = mock(
+  async (
     _teamId: string,
     _slug: string,
     page?: { skip: number; take: number }
@@ -265,7 +263,12 @@ mock.module("@/lib/radar/list-segment-recipients", () => ({
       recipients: recipients.slice(page.skip, page.skip + page.take),
       exhausted: page.skip + page.take >= recipients.length,
     }
-  },
+  }
+)
+mock.module("@/lib/radar/list-segment-recipients", () => ({
+  listRadarSegmentEmailRecipients: listRadarSegmentEmailRecipientsMock,
+  listRadarSegmentProfileEmails: listRadarSegmentProfileEmailsMock,
+  listRadarSegmentEmailRecipientPage: listRadarSegmentEmailRecipientPageMock,
 }))
 
 mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
@@ -407,6 +410,7 @@ function makeSendingDispatch(overrides: Record<string, unknown> = {}) {
     retryFailedOnly: false,
     reservedCredits: 3,
     hasCampaignsBetaAccess: false,
+    materializeSourceOffset: 0,
     campaign: {
       name: "Campanha Teste",
       audienceContactIds: [] as string[],
@@ -415,6 +419,39 @@ function makeSendingDispatch(overrides: Record<string, unknown> = {}) {
     },
     ...overrides,
   }
+}
+
+function persistDispatchSourceOffset(initial: ReturnType<typeof makeSendingDispatch>) {
+  let current = {
+    ...initial,
+    materializeSourceOffset: Number(initial.materializeSourceOffset ?? 0),
+  }
+  emailCampaignDispatchFindFirstMock.mockImplementation(async () => current)
+  emailCampaignDispatchUpdateMock.mockImplementation(async (...args: unknown[]) => {
+    const data = (args[0] as { data?: { materializeSourceOffset?: number } } | undefined)?.data
+    if (typeof data?.materializeSourceOffset === "number") {
+      current = { ...current, materializeSourceOffset: data.materializeSourceOffset }
+    }
+    return current
+  })
+  return () => current
+}
+
+function restoreRadarRecipientPageMock() {
+  listRadarSegmentEmailRecipientPageMock.mockImplementation(
+    async (
+      _teamId: string,
+      _slug: string,
+      page?: { skip: number; take: number }
+    ) => {
+      const recipients = await listRadarSegmentEmailRecipientsMock()
+      if (!page) return { recipients, exhausted: true }
+      return {
+        recipients: recipients.slice(page.skip, page.skip + page.take),
+        exhausted: page.skip + page.take >= recipients.length,
+      }
+    }
+  )
 }
 
 type MaterializedQueuedLog = {
@@ -649,6 +686,7 @@ describe("EmailCampaignUseCase.send", () => {
     findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set<string>())
     listRadarSegmentEmailRecipientsMock.mockImplementation(async () => [])
     listRadarSegmentProfileEmailsMock.mockImplementation(async () => [])
+    restoreRadarRecipientPageMock()
     dispatchBatchMock.mockImplementation(async () => ({
       sent: 0,
       failed: 0,
@@ -764,7 +802,7 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
     )
-    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+    persistDispatchSourceOffset(
       makeSendingDispatch({ totalRecipients: 3, reservedCredits: 3 })
     )
     dispatchBatchMock.mockImplementation(
@@ -794,7 +832,7 @@ describe("EmailCampaignUseCase.send", () => {
     const second = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
     expect(second.isValid).toBe(true)
     const pageCalls = listActiveRecipientsMock.mock.calls.map((call) => call[2] as { skip?: number; take?: number } | undefined)
-    expect(pageCalls.some((page) => page && page.take === 2 && (page.skip ?? 0) > 0)).toBe(true)
+    expect(pageCalls.some((page) => page?.skip === 2 && page.take === 2)).toBe(true)
     expect(
       pageCalls.every((page) => !page || page.take === 2)
     ).toBe(true)
@@ -828,6 +866,70 @@ describe("EmailCampaignUseCase.send", () => {
       (call) => call[2] as { skip?: number; take?: number } | undefined
     )
     expect(pageCalls.some((page) => page?.skip === 2 && page.take === 2)).toBe(true)
+  })
+
+  it("processDispatchQueueBatch pagina Radar pelo cursor da fonte, não por emailLog.count", async () => {
+    listRadarSegmentEmailRecipientPageMock.mockImplementation(
+      async (_teamId: string, _slug: string, page?: { skip: number; take: number }) => {
+        const skip = page?.skip ?? 0
+        const take = page?.take ?? 500
+        if (skip >= 1000) return { recipients: [], exhausted: true }
+        return {
+          recipients: [
+            {
+              email: `p${skip}@test.com`,
+              name: `P${skip}`,
+              customFields: null,
+            },
+          ],
+          exhausted: skip + take >= 1000,
+        }
+      }
+    )
+    persistDispatchSourceOffset(
+      makeSendingDispatch({
+        totalRecipients: 4,
+        reservedCredits: 4,
+        contactListId: null,
+        radarSegmentSlug: "email_marketable",
+        campaign: {
+          name: "Campanha Teste",
+          audienceContactIds: [],
+          contactListId: null,
+          radarSegmentSlug: "email_marketable",
+        },
+      })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: [
+          { email: "p0@test.com", resendId: "re_p0" },
+          { email: "p2@test.com", resendId: "re_p2" },
+        ],
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const first = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(first.isValid).toBe(true)
+    const firstSkips = listRadarSegmentEmailRecipientPageMock.mock.calls.map(
+      (call) => (call[2] as { skip?: number } | undefined)?.skip ?? 0
+    )
+    expect(firstSkips[0]).toBe(0)
+    expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
+
+    listRadarSegmentEmailRecipientPageMock.mockClear()
+    createQueuedLogsMock.mockClear()
+    const second = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(second.isValid).toBe(true)
+    const secondSkips = listRadarSegmentEmailRecipientPageMock.mock.calls.map(
+      (call) => (call[2] as { skip?: number } | undefined)?.skip ?? 0
+    )
+    expect(secondSkips[0]).toBe(4)
+    expect(secondSkips.includes(0)).toBe(false)
   })
 
   // ---------------------------------------------------------------------------

@@ -3704,6 +3704,7 @@ export class EmailCampaignUseCase {
         retryFailedOnly: true,
         reservedCredits: true,
         hasCampaignsBetaAccess: true,
+        materializeSourceOffset: true,
         campaign: {
           select: {
             name: true,
@@ -4069,10 +4070,20 @@ export class EmailCampaignUseCase {
     return reclaimed
   }
 
+  private async persistMaterializeSourceOffset(
+    dispatchId: string,
+    sourceOffset: number
+  ): Promise<void> {
+    await this.db.emailCampaignDispatch.update({
+      where: { id: dispatchId },
+      data: { materializeSourceOffset: Math.max(0, sourceOffset) },
+    })
+  }
+
   /**
    * Materializa até `chunkSize` logs `queued` para o dispatch (primeira execução
-   * e continuações). Não interpola a audiência inteira: lista sem Radar, enriquece
-   * só o lote, grava os logs. Chamado pelo consumer, nunca pelo isolate HTTP.
+   * e continuações). O cursor é `materializeSourceOffset` na dimensão da fonte
+   * (IDs Radar / skip da lista / índice retry), não `emailLog.count`.
    */
   private async materializeQueuedLogsChunk(
     dispatch: {
@@ -4085,6 +4096,7 @@ export class EmailCampaignUseCase {
       templateSubject: string
       templateHtml: string
       retryFailedOnly: boolean
+      materializeSourceOffset: number
       campaign: {
         audienceContactIds: string[]
         contactListId: string | null
@@ -4096,9 +4108,8 @@ export class EmailCampaignUseCase {
     const existingCount = await this.db.emailLog.count({
       where: { dispatchId: dispatch.id },
     })
-    const start = Math.max(0, existingCount - chunkSize)
     const selected: CampaignRecipient[] = []
-    let sourceOffset = start
+    let sourceOffset = Math.max(0, dispatch.materializeSourceOffset ?? 0)
     let exhausted = false
 
     const audienceParams = {
@@ -4145,7 +4156,6 @@ export class EmailCampaignUseCase {
               name: null,
               customFields: null,
             })
-            if (selected.length >= chunkSize) break
           }
           sourceOffset += slice.length
           exhausted = sourceOffset >= retryRecipients.length
@@ -4174,7 +4184,6 @@ export class EmailCampaignUseCase {
         for (const recipient of page.recipients) {
           if (existingEmails.has(recipient.email.trim().toLowerCase())) continue
           selected.push(recipient)
-          if (selected.length >= chunkSize) break
         }
         sourceOffset += chunkSize
         exhausted = page.exhausted
@@ -4182,8 +4191,9 @@ export class EmailCampaignUseCase {
       }
     }
 
-    const chunk = selected.slice(0, chunkSize)
+    const chunk = selected
     if (chunk.length === 0) {
+      await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
       return { created: 0, hasMore: false }
     }
 
@@ -4234,6 +4244,7 @@ export class EmailCampaignUseCase {
       sourceId: dispatch.campaignId,
     }))
     await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
+    await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
     return { created: chunk.length, hasMore: !exhausted }
   }
 

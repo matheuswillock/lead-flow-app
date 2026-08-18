@@ -69,19 +69,20 @@ export function OperationalAccessProvider({
   )
 
   const fetchAccess = useCallback(async (force = false) => {
-    if (!user?.id || inFlightRef.current) return
+    if (!user?.id) return
 
     const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
     const requestKeyChanged = lastRequestKeyRef.current !== requestKey
     if (!force && !requestKeyChanged) return
+    if (inFlightRef.current && !force && !requestKeyChanged) return
 
     if (requestKeyChanged) {
       setAccess(DEFAULT_ACCESS)
     }
+    const generation = ++fetchGenerationRef.current
     inFlightRef.current = true
     setIsLoading(true)
 
-    const generation = ++fetchGenerationRef.current
     try {
       const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, {
         cache: "no-store",
@@ -107,8 +108,8 @@ export function OperationalAccessProvider({
     } catch (error) {
       console.error("[OperationalAccessContext] Erro ao carregar acessos operacionais:", error)
     } finally {
-      inFlightRef.current = false
       if (generation !== fetchGenerationRef.current) return
+      inFlightRef.current = false
       setIsLoading(false)
     }
   }, [activeTeamId, user?.id])
