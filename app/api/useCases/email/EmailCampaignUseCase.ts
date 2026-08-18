@@ -25,6 +25,7 @@ import {
 } from "@/lib/radar/segment-audience"
 import { CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE } from "@/lib/email/campaign-audience-pruning-constants"
 import {
+  listRadarSegmentEmailRecipientPage,
   listRadarSegmentEmailRecipients,
   listRadarSegmentProfileEmails,
 } from "@/lib/radar/list-segment-recipients"
@@ -48,6 +49,10 @@ import {
   formatProviderBatchFailureMessage,
 } from "@/lib/email/is-valid-resend-recipient-email"
 import { evaluateEmailForAudience, filterEmailsForAudience } from "@/lib/email/audience-prevalidation"
+import {
+  excludeBlocklistedEmails,
+  findTeamBlocklistedEmails,
+} from "@/lib/email/email-contact-blocklist"
 import type { DispatchProviderError } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
@@ -694,6 +699,13 @@ export class EmailCampaignUseCase {
     return [...new Set(contacts.map((contact) => contact.email.trim().toLowerCase()).filter(Boolean))]
   }
 
+  private async excludeTeamBlocklisted<T extends { email: string }>(
+    teamId: string,
+    recipients: T[]
+  ): Promise<T[]> {
+    return excludeBlocklistedEmails(recipients, await findTeamBlocklistedEmails(teamId))
+  }
+
   private async countDispatchAudience(params: {
     teamId: string
     contactListId?: string | null
@@ -702,7 +714,18 @@ export class EmailCampaignUseCase {
   }): Promise<number> {
     const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
     if (audienceIds.length > 0) {
-      return (await this.recipientService.listActiveRecipientsByIds(audienceIds)).length
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        await this.recipientService.listActiveRecipientsByIds(audienceIds)
+      )
+      return recipients.length
+    }
+    if (params.radarSegmentSlug) {
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        await listRadarSegmentEmailRecipients(params.teamId, params.radarSegmentSlug)
+      )
+      return recipients.length
     }
     return this.countActiveRecipients(params.teamId, {
       contactListId: params.contactListId,
@@ -710,30 +733,49 @@ export class EmailCampaignUseCase {
     })
   }
 
-  private async listDispatchAudience(params: {
+  private async listDispatchAudiencePage(params: {
     teamId: string
     contactListId?: string | null
     radarSegmentSlug?: string | null
     audienceContactIds?: string[] | null
-  }): Promise<CampaignRecipient[]> {
+    skip: number
+    take: number
+  }): Promise<{ recipients: CampaignRecipient[]; exhausted: boolean }> {
     const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
     if (audienceIds.length > 0) {
-      return this.recipientService.listActiveRecipientsByIds(audienceIds)
+      const slice = audienceIds.slice(params.skip, params.skip + params.take)
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        await this.recipientService.listActiveRecipientsByIds(slice)
+      )
+      return { recipients, exhausted: params.skip + params.take >= audienceIds.length }
     }
     if (params.radarSegmentSlug) {
-      const segmentRecipients = await listRadarSegmentEmailRecipients(
+      const page = await listRadarSegmentEmailRecipientPage(
         params.teamId,
-        params.radarSegmentSlug
+        params.radarSegmentSlug,
+        { skip: params.skip, take: params.take }
       )
-      return segmentRecipients.map((recipient) => ({
-        contactId: null,
-        email: recipient.email,
-        name: recipient.name,
-        customFields: recipient.customFields,
-      }))
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        page.recipients.map((recipient) => ({
+          contactId: null,
+          email: recipient.email,
+          name: recipient.name,
+          customFields: recipient.customFields,
+        }))
+      )
+      return { recipients, exhausted: page.exhausted }
     }
-    if (!params.contactListId) return []
-    return this.recipientService.listActiveRecipients(params.teamId, params.contactListId)
+    if (!params.contactListId) return { recipients: [], exhausted: true }
+    const recipients = await this.excludeTeamBlocklisted(
+      params.teamId,
+      await this.recipientService.listActiveRecipients(params.teamId, params.contactListId, {
+        skip: params.skip,
+        take: params.take,
+      })
+    )
+    return { recipients, exhausted: recipients.length < params.take }
   }
 
   private async loadListAudiences(
@@ -4049,42 +4091,96 @@ export class EmailCampaignUseCase {
     },
     chunkSize: number
   ): Promise<{ created: number; hasMore: boolean; errorMessage?: string }> {
-    const audience = await this.listDispatchAudience({
+    const existingCount = await this.db.emailLog.count({
+      where: { dispatchId: dispatch.id },
+    })
+    const start = Math.max(0, existingCount - chunkSize)
+    const selected: CampaignRecipient[] = []
+    let sourceOffset = start
+    let exhausted = false
+
+    const audienceParams = {
       teamId: dispatch.teamId,
       contactListId: dispatch.contactListId ?? dispatch.campaign.contactListId,
       radarSegmentSlug: dispatch.radarSegmentSlug ?? dispatch.campaign.radarSegmentSlug,
       audienceContactIds: dispatch.campaign.audienceContactIds,
-    })
+    }
 
-    let recipients = audience
+    let usedRetryList = false
     if (dispatch.retryFailedOnly) {
-      const { emails: retryEmails } = await this.resolveRetryRecipientEmailsForDispatch(
+      const { emails: retryEmails, hadAnyLog } = await this.resolveRetryRecipientEmailsForDispatch(
         dispatch.campaignId,
         true,
-        audience.map((recipient) => recipient.email)
+        []
       )
-      const retryEmailSet = new Set(
-        filterEmailsForAudience(
+      if (hadAnyLog) {
+        usedRetryList = true
+        const retryList = filterEmailsForAudience(
           retryEmails,
           await emailContactListRepository.findBouncedEmails(retryEmails)
         )
-      )
-      recipients = audience.filter((recipient) =>
-        retryEmailSet.has(recipient.email.trim().toLowerCase())
-      )
+        const allowed = new Set(
+          (
+            await this.excludeTeamBlocklisted(
+              dispatch.teamId,
+              retryList.map((email) => ({ email }))
+            )
+          ).map((recipient) => recipient.email)
+        )
+        const retryRecipients = retryList.filter((email) => allowed.has(email))
+        while (selected.length < chunkSize) {
+          const slice = retryRecipients.slice(sourceOffset, sourceOffset + chunkSize)
+          if (slice.length === 0) {
+            exhausted = true
+            break
+          }
+          const existingEmails = await this.findExistingDispatchEmails(dispatch.id, slice)
+          for (const email of slice) {
+            if (existingEmails.has(email)) continue
+            selected.push({
+              contactId: null,
+              email,
+              name: null,
+              customFields: null,
+            })
+            if (selected.length >= chunkSize) break
+          }
+          sourceOffset += slice.length
+          exhausted = sourceOffset >= retryRecipients.length
+          if (exhausted) break
+        }
+      }
     }
 
-    const existingLogs = await this.db.emailLog.findMany({
-      where: { dispatchId: dispatch.id },
-      select: { recipientEmail: true },
-    })
-    const existingEmails = new Set(
-      existingLogs.map((log) => log.recipientEmail.trim().toLowerCase())
-    )
-    const remaining = recipients.filter(
-      (recipient) => !existingEmails.has(recipient.email.trim().toLowerCase())
-    )
-    const chunk = remaining.slice(0, chunkSize)
+    if (!usedRetryList) {
+      while (selected.length < chunkSize) {
+        const page = await this.listDispatchAudiencePage({
+          ...audienceParams,
+          skip: sourceOffset,
+          take: chunkSize,
+        })
+        if (page.recipients.length === 0) {
+          exhausted = page.exhausted
+          if (exhausted) break
+          sourceOffset += chunkSize
+          continue
+        }
+        const existingEmails = await this.findExistingDispatchEmails(
+          dispatch.id,
+          page.recipients.map((recipient) => recipient.email)
+        )
+        for (const recipient of page.recipients) {
+          if (existingEmails.has(recipient.email.trim().toLowerCase())) continue
+          selected.push(recipient)
+          if (selected.length >= chunkSize) break
+        }
+        sourceOffset += chunkSize
+        exhausted = page.exhausted
+        if (exhausted) break
+      }
+    }
+
+    const chunk = selected.slice(0, chunkSize)
     if (chunk.length === 0) {
       return { created: 0, hasMore: false }
     }
@@ -4102,7 +4198,7 @@ export class EmailCampaignUseCase {
       publishedTemplate?.variables ?? []
     )
 
-    if (existingLogs.length === 0) {
+    if (existingCount === 0) {
       const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
         subject: dispatch.templateSubject,
         html: dispatch.templateHtml,
@@ -4136,7 +4232,23 @@ export class EmailCampaignUseCase {
       sourceId: dispatch.campaignId,
     }))
     await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
-    return { created: chunk.length, hasMore: remaining.length > chunk.length }
+    return { created: chunk.length, hasMore: !exhausted }
+  }
+
+  private async findExistingDispatchEmails(
+    dispatchId: string,
+    emails: string[]
+  ): Promise<Set<string>> {
+    const unique = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+    if (unique.length === 0) return new Set()
+    const logs = await this.db.emailLog.findMany({
+      where: {
+        dispatchId,
+        recipientEmail: { in: unique, mode: "insensitive" },
+      },
+      select: { recipientEmail: true },
+    })
+    return new Set(logs.map((log) => log.recipientEmail.trim().toLowerCase()))
   }
 
   /**

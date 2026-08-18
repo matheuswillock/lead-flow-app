@@ -92,6 +92,24 @@ describe("EmailCampaignRecipientRepository counts", () => {
     expect(emailContactCountMock).not.toHaveBeenCalled()
   })
 
+  it("findActiveRecipientsForList aplica skip/take na query paginada", async () => {
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      teamId: "team-1",
+      isBlocklist: false,
+    }))
+    emailContactFindManyMock.mockImplementation(async () => [])
+
+    const repo = new EmailCampaignRecipientRepository()
+    await repo.findActiveRecipientsForList("list-1", { skip: 500, take: 500 })
+
+    const pagedCall = emailContactFindManyMock.mock.calls.find((call) => {
+      const args = (call as unknown as [{ skip?: number; take?: number }])[0]
+      return args?.skip === 500 && args?.take === 500
+    })
+    expect(pagedCall).toBeDefined()
+  })
+
   it("countActiveRecipientsForTeam usa COUNT DISTINCT no SQL físico das listas", async () => {
     queryRawMock.mockImplementation(async () => [{ count: BigInt(7) }])
 

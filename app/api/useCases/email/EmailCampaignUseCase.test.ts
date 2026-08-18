@@ -47,9 +47,12 @@ mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientServ
     findUnresolvedTokensForRecipients = findUnresolvedTokensMock
     listActiveRecipients = async (...args: unknown[]) => {
       const listed = await listActiveRecipientsMock(...args)
-      if (listed.length > 0) return listed
+      const page = args[2] as { skip: number; take: number } | undefined
       const built = await buildCampaignDispatchInputMock()
-      return built.recipients ?? []
+      const source =
+        listed.length > 0 ? listed : (built.recipients ?? [])
+      if (page) return source.slice(page.skip, page.skip + page.take)
+      return source
     }
     listActiveRecipientsByIds = async (ids: string[]) => {
       const listed = await listActiveRecipientsMock()
@@ -227,9 +230,42 @@ mock.module("@/lib/email/inline-email-html", () => ({
 mock.module("@/lib/email/email-rbac", () => ({
   canDispatchEmail: () => true,
 }))
+
+const findTeamBlocklistedEmailsMock = mock(async () => new Set<string>())
+mock.module("@/lib/email/email-contact-blocklist", () => ({
+  EMAIL_BLOCKLIST_NAME: "Bloqueados",
+  ensureTeamEmailBlocklist: mock(async () => ({ id: "bl-1", isBlocklist: true })),
+  findTeamBlocklistedEmails: findTeamBlocklistedEmailsMock,
+  excludeBlocklistedEmails: <T extends { email: string }>(
+    recipients: T[],
+    blocklistedEmails: Set<string>
+  ) => {
+    if (blocklistedEmails.size === 0) return recipients
+    return recipients.filter(
+      (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
+    )
+  },
+}))
+
+const listRadarSegmentEmailRecipientsMock = mock(
+  async () => [] as Array<{ email: string; name: string | null; customFields: Record<string, unknown> | null }>
+)
+const listRadarSegmentProfileEmailsMock = mock(async () => [] as string[])
 mock.module("@/lib/radar/list-segment-recipients", () => ({
-  listRadarSegmentEmailRecipients: mock(async () => []),
-  listRadarSegmentProfileEmails: mock(async () => []),
+  listRadarSegmentEmailRecipients: listRadarSegmentEmailRecipientsMock,
+  listRadarSegmentProfileEmails: listRadarSegmentProfileEmailsMock,
+  listRadarSegmentEmailRecipientPage: async (
+    _teamId: string,
+    _slug: string,
+    page?: { skip: number; take: number }
+  ) => {
+    const recipients = await listRadarSegmentEmailRecipientsMock()
+    if (!page) return { recipients, exhausted: true }
+    return {
+      recipients: recipients.slice(page.skip, page.skip + page.take),
+      exhausted: page.skip + page.take >= recipients.length,
+    }
+  },
 }))
 
 mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
@@ -423,10 +459,19 @@ function installQueuedLogStore() {
 
 function queuedLogFindManyImpl(args: unknown) {
   const typed = args as {
-    where?: { status?: unknown; dispatchId?: string; campaignId?: string }
+    where?: {
+      status?: unknown
+      dispatchId?: string
+      campaignId?: string
+      recipientEmail?: { in?: string[] }
+    }
     take?: number
   }
   const where = typed?.where
+  if (where?.recipientEmail?.in) {
+    const wanted = new Set(where.recipientEmail.in.map((email) => email.trim().toLowerCase()))
+    return materializedQueuedLogs.filter((log) => wanted.has(log.recipientEmail.trim().toLowerCase()))
+  }
   if (where?.status === "queued") {
     const queued = materializedQueuedLogs.filter((log) => log.status === "queued")
     return typeof typed.take === "number" ? queued.slice(0, typed.take) : queued
@@ -551,6 +596,9 @@ const allMocks = [
   buildCampaignDispatchInputMock,
   findUnresolvedTokensMock,
   listActiveRecipientsMock,
+  findTeamBlocklistedEmailsMock,
+  listRadarSegmentEmailRecipientsMock,
+  listRadarSegmentProfileEmailsMock,
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
   publishEmailCampaignDispatchWakeMock,
@@ -597,6 +645,10 @@ describe("EmailCampaignUseCase.send", () => {
     }))
     buildCampaignDispatchInputMock.mockImplementation(async () => makeDefaultDispatchInput([]))
     findUnresolvedTokensMock.mockImplementation(() => [])
+    listActiveRecipientsMock.mockImplementation(async () => [])
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set<string>())
+    listRadarSegmentEmailRecipientsMock.mockImplementation(async () => [])
+    listRadarSegmentProfileEmailsMock.mockImplementation(async () => [])
     dispatchBatchMock.mockImplementation(async () => ({
       sent: 0,
       failed: 0,
@@ -689,6 +741,63 @@ describe("EmailCampaignUseCase.send", () => {
     expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
     expect(output.isValid).toBe(true)
     expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("startManualDispatch exclui e-mail da blocklist da reserva de créditos", async () => {
+    const recipients = makeRecipients(2)
+    listActiveRecipientsMock.mockImplementation(async () => recipients)
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set(["r1@test.com"]))
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ audienceContactIds: ["c0", "c1"] })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject({ totalRecipients: 1 })
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(1)
+  })
+
+  it("processDispatchQueueBatch pagina a audiência no segundo lote sem relistar tudo", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 3, reservedCredits: 3 })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.slice(0, 2).map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const first = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(first.isValid).toBe(true)
+    expect(createQueuedLogsMock).toHaveBeenCalledTimes(1)
+    expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
+    expect(listActiveRecipientsMock.mock.calls.some((call) => {
+      const page = call[2] as { skip?: number; take?: number } | undefined
+      return page?.skip === 0 && page?.take === 2
+    })).toBe(true)
+
+    listActiveRecipientsMock.mockClear()
+    createQueuedLogsMock.mockClear()
+    const second = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(second.isValid).toBe(true)
+    const pageCalls = listActiveRecipientsMock.mock.calls.map((call) => call[2] as { skip?: number; take?: number } | undefined)
+    expect(pageCalls.some((page) => page && page.take === 2 && (page.skip ?? 0) > 0)).toBe(true)
+    expect(
+      pageCalls.every((page) => !page || page.take === 2)
+    ).toBe(true)
   })
 
   // ---------------------------------------------------------------------------

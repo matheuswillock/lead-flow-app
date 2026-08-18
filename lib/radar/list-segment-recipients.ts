@@ -17,6 +17,16 @@ export type RadarSegmentEmailRecipient = {
   customFields: Record<string, unknown> | null
 }
 
+export type RadarSegmentEmailRecipientPage = {
+  recipients: RadarSegmentEmailRecipient[]
+  exhausted: boolean
+}
+
+export type RadarSegmentRecipientPage = {
+  skip: number
+  take: number
+}
+
 const SYSTEM_TEAM_CONTEXT = { profileId: "system", teamMember: { role: "system", functions: [] as string[] } }
 
 async function buildLeadStatusMap(teamId: string, profiles: RadarSegmentProfileInput[]) {
@@ -56,47 +66,72 @@ function buildEmailRecipients(
   return recipients
 }
 
+function slicePage<T>(items: T[], page?: RadarSegmentRecipientPage): {
+  items: T[]
+  exhausted: boolean
+} {
+  if (!page) return { items, exhausted: true }
+  return {
+    items: items.slice(page.skip, page.skip + page.take),
+    exhausted: page.skip + page.take >= items.length,
+  }
+}
+
+async function emailRecipientsFromProfileIds(
+  teamId: string,
+  profileIds: string[],
+  now: number,
+  recentMs: number,
+  page?: RadarSegmentRecipientPage
+): Promise<RadarSegmentEmailRecipientPage> {
+  const { items: windowIds, exhausted } = slicePage(profileIds, page)
+  if (windowIds.length === 0) {
+    return { recipients: [], exhausted: page ? page.skip >= profileIds.length : true }
+  }
+  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, windowIds)
+  const leadStatuses = await buildLeadStatusMap(teamId, profiles)
+  return { recipients: buildEmailRecipients(profiles, leadStatuses, now, recentMs), exhausted }
+}
+
 async function listCustomSegmentEmailRecipients(
   teamId: string,
   segmentId: string,
   now: number,
-  recentMs: number
-): Promise<RadarSegmentEmailRecipient[]> {
+  recentMs: number,
+  page?: RadarSegmentRecipientPage
+): Promise<RadarSegmentEmailRecipientPage> {
   // `isActive` só controla se o segmento pode ser SELECIONADO como audiência
   // nova (ver isValidRadarSegmentAudience) — uma vez que uma campanha já
   // referencia `custom:{id}`, a resolução de destinatários deve continuar
   // funcionando mesmo com o segmento desativado (soft-delete), senão o
   // disparo de uma campanha agendada falha com zero destinatários.
   const segment = await teamRadarSegmentRepository.findById(teamId, segmentId)
-  if (!segment) return []
+  if (!segment) return { recipients: [], exhausted: true }
 
   const rules = parseRadarSegmentRules(segment.rulesJson)
   const profileIds = await radarSegmentQueryService.listProfileIds(
     { teamId, ctx: SYSTEM_TEAM_CONTEXT },
     rules
   )
-  if (profileIds.length === 0) return []
+  if (profileIds.length === 0) return { recipients: [], exhausted: true }
 
-  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, profileIds)
-  const leadStatuses = await buildLeadStatusMap(teamId, profiles)
-  return buildEmailRecipients(profiles, leadStatuses, now, recentMs)
+  return emailRecipientsFromProfileIds(teamId, profileIds, now, recentMs, page)
 }
 
 async function listCampaignSegmentEmailRecipients(
   teamId: string,
   campaignId: string,
   now: number,
-  recentMs: number
-): Promise<RadarSegmentEmailRecipient[]> {
+  recentMs: number,
+  page?: RadarSegmentRecipientPage
+): Promise<RadarSegmentEmailRecipientPage> {
   const campaignName = await radarRepository.findEmailCampaignName(teamId, campaignId)
-  if (!campaignName) return []
+  if (!campaignName) return { recipients: [], exhausted: true }
 
   const profileIds = await radarRepository.findProfileIdsByEmailCampaign(teamId, campaignId)
-  if (profileIds.length === 0) return []
+  if (profileIds.length === 0) return { recipients: [], exhausted: true }
 
-  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, profileIds)
-  const leadStatuses = await buildLeadStatusMap(teamId, profiles)
-  return buildEmailRecipients(profiles, leadStatuses, now, recentMs)
+  return emailRecipientsFromProfileIds(teamId, profileIds, now, recentMs, page)
 }
 
 function collectProfileEmails(
@@ -164,10 +199,11 @@ export async function listRadarSegmentProfileEmails(
   return collectProfileEmails(matched)
 }
 
-export async function listRadarSegmentEmailRecipients(
+export async function listRadarSegmentEmailRecipientPage(
   teamId: string,
-  segmentSlug: string
-): Promise<RadarSegmentEmailRecipient[]> {
+  segmentSlug: string,
+  page?: RadarSegmentRecipientPage
+): Promise<RadarSegmentEmailRecipientPage> {
   const now = Date.now()
   const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
@@ -176,21 +212,32 @@ export async function listRadarSegmentEmailRecipients(
       teamId,
       segmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length),
       now,
-      recentMs
+      recentMs,
+      page
     )
   }
 
   const campaignId = parseCampaignRadarSegmentSlug(segmentSlug)
   if (campaignId) {
-    return listCampaignSegmentEmailRecipients(teamId, campaignId, now, recentMs)
+    return listCampaignSegmentEmailRecipients(teamId, campaignId, now, recentMs, page)
   }
 
-  if (!isRadarSegmentSlug(segmentSlug)) return []
+  if (!isRadarSegmentSlug(segmentSlug)) return { recipients: [], exhausted: true }
 
   const profiles = await radarRepository.listProfilesForSegmentation(teamId)
   const leadStatuses = await buildLeadStatusMap(teamId, profiles)
   const matched = profiles.filter((profile) =>
     profileMatchesRadarSegment(profile, segmentSlug as RadarSegmentSlug, leadStatuses, now, recentMs)
   )
-  return buildEmailRecipients(matched, leadStatuses, now, recentMs)
+  const recipients = buildEmailRecipients(matched, leadStatuses, now, recentMs)
+  const sliced = slicePage(recipients, page)
+  return { recipients: sliced.items, exhausted: sliced.exhausted }
+}
+
+export async function listRadarSegmentEmailRecipients(
+  teamId: string,
+  segmentSlug: string
+): Promise<RadarSegmentEmailRecipient[]> {
+  const page = await listRadarSegmentEmailRecipientPage(teamId, segmentSlug)
+  return page.recipients
 }

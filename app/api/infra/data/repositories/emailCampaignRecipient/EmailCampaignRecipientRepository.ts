@@ -2,6 +2,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   CampaignRecipientRecord,
   IEmailCampaignRecipientRepository,
+  RecipientListPage,
 } from "./IEmailCampaignRecipientRepository"
 
 const recipientSelect = {
@@ -38,7 +39,10 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     }
   }
 
-  async findActiveRecipientsForTeam(teamId: string): Promise<CampaignRecipientRecord[]> {
+  async findActiveRecipientsForTeam(
+    teamId: string,
+    page?: RecipientListPage
+  ): Promise<CampaignRecipientRecord[]> {
     const blocklistedEmails = await this.findBlocklistedEmails(teamId)
 
     const recipients = await prisma.emailContact.findMany({
@@ -50,7 +54,8 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
           isBlocklist: false,
         },
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      ...(page ? { skip: page.skip, take: page.take } : {}),
       select: recipientSelect,
     })
 
@@ -87,7 +92,10 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     return Number(rows[0]?.count ?? 0)
   }
 
-  async findActiveRecipientsForList(contactListId: string): Promise<CampaignRecipientRecord[]> {
+  async findActiveRecipientsForList(
+    contactListId: string,
+    page?: RecipientListPage
+  ): Promise<CampaignRecipientRecord[]> {
     const list = await prisma.emailContactList.findFirst({
       where: { id: contactListId, isArchived: false },
       select: { id: true, teamId: true, isBlocklist: true },
@@ -104,6 +112,7 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
         ...this.activeRecipientWhere(blocklistedEmails),
       },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      ...(page ? { skip: page.skip, take: page.take } : {}),
       select: recipientSelect,
     })
 
