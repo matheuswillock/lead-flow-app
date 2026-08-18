@@ -29,7 +29,7 @@ const DEFAULT_ACCESS: OperationalAccessData = {
 interface OperationalAccessContextValue {
   access: OperationalAccessData
   isLoading: boolean
-  refresh: () => Promise<void>
+  refresh: (force?: boolean) => Promise<void>
 }
 
 const OperationalAccessContext = createContext<OperationalAccessContextValue | undefined>(
@@ -62,22 +62,31 @@ export function OperationalAccessProvider({
       : DEFAULT_ACCESS
   )
   const [isLoading, setIsLoading] = useState(!initialAccess)
-  const inFlightRef = useRef(false)
+  const fetchGenerationRef = useRef(0)
   const lastRequestKeyRef = useRef(
     initialAccess ? `${initialAccess.profileId}:${initialAccess.teamId ?? "no-team"}` : ""
   )
 
-  const fetchAccess = useCallback(async () => {
-    if (!user?.id || inFlightRef.current) return
+  const fetchAccess = useCallback(async (force = false) => {
+    if (!user?.id) return
 
     const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
-    if (requestKey === lastRequestKeyRef.current && !isLoading) return
+    const requestKeyChanged = lastRequestKeyRef.current !== requestKey
+    if (!force && !requestKeyChanged) return
 
-    inFlightRef.current = true
+    if (requestKeyChanged) {
+      setAccess(DEFAULT_ACCESS)
+    }
     setIsLoading(true)
+
+    const generation = ++fetchGenerationRef.current
     try {
-      const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, { cache: "no-store" })
+      const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, {
+        cache: "no-store",
+        headers: activeTeamId ? { "x-team-id": activeTeamId } : undefined,
+      })
       const data = await response.json()
+      if (generation !== fetchGenerationRef.current) return
       if (response.ok && data.isValid && data.result) {
         setAccess(data.result as OperationalAccessData)
         lastRequestKeyRef.current = requestKey
@@ -85,10 +94,10 @@ export function OperationalAccessProvider({
     } catch (error) {
       console.error("[OperationalAccessContext] Erro ao carregar acessos operacionais:", error)
     } finally {
-      inFlightRef.current = false
+      if (generation !== fetchGenerationRef.current) return
       setIsLoading(false)
     }
-  }, [activeTeamId, isLoading, user?.id])
+  }, [activeTeamId, user?.id])
 
   useEffect(() => {
     if (
@@ -105,7 +114,7 @@ export function OperationalAccessProvider({
     () => ({
       access,
       isLoading,
-      refresh: fetchAccess,
+      refresh: (force = true) => fetchAccess(force),
     }),
     [access, fetchAccess, isLoading]
   )

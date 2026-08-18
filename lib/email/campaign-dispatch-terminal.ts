@@ -3,6 +3,7 @@ import type {
   CampaignDispatchProgress,
   CampaignDispatchProgressSummary,
 } from "@/lib/email/campaign-dispatch-progress"
+import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
 
 export type ResolvedDispatchTerminal = {
   completionKind: Exclude<CampaignDispatchCompletionKind, "pending">
@@ -163,12 +164,13 @@ export function buildDispatchTerminalToast(
   const quoted = named ? `"${name}"` : null
 
   if (terminal.completionKind === "failed") {
-    if (terminal.errorMessage) {
+    const formattedError = formatCampaignDispatchErrorMessage(terminal.errorMessage)
+    if (formattedError) {
       return {
         type: "error",
         message: quoted
-          ? `Disparo de ${quoted} falhou: ${terminal.errorMessage}`
-          : `Disparo falhou: ${terminal.errorMessage}`,
+          ? `Disparo de ${quoted} falhou: ${formattedError}`
+          : `Disparo falhou: ${formattedError}`,
       }
     }
     return {

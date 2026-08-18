@@ -46,11 +46,18 @@ import {
   CampaignDispatchProgressLine,
   resolveCampaignDispatchProgressDisplay,
 } from "./CampaignDispatchProgressLine"
+import { CampaignDispatchCountdownButtonLabel } from "./CampaignDispatchCountdownButtonLabel"
+import { useCampaignDispatchCountdown } from "../hooks/useCampaignDispatchCountdown"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
+import {
+  campaignDispatchSendOptions,
+  formatCampaignDispatchErrorMessage,
+  isCampaignFailedRetry,
+} from "@/lib/email/campaign-dispatch-copy"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
@@ -89,10 +96,8 @@ function SubCampaignDispatchButton({
   handleSend: (id: string, options?: { retryFailedOnly?: boolean }) => Promise<void>
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
-  const [sending, setSending] = useState(false)
   const isSendingThis = sendingId === subCampaign.id
-  const isFailedRetry =
-    subCampaign.status === "failed" || subCampaign.status === "partially_sent"
+  const isFailedRetry = isCampaignFailedRetry(subCampaign)
   const failedRetryCount =
     subCampaign.failedRetryRecipientCount ??
     Math.max(0, subCampaign.totalRecipients - subCampaign.totalSent)
@@ -102,19 +107,13 @@ function SubCampaignDispatchButton({
   const pendingLabel = isFailedRetry
     ? "Reenviando falhas..."
     : "Disparando..."
-
-  async function handleSendConfirm() {
-    setSending(true)
-    try {
-      await handleSend(
-        subCampaign.id,
-        isFailedRetry ? { retryFailedOnly: true } : undefined
-      )
-    } finally {
-      setSending(false)
+  const dispatchCountdown = useCampaignDispatchCountdown({
+    isFailedRetry,
+    onDispatched: () => {
       setSendConfirmOpen(false)
-    }
-  }
+      void handleSend(subCampaign.id, campaignDispatchSendOptions(subCampaign))
+    },
+  })
 
   return (
     <>
@@ -124,26 +123,33 @@ function SubCampaignDispatchButton({
         size="sm"
         disabled={
           isSendingThis ||
-          sending ||
+          dispatchCountdown.locked ||
           (isFailedRetry && failedRetryCount <= 0)
         }
         onClick={() => setSendConfirmOpen(true)}
       >
-        {isSendingThis || sending ? (
+        {isSendingThis ? (
           <Loader2 data-icon="inline-start" className="animate-spin" />
         ) : (
           <Send data-icon="inline-start" />
         )}
-        {isSendingThis || sending ? pendingLabel : actionLabel}
+        {isSendingThis ? pendingLabel : actionLabel}
       </Button>
 
-      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+      <AlertDialog
+        open={sendConfirmOpen}
+        onOpenChange={(open) => {
+          if (dispatchCountdown.locked && !open) return
+          setSendConfirmOpen(open)
+          if (!open) dispatchCountdown.reset()
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isFailedRetry
                 ? "Reenviar apenas as falhas?"
-                : "Disparar sub-campanha novamente?"}
+                : "Confirmar disparo?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {isFailedRetry ? (
@@ -156,28 +162,32 @@ function SubCampaignDispatchButton({
                 </>
               ) : (
                 <>
-                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> terá um novo
-                  disparo para{" "}
+                  A campanha <strong>&quot;{subCampaign.name}&quot;</strong> será enviada para{" "}
                   <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-                  destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+                  destinatário(s) ativo(s). Os créditos correspondentes serão
+                  deduzidos.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={dispatchCountdown.locked}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
-                void handleSendConfirm()
+                dispatchCountdown.start()
               }}
-              disabled={sending || (isFailedRetry && failedRetryCount <= 0)}
+              disabled={!dispatchCountdown.locked && isFailedRetry && failedRetryCount <= 0}
+              aria-busy={dispatchCountdown.locked}
             >
-              {sending
-                ? pendingLabel
-                : isFailedRetry
-                  ? "Sim, reenviar apenas falhas"
-                  : "Sim, disparar"}
+              <CampaignDispatchCountdownButtonLabel
+                locked={dispatchCountdown.locked}
+                countdownLabel={dispatchCountdown.label}
+                showLoader={dispatchCountdown.showLoader}
+                idleLabel={
+                  isFailedRetry ? "Sim, reenviar apenas falhas" : "Sim, disparar"
+                }
+              />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -206,14 +216,12 @@ function SubCampaignActionsMenu({
   onOpenAnalytics: (campaign: CampaignAnalyticsTarget) => void
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
-  const [sending, setSending] = useState(false)
   const canEdit = ["draft", "scheduled"].includes(subCampaign.status)
   const canRetryByStatus =
     subCampaign.status === "failed" ||
     subCampaign.status === "partially_sent" ||
     subCampaign.status === "sent"
-  const isFailedRetry =
-    subCampaign.status === "failed" || subCampaign.status === "partially_sent"
+  const isFailedRetry = isCampaignFailedRetry(subCampaign)
   const actionLabel = isFailedRetry
     ? "Reenviar apenas falhas"
     : "Disparar"
@@ -233,19 +241,13 @@ function SubCampaignActionsMenu({
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
         : undefined)
-
-  async function handleSendConfirm() {
-    setSending(true)
-    try {
-      await handleSend(
-        subCampaign.id,
-        isFailedRetry ? { retryFailedOnly: true } : undefined
-      )
-    } finally {
-      setSending(false)
+  const dispatchCountdown = useCampaignDispatchCountdown({
+    isFailedRetry,
+    onDispatched: () => {
       setSendConfirmOpen(false)
-    }
-  }
+      void handleSend(subCampaign.id, campaignDispatchSendOptions(subCampaign))
+    },
+  })
 
   return (
     <>
@@ -315,13 +317,20 @@ function SubCampaignActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+      <AlertDialog
+        open={sendConfirmOpen}
+        onOpenChange={(open) => {
+          if (dispatchCountdown.locked && !open) return
+          setSendConfirmOpen(open)
+          if (!open) dispatchCountdown.reset()
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isFailedRetry
                 ? "Reenviar apenas as falhas?"
-                : "Disparar sub-campanha novamente?"}
+                : "Confirmar disparo?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {isFailedRetry ? (
@@ -334,28 +343,32 @@ function SubCampaignActionsMenu({
                 </>
               ) : (
                 <>
-                  A sub-campanha <strong>&quot;{subCampaign.name}&quot;</strong> terá um novo
-                  disparo para{" "}
+                  A campanha <strong>&quot;{subCampaign.name}&quot;</strong> será enviada para{" "}
                   <strong>{subCampaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-                  destinatário(s). Os créditos correspondentes serão deduzidos novamente.
+                  destinatário(s) ativo(s). Os créditos correspondentes serão
+                  deduzidos.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={dispatchCountdown.locked}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
-                void handleSendConfirm()
+                dispatchCountdown.start()
               }}
-              disabled={sending || (isFailedRetry && failedRetryCount <= 0)}
+              disabled={!dispatchCountdown.locked && isFailedRetry && failedRetryCount <= 0}
+              aria-busy={dispatchCountdown.locked}
             >
-              {sending
-                ? pendingLabel
-                : isFailedRetry
-                  ? "Sim, reenviar apenas falhas"
-                  : "Sim, disparar"}
+              <CampaignDispatchCountdownButtonLabel
+                locked={dispatchCountdown.locked}
+                countdownLabel={dispatchCountdown.label}
+                showLoader={dispatchCountdown.showLoader}
+                idleLabel={
+                  isFailedRetry ? "Sim, reenviar apenas falhas" : "Sim, disparar"
+                }
+              />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -387,12 +400,19 @@ export function CampaignDetailSheet({
     handleCancel,
   } = useCampanhasContext()
   const [leafSendConfirmOpen, setLeafSendConfirmOpen] = useState(false)
-  const [leafSending, setLeafSending] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [generateSegmentOpen, setGenerateSegmentOpen] = useState(false)
   const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false)
   const [templatePreviewLoading, setTemplatePreviewLoading] = useState(false)
   const [templatePreview, setTemplatePreview] = useState<DispatchPreviewData | null>(null)
+  const leafDispatchCountdown = useCampaignDispatchCountdown({
+    isFailedRetry: Boolean(detailCampaign && isCampaignFailedRetry(detailCampaign)),
+    onDispatched: () => {
+      if (!detailCampaign) return
+      setLeafSendConfirmOpen(false)
+      void handleSend(detailCampaign.id, campaignDispatchSendOptions(detailCampaign))
+    },
+  })
   // Plan gate: credits.isBetaExempt (API resolveEmailBetaAccess) or host skipBetaGate — not showsBetaLabel.
   const canSendCampaign =
     !!credits?.hasSubscription || skipBetaGate || !!credits?.isBetaExempt
@@ -449,15 +469,15 @@ export function CampaignDetailSheet({
       detailCampaign.status === "sent" ||
       detailCampaign.status === "failed" ||
       detailCampaign.status === "partially_sent")
-  const isLeafFailedRetry =
-    detailCampaign?.status === "failed" || detailCampaign?.status === "partially_sent"
+  const isLeafFailedRetry = Boolean(
+    detailCampaign && isCampaignFailedRetry(detailCampaign)
+  )
   const leafFailedRetryCount =
     detailCampaign?.failedRetryRecipientCount ??
     (detailCampaign
       ? Math.max(0, detailCampaign.totalRecipients - detailCampaign.totalSent)
       : 0)
   const leafSendActionLabel = isLeafFailedRetry ? "Redisparar falhas" : "Disparar"
-  const leafSendPendingLabel = isLeafFailedRetry ? "Reenviando falhas..." : "Disparando..."
   const leafSendBlockReason = detailCampaign
     ? getCampaignSendBlockReason({
         campaign: detailCampaign,
@@ -472,6 +492,19 @@ export function CampaignDetailSheet({
     !leafSendBlockReason &&
     sendingId !== detailCampaign?.id &&
     !(isLeafFailedRetry && leafFailedRetryCount <= 0)
+  const detailErrorMessage = formatCampaignDispatchErrorMessage(
+    detailCampaign?.errorMessage
+  )
+  const detailProgress = detailCampaign
+    ? resolveCampaignDispatchProgressDisplay(detailCampaign)
+    : null
+  const detailProgressForDisplay =
+    detailProgress == null
+      ? detailProgress
+      : {
+          ...detailProgress,
+          errorMessage: formatCampaignDispatchErrorMessage(detailProgress.errorMessage),
+        }
 
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
@@ -479,20 +512,6 @@ export function CampaignDetailSheet({
       credits,
       bypassPlanGate: skipBetaGate,
     })
-  }
-
-  async function handleLeafSendConfirm() {
-    if (!detailCampaign) return
-    setLeafSending(true)
-    try {
-      await handleSend(
-        detailCampaign.id,
-        isLeafFailedRetry ? { retryFailedOnly: true } : undefined
-      )
-    } finally {
-      setLeafSending(false)
-      setLeafSendConfirmOpen(false)
-    }
   }
 
   async function handleCancelConfirm() {
@@ -548,7 +567,7 @@ export function CampaignDetailSheet({
           </div>
           {detailCampaign ? (
             <CampaignDispatchProgressLine
-              progress={resolveCampaignDispatchProgressDisplay(detailCampaign)}
+              progress={detailProgressForDisplay}
               className="max-w-md"
             />
           ) : null}
@@ -586,10 +605,10 @@ export function CampaignDetailSheet({
                   </div>
                 </div>
 
-                {detailCampaign.errorMessage ? (
+                {detailErrorMessage ? (
                   <div className="mb-4 flex flex-col gap-1 text-sm">
                     <span className="text-muted-foreground">Mensagem de erro</span>
-                    <span className="text-destructive">{detailCampaign.errorMessage}</span>
+                    <span className="text-destructive">{detailErrorMessage}</span>
                   </div>
                 ) : null}
 
@@ -604,8 +623,10 @@ export function CampaignDetailSheet({
                             detailCampaign.subCampaigns.filter((sub) => sub.status === "failed")
                               .length
                           }{" "}
-                          parte(s) com falha — use &quot;Reenviar apenas falhas&quot; nas ações de cada
-                          parte (somente quem falhou; quem já recebeu não é reenviado)
+                          parte(s) com falha —{" "}
+                          {detailCampaign.subCampaigns.some(isCampaignFailedRetry)
+                            ? 'use "Reenviar apenas falhas" nas ações de cada parte (somente quem falhou; quem já recebeu não é reenviado)'
+                            : 'use "Disparar" nas ações de cada parte'}
                         </span>
                       ) : null}
                     </div>
@@ -630,6 +651,13 @@ export function CampaignDetailSheet({
                               sub.status === "sent"
                             const canResendNow =
                               canShowResend && canSendCampaign && !subSendBlockReason && !readOnly
+                            const subErrorMessage = formatCampaignDispatchErrorMessage(
+                              sub.errorMessage
+                            )
+                            const subProgress = sub.activeDispatch ?? sub.latestDispatch ?? null
+                            const childActionLabel = isCampaignFailedRetry(sub)
+                              ? "Reenviar apenas falhas"
+                              : "Disparar"
 
                             return (
                             <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
@@ -640,7 +668,16 @@ export function CampaignDetailSheet({
                                 <div className="flex flex-col gap-1">
                                   <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
                                   <CampaignDispatchProgressLine
-                                    progress={sub.activeDispatch ?? sub.latestDispatch ?? null}
+                                    progress={
+                                      subProgress
+                                        ? {
+                                            ...subProgress,
+                                            errorMessage: formatCampaignDispatchErrorMessage(
+                                              subProgress.errorMessage
+                                            ),
+                                          }
+                                        : null
+                                    }
                                   />
                                 </div>
                               </TableCell>
@@ -653,14 +690,14 @@ export function CampaignDetailSheet({
                                 {sub.totalRecipients.toLocaleString("pt-BR")}
                               </TableCell>
                               <TableCell className="max-w-[200px]">
-                                {sub.status === "failed" && sub.errorMessage ? (
+                                {sub.status === "failed" && subErrorMessage ? (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <span className="line-clamp-2 cursor-default text-xs text-semantic-danger">
-                                        {sub.errorMessage}
+                                        {subErrorMessage}
                                       </span>
                                     </TooltipTrigger>
-                                    <TooltipContent className="max-w-sm">{sub.errorMessage}</TooltipContent>
+                                    <TooltipContent className="max-w-sm">{subErrorMessage}</TooltipContent>
                                   </Tooltip>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
@@ -686,10 +723,7 @@ export function CampaignDetailSheet({
                                               disabled
                                             >
                                               <Send data-icon="inline-start" />
-                                              {sub.status === "failed" ||
-                                              sub.status === "partially_sent"
-                                                ? "Reenviar apenas falhas"
-                                                : "Disparar"}
+                                              {childActionLabel}
                                             </Button>
                                           </span>
                                         </TooltipTrigger>
@@ -938,13 +972,20 @@ export function CampaignDetailSheet({
                 </AlertDialogContent>
               </AlertDialog>
 
-              <AlertDialog open={leafSendConfirmOpen} onOpenChange={setLeafSendConfirmOpen}>
+              <AlertDialog
+                open={leafSendConfirmOpen}
+                onOpenChange={(open) => {
+                  if (leafDispatchCountdown.locked && !open) return
+                  setLeafSendConfirmOpen(open)
+                  if (!open) leafDispatchCountdown.reset()
+                }}
+              >
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
                       {isLeafFailedRetry
                         ? "Reenviar apenas as falhas?"
-                        : "Disparar campanha?"}
+                        : "Confirmar disparo?"}
                     </AlertDialogTitle>
                     <AlertDialogDescription>
                       {isLeafFailedRetry ? (
@@ -957,32 +998,41 @@ export function CampaignDetailSheet({
                         </>
                       ) : (
                         <>
-                          A campanha <strong>&quot;{detailCampaign.name}&quot;</strong> terá um
-                          novo disparo para{" "}
+                          A campanha <strong>&quot;{detailCampaign.name}&quot;</strong> será
+                          enviada para{" "}
                           <strong>
                             {detailCampaign.totalRecipients.toLocaleString("pt-BR")}
                           </strong>{" "}
-                          destinatário(s). Campanhas já enviadas geram um novo dispatch (não
-                          alteram o histórico anterior). Os créditos correspondentes serão
+                          destinatário(s) ativo(s). Os créditos correspondentes serão
                           deduzidos.
                         </>
                       )}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel disabled={leafSending}>Cancelar</AlertDialogCancel>
+                    <AlertDialogCancel disabled={leafDispatchCountdown.locked}>Cancelar</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={(event) => {
                         event.preventDefault()
-                        void handleLeafSendConfirm()
+                        leafDispatchCountdown.start()
                       }}
-                      disabled={leafSending || (isLeafFailedRetry && leafFailedRetryCount <= 0)}
+                      disabled={
+                        !leafDispatchCountdown.locked &&
+                        isLeafFailedRetry &&
+                        leafFailedRetryCount <= 0
+                      }
+                      aria-busy={leafDispatchCountdown.locked}
                     >
-                      {leafSending
-                        ? leafSendPendingLabel
-                        : isLeafFailedRetry
-                          ? "Sim, reenviar apenas falhas"
-                          : "Sim, disparar"}
+                      <CampaignDispatchCountdownButtonLabel
+                        locked={leafDispatchCountdown.locked}
+                        countdownLabel={leafDispatchCountdown.label}
+                        showLoader={leafDispatchCountdown.showLoader}
+                        idleLabel={
+                          isLeafFailedRetry
+                            ? "Sim, reenviar apenas falhas"
+                            : "Sim, disparar"
+                        }
+                      />
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

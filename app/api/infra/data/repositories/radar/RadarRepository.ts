@@ -33,6 +33,8 @@ import {
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
+/** Postgres bind limit is 32_767; keep IN lists well under (teamId also binds). */
+const PRISMA_IN_CHUNK_SIZE = 5_000
 
 type EngagementWeightsConfigCache = {
   weights: WeightMap
@@ -2434,21 +2436,36 @@ export class RadarRepository {
     })
   }
 
+  private async findManyByInChunks<T>(
+    values: string[],
+    query: (chunk: string[]) => Promise<T[]>
+  ): Promise<T[]> {
+    const results: T[] = []
+    for (let index = 0; index < values.length; index += PRISMA_IN_CHUNK_SIZE) {
+      const chunk = values.slice(index, index + PRISMA_IN_CHUNK_SIZE)
+      const batch = await query(chunk)
+      results.push(...batch)
+    }
+    return results
+  }
+
   async findLeadsForRadarFieldResolution(teamId: string, leadIds: string[]) {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map()
 
-    const leads = await this.db.lead.findMany({
-      where: { teamId, id: { in: unique } },
-      select: {
-        id: true,
-        status: true,
-        currentHealthPlan: true,
-        soldPlan: true,
-        contractDueDate: true,
-        referenceHospital: true,
-      },
-    })
+    const leads = await this.findManyByInChunks(unique, (chunk) =>
+      this.db.lead.findMany({
+        where: { teamId, id: { in: chunk } },
+        select: {
+          id: true,
+          status: true,
+          currentHealthPlan: true,
+          soldPlan: true,
+          contractDueDate: true,
+          referenceHospital: true,
+        },
+      })
+    )
 
     return new Map(leads.map((lead) => [lead.id, lead]))
   }
@@ -2482,30 +2499,34 @@ export class RadarRepository {
     const unique = [...new Set(normalizedEmails.filter(Boolean))]
     if (unique.length === 0) return []
 
-    return this.db.radarProfile.findMany({
-      where: { teamId, normalizedPrimaryEmail: { in: unique } },
-      select: {
-        normalizedPrimaryEmail: true,
-        displayName: true,
-        displayPhone: true,
-        primaryEmail: true,
-        primaryDocument: true,
-        lastSeenAt: true,
-        consents: { select: { channel: true, status: true } },
-        sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
-        identities: { select: { type: true, normalizedValue: true } },
-      },
-    })
+    return this.findManyByInChunks(unique, (chunk) =>
+      this.db.radarProfile.findMany({
+        where: { teamId, normalizedPrimaryEmail: { in: chunk } },
+        select: {
+          normalizedPrimaryEmail: true,
+          displayName: true,
+          displayPhone: true,
+          primaryEmail: true,
+          primaryDocument: true,
+          lastSeenAt: true,
+          consents: { select: { channel: true, status: true } },
+          sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
+          identities: { select: { type: true, normalizedValue: true } },
+        },
+      })
+    )
   }
 
   async findProfileDataByEmails(teamId: string, normalizedEmails: string[]) {
     const unique = [...new Set(normalizedEmails.filter(Boolean))]
     if (unique.length === 0) return new Map<string, Record<string, string>>()
 
-    const profiles = await this.db.radarProfile.findMany({
-      where: { teamId, normalizedPrimaryEmail: { in: unique } },
-      select: { normalizedPrimaryEmail: true, profileData: true },
-    })
+    const profiles = await this.findManyByInChunks(unique, (chunk) =>
+      this.db.radarProfile.findMany({
+        where: { teamId, normalizedPrimaryEmail: { in: chunk } },
+        select: { normalizedPrimaryEmail: true, profileData: true },
+      })
+    )
 
     const map = new Map<string, Record<string, string>>()
     for (const profile of profiles) {

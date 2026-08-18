@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
@@ -10,10 +12,10 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
-import { usePathname } from "next/navigation";
 import { getFeatureSlugsForAppPath, isAssociadosAppPath } from "@/lib/features/feature-route-access"
 import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext"
 import { CampaignDispatchIndicator } from "./CampaignDispatchIndicator";
+import { TeamSwitchingScreen } from "./TeamSwitchingScreen";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -27,13 +29,58 @@ interface LayoutContentProps {
  */
 export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutContentProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, isLoading, error } = useUserContext();
-  const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
-  const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
-  const { access: operationalAccess, isLoading: operationalAccessLoading } = useOperationalAccess();
+  const {
+    teams,
+    isLoading: teamsLoading,
+    error: teamsError,
+    isSwitchingTeam,
+    switchingTeamName,
+    isTeamSwitchPersisted,
+    completeTeamSwitch,
+  } = useTeamContext();
+  const { isLoading: featureLoading, hasAccess, refresh: refreshFeatureAccess } = useFeatureAccess();
+  const { access: operationalAccess, isLoading: operationalAccessLoading, refresh: refreshOperationalAccess } = useOperationalAccess();
+  const refreshFeatureAccessRef = useRef(refreshFeatureAccess);
+  const refreshOperationalAccessRef = useRef(refreshOperationalAccess);
+  refreshFeatureAccessRef.current = refreshFeatureAccess;
+  refreshOperationalAccessRef.current = refreshOperationalAccess;
+
+  useEffect(() => {
+    if (!isSwitchingTeam || !isTeamSwitchPersisted) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await Promise.all([
+          refreshFeatureAccessRef.current(true),
+          refreshOperationalAccessRef.current(true),
+        ]);
+        router.refresh();
+      } catch (switchError) {
+        console.error("[LayoutContent] Falha ao atualizar dados na troca de time:", switchError);
+      } finally {
+        if (!cancelled) {
+          completeTeamSwitch();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [completeTeamSwitch, isSwitchingTeam, isTeamSwitchPersisted, router]);
 
   const hasBootstrapData = Boolean(user) && teams.length > 0;
   const isBootstrapping = isLoading || teamsLoading;
+
+  if (isSwitchingTeam) {
+    return <TeamSwitchingScreen teamName={switchingTeamName} />;
+  }
 
   if (isBootstrapping && !hasBootstrapData) {
     return <GlobalLoading />;
