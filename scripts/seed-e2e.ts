@@ -1,7 +1,7 @@
 /**
  * Seed do Postgres local para Playwright E2E.
  *
- * NÃO chama prisma/seed-app.ts (Auth remoto). Aqui só: stub de auth +
+ * NÃO chama prisma/seed-app.ts (Auth remoto). Aqui só: stubs storage/auth +
  * migrations + catálogo backoffice + Profile/Team master determinístico.
  *
  * Como rodar:
@@ -72,9 +72,8 @@ function run(
   };
 }
 
-function applyAuthStubSchema(dbUrl: string) {
-  step("Applying local auth stub (GoTrue columns + identities)");
-  const stubFile = join(process.cwd(), "docker", "local", "zz-init-auth-stub-schema.sql");
+function applySqlStub(dbUrl: string, relativePath: string, okMessage: string) {
+  const stubFile = join(process.cwd(), relativePath);
   if (!existsSync(stubFile)) {
     fail(`Arquivo não encontrado: ${stubFile}`);
   }
@@ -96,26 +95,41 @@ function applyAuthStubSchema(dbUrl: string) {
       continue;
     }
     if ((result.status ?? 1) === 0) {
-      info("✓ Schema auth local compatível com migrations históricas");
+      info(`✓ ${okMessage}`);
       return;
     }
     lastDetail = `psql exit ${result.status ?? 1}`;
   }
 
   fail(
-    `Stub de auth.users/auth.identities falhou (${lastDetail}). ` +
-      "Confira se o Postgres :55322 está no ar (`bun run local:up`) e se `psql` está instalado. " +
-      "ALTER em auth.* usa supabase_admin quando o role postgres não tem permissão.",
+    `Stub ${relativePath} falhou (${lastDetail}). ` +
+      "Confira se o Postgres :55322 está no ar e se `psql` está instalado. " +
+      "DDL em auth.* / storage.* usa supabase_admin quando o role postgres não tem permissão.",
+  );
+}
+
+function applyLocalStubs(dbUrl: string) {
+  step("Applying local storage stub (buckets + objects)");
+  applySqlStub(
+    dbUrl,
+    join("docker", "local", "zz-init-storage-stub-schema.sql"),
+    "Schema storage local compatível com migrations de bucket",
+  );
+  step("Applying local auth stub (GoTrue columns + identities)");
+  applySqlStub(
+    dbUrl,
+    join("docker", "local", "zz-init-auth-stub-schema.sql"),
+    "Schema auth local compatível com migrations históricas",
   );
 }
 
 function applyLocalMigrations(dbUrl: string) {
-  applyAuthStubSchema(dbUrl);
+  applyLocalStubs(dbUrl);
   step("Applying local migrations");
   const result = run("bun", ["run", "db:migrate:apply:local"]);
   if (result.status !== 0) {
     fail(
-      "`db:migrate:apply:local` falhou. Veja o SQL acima. Stub de auth: `docker/local/zz-init-auth-stub-schema.sql`.",
+      "`db:migrate:apply:local` falhou. Veja o SQL acima. Stubs: `docker/local/zz-init-storage-stub-schema.sql` e `docker/local/zz-init-auth-stub-schema.sql`.",
     );
   }
   info("✓ Migrations aplicadas");
