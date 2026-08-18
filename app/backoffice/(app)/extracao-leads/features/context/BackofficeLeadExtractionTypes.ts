@@ -1,3 +1,6 @@
+import {
+  BACKOFFICE_LEAD_EXTRACTION_LIMIT_DEFAULT,
+} from "@/lib/backoffice/lead-extraction-constants"
 import type {
   CnaeOption,
   LeadExtractionFiltersForm,
@@ -9,8 +12,7 @@ import type {
 export const EMPTY_FILTERS: LeadExtractionFiltersForm = {
   mainCnae: "",
   states: [],
-  municipalityCode: "",
-  statusIds: [],
+  municipalityCodes: [],
   natureIds: [],
   sizeIds: [],
   simplesOptant: "",
@@ -20,6 +22,7 @@ export const EMPTY_FILTERS: LeadExtractionFiltersForm = {
   hasPhone: false,
   hasEmail: false,
   removeContadores: true,
+  limit: BACKOFFICE_LEAD_EXTRACTION_LIMIT_DEFAULT,
 }
 
 export const EMPTY_SOCIO_FILTERS: SocioFiltersForm = {
