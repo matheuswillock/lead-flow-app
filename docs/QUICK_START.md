@@ -61,46 +61,43 @@ cp .env.example .env
 
 Edite o `.env` com suas credenciais copiadas nos passos anteriores.
 
-### 6. Configure o Banco de Dados (stack local híbrido)
+### 6. Configure o Banco de Dados (Postgres local, Auth remoto)
 
-O `bun run dev` sobe um stack **híbrido** e leve: Postgres + Realtime locais
-(Docker) para dados/eventos em tempo real, enquanto **Login (Auth) e Storage
-continuam no seu projeto Supabase remoto** — sem containers extras de
-GoTrue/Kong/PostgREST/Studio.
+O `bun run dev` sobe **só o Postgres local** (`:55322`) e o Next. Login (Auth)
+e Storage continuam no seu projeto Supabase remoto (`.env`). Realtime fica
+desligado. Não precisa de `.env.local-stack`.
 
 ```bash
 # Gerar cliente Prisma
 bun run prisma:generate
 
-# 1x: configure os segredos do stack local (usados pelo Realtime local
-# para validar tokens emitidos pelo Auth remoto)
-cp docker/local/.env.local-stack.example docker/local/.env.local-stack
-# edite docker/local/.env.local-stack com Settings -> API do seu projeto
-# remoto: SUPABASE_REMOTE_HOST, SUPABASE_REMOTE_ANON_KEY,
-# SUPABASE_REMOTE_SERVICE_ROLE_KEY, SUPABASE_REMOTE_JWT_SECRET
-# (JWT Settings -> JWT Secret)
+# Subir o Postgres local, aplicar migrations e seedar o catálogo
+bun run dev
 
-# Subir o stack local e aplicar migrations (primeira vez)
-bun run dev:local   # ou: bun run local:up && bun run db:migrate:reset:local
-
-# (Opcional) Popular com dados de teste
-bun run prisma:seed
+# Primeira sessão: ligar o usuário do Auth remoto ao Profile local
+# (concede vitalício só no Postgres local — não mexe na assinatura remota)
+bun run db:seed:local -- --link-remote-user voce@email
 ```
 
-> ⚠️ **`docker/local/.env.local-stack` nunca deve ser commitado** — contém o
-> JWT secret do projeto remoto. Já está coberto pela regra `.env*` do
-> `.gitignore`.
->
-> ⚠️ **Auth/Storage não têm sandbox local no stack híbrido**: eles são o
-> projeto Supabase remoto de verdade. Ações admin (deletar usuário,
+| Modo | Comando | Containers | Auth | Realtime | Precisa `.env.local-stack` |
+|---|---|---|---|---|---|
+| db-only (padrão) | `bun run dev` | Postgres | `.env` remoto | off | não |
+| hybrid | `bun run dev -- --hybrid` | Postgres + Realtime + Caddy | proxy `:55321` | local | sim |
+| full | `bun run dev -- --full-supabase` | `supabase start` | local | local | não |
+
+> ⚠️ **Auth/Storage não têm sandbox local nos modos db-only e hybrid**: eles
+> são o projeto Supabase remoto de verdade. Ações admin (deletar usuário,
 > upload/delete de arquivo) ficam **bloqueadas por padrão** — só habilite via
-> `SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN=true` em `docker/local/.env.local-stack`,
-> e prefira sempre um projeto Supabase de **desenvolvimento isolado** como
-> `SUPABASE_REMOTE_HOST`, nunca o projeto de produção.
+> `SUPABASE_LOCAL_ALLOW_REMOTE_ADMIN=true` no `.env` (db-only) ou em
+> `docker/local/.env.local-stack` (hybrid), e prefira um projeto de
+> **desenvolvimento isolado**, nunca produção.
 >
-> Precisa do stack Supabase completo localmente (Auth/Storage/Studio locais,
-> ex.: debugar upload)? Use `bun run dev -- --full-supabase` (usa
-> `supabase start`, como antes — mais pesado).
+> O arquivo `docker/local/.env.local-stack` **nunca deve ser commitado** —
+> contém o JWT secret do projeto remoto (já coberto pela regra `.env*` do
+> `.gitignore`). Só é necessário no modo `--hybrid`.
+>
+> Dump remoto no lugar do seed: `bun run dev -- --clone`.
+> Não auto-popular: `bun run dev -- --skip-clone`.
 
 ### 7. Inicie a Aplicação
 
@@ -177,7 +174,11 @@ bun run build            # Build de produção
 bun run start            # Iniciar produção
 
 # Database
-bun run local:up                   # Sobe Postgres + Realtime + proxy locais
+bun run local:up                   # Sobe só o Postgres local (db-only)
+bun run local:up:hybrid            # Sobe Postgres + Realtime + Caddy
+bun run local:down                 # Derruba o stack local
+bun run db:seed:local              # Migrations + catálogo (sem Auth admin)
+bun run db:seed:local -- --link-remote-user voce@email
 bun run local:down                 # Derruba o stack local
 bun run local:logs                 # Logs do stack local
 bun run prisma:studio              # Interface visual do banco

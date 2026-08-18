@@ -5,6 +5,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 import { isUnauthorizedApiError } from "@/lib/http/api-request-error";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import { shouldSkipRealtimeSubscribe } from "@/lib/supabase/realtime-guard";
 import { notificationsService } from "../services/NotificationsService";
 import { inAppNotificationBridge } from "@/lib/notifications/in-app-notification-bridge";
 import type {
@@ -317,6 +318,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
   }, [supabaseId, activeTeamId, user?.id, loadNotifications, isAuthBlocked]);
 
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) return;
     if (!supabaseId || !activeTeamId || !user?.id) return;
 
     const supabase = createSupabaseBrowser();

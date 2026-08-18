@@ -58,7 +58,7 @@ import {
   OPERATORS_BY_LAST_SEEN,
   OPERATORS_BY_PROFILE_FIELD,
   conditionNeedsValueInput,
-  isRulesValidForSave,
+  isHierarchicalAdditionalRulesValid,
 } from "../utils/radarSegmentBuilderUtils"
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -167,7 +167,7 @@ function defaultConditionForKind(kind: RadarSegmentCondition["kind"]): RadarSegm
   }
 }
 
-const defaultRules: RadarSegmentRules = { match: "all", conditions: [defaultConditionForKind("profile_field")] }
+const emptyAdditionalRules: RadarSegmentRules = { match: "all", conditions: [] }
 
 function LeadCustomFieldValueInput({
   condition,
@@ -750,14 +750,14 @@ export function GenerateSegmentDialog({
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [rules, setRules] = useState<RadarSegmentRules>(initialRules ?? defaultRules)
+  const [rules, setRules] = useState<RadarSegmentRules>(initialRules ?? emptyAdditionalRules)
   const [previewCount, setPreviewCount] = useState<number | null>(null)
   const [previewProfiles, setPreviewProfiles] = useState<RadarProfileListItem[]>([])
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
   const [mutationLock, setMutationLock] = useState(false)
   const keyCounterRef = useRef(0)
   const [conditionKeys, setConditionKeys] = useState<string[]>(() =>
-    (initialRules?.conditions ?? [defaultConditionForKind("profile_field")]).map(() => `cond-${keyCounterRef.current++}`)
+    (initialRules?.conditions ?? []).map(() => `cond-${keyCounterRef.current++}`)
   )
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -765,8 +765,8 @@ export function GenerateSegmentDialog({
     if (!open) return
     setName("")
     setDescription("")
-    setRules(initialRules ?? defaultRules)
-    setConditionKeys((initialRules?.conditions ?? [defaultConditionForKind("profile_field")]).map(() => `cond-${keyCounterRef.current++}`))
+    setRules(initialRules ?? emptyAdditionalRules)
+    setConditionKeys((initialRules?.conditions ?? []).map(() => `cond-${keyCounterRef.current++}`))
     setPreviewCount(null)
     setPreviewProfiles([])
     setMutationLock(false)
@@ -797,7 +797,7 @@ export function GenerateSegmentDialog({
   }
 
   useEffect(() => {
-    if (!open || !isRulesValidForSave(rules) || !activeTeamId) return
+    if (!open || !isHierarchicalAdditionalRulesValid(rules) || !activeTeamId) return
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
@@ -881,11 +881,19 @@ export function GenerateSegmentDialog({
 
   const canSave =
     name.trim().length > 0 &&
-    isRulesValidForSave(rules) &&
+    isHierarchicalAdditionalRulesValid(rules) &&
     previewCount !== null &&
-    previewCount > 0 &&
     !mutationLock &&
     (sourceType === "campaign" ? Boolean(campaignId) : Boolean(parentSegmentId))
+
+  const saveBlockedReason =
+    !name.trim()
+      ? "Informe um nome para o segmento."
+      : !isHierarchicalAdditionalRulesValid(rules)
+        ? "Complete ou remova as condições adicionais incompletas."
+        : previewCount === null
+          ? "Aguarde o preview da audiência."
+          : null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -914,6 +922,12 @@ export function GenerateSegmentDialog({
           </FieldGroup>
 
           <Separator />
+
+          {sourceType === "campaign" ? (
+            <p className="text-sm text-muted-foreground">
+              Audiência base da campanha: iniciou formulário e não completou.
+            </p>
+          ) : null}
 
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">Condições adicionais</p>
@@ -966,7 +980,7 @@ export function GenerateSegmentDialog({
                     size="icon"
                     variant="ghost"
                     className="size-8"
-                    disabled={rules.conditions.length <= 1}
+                    disabled={rules.conditions.length <= 0}
                     onClick={() => removeCondition(index)}
                   >
                     <X />
@@ -1386,9 +1400,22 @@ export function GenerateSegmentDialog({
               </div>
             ) : previewCount !== null ? (
               <div className="flex flex-col gap-2">
-                <Badge className="w-fit border-semantic-success-border bg-semantic-success-surface text-semantic-success">
+                <Badge
+                  className={cn(
+                    "w-fit",
+                    previewCount > 0
+                      ? "border-semantic-success-border bg-semantic-success-surface text-semantic-success"
+                      : "border-border bg-muted text-muted-foreground"
+                  )}
+                >
                   {previewCount.toLocaleString("pt-BR")} perfis
                 </Badge>
+                {previewCount === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum perfil atende hoje — o segmento é dinâmico e pode crescer conforme novos
+                    eventos forem registrados.
+                  </p>
+                ) : null}
                 {previewProfiles.length > 0 ? (
                   <div className="rounded-md border p-3">
                     <p className="mb-2 text-xs text-muted-foreground">Primeiros 10 perfis:</p>
@@ -1418,6 +1445,10 @@ export function GenerateSegmentDialog({
                 condições ou materialize em lista de contatos — listas podem usar sub-campanhas.
               </AlertDescription>
             </Alert>
+          ) : null}
+
+          {saveBlockedReason && !canSave ? (
+            <p className="text-sm text-muted-foreground">{saveBlockedReason}</p>
           ) : null}
         </div>
 

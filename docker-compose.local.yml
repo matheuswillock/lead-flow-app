@@ -1,24 +1,33 @@
 # =============================================================================
-# docker-compose.local.yml — Stack local híbrido (Postgres + Realtime)
+# docker-compose.local.yml — Postgres local (+ Realtime/Caddy no profile hybrid)
 # =============================================================================
 #
-# Login (Auth) e Storage continuam no Supabase remoto — sem mudança de código,
-# sem containers extras. Este stack sobe só o necessário para o resto:
+# Três modos de `bun run dev`:
 #
-#   db        Postgres local (dados via Prisma, RLS, publication supabase_realtime)
-#   realtime  WebSocket local — lê o WAL do Postgres local (por isso não pode
-#             ser o Realtime remoto: ele só enxerga o banco que replica)
-#   proxy     Caddy — unifica tudo sob uma única URL para o supabase-js:
+#   db-only (padrão)  bun run dev
+#                     Sobe só `db` (Postgres :55322). Auth/Storage vêm do `.env`
+#                     remoto. Sem Elixir, sem Caddy, sem `.env.local-stack`.
+#
+#   hybrid            bun run dev -- --hybrid
+#                     Postgres + Realtime + Caddy :55321. Exige
+#                     docker/local/.env.local-stack (JWT secret do Auth remoto
+#                     para o Realtime local validar o token).
+#
+#   full              bun run dev -- --full-supabase
+#                     `supabase start` (Auth/Storage/Studio locais). Não usa
+#                     este compose.
+#
+# Serviços:
+#
+#   db        Postgres local — sempre sobe (sem profile)
+#   realtime  WebSocket local — profile `hybrid`. Lê o WAL do Postgres local
+#             (o Realtime remoto só enxerga o banco que replica)
+#   proxy     Caddy (profile `hybrid`) — unifica sob uma URL para o supabase-js:
 #               /auth/v1, /storage/v1, /rest/v1  -> Supabase remoto
 #               /realtime/v1                      -> Realtime local
 #
-# Isso substitui o `supabase start` no dia a dia do `bun dev`: não sobe GoTrue,
-# Kong completo, PostgREST, Storage API, Studio nem Inbucket — bem mais leve
-# em RAM/CPU. Para o stack Supabase completo (ex.: debugar upload local),
-# use `bun run dev -- --full-supabase` (continua usando `supabase start`).
-#
 # -----------------------------------------------------------------------------
-# CONFIGURAÇÃO OBRIGATÓRIA
+# CONFIGURAÇÃO (só o modo hybrid)
 # -----------------------------------------------------------------------------
 #
 # 1. Copie docker/local/.env.local-stack.example para docker/local/.env.local-stack
@@ -29,11 +38,10 @@
 # USO
 # -----------------------------------------------------------------------------
 #
-#   bun run local:up      # sobe o stack (equivalente ao comando abaixo)
+#   bun run local:up          # só Postgres (db-only)
+#   bun run local:up:hybrid   # Postgres + Realtime + Caddy
 #   bun run local:logs
 #   bun run local:down
-#
-#   docker compose -f docker-compose.local.yml --env-file docker/local/.env.local-stack up -d
 #
 # Conexão com o Postgres local:
 #   postgresql://postgres:postgres@127.0.0.1:55322/postgres
@@ -79,10 +87,10 @@ services:
       # imagem cria o role "postgres" lá) — nomes de init script rodam em
       # ordem alfabética e este script faz ALTER ... OWNER TO postgres.
       - ./docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro,Z
-      # Stub de auth.users/auth.identities (GoTrue legado da imagem) — necessário
-      # para `supabase migration up` passar em migrations históricas que ALTER
-      # auth.users / criam auth.identities. Seed E2E (`scripts/seed-e2e.ts`)
-      # reaplica o mesmo SQL em volumes já existentes.
+      # Stub GoTrue moderno (colunas email_change_token_* + auth.identities).
+      # A imagem traz schema auth legado; migrations históricas tocam essas
+      # relações mesmo no db-only (Auth remoto). Idempotente — seed-local
+      # e seed-e2e reaplicam o mesmo SQL em volumes já existentes.
       - ./docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro,Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -93,6 +101,7 @@ services:
   realtime:
     image: supabase/realtime:v2.76.5
     container_name: leadflow-local-realtime
+    profiles: ["hybrid"]
     restart: unless-stopped
     depends_on:
       db:
@@ -112,7 +121,10 @@ services:
       DB_ENC_KEY: supabaserealtime
       # Precisa ser IDÊNTICO ao JWT secret do projeto remoto — é assim que o
       # Realtime local valida os tokens emitidos pelo Auth remoto.
-      API_JWT_SECRET: ${SUPABASE_REMOTE_JWT_SECRET:?Defina SUPABASE_REMOTE_JWT_SECRET em docker/local/.env.local-stack}
+      # `:-` (não `:?`): o docker-compose do Podman interpola serviços de
+      # profile mesmo no `up` db-only. O JWT real entra via --env-file no
+      # `local:up:hybrid` / `bun dev -- --hybrid`.
+      API_JWT_SECRET: ${SUPABASE_REMOTE_JWT_SECRET:-}
       # Segredo interno do Phoenix (Elixir) — não sensível fora deste container local.
       SECRET_KEY_BASE: "local-dev-only-secret-key-base-nao-usar-em-producao-0000000000000000"
       ERL_AFLAGS: "-proto_dist inet_tcp"
@@ -127,11 +139,12 @@ services:
   proxy:
     image: caddy:2-alpine
     container_name: leadflow-local-proxy
+    profiles: ["hybrid"]
     restart: unless-stopped
     ports:
       - "55321:55321"
     environment:
-      SUPABASE_REMOTE_HOST: ${SUPABASE_REMOTE_HOST:?Defina SUPABASE_REMOTE_HOST em docker/local/.env.local-stack}
+      SUPABASE_REMOTE_HOST: ${SUPABASE_REMOTE_HOST:-}
     volumes:
       # ":Z" relabela o bind mount para SELinux (Fedora/RHEL + Podman) sem
       # afetar hosts sem SELinux (Docker Desktop, Ubuntu, macOS ignoram a flag).

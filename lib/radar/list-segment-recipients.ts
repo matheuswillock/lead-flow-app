@@ -99,6 +99,71 @@ async function listCampaignSegmentEmailRecipients(
   return buildEmailRecipients(profiles, leadStatuses, now, recentMs)
 }
 
+function collectProfileEmails(
+  profiles: Array<{ normalizedPrimaryEmail?: string | null }>
+): string[] {
+  const seen = new Set<string>()
+  const emails: string[] = []
+  for (const profile of profiles) {
+    const email = profile.normalizedPrimaryEmail?.trim().toLowerCase()
+    if (!email || seen.has(email)) continue
+    seen.add(email)
+    emails.push(email)
+  }
+  return emails
+}
+
+async function listCustomSegmentProfileEmails(teamId: string, segmentId: string): Promise<string[]> {
+  const segment = await teamRadarSegmentRepository.findById(teamId, segmentId)
+  if (!segment) return []
+
+  const rules = parseRadarSegmentRules(segment.rulesJson)
+  const profileIds = await radarSegmentQueryService.listProfileIds(
+    { teamId, ctx: SYSTEM_TEAM_CONTEXT },
+    rules
+  )
+  if (profileIds.length === 0) return []
+
+  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, profileIds)
+  return collectProfileEmails(profiles)
+}
+
+async function listCampaignSegmentProfileEmails(teamId: string, campaignId: string): Promise<string[]> {
+  const profileIds = await radarRepository.findProfileIdsByEmailCampaign(teamId, campaignId)
+  if (profileIds.length === 0) return []
+
+  const profiles = await radarRepository.listProfilesForSegmentationByIds(teamId, profileIds)
+  return collectProfileEmails(profiles)
+}
+
+export async function listRadarSegmentProfileEmails(
+  teamId: string,
+  segmentSlug: string
+): Promise<string[]> {
+  if (segmentSlug.startsWith(CUSTOM_RADAR_SEGMENT_PREFIX)) {
+    return listCustomSegmentProfileEmails(
+      teamId,
+      segmentSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
+    )
+  }
+
+  const campaignId = parseCampaignRadarSegmentSlug(segmentSlug)
+  if (campaignId) {
+    return listCampaignSegmentProfileEmails(teamId, campaignId)
+  }
+
+  if (!isRadarSegmentSlug(segmentSlug)) return []
+
+  const now = Date.now()
+  const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  const profiles = await radarRepository.listProfilesForSegmentation(teamId)
+  const leadStatuses = await buildLeadStatusMap(teamId, profiles)
+  const matched = profiles.filter((profile) =>
+    profileMatchesRadarSegment(profile, segmentSlug as RadarSegmentSlug, leadStatuses, now, recentMs)
+  )
+  return collectProfileEmails(matched)
+}
+
 export async function listRadarSegmentEmailRecipients(
   teamId: string,
   segmentSlug: string

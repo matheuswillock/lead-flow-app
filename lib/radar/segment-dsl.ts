@@ -461,7 +461,7 @@ const emailContactFieldConditionSchema = z
     }
   })
 
-export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
+export const radarSegmentLeafConditionSchema = z.discriminatedUnion("kind", [
   profileFieldConditionSchema,
   consentConditionSchema,
   eventConditionSchema,
@@ -474,6 +474,37 @@ export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
   engagementBandConditionSchema,
 ])
 
+const conditionGroupSchema = z.object({
+  kind: z.literal("condition_group"),
+  match: z.enum(["all", "any"]),
+  conditions: z
+    .array(radarSegmentLeafConditionSchema)
+    .min(1, "informe ao menos uma condição no grupo")
+    .max(RADAR_SEGMENT_MAX_CONDITIONS, `máximo de ${RADAR_SEGMENT_MAX_CONDITIONS} condições por grupo`),
+})
+
+export const radarSegmentConditionSchema = z.discriminatedUnion("kind", [
+  profileFieldConditionSchema,
+  consentConditionSchema,
+  eventConditionSchema,
+  leadCustomFieldConditionSchema,
+  leadStatusConditionSchema,
+  leadFieldConditionSchema,
+  portfolioFieldConditionSchema,
+  emailContactListConditionSchema,
+  emailContactFieldConditionSchema,
+  engagementBandConditionSchema,
+  conditionGroupSchema,
+])
+
+/** Regras adicionais em fluxos hierárquicos (campanha/filho) — permite 0 condições. */
+export const radarSegmentAdditionalRulesSchema = z.object({
+  match: z.enum(["all", "any"]),
+  conditions: z
+    .array(radarSegmentLeafConditionSchema)
+    .max(RADAR_SEGMENT_MAX_CONDITIONS, `máximo de ${RADAR_SEGMENT_MAX_CONDITIONS} condições por segmento`),
+})
+
 export const radarSegmentRulesSchema = z.object({
   match: z.enum(["all", "any"]),
   conditions: z
@@ -482,8 +513,10 @@ export const radarSegmentRulesSchema = z.object({
     .max(RADAR_SEGMENT_MAX_CONDITIONS, `máximo de ${RADAR_SEGMENT_MAX_CONDITIONS} condições por segmento`),
 })
 
+export type RadarSegmentLeafCondition = z.infer<typeof radarSegmentLeafConditionSchema>
 export type RadarSegmentCondition = z.infer<typeof radarSegmentConditionSchema>
 export type RadarSegmentRules = z.infer<typeof radarSegmentRulesSchema>
+export type RadarSegmentAdditionalRules = z.infer<typeof radarSegmentAdditionalRulesSchema>
 
 export function parseRadarSegmentRules(input: unknown): RadarSegmentRules {
   return radarSegmentRulesSchema.parse(input)

@@ -124,6 +124,13 @@ export function isRulesValidForSave(rules: RadarSegmentRules): boolean {
   return rules.conditions.every(isConditionCompleteForSave)
 }
 
+/** Condições adicionais em fluxo hierárquico (campanha/pai) — permite lista vazia. */
+export function isHierarchicalAdditionalRulesValid(rules: RadarSegmentRules): boolean {
+  if (rules.conditions.length > 10) return false
+  if (rules.conditions.length === 0) return true
+  return rules.conditions.every(isConditionCompleteForSave)
+}
+
 const MILESTONE_EVENT_TYPES = ["portfolio.renewed", "portfolio.brokerage_transfer"]
 
 /** Marcos de timeline (D5): status de LeadStatus, carteira e "primeiro contato". */

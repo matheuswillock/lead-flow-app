@@ -3,11 +3,11 @@ import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { emailCampaignRepository } from "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
 import { extractCampaignEventConditions } from "@/lib/radar/campaign-segment-preset"
+import { mergeHierarchicalSegmentRules } from "@/lib/radar/merge-hierarchical-segment-rules"
 import {
-  parseRadarSegmentRules,
-  type RadarSegmentCondition,
+  radarSegmentAdditionalRulesSchema,
+  type RadarSegmentAdditionalRules,
   type RadarSegmentRules,
-  RADAR_SEGMENT_MAX_CONDITIONS,
 } from "@/lib/radar/segment-dsl"
 import { Prisma } from "@prisma/client"
 
@@ -16,7 +16,7 @@ type CreateFromCampaignInput = {
   campaignId: string
   name: string
   description?: string | null
-  additionalRules?: RadarSegmentRules
+  additionalRules?: RadarSegmentAdditionalRules
 }
 
 /**
@@ -25,32 +25,6 @@ type CreateFromCampaignInput = {
  * condições adicionais fornecidas pelo usuário.
  */
 export class CreateSegmentFromCampaignUseCase {
-  /**
-   * Mescla condições da campanha com condições adicionais do usuário.
-   * Valida limite de 10 condições totais.
-   */
-  private mergeConditions(
-    campaignConditions: RadarSegmentCondition[],
-    additionalRules: RadarSegmentRules | undefined
-  ): RadarSegmentRules {
-    const mergedConditions = [...campaignConditions]
-
-    if (additionalRules) {
-      mergedConditions.push(...additionalRules.conditions)
-    }
-
-    if (mergedConditions.length > RADAR_SEGMENT_MAX_CONDITIONS) {
-      throw new Error(
-        `Limite excedido: total de ${mergedConditions.length} condições (máximo ${RADAR_SEGMENT_MAX_CONDITIONS})`
-      )
-    }
-
-    return {
-      match: "all",
-      conditions: mergedConditions,
-    }
-  }
-
   async execute(input: CreateFromCampaignInput): Promise<Output> {
     try {
       const campaign = await emailCampaignRepository.findForSegmentGeneration(
@@ -76,9 +50,9 @@ export class CreateSegmentFromCampaignUseCase {
       let mergedRules: RadarSegmentRules
       try {
         if (input.additionalRules) {
-          parseRadarSegmentRules(input.additionalRules)
+          radarSegmentAdditionalRulesSchema.parse(input.additionalRules)
         }
-        mergedRules = this.mergeConditions(campaignConditions, input.additionalRules)
+        mergedRules = mergeHierarchicalSegmentRules(campaignConditions, input.additionalRules)
       } catch (validationError) {
         return new Output(
           false,

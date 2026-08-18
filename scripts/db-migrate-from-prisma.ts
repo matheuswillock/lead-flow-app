@@ -3,7 +3,7 @@
  *
  * Fluxo:
  *   1. Remove migrations vazias com o mesmo sufixo (stale de db:migrate:new)
- *   2. prisma db push no banco local (stack híbrido — docker-compose.local.yml)
+ *   2. prisma db push no banco local (Postgres :55322 — docker-compose.local.yml)
  *   3. supabase db diff --db-url <local> -f <nome> captura o delta em supabase/migrations/
  *   4. Deduplica arquivos com o mesmo sufixo (mantém o preenchido)
  *
@@ -23,7 +23,7 @@ import {
   isEmptyMigrationContent,
   normalizeMigrationName,
 } from "./db-migrate-utils";
-import { LOCAL_DB_URL, probeLocalStack } from "./lib/local-stack";
+import { LOCAL_DB_URL, probeLocalPostgres } from "./lib/local-stack";
 
 const rawArgs = process.argv.slice(2);
 const dryRun = rawArgs.includes("--dry-run");
@@ -53,9 +53,9 @@ function run(
 }
 
 function assertLocalStackRunning(): void {
-  if (!probeLocalStack()) {
+  if (!probeLocalPostgres()) {
     fail(
-      "Stack local não está rodando. Execute `bun run local:up` ou `bun run dev:local` antes de gerar a migration.",
+      "Postgres local não está rodando. Execute `bun run local:up` ou `bun run dev` antes de gerar a migration.",
     );
   }
 }

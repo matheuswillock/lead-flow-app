@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.244.0",
+  "version": "0.245.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -9,9 +9,10 @@
     "dev": "tsx scripts/dev-local.ts",
     "dev:local": "tsx scripts/dev-local.ts",
     "dev:clean": "bun scripts/clean-next-dev.ts && tsx scripts/dev-local.ts",
-    "local:up": "docker compose -f docker-compose.local.yml --env-file docker/local/.env.local-stack up -d",
-    "local:down": "docker compose -f docker-compose.local.yml --env-file docker/local/.env.local-stack down",
-    "local:logs": "docker compose -f docker-compose.local.yml --env-file docker/local/.env.local-stack logs -f",
+    "local:up": "docker compose -f docker-compose.local.yml up -d db",
+    "local:up:hybrid": "docker compose -f docker-compose.local.yml --profile hybrid --env-file docker/local/.env.local-stack up -d",
+    "local:down": "docker compose -f docker-compose.local.yml down",
+    "local:logs": "docker compose -f docker-compose.local.yml logs -f",
     "local:reset": "bun run local:up && PGSSLMODE=disable supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:55322/postgres --no-seed --yes",
     "docker:up": "bun run local:up",
     "docker:down": "bun run local:down",
@@ -57,7 +58,7 @@
     "test:ui": "bun test --isolate --preload ./test/setup-happy-dom.ts \"app/backoffice/(app)/cron-executions\" \"./app/[supabaseId]/components/CampaignDispatchIndicator.test.tsx\" \"./app/[supabaseId]/email/campanhas/features/components/CampaignDispatchProgressLine.test.tsx\" \"./app/[supabaseId]/email/campanhas/features/components/CampaignDispatchProgress.regression.test.tsx\" \"./app/[supabaseId]/email/campanhas/features/context/CampanhasHook.progress.test.ts\" \"./app/[supabaseId]/email/campanhas/features/context/campaign-dispatch-leaving-snapshot.test.ts\"",
     "test:backoffice-deletion": "bun test --isolate app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
     "test:email": "bun test --isolate app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
-    "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts lib/supabase/auth-sessions.test.ts",
+    "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts lib/supabase/auth-sessions.test.ts lib/supabase/realtime-guard.test.ts",
     "test:integration": "RADAR_INTEGRATION_TEST=1 bun test lib/radar/radar.integration.test.ts",
     "test:integration:local": "bun run local:up && RADAR_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration",
     "test:e2e": "playwright test",
@@ -69,6 +70,7 @@
     "db:seed:app": "bunx tsx prisma/seed-app.ts",
     "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
     "db:seed:backoffice-products": "tsx prisma/seed-backoffice-products.ts",
+    "db:seed:local": "tsx scripts/seed-local.ts",
     "db:seed:leads": "bunx tsx prisma/seed-leads.ts",
     "db:seed:e2e": "tsx scripts/seed-e2e.ts",
     "db:migrate:from-prisma": "bunx tsx scripts/db-migrate-from-prisma.ts",

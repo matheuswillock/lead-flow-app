@@ -195,6 +195,7 @@ export type CampaignPreviewPlan = {
   }>
   needsSplit: boolean
   totalRecipients: number
+  suppressedExcludedCount?: number
 }
 
 export type CampanhasState = {
