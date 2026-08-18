@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import { shouldSkipRealtimeSubscribe } from "@/lib/supabase/realtime-guard";
 import { fetchTeamMembersPayload } from "@/lib/team/teamMembersClientCache";
 
 type TeamMemberFunction = "SDR" | "CLOSER";
@@ -226,6 +227,10 @@ export function useTeamPresence({
   );
 
   useEffect(() => {
+    if (shouldSkipRealtimeSubscribe()) {
+      setPresenceByProfile(new Map());
+      return;
+    }
     if (!enabled || !masterId || !currentProfileId) {
       setPresenceByProfile(new Map());
       return;

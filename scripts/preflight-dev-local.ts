@@ -1,27 +1,31 @@
 /**
- * Standalone preflight for local dev (clone check only).
+ * Standalone preflight for local dev (seed/clone check only).
  *
- * Prefer `bun run dev` or `bun run dev:local` — both use `scripts/dev-local.ts`,
- * which starts the local hybrid stack (Postgres + Realtime) + Evolution API +
- * Next.js with local env overrides.
+ * Prefer `bun run dev` or `bun run dev:local` — both usam `scripts/dev-local.ts`,
+ * que sobe o Postgres local (db-only) + Next.js com overrides locais.
  *
- * This script only runs the DB/clone portion (no Evolution, no Next.js).
+ * This script only runs the DB/seed portion (no Evolution, no Next.js).
  *
- * 1. Ensures the local hybrid stack is up (starts it if needed).
- * 2. Counts rows in `auth.users` on the local DB.
- * 3. If empty, runs `bun run db:clone:remote` so the dev session starts with
- *    a usable copy of remote data (auth + storage + public).
+ * 1. Ensures the local Postgres is up (starts it if needed).
+ * 2. Se o catálogo estiver vazio, roda `bun run db:seed:local`.
+ * 3. `--clone` dispara o dump remoto. `--skip-clone` não popula.
  *
  * Flags:
- *   --skip-clone  Do not auto-clone even if the DB is empty.
+ *   --clone       Dump remoto no lugar do seed.
+ *   --skip-clone  Do not auto-populate.
  *   --no-start    Fail fast if the local stack is not running.
  */
 
 import { spawnSync } from "node:child_process";
 import { LOCAL_DB_URL, probeLocalStack, startLocalStack, waitForLocalStack } from "./lib/local-stack";
+import {
+  countActiveBackofficeFeatures,
+  EXPECTED_ACTIVE_BACKOFFICE_FEATURES,
+} from "./lib/sync-backoffice-catalog";
 
 const args = process.argv.slice(2);
 const skipClone = args.includes("--skip-clone");
+const shouldClone = args.includes("--clone");
 const noStart = args.includes("--no-start");
 
 function step(label: string) {
@@ -55,8 +59,8 @@ function run(
 }
 
 async function ensureLocalStackRunning() {
-  step("Checking local hybrid stack (Postgres + Realtime)");
-  if (probeLocalStack()) {
+  step("Checking local Postgres (db-only)");
+  if (probeLocalStack("db-only")) {
     info("✓ Running");
     return;
   }
@@ -64,38 +68,40 @@ async function ensureLocalStackRunning() {
     fail("Local stack is not running (--no-start passed).");
   }
   info("⚠ Not running — starting it (`bun run local:up`)…");
-  const start = startLocalStack();
+  const start = startLocalStack("db-only");
   if (start.status !== 0) {
-    fail("`docker compose -f docker-compose.local.yml up -d` failed. Check Docker is running.");
+    fail(
+      "`docker compose` falhou. No Fedora/Podman: `systemctl --user restart podman.socket`. Confira também se o Podman/Docker está no ar.",
+    );
   }
-  info("  waiting for Postgres + proxy…");
-  const ready = await waitForLocalStack();
+  info("  waiting for Postgres…");
+  const ready = await waitForLocalStack("db-only");
   if (!ready) {
     fail("Local stack did not become ready in time.");
   }
   info("✓ Started");
 }
 
-function countAuthUsers(): number {
-  const result = run("psql", [
-    LOCAL_DB_URL,
-    "-t",
-    "-A",
-    "-c",
-    "SELECT count(*) FROM auth.users",
-  ]);
-  if (result.status !== 0) {
-    fail(`Could not query local auth.users:\n${result.stderr || result.stdout}`);
+function needsLocalSeed(): boolean {
+  try {
+    return countActiveBackofficeFeatures(LOCAL_DB_URL) < EXPECTED_ACTIVE_BACKOFFICE_FEATURES;
+  } catch {
+    return true;
   }
-  const parsed = Number(result.stdout.trim());
-  if (!Number.isFinite(parsed)) {
-    fail(`Unexpected count output: "${result.stdout}"`);
+}
+
+function seedLocal() {
+  info("⚠ Banco local vazio/incompleto — running `bun run db:seed:local`…");
+  const seed = run("bun", ["run", "db:seed:local"], { stdio: "inherit" });
+  if (seed.status !== 0) {
+    info("⚠ Seed local falhou. Rode `bun run db:seed:local` manualmente.");
+    return;
   }
-  return parsed;
+  info("✓ Seed local concluído");
 }
 
 function cloneRemote() {
-  info("⚠ 0 users found — running `bun run db:clone:remote`…");
+  info("⚠ --clone — running `bun run db:clone:remote`…");
   const clone = run("bun", ["run", "db:clone:remote"], { stdio: "inherit" });
   if (clone.status !== 0) {
     info("⚠ Clone falhou — encerrando preflight sem dados remotos.");
@@ -106,22 +112,29 @@ function cloneRemote() {
 }
 
 async function main() {
+  if (shouldClone && skipClone) {
+    fail("Cannot pass --clone and --skip-clone at the same time.");
+  }
+
   await ensureLocalStackRunning();
 
-  step("Checking local auth.users");
-  const users = countAuthUsers();
-
-  if (users > 0) {
-    info(`✓ ${users} users present — DB is populated, skipping clone.`);
-    return;
-  }
-
   if (skipClone) {
-    info("⚠ 0 users found, but --skip-clone passed. Continuing.");
+    step("Skipping auto-populate (--skip-clone)");
     return;
   }
 
-  cloneRemote();
+  if (shouldClone) {
+    step("Cloning remote into local Postgres (--clone)");
+    cloneRemote();
+    return;
+  }
+
+  step("Checking local catalog (seed, not clone)");
+  if (!needsLocalSeed()) {
+    info("✓ Catálogo local já populado — pulando seed.");
+    return;
+  }
+  seedLocal();
 }
 
 main().catch((err) => {

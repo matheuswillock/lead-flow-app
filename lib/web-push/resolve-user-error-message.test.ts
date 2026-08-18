@@ -24,6 +24,17 @@ describe("resolveWebPushUserErrorMessage", () => {
     );
   });
 
+  it("maps push service unavailable", () => {
+    const error = new DOMException(
+      "Registration failed - push service not available",
+      "AbortError",
+    );
+
+    expect(resolveWebPushUserErrorMessage(error, "enable")).toBe(
+      "Este navegador não tem serviço de push disponível. Tente o Chrome ou o Edge, com notificações liberadas.",
+    );
+  });
+
   it("maps WebPushServiceWorkerNotReadyError", () => {
     expect(resolveWebPushUserErrorMessage(new WebPushServiceWorkerNotReadyError(), "enable")).toBe(
       "O navegador ainda está preparando as notificações. Aguarde alguns segundos, recarregue a página e tente novamente.",
