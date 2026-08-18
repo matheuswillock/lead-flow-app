@@ -1,3 +1,4 @@
+import type { RecipientListPage } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import type { EmailTemplateVariableDefinition } from "@/lib/email/interpolate"
 import type { ResolvedCampaignFrom } from "@/lib/email/resolve-campaign-from"
 
@@ -20,7 +21,11 @@ export type CampaignDispatchInput = {
 }
 
 export interface IEmailCampaignRecipientService {
-  listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]>
+  listActiveRecipients(
+    teamId: string,
+    contactListId: string,
+    page?: RecipientListPage
+  ): Promise<CampaignRecipient[]>
   listActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipient[]>
   countActiveRecipients(teamId: string, contactListId: string): Promise<number>
   getGlobalDefaults(teamId: string): Promise<Record<string, string>>

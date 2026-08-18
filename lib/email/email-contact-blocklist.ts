@@ -47,3 +47,13 @@ export async function findTeamBlocklistedEmails(teamId: string): Promise<Set<str
 
   return new Set(contacts.map((contact) => contact.email.trim().toLowerCase()))
 }
+
+export function excludeBlocklistedEmails<T extends { email: string }>(
+  recipients: T[],
+  blocklistedEmails: Set<string>
+): T[] {
+  if (blocklistedEmails.size === 0) return recipients
+  return recipients.filter(
+    (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
+  )
+}

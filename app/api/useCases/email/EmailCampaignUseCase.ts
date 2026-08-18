@@ -25,6 +25,7 @@ import {
 } from "@/lib/radar/segment-audience"
 import { CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE } from "@/lib/email/campaign-audience-pruning-constants"
 import {
+  listRadarSegmentEmailRecipientPage,
   listRadarSegmentEmailRecipients,
   listRadarSegmentProfileEmails,
 } from "@/lib/radar/list-segment-recipients"
@@ -48,6 +49,10 @@ import {
   formatProviderBatchFailureMessage,
 } from "@/lib/email/is-valid-resend-recipient-email"
 import { evaluateEmailForAudience, filterEmailsForAudience } from "@/lib/email/audience-prevalidation"
+import {
+  excludeBlocklistedEmails,
+  findTeamBlocklistedEmails,
+} from "@/lib/email/email-contact-blocklist"
 import type { DispatchProviderError } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
@@ -107,6 +112,7 @@ import {
 import {
   publishEmailCampaignDispatchWake,
 } from "@/lib/queues/email-campaign-dispatch"
+import { isCampaignFailedRetry } from "@/lib/email/campaign-dispatch-copy"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
@@ -164,7 +170,7 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
   NO_RECIPIENTS_RADAR: "Nenhum perfil apto no segmento Radar",
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
-  INTERNAL: "Erro interno durante o disparo",
+  INTERNAL: "Ocorreu um erro ao disparar a campanha",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
   ALL_SUPPRESSED: CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE,
   formatDailyLimit: formatDailyLimitFailureMessage,
@@ -692,6 +698,87 @@ export class EmailCampaignUseCase {
     })
 
     return [...new Set(contacts.map((contact) => contact.email.trim().toLowerCase()).filter(Boolean))]
+  }
+
+  private async excludeTeamBlocklisted<T extends { email: string }>(
+    teamId: string,
+    recipients: T[]
+  ): Promise<T[]> {
+    return excludeBlocklistedEmails(recipients, await findTeamBlocklistedEmails(teamId))
+  }
+
+  private async countDispatchAudience(params: {
+    teamId: string
+    contactListId?: string | null
+    radarSegmentSlug?: string | null
+    audienceContactIds?: string[] | null
+  }): Promise<number> {
+    const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
+    if (audienceIds.length > 0) {
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        await this.recipientService.listActiveRecipientsByIds(audienceIds)
+      )
+      return recipients.length
+    }
+    if (params.radarSegmentSlug) {
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        await listRadarSegmentEmailRecipients(params.teamId, params.radarSegmentSlug)
+      )
+      return recipients.length
+    }
+    return this.countActiveRecipients(params.teamId, {
+      contactListId: params.contactListId,
+      radarSegmentSlug: params.radarSegmentSlug,
+    })
+  }
+
+  private async listDispatchAudiencePage(params: {
+    teamId: string
+    contactListId?: string | null
+    radarSegmentSlug?: string | null
+    audienceContactIds?: string[] | null
+    skip: number
+    take: number
+  }): Promise<{ recipients: CampaignRecipient[]; exhausted: boolean }> {
+    const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
+    if (audienceIds.length > 0) {
+      const slice = audienceIds.slice(params.skip, params.skip + params.take)
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        await this.recipientService.listActiveRecipientsByIds(slice)
+      )
+      return { recipients, exhausted: params.skip + params.take >= audienceIds.length }
+    }
+    if (params.radarSegmentSlug) {
+      const page = await listRadarSegmentEmailRecipientPage(
+        params.teamId,
+        params.radarSegmentSlug,
+        { skip: params.skip, take: params.take }
+      )
+      const recipients = await this.excludeTeamBlocklisted(
+        params.teamId,
+        page.recipients.map((recipient) => ({
+          contactId: null,
+          email: recipient.email,
+          name: recipient.name,
+          customFields: recipient.customFields,
+        }))
+      )
+      return { recipients, exhausted: page.exhausted }
+    }
+    if (!params.contactListId) return { recipients: [], exhausted: true }
+    const listed = await this.recipientService.listActiveRecipients(
+      params.teamId,
+      params.contactListId,
+      {
+        skip: params.skip,
+        take: params.take,
+      }
+    )
+    const recipients = await this.excludeTeamBlocklisted(params.teamId, listed)
+    return { recipients, exhausted: listed.length < params.take }
   }
 
   private async loadListAudiences(
@@ -1251,8 +1338,11 @@ export class EmailCampaignUseCase {
       const failedRetryCandidates = campaigns
         .filter((campaign) => {
           if (campaign._count.subCampaigns > 0) return false
-          const effectiveStatus = leafReconcileOverrides.get(campaign.id)?.status ?? campaign.status
-          return RETRY_FAILED_ONLY_STATUSES.has(effectiveStatus)
+          const override = leafReconcileOverrides.get(campaign.id)
+          return isCampaignFailedRetry({
+            status: override?.status ?? campaign.status,
+            totalSent: override?.totalSent ?? campaign.totalSent,
+          })
         })
         .map((campaign) => ({ id: campaign.id, totalRecipients: campaign.totalRecipients }))
       const failedRetryCountsByCampaignId = await this.computeFailedRetryRecipientCountsBatch(
@@ -1274,7 +1364,8 @@ export class EmailCampaignUseCase {
           const totalRecipients = dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients
           const totalSent = childSum?.totalSent ?? leafOverride?.totalSent ?? campaign.totalSent
           const isLeafRetryStatus =
-            subCampaignCount === 0 && RETRY_FAILED_ONLY_STATUSES.has(effectiveStatus)
+            subCampaignCount === 0 &&
+            isCampaignFailedRetry({ status: effectiveStatus, totalSent })
 
           const leafProgress = progressByCampaignId.get(campaign.id)
           const childProgresses =
@@ -1477,7 +1568,7 @@ export class EmailCampaignUseCase {
       )
 
       const failedRetryRecipientCount =
-        !isParent && RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+        !isParent && isCampaignFailedRetry(campaign)
           ? await this.computeFailedRetryRecipientCount({
               campaignId: campaign.id,
               fallbackAudienceCount: activeRecipientCount,
@@ -1491,7 +1582,7 @@ export class EmailCampaignUseCase {
       const subFailedRetryCountById = new Map<string, number>()
       await Promise.all(
         campaign.subCampaigns
-          .filter((sub) => RETRY_FAILED_ONLY_STATUSES.has(sub.status))
+          .filter((sub) => isCampaignFailedRetry(sub))
           .map(async (sub) => {
             const count = await this.computeFailedRetryRecipientCount({
               campaignId: sub.id,
@@ -1560,7 +1651,7 @@ export class EmailCampaignUseCase {
           const subProgress = progressByCampaignId.get(sub.id)
           return {
             ...sub,
-            failedRetryRecipientCount: RETRY_FAILED_ONLY_STATUSES.has(sub.status)
+            failedRetryRecipientCount: isCampaignFailedRetry(sub)
               ? subFailedRetryCountById.get(sub.id) ?? 0
               : undefined,
             activeDispatch: subProgress?.activeDispatch ?? null,
@@ -2651,23 +2742,14 @@ export class EmailCampaignUseCase {
         )
       }
 
-      const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
-        teamId: ctx.teamId,
-        contactListId: campaign.contactListId,
-        radarSegmentSlug: campaign.radarSegmentSlug,
-        audienceContactIds: campaign.audienceContactIds,
-        template: {
-          subject: publishedTemplate.subject,
-          html: templateHtml,
-          variables: publishedTemplate.variables,
-        },
-        teamSettings,
+      const resolvedFrom = resolveCampaignFrom({
+        domainName: teamSettings?.resendDomainName,
+        legacyFromName: teamSettings?.fromName,
+        legacyFromEmail: teamSettings?.fromEmail,
         defaultSender,
-        masterTimezone: campaign.team.master.timezone,
       })
-
       const fromGuard = assertCampaignFromIsSendable({
-        resolved: dispatchInput.resolvedFrom,
+        resolved: resolvedFrom,
         domainName: teamSettings?.resendDomainName,
         domainStatus: teamSettings?.resendDomainStatus,
       })
@@ -2682,37 +2764,42 @@ export class EmailCampaignUseCase {
         return new Output(false, [], [trackingGuard.message], null)
       }
 
-      // failed/partially_sent: sempre só falhos (mesmo se o client omitir o flag).
-      // Evita reenviar a lista inteira e duplicar quem já chegou ao provedor.
+      // Retry só-falhos: flag explícito, ou failed/partially_sent com totalSent > 0
+      // (mesmo contrato de isCampaignFailedRetry). totalSent === 0 é o primeiro
+      // Disparar — audiência completa, inclusive quem ainda não foi materializado.
       const retryFailedOnly =
-        options?.retryFailedOnly === true || RETRY_FAILED_ONLY_STATUSES.has(campaign.status)
+        options?.retryFailedOnly === true || isCampaignFailedRetry(campaign)
 
-      let recipientsForDispatch = dispatchInput.recipients
+      const audienceCount = await this.countDispatchAudience({
+        teamId: ctx.teamId,
+        contactListId: campaign.contactListId,
+        radarSegmentSlug: campaign.radarSegmentSlug,
+        audienceContactIds: campaign.audienceContactIds,
+      })
+
+      let recipientCount = audienceCount
       if (retryFailedOnly) {
         const { emails: retryEmails, hadAnyLog } = await this.resolveRetryRecipientEmailsForDispatch(
           campaign.id,
           RETRY_FAILED_ONLY_STATUSES.has(campaign.status),
-          dispatchInput.recipients.map((recipient) => recipient.email)
+          []
         )
-        const retryEmailSet = new Set(
-          filterEmailsForAudience(
+        if (hadAnyLog) {
+          recipientCount = filterEmailsForAudience(
             retryEmails,
             await emailContactListRepository.findBouncedEmails(retryEmails)
-          )
-        )
-        recipientsForDispatch = dispatchInput.recipients.filter((recipient) =>
-          retryEmailSet.has(recipient.email.trim().toLowerCase())
-        )
+          ).length
+        }
         console.info("[EmailCampaignUseCase][startManualDispatch] retryFailedOnly", {
           campaignId: campaign.id,
           previousStatus: campaign.status,
           hadAnyLog,
-          fullAudienceCount: dispatchInput.recipients.length,
-          failedOnlyCount: recipientsForDispatch.length,
+          audienceCount,
+          failedOnlyCount: recipientCount,
         })
       }
 
-      if (recipientsForDispatch.length === 0) {
+      if (recipientCount === 0) {
         return new Output(
           false,
           [],
@@ -2732,30 +2819,13 @@ export class EmailCampaignUseCase {
         teamId: ctx.teamId,
         timezone: ownerTz,
         now: new Date(),
-        additionalRecipients: recipientsForDispatch.length,
+        additionalRecipients: recipientCount,
       })
       if (dailyCap.exceeded && dailyCap.limit != null) {
         return new Output(
           false,
           [],
           [EMAIL_CAMPAIGN_FAILURE_MESSAGES.formatDailyLimit(dailyCap.used, dailyCap.limit)],
-          null
-        )
-      }
-
-      const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
-        subject: dispatchInput.subject,
-        html: dispatchInput.html,
-        recipients: recipientsForDispatch,
-        globalDefaults: dispatchInput.globalDefaults,
-        templateVariables: dispatchInput.templateVariables,
-      })
-
-      if (unresolvedTokens.length > 0) {
-        return new Output(
-          false,
-          [],
-          [this.buildUnresolvedTokensErrorMessage(unresolvedTokens)],
           null
         )
       }
@@ -2769,8 +2839,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
       }
 
-      const recipientsList = recipientsForDispatch
-      const creditsToReserve = recipientsList.length
+      const creditsToReserve = recipientCount
 
       const creditReservation = await this.reserveTeamCreditsForDispatch(
         ctx.teamId,
@@ -2802,7 +2871,7 @@ export class EmailCampaignUseCase {
           contactListName: campaign.contactList?.name ?? null,
           radarSegmentSlug: campaign.radarSegmentSlug,
           triggeredBy: ctx.profileId,
-          totalRecipients: recipientsList.length,
+          totalRecipients: recipientCount,
           status: "sending",
           batchIdempotencyScheme: "contentHash",
           retryFailedOnly,
@@ -2810,20 +2879,6 @@ export class EmailCampaignUseCase {
           hasCampaignsBetaAccess,
         },
       })
-
-      const { globalDefaults, templateVariables } = dispatchInput
-      const logInputs = recipientsList.map((recipient) => ({
-        teamId: ctx.teamId,
-        campaignId: campaign.id,
-        dispatchId: dispatchRecord.id,
-        recipientEmail: recipient.email,
-        recipientName: recipient.name,
-        subject: interpolateEmailTemplate(dispatchInput.subject, recipient, globalDefaults, templateVariables),
-        category: "campaign" as const,
-        sourceType: "campaign",
-        sourceId: campaign.id,
-      }))
-      const createdLogs = await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
 
       const dispatchWarnings = getResendDomainDispatchWarnings(
         resendDomainTrackingInputFromSettings(teamSettings)
@@ -2838,15 +2893,15 @@ export class EmailCampaignUseCase {
         previousStatus: previousStatus ?? "draft",
         reservedCredits,
         hasCampaignsBetaAccess,
-        recipients: recipientsList,
-        subject: dispatchInput.subject,
-        html: dispatchInput.html,
-        from: dispatchInput.from,
-        replyTo: dispatchInput.replyTo,
-        globalDefaults,
-        templateVariables,
-        logIdsByEmail: createdLogs.map(({ email, logId }) => ({ email, logId })),
-        totalRecipients: recipientsList.length,
+        recipients: [],
+        subject: publishedTemplate.subject,
+        html: templateHtml,
+        from: formatCampaignFromHeader(resolvedFrom),
+        replyTo: teamSettings?.replyTo ?? null,
+        globalDefaults: {},
+        templateVariables: [],
+        logIdsByEmail: [],
+        totalRecipients: recipientCount,
         retryFailedOnly,
         status: "sending",
         batchIdempotencyScheme: "contentHash",
@@ -2857,7 +2912,7 @@ export class EmailCampaignUseCase {
         true,
         [
           retryFailedOnly
-            ? `Reenvio das falhas iniciado em segundo plano (${recipientsList.length} destinatário(s))`
+            ? `Reenvio das falhas iniciado em segundo plano (${recipientCount} destinatário(s))`
             : "Disparo iniciado em segundo plano",
           ...dispatchWarnings,
         ],
@@ -2911,7 +2966,7 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Conflito de numeração de disparo. Tente novamente."], null)
       }
 
-      return new Output(false, [], [failureMessage === EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL ? "Erro ao disparar campanha" : failureMessage], null)
+      return new Output(false, [], [failureMessage], null)
     }
   }
 
@@ -3354,13 +3409,21 @@ export class EmailCampaignUseCase {
     }
   }
 
-  /** Compat: executa start + complete de forma síncrona (testes / callers legados). */
+  /** Compat: start curto + drena o consumer da fila (testes / callers legados). */
   async send(id: string, ctx: TeamContext, options?: ManualDispatchOptions): Promise<Output> {
     const started = await this.startManualDispatch(id, ctx, options)
     if (!started.isValid || !started.result) {
       return started
     }
-    return this.completeManualDispatch(started.result as ManualDispatchJob)
+    const job = started.result as ManualDispatchJob
+    let last: Output = started
+    for (let i = 0; i < 10_000; i++) {
+      last = await this.processDispatchQueueBatch(job.dispatchId)
+      if (!last.isValid) return last
+      const hasMore = Boolean((last.result as { hasMore?: boolean } | null)?.hasMore)
+      if (!hasMore) return last
+    }
+    return last
   }
 
   async recoverStuckSendingCampaigns(now = new Date()): Promise<number> {
@@ -3482,6 +3545,19 @@ export class EmailCampaignUseCase {
         })
 
         if (queuedLogs.length === 0) {
+          const existingLogCount = await this.db.emailLog.count({
+            where: { dispatchId: dispatch.id },
+          })
+          if (existingLogCount < dispatch.totalRecipients) {
+            console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando materialização via fila", {
+              dispatchId: dispatch.id,
+              existingLogCount,
+              totalRecipients: dispatch.totalRecipients,
+            })
+            await this.publishDispatchWake(dispatch.id, "cron-start")
+            resumed += 1
+            continue
+          }
           const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
           const terminal = resolveCampaignStatusAfterDispatch(sentCount)
           // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
@@ -3629,10 +3705,20 @@ export class EmailCampaignUseCase {
         templateSubject: true,
         totalRecipients: true,
         contactListId: true,
+        radarSegmentSlug: true,
         templateId: true,
+        retryFailedOnly: true,
         reservedCredits: true,
         hasCampaignsBetaAccess: true,
-        campaign: { select: { name: true } },
+        materializeSourceOffset: true,
+        campaign: {
+          select: {
+            name: true,
+            audienceContactIds: true,
+            contactListId: true,
+            radarSegmentSlug: true,
+          },
+        },
       },
     })
 
@@ -3641,17 +3727,6 @@ export class EmailCampaignUseCase {
         dispatchId,
       })
       return new Output(true, ["Disparo já finalizado"], [], { dispatchId, hasMore: false })
-    }
-
-    const queuedLogs = await this.db.emailLog.findMany({
-      where: { dispatchId: dispatch.id, status: "queued" },
-      select: { id: true, recipientEmail: true, recipientName: true },
-      orderBy: { id: "asc" },
-      take: batchSize,
-    })
-
-    if (queuedLogs.length === 0) {
-      return this.finalizeDispatchQueueBatch(dispatch)
     }
 
     let teamSettings = null
@@ -3697,6 +3772,45 @@ export class EmailCampaignUseCase {
       )
       await this.failDispatchOnDomainGuard(dispatch, trackingGuard.message)
       return new Output(false, [], [trackingGuard.message], { dispatchId: dispatch.id, hasMore: false })
+    }
+
+    let queuedLogs = await this.db.emailLog.findMany({
+      where: { dispatchId: dispatch.id, status: "queued" },
+      select: { id: true, recipientEmail: true, recipientName: true },
+      orderBy: { id: "asc" },
+      take: batchSize,
+    })
+
+    let materializedHasMore = false
+    if (queuedLogs.length === 0) {
+      const materialized = await this.materializeQueuedLogsChunk(dispatch, batchSize)
+      if (materialized.errorMessage) {
+        await this.failDispatchOnDomainGuard(dispatch, materialized.errorMessage)
+        return new Output(false, [], [materialized.errorMessage], {
+          dispatchId: dispatch.id,
+          hasMore: false,
+        })
+      }
+      materializedHasMore = materialized.hasMore
+      if (materialized.created > 0) {
+        queuedLogs = await this.db.emailLog.findMany({
+          where: { dispatchId: dispatch.id, status: "queued" },
+          select: { id: true, recipientEmail: true, recipientName: true },
+          orderBy: { id: "asc" },
+          take: batchSize,
+        })
+      }
+      if (queuedLogs.length === 0) {
+        if (materializedHasMore) {
+          await this.publishDispatchWake(dispatch.id, "continue")
+          return new Output(true, ["Lote de destinatários materializado"], [], {
+            dispatchId: dispatch.id,
+            remaining: 0,
+            hasMore: true,
+          })
+        }
+        return this.finalizeDispatchQueueBatch(dispatch)
+      }
     }
 
     const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
@@ -3787,15 +3901,17 @@ export class EmailCampaignUseCase {
       }
     )
 
-    const remaining = await this.db.emailLog.count({
+    const remainingQueued = await this.db.emailLog.count({
       where: { dispatchId: dispatch.id, status: "queued" },
     })
+    const remaining = remainingQueued + (materializedHasMore ? batchSize : 0)
 
-    if (remaining > 0) {
+    if (remainingQueued > 0 || materializedHasMore) {
       console.info("[EmailCampaignUseCase][processDispatchQueueBatch] lote processado, republicando wake", {
         dispatchId: dispatch.id,
         batchSent: dispatchResult.sent,
-        remaining,
+        remainingQueued,
+        materializedHasMore,
       })
       await this.publishDispatchWake(dispatch.id, "continue", remaining)
       return new Output(
@@ -3866,7 +3982,12 @@ export class EmailCampaignUseCase {
       true,
       [`Disparo finalizado: ${sentCount} enviado(s)`],
       [],
-      { dispatchId: dispatch.id, sent: sentCount, hasMore: false }
+      {
+        dispatchId: dispatch.id,
+        sent: sentCount,
+        failed: Math.max(0, (dispatch.totalRecipients ?? sentCount) - sentCount),
+        hasMore: false,
+      }
     )
   }
 
@@ -3953,6 +4074,200 @@ export class EmailCampaignUseCase {
     }
 
     return reclaimed
+  }
+
+  private async persistMaterializeSourceOffset(
+    dispatchId: string,
+    sourceOffset: number
+  ): Promise<void> {
+    await this.db.emailCampaignDispatch.update({
+      where: { id: dispatchId },
+      data: { materializeSourceOffset: Math.max(0, sourceOffset) },
+    })
+  }
+
+  /**
+   * Materializa até `chunkSize` logs `queued` para o dispatch (primeira execução
+   * e continuações). O cursor é `materializeSourceOffset` na dimensão da fonte
+   * (IDs Radar / skip da lista / índice retry), não `emailLog.count`.
+   */
+  private async materializeQueuedLogsChunk(
+    dispatch: {
+      id: string
+      campaignId: string
+      teamId: string
+      contactListId: string | null
+      radarSegmentSlug: string | null
+      templateId: string
+      templateSubject: string
+      templateHtml: string
+      retryFailedOnly: boolean
+      materializeSourceOffset: number
+      campaign: {
+        audienceContactIds: string[]
+        contactListId: string | null
+        radarSegmentSlug: string | null
+      }
+    },
+    chunkSize: number
+  ): Promise<{ created: number; hasMore: boolean; errorMessage?: string }> {
+    const existingCount = await this.db.emailLog.count({
+      where: { dispatchId: dispatch.id },
+    })
+    const selected: CampaignRecipient[] = []
+    let sourceOffset = Math.max(0, dispatch.materializeSourceOffset ?? 0)
+    let exhausted = false
+
+    const audienceParams = {
+      teamId: dispatch.teamId,
+      contactListId: dispatch.contactListId ?? dispatch.campaign.contactListId,
+      radarSegmentSlug: dispatch.radarSegmentSlug ?? dispatch.campaign.radarSegmentSlug,
+      audienceContactIds: dispatch.campaign.audienceContactIds,
+    }
+
+    let usedRetryList = false
+    if (dispatch.retryFailedOnly) {
+      const { emails: retryEmails, hadAnyLog } = await this.resolveRetryRecipientEmailsForDispatch(
+        dispatch.campaignId,
+        true,
+        []
+      )
+      if (hadAnyLog) {
+        usedRetryList = true
+        const retryList = filterEmailsForAudience(
+          retryEmails,
+          await emailContactListRepository.findBouncedEmails(retryEmails)
+        )
+        const allowed = new Set(
+          (
+            await this.excludeTeamBlocklisted(
+              dispatch.teamId,
+              retryList.map((email) => ({ email }))
+            )
+          ).map((recipient) => recipient.email)
+        )
+        const retryRecipients = retryList.filter((email) => allowed.has(email))
+        while (selected.length < chunkSize) {
+          const slice = retryRecipients.slice(sourceOffset, sourceOffset + chunkSize)
+          if (slice.length === 0) {
+            exhausted = true
+            break
+          }
+          const existingEmails = await this.findExistingDispatchEmails(dispatch.id, slice)
+          for (const email of slice) {
+            if (existingEmails.has(email)) continue
+            selected.push({
+              contactId: null,
+              email,
+              name: null,
+              customFields: null,
+            })
+          }
+          sourceOffset += slice.length
+          exhausted = sourceOffset >= retryRecipients.length
+          if (exhausted) break
+        }
+      }
+    }
+
+    if (!usedRetryList) {
+      while (selected.length < chunkSize) {
+        const page = await this.listDispatchAudiencePage({
+          ...audienceParams,
+          skip: sourceOffset,
+          take: chunkSize,
+        })
+        if (page.recipients.length === 0) {
+          exhausted = page.exhausted
+          if (exhausted) break
+          sourceOffset += chunkSize
+          continue
+        }
+        const existingEmails = await this.findExistingDispatchEmails(
+          dispatch.id,
+          page.recipients.map((recipient) => recipient.email)
+        )
+        for (const recipient of page.recipients) {
+          if (existingEmails.has(recipient.email.trim().toLowerCase())) continue
+          selected.push(recipient)
+        }
+        sourceOffset += chunkSize
+        exhausted = page.exhausted
+        if (exhausted) break
+      }
+    }
+
+    const chunk = selected
+    if (chunk.length === 0) {
+      await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
+      return { created: 0, hasMore: false }
+    }
+
+    const enriched = await enrichCampaignRecipientsWithRadar(dispatch.teamId, chunk)
+    const mappedChunk: CampaignRecipient[] = enriched.map((recipient) => ({
+      contactId: recipient.contactId ?? null,
+      email: recipient.email,
+      name: recipient.name ?? null,
+      customFields: recipient.customFields ?? null,
+    }))
+    const globalDefaults = await this.recipientService.getGlobalDefaults(dispatch.teamId)
+    const publishedTemplate = await this.resolvePublishedTemplate(dispatch.templateId, dispatch.teamId)
+    const templateVariables = this.recipientService.parseTemplateVariables(
+      publishedTemplate?.variables ?? []
+    )
+
+    if (existingCount === 0) {
+      const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
+        subject: dispatch.templateSubject,
+        html: dispatch.templateHtml,
+        recipients: mappedChunk,
+        globalDefaults,
+        templateVariables,
+      })
+      if (unresolvedTokens.length > 0) {
+        return {
+          created: 0,
+          hasMore: false,
+          errorMessage: this.buildUnresolvedTokensErrorMessage(unresolvedTokens),
+        }
+      }
+    }
+
+    const logInputs = mappedChunk.map((recipient) => ({
+      teamId: dispatch.teamId,
+      campaignId: dispatch.campaignId,
+      dispatchId: dispatch.id,
+      recipientEmail: recipient.email,
+      recipientName: recipient.name,
+      subject: interpolateEmailTemplate(
+        dispatch.templateSubject,
+        recipient,
+        globalDefaults,
+        templateVariables
+      ),
+      category: "campaign" as const,
+      sourceType: "campaign",
+      sourceId: dispatch.campaignId,
+    }))
+    await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
+    await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
+    return { created: chunk.length, hasMore: !exhausted }
+  }
+
+  private async findExistingDispatchEmails(
+    dispatchId: string,
+    emails: string[]
+  ): Promise<Set<string>> {
+    const unique = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+    if (unique.length === 0) return new Set()
+    const logs = await this.db.emailLog.findMany({
+      where: {
+        dispatchId,
+        recipientEmail: { in: unique, mode: "insensitive" },
+      },
+      select: { recipientEmail: true },
+    })
+    return new Set(logs.map((log) => log.recipientEmail.trim().toLowerCase()))
   }
 
   /**

@@ -2795,6 +2795,7 @@ completed completed
     Boolean retryFailedOnly 
     Int reservedCredits 
     Boolean hasCampaignsBetaAccess 
+    Int materializeSourceOffset 
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 

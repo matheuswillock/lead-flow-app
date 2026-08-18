@@ -3360,6 +3360,8 @@ model EmailCampaignDispatch {
   reservedCredits       Int                         @default(0)
   /** Snapshot do beta de campanhas no momento da reserva; usado para não re-resolver feature access no finalize. */
   hasCampaignsBetaAccess Boolean                    @default(false)
+  /** Cursor da fonte da audiência (IDs Radar / skip da lista / índice retry), não emailLog.count. */
+  materializeSourceOffset Int                       @default(0)
   errorMessage          String?                     @map("errorMessage") @db.Text
   createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
   updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)

@@ -37,13 +37,39 @@ const findUnresolvedTokensMock = mock(() => [] as string[])
 const listActiveRecipientsMock = mock(
   async (..._args: unknown[]) => [] as Array<{ email: string; name: string; contactId: string }>
 )
+mock.module("@/lib/radar/enrich-campaign-recipients", () => ({
+  enrichCampaignRecipientsWithRadar: async (_teamId: string, recipients: unknown) => recipients,
+}))
+
 mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService", () => ({
   EmailCampaignRecipientService: class {
     buildCampaignDispatchInput = buildCampaignDispatchInputMock
     findUnresolvedTokensForRecipients = findUnresolvedTokensMock
-    listActiveRecipients = listActiveRecipientsMock
+    listActiveRecipients = async (...args: unknown[]) => {
+      const listed = await listActiveRecipientsMock(...args)
+      const page = args[2] as { skip: number; take: number } | undefined
+      const built = await buildCampaignDispatchInputMock()
+      const source =
+        listed.length > 0 ? listed : (built.recipients ?? [])
+      if (page) return source.slice(page.skip, page.skip + page.take)
+      return source
+    }
+    listActiveRecipientsByIds = async (ids: string[]) => {
+      const listed = await listActiveRecipientsMock()
+      const source =
+        listed.length > 0 ? listed : ((await buildCampaignDispatchInputMock()).recipients ?? [])
+      if (ids.length === 0) return source
+      const matched = source.filter(
+        (recipient: { contactId?: string | null }) =>
+          Boolean(recipient.contactId) && ids.includes(recipient.contactId as string)
+      )
+      return matched.length > 0 ? matched : source
+    }
     countActiveRecipients = async (...args: unknown[]) =>
-      (await listActiveRecipientsMock(...args)).length
+      (await listActiveRecipientsMock(...args)).length ||
+      ((await buildCampaignDispatchInputMock()).recipients?.length ?? 0)
+    getGlobalDefaults = async () => ({})
+    parseTemplateVariables = (variables: unknown) => (Array.isArray(variables) ? variables : [])
   },
 }))
 
@@ -68,8 +94,8 @@ mock.module("@/app/api/services/EmailCredit/EmailCreditService", () => ({
 const createQueuedLogsMock = mock(async (inputs: Array<{ recipientEmail: string }>) =>
   inputs.map((i) => ({ email: i.recipientEmail, logId: `log-${i.recipientEmail}` }))
 )
-const markManyTeamEmailLogsSentMock = mock(async () => {})
-const markTeamEmailLogFailedMock = mock(async () => {})
+const markManyTeamEmailLogsSentMock = mock(async (_entries: Array<{ logId: string }>) => {})
+const markTeamEmailLogFailedMock = mock(async (_logId: string) => {})
 mock.module("@/lib/email/team-email-dispatch-logger", () => ({
   teamEmailDispatchLogger: {
     createQueuedTeamEmailLogs: createQueuedLogsMock,
@@ -204,9 +230,45 @@ mock.module("@/lib/email/inline-email-html", () => ({
 mock.module("@/lib/email/email-rbac", () => ({
   canDispatchEmail: () => true,
 }))
+
+const findTeamBlocklistedEmailsMock = mock(async () => new Set<string>())
+mock.module("@/lib/email/email-contact-blocklist", () => ({
+  EMAIL_BLOCKLIST_NAME: "Bloqueados",
+  ensureTeamEmailBlocklist: mock(async () => ({ id: "bl-1", isBlocklist: true })),
+  findTeamBlocklistedEmails: findTeamBlocklistedEmailsMock,
+  excludeBlocklistedEmails: <T extends { email: string }>(
+    recipients: T[],
+    blocklistedEmails: Set<string>
+  ) => {
+    if (blocklistedEmails.size === 0) return recipients
+    return recipients.filter(
+      (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
+    )
+  },
+}))
+
+const listRadarSegmentEmailRecipientsMock = mock(
+  async () => [] as Array<{ email: string; name: string | null; customFields: Record<string, unknown> | null }>
+)
+const listRadarSegmentProfileEmailsMock = mock(async () => [] as string[])
+const listRadarSegmentEmailRecipientPageMock = mock(
+  async (
+    _teamId: string,
+    _slug: string,
+    page?: { skip: number; take: number }
+  ) => {
+    const recipients = await listRadarSegmentEmailRecipientsMock()
+    if (!page) return { recipients, exhausted: true }
+    return {
+      recipients: recipients.slice(page.skip, page.skip + page.take),
+      exhausted: page.skip + page.take >= recipients.length,
+    }
+  }
+)
 mock.module("@/lib/radar/list-segment-recipients", () => ({
-  listRadarSegmentEmailRecipients: mock(async () => []),
-  listRadarSegmentProfileEmails: mock(async () => []),
+  listRadarSegmentEmailRecipients: listRadarSegmentEmailRecipientsMock,
+  listRadarSegmentProfileEmails: listRadarSegmentProfileEmailsMock,
+  listRadarSegmentEmailRecipientPage: listRadarSegmentEmailRecipientPageMock,
 }))
 
 mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
@@ -319,6 +381,7 @@ function makeDefaultDispatchInput(
 function makeCampaign(overrides: Record<string, unknown> = {}) {
   return {
     id: "camp-1",
+    name: "Campanha Teste",
     status: "draft",
     templateId: "tpl-ref-1",
     contactListId: "list-1",
@@ -328,6 +391,178 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
     contactList: { id: "list-1", name: "Lista Test", totalContacts: 10 },
     team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
     ...overrides,
+  }
+}
+
+function makeSendingDispatch(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "dispatch-1",
+    campaignId: "camp-1",
+    teamId: "team-1",
+    dispatchNumber: 1,
+    batchIdempotencyScheme: "contentHash",
+    templateHtml: "<p>Olá {{nome}}</p>",
+    templateSubject: "Assunto {{nome}}",
+    totalRecipients: 3,
+    contactListId: "list-1",
+    radarSegmentSlug: null,
+    templateId: "tpl-1",
+    retryFailedOnly: false,
+    reservedCredits: 3,
+    hasCampaignsBetaAccess: false,
+    materializeSourceOffset: 0,
+    campaign: {
+      name: "Campanha Teste",
+      audienceContactIds: [] as string[],
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+    },
+    ...overrides,
+  }
+}
+
+function persistDispatchSourceOffset(initial: ReturnType<typeof makeSendingDispatch>) {
+  let current = {
+    ...initial,
+    materializeSourceOffset: Number(initial.materializeSourceOffset ?? 0),
+  }
+  emailCampaignDispatchFindFirstMock.mockImplementation(async () => current)
+  emailCampaignDispatchUpdateMock.mockImplementation(async (...args: unknown[]) => {
+    const data = (args[0] as { data?: { materializeSourceOffset?: number } } | undefined)?.data
+    if (typeof data?.materializeSourceOffset === "number") {
+      current = { ...current, materializeSourceOffset: data.materializeSourceOffset }
+    }
+    return current
+  })
+  return () => current
+}
+
+function restoreRadarRecipientPageMock() {
+  listRadarSegmentEmailRecipientPageMock.mockImplementation(
+    async (
+      _teamId: string,
+      _slug: string,
+      page?: { skip: number; take: number }
+    ) => {
+      const recipients = await listRadarSegmentEmailRecipientsMock()
+      if (!page) return { recipients, exhausted: true }
+      return {
+        recipients: recipients.slice(page.skip, page.skip + page.take),
+        exhausted: page.skip + page.take >= recipients.length,
+      }
+    }
+  )
+}
+
+type MaterializedQueuedLog = {
+  id: string
+  recipientEmail: string
+  recipientName: string | null
+  status: string
+  sentAt?: Date | null
+}
+
+let materializedQueuedLogs: MaterializedQueuedLog[] = []
+
+function installQueuedLogStore() {
+  materializedQueuedLogs = []
+  createQueuedLogsMock.mockImplementation(
+    async (inputs: Array<{ recipientEmail: string; recipientName?: string | null }>) =>
+      inputs.map((input) => {
+        const log: MaterializedQueuedLog = {
+          id: `log-${input.recipientEmail}-${materializedQueuedLogs.length}`,
+          recipientEmail: input.recipientEmail,
+          recipientName: input.recipientName ?? null,
+          status: "queued",
+        }
+        materializedQueuedLogs.push(log)
+        return { email: input.recipientEmail, logId: log.id }
+      })
+  )
+  markManyTeamEmailLogsSentMock.mockImplementation(async (entries: Array<{ logId: string }>) => {
+    const ids = new Set(entries.map((entry) => entry.logId))
+    for (const log of materializedQueuedLogs) {
+      if (ids.has(log.id)) {
+        log.status = "sent"
+        log.sentAt = new Date()
+      }
+    }
+  })
+  markTeamEmailLogFailedMock.mockImplementation(async (logId: string) => {
+    const log = materializedQueuedLogs.find((item) => item.id === logId)
+    if (log) log.status = "failed"
+  })
+}
+
+function queuedLogFindManyImpl(args: unknown) {
+  const typed = args as {
+    where?: {
+      status?: unknown
+      dispatchId?: string
+      campaignId?: string
+      recipientEmail?: { in?: string[] }
+    }
+    take?: number
+  }
+  const where = typed?.where
+  if (where?.recipientEmail?.in) {
+    const wanted = new Set(where.recipientEmail.in.map((email) => email.trim().toLowerCase()))
+    return materializedQueuedLogs.filter((log) => wanted.has(log.recipientEmail.trim().toLowerCase()))
+  }
+  if (where?.status === "queued") {
+    const queued = materializedQueuedLogs.filter((log) => log.status === "queued")
+    return typeof typed.take === "number" ? queued.slice(0, typed.take) : queued
+  }
+  if (where?.dispatchId) {
+    return materializedQueuedLogs
+  }
+  return []
+}
+
+function queuedLogCountImpl(args: unknown) {
+  const where = (
+    args as {
+      where?: { status?: unknown; dispatchId?: string; sentAt?: unknown; campaignId?: string }
+    }
+  )?.where
+  if (where?.status === "queued") {
+    return materializedQueuedLogs.filter((log) => log.status === "queued").length
+  }
+  if (where?.sentAt) {
+    return materializedQueuedLogs.filter((log) => log.sentAt).length
+  }
+  if (where?.dispatchId) {
+    return materializedQueuedLogs.length
+  }
+  return 0
+}
+
+function autoChunkDispatched(result: {
+  sent: number
+  failed: number
+  dispatched: Array<{ email: string; resendId: string }>
+  providerErrors: Array<{ message: string; emails: string[]; statusCode?: number }>
+}) {
+  return async (params: unknown) => {
+    const typed = params as {
+      onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+    }
+    if (result.dispatched.length > 0) {
+      await typed.onChunkDispatched?.(result.dispatched)
+    }
+    return result
+  }
+}
+
+function findManyCampaignLogsOrQueued(
+  campaignLogs: Array<{ recipientEmail: string; status: string }>
+) {
+  return async (args: unknown) => {
+    const where = (args as { where?: { status?: unknown; dispatchId?: string } })?.where
+    if (where?.status === "queued" || where?.dispatchId) {
+      return queuedLogFindManyImpl(args)
+    }
+    return campaignLogs
   }
 }
 
@@ -398,6 +633,9 @@ const allMocks = [
   buildCampaignDispatchInputMock,
   findUnresolvedTokensMock,
   listActiveRecipientsMock,
+  findTeamBlocklistedEmailsMock,
+  listRadarSegmentEmailRecipientsMock,
+  listRadarSegmentProfileEmailsMock,
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
   publishEmailCampaignDispatchWakeMock,
@@ -425,10 +663,12 @@ describe("EmailCampaignUseCase.send", () => {
       _max: { dispatchNumber: 0 },
     }))
     emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-1" }))
-    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({ id: "dispatch-1" }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => makeSendingDispatch())
     emailCampaignDispatchUpdateMock.mockImplementation(async () => ({}))
     emailTeamSenderFindFirstMock.mockImplementation(async () => null)
-    emailLogFindManyMock.mockImplementation(async () => [])
+    installQueuedLogStore()
+    emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
+    emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
     queryRawMock.mockImplementation(async () => [])
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
@@ -442,12 +682,11 @@ describe("EmailCampaignUseCase.send", () => {
     }))
     buildCampaignDispatchInputMock.mockImplementation(async () => makeDefaultDispatchInput([]))
     findUnresolvedTokensMock.mockImplementation(() => [])
-    createQueuedLogsMock.mockImplementation(
-      async (inputs: Array<{ recipientEmail: string }>) =>
-        inputs.map((i) => ({ email: i.recipientEmail, logId: `log-${i.recipientEmail}` }))
-    )
-    markManyTeamEmailLogsSentMock.mockImplementation(async () => {})
-    markTeamEmailLogFailedMock.mockImplementation(async () => {})
+    listActiveRecipientsMock.mockImplementation(async () => [])
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set<string>())
+    listRadarSegmentEmailRecipientsMock.mockImplementation(async () => [])
+    listRadarSegmentProfileEmailsMock.mockImplementation(async () => [])
+    restoreRadarRecipientPageMock()
     dispatchBatchMock.mockImplementation(async () => ({
       sent: 0,
       failed: 0,
@@ -493,6 +732,204 @@ describe("EmailCampaignUseCase.send", () => {
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
     expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("startManualDispatch não chama createQueuedTeamEmailLogs e devolve dispatchId + totalRecipients", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    expect(output.result).toMatchObject({
+      dispatchId: "dispatch-1",
+      totalRecipients: 3,
+      status: "sending",
+    })
+  })
+
+  it("processDispatchQueueBatch materializa logs queued em lote na primeira execução", async () => {
+    const recipients = makeRecipients(2)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 2, reservedCredits: 2 })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1")
+
+    expect(createQueuedLogsMock).toHaveBeenCalledTimes(1)
+    expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
+    expect(output.isValid).toBe(true)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("startManualDispatch exclui e-mail da blocklist da reserva de créditos", async () => {
+    const recipients = makeRecipients(2)
+    listActiveRecipientsMock.mockImplementation(async () => recipients)
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set(["r1@test.com"]))
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ audienceContactIds: ["c0", "c1"] })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject({ totalRecipients: 1 })
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(1)
+  })
+
+  it("processDispatchQueueBatch pagina a audiência no segundo lote sem relistar tudo", async () => {
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    persistDispatchSourceOffset(
+      makeSendingDispatch({ totalRecipients: 3, reservedCredits: 3 })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.slice(0, 2).map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const first = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(first.isValid).toBe(true)
+    expect(createQueuedLogsMock).toHaveBeenCalledTimes(1)
+    expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
+    expect(listActiveRecipientsMock.mock.calls.some((call) => {
+      const page = call[2] as { skip?: number; take?: number } | undefined
+      return page?.skip === 0 && page?.take === 2
+    })).toBe(true)
+
+    listActiveRecipientsMock.mockClear()
+    createQueuedLogsMock.mockClear()
+    const second = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(second.isValid).toBe(true)
+    const pageCalls = listActiveRecipientsMock.mock.calls.map((call) => call[2] as { skip?: number; take?: number } | undefined)
+    expect(pageCalls.some((page) => page?.skip === 2 && page.take === 2)).toBe(true)
+    expect(
+      pageCalls.every((page) => !page || page.take === 2)
+    ).toBe(true)
+  })
+
+  it("processDispatchQueueBatch continua paginando quando a blocklist encolhe o lote da lista", async () => {
+    const recipients = makeRecipients(3)
+    listActiveRecipientsMock.mockImplementation(async () => recipients)
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set(["r0@test.com"]))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 2, reservedCredits: 2 })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: [
+          { email: "r1@test.com", resendId: "re_r1" },
+          { email: "r2@test.com", resendId: "re_r2" },
+        ],
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const first = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(first.isValid).toBe(true)
+    const queued = createQueuedLogsMock.mock.calls[0]?.[0] as Array<{ recipientEmail: string }>
+    expect(queued.map((entry) => entry.recipientEmail)).toEqual(["r1@test.com", "r2@test.com"])
+    const pageCalls = listActiveRecipientsMock.mock.calls.map(
+      (call) => call[2] as { skip?: number; take?: number } | undefined
+    )
+    expect(pageCalls.some((page) => page?.skip === 2 && page.take === 2)).toBe(true)
+  })
+
+  it("processDispatchQueueBatch pagina Radar pelo cursor da fonte, não por emailLog.count", async () => {
+    listRadarSegmentEmailRecipientPageMock.mockImplementation(
+      async (_teamId: string, _slug: string, page?: { skip: number; take: number }) => {
+        const skip = page?.skip ?? 0
+        const take = page?.take ?? 500
+        if (skip >= 1000) return { recipients: [], exhausted: true }
+        return {
+          recipients: [
+            {
+              email: `p${skip}@test.com`,
+              name: `P${skip}`,
+              customFields: null,
+            },
+          ],
+          exhausted: skip + take >= 1000,
+        }
+      }
+    )
+    persistDispatchSourceOffset(
+      makeSendingDispatch({
+        totalRecipients: 4,
+        reservedCredits: 4,
+        contactListId: null,
+        radarSegmentSlug: "email_marketable",
+        campaign: {
+          name: "Campanha Teste",
+          audienceContactIds: [],
+          contactListId: null,
+          radarSegmentSlug: "email_marketable",
+        },
+      })
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: [
+          { email: "p0@test.com", resendId: "re_p0" },
+          { email: "p2@test.com", resendId: "re_p2" },
+        ],
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const first = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(first.isValid).toBe(true)
+    const firstSkips = listRadarSegmentEmailRecipientPageMock.mock.calls.map(
+      (call) => (call[2] as { skip?: number } | undefined)?.skip ?? 0
+    )
+    expect(firstSkips[0]).toBe(0)
+    expect(createQueuedLogsMock.mock.calls[0]?.[0]).toHaveLength(2)
+
+    listRadarSegmentEmailRecipientPageMock.mockClear()
+    createQueuedLogsMock.mockClear()
+    const second = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(second.isValid).toBe(true)
+    const secondSkips = listRadarSegmentEmailRecipientPageMock.mock.calls.map(
+      (call) => (call[2] as { skip?: number } | undefined)?.skip ?? 0
+    )
+    expect(secondSkips[0]).toBe(4)
+    expect(secondSkips.includes(0)).toBe(false)
   })
 
   // ---------------------------------------------------------------------------
@@ -583,12 +1020,14 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
     )
-    dispatchBatchMock.mockImplementation(async () => ({
-      sent: 5,
-      failed: 0,
-      dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
-      providerErrors: [],
-    }))
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 5,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
+    )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
@@ -623,12 +1062,14 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
     )
-    dispatchBatchMock.mockImplementation(async () => ({
-      sent: 2,
-      failed: 0,
-      dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
-      providerErrors: [],
-    }))
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
+    )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
@@ -644,12 +1085,14 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
     )
-    dispatchBatchMock.mockImplementation(async () => ({
-      sent: 2,
-      failed: 0,
-      dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
-      providerErrors: [],
-    }))
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
+    )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
@@ -694,13 +1137,15 @@ describe("EmailCampaignUseCase.send", () => {
         },
       ],
     }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 10, reservedCredits: 10 })
+    )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
 
-    expect(output.isValid).toBe(false)
-    // Mensagem ao usuário é sanitizada (sem e-mails nem detalhe técnico do provedor).
-    expect(output.errorMessages[0]).toBe("Falha no envio. 10 destinatário(s) não foram enviados.")
+    expect(output.isValid).toBe(true)
+    expect(output.result.sent).toBe(0)
     expect(markTeamEmailLogFailedMock).toHaveBeenCalled()
     const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
       (call) => (call as unknown as [string, string])[1]
@@ -738,11 +1183,10 @@ describe("EmailCampaignUseCase.send", () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
 
-    expect(output.isValid).toBe(false)
+    expect(output.isValid).toBe(true)
     expect(dispatchBatchMock).not.toHaveBeenCalled()
     expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(2)
-    // Mensagem ao usuário é sanitizada (sem e-mails nem motivo técnico).
-    expect(output.errorMessages[0]).toBe("Falha no envio. 2 destinatário(s) não foram enviados.")
+    expect(output.result.sent).toBe(0)
 
     const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
       (call) => (call as unknown as [string, string])[1]
@@ -773,14 +1217,22 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
     )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 2, reservedCredits: 2 })
+    )
     dispatchBatchMock.mockImplementation(async (params: unknown) => {
-      const typed = params as { recipients: Array<{ email: string }> }
+      const typed = params as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
       expect(typed.recipients).toHaveLength(1)
       expect(typed.recipients[0]?.email).toBe("ok@example.com")
+      const dispatched = [{ email: "ok@example.com", resendId: "re_ok" }]
+      await typed.onChunkDispatched?.(dispatched)
       return {
         sent: 1,
         failed: 0,
-        dispatched: [{ email: "ok@example.com", resendId: "re_ok" }],
+        dispatched,
         providerErrors: [],
       }
     })
@@ -807,21 +1259,29 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients2000)
     )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 2000, reservedCredits: 2000 })
+    )
 
-    // dispatchBatch chama onChunkDispatched para cada um dos 20 chunks
+    // dispatchBatch chama onChunkDispatched para cada chunk de 100 do lote atual
     dispatchBatchMock.mockImplementation(async (_p: unknown) => {
-      const params = _p as { onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void> }
-      for (let i = 0; i < 20; i++) {
-        const chunk = Array.from({ length: 100 }, (_, j) => ({
-          email: `r${i * 100 + j}@test.com`,
-          resendId: `re_${i * 100 + j}`,
+      const params = _p as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
+      const dispatched: Array<{ email: string; resendId: string }> = []
+      for (let i = 0; i < params.recipients.length; i += 100) {
+        const chunk = params.recipients.slice(i, i + 100).map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
         }))
         await params.onChunkDispatched?.(chunk)
+        dispatched.push(...chunk)
       }
       return {
-        sent: 2000,
+        sent: dispatched.length,
         failed: 0,
-        dispatched: recipients2000.map((r, k) => ({ email: r.email, resendId: `re_${k}` })),
+        dispatched,
         providerErrors: [],
       }
     })
@@ -852,8 +1312,8 @@ describe("EmailCampaignUseCase.send", () => {
     // unused = max(0, 2000-2000) = 0 → releaseCredits NÃO chamado
     expect(releaseCreditsMock).not.toHaveBeenCalled()
 
-    // dispatchBatch chamado 1× (chunking é interno ao service)
-    expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
+    // dispatchBatch chamado 4× (lotes de 500 no consumer)
+    expect(dispatchBatchMock).toHaveBeenCalledTimes(4)
   })
 
   // ---------------------------------------------------------------------------
@@ -865,31 +1325,46 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients2000)
     )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ totalRecipients: 2000, reservedCredits: 2000 })
+    )
 
-    // Chunk 4 (índice 4) falha — onChunkDispatched não é invocado para ele
+    // Chunk de e-mails r400–r499 falha — onChunkDispatched não é invocado para eles
     dispatchBatchMock.mockImplementation(async (_p: unknown) => {
-      const params = _p as { onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void> }
+      const params = _p as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
       const dispatchedEntries: Array<{ email: string; resendId: string }> = []
-      for (let i = 0; i < 20; i++) {
-        if (i === 4) continue // chunk 4 com erro no Resend
-        const chunk = Array.from({ length: 100 }, (_, j) => ({
-          email: `r${i * 100 + j}@test.com`,
-          resendId: `re_${i * 100 + j}`,
+      const failedEmails: string[] = []
+      for (let i = 0; i < params.recipients.length; i += 100) {
+        const slice = params.recipients.slice(i, i + 100)
+        const isFailedChunk = slice.some((recipient) => recipient.email === "r400@test.com")
+        if (isFailedChunk) {
+          failedEmails.push(...slice.map((recipient) => recipient.email))
+          continue
+        }
+        const chunk = slice.map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
         }))
         await params.onChunkDispatched?.(chunk)
         dispatchedEntries.push(...chunk)
       }
       return {
-        sent: 1900,
-        failed: 100,
+        sent: dispatchedEntries.length,
+        failed: failedEmails.length,
         dispatched: dispatchedEntries,
-        providerErrors: [
-          {
-            message: "Too many requests",
-            statusCode: 429,
-            emails: Array.from({ length: 100 }, (_, j) => `r${4 * 100 + j}@test.com`),
-          },
-        ],
+        providerErrors:
+          failedEmails.length > 0
+            ? [
+                {
+                  message: "Too many requests",
+                  statusCode: 429,
+                  emails: failedEmails,
+                },
+              ]
+            : [],
       }
     })
 
@@ -923,23 +1398,33 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(allRecipients)
     )
-    emailLogFindManyMock.mockImplementation(async () => [
-      { recipientEmail: "r0@test.com", status: "sent" },
-      { recipientEmail: "r1@test.com", status: "delivered" },
-      { recipientEmail: "r2@test.com", status: "failed" },
-      { recipientEmail: "r3@test.com", status: "failed" },
-      { recipientEmail: "r3@test.com", status: "opened" },
-      { recipientEmail: "r4@test.com", status: "failed" },
-    ])
+    emailLogFindManyMock.mockImplementation(
+      findManyCampaignLogsOrQueued([
+        { recipientEmail: "r0@test.com", status: "sent" },
+        { recipientEmail: "r1@test.com", status: "delivered" },
+        { recipientEmail: "r2@test.com", status: "failed" },
+        { recipientEmail: "r3@test.com", status: "failed" },
+        { recipientEmail: "r3@test.com", status: "opened" },
+        { recipientEmail: "r4@test.com", status: "failed" },
+      ])
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ retryFailedOnly: true, totalRecipients: 2 })
+    )
     dispatchBatchMock.mockImplementation(async (params: unknown) => {
-      const typed = params as { recipients: Array<{ email: string }> }
+      const typed = params as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
+      const dispatched = typed.recipients.map((recipient) => ({
+        email: recipient.email,
+        resendId: `re_${recipient.email}`,
+      }))
+      await typed.onChunkDispatched?.(dispatched)
       return {
         sent: typed.recipients.length,
         failed: 0,
-        dispatched: typed.recipients.map((recipient) => ({
-          email: recipient.email,
-          resendId: `re_${recipient.email}`,
-        })),
+        dispatched,
         providerErrors: [],
       }
     })
@@ -995,16 +1480,24 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(allRecipients)
     )
-    emailLogFindManyMock.mockImplementation(async () => [])
+    emailLogFindManyMock.mockImplementation(findManyCampaignLogsOrQueued([]))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ retryFailedOnly: true, totalRecipients: 4 })
+    )
     dispatchBatchMock.mockImplementation(async (params: unknown) => {
-      const typed = params as { recipients: Array<{ email: string }> }
+      const typed = params as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
+      const dispatched = typed.recipients.map((recipient) => ({
+        email: recipient.email,
+        resendId: `re_${recipient.email}`,
+      }))
+      await typed.onChunkDispatched?.(dispatched)
       return {
         sent: typed.recipients.length,
         failed: 0,
-        dispatched: typed.recipients.map((recipient) => ({
-          email: recipient.email,
-          resendId: `re_${recipient.email}`,
-        })),
+        dispatched,
         providerErrors: [],
       }
     })
@@ -1032,20 +1525,30 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(allRecipients)
     )
-    emailLogFindManyMock.mockImplementation(async () => [
-      { recipientEmail: "r0@test.com", status: "queued" },
-      { recipientEmail: "r1@test.com", status: "queued" },
-      { recipientEmail: "r2@test.com", status: "sent" },
-    ])
+    emailLogFindManyMock.mockImplementation(
+      findManyCampaignLogsOrQueued([
+        { recipientEmail: "r0@test.com", status: "queued" },
+        { recipientEmail: "r1@test.com", status: "queued" },
+        { recipientEmail: "r2@test.com", status: "sent" },
+      ])
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ retryFailedOnly: true, totalRecipients: 2 })
+    )
     dispatchBatchMock.mockImplementation(async (params: unknown) => {
-      const typed = params as { recipients: Array<{ email: string }> }
+      const typed = params as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
+      const dispatched = typed.recipients.map((recipient) => ({
+        email: recipient.email,
+        resendId: `re_${recipient.email}`,
+      }))
+      await typed.onChunkDispatched?.(dispatched)
       return {
         sent: typed.recipients.length,
         failed: 0,
-        dispatched: typed.recipients.map((recipient) => ({
-          email: recipient.email,
-          resendId: `re_${recipient.email}`,
-        })),
+        dispatched,
         providerErrors: [],
       }
     })
@@ -1075,22 +1578,32 @@ describe("EmailCampaignUseCase.send", () => {
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(allRecipients)
     )
-    emailLogFindManyMock.mockImplementation(async () => [
-      { recipientEmail: "r0@test.com", status: "failed" },
-      { recipientEmail: "r1@test.com", status: "failed" },
-      { recipientEmail: "r2@test.com", status: "bounced" },
-      { recipientEmail: "ana@gamil.com", status: "failed" },
-    ])
+    emailLogFindManyMock.mockImplementation(
+      findManyCampaignLogsOrQueued([
+        { recipientEmail: "r0@test.com", status: "failed" },
+        { recipientEmail: "r1@test.com", status: "failed" },
+        { recipientEmail: "r2@test.com", status: "bounced" },
+        { recipientEmail: "ana@gamil.com", status: "failed" },
+      ])
+    )
     findBouncedEmailsMock.mockImplementation(async () => new Set(["r1@test.com"]))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({ retryFailedOnly: true, totalRecipients: 1 })
+    )
     dispatchBatchMock.mockImplementation(async (params: unknown) => {
-      const typed = params as { recipients: Array<{ email: string }> }
+      const typed = params as {
+        recipients: Array<{ email: string }>
+        onChunkDispatched?: (entries: Array<{ email: string; resendId: string }>) => Promise<void>
+      }
+      const dispatched = typed.recipients.map((recipient) => ({
+        email: recipient.email,
+        resendId: `re_${recipient.email}`,
+      }))
+      await typed.onChunkDispatched?.(dispatched)
       return {
         sent: typed.recipients.length,
         failed: 0,
-        dispatched: typed.recipients.map((recipient) => ({
-          email: recipient.email,
-          resendId: `re_${recipient.email}`,
-        })),
+        dispatched,
         providerErrors: [],
       }
     })
@@ -1344,7 +1857,10 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
 
   // --- Site A: startManualDispatch ---
   it("D13a — domínio null + sender próprio → bloqueia (Domínio não verificado) sem lock/créditos", async () => {
-    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.startManualDispatch("camp-1", teamCtx)
@@ -1366,7 +1882,10 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
   })
 
   it("D13c — domínio verified + sender de outro domínio → bloqueia (remetente fora do domínio)", async () => {
-    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
       resendDomainName: "example.com",
       resendDomainStatus: "verified",
@@ -1567,7 +2086,11 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     // Nenhum log "queued" restante — todos os destinatários já têm log terminal
     // (o envio real já saiu, só faltou consolidar o estado da campanha).
     emailLogFindManyMock.mockImplementation(async () => [])
-    emailLogCountMock.mockImplementation(async () => 269)
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { sentAt?: unknown } })?.where
+      if (where?.sentAt) return 269
+      return 287
+    })
     emailCampaignDispatchFindUniqueMock.mockImplementation(async () => ({
       triggeredBy: "profile-1",
       status: "sending" as const,
@@ -1761,6 +2284,11 @@ describe("EMAIL_CAMPAIGN_FAILURE_MESSAGES (contratos)", () => {
   it("ALL_SUPPRESSED referencia cancelamento por supressão total", () => {
     expect(EMAIL_CAMPAIGN_FAILURE_MESSAGES.ALL_SUPPRESSED).toContain("bounce")
   })
+
+  it("INTERNAL é a copy amigável e não contém 'Erro interno'", () => {
+    expect(EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL).toBe("Ocorreu um erro ao disparar a campanha")
+    expect(EMAIL_CAMPAIGN_FAILURE_MESSAGES.INTERNAL).not.toContain("Erro interno")
+  })
 })
 
 describe("EmailCampaignUseCase.previewPlan", () => {
@@ -1911,6 +2439,7 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     releaseCreditsMock.mockImplementation(async () => {})
     resolveEmailBetaAccessMock.mockImplementation(async () => false)
     resolveRadarBetaAccessMock.mockImplementation(async () => true)
+    listActiveRecipientsMock.mockImplementation(async () => [])
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(makeRecipients(2))
     )
@@ -2139,7 +2668,7 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     }))
 
     const uc = new EmailCampaignUseCase()
-    const output = await uc.send("camp-1", teamCtx, { retryFailedOnly: true })
+    const output = await uc.startManualDispatch("camp-1", teamCtx, { retryFailedOnly: true })
 
     expect(output.isValid).toBe(true)
     expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
@@ -2161,13 +2690,52 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     }))
 
     const uc = new EmailCampaignUseCase()
-    const output = await uc.send("camp-1", teamCtx)
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
 
     expect(output.isValid).toBe(true)
     const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
       { data: { retryFailedOnly?: boolean } },
     ]
     expect(createArg[0].data.retryFailedOnly).toBe(false)
+  })
+
+  it("failed com totalSent 0 sem flag não força retryFailedOnly (primeiro Disparar)", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed", totalSent: 0 })
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "failed" },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean; totalRecipients?: number } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(false)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(2)
+  })
+
+  it("failed com totalSent > 0 sem flag ainda força retryFailedOnly", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ status: "failed", totalSent: 3 })
+    )
+    emailLogFindManyMock.mockImplementation(async () => [
+      { recipientEmail: "r0@test.com", status: "failed" },
+      { recipientEmail: "r1@test.com", status: "sent" },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { retryFailedOnly?: boolean } },
+    ]
+    expect(createArg[0].data.retryFailedOnly).toBe(true)
+    expect((reserveCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(1)
   })
 
   it("list retorna latestDispatch para campanha failed com erro", async () => {
