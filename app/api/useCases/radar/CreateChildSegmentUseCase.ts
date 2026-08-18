@@ -3,9 +3,14 @@ import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { teamRadarSegmentRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarSegmentRepository"
 import {
   parseRadarSegmentRules,
+  radarSegmentAdditionalRulesSchema,
+  type RadarSegmentAdditionalRules,
   type RadarSegmentRules,
-  RADAR_SEGMENT_MAX_CONDITIONS,
 } from "@/lib/radar/segment-dsl"
+import {
+  mergeHierarchicalSegmentRules,
+  parentRulesToBaseConditions,
+} from "@/lib/radar/merge-hierarchical-segment-rules"
 import { Prisma } from "@prisma/client"
 
 type CreateChildSegmentInput = {
@@ -13,7 +18,7 @@ type CreateChildSegmentInput = {
   parentSegmentId: string
   name: string
   description?: string | null
-  childRules: RadarSegmentRules
+  childRules: RadarSegmentAdditionalRules
 }
 
 /**
@@ -21,30 +26,6 @@ type CreateChildSegmentInput = {
  * Valida limite de 10 condições após merge.
  */
 export class CreateChildSegmentUseCase {
-  /**
-   * Mescla condições do pai com as do filho usando lógica AND.
-   * Valida limite de 10 condições totais.
-   */
-  private mergeParentAndChildConditions(
-    parentRules: RadarSegmentRules,
-    childRules: RadarSegmentRules
-  ): RadarSegmentRules {
-    const mergedConditions = [...parentRules.conditions, ...childRules.conditions]
-
-    if (mergedConditions.length > RADAR_SEGMENT_MAX_CONDITIONS) {
-      throw new Error(
-        `Limite excedido: total de ${mergedConditions.length} condições ` +
-          `(${parentRules.conditions.length} do pai + ${childRules.conditions.length} novas, ` +
-          `máximo ${RADAR_SEGMENT_MAX_CONDITIONS})`
-      )
-    }
-
-    return {
-      match: "all",
-      conditions: mergedConditions,
-    }
-  }
-
   async execute(input: CreateChildSegmentInput): Promise<Output> {
     try {
       const parentSegment = await teamRadarSegmentRepository.findById(
@@ -67,9 +48,9 @@ export class CreateChildSegmentUseCase {
         return new Output(false, [], ["Condições do segmento pai são inválidas"], null)
       }
 
-      let childRulesParsed: RadarSegmentRules
+      let childRulesParsed
       try {
-        childRulesParsed = parseRadarSegmentRules(input.childRules)
+        childRulesParsed = radarSegmentAdditionalRulesSchema.parse(input.childRules)
       } catch (validationError) {
         return new Output(
           false,
@@ -81,7 +62,10 @@ export class CreateChildSegmentUseCase {
 
       let mergedRules: RadarSegmentRules
       try {
-        mergedRules = this.mergeParentAndChildConditions(parentRules, childRulesParsed)
+        mergedRules = mergeHierarchicalSegmentRules(
+          parentRulesToBaseConditions(parentRules),
+          childRulesParsed
+        )
       } catch (mergeError) {
         return new Output(
           false,
