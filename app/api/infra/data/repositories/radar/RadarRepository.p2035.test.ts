@@ -128,10 +128,20 @@ describe("RadarRepository P2035 IN chunk", () => {
     expect(radarProfileFindMany).not.toHaveBeenCalled()
   })
 
+  it("listProfilesForSegmentationByIds com 32_768 ids não estoura bind e chunka IN em <= 5000", async () => {
+    const profileIds = makeLeadIds(EMAIL_COUNT)
+    const profiles = await repo.listProfilesForSegmentationByIds(TEAM_ID, profileIds)
+
+    expect(profiles).toHaveLength(EMAIL_COUNT)
+    expectChunkedInCalls(radarProfileFindMany, EMAIL_COUNT)
+    expect(leadFindMany).not.toHaveBeenCalled()
+  })
+
   it("lista vazia não chama findMany", async () => {
     await expect(repo.findProfileDataByEmails(TEAM_ID, [])).resolves.toEqual(new Map())
     await expect(repo.findProfilesForInterpolationByEmails(TEAM_ID, [])).resolves.toEqual([])
     await expect(repo.findLeadsForRadarFieldResolution(TEAM_ID, [])).resolves.toEqual(new Map())
+    await expect(repo.listProfilesForSegmentationByIds(TEAM_ID, [])).resolves.toEqual([])
     expect(radarProfileFindMany).not.toHaveBeenCalled()
     expect(leadFindMany).not.toHaveBeenCalled()
   })

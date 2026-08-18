@@ -2390,23 +2390,25 @@ export class RadarRepository {
     const uniqueIds = [...new Set(profileIds.filter(Boolean))]
     if (uniqueIds.length === 0) return []
 
-    return this.db.radarProfile.findMany({
-      where: { teamId, id: { in: uniqueIds } },
-      select: {
-        id: true,
-        displayName: true,
-        normalizedPrimaryEmail: true,
-        consents: { where: { channel: "email" }, select: { status: true, reason: true } },
-        sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
-        events: {
-          select: { eventType: true, occurredAt: true, metadata: true, sourceType: true, sourceId: true },
+    return this.findManyByInChunks(uniqueIds, (chunk) =>
+      this.db.radarProfile.findMany({
+        where: { teamId, id: { in: chunk } },
+        select: {
+          id: true,
+          displayName: true,
+          normalizedPrimaryEmail: true,
+          consents: { where: { channel: "email" }, select: { status: true, reason: true } },
+          sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
+          events: {
+            select: { eventType: true, occurredAt: true, metadata: true, sourceType: true, sourceId: true },
+          },
+          identities: {
+            where: { type: "lead_id" },
+            select: { type: true, normalizedValue: true },
+          },
         },
-        identities: {
-          where: { type: "lead_id" },
-          select: { type: true, normalizedValue: true },
-        },
-      },
-    })
+      })
+    )
   }
 
   async listProfileIdsForSegmentation(teamId: string): Promise<string[]> {
