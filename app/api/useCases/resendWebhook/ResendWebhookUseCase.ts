@@ -82,6 +82,12 @@ export class ResendWebhookUseCase {
       if (event.data.bounce.type) {
         metadata.bounceType = event.data.bounce.type
       }
+      if (event.data.bounce.subType) {
+        metadata.bounceSubType = event.data.bounce.subType
+      }
+      if (event.data.bounce.diagnosticCode && event.data.bounce.diagnosticCode.length > 0) {
+        metadata.bounceDiagnosticCode = event.data.bounce.diagnosticCode
+      }
     }
 
     if (eventType) {

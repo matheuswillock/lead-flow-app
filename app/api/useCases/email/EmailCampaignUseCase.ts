@@ -46,8 +46,8 @@ import {
 import {
   formatInvalidRecipientFailureMessage,
   formatProviderBatchFailureMessage,
-  isValidResendRecipientEmail,
 } from "@/lib/email/is-valid-resend-recipient-email"
+import { evaluateEmailForAudience, filterEmailsForAudience } from "@/lib/email/audience-prevalidation"
 import type { DispatchProviderError } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
@@ -777,8 +777,16 @@ export class EmailCampaignUseCase {
         Boolean(contact.contactId)
     )
     const withoutIds = params.contacts.filter((contact) => !contact.contactId)
+    const bouncedEmails = await emailContactListRepository.findBouncedEmails(
+      withoutIds.map((contact) => contact.email)
+    )
+    const sendableWithoutIds = withoutIds.filter((contact) => {
+      const evaluated = evaluateEmailForAudience(contact.email)
+      if (!evaluated.ok) return false
+      return !bouncedEmails.has(evaluated.email)
+    })
 
-    if (withoutIds.length === 0) {
+    if (sendableWithoutIds.length === 0) {
       return {
         contactIds: withIds.map((contact) => contact.contactId),
         snapshotListId: null,
@@ -801,8 +809,8 @@ export class EmailCampaignUseCase {
     })
 
     const BATCH_SIZE = 500
-    for (let i = 0; i < withoutIds.length; i += BATCH_SIZE) {
-      const batch = withoutIds.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < sendableWithoutIds.length; i += BATCH_SIZE) {
+      const batch = sendableWithoutIds.slice(i, i + BATCH_SIZE)
       await emailContactListRepository.createContacts(
         list.id,
         batch.map((contact) => ({ email: contact.email, name: contact.name ?? null }))
@@ -2221,7 +2229,7 @@ export class EmailCampaignUseCase {
     const invalid: Array<T & { reason: string }> = []
 
     for (const recipient of recipients) {
-      const validation = isValidResendRecipientEmail(recipient.email)
+      const validation = evaluateEmailForAudience(recipient.email)
       if (!validation.ok) {
         invalid.push({ ...recipient, reason: validation.reason })
         continue
@@ -2686,7 +2694,12 @@ export class EmailCampaignUseCase {
           RETRY_FAILED_ONLY_STATUSES.has(campaign.status),
           dispatchInput.recipients.map((recipient) => recipient.email)
         )
-        const retryEmailSet = new Set(retryEmails)
+        const retryEmailSet = new Set(
+          filterEmailsForAudience(
+            retryEmails,
+            await emailContactListRepository.findBouncedEmails(retryEmails)
+          )
+        )
         recipientsForDispatch = dispatchInput.recipients.filter((recipient) =>
           retryEmailSet.has(recipient.email.trim().toLowerCase())
         )

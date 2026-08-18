@@ -11,7 +11,7 @@ import {
   downloadRadarImportPayload,
   uploadRadarImportPayload,
 } from "@/lib/radar/radar-import-storage"
-import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
 import {
   formatTransientTransactionErrorMessage,
   withTransientTransactionRetry,
@@ -245,24 +245,26 @@ export class RadarBaseImportUseCase {
     const normalizedEmail = normalizeRadarEmail(rawEmail)
     const normalizedDocument = normalizeRadarDocument(rawDocument)
 
-    const emailValidation = rawEmail ? isValidResendRecipientEmail(rawEmail) : null
+    const emailValidation = rawEmail ? evaluateEmailForAudience(rawEmail) : null
     const hasValidEmail = emailValidation?.ok === true
     const hasValidPhoneIdentity = isValidRadarPrimaryIdentity(rawPhone, rawName)
 
+    const skippedEmailIssue =
+      rawEmail && !hasValidEmail
+        ? {
+            line: row.line,
+            reason:
+              emailValidation && !emailValidation.ok ? emailValidation.reason : "E-mail inválido",
+          }
+        : undefined
+
     if (!hasValidPhoneIdentity && !hasValidEmail) {
+      if (skippedEmailIssue) {
+        return { outcome: "skipped", issue: skippedEmailIssue }
+      }
       return {
         outcome: "deferred",
         issue: { line: row.line, reason: "Sem identidade válida (telefone+nome ou e-mail)" },
-      }
-    }
-
-    if (rawEmail && !hasValidEmail) {
-      return {
-        outcome: "skipped",
-        issue: {
-          line: row.line,
-          reason: emailValidation && !emailValidation.ok ? emailValidation.reason : "E-mail inválido",
-        },
       }
     }
 
@@ -364,7 +366,10 @@ export class RadarBaseImportUseCase {
       metadata: { importJobId },
     })
 
-    return { outcome: wasExisting ? "enriched" : "created" }
+    return {
+      outcome: wasExisting ? "enriched" : "created",
+      issue: skippedEmailIssue,
+    }
   }
 
   async uploadFile(
@@ -668,15 +673,12 @@ export class RadarBaseImportUseCase {
         if (result.outcome === "enriched") enrichedCount += 1
         if (result.outcome === "skipped") {
           skippedCount += 1
-          if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
-            skippedIssues.push(result.issue)
-          }
         }
         if (result.outcome === "deferred") {
           deferredCount += 1
-          if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
-            skippedIssues.push(result.issue)
-          }
+        }
+        if (result.issue && skippedIssues.length < SKIPPED_ISSUES_PERSIST_LIMIT) {
+          skippedIssues.push(result.issue)
         }
         processedRows += 1
       }

@@ -35,6 +35,7 @@ mock.module(
 
 mock.module("@/lib/radar/list-segment-recipients", () => ({
   listRadarSegmentEmailRecipients: mock(async () => []),
+  listRadarSegmentProfileEmails: mock(async () => []),
 }))
 
 const countActiveRecipientsForListMock = mock(async () => 0)

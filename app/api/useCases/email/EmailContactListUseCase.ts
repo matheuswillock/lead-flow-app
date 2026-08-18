@@ -13,7 +13,11 @@ import {
   mapUnsubscribeSourcesByEmail,
   type UnsubscribeSourceCandidate,
 } from "@/lib/email/resolve-contact-unsubscribe-source"
-import { isValidResendRecipientEmail } from "@/lib/email/is-valid-resend-recipient-email"
+import {
+  AUDIENCE_REASON_BOUNCED,
+  evaluateEmailForAudience,
+} from "@/lib/email/audience-prevalidation"
+import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
 import { syncEmailContactToRadarInline } from "@/app/api/useCases/radar/syncEmailContactToRadarInline"
 import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
 import {
@@ -576,7 +580,7 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Não é possível adicionar contatos à lista de bloqueados"], null)
       }
 
-      const emailValidation = isValidResendRecipientEmail(email)
+      const emailValidation = evaluateEmailForAudience(email)
       if (!emailValidation.ok) {
         return new Output(
           false,
@@ -592,6 +596,17 @@ export class EmailContactListUseCase {
       const existingContact = await prisma.emailContact.findUnique({
         where: { listId_email: { listId, email: normalizedEmail } },
       })
+      const bouncedEmails = await emailContactListRepository.findBouncedEmails([normalizedEmail])
+      if (bouncedEmails.has(normalizedEmail) && !existingContact) {
+        return new Output(
+          false,
+          [],
+          [
+            `E-mail inválido. Este contato não será adicionado à base. (${AUDIENCE_REASON_BOUNCED})`,
+          ],
+          null
+        )
+      }
 
       const upsertedContact = await prisma.emailContact.upsert({
         where: { listId_email: { listId, email: normalizedEmail } },
@@ -791,7 +806,7 @@ export class EmailContactListUseCase {
       let updated = 0
       let skipped = 0
 
-      const validRows: Array<{
+      const candidates: Array<{
         line?: number
         email: string
         name?: string
@@ -799,7 +814,7 @@ export class EmailContactListUseCase {
       }> = []
 
       for (const row of rows) {
-        const validation = isValidResendRecipientEmail(row.email ?? "")
+        const validation = evaluateEmailForAudience(row.email ?? "")
         if (!validation.ok) {
           skipped += 1
           issues.push({
@@ -810,12 +825,35 @@ export class EmailContactListUseCase {
           })
           continue
         }
-        validRows.push({
+        candidates.push({
           line: row.line,
           email: validation.email,
           name: row.name?.trim() || undefined,
           customFields: row.customFields,
         })
+      }
+
+      const bouncedEmails = await emailContactListRepository.findBouncedEmails(
+        candidates.map((row) => row.email)
+      )
+      const validRows: Array<{
+        line?: number
+        email: string
+        name?: string
+        customFields?: Record<string, string>
+      }> = []
+      for (const row of candidates) {
+        if (bouncedEmails.has(row.email)) {
+          skipped += 1
+          issues.push({
+            line: row.line,
+            email: row.email,
+            name: row.name,
+            reason: AUDIENCE_REASON_BOUNCED,
+          })
+          continue
+        }
+        validRows.push(row)
       }
 
       if (validRows.length === 0) {

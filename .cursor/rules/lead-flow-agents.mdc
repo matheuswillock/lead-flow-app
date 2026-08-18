@@ -10,8 +10,8 @@ alwaysApply: true
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.5.1
-**Last Updated:** 2026-08-09
+**Version:** 2.6.0
+**Last Updated:** 2026-08-16
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -152,6 +152,7 @@ After every edit, automatically run in this order:
 bun run typecheck 2>&1 | head -20
 bun run lint
 bun run governance:check
+bun run governance:check-e2e-pages
 bun run governance:check-api-masking
 bun run lint:pt-br
 ```
@@ -220,6 +221,7 @@ Add `bun run design:check` to the validation sequence after every UI change:
 bun run typecheck 2>&1 | head -20
 bun run lint
 bun run governance:check
+bun run governance:check-e2e-pages
 bun run design:check
 ```
 
@@ -295,6 +297,45 @@ app/[route]/
 - `features/services` isolates HTTP/API integration; **MUST** use interface + concrete implementation.
 - Visual components in `features/container` **MUST NOT** call backend APIs directly.
 - Optional folders **MUST NOT** be created empty or replace the required baseline.
+
+### E2E Tests (FOR NEW FEATURES)
+
+Playwright (`@playwright/test`), Chromium. Specs live in `e2e/specs/<dominio>/<slug>.spec.ts`. Página, rota ou fluxo novo sem spec **MUST NOT** contar como entregue.
+
+#### Ciclo TDD (MUST)
+
+1. Escrever a spec **antes** do código (red).
+2. Implementar até a spec ficar verde.
+3. Refatorar. A fase/PR só fecha quando a spec está verde na CI **e**, se a página estava em `e2ePageCoverageAllowlist`, ela **saiu** da allowlist.
+
+#### Convenção de path
+
+Route groups `(app)` saem; segmentos dinâmicos viram o nome do param:
+
+- `app/[supabaseId]/subscription/page.tsx` → `e2e/specs/product/subscription.spec.ts`
+- `app/backoffice/(app)/pricing/page.tsx` → `e2e/specs/backoffice/pricing.spec.ts`
+- `app/adesao/[token]/page.tsx` → `e2e/specs/checkout/adesao.spec.ts`
+
+Domínios: `product` (`[supabaseId]/**`), `backoffice`, `checkout` (`adesao`, `addon-checkout`, `checkout-return`), `public` (resto).
+
+Um spec **MAY** cobrir lista+detalhe via `e2ePageCoverage.coveredBy` em `.governance/ai-governance.config.json`.
+
+#### Como montar uma spec nova
+
+1. Copiar `e2e/specs/_template.spec.ts`.
+2. `test.describe` com o nome da rota. `test.beforeEach` chama o fixture de sessão (`e2e/fixtures/auth.ts`) e o seed mínimo (`e2e/support/db.ts`) quando existirem.
+3. Arrange no banco (Prisma), Act no Playwright (`page.goto` + interações), Assert na UI **e** no banco.
+4. Cobertura mínima de página: carrega sem erro, título/heading visível, CTA principal funciona, estado vazio ou de loading com `Skeleton` (não crash).
+5. Feature de cobrança: além do mínimo, assertir produto, ciclo, valor e a **ausência do termo CDP**. Toda spec que cria customer, cobrança, checkout ou assinatura no Asaas **MUST** usar homologação (`ASAAS_ENV=sandbox`, API em `sandbox.asaas.com`) e chamar `assertAsaasSandbox()` de `e2e/support/asaas.ts` no `beforeAll`. **MUST NOT** apontar para produção (`www.asaas.com` / `ASAAS_ENV=production` / `ASAAS_API_KEY` de prod). O helper falha o teste antes de qualquer request se o ambiente não for sandbox.
+6. Rodar local: `bun run test:e2e:local -- e2e/specs/<arquivo>.spec.ts` com o Postgres `:55322` já no ar.
+
+#### Página nova (MUST)
+
+Todo `app/**/page.tsx` novo **MUST** ter spec no mesmo PR. Exceção só via `e2ePageCoverageAllowlist` com instrução explícita do owner. A allowlist **MUST NOT crescer** — só encolhe. Exclusões fixas (não são produto): `app/sentry-example-page`, `app/auth/callback`.
+
+Check: `bun run governance:check-e2e-pages` (também entra em `governance:check`). Página sem spec e fora da allowlist → **falha**. Spec órfã → warning.
+
+Quando a mudança toca UI ou cobrança, a sequência de validação **MUST** incluir `bun run test:e2e` depois que o job Playwright existir.
 
 ### Visual Components (FOR NEW FEATURES)
 
@@ -404,8 +445,9 @@ Deviations allowed only if explicitly listed in `.governance/ai-governance.confi
 
 CI **MUST** fail when governance checks fail.
 
-- Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**`)
+- Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**` e cobertura E2E de `page.tsx`)
 - Client API masking (CI step dedicado): `bun run governance:check-api-masking`
+- E2E page coverage (CI step dedicado): `bun run governance:check-e2e-pages`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
 ## Feature Registration Policy (FOR NEW FEATURES)
@@ -475,7 +517,9 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 - [ ] Criou nova feature com `featureSlug`? Registrou em `backoffice_features` via migration de dados (`bun run db:migrate:new seed-<slug>`) **e** atualizou `prisma/seed-backoffice-products.ts`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
+- [ ] Rodou `bun run governance:check-e2e-pages`?
 - [ ] Rodou `bun run governance:check-api-masking`?
+- [ ] Criou ou alterou `page.tsx` / fluxo de cobrança? Spec E2E no mesmo PR (TDD) e, se a página estava na allowlist, ela saiu de `e2ePageCoverageAllowlist`?
 
 ## Environment Essentials
 

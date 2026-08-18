@@ -13,6 +13,14 @@ export function resolveContactImportProgressLabel(
   if (activeImport.failedRadarSync > 0) {
     return `${activeImport.failedRadarSync} contato(s) com falha no Radar`
   }
+  const isTerminal =
+    activeImport.status === "completed" ||
+    activeImport.status === "completed_with_errors"
+  if (isTerminal && activeImport.skippedCount > 0) {
+    return activeImport.skippedCount === 1
+      ? "1 e-mail não incluído porque não é um e-mail válido"
+      : `${activeImport.skippedCount} e-mails não incluídos porque não são e-mails válidos`
+  }
   return `${activeImport.processedRows}/${activeImport.totalRows} linhas processadas`
 }
 

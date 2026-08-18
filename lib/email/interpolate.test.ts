@@ -46,6 +46,18 @@ describe("interpolateEmailTemplate", () => {
     expect(result).toBe("Descadastro: https://app.example/email-unsubscribe/token")
   })
 
+  test("preenche alias unsubscribe_url com a URL nativa de descadastro", () => {
+    const result = interpolateEmailTemplate(
+      'Cancele em <a href="{{unsubscribe_url}}">sair</a>',
+      { email: "lead@example.com", name: "Maria" },
+      {},
+      null,
+      { link_descadastro: "https://app.example/email-unsubscribe/token" },
+    )
+
+    expect(result).toBe('Cancele em <a href="https://app.example/email-unsubscribe/token">sair</a>')
+  })
+
   test("usa default global quando customField está vazio", () => {
     const result = interpolateEmailTemplate(
       "Empresa: {{empresa}}",
@@ -176,6 +188,16 @@ describe("findUnresolvedEmailTemplateTokens", () => {
       { email: "lead@example.com", name: "Maria" },
       {},
       definitions
+    )
+
+    expect(tokens).toEqual([])
+  })
+
+  test("não trata unsubscribe_url como variável sem valor", () => {
+    const tokens = findUnresolvedEmailTemplateTokens(
+      "Assunto",
+      'Cancele em <a href="{{unsubscribe_url}}">sair</a>',
+      { email: "lead@example.com", name: "Maria" }
     )
 
     expect(tokens).toEqual([])
