@@ -9,8 +9,9 @@
  *   bun run db:seed:e2e
  *
  * Pré-requisito: Postgres local em :55322 (`bun run local:up`).
- * Carrega `.env.test` se existir; senão `.env`. DATABASE_URL/DIRECT_URL
- * caem em LOCAL_DB_URL quando ausentes.
+ * Carrega `.env.test` se existir; senão `.env` (só para placeholders não-DB).
+ * DATABASE_URL/DIRECT_URL do ambiente são ignorados — o seed sempre grava
+ * em LOCAL_DB_URL (`127.0.0.1:55322`), como `db:seed:local`.
  */
 
 import { existsSync } from "node:fs";
@@ -18,7 +19,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { config as loadEnv } from "dotenv";
 import { PrismaClient, type UserFunction } from "@prisma/client";
-import { LOCAL_DB_URL } from "./lib/local-stack";
+import { LOCAL_DB_ADMIN_URL, LOCAL_DB_URL } from "./lib/local-stack";
 import {
   parseStorageAuthCatalog,
   STORAGE_AUTH_CATALOG_PROBE_SQL,
@@ -31,20 +32,12 @@ import {
   E2E_TEAM_NAME,
 } from "../lib/e2e/constants";
 
-/** Superuser da imagem supabase/postgres — ALTER em `auth.*` pode exigir isso. */
-const LOCAL_DB_ADMIN_URL = "postgresql://supabase_admin:postgres@127.0.0.1:55322/postgres";
-
 const MASTER_FUNCTIONS: UserFunction[] = ["SDR", "CLOSER"];
 
 if (existsSync(join(process.cwd(), ".env.test"))) {
   loadEnv({ path: ".env.test" });
 } else {
   loadEnv();
-}
-
-function resolveDbUrl(): string {
-  const fromEnv = process.env.DATABASE_URL?.trim();
-  return fromEnv && fromEnv.length > 0 ? fromEnv : LOCAL_DB_URL;
 }
 
 function info(msg: string) {
@@ -220,7 +213,7 @@ function seedBackofficeCatalog(dbUrl: string) {
     env: {
       ...process.env,
       DATABASE_URL: dbUrl,
-      DIRECT_URL: process.env.DIRECT_URL?.trim() || dbUrl,
+      DIRECT_URL: dbUrl,
     },
   });
   if (result.status !== 0) {
@@ -318,7 +311,13 @@ async function upsertE2eMaster(prisma: PrismaClient) {
 }
 
 async function main() {
-  const dbUrl = resolveDbUrl();
+  const dbUrl = LOCAL_DB_URL;
+  const fromEnv = process.env.DATABASE_URL?.trim();
+  if (fromEnv && fromEnv !== dbUrl) {
+    info(
+      "⚠ DATABASE_URL do ambiente não é o Postgres :55322 — ignorado. Seed E2E grava só em 127.0.0.1:55322.",
+    );
+  }
   applyLocalMigrations(dbUrl);
   seedBackofficeCatalog(dbUrl);
 
