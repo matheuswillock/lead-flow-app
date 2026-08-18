@@ -1,16 +1,31 @@
 "use client"
 
+import { useMemo } from "react"
 import { Loader2, Search } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
+import {
+  BACKOFFICE_LEAD_EXTRACTION_LIMIT_DEFAULT,
+  BACKOFFICE_LEAD_EXTRACTION_LIMIT_MAX,
+  BACKOFFICE_LEAD_EXTRACTION_LIMIT_MIN,
+  clampLeadExtractionLimit,
+} from "@/lib/backoffice/lead-extraction-constants"
+import { getMunicipalitiesForStates } from "../data/ibge-municipalities"
+import {
+  LEAD_EXTRACTION_REGION_PRESETS,
+  isRegionFullySelected,
+} from "../data/region-presets"
 import { useBackofficeLeadExtraction } from "../context/BackofficeLeadExtractionHook"
 import { CnaeCombobox } from "./CnaeCombobox"
-import { MultiCheckboxSelect } from "./MultiCheckboxSelect"
 import { DateRangeFilter } from "./DateRangeFilter"
+import { MultiCheckboxSelect } from "./MultiCheckboxSelect"
 
 const STATE_OPTIONS = [
   { value: "AC", label: "AC — Acre" },
@@ -40,13 +55,6 @@ const STATE_OPTIONS = [
   { value: "SE", label: "SE — Sergipe" },
   { value: "SP", label: "SP — São Paulo" },
   { value: "TO", label: "TO — Tocantins" },
-]
-
-const STATUS_OPTIONS = [
-  { value: "2", label: "Ativa" },
-  { value: "3", label: "Suspensa" },
-  { value: "4", label: "Inapta" },
-  { value: "8", label: "Baixada" },
 ]
 
 const NATURE_OPTIONS = [
@@ -79,11 +87,30 @@ export function FilterSidebar() {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
+  const cityOptions = useMemo(
+    () =>
+      getMunicipalitiesForStates(filters.states, filters.municipalityCodes).map(
+        (municipality) => ({
+          value: municipality.code,
+          label: `${municipality.name} — ${municipality.uf}`,
+        })
+      ),
+    [filters.states, filters.municipalityCodes]
+  )
+
+  function toggleRegion(regionCodes: string[]) {
+    update(
+      "municipalityCodes",
+      isRegionFullySelected(filters.municipalityCodes, regionCodes)
+        ? filters.municipalityCodes.filter((code) => !regionCodes.includes(code))
+        : Array.from(new Set([...filters.municipalityCodes, ...regionCodes]))
+    )
+  }
+
   return (
     <aside className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex flex-1 flex-col overflow-y-auto p-4">
 
-        {/* CNAE */}
         <div className="mb-4">
           <Label className="mb-1.5 block text-xs text-muted-foreground">Ramo de atividade (CNAE)</Label>
           <CnaeCombobox
@@ -92,8 +119,7 @@ export function FilterSidebar() {
           />
         </div>
 
-        {/* Localização */}
-        <div className="mb-4">
+        <div className="mb-3">
           <Label className="mb-1.5 block text-xs text-muted-foreground">Estado (UF)</Label>
           <MultiCheckboxSelect
             options={STATE_OPTIONS}
@@ -104,9 +130,46 @@ export function FilterSidebar() {
           />
         </div>
 
+        <div className="mb-3">
+          <Label className="mb-1.5 block text-xs text-muted-foreground">Região</Label>
+          <div className="flex flex-col gap-2">
+            {LEAD_EXTRACTION_REGION_PRESETS.map((preset) => {
+              const selected = isRegionFullySelected(
+                filters.municipalityCodes,
+                preset.municipalityCodes
+              )
+              return (
+                <Button
+                  key={preset.id}
+                  type="button"
+                  variant={selected ? "secondary" : "outline"}
+                  className={cn("w-full justify-start font-normal", selected && "border-primary")}
+                  onClick={() => toggleRegion(preset.municipalityCodes)}
+                >
+                  {preset.label}
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <Label className="mb-1.5 block text-xs text-muted-foreground">Cidade</Label>
+          <MultiCheckboxSelect
+            options={cityOptions}
+            values={filters.municipalityCodes}
+            onChange={(v) => update("municipalityCodes", v)}
+            placeholder={
+              filters.states.length === 0 && filters.municipalityCodes.length === 0
+                ? "Selecione um estado ou região"
+                : "Selecionar cidades..."
+            }
+            searchPlaceholder="Pesquisar cidade..."
+          />
+        </div>
+
         <Separator className="mb-4" />
 
-        {/* Características */}
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Características</span>
           <button
@@ -119,12 +182,7 @@ export function FilterSidebar() {
 
         <div className="mb-3">
           <Label className="mb-1.5 block text-xs text-muted-foreground">Situação cadastral</Label>
-          <MultiCheckboxSelect
-            options={STATUS_OPTIONS}
-            values={filters.statusIds}
-            onChange={(v) => update("statusIds", v)}
-            placeholder="Qualquer situação"
-          />
+          <Badge variant="secondary">Ativa</Badge>
         </div>
 
         <div className="mb-3">
@@ -173,11 +231,9 @@ export function FilterSidebar() {
 
         <Separator className="mb-4" />
 
-        {/* Filtros de contato e data */}
         <div className="mb-3">
           <Label className="mb-1.5 block text-xs text-muted-foreground">Data de abertura</Label>
           <DateRangeFilter
-            label="Selecionar período"
             from={filters.foundedGte}
             to={filters.foundedLte}
             onChange={(from, to) => setFilters((prev) => ({ ...prev, foundedGte: from, foundedLte: to }))}
@@ -206,7 +262,6 @@ export function FilterSidebar() {
           </Label>
         </div>
 
-        {/* Toggle — remover contadores */}
         <div className="rounded-lg border bg-muted/40 p-3">
           <div className="flex items-start gap-3">
             <span className="text-base">⚡</span>
@@ -222,8 +277,27 @@ export function FilterSidebar() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="border-t p-3">
+      <div className="flex flex-col gap-3 border-t p-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="lead-extraction-limit" className="text-xs text-muted-foreground">
+            Quantidade de leads
+          </Label>
+          <Input
+            id="lead-extraction-limit"
+            type="number"
+            min={BACKOFFICE_LEAD_EXTRACTION_LIMIT_MIN}
+            max={BACKOFFICE_LEAD_EXTRACTION_LIMIT_MAX}
+            value={filters.limit}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              update(
+                "limit",
+                Number.isFinite(next) ? next : BACKOFFICE_LEAD_EXTRACTION_LIMIT_DEFAULT
+              )
+            }}
+            onBlur={() => update("limit", clampLeadExtractionLimit(filters.limit))}
+          />
+        </div>
         <Button
           className="w-full"
           onClick={handleSearch}
