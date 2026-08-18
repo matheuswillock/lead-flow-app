@@ -13,8 +13,7 @@ export type BackofficeCompanyType =
 export interface LeadExtractionFiltersForm {
   mainCnae: string
   states: string[]
-  municipalityCode: string
-  statusIds: string[]
+  municipalityCodes: string[]
   natureIds: string[]
   sizeIds: string[]
   simplesOptant: string
@@ -24,6 +23,7 @@ export interface LeadExtractionFiltersForm {
   hasPhone: boolean
   hasEmail: boolean
   removeContadores: boolean
+  limit: number
 }
 
 export interface LeadExtractionResultItem {
