@@ -1,8 +1,9 @@
 /**
  * Seed do Postgres local para Playwright E2E.
  *
- * NÃO chama prisma/seed-app.ts (Auth remoto). Aqui só: stubs storage/auth +
- * migrations + catálogo backoffice + Profile/Team master determinístico.
+ * NÃO chama prisma/seed-app.ts (Auth remoto). Aqui só: probe do catálogo
+ * storage/auth (aplica stub só se faltar), migrations + catálogo backoffice +
+ * Profile/Team master determinístico.
  *
  * Como rodar:
  *   bun run db:seed:e2e
@@ -18,6 +19,11 @@ import { join } from "node:path";
 import { config as loadEnv } from "dotenv";
 import { PrismaClient, type UserFunction } from "@prisma/client";
 import { LOCAL_DB_URL } from "./lib/local-stack";
+import {
+  parseStorageAuthCatalog,
+  STORAGE_AUTH_CATALOG_PROBE_SQL,
+  type StorageAuthCatalog,
+} from "./lib/e2e-storage-auth-catalog";
 import {
   E2E_MASTER_EMAIL,
   E2E_MASTER_FULL_NAME,
@@ -72,19 +78,68 @@ function run(
   };
 }
 
+function dbUrlsToTry(dbUrl: string): string[] {
+  const urls = [dbUrl];
+  if (dbUrl !== LOCAL_DB_ADMIN_URL) {
+    urls.push(LOCAL_DB_ADMIN_URL);
+  }
+  return urls;
+}
+
+function stubUrlsToTry(dbUrl: string): string[] {
+  const urls = [LOCAL_DB_ADMIN_URL];
+  if (dbUrl !== LOCAL_DB_ADMIN_URL) {
+    urls.push(dbUrl);
+  }
+  return urls;
+}
+
+function probeStorageAuthCatalog(dbUrl: string): StorageAuthCatalog {
+  let lastDetail = "";
+  for (const url of dbUrlsToTry(dbUrl)) {
+    const result = spawnSync(
+      "psql",
+      [url, "-v", "ON_ERROR_STOP=1", "-t", "-A", "-F", "|", "-c", STORAGE_AUTH_CATALOG_PROBE_SQL],
+      { encoding: "utf8", shell: false },
+    );
+    if (result.error) {
+      lastDetail = result.error.message;
+      continue;
+    }
+    if ((result.status ?? 1) !== 0) {
+      lastDetail = (result.stderr || `psql exit ${result.status ?? 1}`).trim();
+      continue;
+    }
+    const catalog = parseStorageAuthCatalog(result.stdout ?? "");
+    if (catalog) return catalog;
+    lastDetail = `stdout inesperado: ${JSON.stringify(result.stdout)}`;
+  }
+
+  fail(
+    `Não foi possível inspecionar o catálogo storage/auth (${lastDetail}). ` +
+      "Confira se o Postgres :55322 está no ar e se `psql` está instalado.",
+  );
+}
+
+function logStorageAuthCatalog(catalog: StorageAuthCatalog) {
+  info(`storage.buckets: ${catalog.storageBuckets ? "present" : "missing"}`);
+  info(`storage.objects: ${catalog.storageObjects ? "present" : "missing"}`);
+  info(`auth.identities: ${catalog.authIdentities ? "present" : "missing"}`);
+  info(
+    `auth.users.email_change_token_current: ${
+      catalog.authEmailChangeTokenCurrent ? "present" : "missing"
+    }`,
+  );
+}
+
 function applySqlStub(dbUrl: string, relativePath: string, okMessage: string) {
   const stubFile = join(process.cwd(), relativePath);
   if (!existsSync(stubFile)) {
     fail(`Arquivo não encontrado: ${stubFile}`);
   }
 
-  const urlsToTry = [dbUrl];
-  if (dbUrl !== LOCAL_DB_ADMIN_URL) {
-    urlsToTry.push(LOCAL_DB_ADMIN_URL);
-  }
-
   let lastDetail = "";
-  for (const url of urlsToTry) {
+  for (const url of stubUrlsToTry(dbUrl)) {
     const result = spawnSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-f", stubFile], {
       stdio: "inherit",
       shell: false,
@@ -109,18 +164,42 @@ function applySqlStub(dbUrl: string, relativePath: string, okMessage: string) {
 }
 
 function applyLocalStubs(dbUrl: string) {
-  step("Applying local storage stub (buckets + objects)");
-  applySqlStub(
-    dbUrl,
-    join("docker", "local", "zz-init-storage-stub-schema.sql"),
-    "Schema storage local compatível com migrations de bucket",
-  );
+  step("Probing storage/auth catalog");
+  let catalog = probeStorageAuthCatalog(dbUrl);
+  logStorageAuthCatalog(catalog);
+
+  if (catalog.storageBuckets && catalog.storageObjects) {
+    info("✓ storage.buckets e storage.objects já existem — stub não aplicado");
+  } else {
+    step("Applying local storage stub (buckets + objects)");
+    applySqlStub(
+      dbUrl,
+      join("docker", "local", "zz-init-storage-stub-schema.sql"),
+      "Schema storage local compatível com migrations de bucket",
+    );
+    catalog = probeStorageAuthCatalog(dbUrl);
+    if (!catalog.storageBuckets || !catalog.storageObjects) {
+      logStorageAuthCatalog(catalog);
+      fail("Stub de storage rodou, mas storage.buckets/storage.objects continuam ausentes.");
+    }
+  }
+
+  if (catalog.authIdentities && catalog.authEmailChangeTokenCurrent) {
+    info("✓ auth.identities e email_change_token_current já existem — stub não aplicado");
+    return;
+  }
+
   step("Applying local auth stub (GoTrue columns + identities)");
   applySqlStub(
     dbUrl,
     join("docker", "local", "zz-init-auth-stub-schema.sql"),
     "Schema auth local compatível com migrations históricas",
   );
+  catalog = probeStorageAuthCatalog(dbUrl);
+  if (!catalog.authIdentities || !catalog.authEmailChangeTokenCurrent) {
+    logStorageAuthCatalog(catalog);
+    fail("Stub de auth rodou, mas auth.identities/email_change_token_current continuam ausentes.");
+  }
 }
 
 function applyLocalMigrations(dbUrl: string) {
