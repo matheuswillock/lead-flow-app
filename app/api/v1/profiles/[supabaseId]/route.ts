@@ -7,6 +7,7 @@ import { prisma } from '@/app/api/infra/data/prisma';
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { assertProfileOwnership } from "@/app/api/v1/profiles/utils/assertProfileOwnership";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots";
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -320,6 +321,11 @@ export async function DELETE(
         });
         console.info(`🗑️ [DELETE Profile] ${pendingDeleted.count} pending operators deletados`);
 
+        await deleteSubscriptionStateSnapshotsForProfiles(prisma, [
+          profile.id,
+          ...operators.map((operator) => operator.id),
+        ]);
+
         // Deletar operadores do Prisma (cascade irá deletar leads assignados a eles)
         const operatorsDeleted = await prisma.profile.deleteMany({
           where: { managerId: profile.id }
@@ -333,6 +339,7 @@ export async function DELETE(
           where: { assignedTo: profile.id }
         });
         console.info(`🗑️ [DELETE Profile] ${leadsDeleted.count} leads assignados deletados`);
+        await deleteSubscriptionStateSnapshotsForProfiles(prisma, [profile.id]);
       }
 
       // 4. Deletar o próprio profile do Prisma

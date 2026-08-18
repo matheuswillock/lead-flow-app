@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
 import { isManagerLikeRole } from "@/lib/roles";
 import { GoogleOAuthConnectionRepository } from "../googleOAuthConnection/GoogleOAuthConnectionRepository";
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots";
 
 // Função para criar cliente Supabase de forma segura
 function createSupabaseClient() {
@@ -445,6 +446,7 @@ class PrismaProfileRepository implements IProfileRepository {
             });
             
             if (existingProfile) {
+              await deleteSubscriptionStateSnapshotsForProfiles(prisma, [existingProfile.id]);
               await prisma.profile.delete({
                 where: { supabaseId: supabaseUserId }
               });
@@ -966,9 +968,7 @@ class PrismaProfileRepository implements IProfileRepository {
             if (!existing) {
                 return null;
             }
-            await prisma.subscriptionStateSnapshot.deleteMany({
-                where: { profileId: existing.id },
-            });
+            await deleteSubscriptionStateSnapshotsForProfiles(prisma, [existing.id]);
             const profile = await prisma.profile.delete({ where: { supabaseId } });
             return profile;
         } catch (error) {

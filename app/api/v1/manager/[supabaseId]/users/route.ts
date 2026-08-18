@@ -28,6 +28,7 @@ import { asaasApi, asaasFetch } from "@/lib/asaas";
 import type { Prisma } from "@prisma/client";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -278,6 +279,7 @@ async function finalizeUserCreation(args: {
         },
       },
     });
+    await deleteSubscriptionStateSnapshotsForProfiles(prisma, [profile.id]);
     await prisma.profile.delete({ where: { id: profile.id } });
     throw new Error("Erro ao enviar convite. Tente novamente.");
   }

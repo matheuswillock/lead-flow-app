@@ -3,6 +3,7 @@ import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
@@ -762,9 +763,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
       const allProfileIds = [masterProfileId, ...memberProfileIds]
 
-      await tx.subscriptionStateSnapshot.deleteMany({
-        where: { profileId: { in: allProfileIds } },
-      })
+      await deleteSubscriptionStateSnapshotsForProfiles(tx, allProfileIds)
 
       await tx.profile.updateMany({
         where: { managerId: { in: allProfileIds } },
