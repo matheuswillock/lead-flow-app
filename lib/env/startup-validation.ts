@@ -7,8 +7,9 @@ import { validateEnv } from './index';
  * Called by instrumentation.ts hook.
  */
 export function validateEnvironmentOnStartup(): void {
-  // Skip hard validation during CI build — the server doesn't start in that context
-  if (process.env.CI === 'true') {
+  // Skip hard validation during CI build — the server doesn't start in that context.
+  // Playwright `next start` sets APP_ENV=test (often with CI=true) and MUST still validate.
+  if (process.env.CI === 'true' && process.env.APP_ENV !== 'test') {
     console.info('⏭️  [Startup] CI environment detected — skipping startup env validation.\n');
     return;
   }

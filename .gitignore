@@ -60,3 +60,5 @@ next-env.d.ts
 # Sentry Config File
 .env.sentry-build-plugin
 deploy/hostinger/host-pack/dist/
+playwright-report/
+test-results/

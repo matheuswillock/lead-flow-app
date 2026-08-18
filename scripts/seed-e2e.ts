@@ -1,0 +1,244 @@
+/**
+ * Seed do Postgres local para Playwright E2E.
+ *
+ * NÃO chama prisma/seed-app.ts (Auth remoto). Aqui só: stub de auth +
+ * migrations + catálogo backoffice + Profile/Team master determinístico.
+ *
+ * Como rodar:
+ *   bun run db:seed:e2e
+ *
+ * Pré-requisito: Postgres local em :55322 (`bun run local:up`).
+ * Carrega `.env.test` se existir; senão `.env`. DATABASE_URL/DIRECT_URL
+ * caem em LOCAL_DB_URL quando ausentes.
+ */
+
+import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { config as loadEnv } from "dotenv";
+import { PrismaClient, type UserFunction } from "@prisma/client";
+import { LOCAL_DB_URL } from "./lib/local-stack";
+import {
+  E2E_MASTER_EMAIL,
+  E2E_MASTER_FULL_NAME,
+  E2E_MASTER_SUPABASE_ID,
+  E2E_TEAM_NAME,
+} from "../lib/e2e/constants";
+
+/** Superuser da imagem supabase/postgres — ALTER em `auth.*` pode exigir isso. */
+const LOCAL_DB_ADMIN_URL = "postgresql://supabase_admin:postgres@127.0.0.1:55322/postgres";
+
+const MASTER_FUNCTIONS: UserFunction[] = ["SDR", "CLOSER"];
+
+if (existsSync(join(process.cwd(), ".env.test"))) {
+  loadEnv({ path: ".env.test" });
+} else {
+  loadEnv();
+}
+
+function resolveDbUrl(): string {
+  const fromEnv = process.env.DATABASE_URL?.trim();
+  return fromEnv && fromEnv.length > 0 ? fromEnv : LOCAL_DB_URL;
+}
+
+function info(msg: string) {
+  console.info(`  ${msg}`);
+}
+
+function step(label: string) {
+  console.info(`\n▶ ${label}`);
+}
+
+function fail(msg: string): never {
+  console.error(`\n❌ ${msg}`);
+  process.exit(1);
+}
+
+function run(
+  cmd: string,
+  cmdArgs: string[],
+  opts: { env?: NodeJS.ProcessEnv } = {},
+): { status: number; stdout: string; stderr: string } {
+  const result = spawnSync(cmd, cmdArgs, {
+    stdio: "inherit",
+    shell: false,
+    encoding: "utf8",
+    env: { ...process.env, ...opts.env },
+  });
+  return {
+    status: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+function applyAuthStubSchema(dbUrl: string) {
+  step("Applying local auth stub (GoTrue columns + identities)");
+  const stubFile = join(process.cwd(), "docker", "local", "zz-init-auth-stub-schema.sql");
+  if (!existsSync(stubFile)) {
+    fail(`Arquivo não encontrado: ${stubFile}`);
+  }
+
+  const urlsToTry = [dbUrl];
+  if (dbUrl !== LOCAL_DB_ADMIN_URL) {
+    urlsToTry.push(LOCAL_DB_ADMIN_URL);
+  }
+
+  let lastDetail = "";
+  for (const url of urlsToTry) {
+    const result = spawnSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-f", stubFile], {
+      stdio: "inherit",
+      shell: false,
+      encoding: "utf8",
+    });
+    if (result.error) {
+      lastDetail = result.error.message;
+      continue;
+    }
+    if ((result.status ?? 1) === 0) {
+      info("✓ Schema auth local compatível com migrations históricas");
+      return;
+    }
+    lastDetail = `psql exit ${result.status ?? 1}`;
+  }
+
+  fail(
+    `Stub de auth.users/auth.identities falhou (${lastDetail}). ` +
+      "Confira se o Postgres :55322 está no ar (`bun run local:up`) e se `psql` está instalado. " +
+      "ALTER em auth.* usa supabase_admin quando o role postgres não tem permissão.",
+  );
+}
+
+function applyLocalMigrations(dbUrl: string) {
+  applyAuthStubSchema(dbUrl);
+  step("Applying local migrations");
+  const result = run("bun", ["run", "db:migrate:apply:local"]);
+  if (result.status !== 0) {
+    fail(
+      "`db:migrate:apply:local` falhou. Veja o SQL acima. Stub de auth: `docker/local/zz-init-auth-stub-schema.sql`.",
+    );
+  }
+  info("✓ Migrations aplicadas");
+}
+
+function seedBackofficeCatalog(dbUrl: string) {
+  step("Seeding backoffice catalog (Prisma)");
+  const result = run("bun", ["run", "db:seed:backoffice-products"], {
+    env: {
+      ...process.env,
+      DATABASE_URL: dbUrl,
+      DIRECT_URL: process.env.DIRECT_URL?.trim() || dbUrl,
+    },
+  });
+  if (result.status !== 0) {
+    fail("`db:seed:backoffice-products` falhou.");
+  }
+  info("✓ Catálogo backoffice sincronizado");
+}
+
+async function upsertE2eMaster(prisma: PrismaClient) {
+  step("Upserting E2E master Profile + Team");
+
+  const existingBySupabase = await prisma.profile.findUnique({
+    where: { supabaseId: E2E_MASTER_SUPABASE_ID },
+  });
+  const existingByEmail = await prisma.profile.findUnique({
+    where: { email: E2E_MASTER_EMAIL },
+  });
+
+  const profileData = {
+    supabaseId: E2E_MASTER_SUPABASE_ID,
+    email: E2E_MASTER_EMAIL,
+    fullName: E2E_MASTER_FULL_NAME,
+    isMaster: true,
+    role: "manager" as const,
+    hasPermanentSubscription: true,
+    hasUnlimitedUsers: true,
+    subscriptionStatus: "active" as const,
+    functions: MASTER_FUNCTIONS,
+  };
+
+  const existing = existingBySupabase ?? existingByEmail;
+  const profile = existing
+    ? await prisma.profile.update({
+        where: { id: existing.id },
+        data: profileData,
+      })
+    : await prisma.profile.create({ data: profileData });
+
+  const existingDefaultTeam = await prisma.team.findFirst({
+    where: { masterId: profile.id, isDefault: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const team = existingDefaultTeam
+    ? await prisma.team.update({
+        where: { id: existingDefaultTeam.id },
+        data: { name: E2E_TEAM_NAME },
+      })
+    : await prisma.team.create({
+        data: {
+          name: E2E_TEAM_NAME,
+          masterId: profile.id,
+          isDefault: true,
+        },
+      });
+
+  await prisma.teamMember.upsert({
+    where: {
+      teamId_profileId: {
+        teamId: team.id,
+        profileId: profile.id,
+      },
+    },
+    create: {
+      teamId: team.id,
+      profileId: profile.id,
+      role: "manager",
+      functions: MASTER_FUNCTIONS,
+    },
+    update: {
+      role: "manager",
+      functions: MASTER_FUNCTIONS,
+    },
+  });
+
+  await prisma.profile.update({
+    where: { id: profile.id },
+    data: { activeTeamId: team.id },
+  });
+
+  await prisma.profileSubscription.upsert({
+    where: { profileId: profile.id },
+    create: {
+      profileId: profile.id,
+      hasPermanentSubscription: true,
+      subscriptionStatus: "active",
+    },
+    update: {
+      hasPermanentSubscription: true,
+      subscriptionStatus: "active",
+    },
+  });
+
+  info(`✓ Profile ${profile.id} (${E2E_MASTER_EMAIL}) + Team "${E2E_TEAM_NAME}"`);
+}
+
+async function main() {
+  const dbUrl = resolveDbUrl();
+  applyLocalMigrations(dbUrl);
+  seedBackofficeCatalog(dbUrl);
+
+  const prisma = new PrismaClient({ datasourceUrl: dbUrl });
+  try {
+    await upsertE2eMaster(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
+
+  console.info("\n✅ Seed E2E concluído.\n");
+}
+
+main().catch((err) => {
+  fail(err instanceof Error ? err.message : String(err));
+});

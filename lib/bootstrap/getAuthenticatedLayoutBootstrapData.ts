@@ -1,6 +1,8 @@
 import "server-only";
 
+import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import { resolveE2eUser } from "@/lib/e2e/resolve-e2e-user";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
@@ -132,15 +134,27 @@ export async function getAuthenticatedLayoutBootstrapData(
   supabaseId: string
 ): Promise<AuthenticatedLayoutBootstrapData | null> {
   try {
-    const supabase = await createSupabaseServer();
-    if (!supabase) return null;
+    const cookieStore = await cookies();
+    const e2eUser = await resolveE2eUser((name) => cookieStore.get(name)?.value);
 
-    const {
-      data: { user: sessionUser },
-    } = await supabase.auth.getUser();
+    let sessionUserId: string | null = null;
+    if (e2eUser) {
+      console.info("[E2E] Bootstrap autenticado via cookie assinado", {
+        userId: e2eUser.id,
+      });
+      sessionUserId = e2eUser.id;
+    } else {
+      const supabase = await createSupabaseServer();
+      if (!supabase) return null;
+
+      const {
+        data: { user: sessionUser },
+      } = await supabase.auth.getUser();
+      sessionUserId = sessionUser?.id ?? null;
+    }
 
     // Guarda de propriedade: o supabaseId da URL precisa ser o da sessão.
-    if (!sessionUser || sessionUser.id !== supabaseId) return null;
+    if (!sessionUserId || sessionUserId !== supabaseId) return null;
 
     const [profileOutput, teamsPayload] = await Promise.all([
       profileUseCase.getProfileBySupabaseId(supabaseId),

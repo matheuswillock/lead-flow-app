@@ -116,6 +116,38 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
 
+  e2e:
+    name: E2E (Playwright)
+    if: ${{ github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Playwright E2E
+        uses: ./.github/actions/run-e2e-playwright
+        with:
+          include-slow: 'true'
+          asaas-sandbox-api-key: ${{ secrets.ASAAS_SANDBOX_API_KEY }}
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
   quality-gate:
     name: Quality Gate
     if: ${{ always() && github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
@@ -125,6 +157,7 @@ jobs:
       - ci-light
       - typecheck
       - build
+      - e2e
     steps:
       - name: Enforce Quality Checks
         run: |
@@ -151,6 +184,10 @@ jobs:
           fi
           if [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "::error::Build failed."
+            failed=1
+          fi
+          if [[ "${{ needs.e2e.result }}" != "success" ]]; then
+            echo "::error::E2E tests failed."
             failed=1
           fi
           exit "$failed"

@@ -79,6 +79,11 @@ services:
       # imagem cria o role "postgres" lá) — nomes de init script rodam em
       # ordem alfabética e este script faz ALTER ... OWNER TO postgres.
       - ./docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro,Z
+      # Stub de auth.users/auth.identities (GoTrue legado da imagem) — necessário
+      # para `supabase migration up` passar em migrations históricas que ALTER
+      # auth.users / criam auth.identities. Seed E2E (`scripts/seed-e2e.ts`)
+      # reaplica o mesmo SQL em volumes já existentes.
+      - ./docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro,Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s

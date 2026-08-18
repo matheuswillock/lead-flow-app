@@ -1,0 +1,101 @@
+name: Run Playwright E2E
+description: Sobe Postgres supabase/postgres, seed E2E, build, Chromium e bun run test:e2e
+inputs:
+  include-slow:
+    description: Incluir testes @slow (develop/main)
+    required: false
+    default: "false"
+  asaas-sandbox-api-key:
+    description: Chave Asaas sandbox (nunca produção). Placeholder se vazio.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install PostgreSQL client
+      shell: bash
+      run: sudo apt-get update -y && sudo apt-get install -y postgresql-client
+
+    - name: Start supabase/postgres
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker rm -f e2e-postgres >/dev/null 2>&1 || true
+        docker run -d --name e2e-postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          -e POSTGRES_DB=postgres \
+          -p 55322:5432 \
+          supabase/postgres:17.6.1.149 \
+          postgres \
+          -c listen_addresses=* \
+          -c wal_level=logical \
+          -c max_connections=50
+        for i in $(seq 1 60); do
+          if pg_isready -h 127.0.0.1 -p 55322 -U postgres >/dev/null 2>&1; then
+            echo "Postgres E2E pronto."
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "::error::Postgres E2E não ficou pronto em 120s."
+        docker logs e2e-postgres || true
+        exit 1
+
+    - name: Export .env.test.example
+      shell: bash
+      run: |
+        set -euo pipefail
+        grep -v '^#' .env.test.example | grep -v '^$' >> "$GITHUB_ENV"
+
+    - name: Override CI E2E secrets
+      shell: bash
+      env:
+        ASAAS_SANDBOX_API_KEY_INPUT: ${{ inputs.asaas-sandbox-api-key }}
+        INCLUDE_SLOW: ${{ inputs.include-slow }}
+      run: |
+        set -euo pipefail
+        {
+          echo "CI=true"
+          echo "APP_ENV=test"
+          echo "E2E_TEST_MODE=true"
+          echo "E2E_INCLUDE_SLOW=${INCLUDE_SLOW}"
+          echo "ASAAS_ENV=sandbox"
+          echo "ASAAS_URL=https://sandbox.asaas.com"
+          echo "ASAAS_URL_sandbox=https://sandbox.asaas.com"
+          echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres"
+          echo "DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres"
+          if [[ -n "${ASAAS_SANDBOX_API_KEY_INPUT}" ]]; then
+            echo "ASAAS_API_KEY=${ASAAS_SANDBOX_API_KEY_INPUT}"
+            echo "ASAAS_SANDBOX_API_KEY=${ASAAS_SANDBOX_API_KEY_INPUT}"
+          fi
+        } >> "$GITHUB_ENV"
+
+    - name: Cache Playwright Chromium
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ hashFiles('bun.lock', 'bun.lockb') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
+    - name: Install Chromium
+      shell: bash
+      run: bunx --bun playwright install --with-deps chromium
+
+    - name: Seed E2E database
+      shell: bash
+      run: bun run db:seed:e2e
+
+    - name: Build
+      shell: bash
+      run: bun run build
+
+    - name: Run Playwright
+      shell: bash
+      run: bun run test:e2e
+
+    - name: Stop postgres
+      if: always()
+      shell: bash
+      run: docker rm -f e2e-postgres >/dev/null 2>&1 || true
