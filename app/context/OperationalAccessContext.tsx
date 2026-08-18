@@ -29,7 +29,7 @@ const DEFAULT_ACCESS: OperationalAccessData = {
 interface OperationalAccessContextValue {
   access: OperationalAccessData
   isLoading: boolean
-  refresh: () => Promise<void>
+  refresh: (force?: boolean) => Promise<void>
 }
 
 const OperationalAccessContext = createContext<OperationalAccessContextValue | undefined>(
@@ -62,21 +62,32 @@ export function OperationalAccessProvider({
       : DEFAULT_ACCESS
   )
   const [isLoading, setIsLoading] = useState(!initialAccess)
+  const fetchGenerationRef = useRef(0)
   const inFlightRef = useRef(false)
   const lastRequestKeyRef = useRef(
     initialAccess ? `${initialAccess.profileId}:${initialAccess.teamId ?? "no-team"}` : ""
   )
 
-  const fetchAccess = useCallback(async (options?: { force?: boolean }) => {
-    if (!user?.id || inFlightRef.current) return
+  const fetchAccess = useCallback(async (force = false) => {
+    if (!user?.id) return
 
     const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
-    if (!options?.force && requestKey === lastRequestKeyRef.current) return
+    const requestKeyChanged = lastRequestKeyRef.current !== requestKey
+    if (!force && !requestKeyChanged) return
+    if (inFlightRef.current && !force && !requestKeyChanged) return
 
+    if (requestKeyChanged) {
+      setAccess(DEFAULT_ACCESS)
+    }
+    const generation = ++fetchGenerationRef.current
     inFlightRef.current = true
     setIsLoading(true)
+
     try {
-      const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, { cache: "no-store" })
+      const response = await fetch(`${API_CLIENT_BASE}/me/operational-access`, {
+        cache: "no-store",
+        headers: activeTeamId ? { "x-team-id": activeTeamId } : undefined,
+      })
       const contentType = response.headers.get("content-type") ?? ""
       if (!contentType.includes("application/json")) {
         console.error(
@@ -89,13 +100,15 @@ export function OperationalAccessProvider({
         isValid?: boolean
         result?: OperationalAccessData
       }
+      if (generation !== fetchGenerationRef.current) return
       if (response.ok && data.isValid && data.result) {
         setAccess(data.result)
+        lastRequestKeyRef.current = requestKey
       }
     } catch (error) {
       console.error("[OperationalAccessContext] Erro ao carregar acessos operacionais:", error)
     } finally {
-      lastRequestKeyRef.current = requestKey
+      if (generation !== fetchGenerationRef.current) return
       inFlightRef.current = false
       setIsLoading(false)
     }
@@ -112,7 +125,7 @@ export function OperationalAccessProvider({
     void fetchAccess()
   }, [activeTeamId, fetchAccess, initialAccess, user?.id])
 
-  const refresh = useCallback(() => fetchAccess({ force: true }), [fetchAccess])
+  const refresh = useCallback((force = true) => fetchAccess(force), [fetchAccess])
 
   const value = useMemo(
     () => ({

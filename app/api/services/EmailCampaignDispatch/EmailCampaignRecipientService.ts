@@ -8,7 +8,10 @@ import {
   formatCampaignFromHeader,
   resolveCampaignFrom,
 } from "@/lib/email/resolve-campaign-from"
-import type { CampaignRecipientRecord } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
+import type {
+  CampaignRecipientRecord,
+  RecipientListPage,
+} from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import {
   EmailCampaignRecipientRepository,
 } from "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository"
@@ -43,7 +46,11 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     return Array.from(uniqueRecipients.values())
   }
 
-  async listActiveRecipients(teamId: string, contactListId: string): Promise<CampaignRecipient[]> {
+  async listActiveRecipients(
+    teamId: string,
+    contactListId: string,
+    page?: RecipientListPage
+  ): Promise<CampaignRecipient[]> {
     const contactList = await this.repository.findContactListMeta(teamId, contactListId)
 
     if (!contactList) {
@@ -51,11 +58,13 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     }
 
     if (contactList.isSystemDefault) {
-      const recipients = await this.repository.findActiveRecipientsForTeam(teamId)
+      const recipients = await this.repository.findActiveRecipientsForTeam(teamId, page)
       return this.dedupeRecipients(recipients)
     }
 
-    return this.dedupeRecipients(await this.repository.findActiveRecipientsForList(contactListId))
+    return this.dedupeRecipients(
+      await this.repository.findActiveRecipientsForList(contactListId, page)
+    )
   }
 
   async countActiveRecipients(teamId: string, contactListId: string): Promise<number> {

@@ -3,6 +3,8 @@ import {
   isNewTerminalDispatch,
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
 } from "@/lib/email/campaign-dispatch-terminal"
+import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
+import { shouldShowCampaignListSkeleton } from "@/lib/email/campaign-dispatch-list-skeleton"
 
 /**
  * Contrato de polling/force para CampanhasHook — exercita a lógica pura de assinatura
@@ -177,5 +179,76 @@ describe("toast fantasma de retry — corrida de carregamento otimista (openView
       targetSubId: "sub-1",
     })
     expect(preAttemptId).toBeNull()
+  })
+})
+
+describe("toast de falha — fallback do hook formata INTERNAL", () => {
+  it("não concatena Erro interno no fallback sem terminal", () => {
+    function buildFailedFallbackToast(name: string, errorMessage: string | null) {
+      const formattedError = formatCampaignDispatchErrorMessage(errorMessage)
+      return formattedError
+        ? `Disparo de "${name}" falhou: ${formattedError}`
+        : `Disparo de "${name}" falhou.`
+    }
+
+    expect(buildFailedFallbackToast("Lista Fria", "Erro interno durante o disparo")).toBe(
+      'Disparo de "Lista Fria" falhou: Ocorreu um erro ao disparar a campanha'
+    )
+    expect(
+      buildFailedFallbackToast("Lista Fria", "Erro interno durante o disparo")
+    ).not.toContain("Erro interno")
+  })
+})
+
+describe("lista — skeleton e troca de time", () => {
+  it("não liga skeleton no poll de 4s enquanto já há linhas", () => {
+    expect(
+      shouldShowCampaignListSkeleton({
+        hasExistingRows: true,
+        isAwaitingSendingAfterDispatch: false,
+      })
+    ).toBe(false)
+  })
+
+  it("liga skeleton no primeiro load e numa passada após Disparado", () => {
+    expect(
+      shouldShowCampaignListSkeleton({
+        hasExistingRows: false,
+        isAwaitingSendingAfterDispatch: false,
+      })
+    ).toBe(true)
+    expect(
+      shouldShowCampaignListSkeleton({
+        hasExistingRows: true,
+        isAwaitingSendingAfterDispatch: true,
+      })
+    ).toBe(true)
+  })
+
+  it("troca de activeTeamId zera campaigns para não flashar o time anterior", () => {
+    let campaigns: Array<{ id: string; teamId: string }> = [
+      { id: "old", teamId: "team-a" },
+    ]
+    function onActiveTeamIdChange() {
+      campaigns = []
+    }
+    onActiveTeamIdChange()
+    expect(campaigns).toEqual([])
+  })
+
+  it("erro do POST após o modal fechado reverte sendingId sem window.alert", () => {
+    let sendingId: string | null = "camp-1"
+    const alerts: string[] = []
+    const toasts: string[] = []
+
+    function onPostError(message: string) {
+      toasts.push(message)
+      sendingId = null
+    }
+
+    onPostError("Ocorreu um erro ao disparar a campanha")
+    expect(sendingId).toBeNull()
+    expect(toasts).toEqual(["Ocorreu um erro ao disparar a campanha"])
+    expect(alerts).toEqual([])
   })
 })

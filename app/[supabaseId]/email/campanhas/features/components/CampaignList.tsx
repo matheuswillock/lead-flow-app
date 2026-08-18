@@ -34,6 +34,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
+import {
+  CampaignDispatchProgressLine,
+  resolveCampaignDispatchProgressDisplay,
+} from "./CampaignDispatchProgressLine"
+import { CampaignDispatchCountdownButtonLabel } from "./CampaignDispatchCountdownButtonLabel"
+import { useCampaignDispatchCountdown } from "../hooks/useCampaignDispatchCountdown"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
@@ -41,6 +47,10 @@ import { formatIntimezone } from "@/lib/dates"
 import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
+import {
+  campaignDispatchSendOptions,
+  isCampaignFailedRetry,
+} from "@/lib/email/campaign-dispatch-copy"
 
 function CampaignActionsMenu({
   campaign,
@@ -79,7 +89,6 @@ function CampaignActionsMenu({
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
-  const [sending, setSending] = useState(false)
   const isParentCampaign = Boolean(campaign.isParentCampaign || (campaign.subCampaignCount ?? 0) > 0)
   const isFailedRetryStatus =
     campaign.status === "failed" || campaign.status === "partially_sent"
@@ -92,8 +101,15 @@ function CampaignActionsMenu({
       campaign.status === "failed" ||
       campaign.status === "partially_sent")
   const canSend = canSendCampaign && canSendByStatus && !sendBlockReason
-  const isLeafFailedRetry = !isParentCampaign && isFailedRetryStatus
-  const sendActionLabel = canRetryFailedSubs || isLeafFailedRetry
+  const isLeafFailedRetry = !isParentCampaign && isCampaignFailedRetry(campaign)
+  const dispatchCountdown = useCampaignDispatchCountdown({
+    isFailedRetry: isLeafFailedRetry,
+    onDispatched: () => {
+      setSendConfirmOpen(false)
+      void handleSend(campaign.id, campaignDispatchSendOptions(campaign))
+    },
+  })
+  const sendActionLabel = isCampaignFailedRetry(campaign)
     ? "Redisparar falhas"
     : "Disparar"
   const failedRetryCount =
@@ -103,7 +119,9 @@ function CampaignActionsMenu({
     sendBlockReason ??
     (isParentCampaign
       ? canRetryFailedSubs
-        ? 'Abra a campanha e use "Reenviar apenas falhas" nas partes com falha'
+        ? isCampaignFailedRetry(campaign)
+          ? 'Abra a campanha e use "Reenviar apenas falhas" nas partes com falha'
+          : 'Abra a campanha e use "Disparar" nas partes'
         : "Campanha-pai não pode ser disparada. As sub-campanhas seguem o agendamento"
       : !canSendCampaign
         ? "Ative um plano em Assinaturas para disparar campanhas"
@@ -112,19 +130,6 @@ function CampaignActionsMenu({
   const canCancel = campaign.status === "scheduled" || campaign.status === "sending"
   const canDelete = ["draft", "scheduled", "canceled"].includes(campaign.status)
   const canArchive = ["sent", "failed", "partially_sent"].includes(campaign.status)
-
-  async function handleSendConfirm() {
-    setSending(true)
-    try {
-      await handleSend(
-        campaign.id,
-        isLeafFailedRetry ? { retryFailedOnly: true } : undefined
-      )
-    } finally {
-      setSending(false)
-      setSendConfirmOpen(false)
-    }
-  }
 
   async function handleCancelConfirm() {
     await handleCancel(campaign.id)
@@ -238,7 +243,14 @@ function CampaignActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+      <AlertDialog
+        open={sendConfirmOpen}
+        onOpenChange={(open) => {
+          if (dispatchCountdown.locked && !open) return
+          setSendConfirmOpen(open)
+          if (!open) dispatchCountdown.reset()
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -260,31 +272,32 @@ function CampaignActionsMenu({
                 <>
                   A campanha <strong>&quot;{campaign.name}&quot;</strong> será enviada para{" "}
                   <strong>{campaign.totalRecipients.toLocaleString("pt-BR")}</strong>{" "}
-                  destinatário(s) ativo(s).
-                  {campaign.status === "sent"
-                    ? " Campanhas já enviadas geram um novo dispatch sem alterar o histórico anterior."
-                    : null}{" "}
-                  Os créditos correspondentes serão deduzidos.
+                  destinatário(s) ativo(s). Os créditos correspondentes serão
+                  deduzidos.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={sending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={dispatchCountdown.locked}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
-                void handleSendConfirm()
+                dispatchCountdown.start()
               }}
-              disabled={sending || (isLeafFailedRetry && failedRetryCount <= 0)}
+              disabled={
+                (!dispatchCountdown.locked && isLeafFailedRetry && failedRetryCount <= 0)
+              }
+              aria-busy={dispatchCountdown.locked}
             >
-              {sending
-                ? isLeafFailedRetry
-                  ? "Reenviando falhas..."
-                  : "Disparando..."
-                : isLeafFailedRetry
-                  ? "Sim, reenviar apenas falhas"
-                  : "Sim, disparar"}
+              <CampaignDispatchCountdownButtonLabel
+                locked={dispatchCountdown.locked}
+                countdownLabel={dispatchCountdown.label}
+                showLoader={dispatchCountdown.showLoader}
+                idleLabel={
+                  isLeafFailedRetry ? "Sim, reenviar apenas falhas" : "Sim, disparar"
+                }
+              />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -499,6 +512,11 @@ export function CampaignList({
                           status={isSending ? "sending" : campaign.status}
                           scheduledAt={campaign.scheduledAt}
                         />
+                        {isSending ? (
+                          <CampaignDispatchProgressLine
+                            progress={resolveCampaignDispatchProgressDisplay(campaign)}
+                          />
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell className="align-middle text-center text-sm">

@@ -54,8 +54,12 @@ interface TeamContextState {
   isTeamMaster: boolean;
   isLoading: boolean;
   error: string | null;
+  isSwitchingTeam: boolean;
+  switchingTeamName: string | null;
+  isTeamSwitchPersisted: boolean;
   refreshTeams: () => Promise<void>;
   setActiveTeamId: (teamId: string) => Promise<void>;
+  completeTeamSwitch: () => void;
 }
 
 const TeamContext = createContext<TeamContextState | undefined>(undefined);
@@ -101,9 +105,13 @@ export const TeamProvider = ({
   const [activeTeamId, setActiveTeamIdState] = useState<string | null>(initialActiveTeamId);
   const [isLoading, setIsLoading] = useState(!hasInitialTeams);
   const [error, setError] = useState<string | null>(null);
+  const [isSwitchingTeam, setIsSwitchingTeam] = useState(false);
+  const [switchingTeamName, setSwitchingTeamName] = useState<string | null>(null);
+  const [isTeamSwitchPersisted, setIsTeamSwitchPersisted] = useState(false);
   const serverActiveTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const activeTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const pendingActiveTeamSwitchRef = useRef<string | null>(null);
+  const teamSwitchGenerationRef = useRef(0);
   const teamsRef = useRef<TeamSummary[]>(initialTeams ?? []);
   const initializedRef = useRef(false);
   const serverTeamsReadyRef = useRef(hasInitialTeams);
@@ -247,6 +255,33 @@ export const TeamProvider = ({
     }
   }, [storageKey, supabaseId]);
 
+  const completeTeamSwitch = useCallback(() => {
+    pendingActiveTeamSwitchRef.current = null;
+    setIsSwitchingTeam(false);
+    setSwitchingTeamName(null);
+    setIsTeamSwitchPersisted(false);
+  }, []);
+
+  const revertTeamSwitch = useCallback((previousTeamId: string | null) => {
+    pendingActiveTeamSwitchRef.current = null;
+    activeTeamIdRef.current = previousTeamId;
+    setActiveTeamIdState(previousTeamId);
+    setIsSwitchingTeam(false);
+    setSwitchingTeamName(null);
+    setIsTeamSwitchPersisted(false);
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (previousTeamId) {
+      window.localStorage.setItem(storageKey, previousTeamId);
+      return;
+    }
+
+    window.localStorage.removeItem(storageKey);
+  }, [storageKey]);
+
   const setActiveTeamId = useCallback(async (teamId: string) => {
     const targetTeam = teams.find((team) => team.id === teamId);
     if (!teamId || teamId === activeTeamId || !targetTeam) {
@@ -258,17 +293,30 @@ export const TeamProvider = ({
       return;
     }
 
+    const previousTeamId = activeTeamIdRef.current;
+    const generation = ++teamSwitchGenerationRef.current;
     pendingActiveTeamSwitchRef.current = teamId;
+
+    setIsTeamSwitchPersisted(false);
+    setIsSwitchingTeam(true);
+    setSwitchingTeamName(targetTeam.name);
     activeTeamIdRef.current = teamId;
     setActiveTeamIdState(teamId);
+
     try {
       await persistActiveTeam(teamId);
+      if (generation !== teamSwitchGenerationRef.current) {
+        return;
+      }
+      setIsTeamSwitchPersisted(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao alterar o time ativo.");
-    } finally {
-      pendingActiveTeamSwitchRef.current = null;
+      if (generation !== teamSwitchGenerationRef.current) {
+        return;
+      }
+      revertTeamSwitch(previousTeamId);
     }
-  }, [activeTeamId, persistActiveTeam, teams]);
+  }, [activeTeamId, persistActiveTeam, revertTeamSwitch, teams]);
 
   useEffect(() => {
     if (!supabaseId) return;
@@ -387,8 +435,12 @@ export const TeamProvider = ({
     isTeamMaster,
     isLoading,
     error,
+    isSwitchingTeam,
+    switchingTeamName,
+    isTeamSwitchPersisted,
     refreshTeams,
-    setActiveTeamId
+    setActiveTeamId,
+    completeTeamSwitch,
   }), [
     teams,
     activeTeamId,
@@ -398,8 +450,12 @@ export const TeamProvider = ({
     isTeamMaster,
     isLoading,
     error,
+    isSwitchingTeam,
+    switchingTeamName,
+    isTeamSwitchPersisted,
     refreshTeams,
-    setActiveTeamId
+    setActiveTeamId,
+    completeTeamSwitch,
   ]);
 
   return (

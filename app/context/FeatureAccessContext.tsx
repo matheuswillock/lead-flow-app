@@ -43,7 +43,7 @@ interface FeatureAccessContextValue {
   hasAccess: (slug: string) => boolean
   isBeta: (slug: string) => boolean
   showsBetaLabel: (slug: string) => boolean
-  refresh: () => Promise<void>
+  refresh: (force?: boolean) => Promise<void>
 }
 
 const FeatureAccessContext = createContext<FeatureAccessContextValue | undefined>(undefined)
@@ -78,6 +78,7 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
   const lastFetchedAtRef = useRef<number>(initialAccess ? Date.now() : 0)
   const hasResolvedAccessRef = useRef(!!initialAccess)
   const inFlightRef = useRef(false)
+  const fetchGenerationRef = useRef(0)
   const authBlockedUntilRef = useRef(0)
 
   const matchesInitialAccess = useCallback(() => {
@@ -113,6 +114,7 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
 
       const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
       const isSameRequest = lastRequestKeyRef.current === requestKey
+      const requestKeyChanged = !isSameRequest && lastRequestKeyRef.current !== ""
       const isFresh = Date.now() - lastFetchedAtRef.current < ACCESS_CACHE_TTL_MS
       if (!force && isSameRequest && isFresh) {
         return
@@ -123,11 +125,21 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
         return
       }
 
-      if (inFlightRef.current) return
-      inFlightRef.current = true
-      if (!hasResolvedAccessRef.current) {
+      if (inFlightRef.current && !force && !requestKeyChanged) return
+
+      if (requestKeyChanged) {
+        hasResolvedAccessRef.current = false
+        setSlugs([])
+        setBetaSlugs([])
+        setBetaLabelSlugs([])
+        setUserRole(DEFAULT_USER_ROLE)
+        setIsLoading(true)
+      } else if (!hasResolvedAccessRef.current) {
         setIsLoading(true)
       }
+
+      const generation = ++fetchGenerationRef.current
+      inFlightRef.current = true
 
       try {
         const response = await fetch(`${API_CLIENT_BASE}/features/access`, {
@@ -135,6 +147,10 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
           cache: "no-store",
         })
         const output = await response.json()
+
+        if (generation !== fetchGenerationRef.current) {
+          return
+        }
 
         if (response.status === 401) {
           // Cooldown: focus/visibility/effect não devem martelar 401.
@@ -168,6 +184,9 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
         setUserRole(rawRole && typeof rawRole === "object" ? (rawRole as UserRoleData) : DEFAULT_USER_ROLE)
       } catch (error) {
         console.error("[FeatureAccessContext] Erro ao carregar acesso:", error)
+        if (generation !== fetchGenerationRef.current) {
+          return
+        }
         lastRequestKeyRef.current = requestKey
         lastFetchedAtRef.current = Date.now()
         if (!hasResolvedAccessRef.current) {
@@ -177,6 +196,9 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
           setUserRole(DEFAULT_USER_ROLE)
         }
       } finally {
+        if (generation !== fetchGenerationRef.current) {
+          return
+        }
         hasResolvedAccessRef.current = true
         setIsLoading(false)
         inFlightRef.current = false
@@ -226,9 +248,11 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
       hasAccess,
       isBeta,
       showsBetaLabel,
-      refresh: async () => {
-        authBlockedUntilRef.current = 0
-        await fetchAccess(true)
+      refresh: async (force = true) => {
+        if (force) {
+          authBlockedUntilRef.current = 0
+        }
+        await fetchAccess(force)
       },
     }),
     [slugs, betaSlugs, betaLabelSlugs, userRole, isLoading, hasAccess, isBeta, showsBetaLabel, fetchAccess]
