@@ -1,6 +1,6 @@
 -- Executado automaticamente pela imagem supabase/postgres em
 -- /docker-entrypoint-initdb.d (volume vazio) e de novo por
--- `scripts/seed-local.ts` (volume já existente).
+-- `scripts/seed-local.ts` e `scripts/seed-e2e.ts` (volume já existente).
 --
 -- A imagem supabase/postgres traz um schema `auth` antigo (GoTrue legado):
 -- `auth.users` tem `email_change_token` e NÃO tem `auth.identities`.

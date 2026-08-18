@@ -90,7 +90,7 @@ services:
       # Stub GoTrue moderno (colunas email_change_token_* + auth.identities).
       # A imagem traz schema auth legado; migrations históricas tocam essas
       # relações mesmo no db-only (Auth remoto). Idempotente — seed-local
-      # também aplica este arquivo em volume já existente.
+      # e seed-e2e reaplicam o mesmo SQL em volumes já existentes.
       - ./docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro,Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

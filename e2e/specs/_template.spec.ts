@@ -20,6 +20,8 @@
  */
 
 import { expect, test } from "@playwright/test";
+import { injectE2eAuthCookie } from "../fixtures/auth";
+import { disconnectPrisma, findE2eMasterProfile } from "../support/db";
 import { assertAsaasSandbox } from "../support/asaas";
 
 test.describe("app/example-route", () => {
@@ -28,6 +30,20 @@ test.describe("app/example-route", () => {
     if (process.env.E2E_TOUCHES_ASAAS === "true") {
       assertAsaasSandbox();
     }
+  });
+
+  test.beforeEach(async ({ context }) => {
+    // Página autenticada: injeta o cookie JWT do master seedado.
+    // Página pública: apague este beforeEach.
+    await injectE2eAuthCookie(context);
+    const profile = await findE2eMasterProfile();
+    if (!profile) {
+      throw new Error("Seed E2E ausente — rode `bun run db:seed:e2e`");
+    }
+  });
+
+  test.afterAll(async () => {
+    await disconnectPrisma();
   });
 
   test("carrega sem erro e mostra o heading", async ({ page }) => {

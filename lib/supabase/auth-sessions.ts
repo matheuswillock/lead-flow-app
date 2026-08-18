@@ -7,6 +7,7 @@ import {
   parseAuthSessionBoundCookie,
   resolveAuthSessionStartedAt,
 } from "@/lib/auth/session-lifetime";
+import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode";
 
 function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -95,6 +96,17 @@ export function rewriteWithSession(
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next()
   const isDev = process.env.NODE_ENV === "development"
+
+  if (isE2eTestMode()) {
+    const { resolveE2eUser } = await import("@/lib/e2e/resolve-e2e-user");
+    const e2eUser = await resolveE2eUser((name) => request.cookies.get(name)?.value);
+    if (e2eUser) {
+      console.info("[E2E] Sessão autenticada via cookie assinado", {
+        userId: e2eUser.id,
+      });
+      return { supabase: null, response, user: e2eUser };
+    }
+  }
 
   const env = getSupabaseEnv();
   if (!env) {
