@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { prisma } from "../../../support/db";
-import { assertAsaasSandbox } from "../../support/asaas";
+import { assertAsaasSandbox } from "../../../support/asaas";
 
 test.describe("public/adquirir/creditos", () => {
   const existingEmail = `e2e-creditos-${Date.now()}@test.com`;
