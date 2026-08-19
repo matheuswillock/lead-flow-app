@@ -27,10 +27,15 @@ const findAvailabilityTeamContext = mock(async () => ({
 type UpsertMetricEventArgs = {
   questionId?: string | null
   questionSnapshot?: unknown
+  publicationId?: string
 }
 
 const upsertMetricEvent = mock(async (_args: UpsertMetricEventArgs) => {})
 const questionExists = mock(async (_id: string) => true)
+const findPublicationContainingQuestion = mock(async () => null as {
+  publicationId: string
+  snapshot: { formId: string; questions: Array<{ id: string; title?: string; type?: string }> }
+} | null)
 
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
@@ -38,6 +43,7 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
     findAvailabilityTeamContext,
     upsertMetricEvent,
     questionExists,
+    findPublicationContainingQuestion,
   },
 }))
 
@@ -66,6 +72,8 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
     upsertMetricEvent.mockClear()
     questionExists.mockClear()
     questionExists.mockResolvedValue(true)
+    findPublicationContainingQuestion.mockClear()
+    findPublicationContainingQuestion.mockResolvedValue(null)
   })
 
   it("resolve questionSnapshot a partir do snapshot da publicação vigente quando questionId existe", async () => {
@@ -85,21 +93,58 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
     if (!call) throw new Error("Expected upsertMetricEvent to have been called")
     expect(call[0].questionId).toBe(QUESTION_ID)
     expect(call[0].questionSnapshot).toEqual(questionFromSnapshot)
+    expect(call[0].publicationId).toBe(PUBLICATION_ID)
   })
 
-  it("retorna false (sem persistir) quando questionId não existe no snapshot vigente", async () => {
+  it("persiste na publicação anterior quando questionId não existe no snapshot vigente", async () => {
+    const previousPublicationId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    const staleQuestion = { id: "stale-question-id-not-in-snapshot", title: "Pergunta antiga", type: "single_choice" }
+    findPublicationContainingQuestion.mockResolvedValueOnce({
+      publicationId: previousPublicationId,
+      snapshot: {
+        formId: FORM_ID,
+        questions: [staleQuestion],
+      },
+    })
+
     const input: PublicFormMetricEventInput = {
       visitorSessionId: "session_abcdefghij",
       eventType: "question_viewed",
       eventKey: "session_abcdefghij:question_viewed:stale",
-      questionId: "stale-question-id-not-in-snapshot",
+      questionId: staleQuestion.id,
       origin: {},
     }
 
     const accepted = await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })
 
-    expect(accepted).toBe(false)
-    expect(upsertMetricEvent).not.toHaveBeenCalled()
+    expect(accepted).toBe(true)
+    expect(findPublicationContainingQuestion).toHaveBeenCalledWith(FORM_ID, staleQuestion.id)
+    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
+    const call = upsertMetricEvent.mock.calls[0]
+    if (!call) throw new Error("Expected upsertMetricEvent to have been called")
+    expect(call[0].publicationId).toBe(previousPublicationId)
+    expect(call[0].questionId).toBe(staleQuestion.id)
+    expect(call[0].questionSnapshot).toEqual(staleQuestion)
+  })
+
+  it("id órfão (nenhuma publicação contém o questionId): persiste no vigente sem FK e ACK sem throw", async () => {
+    const input: PublicFormMetricEventInput = {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "question_viewed",
+      eventKey: "session_abcdefghij:question_viewed:orphan",
+      questionId: "orphan-question-id",
+      origin: {},
+    }
+
+    const accepted = await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })
+
+    expect(accepted).toBe(true)
+    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
+    const call = upsertMetricEvent.mock.calls[0]
+    if (!call) throw new Error("Expected upsertMetricEvent to have been called")
+    expect(call[0].publicationId).toBe(PUBLICATION_ID)
+    expect(call[0].questionId).toBeNull()
+    expect(call[0].questionSnapshot).toBeNull()
   })
 
   it("questionId presente no snapshot mas ausente na tabela viva: persiste com questionId null preservando o questionSnapshot", async () => {

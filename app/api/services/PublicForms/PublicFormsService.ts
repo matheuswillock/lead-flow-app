@@ -20,6 +20,7 @@ import { normalizeThankYouPages, parseThankYouPages } from "@/lib/public-forms/t
 import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
+import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
@@ -395,25 +396,37 @@ export class PublicFormsService implements IPublicFormsService {
       snapshot: PublicFormSnapshot
     } | null
     if (!current) return false
-    const matchedQuestion = input.questionId
-      ? current.snapshot.questions.find((item) => item.id === input.questionId)
+
+    let publicationId = current.publicationId
+    let snapshot = current.snapshot
+    let matchedQuestion = input.questionId
+      ? snapshot.questions.find((item) => item.id === input.questionId)
       : undefined
+
     if (input.questionId && !matchedQuestion) {
-      return false
+      const previous = await publicFormsRepository.findPublicationContainingQuestion(
+        current.snapshot.formId,
+        input.questionId,
+      )
+      const previousSnapshot = previous ? parsePublicFormSnapshot(previous.snapshot) : null
+      if (previous && previousSnapshot) {
+        publicationId = previous.publicationId
+        snapshot = previousSnapshot
+        matchedQuestion = snapshot.questions.find((item) => item.id === input.questionId)
+      }
     }
 
-    // O snapshot congelado da publicação vigente valida que a pergunta
-    // existia NO MOMENTO da publicação — mas o form pode ter sido editado
-    // depois (mesma publicação ainda vigente) e a pergunta viva
-    // (`PublicFormQuestion`) já ter sido apagada/substituída por outro id.
-    // Checar isso aqui evita depender só do catch de P2003 dentro de
-    // `upsertMetricEvent` como única rede de segurança contra a FK obsoleta.
+    // O snapshot congelado da publicação valida que a pergunta existia
+    // NAQUELA versão. A pergunta viva (`PublicFormQuestion`) pode ter sido
+    // apagada/substituída depois — nesse caso persistimos sem o FK.
+    // Id órfão (não aparece em nenhuma publicação): persiste no vigente
+    // com questionId null para a fila ACK sem retry.
     const liveQuestionId =
       matchedQuestion && input.questionId
         ? (await publicFormsRepository.questionExists(input.questionId))
           ? input.questionId
           : null
-        : input.questionId
+        : null
 
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
     let leadId: string | null = null
@@ -433,7 +446,7 @@ export class PublicFormsService implements IPublicFormsService {
         formId: current.snapshot.formId,
         formName: teamCtx.name,
         formPublicId: teamCtx.publicId,
-        publicationId: current.publicationId,
+        publicationId,
         emailCampaignTrackingEnabled: teamCtx.emailCampaignTrackingEnabled,
         eventType: input.eventType,
         origin,
@@ -451,12 +464,8 @@ export class PublicFormsService implements IPublicFormsService {
 
     await publicFormsRepository.upsertMetricEvent({
       formId: current.snapshot.formId,
-      publicationId: current.publicationId,
+      publicationId,
       questionId: liveQuestionId,
-      // Cópia congelada da pergunta, resolvida a partir do snapshot da
-      // publicação vigente (mesmo padrão de `PublicFormAnswer.questionSnapshot`)
-      // — preserva a rastreabilidade do evento mesmo que a pergunta viva
-      // seja editada/removida depois.
       questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
@@ -472,7 +481,7 @@ export class PublicFormsService implements IPublicFormsService {
         eventKey: input.eventKey,
         visitorSessionId: input.visitorSessionId,
         formId: current.snapshot.formId,
-        publicationId: current.publicationId,
+        publicationId,
         questionId: input.questionId,
         leadId,
         origin,
