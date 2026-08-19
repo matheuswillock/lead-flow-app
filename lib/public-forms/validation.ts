@@ -53,37 +53,60 @@ const successAction = z
     }
   })
 
-const question = z.object({
-  id: uuid.optional(),
-  type: z.enum([
-    "text",
-    "textarea",
-    "email",
-    "phone",
-    "number",
-    "currency",
-    "date",
-    "url",
-    "single_choice",
-    "multiple_choice",
-    "boolean",
-    "health_plan",
-    "crm_field",
-    "custom_field",
-    "scheduling",
-    "consent",
-    "calculation",
-  ]),
-  title: z.string().trim().min(1).max(500),
-  description: text,
-  placeholder: z.string().max(300).nullable().optional(),
-  required: z.boolean().default(false),
-  scoreWeight: z.number().int().min(0).max(100).default(0),
-  config: z.record(z.string(), z.unknown()).default({}),
-  mappingTarget: z.enum(["native_field", "custom_field", "notes", "history"]).nullable().optional(),
-  mappingKey: z.string().max(200).nullable().optional(),
-  options: z.array(option).max(100).default([]),
-})
+/**
+ * mappingKey nativos que exigem um `type` específico pro autocomplete e pro
+ * teclado do browser funcionarem (e-mail precisa de type="email", telefone
+ * precisa de type="phone") — achado em produção: 7 perguntas mappingKey=email
+ * tipadas como text, 1 pergunta mappingKey=phone tipada como email.
+ */
+const REQUIRED_TYPE_BY_NATIVE_MAPPING_KEY: Record<string, string> = {
+  email: "email",
+  phone: "phone",
+}
+
+const question = z
+  .object({
+    id: uuid.optional(),
+    type: z.enum([
+      "text",
+      "textarea",
+      "email",
+      "phone",
+      "number",
+      "currency",
+      "date",
+      "url",
+      "single_choice",
+      "multiple_choice",
+      "boolean",
+      "health_plan",
+      "crm_field",
+      "custom_field",
+      "scheduling",
+      "consent",
+      "calculation",
+    ]),
+    title: z.string().trim().min(1).max(500),
+    description: text,
+    placeholder: z.string().max(300).nullable().optional(),
+    required: z.boolean().default(false),
+    scoreWeight: z.number().int().min(0).max(100).default(0),
+    config: z.record(z.string(), z.unknown()).default({}),
+    mappingTarget: z.enum(["native_field", "custom_field", "notes", "history"]).nullable().optional(),
+    mappingKey: z.string().max(200).nullable().optional(),
+    options: z.array(option).max(100).default([]),
+  })
+  .superRefine((value, context) => {
+    if (value.mappingTarget !== "native_field" || !value.mappingKey) return
+    const requiredType = REQUIRED_TYPE_BY_NATIVE_MAPPING_KEY[value.mappingKey]
+    if (requiredType && value.type !== requiredType) {
+      context.addIssue({
+        code: "custom",
+        path: ["type"],
+        message: `Pergunta mapeada para "${value.mappingKey}" precisa ser do tipo "${requiredType}"`,
+      })
+    }
+  })
 
 const thankYouPage = z.object({
   id: uuid,

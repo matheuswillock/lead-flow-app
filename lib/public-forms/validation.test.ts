@@ -87,3 +87,62 @@ describe("publicFormDraftSchema", () => {
     expect(parsed.rules[0]?.targetQuestionId).toBe(targetId)
   })
 })
+
+function draftWithQuestion(question: Record<string, unknown>) {
+  return {
+    name: "Qualificação",
+    thankYouPages: [defaultThanks],
+    defaultThankYouPageId: defaultThanks.id,
+    questions: [
+      {
+        id: sourceId,
+        type: "text",
+        title: "Campo mapeado",
+        required: true,
+        scoreWeight: 100,
+        options: [],
+        mappingTarget: "native_field",
+        mappingKey: "email",
+        ...question,
+      },
+    ],
+  }
+}
+
+describe("publicFormDraftSchema — consistência mappingKey/type (produção: 7 email/text, 1 phone/email)", () => {
+  it("rejeita mappingKey=email com type diferente de email", () => {
+    const result = publicFormDraftSchema.safeParse(draftWithQuestion({ type: "text" }))
+    expect(result.success).toBe(false)
+  })
+
+  it("rejeita mappingKey=phone com type diferente de phone (achado real em produção)", () => {
+    const result = publicFormDraftSchema.safeParse(
+      draftWithQuestion({ mappingKey: "phone", type: "email" }),
+    )
+    expect(result.success).toBe(false)
+  })
+
+  it("aceita mappingKey=email com type=email", () => {
+    const result = publicFormDraftSchema.safeParse(draftWithQuestion({ type: "email" }))
+    expect(result.success).toBe(true)
+  })
+
+  it("aceita mappingKey=phone com type=phone", () => {
+    const result = publicFormDraftSchema.safeParse(
+      draftWithQuestion({ mappingKey: "phone", type: "phone" }),
+    )
+    expect(result.success).toBe(true)
+  })
+
+  it("não valida cruzado quando mappingTarget não é native_field (ex.: custom_field)", () => {
+    const result = publicFormDraftSchema.safeParse(
+      draftWithQuestion({ mappingTarget: "custom_field", mappingKey: "email", type: "text" }),
+    )
+    expect(result.success).toBe(true)
+  })
+
+  it("ignora mappingKey sem tipo obrigatório associado (ex.: name)", () => {
+    const result = publicFormDraftSchema.safeParse(draftWithQuestion({ mappingKey: "name", type: "text" }))
+    expect(result.success).toBe(true)
+  })
+})

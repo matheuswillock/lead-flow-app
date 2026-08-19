@@ -32,6 +32,8 @@ describe("publishPublicFormMetricEvent", () => {
       questionId: null,
       visitorSessionId: "session_abcdefghij",
       origin: {},
+      answerMappingKey: null,
+      answerValue: null,
       receivedAt: "2026-08-11T12:00:00.000Z",
     }
     const result = await publishPublicFormMetricEvent(payload)
@@ -58,6 +60,8 @@ describe("publishPublicFormMetricEvent", () => {
       questionId: null,
       visitorSessionId: "session_abcdefghij",
       origin: {},
+      answerMappingKey: null,
+      answerValue: null,
       receivedAt: "2026-08-11T12:00:00.000Z",
     }
     await publishPublicFormMetricEvent(payload, {
@@ -126,6 +130,8 @@ describe("publishServerPublicFormMetricEvent", () => {
         questionId: null,
         visitorSessionId: "session_abcdefghij",
         origin: {},
+        answerMappingKey: null,
+        answerValue: null,
         receivedAt: "2026-08-14T12:00:00.000Z",
       },
       "PublicFormSubmissionUseCase",
@@ -151,6 +157,8 @@ describe("publishServerPublicFormMetricEvent", () => {
           questionId: null,
           visitorSessionId: "session_abcdefghij",
           origin: {},
+          answerMappingKey: null,
+          answerValue: null,
           receivedAt: "2026-08-14T12:00:00.000Z",
         },
         "PublicFormSubmissionUseCase",

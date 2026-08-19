@@ -268,7 +268,6 @@
       "app/backoffice/(app)/extracao-leads/features/services/BackofficeLeadExtractionService.ts",
       "components/forms/leadForm.tsx",
       "components/forms/referral-dialog.tsx",
-      "components/public-forms/PublicFormRenderer.tsx",
       "components/support-request-dialog.tsx",
       "components/task-card.tsx",
       "components/task-form-dialog.tsx",
@@ -435,7 +434,6 @@
       "app/documentos/[token]/page.tsx",
       "app/email-unsubscribe/[token]/page.tsx",
       "app/forgot-password/page.tsx",
-      "app/forms/[publicId]/page.tsx",
       "app/lead-form/[supabaseId]/[teamId]/page.tsx",
       "app/lead-form/[supabaseId]/page.tsx",
       "app/oferta/[token]/page.tsx",
@@ -451,6 +449,8 @@
     ]
   },
   "e2ePageCoverage": {
-    "coveredBy": {}
+    "coveredBy": {
+      "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts"
+    }
   }
 }
