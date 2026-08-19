@@ -947,7 +947,7 @@ function Question({
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "Digite sua resposta"}
         onChange={(event) => onChange(event.target.value)}
-        onBlur={() => onBlur?.(question.id, value)}
+        onBlur={(event) => onBlur?.(question.id, event.currentTarget.value)}
         className="h-14 border-input bg-background text-lg"
       />
     )
@@ -993,7 +993,7 @@ function Question({
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "(11) 99999-9999"}
         onChange={(event) => onChange(formatPhoneBR(event.target.value))}
-        onBlur={() => onBlur?.(question.id, value)}
+        onBlur={(event) => onBlur?.(question.id, formatPhoneBR(event.currentTarget.value))}
         className="h-14 border-input bg-background text-lg"
       />
     )
@@ -1026,7 +1026,11 @@ function Question({
             : event.target.value,
         )
       }
-      onBlur={() => onBlur?.(question.id, value)}
+      onBlur={(event) => {
+        const raw = event.currentTarget.value
+        const normalized = inputType === "number" && raw !== "" ? Number(raw) : raw
+        onBlur?.(question.id, normalized)
+      }}
       className="h-14 border-input bg-background text-lg"
     />
   )

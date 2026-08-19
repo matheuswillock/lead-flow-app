@@ -93,6 +93,14 @@ export class PublicFormProgressUseCase {
     })
 
     for (const answer of visibleAnswers) {
+      const rawValue = answer.value
+      // D1: não consumir a idempotencyKey da fila com payload vazio — o
+      // primeiro blur frequentemente vem com string vazia/stale (autofill
+      // ainda não sincronizado, campo tocado e abandonado), o que marcaria
+      // `visitorSessionId:progress:questionId` como já entregue e faria a
+      // Vercel Queue descartar o blur seguinte com e-mail/telefone real,
+      // impedindo o D2 (reconciliação Radar) de rodar com valor útil.
+      const isEmptyStringValue = typeof rawValue === "string" && rawValue.trim() === ""
       const eventKey = `${input.visitorSessionId}:progress:${answer.questionId}`
       const question = snapshot.questions.find((item) => item.id === answer.questionId)
       await publicFormsRepository.upsertMetricEvent({
@@ -108,18 +116,20 @@ export class PublicFormProgressUseCase {
           answerValue: answer.value,
         } as Prisma.InputJsonValue,
       })
-      await publishServerPublicFormMetricEvent(
-        buildPublicFormMetricQueuePayload(form.publicId, {
-          visitorSessionId: input.visitorSessionId,
-          eventType: "question_answered",
-          questionId: answer.questionId,
-          eventKey,
-          origin: origin as Record<string, unknown>,
-          answerMappingKey: question?.mappingKey ?? null,
-          answerValue: typeof answer.value === "string" ? answer.value : null,
-        }),
-        "PublicFormProgressUseCase",
-      )
+      if (!isEmptyStringValue) {
+        await publishServerPublicFormMetricEvent(
+          buildPublicFormMetricQueuePayload(form.publicId, {
+            visitorSessionId: input.visitorSessionId,
+            eventType: "question_answered",
+            questionId: answer.questionId,
+            eventKey,
+            origin: origin as Record<string, unknown>,
+            answerMappingKey: question?.mappingKey ?? null,
+            answerValue: typeof rawValue === "string" ? rawValue : null,
+          }),
+          "PublicFormProgressUseCase",
+        )
+      }
       // Log visível no Vercel de todo campo recebido via onBlur/progress —
       // inclui o valor do campo (decisão do produto: útil pra debug de
       // captação, ciente de que expande PII pros logs em relação ao banco).
