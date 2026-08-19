@@ -25,7 +25,16 @@ const findLeadsWithStatusChangedBetweenMock = mock(
   ): Promise<StatusChangedLeadRow[]> => []
 )
 const findTeamMemberProfileIdsMock = mock(async () => [] as string[])
-const enqueueLeadStatusChangedMock = mock(async () => {})
+const enqueueLeadStatusChangedMock = mock(
+  async (_input: {
+    profileId: string
+    leadId: string
+    leadCode: string | null
+    leadName: string
+    statusLabel: string
+    batchBucket: number
+  }) => {}
+)
 
 mock.module(
   "@/app/api/infra/data/repositories/leadStatusChangedBatch/LeadStatusChangedBatchRepository",
@@ -100,7 +109,7 @@ describe("LeadStatusChangedBatchUseCase.processBatch", () => {
     expect((output.result as { leadsProcessed: number; truncated: boolean }).leadsProcessed).toBe(200)
     expect((output.result as { truncated: boolean }).truncated).toBe(false)
     expect(enqueueLeadStatusChangedMock).toHaveBeenCalledTimes(200)
-    expect(enqueueLeadStatusChangedMock.mock.calls[0]?.[0]).toEqual(
+    expect(enqueueLeadStatusChangedMock).toHaveBeenCalledWith(
       expect.objectContaining({
         batchBucket: Math.floor(firstPageEnteredAt.getTime() / (15 * 60 * 1000)),
       })
