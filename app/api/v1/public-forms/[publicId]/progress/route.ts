@@ -6,12 +6,20 @@ import {
   consumePublicFormRateLimit,
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
+import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
+  if (!isPublicFormRequestOriginAllowed(request)) {
+    return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
+  }
+  const parsed = publicFormProgressSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json(new Output(false, [], ["Progresso inválido"], null), { status: 400 })
+  }
   const rate = await consumePublicFormRateLimit(
     `progress:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 120, windowMs: 60_000 },
@@ -21,10 +29,6 @@ export async function POST(
       status: 429,
       headers: { "Retry-After": String(rate.retryAfterSeconds) },
     })
-  }
-  const parsed = publicFormProgressSchema.safeParse(await request.json().catch(() => null))
-  if (!parsed.success) {
-    return NextResponse.json(new Output(false, [], ["Progresso inválido"], null), { status: 400 })
   }
   const output = await publicFormProgressUseCase.execute(publicId, parsed.data)
   return NextResponse.json(output, { status: output.isValid ? 202 : 400 })

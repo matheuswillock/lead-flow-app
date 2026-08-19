@@ -49,6 +49,9 @@ export type PublicFormMetricQueuePayload = {
   questionId: string | null;
   visitorSessionId: string;
   origin: Record<string, unknown>;
+  /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue` — nunca vem do cliente. */
+  answerMappingKey: string | null;
+  answerValue: string | null;
   receivedAt: string;
 };
 
@@ -73,6 +76,8 @@ export function buildPublicFormMetricQueuePayload(
     questionId: input.questionId ?? null,
     visitorSessionId: input.visitorSessionId,
     origin: input.origin ?? {},
+    answerMappingKey: input.answerMappingKey ?? null,
+    answerValue: input.answerValue ?? null,
     receivedAt: new Date().toISOString(),
   };
 }
