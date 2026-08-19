@@ -21,6 +21,8 @@ const baseMessage = (): PublicFormMetricQueuePayload => ({
   questionId: null,
   visitorSessionId: "session_abcdefghij",
   origin: { source: "queue-test" },
+  answerMappingKey: null,
+  answerValue: null,
   receivedAt: new Date().toISOString(),
 })
 
