@@ -36,7 +36,7 @@ import {
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
 import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
-import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
+import { evaluateEmailForAudienceWithFlags } from "@/lib/email/audience-prevalidation"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
@@ -656,12 +656,15 @@ export class RadarService {
       updatedAt: Date
       customFields: Prisma.JsonValue
     },
-    counters: SyncCounters
+    counters: SyncCounters,
+    globallyBouncedEmails: ReadonlySet<string> = new Set()
   ): Promise<void> {
     try {
-      const emailValidation = evaluateEmailForAudience(contact.email)
-      const sendableEmail =
-        emailValidation.ok && !contact.isBounced ? emailValidation.email : null
+      const emailValidation = evaluateEmailForAudienceWithFlags(contact.email, {
+        isGloballyBounced:
+          contact.isBounced || globallyBouncedEmails.has(contact.email.trim().toLowerCase()),
+      })
+      const sendableEmail = emailValidation.ok ? emailValidation.email : null
 
       const phoneFromCustom = contact.name
         ? await this.repo.findLeadPhoneByEmail(scope.teamId, contact.email.trim().toLowerCase())
@@ -776,7 +779,8 @@ export class RadarService {
     if (filters.emailContactId) {
       const contact = await this.repo.findEmailContactById(filters.emailContactId)
       if (contact && contact.list.teamId === scope.teamId) {
-        await this.processEmailContactForRadar(scope, contact, counters)
+        const bouncedEmails = await this.repo.findBouncedEmails([contact.email])
+        await this.processEmailContactForRadar(scope, contact, counters, bouncedEmails)
       }
       return counters
     }
@@ -785,9 +789,10 @@ export class RadarService {
 
     for (const list of lists) {
       const contacts = await this.repo.findEmailContacts(list.id)
+      const bouncedEmails = await this.repo.findBouncedEmails(contacts.map((contact) => contact.email))
 
       for (const contact of contacts) {
-        await this.processEmailContactForRadar(scope, contact, counters)
+        await this.processEmailContactForRadar(scope, contact, counters, bouncedEmails)
       }
     }
 

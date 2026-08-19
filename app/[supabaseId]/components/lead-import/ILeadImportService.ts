@@ -8,7 +8,7 @@ export interface LeadImportContext {
 export interface LeadImportRowIssue {
   line: number | null;
   name: string;
-  kind: "not_imported" | "default_status";
+  kind: "not_imported" | "default_status" | "duplicate_detected" | "email_flagged";
   reason: string;
 }
 

@@ -13,6 +13,8 @@ import {
   parseCurrency,
   parseImportDate,
 } from "@/lib/leadImport/normalizers";
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation";
+import { findTeamBlocklistedEmails } from "@/lib/email/email-contact-blocklist";
 import type { MappedImportRow } from "@/app/api/v1/leads/import/mapped/DTO/mappedImportRequest";
 import type { ILeadUseCase } from "./ILeadUseCase";
 import { LeadUseCase } from "./LeadUseCase";
@@ -26,7 +28,7 @@ export interface ImportMappedLeadsContext {
 export interface ImportRowIssue {
   line: number | null;
   name: string;
-  kind: "not_imported" | "default_status" | "duplicate_detected";
+  kind: "not_imported" | "default_status" | "duplicate_detected" | "email_flagged";
   reason: string;
 }
 
@@ -70,6 +72,7 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
       Array.from(emails),
       Array.from(cnpjs)
     );
+    const blocklistedEmails = await findTeamBlocklistedEmails(ctx.teamId);
 
     const existingByEmail = new Map<string, (typeof existingLeads)[number]>();
     const existingByCnpj = new Map<string, (typeof existingLeads)[number]>();
@@ -191,6 +194,19 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
       }
 
       created += 1;
+      if (email) {
+        const audience = evaluateEmailForAudience(email);
+        if (!audience.ok) {
+          issues.push({ line, name, kind: "email_flagged", reason: audience.reason });
+        } else if (blocklistedEmails.has(email)) {
+          issues.push({
+            line,
+            name,
+            kind: "email_flagged",
+            reason: "E-mail na lista de bloqueados",
+          });
+        }
+      }
       if (duplicateCandidates.length > 0) {
         issues.push({
           line,

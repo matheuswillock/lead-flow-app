@@ -39,6 +39,16 @@ const ISSUE_BADGES: Record<
     className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
     icon: TriangleAlert,
   },
+  duplicate_detected: {
+    label: "Possível duplicado",
+    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
+    icon: Info,
+  },
+  email_flagged: {
+    label: "E-mail sinalizado",
+    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
+    icon: TriangleAlert,
+  },
 };
 
 function ImportIssueList({ issues }: { issues: LeadImportRowIssue[] }) {
