@@ -114,11 +114,9 @@ export class PublicFormProgressUseCase {
           eventType: "question_answered",
           questionId: answer.questionId,
           eventKey,
-          origin: {
-            ...(origin as Record<string, unknown>),
-            answerValue: answer.value,
-            answerMappingKey: question?.mappingKey ?? null,
-          },
+          origin: origin as Record<string, unknown>,
+          answerMappingKey: question?.mappingKey ?? null,
+          answerValue: typeof answer.value === "string" ? answer.value : null,
         }),
         "PublicFormProgressUseCase",
       )

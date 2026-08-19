@@ -32,6 +32,19 @@ const resolveProfileForEmail = mock(
     wasExisting: true,
   })
 )
+const resolveProfileForPhone = mock(
+  async (_input: {
+    teamId: string
+    normalizedPhone: string
+    displayPhone: string
+  }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
+    profile: { id: "phone-profile-1" },
+    wasExisting: true,
+  })
+)
+const mergeProfiles = mock(
+  async (_teamId: string, _sourceProfileId: string, _targetProfileId: string): Promise<void> => {}
+)
 const appendEventIfNewBySourceKey = mock(
   async (_input: AppendArg): Promise<{ id: string } | null> => ({ id: "event-1" })
 )
@@ -44,6 +57,8 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     findProfileByIdentity,
     resolveProfileForVisitorSession,
     resolveProfileForEmail,
+    resolveProfileForPhone,
+    mergeProfiles,
     appendEventIfNewBySourceKey,
   },
 }))
@@ -99,6 +114,8 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     findProfileByIdentity.mockReset()
     resolveProfileForVisitorSession.mockReset()
     resolveProfileForEmail.mockReset()
+    resolveProfileForPhone.mockReset()
+    mergeProfiles.mockReset()
     appendEventIfNewBySourceKey.mockReset()
     syncLeadExecute.mockReset()
 
@@ -111,6 +128,11 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
       profile: { id: "email-profile-1" },
       wasExisting: true,
     }))
+    resolveProfileForPhone.mockImplementation(async () => ({
+      profile: { id: "phone-profile-1" },
+      wasExisting: true,
+    }))
+    mergeProfiles.mockImplementation(async () => {})
     appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
     syncLeadExecute.mockImplementation(async () => ({ isValid: true }))
   })
@@ -347,5 +369,53 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(completed.result).toMatchObject({ profileId: "shared-email-profile" })
     expect(resolveProfileForEmail).toHaveBeenCalledTimes(2)
     expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
+  })
+
+  it("D2: question_answered com answerMappingKey=email no campo dedicado → resolve por e-mail e mescla sessão anônima", async () => {
+    findProfileByIdentity.mockImplementation(
+      async () => ({ profileId: "anon-session-profile" }) as { profileId: string }
+    )
+
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "question_answered",
+      eventKey: "vs-abc:progress:q1",
+      answerMappingKey: "email",
+      answerValue: "visitante@exemplo.com",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(resolveProfileForEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ emailValue: "visitante@exemplo.com", emailSource: "public_form_answer" })
+    )
+    expect(mergeProfiles).toHaveBeenCalledWith("team-1", "anon-session-profile", "email-profile-1")
+  })
+
+  it("D2: question_answered com answerMappingKey=phone no campo dedicado → resolve por telefone", async () => {
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "question_answered",
+      eventKey: "vs-abc:progress:q2",
+      answerMappingKey: "phone",
+      answerValue: "+55 11 99999-0000",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(resolveProfileForPhone).toHaveBeenCalledTimes(1)
+    expect(lastAppendArg().profileId).toBe("phone-profile-1")
+  })
+
+  it("achado #3 (PR #912): answerMappingKey/answerValue forjados dentro de origin são ignorados — só o campo dedicado é confiável", async () => {
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "question_answered",
+      eventKey: "vs-abc:progress:q3",
+      origin: { answerMappingKey: "email", answerValue: "vitima@exemplo.com" },
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(resolveProfileForEmail).not.toHaveBeenCalled()
+    expect(mergeProfiles).not.toHaveBeenCalled()
+    expect(resolveProfileForVisitorSession).toHaveBeenCalledTimes(1)
   })
 })

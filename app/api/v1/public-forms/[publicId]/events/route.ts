@@ -22,7 +22,7 @@ export async function POST(
     return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })
   }
   const rate = await consumePublicFormRateLimit(
-    `event:${publicId}:${publicFormRequestFingerprint(request, parsed.data.visitorSessionId)}`,
+    `event:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 120, windowMs: 60_000 },
   )
   if (!rate.allowed) {

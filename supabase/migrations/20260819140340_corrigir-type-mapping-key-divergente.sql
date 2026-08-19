@@ -20,3 +20,42 @@ SET "type" = 'phone', "updatedAt" = now()
 WHERE "mappingTarget" = 'native_field'
   AND "mappingKey" = 'phone'
   AND "type" <> 'phone';
+
+-- O fluxo público (`getPublic` → `PublicFormRenderer`) renderiza `question.type`
+-- a partir do snapshot congelado em `corretor_studio_public_form_publications`,
+-- não da tabela viva de perguntas acima — visitantes de publicações ativas
+-- (`endedAt IS NULL`) continuariam vendo o `type` errado até republicar.
+-- Reconstrói o array `questions` do snapshot, corrigindo só os elementos com
+-- a mesma divergência mappingKey/type, preservando o resto do JSON intacto.
+UPDATE "public"."corretor_studio_public_form_publications" AS pub
+SET "snapshot" = jsonb_set(
+  pub."snapshot"::jsonb,
+  '{questions}',
+  (
+    SELECT jsonb_agg(
+      CASE
+        WHEN (q.value->>'mappingTarget') = 'native_field'
+          AND (q.value->>'mappingKey') = 'email'
+          AND (q.value->>'type') <> 'email'
+          THEN jsonb_set(q.value, '{type}', '"email"')
+        WHEN (q.value->>'mappingTarget') = 'native_field'
+          AND (q.value->>'mappingKey') = 'phone'
+          AND (q.value->>'type') <> 'phone'
+          THEN jsonb_set(q.value, '{type}', '"phone"')
+        ELSE q.value
+      END
+      ORDER BY q.ordinality
+    )
+    FROM jsonb_array_elements(pub."snapshot"::jsonb->'questions') WITH ORDINALITY AS q(value, ordinality)
+  )
+)
+WHERE pub."endedAt" IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(pub."snapshot"::jsonb->'questions') AS q(value)
+    WHERE (q.value->>'mappingTarget') = 'native_field'
+      AND (
+        ((q.value->>'mappingKey') = 'email' AND (q.value->>'type') <> 'email')
+        OR ((q.value->>'mappingKey') = 'phone' AND (q.value->>'type') <> 'phone')
+      )
+  );

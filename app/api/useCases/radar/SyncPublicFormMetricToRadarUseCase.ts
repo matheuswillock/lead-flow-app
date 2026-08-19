@@ -20,6 +20,16 @@ export type SyncPublicFormMetricToRadarInput = {
   questionId?: string | null
   leadId?: string | null
   origin?: unknown
+  /**
+   * `mappingKey`/valor da resposta (D2). Campo dedicado, nunca extraído de
+   * `origin` — `origin` é um bag livre que passa por `sanitizePublicFormOrigin`
+   * (allowlist sem esses campos) e, no caminho `/events`, chega direto do
+   * corpo JSON do cliente sem allowlist nenhuma. Confiar nesses valores só
+   * quando vêm por aqui, preenchidos server-side a partir do snapshot em
+   * `PublicFormProgressUseCase`.
+   */
+  answerMappingKey?: string | null
+  answerValue?: string | null
   occurredAt?: Date
 }
 
@@ -150,8 +160,8 @@ class SyncPublicFormMetricToRadarUseCase {
     // D2: onBlur — quando o valor de um campo de e-mail ou telefone chega via
     // answerValue, tenta resolver o perfil identificado e mescla o perfil
     // anônimo da sessão nele (achado #5 do code review 2026-08-19).
-    const answerMappingKey = this.extractStringOriginField(input.origin, "answerMappingKey")
-    const answerValue = this.extractStringOriginField(input.origin, "answerValue")
+    const answerMappingKey = input.answerMappingKey?.trim() || null
+    const answerValue = input.answerValue?.trim() || null
 
     if (answerMappingKey === "email" && answerValue) {
       const emailValidation = evaluateEmailForAudience(answerValue)

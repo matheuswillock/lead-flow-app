@@ -81,16 +81,15 @@ export async function consumePublicFormRateLimit(
 }
 
 /**
- * Fingerprint por IP sozinho é trivialmente contornável (rotação de IP,
- * spoof de header) — combinar com `visitorSessionId` (cookie first-party de
- * sessão, não previsível de fora) fecha esse buraco sem precisar de nenhuma
- * infra nova. `visitorSessionId` é opcional só pra manter a assinatura
- * retrocompatível onde o corpo da request ainda não foi parseado.
+ * Só por IP. `visitorSessionId` chega no corpo JSON (cliente escreve via
+ * `document.cookie`, sem HttpOnly) — combiná-lo na chave do rate limit
+ * enfraquecia a proteção por IP: rotacionar o UUID a cada request abria um
+ * bucket novo. Reintroduzir isso exige um identificador lido pelo servidor
+ * (cookie HttpOnly), não um valor que o próprio cliente controla.
  */
-export function publicFormRequestFingerprint(request: Request, visitorSessionId?: string) {
+export function publicFormRequestFingerprint(request: Request) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-  const ip = forwarded || request.headers.get("x-real-ip") || "unknown"
-  return visitorSessionId ? `${ip}:${visitorSessionId}` : ip
+  return forwarded || request.headers.get("x-real-ip") || "unknown"
 }
 
 export function resetPublicFormRateLimitsForTests() {
