@@ -228,12 +228,14 @@ test.describe("app/forms/[publicId]", () => {
   })
 
   test("estado de loading exibe Skeleton enquanto carrega o snapshot", async ({ page }) => {
-    // page.tsx busca o snapshot no servidor (Prisma direto, não HTTP) e
-    // envia o fallback de app/forms/[publicId]/loading.tsx como primeiro
-    // chunk da resposta streamada. waitUntil: "commit" retorna o controle
-    // assim que a navegação começa a carregar, antes do stream terminar,
-    // permitindo observar o Skeleton antes do conteúdo real substituí-lo.
-    await page.goto(`/forms/${publicId}`, { waitUntil: "commit" })
+    // page.tsx busca o snapshot no servidor (Prisma direto, não HTTP) — sem
+    // carga real a query resolve rápido demais pro React chegar a emitir o
+    // fallback de loading.tsx no stream. ?e2eSlowSnapshot=1 injeta um delay
+    // artificial só em E2E (duplo gate com E2E_TEST_MODE, ver page.tsx) pra
+    // garantir que o Suspense realmente flushe o Skeleton antes do conteúdo.
+    // waitUntil: "commit" retorna o controle assim que a navegação começa,
+    // antes do stream terminar, permitindo observar o fallback.
+    await page.goto(`/forms/${publicId}?e2eSlowSnapshot=1`, { waitUntil: "commit" })
     const skeleton = page.locator(".animate-pulse, [class*='skeleton']").first()
     await expect(skeleton).toBeVisible({ timeout: 5_000 })
   })
