@@ -1898,11 +1898,11 @@ export class RadarRepository {
     return lead?.phone ? { phone: lead.phone } : null
   }
 
-  async findLeadStatuses(teamId: string, leadIds: string[]) {
+  async findLeadStatuses(teamId: string, leadIds: string[]): Promise<Map<string, LeadStatus | null>> {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map<string, LeadStatus | null>()
 
-    const leads = await this.findManyByInChunks(unique, (chunk) =>
+    const leads = await findManyByInChunks(unique, (chunk) =>
       this.db.lead.findMany({
         where: { teamId, id: { in: chunk } },
         select: { id: true, status: true },
