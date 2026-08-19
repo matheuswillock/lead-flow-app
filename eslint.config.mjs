@@ -63,6 +63,13 @@ export default [
         caughtErrorsIgnorePattern: '^_'
       }],
       'no-console': ['error', { allow: ['error', 'warn', 'info'] }],
+      // Clean Code / SOLID proxies (ver `agents.md` § Clean Code & SOLID) — `warn`, nunca `error`, para não travar CI.
+      // Limites calibrados para pegar só os piores outliers do código legado hoje (~240 warnings no total);
+      // apertar gradualmente conforme o código legado for refatorado — não afrouxar.
+      complexity: ['warn', 35],
+      'max-params': ['warn', 6],
+      'max-depth': ['warn', 6],
+      'max-lines-per-function': ['warn', { max: 350, skipBlankLines: true, skipComments: true }],
     },
   },
   // Override para arquivo gerado pelo Next
