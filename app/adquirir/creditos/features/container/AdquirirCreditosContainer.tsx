@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { z } from "zod";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,85 +12,19 @@ import {
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { API_CLIENT_BASE } from "@/lib/route-map";
+import { useAdquirirCreditos } from "../context/AdquirirCreditosHook";
 
-type CreditPlan = "25k" | "50k";
-
-const ASAAS_FALLBACK_URLS: Record<CreditPlan, string> = {
-  "25k": "https://www.asaas.com/c/7t6pqaxdfc0yyc65",
-  "50k": "https://www.asaas.com/c/g8wl8a5xrn009icv",
-};
-
-const emailSchema = z.string().trim().email("Informe um e-mail válido");
-
-export function AdquirirCreditosPage() {
-  const [selectedPlan, setSelectedPlan] = useState<CreditPlan | null>(null);
-  const [email, setEmail] = useState("");
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [fieldError, setFieldError] = useState<string | null>(null);
-
-  function handleOpen(plan: CreditPlan) {
-    setSelectedPlan(plan);
-    setFieldError(null);
-    setOpen(true);
-  }
-
-  function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen);
-    if (!nextOpen) {
-      setLoading(false);
-      setFieldError(null);
-    }
-  }
-
-  async function handleConfirm() {
-    const parsed = emailSchema.safeParse(email);
-
-    if (!parsed.success) {
-      setFieldError(parsed.error.issues[0]?.message ?? "Informe um e-mail válido");
-      return;
-    }
-
-    if (!selectedPlan) return;
-
-    setFieldError(null);
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_CLIENT_BASE}/adquirir/creditos/validar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), plan: selectedPlan }),
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (response.status === 404) {
-        const message =
-          (data?.errorMessages?.[0] as string | undefined) ??
-          "E-mail não encontrado. Use o e-mail da sua conta no Corretor Studio.";
-        setFieldError(message);
-        return;
-      }
-
-      if (!response.ok || !data?.isValid) {
-        const message =
-          (data?.errorMessages?.[0] as string | undefined) ?? "Não foi possível validar o e-mail. Tente novamente.";
-        setFieldError(message);
-        return;
-      }
-
-      const checkoutUrl = (data?.result?.checkoutUrl as string | undefined) ?? ASAAS_FALLBACK_URLS[selectedPlan];
-      toast.success("Redirecionando para o pagamento...");
-      window.open(checkoutUrl, "_blank", "noopener,noreferrer");
-      setOpen(false);
-    } catch {
-      setFieldError("Erro de conexão. Tente novamente.");
-    } finally {
-      setLoading(false);
-    }
-  }
+export function AdquirirCreditosContainer() {
+  const {
+    email,
+    open,
+    loading,
+    fieldError,
+    handleOpen,
+    handleOpenChange,
+    handleEmailChange,
+    handleConfirm,
+  } = useAdquirirCreditos();
 
   return (
     <>
@@ -211,10 +142,7 @@ export function AdquirirCreditosPage() {
                   autoComplete="email"
                   placeholder="seu@email.com"
                   value={email}
-                  onChange={(event) => {
-                    setEmail(event.target.value);
-                    if (fieldError) setFieldError(null);
-                  }}
+                  onChange={(event) => handleEmailChange(event.target.value)}
                   aria-invalid={fieldError ? true : undefined}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -232,7 +160,7 @@ export function AdquirirCreditosPage() {
             </FieldGroup>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={loading}>
                 Cancelar
               </Button>
               <Button type="button" onClick={() => void handleConfirm()} disabled={loading || !email.trim()}>

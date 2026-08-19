@@ -2,11 +2,12 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { slackEmailCreditsService } from "@/app/api/services/slackEmailCredits/SlackEmailCreditsService";
+import { getAsaasCheckoutBaseUrl } from "@/lib/asaas";
 import type { EmailCreditPlan } from "@/app/api/services/slackEmailCredits/ISlackEmailCreditsService";
 
-export const ASAAS_CREDIT_URLS: Record<EmailCreditPlan, string> = {
-  "25k": "https://www.asaas.com/c/7t6pqaxdfc0yyc65",
-  "50k": "https://www.asaas.com/c/g8wl8a5xrn009icv",
+const ASAAS_CREDIT_CHECKOUT_IDS: Record<EmailCreditPlan, string> = {
+  "25k": "7t6pqaxdfc0yyc65",
+  "50k": "g8wl8a5xrn009icv",
 };
 
 const validarCreditosSchema = z.object({
@@ -53,7 +54,7 @@ export class ValidarEmailCreditosUseCase implements IValidarEmailCreditosUseCase
       console.error("[ValidarEmailCreditosUseCase] Falha ao notificar Slack:", slackResult.error);
     }
 
-    const checkoutUrl = ASAAS_CREDIT_URLS[plan];
+    const checkoutUrl = `${getAsaasCheckoutBaseUrl()}/c/${ASAAS_CREDIT_CHECKOUT_IDS[plan]}`;
 
     return new Output(true, [], [], { checkoutUrl, plan, email: normalizedEmail });
   }

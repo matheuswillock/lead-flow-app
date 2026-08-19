@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { prisma } from "../../../support/db";
+import { assertAsaasSandbox } from "../../support/asaas";
 
 test.describe("public/adquirir/creditos", () => {
   const existingEmail = `e2e-creditos-${Date.now()}@test.com`;
@@ -22,6 +23,10 @@ test.describe("public/adquirir/creditos", () => {
       await prisma.profile.delete({ where: { id: createdProfileId } }).catch(() => {});
     }
     await prisma.$disconnect();
+  });
+
+  test.beforeAll(() => {
+    assertAsaasSandbox();
   });
 
   test("carrega sem erro e mostra heading e cards", async ({ page }) => {

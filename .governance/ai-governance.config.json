@@ -167,7 +167,6 @@
       "app/backoffice/(app)/studio-bot/vinculacoes",
       "app/backoffice/(app)/studio-bot/verificacoes",
       "app/prime",
-      "app/adquirir/creditos",
       "app/email-unsubscribe/[token]"
     ],
     "nonTypeScriptFileAllowlist": [

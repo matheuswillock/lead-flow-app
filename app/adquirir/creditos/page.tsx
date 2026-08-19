@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { createPublicPageMetadata } from "@/lib/metadata/policies";
-import { AdquirirCreditosPage } from "./AdquirirCreditosPage";
+import { AdquirirCreditosProvider } from "./features/context/AdquirirCreditosContext";
+import { AdquirirCreditosContainer } from "./features/container/AdquirirCreditosContainer";
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: "Créditos de E-mail — Corretor Studio",
@@ -11,5 +12,9 @@ export const metadata: Metadata = createPublicPageMetadata({
 });
 
 export default function AdquirirCreditosRoute() {
-  return <AdquirirCreditosPage />;
+  return (
+    <AdquirirCreditosProvider>
+      <AdquirirCreditosContainer />
+    </AdquirirCreditosProvider>
+  );
 }
