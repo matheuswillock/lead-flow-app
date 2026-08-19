@@ -267,7 +267,6 @@
       "app/backoffice/(app)/extracao-leads/features/services/BackofficeLeadExtractionService.ts",
       "components/forms/leadForm.tsx",
       "components/forms/referral-dialog.tsx",
-      "components/public-forms/PublicFormRenderer.tsx",
       "components/support-request-dialog.tsx",
       "components/task-card.tsx",
       "components/task-form-dialog.tsx",

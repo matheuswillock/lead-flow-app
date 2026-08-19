@@ -23,6 +23,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { resolveVisibleQuestionIds, resolveThankYouPageId, shouldGoToThankYou, validateAnswer } from "@/lib/public-forms/engine"
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
+import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
 import type {
@@ -209,7 +211,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         eventKey: `${session}:${eventType}:${questionId ?? "form"}`,
         origin: getOrigin(),
       })
-      const url = `/api/v1/public-forms/${publicId}/events`
+      const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
       if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) {
         return
       }
@@ -270,7 +272,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
 
   const saveProgress = useCallback(async () => {
     if (preview || !publicId || !session) return
-    await fetch(`/api/v1/public-forms/${publicId}/progress`, {
+    await fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -362,7 +364,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     const thankYouPageId = resolveThankYouPageId(snapshot, answerList)
     setResolvedThankYouPageId(thankYouPageId)
     try {
-      const response = await fetch(`/api/v1/public-forms/${publicId}/submissions`, {
+      const response = await fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -684,9 +686,15 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               <p className="text-sm text-muted-foreground">Preparando o cálculo...</p>
             </div>
           ) : pageQuestions.length ? (
-            <div
+            <form
               key={pageQuestions.map((item) => item.id).join("-")}
+              autoComplete="on"
               className="animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (sending || !pageIsValid) return
+                goNext()
+              }}
             >
               <p
                 className="mb-2 text-xs font-semibold uppercase tracking-wide"
@@ -728,6 +736,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               ) : null}
               <div className="mt-8 flex items-center justify-between gap-3">
                 <Button
+                  type="button"
                   variant="ghost"
                   disabled={index === 0 || sending}
                   onClick={() => setIndex(Math.max(0, index - 1))}
@@ -736,8 +745,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                   Voltar
                 </Button>
                 <Button
+                  type="submit"
                   disabled={sending || !pageIsValid}
-                  onClick={goNext}
                   style={{
                     backgroundColor: "var(--form-accent)",
                     color: "var(--form-button-text)",
@@ -754,7 +763,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                   {!sending ? <ArrowRight data-icon="inline-end" /> : null}
                 </Button>
               </div>
-            </div>
+            </form>
           ) : (
             <Alert>
               <AlertDescription>Este formulário não possui perguntas visíveis.</AlertDescription>
@@ -879,9 +888,13 @@ function Question({
   }
 
   if (question.type === "text") {
+    const auto = resolvePublicFormAutocompleteAttrs(question)
     return (
       <Input
         autoFocus
+        name={auto.name}
+        autoComplete={auto.autoComplete}
+        inputMode={auto.inputMode}
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "Digite sua resposta"}
         onChange={(event) => onChange(event.target.value)}
@@ -919,11 +932,14 @@ function Question({
   }
 
   if (question.type === "phone") {
+    const auto = resolvePublicFormAutocompleteAttrs(question)
     return (
       <Input
         autoFocus
         type="tel"
-        inputMode="tel"
+        name={auto.name}
+        autoComplete={auto.autoComplete}
+        inputMode={auto.inputMode ?? "tel"}
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "(11) 99999-9999"}
         onChange={(event) => onChange(formatPhoneBR(event.target.value))}
@@ -942,10 +958,14 @@ function Question({
           : question.type === "email"
             ? "email"
             : "text"
+  const auto = resolvePublicFormAutocompleteAttrs(question)
   return (
     <Input
       autoFocus
       type={inputType}
+      name={auto.name}
+      autoComplete={auto.autoComplete}
+      inputMode={auto.inputMode}
       value={String(value ?? "")}
       placeholder={question.placeholder ?? "Digite sua resposta"}
       onChange={(event) =>
@@ -990,7 +1010,7 @@ function SchedulingQuestion({
     setLoading(true)
     setAvailabilityError(null)
     void fetch(
-      `/api/v1/public-forms/${publicId}/availability?date=${encodeURIComponent(value.date)}`,
+      `${API_CLIENT_BASE}/public-forms/${publicId}/availability?date=${encodeURIComponent(value.date)}`,
       { signal: controller.signal },
     )
       .then(async (response) => {
