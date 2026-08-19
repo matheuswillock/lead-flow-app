@@ -228,12 +228,12 @@ test.describe("app/forms/[publicId]", () => {
   })
 
   test("estado de loading exibe Skeleton enquanto carrega o snapshot", async ({ page }) => {
-    await page.route(`**/api/q/public-forms/${publicId}`, async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1_500))
-      await route.continue()
-    })
-
-    await page.goto(`/forms/${publicId}`)
+    // page.tsx busca o snapshot no servidor (Prisma direto, não HTTP) e
+    // envia o fallback de app/forms/[publicId]/loading.tsx como primeiro
+    // chunk da resposta streamada. waitUntil: "commit" retorna o controle
+    // assim que a navegação começa a carregar, antes do stream terminar,
+    // permitindo observar o Skeleton antes do conteúdo real substituí-lo.
+    await page.goto(`/forms/${publicId}`, { waitUntil: "commit" })
     const skeleton = page.locator(".animate-pulse, [class*='skeleton']").first()
     await expect(skeleton).toBeVisible({ timeout: 5_000 })
   })
