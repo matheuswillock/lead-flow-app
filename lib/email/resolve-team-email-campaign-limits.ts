@@ -16,9 +16,16 @@ const DEFAULT_LIMITS: TeamEmailCampaignLimits = {
   isUnlimited: false,
 }
 
-const UNLIMITED_LIMITS: TeamEmailCampaignLimits = {
+/**
+ * `maxEmailsPerDay: null` no grant significa "sem teto diário de envio" — não
+ * "sem teto de destinatários por sub-campanha". Um grant ilimitado ainda deve
+ * quebrar campanhas grandes em sub-campanhas de `EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB`,
+ * senão a campanha inteira vira um único disparo não-chunked (causa raiz do
+ * incidente de timeout em campanhas de dezenas de milhares de destinatários).
+ */
+const UNLIMITED_DAILY_LIMITS: TeamEmailCampaignLimits = {
   maxEmailsPerDay: null,
-  maxRecipientsPerSub: null,
+  maxRecipientsPerSub: EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB,
   isUnlimited: true,
 }
 
@@ -35,7 +42,7 @@ export async function resolveTeamEmailCampaignLimits(
   }
 
   if (grant.maxEmailsPerDay == null) {
-    return UNLIMITED_LIMITS
+    return UNLIMITED_DAILY_LIMITS
   }
 
   return {
