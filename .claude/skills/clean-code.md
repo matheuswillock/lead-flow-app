@@ -1,5 +1,6 @@
 ---
 description: Checklist obrigatório de Clean Code e SOLID do Corretor Studio. Usar SEMPRE antes de brainstorming técnico, planejamento de implementação, ou escrita de código (frontend ou backend) — nomear variável/função/classe, desenhar UseCase/Service/Repository/Context, refatorar, extrair função, reduzir complexidade, aplicar responsabilidade única (SRP), open/closed (OCP), substituição de Liskov (LSP), segregação de interface (ISP), inversão de dependência (DIP), DRY sem over-engineering.
+alwaysApply: true
 ---
 
 Aplique Clean Code e SOLID (adaptado de [clean-code-javascript](https://github.com/felipe-augusto/clean-code-javascript) para TypeScript + Next.js + Prisma deste repositório) em toda proposta técnica — inclusive brainstorming e planejamento, não só código já escrito.

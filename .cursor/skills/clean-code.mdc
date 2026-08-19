@@ -1,6 +1,6 @@
 ---
 description: "Checklist obrigatório de Clean Code e SOLID do Corretor Studio. Usar SEMPRE antes de brainstorming técnico, planejamento de implementação, ou escrita de código (frontend ou backend) — nomear variável/função/classe, desenhar UseCase/Service/Repository/Context, refatorar, extrair função, reduzir complexidade, aplicar responsabilidade única (SRP), open/closed (OCP), substituição de Liskov (LSP), segregação de interface (ISP), inversão de dependência (DIP), DRY sem over-engineering."
-alwaysApply: false
+alwaysApply: true
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
