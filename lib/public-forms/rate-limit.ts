@@ -58,8 +58,11 @@ export async function consumePublicFormRateLimit(
       RETURNING "count", "resetAt"
     `
   } catch (error) {
-    console.error("[consumePublicFormRateLimit] DB error, failing open:", error)
-    return { allowed: true, retryAfterSeconds: 0 }
+    // Fail-closed: instabilidade no banco não pode virar rate limit
+    // desligado — é justo quando o sistema está sob carga que precisa da
+    // proteção. Backoff curto porque é bem provável ser uma falha transitória.
+    console.error("[consumePublicFormRateLimit] DB error, failing closed:", error)
+    return { allowed: false, retryAfterSeconds: 30 }
   }
 
   const row = rows[0]
@@ -77,9 +80,17 @@ export async function consumePublicFormRateLimit(
   }
 }
 
-export function publicFormRequestFingerprint(request: Request) {
+/**
+ * Fingerprint por IP sozinho é trivialmente contornável (rotação de IP,
+ * spoof de header) — combinar com `visitorSessionId` (cookie first-party de
+ * sessão, não previsível de fora) fecha esse buraco sem precisar de nenhuma
+ * infra nova. `visitorSessionId` é opcional só pra manter a assinatura
+ * retrocompatível onde o corpo da request ainda não foi parseado.
+ */
+export function publicFormRequestFingerprint(request: Request, visitorSessionId?: string) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-  return forwarded || request.headers.get("x-real-ip") || "unknown"
+  const ip = forwarded || request.headers.get("x-real-ip") || "unknown"
+  return visitorSessionId ? `${ip}:${visitorSessionId}` : ip
 }
 
 export function resetPublicFormRateLimitsForTests() {

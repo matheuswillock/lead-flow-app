@@ -362,9 +362,12 @@ export class RadarRepository {
    * (que diverge por nome), e a identidade phone acaba migrando
    * silenciosamente entre eles no upsert seguinte. A identidade phone é
    * reivindicada dentro da MESMA transação que resolve/cria o perfil (D8).
-   * Quando o perfil já existe (dono da identidade), displayName/
-   * normalizedName NÃO são sobrescritos — o perfil mantém seu nome
-   * original mesmo que a fonte atual traga um nome diferente.
+   * Achado #7 (code review 2026-08-19): quando o perfil já existe (dono da
+   * identidade), displayName/normalizedName aceitam o valor mais recente
+   * não-vazio da fonte atual (mesma política de resolveProfileForDocument)
+   * -- antes, este caminho nunca sobrescrevia, entao uma correcao de nome
+   * digitada depois de o telefone ja ter criado o perfil era silenciosamente
+   * ignorada.
    */
   async resolveProfileForPhone(input: {
     teamId: string
@@ -439,6 +442,8 @@ export class RadarRepository {
             normalizedPrimaryEmail: true,
             primaryDocument: true,
             normalizedPrimaryDocument: true,
+            displayName: true,
+            normalizedName: true,
           },
         })
 
@@ -452,6 +457,8 @@ export class RadarRepository {
             primaryDocument: input.primaryDocument ?? existingProfile?.primaryDocument ?? undefined,
             normalizedPrimaryDocument:
               input.normalizedPrimaryDocument ?? existingProfile?.normalizedPrimaryDocument ?? undefined,
+            displayName: input.displayName || existingProfile?.displayName || undefined,
+            normalizedName: input.normalizedName || existingProfile?.normalizedName || undefined,
             lastSeenAt: input.lastSeenAt ?? new Date(),
           },
         })
@@ -795,12 +802,20 @@ export class RadarRepository {
       })
 
       if (existingByIdentity) {
+        // Achado #7 (code review 2026-08-19): mesma política de
+        // resolveProfileForPhone -- aceita o nome mais recente não-vazio,
+        // nunca sobrescreve com string vazia (não derruba um nome já bom
+        // com dado ausente da fonte atual).
+        const existingProfile = await tx.radarProfile.findUnique({
+          where: { id: existingByIdentity.profileId },
+          select: { displayName: true, normalizedName: true },
+        })
         const profile = await tx.radarProfile.update({
           where: { id: existingByIdentity.profileId },
           data: {
             lastSeenAt: input.lastSeenAt ?? new Date(),
-            displayName: input.displayName,
-            normalizedName: input.normalizedName,
+            displayName: input.displayName || existingProfile?.displayName || undefined,
+            normalizedName: input.normalizedName || existingProfile?.normalizedName || undefined,
             primaryDocument: input.documentValue,
             normalizedPrimaryDocument: input.normalizedDocument,
           },
@@ -1883,10 +1898,22 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Achado #6 (code review 2026-08-19): antes fazia `findFirst` numa coluna
+   * não-única (`normalizedPrimaryEmail`), com risco de match ambíguo quando
+   * dois perfis compartilham o mesmo e-mail. Agora resolve primeiro pela
+   * chave única de `RadarIdentity` (`findProfileByIdentity`, já existente e
+   * documentada como a alternativa não-ambígua) e só cai no `findFirst`
+   * antigo se não houver identidade de e-mail registrada pro perfil (dado
+   * legado sem `RadarIdentity` criada).
+   */
   async findProfileByEmail(teamId: string, normalizedEmail: string) {
     if (!normalizedEmail) return null
+    const identity = await this.findProfileByIdentity(teamId, "email", normalizedEmail)
+    if (identity) return { id: identity.profileId }
     return this.db.radarProfile.findFirst({
       where: { teamId, normalizedPrimaryEmail: normalizedEmail },
+      select: { id: true },
     })
   }
 

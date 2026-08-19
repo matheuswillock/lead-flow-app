@@ -7,14 +7,22 @@ import {
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
 import { PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG } from "@/lib/queues/public-form-metric-events"
+import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
+  if (!isPublicFormRequestOriginAllowed(request)) {
+    return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
+  }
+  const parsed = publicFormMetricEventSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })
+  }
   const rate = await consumePublicFormRateLimit(
-    `event:${publicId}:${publicFormRequestFingerprint(request)}`,
+    `event:${publicId}:${publicFormRequestFingerprint(request, parsed.data.visitorSessionId)}`,
     { limit: 120, windowMs: 60_000 },
   )
   if (!rate.allowed) {
@@ -22,10 +30,6 @@ export async function POST(
       status: 429,
       headers: { "Retry-After": String(rate.retryAfterSeconds) },
     })
-  }
-  const parsed = publicFormMetricEventSchema.safeParse(await request.json().catch(() => null))
-  if (!parsed.success) {
-    return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })
   }
 
   const output = await publicFormsUseCase.recordMetric(publicId, parsed.data)
