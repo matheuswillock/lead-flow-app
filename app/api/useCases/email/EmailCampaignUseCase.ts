@@ -1677,7 +1677,9 @@ export class EmailCampaignUseCase {
           : campaign.totalRecipients,
         failedRetryRecipientCount,
         partiallySentCount: isParent
-          ? campaign.subCampaigns.filter((sub) => sub.status === "sent").length
+          ? campaign.subCampaigns.filter(
+              (sub) => sub.status === "sent" || sub.status === "partially_sent"
+            ).length
           : undefined,
         partiallySentTotal: isParent ? campaign.subCampaigns.length : undefined,
         ...(childTotals ?? {}),

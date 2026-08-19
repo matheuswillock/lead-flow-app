@@ -3207,6 +3207,85 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     })
   })
 
+  it("partiallySentCount conta sub-campanhas 'partially_sent' como concluídas, não só 'sent'", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () => ({
+      ...makeCampaign({ id: "parent-2", status: "partially_sent" }),
+      description: null,
+      sourceContactListIds: [],
+      audienceContactIds: [],
+      managedByBackofficeUserId: null,
+      dispatchCount: 2,
+      totalRecipients: 20,
+      totalSent: 15,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalBounced: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      scheduledAt: null,
+      sentAt: null,
+      createdBy: "profile-1",
+      errorMessage: null,
+      template: { id: "tpl-1", name: "T", subject: "S" },
+      contactList: { id: "list-1", name: "T", totalContacts: 10 },
+      subCampaigns: [
+        {
+          id: "sub-sent",
+          name: "Parte 1",
+          description: null,
+          status: "sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 10,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 0,
+          contactListId: "list-1",
+          templateId: "tpl-1",
+          errorMessage: null,
+        },
+        {
+          id: "sub-partial",
+          name: "Parte 2",
+          description: null,
+          status: "partially_sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 5,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 1,
+          contactListId: "list-2",
+          templateId: "tpl-1",
+          errorMessage: "Limite mensal de envios do provedor atingido",
+        },
+      ],
+    }))
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [])
+    mockLogCounterAggregation([])
+    emailLogFindManyMock.mockImplementation(async () => [])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.getById("parent-2", teamCtx)
+    expect(output.isValid).toBe(true)
+    const result = output.result as {
+      partiallySentCount?: number
+      partiallySentTotal?: number
+    }
+    // "sub-sent" (sent) + "sub-partial" (partially_sent) contam como concluídas:
+    // uma sub-campanha que abortou por limite de quota, mas enviou parte,
+    // não pode aparecer como "não concluída" no resumo "X de Y partes enviadas".
+    expect(result.partiallySentCount).toBe(2)
+    expect(result.partiallySentTotal).toBe(2)
+  })
+
   it("agregação diferencia queued/accepted/failed e não reduz aceite após delivered/opened", async () => {
     emailCampaignFindManyMock.mockImplementation(async () => [
       {
