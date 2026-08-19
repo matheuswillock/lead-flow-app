@@ -13,9 +13,10 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 
 const QUESTION_NAME_ID = "11111111-1111-4111-8111-111111111101"
 const QUESTION_EMAIL_ID = "11111111-1111-4111-8111-111111111102"
+const E2E_PUBLIC_ID = "e2e00000-0000-4000-8000-000000000001"
+const E2E_EMAIL_LOG_ID = "e2e10000-0000-4000-8000-000000000001"
 
-/** Snapshot mínimo válido para uma publicação de formulário E2E. */
-function buildSnapshot(formId: string, publicId: string): Record<string, unknown> {
+function buildSnapshot(formId, publicId) {
   return {
     formId,
     publicId,
@@ -107,9 +108,9 @@ async function arrangePublicForm() {
   if (!team) throw new Error("Team E2E não encontrado")
 
   const form = await prisma.publicForm.upsert({
-    where: { publicId: "e2e00000-0000-4000-8000-000000000001" },
+    where: { publicId: E2E_PUBLIC_ID },
     create: {
-      publicId: "e2e00000-0000-4000-8000-000000000001",
+      publicId: E2E_PUBLIC_ID,
       teamId: team.id,
       createdById: profile.id,
       name: "Formulário E2E",
@@ -138,12 +139,12 @@ async function arrangePublicForm() {
   return { form, team, profile, publication }
 }
 
-async function arrangeEmailLog(teamId: string) {
+async function arrangeEmailLog(teamId) {
   const prisma = getPrisma()
   return prisma.emailLog.upsert({
-    where: { id: "e2e10000-0000-4000-8000-000000000001" },
+    where: { id: E2E_EMAIL_LOG_ID },
     create: {
-      id: "e2e10000-0000-4000-8000-000000000001",
+      id: E2E_EMAIL_LOG_ID,
       teamId,
       recipientEmail: "destinatario.e2e@example.com",
       recipientName: "Destinatário E2E",
@@ -158,8 +159,8 @@ async function arrangeEmailLog(teamId: string) {
 test.describe("app/forms/[publicId]", () => {
   test.setTimeout(60_000)
 
-  let publicId: string
-  let teamId: string
+  let publicId
+  let teamId
 
   test.beforeAll(async () => {
     const { form, team } = await arrangePublicForm()
@@ -187,13 +188,13 @@ test.describe("app/forms/[publicId]", () => {
 
     expect(sessionCookie, "Cookie cs_form_vs não foi criado").toBeTruthy()
 
-    const decoded = decodeURIComponent(sessionCookie!.value)
+    const decoded = decodeURIComponent(sessionCookie.value)
     expect(decoded).toMatch(new RegExp(`^${publicId}:[0-9a-f-]{36}$`))
     expect(decoded).not.toMatch(/@/)
   })
 
   test("onBlur dispara POST /progress com o valor do campo", async ({ page }) => {
-    const progressRequests: string[] = []
+    const progressRequests = []
     page.on("request", (req) => {
       if (req.method() === "POST" && req.url().includes("/progress")) {
         progressRequests.push(req.postData() ?? "")
@@ -211,17 +212,15 @@ test.describe("app/forms/[publicId]", () => {
 
     expect(progressRequests.length, "Nenhuma request POST /progress disparada após blur").toBeGreaterThan(0)
 
-    const body = JSON.parse(progressRequests[0]!) as {
-      answers: Array<{ questionId: string; value: unknown }>
-    }
+    const body = JSON.parse(progressRequests[0])
     expect(body.answers).toHaveLength(1)
-    expect(body.answers[0]!.value).toBe("Maria Teste")
+    expect(body.answers[0].value).toBe("Maria Teste")
   })
 
   test("prefill via cs_el pré-preenche nome e e-mail nos campos nativos", async ({ page }) => {
     await arrangeEmailLog(teamId)
 
-    await page.goto(`/forms/${publicId}?cs_el=e2e10000-0000-4000-8000-000000000001`)
+    await page.goto(`/forms/${publicId}?cs_el=${E2E_EMAIL_LOG_ID}`)
     await page.getByRole("button", { name: /começar/i }).click()
 
     const nameInput = page.getByRole("textbox").first()
