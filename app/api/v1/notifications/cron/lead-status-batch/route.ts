@@ -5,6 +5,8 @@ import { leadStatusChangedBatchUseCase } from "@/app/api/useCases/notifications/
 import { withCronAudit } from "@/app/api/lib/cron/withCronAudit";
 import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback";
 
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   await connection();
 

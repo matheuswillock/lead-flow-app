@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { Prisma } from "@prisma/client"
 import type { ParsedRadarImportRow } from "@/lib/radarImport/parseRadarImportBuffer"
 import { RADAR_IMPORT_SOCIOS_PROFILE_DATA_KEY } from "@/lib/radarImport/radarImportFields"
+import { AUDIENCE_REASON_BOUNCED } from "@/lib/email/audience-prevalidation"
 
 const claimPendingJobMock = mock(async () => null as null | Record<string, unknown>)
 const updateJobMock = mock(async () => ({}))
@@ -23,6 +24,7 @@ const resolveProfileForEmailMock = mock(async () => ({
   profile: { id: "profile-1" },
   wasExisting: false,
 }))
+const findBouncedEmailsMock = mock(async () => new Set<string>())
 const upsertIdentityMock = mock(async () => ({}))
 const updateProfileDataMock = mock(async () => ({ count: 1 }))
 const upsertSourceLinkMock = mock(async () => ({}))
@@ -50,6 +52,7 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     upsertSourceLink: upsertSourceLinkMock,
     appendEventIfNew: appendEventIfNewMock,
     updateProfileGender: updateProfileGenderMock,
+    findBouncedEmails: findBouncedEmailsMock,
   },
   RadarRepository: class {},
 }))
@@ -388,7 +391,8 @@ describe("RadarBaseImportUseCase.processRow e-mail inválido", () => {
 
   async function processRow(
     row: ParsedRadarImportRow,
-    fieldMapping: Record<string, string>
+    fieldMapping: Record<string, string>,
+    bouncedEmails: ReadonlySet<string> = new Set()
   ) {
     const useCase = new RadarBaseImportUseCase() as unknown as {
       processRow: (
@@ -396,10 +400,11 @@ describe("RadarBaseImportUseCase.processRow e-mail inválido", () => {
         importJobId: string,
         row: ParsedRadarImportRow,
         fieldMapping: Record<string, string>,
-        seenKeys: Set<string>
+        seenKeys: Set<string>,
+        bouncedEmails?: ReadonlySet<string>
       ) => Promise<{ outcome: string; issue?: { reason: string } }>
     }
-    return useCase.processRow(teamId, importJobId, row, fieldMapping, new Set())
+    return useCase.processRow(teamId, importJobId, row, fieldMapping, new Set(), bouncedEmails)
   }
 
   beforeEach(() => {
@@ -452,6 +457,46 @@ describe("RadarBaseImportUseCase.processRow e-mail inválido", () => {
     expect(resolveProfileForPhoneMock).not.toHaveBeenCalled()
     expect(resolveProfileForEmailMock).not.toHaveBeenCalled()
   })
+
+  it("telefone+nome válidos com e-mail bounced: importa sem o e-mail", async () => {
+    const result = await processRow(
+      {
+        line: 4,
+        values: {
+          nome: "Maria Silva",
+          telefone: "11987654321",
+          email: "ana@gmail.com",
+        },
+      },
+      { name: "nome", phone: "telefone", email: "email" },
+      new Set(["ana@gmail.com"])
+    )
+
+    expect(result.outcome).toBe("created")
+    expect(result.issue?.reason).toBe(AUDIENCE_REASON_BOUNCED)
+    expect(resolveProfileForPhoneMock).toHaveBeenCalled()
+    const input = resolveProfileForPhoneMock.mock.calls[0] as unknown as [
+      { primaryEmail: string | null },
+    ]
+    expect(input[0].primaryEmail).toBeNull()
+    expect(resolveProfileForEmailMock).not.toHaveBeenCalled()
+  })
+
+  it("só e-mail bounced: recusa a linha", async () => {
+    const result = await processRow(
+      {
+        line: 5,
+        values: { email: "ana@gmail.com" },
+      },
+      { email: "email" },
+      new Set(["ana@gmail.com"])
+    )
+
+    expect(result.outcome).toBe("skipped")
+    expect(result.issue?.reason).toBe(AUDIENCE_REASON_BOUNCED)
+    expect(resolveProfileForPhoneMock).not.toHaveBeenCalled()
+    expect(resolveProfileForEmailMock).not.toHaveBeenCalled()
+  })
 })
 
 describe("RadarBaseImportUseCase.processClaimedBatch", () => {
@@ -488,6 +533,8 @@ describe("RadarBaseImportUseCase.processClaimedBatch", () => {
       profile: { id: "profile-1" },
       wasExisting: false,
     }))
+    findBouncedEmailsMock.mockClear()
+    findBouncedEmailsMock.mockImplementation(async () => new Set<string>())
     downloadRadarImportPayloadMock.mockClear()
     downloadRadarImportPayloadMock.mockImplementation(async () =>
       JSON.stringify({

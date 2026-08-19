@@ -11,7 +11,7 @@ import {
   downloadRadarImportPayload,
   uploadRadarImportPayload,
 } from "@/lib/radar/radar-import-storage"
-import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
+import { evaluateEmailForAudience, evaluateEmailForAudienceWithFlags } from "@/lib/email/audience-prevalidation"
 import {
   formatTransientTransactionErrorMessage,
   withTransientTransactionRetry,
@@ -123,6 +123,19 @@ export class RadarBaseImportUseCase {
     return values
   }
 
+  private async loadBouncedEmailsForBatch(
+    batch: ParsedRadarImportRow[],
+    fieldMapping: Record<string, string>
+  ): Promise<Set<string>> {
+    const emails: string[] = []
+    for (const row of batch) {
+      const rawEmail = this.extractMappedValues(row, fieldMapping).email ?? ""
+      const evaluated = rawEmail ? evaluateEmailForAudience(rawEmail) : null
+      if (evaluated?.ok) emails.push(evaluated.email)
+    }
+    return radarRepository.findBouncedEmails(emails)
+  }
+
   private mergeProfileData(
     existing: Prisma.JsonValue | null | undefined,
     patch: Record<string, unknown>
@@ -232,7 +245,8 @@ export class RadarBaseImportUseCase {
     importJobId: string,
     row: ParsedRadarImportRow,
     fieldMapping: Record<string, string>,
-    seenKeys: Set<string>
+    seenKeys: Set<string>,
+    bouncedEmails: ReadonlySet<string> = new Set()
   ): Promise<{ outcome: "created" | "enriched" | "skipped" | "deferred"; issue?: SkippedImportIssue }> {
     const mappedValues = this.extractMappedValues(row, fieldMapping)
     const rawName = mappedValues.name ?? ""
@@ -245,7 +259,12 @@ export class RadarBaseImportUseCase {
     const normalizedEmail = normalizeRadarEmail(rawEmail)
     const normalizedDocument = normalizeRadarDocument(rawDocument)
 
-    const emailValidation = rawEmail ? evaluateEmailForAudience(rawEmail) : null
+    const audiencePreview = rawEmail ? evaluateEmailForAudience(rawEmail) : null
+    const emailValidation = audiencePreview?.ok
+      ? evaluateEmailForAudienceWithFlags(rawEmail, {
+          isGloballyBounced: bouncedEmails.has(audiencePreview.email),
+        })
+      : audiencePreview
     const hasValidEmail = emailValidation?.ok === true
     const hasValidPhoneIdentity = isValidRadarPrimaryIdentity(rawPhone, rawName)
 
@@ -658,6 +677,7 @@ export class RadarBaseImportUseCase {
     const failedBatches = this.parseFailedBatches(job.failedBatches)
     const seenKeys = new Set<string>()
     const batch = stored.rows.slice(batchIndex * BATCH_SIZE, batchEnd)
+    const bouncedEmails = await this.loadBouncedEmailsForBatch(batch, fieldMapping)
     const deliveryCount = Math.max(1, options.deliveryCount ?? 1)
 
     try {
@@ -667,7 +687,8 @@ export class RadarBaseImportUseCase {
           job.id,
           row,
           fieldMapping,
-          seenKeys
+          seenKeys,
+          bouncedEmails
         )
         if (result.outcome === "created") createdCount += 1
         if (result.outcome === "enriched") enrichedCount += 1

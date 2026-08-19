@@ -1,6 +1,7 @@
 import type { EmailCampaignStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { CAMPAIGN_AUDIENCE_PRUNABLE_STATUSES } from "@/lib/email/campaign-audience-pruning-constants"
+import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 
 export type CampaignAudienceRow = {
   id: string
@@ -52,36 +53,65 @@ export class EmailCampaignAudienceRepository implements IEmailCampaignAudienceRe
   }): Promise<SuppressedContactRow[]> {
     const normalizedEmails =
       input.emails?.map((email) => email.trim().toLowerCase()).filter(Boolean) ?? []
+    const contactIds = input.contactIds?.filter(Boolean) ?? []
 
-    if ((input.contactIds?.length ?? 0) === 0 && normalizedEmails.length === 0) {
+    if (contactIds.length === 0 && normalizedEmails.length === 0) {
       return []
     }
 
-    const identityFilter: Prisma.EmailContactWhereInput[] = []
-    if (input.contactIds?.length) identityFilter.push({ id: { in: input.contactIds } })
-    if (normalizedEmails.length) identityFilter.push({ email: { in: normalizedEmails } })
-    if (identityFilter.length === 0) return []
+    const suppressedFilter: Prisma.EmailContactWhereInput = {
+      list: { teamId: input.teamId, isArchived: false },
+      OR: [{ isBounced: true }, { isUnsubscribed: true }, { isComplained: true }],
+    }
+    const select = {
+      id: true,
+      email: true,
+      listId: true,
+      list: { select: { isSystemDefault: true } },
+    } as const
 
-    const contacts = await prisma.emailContact.findMany({
-      where: {
-        list: { teamId: input.teamId, isArchived: false },
-        OR: [{ isBounced: true }, { isUnsubscribed: true }, { isComplained: true }],
-        AND: [{ OR: identityFilter }],
-      },
-      select: {
-        id: true,
-        email: true,
-        listId: true,
-        list: { select: { isSystemDefault: true } },
-      },
-    })
+    const byId = new Map<string, SuppressedContactRow>()
+    const mergeRows = (
+      rows: Array<{
+        id: string
+        email: string
+        listId: string
+        list: { isSystemDefault: boolean }
+      }>
+    ) => {
+      for (const contact of rows) {
+        byId.set(contact.id, {
+          id: contact.id,
+          email: contact.email,
+          listId: contact.listId,
+          isSystemDefaultList: contact.list.isSystemDefault,
+        })
+      }
+    }
 
-    return contacts.map((contact) => ({
-      id: contact.id,
-      email: contact.email,
-      listId: contact.listId,
-      isSystemDefaultList: contact.list.isSystemDefault,
-    }))
+    if (contactIds.length > 0) {
+      mergeRows(
+        await findManyByInChunks(contactIds, (chunk) =>
+          prisma.emailContact.findMany({
+            where: { ...suppressedFilter, id: { in: chunk } },
+            select,
+          })
+        )
+      )
+    }
+
+    if (normalizedEmails.length > 0) {
+      mergeRows(
+        await findManyByInChunks(normalizedEmails, (chunk) =>
+          prisma.emailContact.findMany({
+            where: { ...suppressedFilter, email: { in: chunk } },
+            select,
+          })
+        )
+      )
+    }
+
+    return [...byId.values()]
   }
 
   async findPrunableCampaigns(
@@ -159,14 +189,15 @@ export class EmailCampaignAudienceRepository implements IEmailCampaignAudienceRe
   }
 
   async findSuppressedIdsInSnapshot(audienceContactIds: string[]): Promise<string[]> {
-    if (audienceContactIds.length === 0) return []
-    const rows = await prisma.emailContact.findMany({
-      where: {
-        id: { in: audienceContactIds },
-        OR: [{ isBounced: true }, { isUnsubscribed: true }, { isComplained: true }],
-      },
-      select: { id: true },
-    })
+    const rows = await findManyByInChunks(audienceContactIds.filter(Boolean), (chunk) =>
+      prisma.emailContact.findMany({
+        where: {
+          id: { in: chunk },
+          OR: [{ isBounced: true }, { isUnsubscribed: true }, { isComplained: true }],
+        },
+        select: { id: true },
+      })
+    )
     return rows.map((row) => row.id)
   }
 

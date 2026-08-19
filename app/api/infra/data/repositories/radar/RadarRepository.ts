@@ -30,11 +30,10 @@ import {
   publishRadarEngagementScoreUpdate,
   RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/radar-engagement-score-updates"
+import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
-/** Postgres bind limit is 32_767; keep IN lists well under (teamId also binds). */
-const PRISMA_IN_CHUNK_SIZE = 5_000
 
 type EngagementWeightsConfigCache = {
   weights: WeightMap
@@ -1824,6 +1823,20 @@ export class RadarRepository {
     })
   }
 
+  async findBouncedEmails(emails: string[]): Promise<Set<string>> {
+    const normalized = [
+      ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ]
+    const rows = await findManyByInChunks(normalized, (chunk) =>
+      this.db.emailContact.findMany({
+        where: { email: { in: chunk }, isBounced: true },
+        select: { email: true },
+        distinct: ["email"],
+      })
+    )
+    return new Set(rows.map((row) => row.email.trim().toLowerCase()))
+  }
+
   async findEmailContactById(contactId: string) {
     return this.db.emailContact.findUnique({
       where: { id: contactId },
@@ -1885,11 +1898,11 @@ export class RadarRepository {
     return lead?.phone ? { phone: lead.phone } : null
   }
 
-  async findLeadStatuses(teamId: string, leadIds: string[]) {
+  async findLeadStatuses(teamId: string, leadIds: string[]): Promise<Map<string, LeadStatus | null>> {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map<string, LeadStatus | null>()
 
-    const leads = await this.findManyByInChunks(unique, (chunk) =>
+    const leads = await findManyByInChunks(unique, (chunk) =>
       this.db.lead.findMany({
         where: { teamId, id: { in: chunk } },
         select: { id: true, status: true },
@@ -2392,7 +2405,7 @@ export class RadarRepository {
     const uniqueIds = [...new Set(profileIds.filter(Boolean))]
     if (uniqueIds.length === 0) return []
 
-    return this.findManyByInChunks(uniqueIds, (chunk) =>
+    return findManyByInChunks(uniqueIds, (chunk) =>
       this.db.radarProfile.findMany({
         where: { teamId, id: { in: chunk } },
         select: {
@@ -2449,24 +2462,11 @@ export class RadarRepository {
     })
   }
 
-  private async findManyByInChunks<T>(
-    values: string[],
-    query: (chunk: string[]) => Promise<T[]>
-  ): Promise<T[]> {
-    const results: T[] = []
-    for (let index = 0; index < values.length; index += PRISMA_IN_CHUNK_SIZE) {
-      const chunk = values.slice(index, index + PRISMA_IN_CHUNK_SIZE)
-      const batch = await query(chunk)
-      results.push(...batch)
-    }
-    return results
-  }
-
   async findLeadsForRadarFieldResolution(teamId: string, leadIds: string[]) {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map()
 
-    const leads = await this.findManyByInChunks(unique, (chunk) =>
+    const leads = await findManyByInChunks(unique, (chunk) =>
       this.db.lead.findMany({
         where: { teamId, id: { in: chunk } },
         select: {
@@ -2512,7 +2512,7 @@ export class RadarRepository {
     const unique = [...new Set(normalizedEmails.filter(Boolean))]
     if (unique.length === 0) return []
 
-    return this.findManyByInChunks(unique, (chunk) =>
+    return findManyByInChunks(unique, (chunk) =>
       this.db.radarProfile.findMany({
         where: { teamId, normalizedPrimaryEmail: { in: chunk } },
         select: {
@@ -2534,7 +2534,7 @@ export class RadarRepository {
     const unique = [...new Set(normalizedEmails.filter(Boolean))]
     if (unique.length === 0) return new Map<string, Record<string, string>>()
 
-    const profiles = await this.findManyByInChunks(unique, (chunk) =>
+    const profiles = await findManyByInChunks(unique, (chunk) =>
       this.db.radarProfile.findMany({
         where: { teamId, normalizedPrimaryEmail: { in: chunk } },
         select: { normalizedPrimaryEmail: true, profileData: true },

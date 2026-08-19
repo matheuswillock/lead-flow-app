@@ -10,6 +10,7 @@ import {
   type CustomFieldFilterInput,
   type CustomFieldSortInput,
 } from "@/lib/leadCustomFields/customFieldQuery";
+import { findManyByInChunks } from "@/lib/prisma/chunked-in-query";
 
 // Statuses terminais não geram eventos de lead time no calendário.
 const CALENDAR_TERMINAL_STATUSES: LeadStatus[] = [
@@ -1126,24 +1127,50 @@ export class LeadRepository implements ILeadRepository {
     emails: string[],
     cnpjs: string[]
   ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>> {
-    const conflictFilters: Prisma.LeadWhereInput[] = [];
-    if (emails.length) conflictFilters.push({ email: { in: emails } });
-    if (cnpjs.length) conflictFilters.push({ cnpj: { in: cnpjs } });
-    if (!conflictFilters.length) return [];
+    const uniqueEmails = [...new Set(emails.filter(Boolean))];
+    const uniqueCnpjs = [...new Set(cnpjs.filter(Boolean))];
+    if (uniqueEmails.length === 0 && uniqueCnpjs.length === 0) return [];
 
-    return await prisma.lead.findMany({
-      where: {
-        teamId,
-        deletedAt: null,
-        OR: conflictFilters,
-      },
-      select: {
-        id: true,
-        email: true,
-        cnpj: true,
-        status: true,
-      },
-    });
+    const select = {
+      id: true,
+      email: true,
+      cnpj: true,
+      status: true,
+    } as const;
+    const byId = new Map<
+      string,
+      { id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }
+    >();
+
+    const mergeRows = (
+      rows: Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus | null }>
+    ) => {
+      for (const row of rows) byId.set(row.id, row);
+    };
+
+    if (uniqueEmails.length > 0) {
+      mergeRows(
+        await findManyByInChunks(uniqueEmails, (chunk) =>
+          prisma.lead.findMany({
+            where: { teamId, deletedAt: null, email: { in: chunk } },
+            select,
+          })
+        )
+      );
+    }
+
+    if (uniqueCnpjs.length > 0) {
+      mergeRows(
+        await findManyByInChunks(uniqueCnpjs, (chunk) =>
+          prisma.lead.findMany({
+            where: { teamId, deletedAt: null, cnpj: { in: chunk } },
+            select,
+          })
+        )
+      );
+    }
+
+    return [...byId.values()];
   }
 
   private readonly duplicateCandidateSelect = {
