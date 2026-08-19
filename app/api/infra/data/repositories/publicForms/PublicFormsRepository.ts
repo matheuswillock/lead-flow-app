@@ -15,6 +15,12 @@ import {
   mergeLeadTransferListSubmissions,
 } from "@/lib/public-forms/lead-transfer-submission-copy"
 import {
+  isStaleQuestionIdForeignKey,
+  questionIdFromSnapshot,
+  snapshotContainsAllQuestions,
+  snapshotContainsQuestion,
+} from "@/lib/public-forms/publication-snapshot"
+import {
   type IPublicFormsRepository,
   type PublicFormCompleteSubmissionInput,
   type PublicFormDetailRecord,
@@ -26,6 +32,18 @@ import {
   type PublicFormTemplateListItem,
   publicFormDetailSelect,
 } from "./IPublicFormsRepository"
+
+function toPublishedSnapshot(publication: {
+  id: string
+  version: number
+  snapshot: Prisma.JsonValue
+}): PublicFormPublishedSnapshot {
+  return {
+    publicationId: publication.id,
+    version: publication.version,
+    snapshot: publication.snapshot,
+  }
+}
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -452,11 +470,53 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     if (!form || form.status !== "published" || !form.publications[0]) return null
-    return {
-      publicationId: form.publications[0].id,
-      version: form.publications[0].version,
-      snapshot: form.publications[0].snapshot,
-    }
+    return toPublishedSnapshot(form.publications[0])
+  }
+
+  async findPublicationById(id: string): Promise<PublicFormPublishedSnapshot | null> {
+    const publication = await prisma.publicFormPublication.findUnique({
+      where: { id },
+      select: { id: true, version: true, snapshot: true },
+    })
+    return publication ? toPublishedSnapshot(publication) : null
+  }
+
+  private listFormPublications(formId: string) {
+    return prisma.publicFormPublication.findMany({
+      where: { formId },
+      orderBy: { version: "desc" },
+      select: { id: true, version: true, snapshot: true },
+    })
+  }
+
+  async findPublicationContainingQuestion(
+    formId: string,
+    questionId: string,
+  ): Promise<PublicFormPublishedSnapshot | null> {
+    const publications = await this.listFormPublications(formId)
+    const match = publications.find((publication) =>
+      snapshotContainsQuestion(publication.snapshot, questionId),
+    )
+    return match ? toPublishedSnapshot(match) : null
+  }
+
+  async findPublicationContainingQuestions(
+    formId: string,
+    questionIds: string[],
+  ): Promise<PublicFormPublishedSnapshot | null> {
+    const uniqueIds = [...new Set(questionIds.filter(Boolean))]
+    const publications = await this.listFormPublications(formId)
+    const match = publications.find((publication) =>
+      snapshotContainsAllQuestions(publication.snapshot, uniqueIds),
+    )
+    return match ? toPublishedSnapshot(match) : null
+  }
+
+  findLatestSessionSubmissionOnForm(formId: string, visitorSessionId: string) {
+    return prisma.publicFormSubmission.findFirst({
+      where: { formId, visitorSessionId },
+      orderBy: { updatedAt: "desc" },
+    })
   }
 
   findAvailabilityTeamContext(formId: string) {
@@ -518,13 +578,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       // `snapshot` da publicação, mesmo padrão de `PublicFormAnswer`), então
       // soltar o FK aqui não perde rastreabilidade — só a conveniência de
       // join "ao vivo".
-      const isStaleQuestionFk =
-        input.questionId &&
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2003" &&
-        String(error.meta?.constraint ?? "").includes("questionId")
-
-      if (!isStaleQuestionFk) throw error
+      if (!isStaleQuestionIdForeignKey(error, input.questionId)) throw error
 
       console.info("[PublicFormsRepository][upsertMetricEvent] questionId obsoleto, gravando sem o FK (questionSnapshot preserva os dados)", {
         eventKey: input.eventKey,
@@ -1001,16 +1055,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           score: 0,
         },
       })
-      for (const answer of data.answers) {
-        await tx.publicFormAnswer.create({
-          data: {
-            submissionId: submission.id,
-            questionId: answer.questionId,
-            value: answer.value,
-            questionSnapshot: answer.questionSnapshot,
-          },
-        })
-      }
+      await this.syncSubmissionAnswers(tx, submission.id, data.answers)
       return submission
     })
   }
@@ -1093,14 +1138,49 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionSnapshot: Prisma.InputJsonValue
     }>,
   ) {
-    const questionIds = answers.map((answer) => answer.questionId)
+    const questionIds = answers.map((answer) => answer.questionId).filter(Boolean)
     await tx.publicFormAnswer.deleteMany({
       where: {
         submissionId,
-        ...(questionIds.length > 0 ? { questionId: { notIn: questionIds } } : {}),
+        ...(questionIds.length > 0
+          ? {
+              // `NULL NOT IN (...)` não casa no Postgres; sem este OR o fallback
+              // P2003 (questionId null) acumula duplicatas a cada progress/retry.
+              OR: [{ questionId: { notIn: questionIds } }, { questionId: null }],
+            }
+          : {}),
       },
     })
     for (const answer of answers) {
+      await this.writeSubmissionAnswer(tx, submissionId, answer)
+    }
+  }
+
+  private async writeSubmissionAnswer(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: {
+      questionId: string | null
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    },
+  ) {
+    if (!answer.questionId) {
+      await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
+        value: answer.value,
+        questionSnapshot: answer.questionSnapshot,
+      })
+      return
+    }
+
+    const data = {
+      submissionId,
+      questionId: answer.questionId,
+      value: answer.value,
+      questionSnapshot: answer.questionSnapshot,
+    }
+
+    try {
       await tx.publicFormAnswer.upsert({
         where: {
           submissionId_questionId: {
@@ -1108,18 +1188,59 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             questionId: answer.questionId,
           },
         },
-        create: {
-          submissionId,
-          questionId: answer.questionId,
-          value: answer.value,
-          questionSnapshot: answer.questionSnapshot,
-        },
+        create: data,
         update: {
           value: answer.value,
           questionSnapshot: answer.questionSnapshot,
         },
       })
+    } catch (error) {
+      if (!isStaleQuestionIdForeignKey(error, answer.questionId)) throw error
+      console.info("[PublicFormsRepository][writeSubmissionAnswer] questionId obsoleto, gravando sem o FK", {
+        submissionId,
+        questionId: answer.questionId,
+      })
+      await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
+        value: data.value,
+        questionSnapshot: data.questionSnapshot,
+      })
     }
+  }
+
+  private async persistAnswerWithoutQuestionFk(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    data: {
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    },
+  ) {
+    const snapshotId = questionIdFromSnapshot(data.questionSnapshot)
+    if (snapshotId) {
+      const existing = await tx.publicFormAnswer.findMany({
+        where: { submissionId, questionId: null },
+        select: { id: true, questionSnapshot: true },
+      })
+      const match = existing.find((row) => questionIdFromSnapshot(row.questionSnapshot) === snapshotId)
+      if (match) {
+        await tx.publicFormAnswer.update({
+          where: { id: match.id },
+          data: {
+            value: data.value,
+            questionSnapshot: data.questionSnapshot,
+          },
+        })
+        return
+      }
+    }
+    await tx.publicFormAnswer.create({
+      data: {
+        submissionId,
+        questionId: null,
+        value: data.value,
+        questionSnapshot: data.questionSnapshot,
+      },
+    })
   }
 
   finalizeProgressSubmission(
@@ -1183,18 +1304,30 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         })
       }
       for (const event of input.metricEvents) {
-        await tx.publicFormMetricEvent.upsert({
-          where: { eventKey: event.eventKey },
-          create: {
-            formId: event.formId,
-            publicationId: event.publicationId,
-            visitorSessionId: event.visitorSessionId,
-            eventType: event.eventType,
-            eventKey: event.eventKey,
-            origin: event.origin,
-          },
-          update: {},
+        const create = (questionId: string | null | undefined) => ({
+          formId: event.formId,
+          publicationId: event.publicationId,
+          questionId,
+          questionSnapshot: event.questionSnapshot ?? Prisma.JsonNull,
+          visitorSessionId: event.visitorSessionId,
+          eventType: event.eventType,
+          eventKey: event.eventKey,
+          origin: event.origin,
         })
+        try {
+          await tx.publicFormMetricEvent.upsert({
+            where: { eventKey: event.eventKey },
+            create: create(event.questionId),
+            update: {},
+          })
+        } catch (error) {
+          if (!isStaleQuestionIdForeignKey(error, event.questionId)) throw error
+          await tx.publicFormMetricEvent.upsert({
+            where: { eventKey: event.eventKey },
+            create: create(null),
+            update: {},
+          })
+        }
       }
     })
   }

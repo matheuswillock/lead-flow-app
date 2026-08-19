@@ -1,5 +1,6 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
+import { countUniqueFormMetricRecipients } from "@/lib/email/unique-form-metric-recipients"
 
 export type EmailAnalyticsLogWhere = {
   teamId: string
@@ -363,7 +364,11 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
   async countFormEvents(options: CountFormEventsOptions): Promise<number> {
     const where = await this.buildFormMetricEventWhere(options)
     if (!where) return 0
-    return prisma.publicFormMetricEvent.count({ where })
+    const rows = await prisma.publicFormMetricEvent.findMany({
+      where,
+      select: { visitorSessionId: true, origin: true },
+    })
+    return countUniqueFormMetricRecipients(rows)
   }
 
   async countFormCompletions(options: {
@@ -378,7 +383,11 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       eventType: "form_completed",
     })
     if (!where) return 0
-    return prisma.publicFormMetricEvent.count({ where })
+    const rows = await prisma.publicFormMetricEvent.findMany({
+      where,
+      select: { visitorSessionId: true, origin: true },
+    })
+    return countUniqueFormMetricRecipients(rows)
   }
 
   async findCampaignTemplateHtml(options: {

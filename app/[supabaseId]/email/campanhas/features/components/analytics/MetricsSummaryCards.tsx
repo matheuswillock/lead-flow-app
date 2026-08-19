@@ -168,23 +168,23 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
       />
       <MetricCard
         title="Form. Visualizado"
-        tooltip="Sessões que abriram a página do formulário vinculado ao template da campanha. Na visão geral, soma todos os formulários do time no período."
+        tooltip="Destinatários únicos que abriram a página do formulário pelo menos uma vez. Recargas e novas sessões do mesmo e-mail contam uma só vez."
         value={formViewed.toLocaleString("pt-BR")}
-        subtitle="visualizações do formulário"
+        subtitle="destinatários únicos"
         delta={deltas?.totals.formViewed}
       />
       <MetricCard
         title="Form. Iniciado"
-        tooltip="Sessões que começaram a preencher o formulário (primeira interação após a visualização)."
+        tooltip="Destinatários únicos que começaram a preencher o formulário. Várias sessões do mesmo e-mail contam uma só vez."
         value={formStarted.toLocaleString("pt-BR")}
-        subtitle="inícios de preenchimento"
+        subtitle="destinatários únicos"
         delta={deltas?.totals.formStarted}
       />
       <MetricCard
         title="Form. Finalizado"
-        tooltip="Preenchimentos completos do formulário vinculado ao template da campanha. Na visão geral, soma os preenchimentos completos de todos os formulários do time no período."
+        tooltip="Destinatários únicos que concluíram o formulário. Reenvios do mesmo e-mail contam uma só vez."
         value={formCompletions.toLocaleString("pt-BR")}
-        subtitle="preenchimentos completos"
+        subtitle="destinatários únicos"
         delta={deltas?.totals.formCompletions}
       />
     </div>
