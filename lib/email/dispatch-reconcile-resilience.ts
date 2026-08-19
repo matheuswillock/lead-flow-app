@@ -9,7 +9,7 @@ const POOL_EXHAUSTED_ERRORS = new Set(["P1001", "P1002", "P1008", "P2024"]);
 const SERVER_CLOSED_ERRORS = new Set(["P1017"]);
 
 export type DispatchTerminalSnapshot = {
-  campaignStatus: "sent" | "failed";
+  campaignStatus: "sent" | "failed" | "partially_sent";
   dispatchStatus: "completed" | "failed";
   errorMessage: string | null;
 };
@@ -59,7 +59,9 @@ export async function persistDispatchTerminalFallback(params: {
     data: {
       status: params.terminal.campaignStatus,
       errorMessage: params.terminal.errorMessage,
-      ...(params.terminal.campaignStatus === "sent" ? { sentAt: new Date() } : {}),
+      ...(params.terminal.campaignStatus === "sent" || params.terminal.campaignStatus === "partially_sent"
+        ? { sentAt: new Date() }
+        : {}),
       ...(params.totalRecipients !== undefined ? { totalRecipients: params.totalRecipients } : {}),
       ...(incrementCampaignSent && params.sentCount > 0
         ? { totalSent: { increment: params.sentCount } }
