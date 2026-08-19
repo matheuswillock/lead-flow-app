@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { prisma } from "../../../support/db";
+import { getPrisma } from "../../../support/db";
 import { assertAsaasSandbox } from "../../../support/asaas";
 
 test.describe("public/adquirir/creditos", () => {
   const existingEmail = `e2e-creditos-${Date.now()}@test.com`;
   let createdProfileId: string | null = null;
+
+  const prisma = getPrisma();
 
   test.beforeAll(async () => {
     const profile = await prisma.profile.create({
@@ -71,26 +73,15 @@ test.describe("public/adquirir/creditos", () => {
     await expect(page.getByRole("dialog")).toBeVisible();
   });
 
-  test("e-mail existente redireciona para checkout do Asaas", async ({ page }) => {
+  test("e-mail de conta válida valida e fecha o modal (sem abrir página Asaas)", async ({ page }) => {
     await page.goto("/adquirir/creditos");
     await page.getByRole("button", { name: "Ativar" }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
     await page.getByLabel(/E-mail da conta/i).fill(existingEmail);
-
-    const popupPromise = page.waitForEvent("popup", { timeout: 10_000 }).catch(() => null);
-
     await page.getByRole("button", { name: "Continuar para pagamento" }).click();
 
-    const popup = await popupPromise;
-
-    if (popup) {
-      await popup.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => {});
-      const url = popup.url();
-      expect(url).toContain("asaas.com/c/");
-    } else {
-      // Fallback: some browsers block popup — check that dialog closed (success path)
-      await expect(page.getByRole("dialog")).toBeHidden({ timeout: 10_000 });
-    }
+    await expect(page.getByText(/não encontrado/i)).not.toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 10_000 });
   });
 });

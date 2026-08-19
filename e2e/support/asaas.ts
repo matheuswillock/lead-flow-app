@@ -14,29 +14,30 @@ function readEnv(name: string): string {
 
 export function assertAsaasSandbox(): void {
   const env = readEnv("ASAAS_ENV").toLowerCase();
-  const apiUrl = [
-    readEnv("ASAAS_URL"),
-    readEnv("ASAAS_URL_sandbox"),
-    readEnv("ASAAS_BASE_URL"),
-  ]
-    .find((value) => value.length > 0)
-    ?.toLowerCase();
+
+  // Resolve a URL efetiva igual a lib/asaas.ts: com ASAAS_ENV=sandbox a app usa
+  // ASAAS_URL_sandbox (ou fallback sandbox); com production usa ASAAS_URL.
+  const isProduction = env === "production";
+  const effectiveUrl = (isProduction
+    ? readEnv("ASAAS_URL")
+    : readEnv("ASAAS_URL_sandbox") || readEnv("ASAAS_URL") || readEnv("ASAAS_BASE_URL")
+  ).toLowerCase();
   const apiKey = readEnv("ASAAS_API_KEY");
   const sandboxKey = readEnv("ASAAS_SANDBOX_API_KEY");
 
-  if (env === "production") {
+  if (isProduction) {
     throw new Error(
       "E2E Asaas abortou: ASAAS_ENV=production. Specs MUST usar sandbox (sandbox.asaas.com).",
     );
   }
 
-  if (apiUrl && PRODUCTION_HOST_MARKERS.some((marker) => apiUrl.includes(marker))) {
+  if (effectiveUrl && PRODUCTION_HOST_MARKERS.some((marker) => effectiveUrl.includes(marker))) {
     throw new Error(
-      `E2E Asaas abortou: URL de produção detectada (${apiUrl}). Use sandbox.asaas.com.`,
+      `E2E Asaas abortou: URL de produção detectada (${effectiveUrl}). Use sandbox.asaas.com.`,
     );
   }
 
-  if (apiUrl && !apiUrl.includes("sandbox.asaas.com") && env !== "sandbox") {
+  if (effectiveUrl && !effectiveUrl.includes("sandbox.asaas.com") && env !== "sandbox") {
     throw new Error(
       "E2E Asaas abortou: ASAAS_ENV precisa ser sandbox e a URL precisa ser sandbox.asaas.com.",
     );
