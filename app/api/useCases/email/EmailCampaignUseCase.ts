@@ -1,6 +1,11 @@
 import { randomUUID } from "crypto"
+import * as Sentry from "@sentry/nextjs"
 import { Prisma, type EmailCampaignStatus, type PrismaClient } from "@prisma/client"
 import { Output } from "@/lib/output"
+import {
+  EmailCampaignRepository,
+  type IEmailCampaignRepository,
+} from "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
 import { prisma, getEmailCronPrisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
@@ -237,8 +242,11 @@ export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
+  private repository: IEmailCampaignRepository
 
-  constructor(private readonly db: PrismaClient = prisma) {}
+  constructor(private readonly db: PrismaClient = prisma) {
+    this.repository = new EmailCampaignRepository(this.db)
+  }
 
   static forDispatchCron(): EmailCampaignUseCase {
     return new EmailCampaignUseCase(getEmailCronPrisma())
@@ -3455,70 +3463,100 @@ export class EmailCampaignUseCase {
     return last
   }
 
+  /**
+   * Campanhas em `sending` há mais de `STUCK_SENDING_THRESHOLD_MS`. Com o disparo
+   * agora sempre processado em lotes pela fila (ver `dispatchScheduledCampaigns`),
+   * "sending" há muito tempo não significa mais travado por padrão — pode só ser
+   * uma lista grande ainda em processamento. Espelha `BackofficeEmailCampaignUseCase.recoverStuckDispatches`:
+   * só falha de verdade campanhas sem nenhum dispatch (órfãs reais) ou dispatches
+   * sem `EmailLog` `queued` restante; se ainda há trabalho na fila, republica o
+   * wake em vez de sobrescrever um envio em andamento com "failed".
+   */
   async recoverStuckSendingCampaigns(now = new Date()): Promise<number> {
     const threshold = new Date(now.getTime() - STUCK_SENDING_THRESHOLD_MS)
+    const stuckCampaigns = await this.repository.findStuckSendingCampaigns(threshold)
 
-    // Primeiro, recuperar campanhas órfãs (em "sending" sem dispatch)
-    // Essas devem ser revertidas para o estado anterior, não marcadas como failed
-    const orphanCampaigns = await this.db.emailCampaign.findMany({
-      where: {
-        status: "sending",
-        updatedAt: { lt: threshold },
-      },
-      select: {
-        id: true,
-        name: true,
-        _count: { select: { dispatches: true } },
-      },
+    const orphanCampaigns = stuckCampaigns.filter((campaign) => campaign.dispatchCount === 0)
+    if (orphanCampaigns.length > 0) {
+      console.error(
+        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] ${orphanCampaigns.length} campanha(s) órfã(s) detectada(s) (sem dispatch). Revertendo para 'draft'.`,
+        orphanCampaigns.map((campaign) => ({ id: campaign.id, name: campaign.name }))
+      )
+      await this.repository.revertOrphanCampaignsToDraft(
+        orphanCampaigns.map((campaign) => campaign.id),
+        "Disparo interrompido antes de criar o registro de envio. A campanha foi revertida para rascunho."
+      )
+    }
+
+    let reconciledCount = 0
+    const campaignsWithDispatch = stuckCampaigns.filter((campaign) => campaign.dispatchCount > 0)
+    for (const campaign of campaignsWithDispatch) {
+      const dispatch = await this.repository.findSendingDispatchForCampaign(campaign.id)
+      if (!dispatch) {
+        // Já não está mais "sending" — resolveu entre o findStuckSendingCampaigns e agora.
+        continue
+      }
+
+      const queuedCount = await this.repository.countQueuedEmailLogsForDispatch(dispatch.id)
+      if (queuedCount > 0) {
+        console.info(
+          "[EmailCampaignUseCase][recoverStuckSendingCampaigns] dispatch com queued pendente — republicando wake em vez de falhar",
+          { campaignId: campaign.id, dispatchId: dispatch.id, queuedCount }
+        )
+        await this.publishDispatchWake(dispatch.id, "cron-reclaim", queuedCount)
+        reconciledCount += 1
+        continue
+      }
+
+      // Sem queued restante mas ainda "sending": finalizeDispatchQueueBatch é
+      // idempotente e resolve pro status real (sent, se algo foi enviado; failed,
+      // só quando de fato nada foi enviado) em vez de sempre sobrescrever com failed.
+      const finalized = await this.finalizeDispatchQueueBatch(
+        dispatch,
+        EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING
+      )
+      reconciledCount += 1
+      const sentCount = (finalized.result as { sent?: number } | null)?.sent ?? 0
+      if (sentCount === 0) {
+        this.captureStuckSendingIncident({
+          campaignId: campaign.id,
+          dispatchId: dispatch.id,
+          teamId: dispatch.teamId,
+          totalRecipients: dispatch.totalRecipients,
+        })
+      }
+    }
+
+    const totalRecovered = orphanCampaigns.length + reconciledCount
+    if (totalRecovered > 0) {
+      console.error(
+        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] Recovery concluído: ${orphanCampaigns.length} órfã(s) revertida(s), ${reconciledCount} dispatch(es) reconciliado(s) (queued republicado ou finalizado)`
+      )
+    }
+
+    return totalRecovered
+  }
+
+  /**
+   * Alerta no Sentry quando um dispatch é finalizado por stuck-sending sem
+   * nenhum e-mail enviado — antes disso, o único registro era `console.error`,
+   * então o incidente ficava invisível até alguém checar a UI manualmente.
+   */
+  private captureStuckSendingIncident(params: {
+    campaignId: string
+    dispatchId: string
+    teamId: string
+    totalRecipients: number
+  }): void {
+    Sentry.withScope((scope) => {
+      scope.setTag("feature", "email-campaign-dispatch")
+      scope.setTag("campaignId", params.campaignId)
+      scope.setTag("dispatchId", params.dispatchId)
+      scope.setContext("stuck_sending_dispatch", params)
+      Sentry.captureMessage(
+        `[EmailCampaignUseCase] Disparo travado (timeout 30 min): campaignId=${params.campaignId} dispatchId=${params.dispatchId} totalRecipients=${params.totalRecipients}`
+      )
     })
-
-    const orphanCampaignsWithoutDispatches = orphanCampaigns.filter(
-      (c) => c._count.dispatches === 0
-    )
-
-    if (orphanCampaignsWithoutDispatches.length > 0) {
-      console.error(
-        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] ${orphanCampaignsWithoutDispatches.length} campanha(s) órfã(s) detectada(s) (sem dispatch). Revertendo para 'draft'.`,
-        orphanCampaignsWithoutDispatches.map((c) => ({ id: c.id, name: c.name }))
-      )
-
-      await this.db.emailCampaign.updateMany({
-        where: {
-          id: { in: orphanCampaignsWithoutDispatches.map((c) => c.id) },
-        },
-        data: {
-          status: "draft",
-          errorMessage:
-            "Disparo interrompido antes de criar o registro de envio. A campanha foi revertida para rascunho.",
-        },
-      })
-    }
-
-    // Agora marcar como failed apenas campanhas com dispatch travado
-    const [campaigns, dispatches] = await this.db.$transaction([
-      this.db.emailCampaign.updateMany({
-        where: { status: "sending", updatedAt: { lt: threshold } },
-        data: {
-          status: "failed",
-          errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING,
-        },
-      }),
-      this.db.emailCampaignDispatch.updateMany({
-        where: { status: "sending", updatedAt: { lt: threshold } },
-        data: {
-          status: "failed",
-          errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING,
-        },
-      }),
-    ])
-
-    if (campaigns.count > 0 || orphanCampaignsWithoutDispatches.length > 0) {
-      console.error(
-        `[EmailCampaignUseCase][recoverStuckSendingCampaigns] Recovery concluído: ${orphanCampaignsWithoutDispatches.length} órfã(s) revertida(s), ${campaigns.count} campanha(s) marcada(s) como failed (timeout 30 min); ${dispatches.count} dispatch(es) atualizado(s)`
-      )
-    }
-
-    return campaigns.count + orphanCampaignsWithoutDispatches.length
   }
 
   /**
@@ -4518,23 +4556,23 @@ export class EmailCampaignUseCase {
           })
           .catch(() => null)
 
-        const dispatchInput = await this.recipientService.buildCampaignDispatchInput({
-          teamId: campaign.teamId,
-          contactListId: campaign.contactListId,
-          radarSegmentSlug: campaign.radarSegmentSlug,
-          audienceContactIds: campaign.audienceContactIds,
-          template: {
-            subject: publishedTemplate.subject,
-            html: templateHtml,
-            variables: publishedTemplate.variables,
-          },
-          teamSettings,
+        // Resiliência: nunca resolver a audiência inteira aqui (era a causa raiz
+        // do timeout de 30 min em campanhas grandes — buildCampaignDispatchInput
+        // materializava e enriquecia todos os destinatários num único tick de 60s
+        // do cron). Só o que não escala com o tamanho da audiência: from/replyTo
+        // (mesmo padrão de startManualDispatch, que já é seguro) e uma contagem
+        // (countDispatchAudience). A audiência real é resolvida e enviada em lotes
+        // de DISPATCH_QUEUE_BATCH_SIZE por materializeQueuedLogsChunk, disparado
+        // pelo publishDispatchWake abaixo — igual ao disparo manual.
+        const resolvedFrom = resolveCampaignFrom({
+          domainName: teamSettings?.resendDomainName,
+          legacyFromName: teamSettings?.fromName,
+          legacyFromEmail: teamSettings?.fromEmail,
           defaultSender,
-          masterTimezone: campaign.team.master.timezone,
         })
 
         const scheduledFromGuard = assertCampaignFromIsSendable({
-          resolved: dispatchInput.resolvedFrom,
+          resolved: resolvedFrom,
           domainName: teamSettings?.resendDomainName,
           domainStatus: teamSettings?.resendDomainStatus,
         })
@@ -4557,7 +4595,14 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        if (dispatchInput.recipients.length === 0) {
+        const recipientCount = await this.countDispatchAudience({
+          teamId: campaign.teamId,
+          contactListId: campaign.contactListId,
+          radarSegmentSlug: campaign.radarSegmentSlug,
+          audienceContactIds: campaign.audienceContactIds,
+        })
+
+        if (recipientCount === 0) {
           const noRecipientsMessage = campaign.radarSegmentSlug
             ? EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR
             : EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_LIST
@@ -4569,7 +4614,7 @@ export class EmailCampaignUseCase {
           teamId: campaign.teamId,
           timezone: ownerTz,
           now,
-          additionalRecipients: dispatchInput.recipients.length,
+          additionalRecipients: recipientCount,
         })
         if (dailyCap.exceeded) {
           await this.db.emailCampaign.update({
@@ -4582,24 +4627,12 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        const unresolvedTokens = this.recipientService.findUnresolvedTokensForRecipients({
-          subject: dispatchInput.subject,
-          html: dispatchInput.html,
-          recipients: dispatchInput.recipients,
-          globalDefaults: dispatchInput.globalDefaults,
-          templateVariables: dispatchInput.templateVariables,
-        })
-
-        if (unresolvedTokens.length > 0) {
-          await this.markScheduledCampaignFailed(
-            campaign.id,
-            this.buildUnresolvedTokensErrorMessage(unresolvedTokens)
-          )
-          continue
-        }
+        // Validação de tokens não resolvidos (findUnresolvedTokensForRecipients)
+        // roda no primeiro chunk de materializeQueuedLogsChunk, com uma amostra
+        // real de destinatários — não precisa da audiência inteira aqui.
 
         const dispatchNumber = await this.getNextDispatchNumber(campaign.id)
-        const reservedCredits = dispatchInput.recipients.length
+        const reservedCredits = recipientCount
 
         const creditReservation = await this.reserveTeamCreditsForDispatch(
           campaign.teamId,
@@ -4633,7 +4666,7 @@ export class EmailCampaignUseCase {
             contactListName: campaign.contactList?.name ?? null,
             radarSegmentSlug: campaign.radarSegmentSlug,
             triggeredBy: campaign.createdBy,
-            totalRecipients: dispatchInput.recipients.length,
+            totalRecipients: recipientCount,
             status: "sending",
             batchIdempotencyScheme: "contentHash",
             retryFailedOnly: false,
@@ -4642,35 +4675,16 @@ export class EmailCampaignUseCase {
           },
         })
 
-        const recipientsList = dispatchInput.recipients
-        const logInputs = recipientsList.map((recipient) => ({
-          teamId: campaign.teamId,
-          campaignId: campaign.id,
-          dispatchId: dispatchRecord.id,
-          recipientEmail: recipient.email,
-          recipientName: recipient.name,
-          subject: interpolateEmailTemplate(
-            dispatchInput.subject,
-            recipient,
-            dispatchInput.globalDefaults,
-            dispatchInput.templateVariables
-          ),
-          category: "campaign" as const,
-          sourceType: "campaign",
-          sourceId: campaign.id,
-        }))
-        await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
-
-        // Fase 4 / PR1: não chama mais `dispatchBatch` aqui (mesma causa dos
-        // timeouts do cron de 60s em campanhas grandes). Só publica o wake —
-        // quem envia é o consumer `processDispatchQueueBatch`, em lotes.
+        // A audiência é resolvida e os EmailLog `queued` são criados em lotes de
+        // DISPATCH_QUEUE_BATCH_SIZE por materializeQueuedLogsChunk, acionado pelo
+        // consumer da fila a partir do wake abaixo — nunca de uma vez só aqui.
         await this.publishDispatchWake(dispatchRecord.id, "cron-start")
         dispatched++
         const scheduledLabel = campaign.scheduledAt
           ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
           : "sem data"
         console.info(
-          `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} encaminhada para a fila: ${recipientsList.length} destinatário(s) (agendada ${scheduledLabel} ${ownerTz})`
+          `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} encaminhada para a fila: ${recipientCount} destinatário(s) (agendada ${scheduledLabel} ${ownerTz})`
         )
         } catch (createDispatchError) {
           await this.releaseUnusedTeamCredits(

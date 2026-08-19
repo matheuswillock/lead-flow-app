@@ -1889,10 +1889,12 @@ export class RadarRepository {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map<string, LeadStatus | null>()
 
-    const leads = await this.db.lead.findMany({
-      where: { teamId, id: { in: unique } },
-      select: { id: true, status: true },
-    })
+    const leads = await this.findManyByInChunks(unique, (chunk) =>
+      this.db.lead.findMany({
+        where: { teamId, id: { in: chunk } },
+        select: { id: true, status: true },
+      })
+    )
 
     return new Map(leads.map((lead) => [lead.id, lead.status]))
   }

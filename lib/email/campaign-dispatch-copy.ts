@@ -14,6 +14,10 @@ const LEGACY_INTERNAL_ERROR_MESSAGE = "Erro interno durante o disparo"
 /** HTTP 400 ainda mapeia INTERNAL para esta frase curta. */
 const HTTP_INTERNAL_ERROR_MESSAGE = "Erro ao disparar campanha"
 
+/** Mensagem técnica de `EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING` (EmailCampaignUseCase.ts). */
+const STUCK_SENDING_ERROR_MESSAGE =
+  "Disparo interrompido: tempo limite de envio excedido (30 min)"
+
 export function isCampaignFailedRetry(campaign: {
   status: string
   totalSent?: number | null
@@ -45,6 +49,10 @@ export function formatCampaignDispatchErrorMessage(
     trimmed === HTTP_INTERNAL_ERROR_MESSAGE ||
     trimmed.includes("Erro interno")
   ) {
+    return CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE
+  }
+
+  if (trimmed === STUCK_SENDING_ERROR_MESSAGE) {
     return CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE
   }
 

@@ -82,6 +82,14 @@ describe("formatCampaignDispatchErrorMessage", () => {
     ).toBe("Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas")
   })
 
+  it("timeout de disparo travado (30 min) vira a copy genérica", () => {
+    expect(
+      formatCampaignDispatchErrorMessage(
+        "Disparo interrompido: tempo limite de envio excedido (30 min)"
+      )
+    ).toBe(CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE)
+  })
+
   it("null e vazio não inventam copy", () => {
     expect(formatCampaignDispatchErrorMessage(null)).toBeNull()
     expect(formatCampaignDispatchErrorMessage(undefined)).toBeNull()
