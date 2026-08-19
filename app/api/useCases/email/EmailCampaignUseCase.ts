@@ -3989,6 +3989,7 @@ export class EmailCampaignUseCase {
               message: formatInvalidRecipientFailureMessage(recipient.email, recipient.reason),
               emails: [recipient.email],
             })),
+            abortedReason: undefined as DispatchAbortedReason | undefined,
           }
 
     const failureReasonByEmail = this.buildFailureReasonByEmail(dispatchResult.providerErrors)
