@@ -94,6 +94,7 @@ export const envSchema = z.object({
 
   // Slack
   SLACK_SUPPORT_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for support requests'),
+  SLACK_EMAIL_CREDITS_WEBHOOK_URL: urlSchema.optional().describe('Slack Incoming Webhook URL for email credits purchase interest'),
   SLACK_BACKOFFICE_LEADS_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for backoffice lead events'),
 
   // Asaas Payment Gateway

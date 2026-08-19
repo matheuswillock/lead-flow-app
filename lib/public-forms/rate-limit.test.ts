@@ -23,4 +23,11 @@ describe("rate limit de formulários públicos", () => {
     })
     expect(publicFormRequestFingerprint(request)).toBe("203.0.113.10")
   })
+
+  it("não aceita visitorSessionId do corpo no fingerprint (achado #3: valor controlado pelo cliente enfraquecia o rate limit por IP)", () => {
+    const request = new Request("https://example.com", {
+      headers: { "x-forwarded-for": "203.0.113.10" },
+    })
+    expect(publicFormRequestFingerprint(request)).toBe("203.0.113.10")
+  })
 })

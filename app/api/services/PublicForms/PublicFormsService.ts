@@ -485,6 +485,8 @@ export class PublicFormsService implements IPublicFormsService {
         questionId: input.questionId,
         leadId,
         origin,
+        answerMappingKey: input.answerMappingKey ?? null,
+        answerValue: input.answerValue ?? null,
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)

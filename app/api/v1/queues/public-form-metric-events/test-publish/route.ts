@@ -50,6 +50,8 @@ async function handle(request: NextRequest) {
     visitorSessionId:
       body.visitorSessionId?.trim() || `t1-session-${crypto.randomUUID()}`,
     origin: body.origin && typeof body.origin === "object" ? body.origin : { source: "t1-poc" },
+    answerMappingKey: body.answerMappingKey ?? null,
+    answerValue: body.answerValue ?? null,
     receivedAt: body.receivedAt || receivedAt,
   };
 
