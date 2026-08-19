@@ -10,13 +10,15 @@ import { studioBotOutboxService } from "@/app/api/services/backofficeBot/StudioB
 const BATCH_MS = 15 * 60 * 1000;
 const PAGE_SIZE = 200;
 const DEADLINE_MS = 45_000;
+/** Janela fechada atual + anterior: o próximo cron retoma o restante truncado. */
+const LOOKBACK_WINDOWS = 2;
 
 export class LeadStatusChangedBatchUseCase {
   async processBatch(now: Date = new Date()): Promise<Output> {
     try {
       const batchEndMs = Math.floor(now.getTime() / BATCH_MS) * BATCH_MS;
-      const batchStartMs = batchEndMs - BATCH_MS;
-      const batchBucket = Math.floor(batchStartMs / BATCH_MS);
+      const batchStartMs = batchEndMs - LOOKBACK_WINDOWS * BATCH_MS;
+      const currentBucket = Math.floor((batchEndMs - BATCH_MS) / BATCH_MS);
 
       const batchStart = new Date(batchStartMs);
       const batchEnd = new Date(batchEndMs);
@@ -37,7 +39,7 @@ export class LeadStatusChangedBatchUseCase {
         if (page.length === 0) break;
 
         for (const lead of page) {
-          enqueuedCount += await this.enqueueLeadStatusChanged(lead, batchBucket);
+          enqueuedCount += await this.enqueueLeadStatusChanged(lead, currentBucket);
         }
 
         leadsProcessed += page.length;
@@ -52,18 +54,38 @@ export class LeadStatusChangedBatchUseCase {
         }
       }
 
-      return new Output(true, [], [], {
-        batchBucket,
+      const result = {
+        batchBucket: currentBucket,
         batchStart: batchStart.toISOString(),
         batchEnd: batchEnd.toISOString(),
         enqueuedCount,
         leadsProcessed,
         truncated,
-      });
+      };
+
+      if (truncated) {
+        console.error(
+          "[LeadStatusChangedBatchUseCase][processBatch] Janela truncada por limite de tempo",
+          result
+        );
+        return new Output(
+          false,
+          [],
+          ["Batch de mudança de status truncado por limite de tempo; o próximo ciclo retoma a janela"],
+          result
+        );
+      }
+
+      return new Output(true, [], [], result);
     } catch (error) {
       console.error("[LeadStatusChangedBatchUseCase][processBatch] Erro:", error);
       return new Output(false, [], ["Erro ao processar batch de status alterado"], null);
     }
+  }
+
+  private resolveLeadBatchBucket(statusEnteredAt: Date | null, fallbackBucket: number): number {
+    if (!statusEnteredAt) return fallbackBucket;
+    return Math.floor(statusEnteredAt.getTime() / BATCH_MS);
   }
 
   private async enqueueLeadStatusChanged(
@@ -76,8 +98,9 @@ export class LeadStatusChangedBatchUseCase {
       assignedTo: string | null;
       closerId: string | null;
       managerId: string | null;
+      statusEnteredAt?: Date | null;
     },
-    batchBucket: number,
+    fallbackBucket: number,
   ): Promise<number> {
     if (!lead.status || !lead.teamId) return 0;
 
@@ -94,6 +117,7 @@ export class LeadStatusChangedBatchUseCase {
       uniqueRecipients,
     );
 
+    const batchBucket = this.resolveLeadBatchBucket(lead.statusEnteredAt ?? null, fallbackBucket);
     let enqueued = 0;
     for (const profileId of recipientProfileIds) {
       await studioBotOutboxService.enqueueLeadStatusChanged({
