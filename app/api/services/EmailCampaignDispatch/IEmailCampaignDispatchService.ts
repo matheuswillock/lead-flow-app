@@ -7,12 +7,14 @@ export type DispatchProviderError = {
   statusCode?: number
 }
 
+export type DispatchAbortedReason = "domain_not_verified" | "monthly_quota_exceeded"
+
 export interface DispatchBatchResult {
   sent: number
   failed: number
   dispatched: Array<{ email: string; resendId: string }>
   providerErrors: DispatchProviderError[]
-  abortedReason?: "domain_not_verified"
+  abortedReason?: DispatchAbortedReason
 }
 
 export interface IEmailCampaignDispatchService {

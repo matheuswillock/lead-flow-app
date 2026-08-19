@@ -1,7 +1,24 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 
+export type LeadStatusChangedBatchCursor = {
+  id: string;
+  statusEnteredAt: Date;
+};
+
+export type LeadStatusChangedBatchPageOptions = {
+  take?: number;
+  cursor?: LeadStatusChangedBatchCursor;
+};
+
 export class LeadStatusChangedBatchRepository {
-  async findLeadsWithStatusChangedBetween(batchStart: Date, batchEnd: Date, limit = 200) {
+  async findLeadsWithStatusChangedBetween(
+    batchStart: Date,
+    batchEnd: Date,
+    options: LeadStatusChangedBatchPageOptions = {}
+  ) {
+    const take = options.take ?? 200;
+    const cursor = options.cursor;
+
     return prisma.lead.findMany({
       where: {
         status: { not: null },
@@ -9,6 +26,19 @@ export class LeadStatusChangedBatchRepository {
           gte: batchStart,
           lt: batchEnd,
         },
+        ...(cursor
+          ? {
+              OR: [
+                { statusEnteredAt: { gt: cursor.statusEnteredAt } },
+                {
+                  AND: [
+                    { statusEnteredAt: cursor.statusEnteredAt },
+                    { id: { gt: cursor.id } },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -19,8 +49,10 @@ export class LeadStatusChangedBatchRepository {
         assignedTo: true,
         closerId: true,
         managerId: true,
+        statusEnteredAt: true,
       },
-      take: limit,
+      orderBy: [{ statusEnteredAt: "asc" }, { id: "asc" }],
+      take,
     });
   }
 

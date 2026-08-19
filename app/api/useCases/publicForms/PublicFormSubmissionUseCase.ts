@@ -14,6 +14,8 @@ import {
 } from "@/lib/public-forms/engine"
 import { buildLeadSyncAlerts, formatLeadSyncAlerts } from "@/lib/public-forms/lead-sync-alerts"
 import type { PublicFormAnswerInput, PublicFormSnapshot, PublicFormSubmissionInput } from "@/lib/public-forms/types"
+import { mapAnswersForPersistence, parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import { resolvePublicFormPublicationForVisitor } from "@/lib/public-forms/resolve-form-publication"
 import {
   extractLeadDataFromSnapshot,
   findMatchingLead,
@@ -54,21 +56,6 @@ export type PublicFormSubmissionBackgroundJob = {
   scheduling?: PublicFormSubmissionInput["scheduling"]
 }
 
-function mapAnswersForPersistence(
-  snapshot: PublicFormSnapshot,
-  visibleAnswers: PublicFormAnswerInput[],
-) {
-  return visibleAnswers.map((answer) => {
-    const question = snapshot.questions.find((item) => item.id === answer.questionId)
-    if (!question) throw new Error("Snapshot de pergunta não encontrado")
-    return {
-      questionId: answer.questionId,
-      value: answer.value as Prisma.InputJsonValue,
-      questionSnapshot: json(question),
-    }
-  })
-}
-
 /** D19-B-bis: anexa score da submissão ao origin do evento form_completed (Radar metadata). */
 function withFormCompletedScoreOrigin(
   origin: Record<string, unknown>,
@@ -92,7 +79,7 @@ export class PublicFormSubmissionUseCase {
     if (!current) return new Output(false, [], ["Formulário indisponível"], null)
 
     const existing = await publicFormsRepository.findSubmissionByRequestKey(input.requestKey)
-    if (existing && existing.publicationId !== current.publicationId) {
+    if (existing && existing.formId !== current.snapshot.formId) {
       return new Output(
         false,
         [],
@@ -108,9 +95,35 @@ export class PublicFormSubmissionUseCase {
       })
     }
 
+    let publicationId = current.publicationId
+    let snapshot = current.snapshot
+
+    if (existing) {
+      const pinned = await publicFormsRepository.findPublicationById(existing.publicationId)
+      const pinnedSnapshot = pinned ? parsePublicFormSnapshot(pinned.snapshot) : null
+      if (pinned && pinnedSnapshot) {
+        publicationId = pinned.publicationId
+        snapshot = pinnedSnapshot
+      }
+    } else {
+      const resolved = await resolvePublicFormPublicationForVisitor({
+        current,
+        visitorSessionId: input.visitorSessionId,
+        questionIds: input.answers.map((answer) => answer.questionId),
+      })
+      if (resolved.sessionSubmission?.status === "completed") {
+        return new Output(true, ["Respostas já recebidas"], [], {
+          submissionId: resolved.sessionSubmission.id,
+          alreadyProcessed: true,
+        })
+      }
+      publicationId = resolved.publicationId
+      snapshot = resolved.snapshot
+    }
+
     if (input.visitorSessionId) {
       const completedBySession = await publicFormsRepository.findCompletedSubmissionBySession(
-        current.publicationId,
+        publicationId,
         input.visitorSessionId,
       )
       if (completedBySession) {
@@ -121,7 +134,6 @@ export class PublicFormSubmissionUseCase {
       }
     }
 
-    const { snapshot } = current
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
     const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
     const answerMap = new Map(visibleAnswers.map((answer) => [answer.questionId, answer.value]))
@@ -148,7 +160,7 @@ export class PublicFormSubmissionUseCase {
       const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS)
       const claimed = await publicFormsRepository.claimSubmissionForRetry(
         existing.id,
-        current.publicationId,
+        publicationId,
         staleBefore,
       )
       if (!claimed) {
@@ -161,7 +173,7 @@ export class PublicFormSubmissionUseCase {
       await publicFormsRepository.persistSubmissionAnswers(existing.id, answers)
       const background: PublicFormSubmissionBackgroundJob = {
         submissionId: existing.id,
-        publicationId: current.publicationId,
+        publicationId,
         snapshot,
         visibleAnswers,
         visibleIds: [...visible],
@@ -184,7 +196,7 @@ export class PublicFormSubmissionUseCase {
     const progressSubmission =
       input.visitorSessionId != null
         ? await publicFormsRepository.findProgressSubmission(
-            current.publicationId,
+            publicationId,
             input.visitorSessionId,
           )
         : null
@@ -199,7 +211,7 @@ export class PublicFormSubmissionUseCase {
         })
       : await publicFormsRepository.createSubmission({
           formId: snapshot.formId,
-          publicationId: current.publicationId,
+          publicationId,
           requestKey: input.requestKey,
           visitorSessionId: input.visitorSessionId ?? null,
           score,
@@ -212,7 +224,7 @@ export class PublicFormSubmissionUseCase {
 
     const background: PublicFormSubmissionBackgroundJob = {
       submissionId: submission.id,
-      publicationId: current.publicationId,
+      publicationId,
       snapshot,
       visibleAnswers,
       visibleIds: [...visible],

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 
 export type CreateContactListInput = {
   teamId: string
@@ -29,10 +30,12 @@ class EmailContactListRepository {
   }
 
   async findExistingEmailsInList(listId: string, emails: string[]): Promise<Set<string>> {
-    const existing = await prisma.emailContact.findMany({
-      where: { listId, email: { in: emails } },
-      select: { email: true },
-    })
+    const existing = await findManyByInChunks(emails.filter(Boolean), (chunk) =>
+      prisma.emailContact.findMany({
+        where: { listId, email: { in: chunk } },
+        select: { email: true },
+      })
+    )
     return new Set(existing.map((c) => c.email))
   }
 
@@ -40,12 +43,13 @@ class EmailContactListRepository {
     const normalized = [
       ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
     ]
-    if (normalized.length === 0) return new Set()
-    const bounced = await prisma.emailContact.findMany({
-      where: { email: { in: normalized }, isBounced: true },
-      select: { email: true },
-      distinct: ["email"],
-    })
+    const bounced = await findManyByInChunks(normalized, (chunk) =>
+      prisma.emailContact.findMany({
+        where: { email: { in: chunk }, isBounced: true },
+        select: { email: true },
+        distinct: ["email"],
+      })
+    )
     return new Set(bounced.map((row) => row.email.trim().toLowerCase()))
   }
 

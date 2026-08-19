@@ -128,21 +128,33 @@ export function checkDispatchWindow(
   return { blocked: false }
 }
 
-/** Campanha só é considerada enviada com sucesso se ao menos um e-mail saiu. */
+/** Campanha só é `sent` quando todos os destinatários saíram; parcial fica `partially_sent`. */
 export function resolveCampaignStatusAfterDispatch(
   sentCount: number,
-  failureDetail?: string | null
+  failureDetail?: string | null,
+  totalRecipients?: number
 ): {
-  campaignStatus: "sent" | "failed"
+  campaignStatus: "sent" | "failed" | "partially_sent"
   dispatchStatus: "completed" | "failed"
   errorMessage: string | null
 } {
-  if (sentCount > 0) {
-    return { campaignStatus: "sent", dispatchStatus: "completed", errorMessage: null }
+  if (sentCount <= 0) {
+    return {
+      campaignStatus: "failed",
+      dispatchStatus: "failed",
+      errorMessage: failureDetail?.trim() || "Nenhum e-mail foi enviado pelo provedor",
+    }
   }
-  return {
-    campaignStatus: "failed",
-    dispatchStatus: "failed",
-    errorMessage: failureDetail?.trim() || "Nenhum e-mail foi enviado pelo provedor",
+
+  const hasUnsentRecipients =
+    typeof totalRecipients === "number" && totalRecipients > sentCount
+  if (hasUnsentRecipients) {
+    return {
+      campaignStatus: "partially_sent",
+      dispatchStatus: "completed",
+      errorMessage: failureDetail?.trim() || null,
+    }
   }
+
+  return { campaignStatus: "sent", dispatchStatus: "completed", errorMessage: null }
 }

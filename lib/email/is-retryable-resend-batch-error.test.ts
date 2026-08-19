@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  isResendMonthlyQuotaExceeded,
   isRetryableResendBatchError,
   MAX_BATCH_SEND_ATTEMPTS,
   resendBatchRetryBackoffMs,
@@ -16,8 +17,41 @@ describe("isRetryableResendBatchError", () => {
     expect(isRetryableResendBatchError({ statusCode: 422, message: "validation" })).toBe(false)
   })
 
-  it("429 é retryable", () => {
-    expect(isRetryableResendBatchError({ statusCode: 429, message: "rate limit" })).toBe(true)
+  it("429 de rate limit é retryable", () => {
+    expect(
+      isRetryableResendBatchError({
+        statusCode: 429,
+        name: "rate_limit_exceeded",
+        message: "Too many requests",
+      })
+    ).toBe(true)
+  })
+
+  it("429 de cota mensal não é retryable", () => {
+    expect(
+      isRetryableResendBatchError({
+        statusCode: 429,
+        name: "monthly_quota_exceeded",
+        message: "You have exceeded your monthly email sending quota.",
+      })
+    ).toBe(false)
+  })
+
+  it("isResendMonthlyQuotaExceeded reconhece name e mensagem", () => {
+    expect(
+      isResendMonthlyQuotaExceeded({
+        statusCode: 429,
+        name: "monthly_quota_exceeded",
+        message: "You have exceeded your monthly email sending quota.",
+      })
+    ).toBe(true)
+    expect(
+      isResendMonthlyQuotaExceeded({
+        statusCode: 429,
+        name: "rate_limit_exceeded",
+        message: "Too many requests",
+      })
+    ).toBe(false)
   })
 
   it("5xx é retryable", () => {

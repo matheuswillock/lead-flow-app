@@ -37,11 +37,11 @@ describe("resolveTeamEmailCampaignLimits", () => {
     })
   })
 
-  it("returns unlimited when grant has null maxEmailsPerDay", async () => {
+  it("returns unlimited daily cap but keeps the sub-campaign chunk cap", async () => {
     const limits = await resolveTeamEmailCampaignLimits("unlimited-team")
     expect(limits.isUnlimited).toBe(true)
     expect(limits.maxEmailsPerDay).toBeNull()
-    expect(limits.maxRecipientsPerSub).toBeNull()
+    expect(limits.maxRecipientsPerSub).toBe(EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB)
   })
 
   it("returns custom limit when grant is active", async () => {

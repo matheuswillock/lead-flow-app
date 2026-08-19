@@ -218,11 +218,18 @@ async function collectSourceFiles(startDirectory: string): Promise<string[]> {
   return results.sort((a, b) => a.localeCompare(b));
 }
 
+// A whole region that is a single SCREAMING_SNAKE_CASE identifier (e.g. an
+// env var name shown inside `<code>`) is never real UI prose, even though it
+// has no code-like punctuation to trip CODE_LIKE_CHARS_REGEX.
+const CONSTANT_CASE_IDENTIFIER_REGEX = /^[A-Z0-9]+(?:_[A-Z0-9]+)+$/;
+
 function isProseLike(group: string): boolean {
+  const trimmed = group.trim();
   return (
     group.length <= MAX_REGION_LENGTH &&
     /\p{L}/u.test(group) &&
-    !CODE_LIKE_CHARS_REGEX.test(group)
+    !CODE_LIKE_CHARS_REGEX.test(group) &&
+    !CONSTANT_CASE_IDENTIFIER_REGEX.test(trimmed)
   );
 }
 

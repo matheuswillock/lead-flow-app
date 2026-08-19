@@ -42,6 +42,23 @@ This document defines the implementation governance for AI agents in this reposi
 - **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
 
+## Clean Code & SOLID (MUST)
+
+Applies to **all** work, not only new features — including brainstorming and implementation planning in plain text, before any code is written, for both frontend and backend.
+
+- Agents **MUST** use the `clean-code` skill before: technical brainstorming, implementation planning, and writing or refactoring code (frontend or backend). Do NOT skip this step because the task "looks small."
+- Meaningful names: variables, functions, classes, UseCases, Services and Repositories **MUST** have pronounceable, searchable names that describe intent — no obscure abbreviations.
+- Functions **MUST** be small and do one thing at one level of abstraction (Single Responsibility applied to functions). Prefer a typed options object over 3+ positional parameters. Avoid boolean flag parameters that change a function's behavior.
+- SOLID **MUST** guide the design of UseCase/Service/Repository/Context:
+  - **SRP** — one UseCase covers one business use case; Service holds domain logic, not HTTP parsing; Route holds no business rules.
+  - **OCP** — prefer composition/strategy over a growing `if/else`/`switch` when adding a new variation.
+  - **LSP** — any concrete Service/Repository implementation **MUST** be substitutable for its interface without breaking the consumer.
+  - **ISP** — Service/Repository interfaces **MUST** stay lean (interface + concrete implementation, already a project MUST).
+  - **DIP** — UseCases **MUST** depend on a Service/Repository interface, never call Prisma/raw SQL directly (enforced by `governance:check`, see [Automated Enforcement](#automated-enforcement)).
+- DRY **MUST NOT** become an excuse for premature abstraction — this reinforces the existing rule against adding abstractions beyond what the task requires (see [Working Style](#working-style)). Duplication of business knowledge should be eliminated; a few similar lines should not.
+- Reference: [clean-code-javascript](https://github.com/felipe-augusto/clean-code-javascript), adapted to this repository's TypeScript/Next.js/Prisma stack via the `clean-code` skill.
+- Touching a file listed in `dipPrismaInUseCaseAllowlist` (or another Clean Code/SOLID-related legacy exception in `.governance/ai-governance.config.json`) **MUST** trigger an immediate refactor of that violation as part of the same change, with the entry removed from the allowlist. This **MUST** already be surfaced during brainstorming/planning — before any code is written — not discovered mid-implementation. If the requested scope is genuinely incompatible with the refactor, the conflict **MUST** be raised explicitly to the user, never silently skipped.
+
 ## Git Branch & Pull Request Workflow (MUST)
 
 The repository has three fully CI-automated PR flows. Agents **MUST** rely on them instead of acting manually:
@@ -439,13 +456,13 @@ All webhook handlers **MUST** follow the pattern: **respond with HTTP 200 immedi
 
 ## LEGACY EXCEPTIONS
 
-Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`, `clientApiPathMaskingAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
+Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `dipPrismaInUseCaseAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`, `clientApiPathMaskingAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
 
 ## Automated Enforcement
 
 CI **MUST** fail when governance checks fail.
 
-- Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**` e cobertura E2E de `page.tsx`)
+- Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**`, DIP em UseCases sem Prisma direto — ver [Clean Code & SOLID](#clean-code--solid-must) — e cobertura E2E de `page.tsx`)
 - Client API masking (CI step dedicado): `bun run governance:check-api-masking`
 - E2E page coverage (CI step dedicado): `bun run governance:check-e2e-pages`
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`

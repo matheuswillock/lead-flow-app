@@ -18,6 +18,7 @@ import {
   type EmailCampaignBatchIdempotencyScheme,
 } from "@/lib/email/resend-campaign-batch-idempotency-key"
 import {
+  isResendMonthlyQuotaExceeded,
   isRetryableResendBatchError,
   MAX_BATCH_SEND_ATTEMPTS,
   resendBatchRetryBackoffMs,
@@ -170,6 +171,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       providerErrors: [],
     }
 
+    let abortRemainingChunks = false
+
     const sendable: typeof params.recipients = []
     const invalidLocalErrors: DispatchProviderError[] = []
 
@@ -313,9 +316,12 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                 statusCode: errorStatusCode,
                 chunkSize: sortedChunk.length,
               })
+              const errorName =
+                typeof batchResult.error.name === "string" ? batchResult.error.name : undefined
               const retryable = isRetryableResendBatchError({
                 statusCode: errorStatusCode,
                 message: errorMessage,
+                name: errorName,
               })
               const idempotencyConflict = isIdempotencyConflictError(
                 errorStatusCode,
@@ -349,6 +355,17 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                   })
                   chunkDispatched = []
                   break entityIdLoop
+                }
+                if (
+                  isResendMonthlyQuotaExceeded({
+                    statusCode: errorStatusCode,
+                    message: errorMessage,
+                    name: errorName,
+                  })
+                ) {
+                  result.abortedReason = "monthly_quota_exceeded"
+                  abortRemainingChunks = true
+                  chunkQueue.length = 0
                 }
                 result.failed += sortedChunk.length
                 result.providerErrors.push({
@@ -468,7 +485,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     const concurrency = resolveDispatchChunkConcurrency()
     await Promise.all(
       Array.from({ length: concurrency }, async () => {
-        while (chunkQueue.length > 0) {
+        while (chunkQueue.length > 0 && !abortRemainingChunks) {
           const item = chunkQueue.shift()
           if (!item) break
           await processChunkItem(item)

@@ -29,6 +29,7 @@ interface WarningsConfig {
 interface LegacyExceptionsConfig {
   [category: string]: string[] | undefined;
   prismaInV1RouteAllowlist?: string[];
+  dipPrismaInUseCaseAllowlist?: string[];
   useCaseWithoutOutputAllowlist?: string[];
   frontendFeatureStructureAllowlist?: string[];
   nonTypeScriptFileAllowlist?: string[];
@@ -546,6 +547,56 @@ async function validatePrismaInV1Routes(
     if (!currentViolations.has(allowlistedPath)) {
       warnings.push(
         `Legacy exception may be removable (no Prisma detected anymore): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
+async function validateNoPrismaInUseCase(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.dipPrismaInUseCaseAllowlist,
+  );
+
+  const useCaseFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api", "useCases"),
+    (filename) =>
+      filename.endsWith("UseCase.ts") && !/^I[A-Z].*UseCase\.ts$/.test(filename),
+  );
+
+  const currentViolations = new Set<string>();
+
+  for (const useCaseFile of useCaseFiles) {
+    const relative = normalizeRelativePath(useCaseFile);
+    const fileContent = await fs.readFile(useCaseFile, "utf8");
+
+    if (!/\bprisma\.|\$queryRaw|\$executeRaw/.test(fileContent)) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      issues.push(
+        `Disallowed direct Prisma usage in UseCase (violates DIP): ${relative}. Move data access to a Service/Repository or add justified LEGACY EXCEPTION in config.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (dipPrismaInUseCaseAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (no direct Prisma detected anymore): ${allowlistedPath}`,
       );
     }
   }
@@ -1492,6 +1543,7 @@ async function checkGovernance(
   validateFrozenAllowlistsNoNewItems(config, frozenAllowlists, issues);
   await validateAdapters(config, canonicalText, canonicalAbsolutePath, issues);
   await validatePrismaInV1Routes(config, issues, warnings);
+  await validateNoPrismaInUseCase(config, issues, warnings);
   await validatePrismaIncludeUsage(config, issues, warnings);
   await validateRouteRepositoryImports(config, issues, warnings);
   await validateServiceImportsOutsideUseCases(config, issues, warnings);

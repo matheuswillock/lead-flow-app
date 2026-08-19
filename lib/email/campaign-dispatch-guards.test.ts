@@ -192,4 +192,17 @@ describe("resolveCampaignStatusAfterDispatch", () => {
       "422 — Invalid `to`"
     )
   })
+
+  it("marca partially_sent quando houve envios mas faltam destinatários", () => {
+    const terminal = resolveCampaignStatusAfterDispatch(7223, "Cota mensal excedida", 12664)
+    expect(terminal.campaignStatus).toBe("partially_sent")
+    expect(terminal.dispatchStatus).toBe("completed")
+    expect(terminal.errorMessage).toBe("Cota mensal excedida")
+  })
+
+  it("marca sent quando sentCount cobre totalRecipients", () => {
+    const terminal = resolveCampaignStatusAfterDispatch(10, null, 10)
+    expect(terminal.campaignStatus).toBe("sent")
+    expect(terminal.errorMessage).toBeNull()
+  })
 })

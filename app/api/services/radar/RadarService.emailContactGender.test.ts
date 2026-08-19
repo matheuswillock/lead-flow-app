@@ -36,6 +36,7 @@ function buildRepo(overrides: Record<string, unknown> = {}): RadarRepository {
     findEmailContactLists: mock(async () => []),
     findEmailContacts: mock(async () => []),
     findEmailLogsForRadarSync: mock(async () => []),
+    findBouncedEmails: mock(async () => new Set<string>()),
     ...overrides,
   } as unknown as RadarRepository
 }
