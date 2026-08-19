@@ -2163,7 +2163,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     const subCampaignUpdate = campaignUpdateCalls.find(
       (call) => call[0].where.id === "camp-child-2"
     )
-    expect(subCampaignUpdate?.[0].data.status).toBe("sent")
+    expect(subCampaignUpdate?.[0].data.status).toBe("partially_sent")
     expect(subCampaignUpdate?.[0].data.totalSent).toEqual({ increment: 269 })
     expect(subCampaignUpdate?.[0].data.dispatchCount).toEqual({ increment: 1 })
 
@@ -2296,6 +2296,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       totalRecipients: 60_646,
       reservedCredits: 60_646,
       hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 1500,
     }))
     emailLogCountMock.mockImplementation(async () => 59_146)
 
@@ -2326,6 +2327,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       totalRecipients: 10,
       reservedCredits: 10,
       hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 10,
     }))
     emailLogCountMock.mockImplementation(async (args: unknown) => {
       const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
@@ -2344,7 +2346,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
     expect(captureMessageMock.mock.calls[0][0]).toContain("dispatch-stuck")
   })
 
-  it("dispatch sem queued restante mas com envios reais reconcilia como sent, não sobrescreve com failed", async () => {
+  it("dispatch sem queued restante mas com envios reais reconcilia como partially_sent, não sobrescreve com failed", async () => {
     emailCampaignFindManyMock.mockImplementation(async () => [
       { id: "camp-partial", name: "Parcial", _count: { dispatches: 1 } },
     ])
@@ -2355,6 +2357,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       totalRecipients: 10,
       reservedCredits: 10,
       hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 10,
     }))
     emailLogCountMock.mockImplementation(async (args: unknown) => {
       const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
@@ -2368,13 +2371,44 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
     const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
 
     expect(recovered).toBe(1)
-    // Núcleo do fix: 7 e-mails já saíram, então a campanha reconcilia como
-    // "sent" — a versão antiga sobrescrevia isso com "failed" incondicionalmente.
     expect(emailCampaignUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: "sent" }),
+        data: expect.objectContaining({ status: "partially_sent" }),
       })
     )
+    expect(captureMessageMock).not.toHaveBeenCalled()
+  })
+
+  it("dispatch com queued 0 e materialização incompleta republica wake e não finaliza (review PR #908)", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      { id: "camp-lazy", name: "Lista Fria", _count: { dispatches: 1 } },
+    ])
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-lazy",
+      campaignId: "camp-lazy",
+      teamId: "team-1",
+      totalRecipients: 60_646,
+      reservedCredits: 60_646,
+      hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 500,
+    }))
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
+      if (where?.status === "queued") return 0
+      return 500
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
+
+    expect(recovered).toBe(1)
+    expect(publishEmailCampaignDispatchWakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dispatchId: "dispatch-lazy",
+        reason: "cron-reclaim",
+      })
+    )
+    expect(emailCampaignUpdateMock).not.toHaveBeenCalled()
     expect(captureMessageMock).not.toHaveBeenCalled()
   })
 })

@@ -8,7 +8,16 @@ const batchSendMock = mock(async () => ({
 }))
 
 mock.module("@/lib/email/is-retryable-resend-batch-error", () => ({
-  isRetryableResendBatchError: (error: { statusCode?: number; message?: string }) => {
+  isRetryableResendBatchError: (error: {
+    statusCode?: number
+    message?: string
+    name?: string
+  }) => {
+    const name = error.name?.toLowerCase() ?? ""
+    const message = error.message?.toLowerCase() ?? ""
+    if (name === "monthly_quota_exceeded" || message.includes("monthly email sending quota")) {
+      return false
+    }
     const NON_RETRYABLE = new Set([401, 403, 422])
     const statusCode = error.statusCode
     if (statusCode !== undefined && NON_RETRYABLE.has(statusCode)) return false
@@ -16,6 +25,11 @@ mock.module("@/lib/email/is-retryable-resend-batch-error", () => ({
     if (statusCode === undefined) return true
     if (statusCode === 429 || statusCode >= 500) return true
     return false
+  },
+  isResendMonthlyQuotaExceeded: (error: { name?: string; message?: string }) => {
+    const name = error.name?.toLowerCase() ?? ""
+    const message = error.message?.toLowerCase() ?? ""
+    return name === "monthly_quota_exceeded" || message.includes("monthly email sending quota")
   },
   MAX_BATCH_SEND_ATTEMPTS: 3,
   resendBatchRetryBackoffMs: () => 0,
@@ -207,6 +221,30 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.providerErrors[0]?.statusCode).toBe(429)
     expect(result.providerErrors[0]?.message).toBe("Too many requests")
     expect(result.providerErrors[0]?.emails).toHaveLength(3)
+  })
+
+  it("D4-quota — 429 monthly_quota_exceeded aborta sem retry e não processa chunks restantes", async () => {
+    batchSendMock.mockResolvedValue({
+      data: null as unknown as Array<{ id?: string }>,
+      error: {
+        name: "monthly_quota_exceeded",
+        message: "You have exceeded your monthly email sending quota.",
+        statusCode: 429,
+      },
+    })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({
+      ...makeBaseParams(),
+      recipients: makeRecipients(250),
+      onChunkDispatched,
+    })
+
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+    expect(result.abortedReason).toBe("monthly_quota_exceeded")
+    expect(result.sent).toBe(0)
+    expect(result.failed).toBe(100)
+    expect(onChunkDispatched).not.toHaveBeenCalled()
   })
 
   it("D4-retry — 429 na 1ª tentativa e sucesso na 2ª", async () => {

@@ -20,6 +20,7 @@ export type SendingDispatchForReconciliation = {
   totalRecipients: number
   reservedCredits: number
   hasCampaignsBetaAccess: boolean
+  materializeSourceOffset: number
 }
 
 export interface IEmailCampaignRepository {
@@ -36,6 +37,7 @@ export interface IEmailCampaignRepository {
     campaignId: string
   ): Promise<SendingDispatchForReconciliation | null>
   countQueuedEmailLogsForDispatch(dispatchId: string): Promise<number>
+  countEmailLogsForDispatch(dispatchId: string): Promise<number>
 }
 
 export class EmailCampaignRepository implements IEmailCampaignRepository {
@@ -80,6 +82,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
         totalRecipients: true,
         reservedCredits: true,
         hasCampaignsBetaAccess: true,
+        materializeSourceOffset: true,
       },
       orderBy: { dispatchNumber: "desc" },
     })
@@ -87,6 +90,10 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
 
   async countQueuedEmailLogsForDispatch(dispatchId: string): Promise<number> {
     return this.db.emailLog.count({ where: { dispatchId, status: "queued" } })
+  }
+
+  async countEmailLogsForDispatch(dispatchId: string): Promise<number> {
+    return this.db.emailLog.count({ where: { dispatchId } })
   }
 }
 

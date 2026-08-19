@@ -58,7 +58,10 @@ import {
   excludeBlocklistedEmails,
   findTeamBlocklistedEmails,
 } from "@/lib/email/email-contact-blocklist"
-import type { DispatchProviderError } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
+import type {
+  DispatchAbortedReason,
+  DispatchProviderError,
+} from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
@@ -177,6 +180,8 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
   NO_RECIPIENTS_RADAR: "Nenhum perfil apto no segmento Radar",
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
+  MONTHLY_QUOTA:
+    "Cota mensal de envio do provedor excedida. O disparo foi interrompido. Tente novamente mais tarde.",
   INTERNAL: "Ocorreu um erro ao disparar a campanha",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
   ALL_SUPPRESSED: CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE,
@@ -2392,7 +2397,7 @@ export class EmailCampaignUseCase {
 
   private buildDispatchFailureDetail(
     providerErrors: DispatchProviderError[],
-    abortedReason?: "domain_not_verified"
+    abortedReason?: DispatchAbortedReason
   ): string | null {
     if (providerErrors.length === 0) return null
 
@@ -2407,6 +2412,10 @@ export class EmailCampaignUseCase {
 
     if (abortedReason === "domain_not_verified") {
       return "Domínio de envio não verificado. Verifique os registros DNS nas configurações de e-mail."
+    }
+
+    if (abortedReason === "monthly_quota_exceeded") {
+      return EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA
     }
 
     const totalFailed = providerErrors.reduce((sum, e) => sum + e.emails.length, 0)
@@ -3069,7 +3078,7 @@ export class EmailCampaignUseCase {
                   ),
                   emails: [recipient.email],
                 })),
-                abortedReason: undefined as "domain_not_verified" | undefined,
+                abortedReason: undefined as DispatchAbortedReason | undefined,
               }
 
         sentCount = dispatchResult.sent
@@ -3110,7 +3119,11 @@ export class EmailCampaignUseCase {
         )
 
         const failureDetail = this.buildDispatchFailureDetail(dispatchResult.providerErrors, dispatchResult.abortedReason)
-        const terminal = resolveCampaignStatusAfterDispatch(dispatchResult.sent, failureDetail)
+        const terminal = resolveCampaignStatusAfterDispatch(
+          dispatchResult.sent,
+          failureDetail,
+          job.totalRecipients
+        )
         const totalFailed = job.recipients.length - dispatchResult.sent
 
         // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
@@ -3293,7 +3306,10 @@ export class EmailCampaignUseCase {
               status: params.terminal.campaignStatus,
               sentAt:
                 params.setSentAt ??
-                (params.terminal.campaignStatus === "sent" ? new Date() : undefined),
+                (params.terminal.campaignStatus === "sent" ||
+                params.terminal.campaignStatus === "partially_sent"
+                  ? new Date()
+                  : undefined),
               errorMessage: params.terminal.errorMessage,
               ...(params.totalRecipients !== undefined
                 ? { totalRecipients: params.totalRecipients }
@@ -3361,7 +3377,7 @@ export class EmailCampaignUseCase {
       return null
     }
 
-    const terminal = resolveCampaignStatusAfterDispatch(sentCount)
+    const terminal = resolveCampaignStatusAfterDispatch(sentCount, null, job.totalRecipients)
 
     try {
       const updatedCampaign = await this.commitDispatchTerminalState({
@@ -3508,9 +3524,25 @@ export class EmailCampaignUseCase {
         continue
       }
 
-      // Sem queued restante mas ainda "sending": finalizeDispatchQueueBatch é
-      // idempotente e resolve pro status real (sent, se algo foi enviado; failed,
-      // só quando de fato nada foi enviado) em vez de sempre sobrescrever com failed.
+      const materializedLogCount = await this.repository.countEmailLogsForDispatch(dispatch.id)
+      if (materializedLogCount < dispatch.totalRecipients) {
+        console.info(
+          "[EmailCampaignUseCase][recoverStuckSendingCampaigns] materialização incompleta — republicando wake em vez de finalizar",
+          {
+            campaignId: campaign.id,
+            dispatchId: dispatch.id,
+            materializedLogCount,
+            totalRecipients: dispatch.totalRecipients,
+            materializeSourceOffset: dispatch.materializeSourceOffset,
+          }
+        )
+        await this.publishDispatchWake(dispatch.id, "cron-reclaim")
+        reconciledCount += 1
+        continue
+      }
+
+      // Sem queued restante e audiência materializada: finalizeDispatchQueueBatch é
+      // idempotente e resolve pro status real (sent / partially_sent / failed).
       const finalized = await this.finalizeDispatchQueueBatch(
         dispatch,
         EMAIL_CAMPAIGN_FAILURE_MESSAGES.STUCK_SENDING
@@ -3555,6 +3587,23 @@ export class EmailCampaignUseCase {
       scope.setContext("stuck_sending_dispatch", params)
       Sentry.captureMessage(
         `[EmailCampaignUseCase] Disparo travado (timeout 30 min): campaignId=${params.campaignId} dispatchId=${params.dispatchId} totalRecipients=${params.totalRecipients}`
+      )
+    })
+  }
+
+  private captureMonthlyQuotaIncident(params: {
+    campaignId: string
+    dispatchId: string
+    teamId: string
+    totalRecipients: number
+  }): void {
+    Sentry.withScope((scope) => {
+      scope.setTag("feature", "email-campaign-dispatch")
+      scope.setTag("campaignId", params.campaignId)
+      scope.setTag("dispatchId", params.dispatchId)
+      scope.setContext("monthly_quota_dispatch", params)
+      Sentry.captureMessage(
+        `[EmailCampaignUseCase] Cota mensal do Resend excedida: campaignId=${params.campaignId} dispatchId=${params.dispatchId} totalRecipients=${params.totalRecipients}`
       )
     })
   }
@@ -3626,7 +3675,11 @@ export class EmailCampaignUseCase {
             continue
           }
           const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
-          const terminal = resolveCampaignStatusAfterDispatch(sentCount)
+          const terminal = resolveCampaignStatusAfterDispatch(
+            sentCount,
+            null,
+            dispatch.totalRecipients
+          )
           // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
           const updatedCampaign = await this.commitDispatchTerminalState({
             campaignId: dispatch.campaignId,
@@ -3636,7 +3689,10 @@ export class EmailCampaignUseCase {
             terminal,
             incrementSent: true,
             setDispatchTotalSent: true,
-            setSentAt: terminal.campaignStatus === "sent" ? now : undefined,
+            setSentAt:
+              terminal.campaignStatus === "sent" || terminal.campaignStatus === "partially_sent"
+                ? now
+                : undefined,
             incrementDispatchCount: true,
           })
           if (updatedCampaign.parentCampaignId) {
@@ -3795,6 +3851,8 @@ export class EmailCampaignUseCase {
       })
       return new Output(true, ["Disparo já finalizado"], [], { dispatchId, hasMore: false })
     }
+
+    await this.touchSendingDispatchHeartbeat(dispatch.campaignId)
 
     let teamSettings = null
     try {
@@ -3968,6 +4026,25 @@ export class EmailCampaignUseCase {
       }
     )
 
+    if (dispatchResult.abortedReason === "monthly_quota_exceeded") {
+      this.captureMonthlyQuotaIncident({
+        campaignId: dispatch.campaignId,
+        dispatchId: dispatch.id,
+        teamId: dispatch.teamId,
+        totalRecipients: dispatch.totalRecipients,
+      })
+      await this.failDispatchOnDomainGuard(
+        dispatch,
+        EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA
+      )
+      return new Output(
+        false,
+        [],
+        [EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA],
+        { dispatchId: dispatch.id, hasMore: false }
+      )
+    }
+
     const remainingQueued = await this.db.emailLog.count({
       where: { dispatchId: dispatch.id, status: "queued" },
     })
@@ -4010,7 +4087,11 @@ export class EmailCampaignUseCase {
     failureDetail?: string
   ): Promise<Output> {
     const sentCount = await countSuccessfulDispatchLogs(dispatch.id)
-    const terminal = resolveCampaignStatusAfterDispatch(sentCount, failureDetail)
+    const terminal = resolveCampaignStatusAfterDispatch(
+      sentCount,
+      failureDetail,
+      dispatch.totalRecipients
+    )
 
     const updatedCampaign = await this.commitDispatchTerminalState({
       campaignId: dispatch.campaignId,
@@ -4020,7 +4101,10 @@ export class EmailCampaignUseCase {
       terminal,
       incrementSent: true,
       setDispatchTotalSent: true,
-      setSentAt: terminal.campaignStatus === "sent" ? new Date() : undefined,
+      setSentAt:
+        terminal.campaignStatus === "sent" || terminal.campaignStatus === "partially_sent"
+          ? new Date()
+          : undefined,
       incrementDispatchCount: true,
     })
 
@@ -4150,6 +4234,14 @@ export class EmailCampaignUseCase {
     await this.db.emailCampaignDispatch.update({
       where: { id: dispatchId },
       data: { materializeSourceOffset: Math.max(0, sourceOffset) },
+    })
+  }
+
+  /** Evita que campanha grande em fila saudável entre no recovery de 30 min. */
+  private async touchSendingDispatchHeartbeat(campaignId: string): Promise<void> {
+    await this.db.emailCampaign.update({
+      where: { id: campaignId },
+      data: { updatedAt: new Date() },
     })
   }
 
