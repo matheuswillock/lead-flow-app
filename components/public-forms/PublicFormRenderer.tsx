@@ -201,6 +201,34 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     setSession(id)
   }, [preview, publicId])
 
+  useEffect(() => {
+    if (preview || !publicId) return
+    const emailLogId = new URLSearchParams(window.location.search).get("cs_el")?.trim()
+    if (!emailLogId) return
+
+    void fetch(
+      `${API_CLIENT_BASE}/public-forms/${publicId}/prefill?cs_el=${encodeURIComponent(emailLogId)}`,
+    )
+      .then((res) => res.json())
+      .then((data: { isValid?: boolean; result?: { name: string | null; email: string | null } }) => {
+        if (!data?.isValid || !data?.result) return
+        const { name, email } = data.result
+        setAnswers((current) => {
+          const next = { ...current }
+          for (const question of snapshot.questions) {
+            if (question.mappingKey === "name" && name && !current[question.id]) {
+              next[question.id] = name
+            }
+            if (question.mappingKey === "email" && email && !current[question.id]) {
+              next[question.id] = email
+            }
+          }
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [preview, publicId, snapshot.questions])
+
   const track = useCallback(
     (eventType: PublicFormMetricEventInput["eventType"], questionId?: string) => {
       if (preview || !publicId || !session) return

@@ -222,6 +222,7 @@ export interface IPublicFormsRepository {
   ): Promise<PublicFormSettings>
   findPublishedByPublicId(publicId: string): Promise<PublicFormPublishedSnapshot | null>
   findPublicationById(id: string): Promise<PublicFormPublishedSnapshot | null>
+  findTeamIdByPublicId(publicId: string): Promise<string | null>
   /**
    * Publicações do form (versão desc, inclusive `endedAt` preenchido).
    * Primeira cujo snapshot.questions[].id contém o questionId.
