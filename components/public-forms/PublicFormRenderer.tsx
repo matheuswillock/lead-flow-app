@@ -284,6 +284,23 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     })
   }, [answerList, preview, publicId, session])
 
+  const sendBlurProgress = useCallback(
+    (questionId: string, value: unknown) => {
+      if (preview || !publicId || !session) return
+      void fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          visitorSessionId: session,
+          answers: [{ questionId, value }],
+          origin: getOrigin(),
+        }),
+        keepalive: true,
+      })
+    },
+    [preview, publicId, session],
+  )
+
   function start() {
     previousVisibleIds.current = visibleIds
     setStarted(true)
@@ -722,6 +739,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                           setAnswers((current) => ({ ...current, [item.id]: value }))
                           setError(null)
                         }}
+                        onBlur={sendBlurProgress}
                         publicId={publicId}
                         preview={preview}
                       />
@@ -779,12 +797,14 @@ function Question({
   question,
   value,
   onChange,
+  onBlur,
   publicId,
   preview,
 }: {
   question: PublicQuestion
   value: unknown
   onChange: (value: unknown) => void
+  onBlur?: (questionId: string, value: unknown) => void
   publicId?: string
   preview: boolean
 }) {
@@ -898,6 +918,7 @@ function Question({
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "Digite sua resposta"}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={() => onBlur?.(question.id, value)}
         className="h-14 border-input bg-background text-lg"
       />
     )
@@ -943,6 +964,7 @@ function Question({
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "(11) 99999-9999"}
         onChange={(event) => onChange(formatPhoneBR(event.target.value))}
+        onBlur={() => onBlur?.(question.id, value)}
         className="h-14 border-input bg-background text-lg"
       />
     )
@@ -975,6 +997,7 @@ function Question({
             : event.target.value,
         )
       }
+      onBlur={() => onBlur?.(question.id, value)}
       className="h-14 border-input bg-background text-lg"
     />
   )

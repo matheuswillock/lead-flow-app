@@ -117,6 +117,7 @@ export class PublicFormProgressUseCase {
           origin: {
             ...(origin as Record<string, unknown>),
             answerValue: answer.value,
+            answerMappingKey: question?.mappingKey ?? null,
           },
         }),
         "PublicFormProgressUseCase",
