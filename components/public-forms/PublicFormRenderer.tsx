@@ -24,6 +24,7 @@ import { resolveVisibleQuestionIds, resolveThankYouPageId, shouldGoToThankYou, v
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
+import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
@@ -195,9 +196,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
 
   useEffect(() => {
     if (preview || !publicId) return
-    const key = `public-form-session:${publicId}`
-    const id = window.sessionStorage.getItem(key) || crypto.randomUUID()
-    window.sessionStorage.setItem(key, id)
+    const existing = readFormSessionCookie(publicId)
+    const id = existing ?? crypto.randomUUID()
+    writeFormSessionCookie(publicId, id)
     setSession(id)
   }, [preview, publicId])
 
