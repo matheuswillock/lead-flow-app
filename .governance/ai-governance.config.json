@@ -433,7 +433,6 @@
       "app/documentos/[token]/page.tsx",
       "app/email-unsubscribe/[token]/page.tsx",
       "app/forgot-password/page.tsx",
-      "app/forms/[publicId]/page.tsx",
       "app/lead-form/[supabaseId]/[teamId]/page.tsx",
       "app/lead-form/[supabaseId]/page.tsx",
       "app/oferta/[token]/page.tsx",
