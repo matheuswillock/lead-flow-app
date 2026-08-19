@@ -121,6 +121,17 @@ export class PublicFormProgressUseCase {
         }),
         "PublicFormProgressUseCase",
       )
+      // Log visível no Vercel de todo campo recebido via onBlur/progress —
+      // inclui o valor do campo (decisão do produto: útil pra debug de
+      // captação, ciente de que expande PII pros logs em relação ao banco).
+      console.info("[PublicFormProgressUseCase][execute] campo recebido", {
+        publicId: form.publicId,
+        visitorSessionId: input.visitorSessionId,
+        questionId: answer.questionId,
+        mappingKey: question?.mappingKey ?? null,
+        mappingTarget: question?.mappingTarget ?? null,
+        value: answer.value,
+      })
     }
 
     return new Output(

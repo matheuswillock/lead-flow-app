@@ -92,6 +92,9 @@ export async function processPublicFormMetricQueueMessage(
       messageId: metadata.messageId,
       eventKey: message.eventKey,
       eventType: message.eventType,
+      visitorSessionId: message.visitorSessionId,
+      questionId: message.questionId ?? null,
+      value: (message.origin as Record<string, unknown> | undefined)?.answerValue ?? null,
     })
   } catch (error) {
     console.error("[PublicFormMetricEventsQueueRoute][POST] persist failed, will retry", {

@@ -64,6 +64,16 @@ class SyncPublicFormMetricToRadarUseCase {
         metadata,
       })
 
+      console.info("[SyncPublicFormMetricToRadarUseCase][execute] evento sincronizado com o Radar", {
+        eventKey: input.eventKey,
+        visitorSessionId: input.visitorSessionId,
+        questionId: input.questionId ?? null,
+        leadId: input.leadId ?? null,
+        profileId,
+        eventType: radarEventType,
+        eventCreated: Boolean(event),
+      })
+
       return new Output(true, [], [], {
         profileId,
         eventType: radarEventType,
