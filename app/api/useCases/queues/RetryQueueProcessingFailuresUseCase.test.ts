@@ -67,9 +67,11 @@ describe("RetryQueueProcessingFailuresUseCase", () => {
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
-    expect(republishMetric).toHaveBeenCalledWith(
-      { eventKey: "session-1:form_completed:form" },
-      "session-1:form_completed:form:outbox-retry:row-1:1",
+    expect(republishMetric).toHaveBeenCalledTimes(1)
+    const republishCall = republishMetric.mock.calls[0] as unknown as [object, string]
+    expect(republishCall[0]).toEqual({ eventKey: "session-1:form_completed:form" })
+    expect(republishCall[1].startsWith("session-1:form_completed:form:outbox-retry:row-1:1:")).toBe(
+      true,
     )
     expect(markResolvedMock).toHaveBeenCalledWith("row-1")
     expect(result.result).toMatchObject({ claimed: 1, resolved: 1, retried: 0, failed: 0 })

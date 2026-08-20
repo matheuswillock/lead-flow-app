@@ -7,6 +7,7 @@ import {
 } from "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
+import { buildOutboxRetryIdempotencyKey } from "@/lib/queues/outbox-retry-idempotency-key";
 
 /**
  * Tamanho do lote por execução do cron (a cada 5 min). Reprocessar aqui virou
@@ -53,14 +54,12 @@ export class RetryAsaasWebhookFailuresUseCase {
     return JSON.parse(String(payload)) as AsaasWebhookBody;
   }
 
-  /**
-   * A Vercel Queues deduplica `send()` pela `idempotencyKey`. Depois do
-   * consumer dar ack em `eventId`, republicar com a mesma chave é no-op.
-   * Cada retry do outbox usa chave própria; a dedupe de negócio continua
-   * no Postgres (`eventId`).
-   */
   private retryIdempotencyKey(row: AsaasWebhookEventClaimRow): string {
-    return `${row.id}:outbox-retry:${row.id}:${row.attemptCount}`;
+    return buildOutboxRetryIdempotencyKey({
+      originalKey: row.id,
+      outboxRowId: row.id,
+      attemptCount: row.attemptCount,
+    });
   }
 
   /**
