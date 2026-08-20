@@ -6,6 +6,7 @@
  * - Cookie cs_form_vs criado no mount (Fase E)
  * - onBlur dispara POST /progress com o valor do campo (Fase D1)
  * - Prefill via cs_el pré-preenche nome/e-mail (Fase C)
+ * - Nome 3–30, sem @; e-mail digitado no Nome copia para e-mail vazio
  */
 
 import { expect, test } from "@playwright/test"
@@ -225,6 +226,51 @@ test.describe("app/forms/[publicId]", () => {
 
     const nameInput = page.getByRole("textbox").first()
     await expect(nameInput).toHaveValue("Destinatário E2E", { timeout: 10_000 })
+  })
+
+  test("bloqueia Continuar quando o nome tem menos de 3 caracteres", async ({ page }) => {
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("Jo")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
+  })
+
+  test("e-mail no campo nome copia para e-mail vazio e bloqueia Continuar até nome de pessoa", async ({
+    page,
+  }) => {
+    const progressRequests = []
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/progress")) {
+        progressRequests.push(req.postData() ?? "")
+      }
+    })
+
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("user@example.com")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome de pessoa, não um e-mail")).toBeVisible()
+    await page.waitForTimeout(800)
+
+    expect(progressRequests.length, "Blur deve persistir mesmo com nome inválido").toBeGreaterThan(0)
+    const body = JSON.parse(progressRequests[0])
+    expect(body.answers[0].value).toBe("user@example.com")
+
+    await nameInput.fill("Maria Silva")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
   })
 
   test("estado de loading exibe Skeleton enquanto carrega o snapshot", async ({ page }) => {

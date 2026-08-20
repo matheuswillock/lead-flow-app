@@ -3,9 +3,11 @@ import type { PublicFormDraftInput } from "./types"
 import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
 import { createDefaultThankYouPage } from "./thank-you-pages"
 import {
+  applyLeadNameAnswerToFormAnswers,
   calculatePublicFormMaxPossibleScore,
   calculatePublicFormScore,
   calculatePublicFormScorePercent,
+  PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR,
   resolveThankYouPageId,
   resolveVisibleQuestionIds,
   shouldGoToThankYou,
@@ -412,5 +414,71 @@ describe("motor dos formulários públicos", () => {
     }
     expect(validateAnswer(emailAsText, "invalido")).toBe("Informe um e-mail válido")
     expect(validateAnswer(emailAsText, "a@b.com")).toBeNull()
+  })
+
+  it("valida nome (mappingKey name) com mínimo 3 e máximo 30 caracteres", () => {
+    const nameQuestion = {
+      id: targetId,
+      type: "text" as const,
+      title: "Nome",
+      required: true,
+      scoreWeight: 0,
+      mappingKey: "name",
+      options: [],
+    }
+    expect(validateAnswer(nameQuestion, "")).toBe("Esta resposta é obrigatória")
+    expect(validateAnswer(nameQuestion, "Jo")).toBe(
+      "Informe um nome com pelo menos 3 caracteres",
+    )
+    expect(validateAnswer(nameQuestion, "Ana")).toBeNull()
+    expect(validateAnswer(nameQuestion, "Maria Silva")).toBeNull()
+    expect(validateAnswer(nameQuestion, "ana@empresa.com")).toBe(PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR)
+    expect(validateAnswer(nameQuestion, "A".repeat(31))).toBe(
+      "Informe um nome com no máximo 30 caracteres",
+    )
+    expect(validateAnswer({ ...nameQuestion, required: false }, "")).toBeNull()
+    expect(validateAnswer({ ...nameQuestion, required: false }, "Ab")).toBe(
+      "Informe um nome com pelo menos 3 caracteres",
+    )
+  })
+
+  it("copia valor com @ do nome para e-mail vazio e não sobrescreve e-mail já preenchido", () => {
+    const questions = [
+      { id: "name-id", mappingKey: "name" },
+      { id: "email-id", mappingKey: "email" },
+    ]
+    const copied = applyLeadNameAnswerToFormAnswers({
+      questions,
+      currentAnswers: {},
+      nameQuestionId: "name-id",
+      nameValue: "ana@empresa.com",
+    })
+    expect(copied["name-id"]).toBe("ana@empresa.com")
+    expect(copied["email-id"]).toBe("ana@empresa.com")
+
+    const kept = applyLeadNameAnswerToFormAnswers({
+      questions,
+      currentAnswers: { "email-id": "ja.preenchido@empresa.com" },
+      nameQuestionId: "name-id",
+      nameValue: "outro@empresa.com",
+    })
+    expect(kept["email-id"]).toBe("ja.preenchido@empresa.com")
+
+    const synced = applyLeadNameAnswerToFormAnswers({
+      questions,
+      currentAnswers: { "name-id": "ana@", "email-id": "ana@" },
+      nameQuestionId: "name-id",
+      nameValue: "ana@empresa.com",
+    })
+    expect(synced["email-id"]).toBe("ana@empresa.com")
+
+    const personName = applyLeadNameAnswerToFormAnswers({
+      questions,
+      currentAnswers: { "name-id": "ana@empresa.com", "email-id": "ana@empresa.com" },
+      nameQuestionId: "name-id",
+      nameValue: "Maria Silva",
+    })
+    expect(personName["name-id"]).toBe("Maria Silva")
+    expect(personName["email-id"]).toBe("ana@empresa.com")
   })
 })
