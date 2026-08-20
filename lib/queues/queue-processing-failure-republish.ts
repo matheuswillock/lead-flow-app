@@ -7,6 +7,11 @@ import {
 } from "@/lib/queues/public-form-metric-events"
 import { publishPublicFormSubmissionEvent, PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC } from "@/lib/queues/public-form-submission-events"
 import {
+  publishPublicFormProgressEvent,
+  PUBLIC_FORM_PROGRESS_EVENTS_TOPIC,
+  type PublicFormProgressQueuePayload,
+} from "@/lib/queues/public-form-progress-events"
+import {
   publishRadarEngagementScoreUpdate,
   RADAR_ENGAGEMENT_SCORE_UPDATES_TOPIC,
   type RadarEngagementScoreUpdatePayload,
@@ -100,6 +105,13 @@ export const QUEUE_PROCESSING_FAILURE_REPUBLISHERS: Record<string, QueueProcessi
       publishOrThrow(() =>
         publishPublicFormSubmissionEvent(
           parseJsonPayload<PublicFormSubmissionBackgroundJob>(payload),
+          { idempotencyKey },
+        ),
+      ),
+    [PUBLIC_FORM_PROGRESS_EVENTS_TOPIC]: (payload, idempotencyKey) =>
+      publishOrThrow(() =>
+        publishPublicFormProgressEvent(
+          parseJsonPayload<PublicFormProgressQueuePayload>(payload),
           { idempotencyKey },
         ),
       ),
