@@ -137,14 +137,46 @@ jobs:
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
-      - name: Build
+      # PR: só quality gate — não gera artefato de deploy.
+      - name: Build (quality gate)
+        if: ${{ github.event_name != 'push' }}
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
-          DATABASE_URL: ${{ github.event_name == 'push' && secrets.DATABASE_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
-          DIRECT_URL: ${{ github.event_name == 'push' && secrets.DIRECT_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
+          DATABASE_URL: 'postgresql://placeholder:placeholder@placeholder:5432/placeholder'
+          DIRECT_URL: 'postgresql://placeholder:placeholder@placeholder:5432/placeholder'
         run: bun run build
+
+      # Push: o MESMO build vira o artefato de deploy.
+      #
+      # Antes: este job buildava aqui e o `deploy-production` chamava
+      # `vercel deploy` sem `--prebuilt` — a Vercel rebuildava do zero em
+      # máquina dela, cobrada como Build CPU Minutes (72% da fatura de uso em
+      # ago/2026, ~$145/ciclo). Pagávamos para buildar duas vezes.
+      #
+      # `vercel build` executa o mesmo build command do projeto, então o quality
+      # gate é preservado: se o build quebrar, o job falha aqui como antes.
+      - name: Vercel build (produção)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          npx --yes vercel@56.3.2 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.3.2 build --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # `.vercel/output` contém o build pronto. `.vercel/project.json` NÃO sobe:
+      # o job de deploy reconstrói a identidade do projeto pelas env vars.
+      - name: Upload build artifact
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output
+          retention-days: 1
+          include-hidden-files: true
 
   e2e:
     name: E2E (Playwright)
@@ -199,15 +231,29 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output
+
+      # `--prebuilt` sobe o `.vercel/output` já pronto em vez de mandar o
+      # código-fonte para a Vercel rebuildar. Build CPU Minutes -> ~0.
+      #
+      # Sem `vercel pull` aqui de propósito: `VERCEL_ORG_ID` + `VERCEL_PROJECT_ID`
+      # já identificam o projeto, e `pull` traria as env vars de produção para o
+      # disco do runner self-hosted — o guardrail da nota
+      # `VPS/GitHub Actions Self-Hosted` pede o contrário.
       - name: Deploy to Vercel (Production)
         id: vercel-prod
         run: |
-          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy --prod \
-            --token=${{ secrets.VERCEL_TOKEN }} \
+          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy --prebuilt --prod \
+            --token="$VERCEL_TOKEN" \
             --yes \
             2>&1 | tail -1)
           echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 

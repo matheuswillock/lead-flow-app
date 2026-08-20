@@ -494,9 +494,22 @@ jobs:
           git push origin release/develop-to-main --force-with-lease --no-verify
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
+      # Preview de TODA push para `develop` era o maior gerador de Build CPU
+      # Minutes na Vercel. Diferente do `ci-main`, aqui NÃO dá para reaproveitar
+      # o artefato do job `build`: este deploy sai do `release/develop-to-main`
+      # já com o version bump aplicado — outro conteúdo, outra versão no
+      # package.json. Reaproveitar publicaria a versão errada.
+      #
+      # Relocar o build para o runner self-hosted também não serve: `next build`
+      # pica em 2,5–4 GB e a VPS é compartilhada com Evolution/N8N (ver nota
+      # `VPS/GitHub Actions Self-Hosted`, guardrail de OOM).
+      #
+      # Então o corte aqui é de FREQUÊNCIA, não de lugar: opt-in via variável de
+      # repositório. Ligar com `gh variable set DEPLOY_DEVELOP_PREVIEW --body true`
+      # quando a validação do release exigir URL de preview.
       - name: Deploy Vercel (Preview) from release branch
         id: vercel-preview
-        if: ${{ steps['push-release'].outcome == 'success' && steps['push-release'].outputs.pushed == 'true' }}
+        if: ${{ vars.DEPLOY_DEVELOP_PREVIEW == 'true' && steps['push-release'].outcome == 'success' && steps['push-release'].outputs.pushed == 'true' }}
         run: |
           # Working tree is already release/develop-to-main (post version bump).
           DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy \
@@ -551,7 +564,11 @@ jobs:
               migrationCheckResult === 'success' &&
               (migrationDryRunResult === 'success' || migrationDryRunResult === 'skipped') &&
               releasePushResult === 'success' &&
-              deployPreviewResult === 'success';
+              // 'skipped' aqui = preview desligado de proposito (vars.DEPLOY_DEVELOP_PREVIEW).
+              // Nao mascara falha de push da release: releasePushResult === 'success'
+              // ja e exigido na linha acima, entao o unico caminho para 'skipped'
+              // com push OK e o opt-out deliberado.
+              (deployPreviewResult === 'success' || deployPreviewResult === 'skipped');
             const resolveSkipReason = () => {
               if (qualityGateResult !== 'success') {
                 return 'Quality gate falhou. Corrija governance, lint, typecheck, spellcheck ou build em develop.';
@@ -586,9 +603,8 @@ jobs:
               if (deployPreviewResult === 'failure') {
                 return 'Deploy de preview da release falhou. Corrija o deploy na Vercel antes de liberar o release.';
               }
-              if (deployPreviewResult === 'skipped') {
-                return 'Deploy de preview da release nao executou. Verifique o push da release branch.';
-              }
+              // 'skipped' nao bloqueia mais o release (preview e opt-in), entao
+              // so cai aqui se algum outro check acima ja tiver falhado.
               return 'Um ou mais checks obrigatorios nao passaram.';
             };
             const checks = {
