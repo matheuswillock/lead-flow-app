@@ -240,6 +240,18 @@ test.describe("app/forms/[publicId]", () => {
     await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
   })
 
+  test("bloqueia Continuar quando o nome tem só espaços", async ({ page }) => {
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("   ")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
+  })
+
   test("e-mail no campo nome copia para e-mail vazio e bloqueia Continuar até nome de pessoa", async ({
     page,
   }) => {

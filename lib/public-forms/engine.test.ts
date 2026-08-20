@@ -427,16 +427,23 @@ describe("motor dos formulários públicos", () => {
       options: [],
     }
     expect(validateAnswer(nameQuestion, "")).toBe("Esta resposta é obrigatória")
+    expect(validateAnswer(nameQuestion, "   ")).toBe(
+      "Informe um nome com pelo menos 3 caracteres",
+    )
     expect(validateAnswer(nameQuestion, "Jo")).toBe(
       "Informe um nome com pelo menos 3 caracteres",
     )
     expect(validateAnswer(nameQuestion, "Ana")).toBeNull()
+    expect(validateAnswer(nameQuestion, "  Ana  ")).toBeNull()
     expect(validateAnswer(nameQuestion, "Maria Silva")).toBeNull()
     expect(validateAnswer(nameQuestion, "ana@empresa.com")).toBe(PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR)
     expect(validateAnswer(nameQuestion, "A".repeat(31))).toBe(
       "Informe um nome com no máximo 30 caracteres",
     )
     expect(validateAnswer({ ...nameQuestion, required: false }, "")).toBeNull()
+    expect(validateAnswer({ ...nameQuestion, required: false }, "   ")).toBe(
+      "Informe um nome com pelo menos 3 caracteres",
+    )
     expect(validateAnswer({ ...nameQuestion, required: false }, "Ab")).toBe(
       "Informe um nome com pelo menos 3 caracteres",
     )

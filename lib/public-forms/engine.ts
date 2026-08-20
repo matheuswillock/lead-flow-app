@@ -298,11 +298,10 @@ export const PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR = "Informe um nome de pessoa, nã
 
 export function validateLeadNameAnswer(value: unknown): string | null {
   const trimmed = String(value ?? "").trim()
-  if (!trimmed) return null
-  if (trimmed.includes("@")) return PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR
-  if (trimmed.length < PUBLIC_FORM_LEAD_NAME_MIN_LENGTH) {
+  if (!trimmed || trimmed.length < PUBLIC_FORM_LEAD_NAME_MIN_LENGTH) {
     return `Informe um nome com pelo menos ${PUBLIC_FORM_LEAD_NAME_MIN_LENGTH} caracteres`
   }
+  if (trimmed.includes("@")) return PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR
   if (trimmed.length > PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) {
     return `Informe um nome com no máximo ${PUBLIC_FORM_LEAD_NAME_MAX_LENGTH} caracteres`
   }
