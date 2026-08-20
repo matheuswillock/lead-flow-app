@@ -6,6 +6,7 @@ import type {
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
+  RadarProfileForms,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
@@ -189,6 +190,7 @@ export interface IRadarService {
   ): Promise<{ segmentId: string; name: string; parentName: string; totalConditions: number }>
   getProfileTouchpoints(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileTouchpoints>
   getProfileContracts(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileContracts>
+  getProfileForms(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileForms>
   materializeContactList(
     supabaseId: string,
     teamId: string,

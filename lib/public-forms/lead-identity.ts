@@ -174,6 +174,9 @@ export function canCreateLeadFromExtracted(data: ExtractedLeadData): boolean {
   return hasSingleNameWord && isBrazilianMobilePhone(data.normalizedPhone) && hasEmail
 }
 
+/** Gate A+C: nome completo + telefone, ou 1 palavra + celular + e-mail. */
+export const hasCrmGateAC = canCreateLeadFromExtracted
+
 export function canUpdateLeadFromExtracted(data: ExtractedLeadData): boolean {
   return Boolean(data.email || data.normalizedPhone)
 }

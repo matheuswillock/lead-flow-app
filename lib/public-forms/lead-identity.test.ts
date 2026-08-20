@@ -4,6 +4,7 @@ import {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
+  hasCrmGateAC,
   isBrazilianContactPhone,
   isBrazilianLandlinePhone,
   isBrazilianMobilePhone,
@@ -89,6 +90,7 @@ describe("lead identity from public forms", () => {
     expect(isBrazilianMobilePhone("11988857773")).toBe(true)
     expect(isBrazilianContactPhone("11988857773")).toBe(true)
     expect(canCreateLeadFromExtracted(extracted)).toBe(true)
+    expect(hasCrmGateAC(extracted)).toBe(true)
     expect(canUpdateLeadFromExtracted(extracted)).toBe(true)
   })
 

@@ -27,6 +27,7 @@ export {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
+  hasCrmGateAC,
   type ExtractedLeadData,
 } from "@/lib/public-forms/lead-identity"
 

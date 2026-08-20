@@ -1002,6 +1002,27 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async listSubmissionAnswers(submissionId: string) {
+    const rows = await prisma.publicFormAnswer.findMany({
+      where: { submissionId, questionId: { not: null } },
+      select: { questionId: true, value: true },
+    })
+    return rows.flatMap((row) =>
+      row.questionId ? [{ questionId: row.questionId, value: row.value as unknown }] : [],
+    )
+  }
+
+  findFormsByIdsForTeam(
+    teamId: string,
+    formIds: string[],
+  ): Promise<Array<{ id: string; name: string; publicId: string }>> {
+    if (formIds.length === 0) return Promise.resolve([])
+    return prisma.publicForm.findMany({
+      where: { teamId, id: { in: formIds } },
+      select: { id: true, name: true, publicId: true },
+    })
+  }
+
   createSubmission(data: {
     formId: string
     publicationId: string
