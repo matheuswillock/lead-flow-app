@@ -33,7 +33,9 @@ export function buildLeadSyncAlerts(
   }
 
   if (!canCreateLeadFromExtracted(extracted)) {
-    alerts.push("Não foi possível criar o lead: informe nome completo e celular")
+    alerts.push(
+      "Não foi possível criar o lead: informe nome completo e telefone (celular ou fixo), ou nome, celular e e-mail",
+    )
   }
 
   return alerts
