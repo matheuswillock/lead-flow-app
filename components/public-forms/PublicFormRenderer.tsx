@@ -20,7 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { resolveVisibleQuestionIds, resolveThankYouPageId, shouldGoToThankYou, validateAnswer } from "@/lib/public-forms/engine"
+import {
+  applyLeadNameAnswerToFormAnswers,
+  isLeadNameQuestion,
+  PUBLIC_FORM_LEAD_NAME_MAX_LENGTH,
+  resolveThankYouPageId,
+  resolveVisibleQuestionIds,
+  shouldGoToThankYou,
+  validateAnswer,
+} from "@/lib/public-forms/engine"
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
@@ -316,6 +324,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   const sendBlurProgress = useCallback(
     (questionId: string, value: unknown) => {
       if (preview || !publicId || !session) return
+      // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
       void fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -326,8 +335,13 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         }),
         keepalive: true,
       })
+      track("question_answered", questionId)
+      const question = snapshot.questions.find((item) => item.id === questionId)
+      if (question && isLeadNameQuestion(question)) {
+        setError(validateAnswer(question, value))
+      }
     },
-    [preview, publicId, session],
+    [preview, publicId, session, snapshot.questions, track],
   )
 
   function start() {
@@ -765,7 +779,17 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                         question={item}
                         value={answers[item.id]}
                         onChange={(value) => {
-                          setAnswers((current) => ({ ...current, [item.id]: value }))
+                          setAnswers((current) => {
+                            if (!isLeadNameQuestion(item)) {
+                              return { ...current, [item.id]: value }
+                            }
+                            return applyLeadNameAnswerToFormAnswers({
+                              questions: snapshot.questions,
+                              currentAnswers: current,
+                              nameQuestionId: item.id,
+                              nameValue: value,
+                            })
+                          })
                           setError(null)
                         }}
                         onBlur={sendBlurProgress}
@@ -938,6 +962,7 @@ function Question({
 
   if (question.type === "text") {
     const auto = resolvePublicFormAutocompleteAttrs(question)
+    const isName = isLeadNameQuestion(question)
     return (
       <Input
         autoFocus
@@ -945,8 +970,14 @@ function Question({
         autoComplete={auto.autoComplete}
         inputMode={auto.inputMode}
         value={String(value ?? "")}
+        maxLength={isName ? PUBLIC_FORM_LEAD_NAME_MAX_LENGTH : undefined}
         placeholder={question.placeholder ?? "Digite sua resposta"}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value
+          onChange(
+            isName ? next.slice(0, PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) : next,
+          )
+        }}
         onBlur={(event) => onBlur?.(question.id, event.currentTarget.value)}
         className="h-14 border-input bg-background text-lg"
       />
@@ -1010,6 +1041,7 @@ function Question({
             ? "email"
             : "text"
   const auto = resolvePublicFormAutocompleteAttrs(question)
+  const isName = isLeadNameQuestion(question)
   return (
     <Input
       autoFocus
@@ -1018,14 +1050,16 @@ function Question({
       autoComplete={auto.autoComplete}
       inputMode={auto.inputMode}
       value={String(value ?? "")}
+      maxLength={isName ? PUBLIC_FORM_LEAD_NAME_MAX_LENGTH : undefined}
       placeholder={question.placeholder ?? "Digite sua resposta"}
-      onChange={(event) =>
-        onChange(
-          inputType === "number" && event.target.value !== ""
-            ? Number(event.target.value)
-            : event.target.value,
-        )
-      }
+      onChange={(event) => {
+        const raw = event.target.value
+        if (inputType === "number" && raw !== "") {
+          onChange(Number(raw))
+          return
+        }
+        onChange(isName ? raw.slice(0, PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) : raw)
+      }}
       onBlur={(event) => {
         const raw = event.currentTarget.value
         const normalized = inputType === "number" && raw !== "" ? Number(raw) : raw
