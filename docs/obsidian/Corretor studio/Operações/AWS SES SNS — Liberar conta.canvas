@@ -1,0 +1,452 @@
+{
+  "nodes": [
+    {
+      "id": "a100000000000001",
+      "type": "group",
+      "x": -40,
+      "y": -80,
+      "width": 4240,
+      "height": 280,
+      "label": "Objetivo — conta AWS dedicada para liberar SES/SNS",
+      "color": "6"
+    },
+    {
+      "id": "a100000000000010",
+      "type": "group",
+      "x": 0,
+      "y": 240,
+      "width": 1000,
+      "height": 780,
+      "label": "1. Por que agora",
+      "color": "1"
+    },
+    {
+      "id": "a100000000000011",
+      "type": "group",
+      "x": 1060,
+      "y": 240,
+      "width": 1000,
+      "height": 780,
+      "label": "2. Pré-requisitos",
+      "color": "5"
+    },
+    {
+      "id": "a100000000000012",
+      "type": "group",
+      "x": 2120,
+      "y": 240,
+      "width": 1000,
+      "height": 780,
+      "label": "3. Criar a conta",
+      "color": "2"
+    },
+    {
+      "id": "a100000000000013",
+      "type": "group",
+      "x": 3180,
+      "y": 240,
+      "width": 1000,
+      "height": 780,
+      "label": "4. Endurecer o root",
+      "color": "3"
+    },
+    {
+      "id": "a100000000000020",
+      "type": "group",
+      "x": 0,
+      "y": 1080,
+      "width": 1000,
+      "height": 860,
+      "label": "5. SES na região certa",
+      "color": "4"
+    },
+    {
+      "id": "a100000000000021",
+      "type": "group",
+      "x": 2120,
+      "y": 1080,
+      "width": 1000,
+      "height": 860,
+      "label": "7. Pedido de produção",
+      "color": "1"
+    },
+    {
+      "id": "a100000000000022",
+      "type": "group",
+      "x": 1060,
+      "y": 1080,
+      "width": 1000,
+      "height": 860,
+      "label": "6. SNS bounce/complaint",
+      "color": "5"
+    },
+    {
+      "id": "a100000000000023",
+      "type": "group",
+      "x": 3180,
+      "y": 1080,
+      "width": 1000,
+      "height": 860,
+      "label": "8. Depois da aprovação",
+      "color": "4"
+    },
+    {
+      "id": "a100000000000030",
+      "type": "group",
+      "x": 0,
+      "y": 2000,
+      "width": 2060,
+      "height": 640,
+      "label": "Texto para colar no pedido AWS",
+      "color": "6"
+    },
+    {
+      "id": "a100000000000031",
+      "type": "group",
+      "x": 2120,
+      "y": 2000,
+      "width": 2060,
+      "height": 640,
+      "label": "Armadilhas que recusam o pedido",
+      "color": "1"
+    },
+    {
+      "id": "a100000000000040",
+      "type": "group",
+      "x": 0,
+      "y": 2700,
+      "width": 4180,
+      "height": 420,
+      "label": "Notas e docs oficiais",
+      "color": "5"
+    },
+    {
+      "id": "b200000000000001",
+      "type": "text",
+      "x": 0,
+      "y": -60,
+      "width": 2680,
+      "height": 220,
+      "color": "6",
+      "text": "# Liberar SES/SNS — Corretor Studio\n\nConta AWS **nova e vazia** → SES em **sa-east-1** → SNS Standard de bounce/complaint → **sair do sandbox**.\nServe ao plano de migração self-hosted (ago/2026) e ao `429 monthly_quota_exceeded` do Resend."
+    },
+    {
+      "id": "b200000000000002",
+      "type": "text",
+      "x": 2760,
+      "y": -60,
+      "width": 1400,
+      "height": 220,
+      "color": "2",
+      "text": "## Ordem que não pular\n\n1. Conta nova\n2. MFA + IAM (sair do root)\n3. DNS DKIM do domínio\n4. Tópicos SNS **antes** do pedido\n5. Request production access\n6. Esperar Support (24h+)"
+    },
+    {
+      "id": "b200000000000010",
+      "type": "text",
+      "x": 40,
+      "y": 300,
+      "width": 920,
+      "height": 480,
+      "color": "1",
+      "text": "## Bloqueio atual\n\nProdução: Resend `429 monthly_quota_exceeded`.\nCampanhas **e** `meeting-follow-up` pararam. Não é bug de código.\n\n**Sandbox SES** = 200 e-mails/dia, só destinatário verificado, 1/s. Inútil para o produto.\n\n**Meta:** conta dedicada, SES produção em São Paulo, feedback de bounce/complaint no SNS."
+    },
+    {
+      "id": "b200000000000011",
+      "type": "file",
+      "x": 40,
+      "y": 800,
+      "width": 920,
+      "height": 180,
+      "file": "Corretor studio/Operações/Migração Self-Hosted — Plano (2026-08).md"
+    },
+    {
+      "id": "b200000000000012",
+      "type": "text",
+      "x": 1100,
+      "y": 300,
+      "width": 920,
+      "height": 680,
+      "color": "5",
+      "text": "## Levar na mão\n\n- E-mail root **novo** (`aws-ses@corretorstudio.com.br`)\n- Celular para SMS\n- Cartão + CPF/CNPJ\n- App MFA (1Password/Authy)\n- URL: `https://www.corretorstudio.com`\n\n## Nome sugerido\n\n`corretor-studio-ses`\n\n## Não usar\n\nConta pessoal, de cliente, ou qualquer conta que já tenha EC2/S3/histórico de SES recusado."
+    },
+    {
+      "id": "b200000000000013",
+      "type": "text",
+      "x": 2160,
+      "y": 300,
+      "width": 920,
+      "height": 520,
+      "color": "2",
+      "text": "## Signup\n\n1. [portal.aws.amazon.com/billing/signup](https://portal.aws.amazon.com/billing/signup)\n2. **Sign up (advanced)** — controle total\n3. Root e-mail = alias novo\n4. Account name = `corretor-studio-ses`\n5. Confirmar e-mail → senha no cofre\n6. Telefone BR\n7. Cartão (autorização simbólica)\n8. Support = **Basic** (grátis)\n\nAnote o **Account ID** (12 dígitos) no cofre."
+    },
+    {
+      "id": "c300000000000001",
+      "type": "link",
+      "x": 2160,
+      "y": 840,
+      "width": 920,
+      "height": 140,
+      "url": "https://portal.aws.amazon.com/billing/signup"
+    },
+    {
+      "id": "b200000000000014",
+      "type": "text",
+      "x": 3220,
+      "y": 300,
+      "width": 920,
+      "height": 680,
+      "color": "3",
+      "text": "## Ainda no root, só isso\n\n1. **MFA no root** (TOTP)\n2. **Zero** access key no root\n3. IAM user `matheus.admin` + `AdministratorAccess` + MFA\n4. **Sair do root** — daqui pra frente só IAM\n5. Budget USD **20** e **50** no e-mail do Matheus\n6. Seletor de região: **São Paulo (sa-east-1)**\n\nEsta conta não sobe VPS, banco, S3 de produto nem Kubernetes."
+    },
+    {
+      "id": "b200000000000020",
+      "type": "text",
+      "x": 40,
+      "y": 1140,
+      "width": 920,
+      "height": 560,
+      "color": "4",
+      "text": "## Região\n\nConsole SES em **sa-east-1** (São Paulo).\n\nDomínios da plataforma já no Resend nesta região:\n- `corretorstudio.com.br`\n- `corretorstudio.com`\n\n`us-east-1` só entra se for manter `perttoconsultoria.com.br` — sandbox é **por região**.\n\n## Identity\n\nIdentities → Domain → Easy DKIM 2048.\nPublicar CNAME. Cloudflare = **DNS only** (cinza).\nDomínio verificado **antes** do pedido acelera a AWS."
+    },
+    {
+      "id": "c300000000000002",
+      "type": "link",
+      "x": 40,
+      "y": 1720,
+      "width": 920,
+      "height": 180,
+      "url": "https://console.aws.amazon.com/ses/"
+    },
+    {
+      "id": "b200000000000021",
+      "type": "text",
+      "x": 2160,
+      "y": 1140,
+      "width": 920,
+      "height": 560,
+      "color": "1",
+      "text": "## Request production access\n\nAccount dashboard → Get set up → Request production access.\n\n| Campo | Valor |\n|---|---|\n| Mail type | **Marketing** (volume = campanha) |\n| Website | `https://www.corretorstudio.com` |\n| Contacts | `matheus@corretorstudio.com.br` |\n| Language | English |\n| Ack | bounce/complaint via SNS |\n\nNão edite o formulário até a review terminar.\nResposta inicial ≤ 24h no **Support Center**."
+    },
+    {
+      "id": "c300000000000003",
+      "type": "link",
+      "x": 2160,
+      "y": 1720,
+      "width": 920,
+      "height": 180,
+      "url": "https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html"
+    },
+    {
+      "id": "b200000000000022",
+      "type": "text",
+      "x": 1100,
+      "y": 1140,
+      "width": 920,
+      "height": 560,
+      "color": "5",
+      "text": "## Tópicos (Standard, nunca FIFO)\n\nNa **mesma** região `sa-east-1`:\n- `ses-bounces-sa-east-1`\n- `ses-complaints-sa-east-1`\n\nPolicy: `ses.amazonaws.com` → `sns:Publish` condicionado a `SourceAccount` + ARN da identity.\n\nSubscribe um e-mail seu e **confirme** a inscrição.\n\nSES → Identity → Notifications:\nBounce e Complaint apontando para os tópicos.\nDepois desligue Email Feedback Forwarding.\n\nSem KMS customer-managed nesta fase."
+    },
+    {
+      "id": "c300000000000004",
+      "type": "link",
+      "x": 1100,
+      "y": 1720,
+      "width": 920,
+      "height": 180,
+      "url": "https://docs.aws.amazon.com/ses/latest/dg/configure-sns-notifications.html"
+    },
+    {
+      "id": "b200000000000023",
+      "type": "text",
+      "x": 3220,
+      "y": 1140,
+      "width": 920,
+      "height": 560,
+      "color": "4",
+      "text": "## Quando o sandbox cair\n\n1. Dashboard sem o aviso de sandbox\n2. Mailbox simulator:\n   - `success@simulator.amazonses.com`\n   - `bounce@simulator.amazonses.com`\n   - `complaint@simulator.amazonses.com`\n3. Cofre: Account ID + ARNs (não no chat)\n\n**Resend Scale:** conectar a conta / ticket — eles assumem um role. Não mande a senha do root.\n\n**Self-hosted:** IAM só `ses:SendEmail` na identity; SNS HTTPS → webhook da app (hoje `/api/webhooks/resend`)."
+    },
+    {
+      "id": "c300000000000005",
+      "type": "link",
+      "x": 3220,
+      "y": 1720,
+      "width": 920,
+      "height": 180,
+      "url": "https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html"
+    },
+    {
+      "id": "b200000000000030",
+      "type": "text",
+      "x": 40,
+      "y": 2060,
+      "width": 1980,
+      "height": 540,
+      "color": "6",
+      "text": "## Use case (colar se a AWS pedir detalhes)\n\nThe Corretor Studio (https://www.corretorstudio.com) is a Brazilian SaaS for health-insurance brokers.\n\nWe send transactional mail (meeting invites, onboarding, account notices) and permission-based campaigns to leads/clients who opted in inside the product — not purchased cold lists.\n\nThe app already implements unsubscribe and suppression on bounce/complaint. We hit Resend monthly quota (`429 monthly_quota_exceeded`), which also blocked meeting reminders.\n\nSending moves to Amazon SES in **sa-east-1** on a dedicated AWS account. Bounce and complaint go to SNS Standard topics. Target: bounce < 2% (hard cap 5%), complaint < 0.1%."
+    },
+    {
+      "id": "b200000000000031",
+      "type": "text",
+      "x": 2160,
+      "y": 2060,
+      "width": 1980,
+      "height": 540,
+      "color": "1",
+      "text": "## Recusa / suspensão — o que evitar\n\n- Pedir produção em `us-east-1` e enviar em `sa-east-1`\n- Tópico FIFO ou tópico em outra região\n- DKIM com proxy Cloudflare (laranja)\n- Conta antiga com reputação suja\n- Access key no root\n- Marcar o ack de bounce sem ter SNS inscrito e confirmado\n- Lista fria no dia 1 (warm-up + consentimento)\n- Verificar dezenas de domínios de cliente antes da plataforma\n- Dedicated IP sem volume estável"
+    },
+    {
+      "id": "b200000000000040",
+      "type": "file",
+      "x": 40,
+      "y": 2760,
+      "width": 980,
+      "height": 320,
+      "file": "Corretor studio/Operações/AWS SES SNS — Passo a passo.md"
+    },
+    {
+      "id": "b200000000000041",
+      "type": "file",
+      "x": 1060,
+      "y": 2760,
+      "width": 980,
+      "height": 320,
+      "file": "Corretor studio/Operações/Migração Self-Hosted — Plano (2026-08).md"
+    },
+    {
+      "id": "c300000000000006",
+      "type": "link",
+      "x": 2120,
+      "y": 2760,
+      "width": 980,
+      "height": 150,
+      "url": "https://resend.com/docs/knowledge-base/account-quotas-and-limits"
+    },
+    {
+      "id": "c300000000000007",
+      "type": "link",
+      "x": 2120,
+      "y": 2930,
+      "width": 980,
+      "height": 150,
+      "url": "https://resend.com/settings/usage"
+    },
+    {
+      "id": "c300000000000008",
+      "type": "link",
+      "x": 3160,
+      "y": 2760,
+      "width": 980,
+      "height": 320,
+      "url": "https://console.aws.amazon.com/support/home"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e400000000000001",
+      "fromNode": "b200000000000001",
+      "toNode": "b200000000000010",
+      "toEnd": "arrow",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "contexto"
+    },
+    {
+      "id": "e400000000000002",
+      "fromNode": "b200000000000010",
+      "toNode": "b200000000000012",
+      "toEnd": "arrow",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e400000000000003",
+      "fromNode": "b200000000000012",
+      "toNode": "b200000000000013",
+      "toEnd": "arrow",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e400000000000004",
+      "fromNode": "b200000000000013",
+      "toNode": "b200000000000014",
+      "toEnd": "arrow",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "depois do signup"
+    },
+    {
+      "id": "e400000000000005",
+      "fromNode": "b200000000000014",
+      "toNode": "b200000000000020",
+      "toEnd": "arrow",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "região sa-east-1"
+    },
+    {
+      "id": "e400000000000006",
+      "fromNode": "b200000000000020",
+      "toNode": "b200000000000022",
+      "toEnd": "arrow",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "mesma região"
+    },
+    {
+      "id": "e400000000000007",
+      "fromNode": "b200000000000022",
+      "toNode": "b200000000000021",
+      "toEnd": "arrow",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "SNS antes do Submit"
+    },
+    {
+      "id": "e400000000000008",
+      "fromNode": "b200000000000021",
+      "toNode": "b200000000000023",
+      "toEnd": "arrow",
+      "fromSide": "right",
+      "toSide": "left",
+      "color": "2",
+      "label": "aguardar Support"
+    },
+    {
+      "id": "e400000000000009",
+      "fromNode": "b200000000000021",
+      "toNode": "b200000000000030",
+      "toEnd": "arrow",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "se pedirem detalhes"
+    },
+    {
+      "id": "e40000000000000a",
+      "fromNode": "b200000000000023",
+      "toNode": "b200000000000031",
+      "toEnd": "arrow",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e40000000000000b",
+      "fromNode": "b200000000000011",
+      "toNode": "b200000000000010",
+      "toEnd": "arrow",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "color": "6"
+    },
+    {
+      "id": "e40000000000000c",
+      "fromNode": "b200000000000040",
+      "toNode": "b200000000000023",
+      "toEnd": "arrow",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "color": "5",
+      "label": "checklist completo"
+    }
+  ]
+}
