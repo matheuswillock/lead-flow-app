@@ -286,6 +286,67 @@ function isEmailQuestion(question: PublicFormQuestionInput): boolean {
   return question.type === "email" || (question.type === "text" && question.mappingKey === "email")
 }
 
+/** Campo mapeado ao lead.name — regras de UX no formulário público (independentes do gate de CRM). */
+export const PUBLIC_FORM_LEAD_NAME_MIN_LENGTH = 3
+export const PUBLIC_FORM_LEAD_NAME_MAX_LENGTH = 30
+
+export function isLeadNameQuestion(question: PublicFormQuestionInput): boolean {
+  return question.mappingKey === "name"
+}
+
+export const PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR = "Informe um nome de pessoa, não um e-mail"
+
+export function validateLeadNameAnswer(value: unknown): string | null {
+  const trimmed = String(value ?? "").trim()
+  if (!trimmed || trimmed.length < PUBLIC_FORM_LEAD_NAME_MIN_LENGTH) {
+    return `Informe um nome com pelo menos ${PUBLIC_FORM_LEAD_NAME_MIN_LENGTH} caracteres`
+  }
+  if (trimmed.includes("@")) return PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR
+  if (trimmed.length > PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) {
+    return `Informe um nome com no máximo ${PUBLIC_FORM_LEAD_NAME_MAX_LENGTH} caracteres`
+  }
+  return null
+}
+
+function copyNameValueToEmptyEmail(options: {
+  nameValue: unknown
+  currentEmailValue: unknown
+  previousNameValue: unknown
+}): string | null {
+  const nameText = String(options.nameValue ?? "").trim()
+  if (!nameText.includes("@")) return null
+  const currentEmail = String(options.currentEmailValue ?? "").trim()
+  const previousName = String(options.previousNameValue ?? "").trim()
+  const emailIsEmpty = currentEmail.length === 0
+  const emailWasCopiedFromName = currentEmail === previousName
+  if (!emailIsEmpty && !emailWasCopiedFromName) return null
+  return nameText
+}
+
+export function applyLeadNameAnswerToFormAnswers(options: {
+  questions: Array<{ id: string; mappingKey?: string | null }>
+  currentAnswers: Record<string, unknown>
+  nameQuestionId: string
+  nameValue: unknown
+}): Record<string, unknown> {
+  const next: Record<string, unknown> = {
+    ...options.currentAnswers,
+    [options.nameQuestionId]: options.nameValue,
+  }
+  const emailQuestion = options.questions.find((question) => question.mappingKey === "email")
+  if (!emailQuestion) return next
+
+  const copiedEmail = copyNameValueToEmptyEmail({
+    nameValue: options.nameValue,
+    currentEmailValue: options.currentAnswers[emailQuestion.id],
+    previousNameValue: options.currentAnswers[options.nameQuestionId],
+  })
+  if (copiedEmail) {
+    next[emailQuestion.id] = copiedEmail
+  }
+  return next
+}
+
 function parseCurrencyAnswer(value: unknown): {
   empty: boolean
   amount: number
@@ -318,6 +379,10 @@ export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
   const s = String(v)
   if (isEmailQuestion(q) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
     return "Informe um e-mail válido"
+  if (isLeadNameQuestion(q)) {
+    const nameError = validateLeadNameAnswer(v)
+    if (nameError) return nameError
+  }
   if (q.type === "phone") {
     const digits = phoneDigitCount(s)
     if (digits < 10 || digits > 11) return "Informe um telefone válido"
