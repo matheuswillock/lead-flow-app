@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { publicFormProgressUseCase } from "@/app/api/useCases/publicForms/PublicFormProgressUseCase"
 import { Output } from "@/lib/output"
 import { publicFormProgressSchema } from "@/lib/public-forms/validation"
 import {
@@ -7,6 +6,8 @@ import {
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
+import { buildPublicFormProgressQueuePayload } from "@/lib/queues/public-form-progress-events"
+import { queueProgressForBackgroundProcessing } from "@/lib/public-forms/queue-progress-for-background-processing"
 
 export async function POST(
   request: Request,
@@ -30,6 +31,26 @@ export async function POST(
       headers: { "Retry-After": String(rate.retryAfterSeconds) },
     })
   }
-  const output = await publicFormProgressUseCase.execute(publicId, parsed.data)
-  return NextResponse.json(output, { status: output.isValid ? 202 : 400 })
+
+  for (const answer of parsed.data.answers) {
+    console.info("[PublicFormProgress][blur]", {
+      publicId,
+      visitorSessionId: parsed.data.visitorSessionId,
+      questionId: answer.questionId,
+      value: answer.value,
+    })
+  }
+
+  if (parsed.data.answers.length > 0) {
+    const payload = buildPublicFormProgressQueuePayload({
+      publicId,
+      visitorSessionId: parsed.data.visitorSessionId,
+      answers: parsed.data.answers,
+      origin: parsed.data.origin ?? {},
+      lastQuestionId: parsed.data.lastQuestionId,
+    })
+    await queueProgressForBackgroundProcessing(payload)
+  }
+
+  return NextResponse.json(new Output(true, [], [], { queued: true }), { status: 202 })
 }
