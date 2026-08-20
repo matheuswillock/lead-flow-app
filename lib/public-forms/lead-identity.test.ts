@@ -101,6 +101,15 @@ describe("lead identity from public forms", () => {
     expect(isBrazilianLandlinePhone("1138971122")).toBe(true)
     expect(isBrazilianContactPhone("1138971122")).toBe(true)
     expect(canCreateLeadFromExtracted(extracted)).toBe(true)
+
+    expect(isBrazilianLandlinePhone("1198887777")).toBe(false)
+    expect(isBrazilianContactPhone("1198887777")).toBe(false)
+    const truncatedMobile = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Maria Silva" },
+      { questionId: phoneId, value: "(11) 9888-7777" },
+    ])
+    expect(truncatedMobile.normalizedPhone).toBe("1198887777")
+    expect(canCreateLeadFromExtracted(truncatedMobile)).toBe(false)
   })
 
   it("cria lead com nome de uma palavra, celular e e-mail", () => {
