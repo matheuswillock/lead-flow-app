@@ -22,7 +22,7 @@ describe("buildLeadSyncAlerts", () => {
       "Nome ausente",
       "E-mail ausente",
       "Telefone ausente",
-      "Não foi possível criar o lead: informe nome completo e celular",
+      "Não foi possível criar o lead: informe nome completo e telefone (celular ou fixo), ou nome, celular e e-mail",
     ])
   })
 
@@ -32,6 +32,16 @@ describe("buildLeadSyncAlerts", () => {
       undefined,
     )
     expect(alerts).toEqual(["E-mail não informado (lead criado com telefone)"])
+  })
+
+  it("exige e-mail para criar lead com nome de uma palavra", () => {
+    const alerts = buildLeadSyncAlerts(
+      extracted({ name: "Maria", phone: "(11) 98888-7777", normalizedPhone: "11988887777" }),
+      undefined,
+    )
+    expect(alerts).toContain(
+      "Não foi possível criar o lead: informe nome completo e telefone (celular ou fixo), ou nome, celular e e-mail",
+    )
   })
 
   it("exige telefone ou e-mail para atualizar lead existente", () => {

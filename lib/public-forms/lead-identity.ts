@@ -113,6 +113,17 @@ const ROLE_LOCAL_PARTS = new Set([
 
 const COMPANY_SUFFIX_RE = /\b(ltda|eireli|s\.?a\.?|s\/a|me|epp|ss)\b/i
 
+function personNameWords(name: string): string[] {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter((word) => /[a-zA-ZÀ-ÿ]{2,}/.test(word))
+}
+
+function hasCompletePersonLeadName(name: string): boolean {
+  return personNameWords(name).length >= 2
+}
+
 export function isValidPersonLeadName(name: string, email?: string): boolean {
   const trimmed = name.trim()
   if (!trimmed) return false
@@ -122,14 +133,17 @@ export function isValidPersonLeadName(name: string, email?: string): boolean {
   if (emailNorm) {
     if (trimmed.toLowerCase() === emailNorm) return false
     const local = emailNorm.split("@")[0] ?? ""
-    if (local && trimmed.toLowerCase() === local) return false
+    // First names often match the local-part (Maria / maria@). Reject dotted copies only.
+    const nameMatchesDottedEmailLocalPart =
+      Boolean(local) && trimmed.toLowerCase() === local && local.includes(".")
+    if (nameMatchesDottedEmailLocalPart) return false
   }
 
   if (COMPANY_SUFFIX_RE.test(trimmed)) return false
   if (/^[a-z0-9]+\.[a-z0-9.]+$/i.test(trimmed) && !trimmed.includes(" ")) return false
 
-  const words = trimmed.split(/\s+/).filter((word) => /[a-zA-ZÀ-ÿ]{2,}/.test(word))
-  if (words.length < 2) return false
+  const words = personNameWords(trimmed)
+  if (words.length < 1) return false
 
   const firstWord = words[0]?.toLowerCase()
   if (firstWord && ROLE_LOCAL_PARTS.has(firstWord)) return false
@@ -140,8 +154,25 @@ export function isBrazilianMobilePhone(normalizedDigits: string): boolean {
   return /^\d{11}$/.test(normalizedDigits) && normalizedDigits[2] === "9"
 }
 
+export function isBrazilianLandlinePhone(normalizedDigits: string): boolean {
+  // ANATEL: DDD + 8-digit subscriber starting 2–5. Rejects truncated mobiles (9…).
+  return /^\d{2}[2-5]\d{7}$/.test(normalizedDigits)
+}
+
+export function isBrazilianContactPhone(normalizedDigits: string): boolean {
+  return isBrazilianMobilePhone(normalizedDigits) || isBrazilianLandlinePhone(normalizedDigits)
+}
+
 export function canCreateLeadFromExtracted(data: ExtractedLeadData): boolean {
-  return isValidPersonLeadName(data.name, data.email) && isBrazilianMobilePhone(data.normalizedPhone)
+  if (!isValidPersonLeadName(data.name, data.email)) return false
+
+  if (hasCompletePersonLeadName(data.name) && isBrazilianContactPhone(data.normalizedPhone)) {
+    return true
+  }
+
+  const hasSingleNameWord = personNameWords(data.name).length === 1
+  const hasEmail = Boolean(data.email.trim())
+  return hasSingleNameWord && isBrazilianMobilePhone(data.normalizedPhone) && hasEmail
 }
 
 export function canUpdateLeadFromExtracted(data: ExtractedLeadData): boolean {
