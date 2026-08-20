@@ -23,6 +23,7 @@ import type {
 } from "./RadarTypes"
 import type { CustomSegmentInput, CustomSegmentUpdateInput } from "../services/IRadarService"
 import type { RadarExportFormat, RadarExportRow } from "@/lib/radar/exportRadarProfiles"
+import type { RadarProfileFormItem } from "@/lib/radar/profile-forms"
 import { downloadRadarExportFile } from "../utils/downloadRadarExport"
 
 export type RadarTab = "perfis" | "segmentos"
@@ -53,6 +54,8 @@ export function useRadarHookFn() {
   const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
   const [contracts, setContracts] = useState<RadarProfileContracts | null>(null)
   const [isLoadingContracts, setIsLoadingContracts] = useState(false)
+  const [profileForms, setProfileForms] = useState<RadarProfileFormItem[] | null>(null)
+  const [isLoadingProfileForms, setIsLoadingProfileForms] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [isPreviewingAudience, setIsPreviewingAudience] = useState(false)
@@ -80,6 +83,7 @@ export function useRadarHookFn() {
   const autoOpenedProfileIdRef = useRef<string | null>(null)
   const touchpointsProfileIdRef = useRef<string | null>(null)
   const contractsProfileIdRef = useRef<string | null>(null)
+  const formsProfileIdRef = useRef<string | null>(null)
   const deepLinkSegmentRef = useRef<string | null>(null)
   const [campaignDeepLinkSegment, setCampaignDeepLinkSegment] = useState<RadarSegment | null>(null)
 
@@ -180,6 +184,7 @@ export function useRadarHookFn() {
       setDetailEventsPage(1)
       setTouchpoints(null)
       setContracts(null)
+      setProfileForms(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -206,8 +211,10 @@ export function useRadarHookFn() {
       // a request estava em voo (ex.: sheet fechada e reaberta para outro perfil).
       touchpointsProfileIdRef.current = profileId
       contractsProfileIdRef.current = profileId
+      formsProfileIdRef.current = profileId
       setIsLoadingTouchpoints(true)
       setIsLoadingContracts(true)
+      setIsLoadingProfileForms(true)
       void (async () => {
         try {
           const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
@@ -230,6 +237,17 @@ export function useRadarHookFn() {
           if (contractsProfileIdRef.current === profileId) setIsLoadingContracts(false)
         }
       })()
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileForms(supabaseId, activeTeamId, profileId)
+          if (formsProfileIdRef.current !== profileId) return
+          setProfileForms(result.items)
+        } catch (formsError) {
+          console.error("[useRadarHookFn][loadProfileForms]", formsError)
+        } finally {
+          if (formsProfileIdRef.current === profileId) setIsLoadingProfileForms(false)
+        }
+      })()
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -243,6 +261,8 @@ export function useRadarHookFn() {
     touchpointsProfileIdRef.current = null
     setContracts(null)
     contractsProfileIdRef.current = null
+    setProfileForms(null)
+    formsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -830,6 +850,8 @@ export function useRadarHookFn() {
     isLoadingTouchpoints,
     contracts,
     isLoadingContracts,
+    profileForms,
+    isLoadingProfileForms,
     previewSegmentContactList,
     materializeSegmentToContactList,
     promoteProfileToLead,

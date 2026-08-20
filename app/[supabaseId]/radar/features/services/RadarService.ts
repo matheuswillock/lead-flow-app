@@ -19,6 +19,7 @@ import type {
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
+import type { RadarProfileForms } from "@/lib/radar/profile-forms"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 async function parseOutput<T>(res: Response): Promise<T> {
@@ -465,6 +466,18 @@ export class RadarFrontendService implements IRadarService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     return parseOutput<RadarProfileTouchpoints>(res)
+  }
+
+  async getProfileForms(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileForms> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/forms`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileForms>(res)
   }
 
   async getProfileContracts(

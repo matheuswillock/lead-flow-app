@@ -37,10 +37,12 @@ import type {
   RadarProfileDetail,
   RadarProfileTouchpoints,
 } from "../context/RadarTypes"
+import type { RadarProfileFormItem } from "@/lib/radar/profile-forms"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 import { PromoteRadarProfileAlertDialog } from "./PromoteRadarProfileAlertDialog"
 import { RadarEngagementBadge } from "./RadarEngagementBadge"
+import { RadarProfileFormsTab } from "./RadarProfileFormsTab"
 import {
   buildLeadCrmHref,
   filterDisplayableIdentities,
@@ -180,6 +182,8 @@ type RadarProfileSheetProps = {
   isLoadingTouchpoints: boolean
   contracts: RadarProfileContracts | null
   isLoadingContracts: boolean
+  profileForms: RadarProfileFormItem[] | null
+  isLoadingProfileForms: boolean
   onPromoteToLead?: () => Promise<boolean>
   onUpdateGender?: (gender: RadarGender) => Promise<boolean>
 }
@@ -197,6 +201,8 @@ export function RadarProfileSheet({
   isLoadingTouchpoints,
   contracts,
   isLoadingContracts,
+  profileForms,
+  isLoadingProfileForms,
   onPromoteToLead,
   onUpdateGender,
 }: RadarProfileSheetProps) {
@@ -421,6 +427,7 @@ export function RadarProfileSheet({
                 <TabsList className="flex h-auto flex-wrap gap-1">
                   <TabsTrigger value="resumo">Resumo</TabsTrigger>
                   <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                  <TabsTrigger value="formularios">Formulários</TabsTrigger>
                   <TabsTrigger value="contratos">Contratos</TabsTrigger>
                   <TabsTrigger value="identidades">Identidades</TabsTrigger>
                   <TabsTrigger value="consentimentos">Consentimentos</TabsTrigger>
@@ -526,6 +533,10 @@ export function RadarProfileSheet({
                       </div>
                     </>
                   )}
+                </TabsContent>
+
+                <TabsContent value="formularios" className="flex flex-col gap-3">
+                  <RadarProfileFormsTab items={profileForms} isLoading={isLoadingProfileForms} />
                 </TabsContent>
 
                 <TabsContent value="contratos" className="flex flex-col gap-3">

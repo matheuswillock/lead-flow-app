@@ -10,6 +10,7 @@ import type {
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
+import type { RadarProfileForms } from "@/lib/radar/profile-forms"
 
 export type CustomSegmentInput = {
   name: string
@@ -188,6 +189,7 @@ export interface IRadarService {
     }
   ): Promise<{ segmentId: string; name: string; parentName: string; totalConditions: number }>
   getProfileTouchpoints(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileTouchpoints>
+  getProfileForms(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileForms>
   getProfileContracts(supabaseId: string, teamId: string, profileId: string): Promise<RadarProfileContracts>
   materializeContactList(
     supabaseId: string,

@@ -1030,6 +1030,17 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  findFormsByIdsForTeam(
+    teamId: string,
+    formIds: string[],
+  ): Promise<Array<{ id: string; name: string; publicId: string }>> {
+    if (formIds.length === 0) return Promise.resolve([])
+    return prisma.publicForm.findMany({
+      where: { teamId, id: { in: formIds } },
+      select: { id: true, name: true, publicId: true },
+    })
+  }
+
   createSubmission(data: {
     formId: string
     publicationId: string
