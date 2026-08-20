@@ -53,6 +53,15 @@ function isPrismaUniqueConstraint(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
 }
 
+function isBlankProgressAnswerValue(
+  value: Prisma.JsonValue | Prisma.InputJsonValue | null | undefined,
+): boolean {
+  if (value == null) return true
+  if (typeof value === "string") return value.trim() === ""
+  if (Array.isArray(value)) return value.length === 0
+  return false
+}
+
 const PERSIST_ANSWER_FK_SAVEPOINT = "persist_answer_fk"
 const PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT = "persist_answer_without_fk"
 
@@ -1222,9 +1231,32 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     }>,
   ) {
     // Blur payloads carry one answer; deleteMany would wipe a concurrent full-page save.
+    // Queue retries can still deliver a stale empty blur after a filled save of the same question.
     for (const answer of answers) {
+      if (await this.shouldSkipBlankProgressOverwrite(tx, submissionId, answer)) continue
       await this.writeSubmissionAnswer(tx, submissionId, answer)
     }
+  }
+
+  private async shouldSkipBlankProgressOverwrite(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: {
+      questionId: string
+      value: Prisma.InputJsonValue
+    },
+  ): Promise<boolean> {
+    if (!answer.questionId || !isBlankProgressAnswerValue(answer.value)) return false
+    const existing = await tx.publicFormAnswer.findUnique({
+      where: {
+        submissionId_questionId: {
+          submissionId,
+          questionId: answer.questionId,
+        },
+      },
+      select: { value: true },
+    })
+    return Boolean(existing && !isBlankProgressAnswerValue(existing.value))
   }
 
   private async withTransactionSavepoint<T>(

@@ -7,6 +7,7 @@ const findUniqueMock = mock(async () => null as { id: string; leadId: string | n
 const findUniqueOrThrowMock = mock(async () => ({ id: "sub-winner" }))
 const updateMock = mock(async () => ({}))
 const deleteManyMock = mock(async () => ({ count: 0 }))
+const answerFindUniqueMock = mock(async () => null as { value: Prisma.JsonValue } | null)
 const answerUpsertMock = mock(async () => ({}))
 const executeRawMock = mock(async () => 0)
 const executeRawUnsafeMock = mock(async () => 0)
@@ -24,6 +25,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       publicFormSubmission: { update: typeof updateMock }
       publicFormAnswer: {
         deleteMany: typeof deleteManyMock
+        findUnique: typeof answerFindUniqueMock
         upsert: typeof answerUpsertMock
       }
       $executeRaw: typeof executeRawMock
@@ -33,6 +35,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
         publicFormSubmission: { update: updateMock },
         publicFormAnswer: {
           deleteMany: deleteManyMock,
+          findUnique: answerFindUniqueMock,
           upsert: answerUpsertMock,
         },
         $executeRaw: executeRawMock,
@@ -76,6 +79,7 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     findUniqueOrThrowMock.mockReset()
     updateMock.mockReset()
     deleteManyMock.mockReset()
+    answerFindUniqueMock.mockReset()
     answerUpsertMock.mockReset()
     executeRawMock.mockReset()
     executeRawUnsafeMock.mockReset()
@@ -85,6 +89,7 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     findUniqueOrThrowMock.mockResolvedValue({ id: "sub-winner" })
     updateMock.mockResolvedValue({})
     deleteManyMock.mockResolvedValue({ count: 0 })
+    answerFindUniqueMock.mockResolvedValue(null)
     answerUpsertMock.mockResolvedValue({})
     executeRawMock.mockResolvedValue(0)
     executeRawUnsafeMock.mockResolvedValue(0)
@@ -125,6 +130,26 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     expect(deleteManyMock).not.toHaveBeenCalled()
     expect(answerUpsertMock).toHaveBeenCalledTimes(1)
     expect(executeRawMock).toHaveBeenCalled()
+  })
+
+  it("não sobrescreve resposta preenchida com blur vazio stale", async () => {
+    findFirstMock.mockResolvedValueOnce({ id: "sub-existing", leadId: "lead-1" })
+    findUniqueOrThrowMock.mockResolvedValueOnce({ id: "sub-existing" })
+    answerFindUniqueMock.mockResolvedValueOnce({ value: "Ana" })
+
+    const repo = new PublicFormsRepository()
+    await repo.upsertProgressSubmission({
+      ...BASE_DATA,
+      answers: [
+        {
+          questionId: "q-1",
+          value: "" as Prisma.InputJsonValue,
+          questionSnapshot: { id: "q-1" } as Prisma.InputJsonValue,
+        },
+      ],
+    })
+
+    expect(answerUpsertMock).not.toHaveBeenCalled()
   })
 
   it("P2002 sem vencedor visível: relança o erro", async () => {
