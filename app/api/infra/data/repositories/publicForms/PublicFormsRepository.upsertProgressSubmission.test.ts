@@ -113,6 +113,18 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
 
     expect(deleteManyMock).not.toHaveBeenCalled()
     expect(answerUpsertMock).toHaveBeenCalledTimes(1)
+    expect(executeRawMock).toHaveBeenCalled()
+  })
+
+  it("criação de progresso também faz merge — não apaga respostas de outro payload concorrente", async () => {
+    const repo = new PublicFormsRepository()
+    const result = await repo.upsertProgressSubmission(BASE_DATA)
+
+    expect(result.id).toBe("sub-new")
+    expect(createMock).toHaveBeenCalledTimes(1)
+    expect(deleteManyMock).not.toHaveBeenCalled()
+    expect(answerUpsertMock).toHaveBeenCalledTimes(1)
+    expect(executeRawMock).toHaveBeenCalled()
   })
 
   it("P2002 sem vencedor visível: relança o erro", async () => {

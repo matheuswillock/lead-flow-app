@@ -1071,7 +1071,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           score: 0,
         },
       })
-      await this.persistSubmissionAnswers(submission.id, data.answers)
+      await this.withVisitorProgressLock(data.visitorSessionId, async (tx) => {
+        await this.mergeSubmissionAnswers(tx, submission.id, data.answers)
+      })
       return submission
     } catch (error) {
       if (!isPrismaUniqueConstraint(error)) throw error
@@ -1090,8 +1092,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     data: ProgressSubmissionWrite,
     previousLeadId: string | null,
   ) {
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`public-form-progress:${data.visitorSessionId}`}))`
+    await this.withVisitorProgressLock(data.visitorSessionId, async (tx) => {
       await tx.publicFormSubmission.update({
         where: { id: submissionId },
         data: {
@@ -1103,6 +1104,16 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       await this.mergeSubmissionAnswers(tx, submissionId, data.answers)
     })
     return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: submissionId } })
+  }
+
+  private async withVisitorProgressLock(
+    visitorSessionId: string,
+    work: (tx: Prisma.TransactionClient) => Promise<void>,
+  ) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`public-form-progress:${visitorSessionId}`}))`
+      await work(tx)
+    })
   }
 
   findFormSubmissionContext(formId: string): Promise<PublicFormSubmissionContext> {
@@ -1210,6 +1221,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionSnapshot: Prisma.InputJsonValue
     }>,
   ) {
+    // Blur payloads carry one answer; deleteMany would wipe a concurrent full-page save.
     for (const answer of answers) {
       await this.writeSubmissionAnswer(tx, submissionId, answer)
     }
