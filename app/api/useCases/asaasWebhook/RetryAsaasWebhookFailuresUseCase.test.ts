@@ -58,10 +58,13 @@ describe("RetryAsaasWebhookFailuresUseCase (republish-to-queue)", () => {
 
     expect(result.isValid).toBe(true);
     expect(publishAsaasWebhookEventMock).toHaveBeenCalledTimes(1);
-    expect(publishAsaasWebhookEventMock).toHaveBeenCalledWith({
-      eventId: "row-1",
-      body: { event: "PAYMENT_RECEIVED" },
-    });
+    expect(publishAsaasWebhookEventMock).toHaveBeenCalledWith(
+      {
+        eventId: "row-1",
+        body: { event: "PAYMENT_RECEIVED" },
+      },
+      { idempotencyKey: "row-1:outbox-retry:row-1:1" },
+    );
     expect(markProcessedMock).toHaveBeenCalledWith("row-1");
     expect(markRetryOrFailedMock).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({ claimed: 1, resolved: 1, retried: 0, failed: 0 });

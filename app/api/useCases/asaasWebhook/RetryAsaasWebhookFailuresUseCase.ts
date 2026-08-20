@@ -54,6 +54,16 @@ export class RetryAsaasWebhookFailuresUseCase {
   }
 
   /**
+   * A Vercel Queues deduplica `send()` pela `idempotencyKey`. Depois do
+   * consumer dar ack em `eventId`, republicar com a mesma chave é no-op.
+   * Cada retry do outbox usa chave própria; a dedupe de negócio continua
+   * no Postgres (`eventId`).
+   */
+  private retryIdempotencyKey(row: AsaasWebhookEventClaimRow): string {
+    return `${row.id}:outbox-retry:${row.id}:${row.attemptCount}`;
+  }
+
+  /**
    * Republica uma linha do outbox na fila `asaas-webhook-events` (mesmo
    * caminho do `after()` do webhook). Quem chama `processAsaasWebhookEvent`
    * de fato é só o consumer da fila (`markProcessed`/`markFailed` lá) — o
@@ -70,7 +80,10 @@ export class RetryAsaasWebhookFailuresUseCase {
     try {
       const body = this.parsePayload(row.payload);
       const publishResult = await publishWithRetry(() =>
-        publishAsaasWebhookEvent({ eventId: row.id, body })
+        publishAsaasWebhookEvent(
+          { eventId: row.id, body },
+          { idempotencyKey: this.retryIdempotencyKey(row) },
+        )
       );
       if (!publishResult.ok) {
         throw publishResult.error instanceof Error

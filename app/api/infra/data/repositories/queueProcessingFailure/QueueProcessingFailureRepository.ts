@@ -24,11 +24,11 @@ export class QueueProcessingFailureRepository implements IQueueProcessingFailure
       },
       select: { status: true },
     })
-    if (existing?.status === "resolved") {
-      return
-    }
 
     const now = new Date()
+    const shouldStartNewRetryGeneration =
+      existing?.status === "resolved" || existing?.status === "failed"
+
     await prisma.queueProcessingFailure.upsert({
       where: {
         topic_idempotencyKey: {
@@ -50,6 +50,7 @@ export class QueueProcessingFailureRepository implements IQueueProcessingFailure
         lastError: input.lastError,
         status: "pending",
         nextAttemptAt: now,
+        ...(shouldStartNewRetryGeneration ? { attemptCount: 1 } : {}),
       },
     })
   }

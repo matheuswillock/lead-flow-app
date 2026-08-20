@@ -37,6 +37,23 @@ describe("QueueProcessingFailureRepository", () => {
     findUniqueMock.mockImplementation(async () => null)
   })
 
+  it("upsertFromProcessingFailure em linha pending não zera attemptCount", async () => {
+    findUniqueMock.mockImplementation(async () => ({ status: "pending" }))
+    const repo = new QueueProcessingFailureRepository()
+    await repo.upsertFromProcessingFailure({
+      topic: "public-form-metric-events",
+      idempotencyKey: "evt-1",
+      payload: { eventKey: "evt-1" },
+      lastError: "P2024",
+    })
+
+    const call = upsertMock.mock.calls[0]?.[0] as {
+      update: { status: string; attemptCount?: number }
+    }
+    expect(call.update.status).toBe("pending")
+    expect(call.update.attemptCount).toBeUndefined()
+  })
+
   it("upsertFromProcessingFailure cria linha pending com topic e idempotencyKey", async () => {
     const repo = new QueueProcessingFailureRepository()
     await repo.upsertFromProcessingFailure({
@@ -59,7 +76,7 @@ describe("QueueProcessingFailureRepository", () => {
     expect(call.create.status).toBe("pending")
   })
 
-  it("upsertFromProcessingFailure não regrava linha já resolvida", async () => {
+  it("upsertFromProcessingFailure reabre linha resolved como pending com nova geração de retry", async () => {
     findUniqueMock.mockImplementation(async () => ({ status: "resolved" }))
     const repo = new QueueProcessingFailureRepository()
     await repo.upsertFromProcessingFailure({
@@ -69,7 +86,30 @@ describe("QueueProcessingFailureRepository", () => {
       lastError: "P2024",
     })
 
-    expect(upsertMock).not.toHaveBeenCalled()
+    expect(upsertMock).toHaveBeenCalledTimes(1)
+    const call = upsertMock.mock.calls[0]?.[0] as {
+      update: { status: string; attemptCount: number }
+    }
+    expect(call.update.status).toBe("pending")
+    expect(call.update.attemptCount).toBe(1)
+  })
+
+  it("upsertFromProcessingFailure reabre linha failed como pending com nova geração de retry", async () => {
+    findUniqueMock.mockImplementation(async () => ({ status: "failed" }))
+    const repo = new QueueProcessingFailureRepository()
+    await repo.upsertFromProcessingFailure({
+      topic: "radar-email-contact-sync",
+      idempotencyKey: "radar-email-contact-sync-wake",
+      payload: { kind: "wake" },
+      lastError: "timeout",
+    })
+
+    expect(upsertMock).toHaveBeenCalledTimes(1)
+    const call = upsertMock.mock.calls[0]?.[0] as {
+      update: { status: string; attemptCount: number }
+    }
+    expect(call.update.status).toBe("pending")
+    expect(call.update.attemptCount).toBe(1)
   })
 
   it("markRetryOrFailed marca failed quando attemptCount atinge o teto (5)", async () => {
