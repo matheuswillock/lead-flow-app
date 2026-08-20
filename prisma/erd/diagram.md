@@ -939,6 +939,15 @@ failed failed
     
 
 
+        queue_processing_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
+        }
+    
+
+
         resend_webhook_processing_failure_status {
             pending pending
 processing processing
@@ -2862,6 +2871,20 @@ completed completed
     }
   
 
+  "corretor_studio_queue_processing_failures" {
+    String id "🗝️"
+    String topic 
+    String idempotencyKey 
+    Json payload 
+    QueueProcessingFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_products" {
     String id "🗝️"
     String name 
@@ -4388,6 +4411,7 @@ completed completed
     "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
     "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventKind" : "enum:kind"
     "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventFailureStatus" : "enum:status"
+    "corretor_studio_queue_processing_failures" |o--|| "QueueProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

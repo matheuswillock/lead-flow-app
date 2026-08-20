@@ -1,8 +1,14 @@
 import { EmailCampaignUseCase } from "@/app/api/useCases/email/EmailCampaignUseCase"
 import {
+  buildEmailCampaignDispatchIdempotencyKey,
   handleEmailCampaignDispatchCallback,
+  EMAIL_CAMPAIGN_DISPATCH_TOPIC,
   type EmailCampaignDispatchWakePayload,
 } from "@/lib/queues/email-campaign-dispatch"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -30,7 +36,8 @@ function makeUseCase() {
 export async function processEmailCampaignDispatchMessage(
   message: EmailCampaignDispatchWakePayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<EmailCampaignUseCase, "processDispatchQueueBatch"> = makeUseCase()
+  useCase: Pick<EmailCampaignUseCase, "processDispatchQueueBatch"> = makeUseCase(),
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[EmailCampaignDispatchQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -62,6 +69,14 @@ export async function processEmailCampaignDispatchMessage(
       dispatchId: message.dispatchId,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: EMAIL_CAMPAIGN_DISPATCH_TOPIC,
+      idempotencyKey: buildEmailCampaignDispatchIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

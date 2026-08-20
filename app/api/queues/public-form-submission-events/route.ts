@@ -3,7 +3,14 @@ import {
   PublicFormSubmissionUseCase,
   type PublicFormSubmissionBackgroundJob,
 } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
-import { handlePublicFormSubmissionEventsCallback } from "@/lib/queues/public-form-submission-events"
+import {
+  handlePublicFormSubmissionEventsCallback,
+  PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC,
+} from "@/lib/queues/public-form-submission-events"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -23,6 +30,7 @@ export async function processPublicFormSubmissionEventMessage(
   message: PublicFormSubmissionBackgroundJob,
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormSubmissionUseCase, "processInBackground"> = publicFormSubmissionUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[PublicFormSubmissionEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -57,6 +65,14 @@ export async function processPublicFormSubmissionEventMessage(
       requestKey: message.requestKey,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC,
+      idempotencyKey: message.requestKey,
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

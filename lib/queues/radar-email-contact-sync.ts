@@ -23,10 +23,11 @@ export type RadarEmailContactSyncWakePayload = {
 }
 
 export async function publishRadarEmailContactSyncWake(
-  payload: RadarEmailContactSyncWakePayload = { reason: "outbox_due" }
+  payload: RadarEmailContactSyncWakePayload = { reason: "outbox_due" },
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RADAR_EMAIL_CONTACT_SYNC_TOPIC, payload, {
-    idempotencyKey: RADAR_EMAIL_CONTACT_SYNC_WAKE_IDEMPOTENCY_KEY,
+    idempotencyKey: options?.idempotencyKey ?? RADAR_EMAIL_CONTACT_SYNC_WAKE_IDEMPOTENCY_KEY,
     retentionSeconds: RADAR_EMAIL_CONTACT_SYNC_RETENTION_SECONDS,
   })
 }

@@ -38,10 +38,12 @@ export function buildBackofficeEmailCampaignDispatchIdempotencyKey(
 }
 
 export async function publishBackofficeEmailCampaignDispatchWake(
-  payload: BackofficeEmailCampaignDispatchWakePayload & { remainingCount?: number }
+  payload: BackofficeEmailCampaignDispatchWakePayload & { remainingCount?: number },
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC, payload, {
-    idempotencyKey: buildBackofficeEmailCampaignDispatchIdempotencyKey(payload),
+    idempotencyKey:
+      options?.idempotencyKey ?? buildBackofficeEmailCampaignDispatchIdempotencyKey(payload),
     retentionSeconds: BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS,
   })
 }

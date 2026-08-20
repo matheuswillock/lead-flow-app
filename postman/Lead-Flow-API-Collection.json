@@ -16607,6 +16607,28 @@
               "response": []
             },
             {
+              "name": "Retry Falhas de Processamento de Fila",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/retry-processing-failures",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "retry-processing-failures"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Republica mensagens dead-letter (deliveryCount >= N) via mapa topic → publish."
+              },
+              "response": []
+            },
+            {
               "name": "Reconciliar Status de Domínio Resend",
               "request": {
                 "method": "GET",

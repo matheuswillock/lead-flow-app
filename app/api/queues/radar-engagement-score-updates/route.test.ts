@@ -17,6 +17,10 @@ mock.module("@/lib/queues/radar-engagement-score-updates", () => ({
     `${teamId}:${profileId}`,
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 type QueueMessageMetadata = {
   messageId: string
   deliveryCount: number
@@ -98,5 +102,24 @@ describe("processRadarEngagementScoreUpdateMessage", () => {
         { updateEngagementScore }
       )
     ).rejects.toThrow("P2024")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    updateEngagementScore.mockRejectedValueOnce(new Error("P2024"))
+    await expect(
+      processRadarEngagementScoreUpdateMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 20 },
+        { updateEngagementScore },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "radar-engagement-score-updates",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

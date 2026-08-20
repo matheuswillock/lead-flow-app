@@ -17,6 +17,10 @@ mock.module("@/lib/queues/radar-bulk-import", () => ({
     `${payload.jobId}:${payload.batchIndex}`,
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 const { processRadarBulkImportMessage } = await import("./route")
 
 const processClaimedBatch = mock(async () => new Output(true, [], [], { ok: true }))
@@ -56,5 +60,25 @@ describe("processRadarBulkImportMessage", () => {
         processClaimedBatch,
       })
     ).rejects.toThrow("falhou")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    processClaimedBatch.mockResolvedValue(new Output(false, [], ["falhou"], null))
+    await expect(
+      processRadarBulkImportMessage(
+        { jobId: "job-1", batchIndex: 0 },
+        { ...metadata, deliveryCount: 20 },
+        { processClaimedBatch },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "radar-bulk-import",
+        idempotencyKey: "job-1:0",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

@@ -10,6 +10,11 @@ mock.module("@/app/api/useCases/publicForms/PublicFormsUseCase", () => ({
 
 mock.module("@/lib/queues/public-form-metric-events", () => ({
   handlePublicFormMetricEventsCallback: (handler: unknown) => handler,
+  PUBLIC_FORM_METRIC_EVENTS_TOPIC: "public-form-metric-events",
+}))
+
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
 }))
 
 const { processPublicFormMetricQueueMessage } = await import("./route")
@@ -80,8 +85,8 @@ describe("processPublicFormMetricQueueMessage", () => {
     ).rejects.toThrow("P2024")
   })
 
-  it("deliveryCount abaixo do limite: não grava no outbox, só propaga o erro", async () => {
-    const upsertFromProcessingFailure = mock(async () => {})
+  it("deliveryCount abaixo do limite: helper retorna false e o erro propaga", async () => {
+    const ackDeadLetter = mock(async () => false)
     persistQueuedMetric.mockRejectedValueOnce(new Error("P2003"))
 
     await expect(
@@ -89,15 +94,22 @@ describe("processPublicFormMetricQueueMessage", () => {
         baseMessage(),
         { ...metadata, deliveryCount: 2 },
         undefined,
-        { upsertFromProcessingFailure },
+        ackDeadLetter,
       ),
     ).rejects.toThrow("P2003")
 
-    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(ackDeadLetter).toHaveBeenCalledTimes(1)
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-metric-events",
+        idempotencyKey: "session_abcdefghij:form_viewed:form",
+        deliveryCount: 2,
+      }),
+    )
   })
 
-  it("deliveryCount excedeu o limite: grava no outbox (kind=metric) e acka sem throw", async () => {
-    const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
     persistQueuedMetric.mockRejectedValueOnce(new Error("Foreign key constraint violated"))
 
     await expect(
@@ -105,34 +117,18 @@ describe("processPublicFormMetricQueueMessage", () => {
         baseMessage(),
         { ...metadata, deliveryCount: 25 },
         undefined,
-        { upsertFromProcessingFailure },
+        ackDeadLetter,
       ),
     ).resolves.toBeUndefined()
 
-    expect(upsertFromProcessingFailure).toHaveBeenCalledTimes(1)
-    expect(upsertFromProcessingFailure.mock.calls[0]?.[0]).toMatchObject({
-      kind: "metric",
-      idempotencyKey: "session_abcdefghij:form_viewed:form",
-      failureReason: "delivery_count_exceeded",
-    })
-  })
-
-  it("deliveryCount excedeu o limite mas outbox falha: ainda propaga throw para retry", async () => {
-    const upsertFromProcessingFailure = mock(async () => {
-      throw new Error("outbox indisponível")
-    })
-    persistQueuedMetric.mockRejectedValueOnce(new Error("Foreign key constraint violated"))
-
-    await expect(
-      processPublicFormMetricQueueMessage(
-        baseMessage(),
-        { ...metadata, deliveryCount: 25 },
-        undefined,
-        { upsertFromProcessingFailure },
-      ),
-    ).rejects.toThrow("Foreign key constraint violated")
-
-    expect(upsertFromProcessingFailure).toHaveBeenCalledTimes(1)
+    expect(ackDeadLetter).toHaveBeenCalledTimes(1)
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-metric-events",
+        idempotencyKey: "session_abcdefghij:form_viewed:form",
+        deliveryCount: 25,
+      }),
+    )
   })
 
   it("payload inválido: ack sem chamar persistQueuedMetric", async () => {
