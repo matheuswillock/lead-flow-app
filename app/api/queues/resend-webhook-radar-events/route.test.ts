@@ -16,6 +16,10 @@ mock.module("@/lib/queues/resend-webhook-radar-events", () => ({
     payload.svixId ?? "orphan:x",
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 type QueueMessageMetadata = {
   messageId: string
   deliveryCount: number
@@ -97,5 +101,24 @@ describe("processResendWebhookRadarEventMessage", () => {
         { handleRadarQueueEvent }
       )
     ).rejects.toThrow("P2024")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    handleRadarQueueEvent.mockRejectedValueOnce(new Error("P2024"))
+    await expect(
+      processResendWebhookRadarEventMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 20 },
+        { handleRadarQueueEvent },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "resend-webhook-radar-events",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

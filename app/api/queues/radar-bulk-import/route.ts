@@ -1,8 +1,14 @@
 import type { RadarBaseImportUseCase } from "@/app/api/useCases/radar/RadarBaseImportUseCase"
 import {
+  buildRadarBulkImportIdempotencyKey,
   handleRadarBulkImportCallback,
+  RADAR_BULK_IMPORT_TOPIC,
   type RadarBulkImportPayload,
 } from "@/lib/queues/radar-bulk-import"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -21,7 +27,8 @@ type QueueMessageMetadata = {
 export async function processRadarBulkImportMessage(
   message: RadarBulkImportPayload,
   metadata: QueueMessageMetadata,
-  useCase?: Pick<RadarBaseImportUseCase, "processClaimedBatch">
+  useCase?: Pick<RadarBaseImportUseCase, "processClaimedBatch">,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[RadarBulkImportQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -64,6 +71,14 @@ export async function processRadarBulkImportMessage(
       batchIndex: message.batchIndex,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RADAR_BULK_IMPORT_TOPIC,
+      idempotencyKey: buildRadarBulkImportIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

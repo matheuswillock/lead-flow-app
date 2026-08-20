@@ -2,8 +2,14 @@ import { processEmailContactRadarSyncOutboxUseCase } from "@/app/api/useCases/ra
 import type { ProcessEmailContactRadarSyncOutboxUseCase } from "@/app/api/useCases/radar/ProcessEmailContactRadarSyncOutboxUseCase"
 import {
   handleRadarEmailContactSyncCallback,
+  RADAR_EMAIL_CONTACT_SYNC_TOPIC,
+  RADAR_EMAIL_CONTACT_SYNC_WAKE_IDEMPOTENCY_KEY,
   type RadarEmailContactSyncWakePayload,
 } from "@/lib/queues/radar-email-contact-sync"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -22,7 +28,8 @@ type QueueMessageMetadata = {
 export async function processRadarEmailContactSyncWakeMessage(
   message: RadarEmailContactSyncWakePayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<ProcessEmailContactRadarSyncOutboxUseCase, "execute"> = processEmailContactRadarSyncOutboxUseCase
+  useCase: Pick<ProcessEmailContactRadarSyncOutboxUseCase, "execute"> = processEmailContactRadarSyncOutboxUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[RadarEmailContactSyncQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -56,6 +63,14 @@ export async function processRadarEmailContactSyncWakeMessage(
       deliveryCount: metadata.deliveryCount,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RADAR_EMAIL_CONTACT_SYNC_TOPIC,
+      idempotencyKey: RADAR_EMAIL_CONTACT_SYNC_WAKE_IDEMPOTENCY_KEY,
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

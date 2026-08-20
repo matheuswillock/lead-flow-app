@@ -20,10 +20,11 @@ export type ResendWebhookEmailLogEventPayload = {
 }
 
 export async function publishResendWebhookEmailLogEvent(
-  payload: ResendWebhookEmailLogEventPayload
+  payload: ResendWebhookEmailLogEventPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RESEND_WEBHOOK_EMAILLOG_EVENTS_TOPIC, payload, {
-    idempotencyKey: payload.svixId,
+    idempotencyKey: options?.idempotencyKey ?? payload.svixId,
     retentionSeconds: RESEND_WEBHOOK_EMAILLOG_EVENTS_RETENTION_SECONDS,
   })
 }

@@ -21,6 +21,10 @@ mock.module("@/lib/queues/public-form-submission-events", () => ({
   PUBLIC_FORM_SUBMISSION_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 type QueueMessageMetadata = {
   messageId: string
   deliveryCount: number
@@ -102,5 +106,25 @@ describe("processPublicFormSubmissionEventMessage", () => {
         { processInBackground },
       ),
     ).rejects.toThrow("P2024")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    processInBackground.mockRejectedValueOnce(new Error("P2024"))
+    await expect(
+      processPublicFormSubmissionEventMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 20 },
+        { processInBackground },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-submission-events",
+        idempotencyKey: "req-abc",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

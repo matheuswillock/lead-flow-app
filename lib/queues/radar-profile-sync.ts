@@ -44,10 +44,11 @@ export function buildRadarProfileSyncIdempotencyKey(
 }
 
 export async function publishRadarProfileSync(
-  payload: RadarProfileSyncPayload
+  payload: RadarProfileSyncPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RADAR_PROFILE_SYNC_TOPIC, payload, {
-    idempotencyKey: buildRadarProfileSyncIdempotencyKey(payload),
+    idempotencyKey: options?.idempotencyKey ?? buildRadarProfileSyncIdempotencyKey(payload),
     retentionSeconds: RADAR_PROFILE_SYNC_RETENTION_SECONDS,
   })
 }

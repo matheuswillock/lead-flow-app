@@ -3441,6 +3441,15 @@ enum PublicFormQueueEventFailureStatus {
   @@map("public_form_queue_event_failure_status")
 }
 
+enum QueueProcessingFailureStatus {
+  pending
+  processing
+  resolved
+  failed
+
+  @@map("queue_processing_failure_status")
+}
+
 enum ResendWebhookProcessingFailureStatus {
   pending
   processing
@@ -3505,6 +3514,27 @@ model PublicFormQueueEventFailure {
 
   @@index([status, nextAttemptAt])
   @@map("corretor_studio_public_form_queue_event_failures")
+}
+
+/** Outbox de dead-letter das filas Vercel: o consumer persiste e dá ack
+ * após `deliveryCount >= N` (default 20). `topic` em texto (OCP) — um cron
+ * único republica via mapa topic → publish*. Asaas persiste e acka; o cron
+ * dedicado de webhook Asaas continua responsável pelo retry. */
+model QueueProcessingFailure {
+  id             String                       @id @default(uuid()) @db.Uuid
+  topic          String                       @db.Text
+  idempotencyKey String                       @db.Text
+  payload        Json
+  status         QueueProcessingFailureStatus @default(pending)
+  attemptCount   Int                          @default(1)
+  nextAttemptAt  DateTime                     @default(now()) @db.Timestamptz(6)
+  lastError      String?                      @db.Text
+  createdAt      DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                     @updatedAt @db.Timestamptz(6)
+
+  @@unique([topic, idempotencyKey])
+  @@index([status, nextAttemptAt])
+  @@map("corretor_studio_queue_processing_failures")
 }
 
 // -----------------------------

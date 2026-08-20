@@ -37,10 +37,11 @@ export function buildEmailCampaignDispatchIdempotencyKey(
 }
 
 export async function publishEmailCampaignDispatchWake(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number }
+  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number },
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(EMAIL_CAMPAIGN_DISPATCH_TOPIC, payload, {
-    idempotencyKey: buildEmailCampaignDispatchIdempotencyKey(payload),
+    idempotencyKey: options?.idempotencyKey ?? buildEmailCampaignDispatchIdempotencyKey(payload),
     retentionSeconds: EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS,
   })
 }
