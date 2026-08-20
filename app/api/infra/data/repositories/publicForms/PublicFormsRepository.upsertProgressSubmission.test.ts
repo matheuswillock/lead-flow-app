@@ -8,6 +8,7 @@ const findUniqueOrThrowMock = mock(async () => ({ id: "sub-winner" }))
 const updateMock = mock(async () => ({}))
 const deleteManyMock = mock(async () => ({ count: 0 }))
 const answerUpsertMock = mock(async () => ({}))
+const executeRawMock = mock(async () => 0)
 const executeRawUnsafeMock = mock(async () => 0)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
@@ -25,6 +26,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
         deleteMany: typeof deleteManyMock
         upsert: typeof answerUpsertMock
       }
+      $executeRaw: typeof executeRawMock
       $executeRawUnsafe: typeof executeRawUnsafeMock
     }) => Promise<unknown>) =>
       fn({
@@ -33,6 +35,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
           deleteMany: deleteManyMock,
           upsert: answerUpsertMock,
         },
+        $executeRaw: executeRawMock,
         $executeRawUnsafe: executeRawUnsafeMock,
       }),
   },
@@ -74,6 +77,7 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     updateMock.mockReset()
     deleteManyMock.mockReset()
     answerUpsertMock.mockReset()
+    executeRawMock.mockReset()
     executeRawUnsafeMock.mockReset()
     findFirstMock.mockResolvedValue(null)
     createMock.mockResolvedValue({ id: "sub-new" })
@@ -82,6 +86,7 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     updateMock.mockResolvedValue({})
     deleteManyMock.mockResolvedValue({ count: 0 })
     answerUpsertMock.mockResolvedValue({})
+    executeRawMock.mockResolvedValue(0)
     executeRawUnsafeMock.mockResolvedValue(0)
   })
 
@@ -95,6 +100,18 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     expect(result.id).toBe("sub-winner")
     expect(findUniqueMock).toHaveBeenCalledWith({ where: { requestKey: BASE_DATA.requestKey } })
     expect(updateMock).toHaveBeenCalledTimes(1)
+    expect(answerUpsertMock).toHaveBeenCalledTimes(1)
+    expect(deleteManyMock).not.toHaveBeenCalled()
+  })
+
+  it("progresso existente faz merge — não apaga respostas ausentes do payload", async () => {
+    findFirstMock.mockResolvedValueOnce({ id: "sub-existing", leadId: "lead-1" })
+    findUniqueOrThrowMock.mockResolvedValueOnce({ id: "sub-existing" })
+
+    const repo = new PublicFormsRepository()
+    await repo.upsertProgressSubmission(BASE_DATA)
+
+    expect(deleteManyMock).not.toHaveBeenCalled()
     expect(answerUpsertMock).toHaveBeenCalledTimes(1)
   })
 

@@ -57,6 +57,7 @@ const PERSIST_ANSWER_FK_SAVEPOINT = "persist_answer_fk"
 const PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT = "persist_answer_without_fk"
 
 type ProgressSubmissionWrite = {
+  visitorSessionId: string
   completionStatus: import("@prisma/client").PublicFormCompletionStatus
   leadId?: string | null
   origin: Prisma.InputJsonValue
@@ -1090,6 +1091,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     previousLeadId: string | null,
   ) {
     await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`public-form-progress:${data.visitorSessionId}`}))`
       await tx.publicFormSubmission.update({
         where: { id: submissionId },
         data: {
@@ -1098,7 +1100,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           origin: data.origin,
         },
       })
-      await this.syncSubmissionAnswers(tx, submissionId, data.answers)
+      await this.mergeSubmissionAnswers(tx, submissionId, data.answers)
     })
     return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: submissionId } })
   }
@@ -1194,6 +1196,20 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           : {}),
       },
     })
+    for (const answer of answers) {
+      await this.writeSubmissionAnswer(tx, submissionId, answer)
+    }
+  }
+
+  private async mergeSubmissionAnswers(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>,
+  ) {
     for (const answer of answers) {
       await this.writeSubmissionAnswer(tx, submissionId, answer)
     }
