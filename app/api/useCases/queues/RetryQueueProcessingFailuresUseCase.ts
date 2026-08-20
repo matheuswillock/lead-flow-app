@@ -7,6 +7,7 @@ import type {
   QueueProcessingFailureClaimRow,
 } from "@/app/api/infra/data/repositories/queueProcessingFailure/IQueueProcessingFailureRepository"
 import { formatQueueProcessingError } from "@/lib/queues/queue-processing-failure"
+import { buildOutboxRetryIdempotencyKey } from "@/lib/queues/outbox-retry-idempotency-key"
 import {
   QUEUE_PROCESSING_FAILURE_DEDICATED_RETRY_TOPICS,
   QUEUE_PROCESSING_FAILURE_REPUBLISHERS,
@@ -39,13 +40,12 @@ export class RetryQueueProcessingFailuresUseCase {
     private readonly dedicatedRetryTopics: ReadonlySet<string> = QUEUE_PROCESSING_FAILURE_DEDICATED_RETRY_TOPICS,
   ) {}
 
-  /**
-   * A Vercel Queues deduplica `send()` pela `idempotencyKey` — reusar a chave
-   * original (já acked no consumer) seria no-op. Cada republish do outbox usa
-   * chave própria; a dedupe de negócio continua no Postgres.
-   */
   private retryIdempotencyKey(row: QueueProcessingFailureClaimRow): string {
-    return `${row.idempotencyKey}:outbox-retry:${row.id}:${row.attemptCount}`
+    return buildOutboxRetryIdempotencyKey({
+      originalKey: row.idempotencyKey,
+      outboxRowId: row.id,
+      attemptCount: row.attemptCount,
+    })
   }
 
   private async retryOne(
