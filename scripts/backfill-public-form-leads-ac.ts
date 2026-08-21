@@ -27,11 +27,16 @@ import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
 import {
   assertApprovedPublicFormLeadBackfillFixture,
   parsePublicFormLeadBackfillArgs,
+  resolveBackfillMetricSessionId,
   runPublicFormLeadBackfill,
   type PublicFormLeadBackfillCandidate,
   type PublicFormLeadBackfillFixture,
 } from "@/lib/public-forms/backfill-public-form-leads-ac"
 import { buildPublicFormMetricEventKey } from "@/lib/public-forms/metric-keys"
+import {
+  buildPublicFormMetricQueuePayload,
+  publishServerPublicFormMetricEvent,
+} from "@/lib/queues/public-form-metric-events"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 
 const FIXTURE_PATH = join(
@@ -47,10 +52,11 @@ type SubmissionRow = {
   publicationId: string
   leadId: string | null
   visitorSessionId: string | null
+  requestKey: string
   score: number
   scoreBandLabel: string | null
   origin: unknown
-  form: { id: string; name: string; teamId: string; team: { name: string } }
+  form: { id: string; name: string; publicId: string; teamId: string; team: { name: string } }
   publication: { id: string; snapshot: unknown }
   answers: Array<{ questionId: string | null; value: unknown }>
 }
@@ -99,6 +105,7 @@ async function loadSubmission(submissionId: string): Promise<SubmissionRow | nul
       publicationId: true,
       leadId: true,
       visitorSessionId: true,
+      requestKey: true,
       score: true,
       scoreBandLabel: true,
       origin: true,
@@ -106,6 +113,7 @@ async function loadSubmission(submissionId: string): Promise<SubmissionRow | nul
         select: {
           id: true,
           name: true,
+          publicId: true,
           teamId: true,
           team: { select: { name: true } },
         },
@@ -183,6 +191,39 @@ async function buildCandidate(
   }
 }
 
+async function persistLeadMetric(input: {
+  submission: SubmissionRow
+  eventType: "lead_created" | "lead_attached"
+  origin: Record<string, unknown>
+}): Promise<void> {
+  const visitorSessionId = resolveBackfillMetricSessionId({
+    visitorSessionId: input.submission.visitorSessionId,
+    requestKey: input.submission.requestKey,
+  })
+  const eventKey = buildPublicFormMetricEventKey(visitorSessionId, input.eventType)
+  await prisma.publicFormMetricEvent.upsert({
+    where: { eventKey },
+    create: {
+      formId: input.submission.formId,
+      publicationId: input.submission.publicationId,
+      visitorSessionId,
+      eventType: input.eventType,
+      eventKey,
+      origin: json(input.origin),
+    },
+    update: {},
+  })
+  await publishServerPublicFormMetricEvent(
+    buildPublicFormMetricQueuePayload(input.submission.form.publicId, {
+      visitorSessionId,
+      eventType: input.eventType,
+      eventKey,
+      origin: input.origin,
+    }),
+    "backfill-public-form-leads-ac",
+  )
+}
+
 async function applyLead(
   candidate: PublicFormLeadBackfillCandidate<ApplyPayload | null>,
 ): Promise<string> {
@@ -209,16 +250,19 @@ async function applyLead(
     throw new Error("upsertLeadFromFormAnswers retornou null")
   }
 
-  await prisma.publicFormSubmission.update({
-    where: { id: payload.submission.id },
-    data: { leadId: upserted.lead.id },
+  const eventType = upserted.created ? "lead_created" : "lead_attached"
+  const visitorSessionId = resolveBackfillMetricSessionId({
+    visitorSessionId: payload.submission.visitorSessionId,
+    requestKey: payload.submission.requestKey,
   })
+  const eventKey = buildPublicFormMetricEventKey(visitorSessionId, eventType)
 
-  const visitorSessionId = payload.submission.visitorSessionId
-  if (visitorSessionId) {
-    const eventType = upserted.created ? "lead_created" : "lead_attached"
-    const eventKey = buildPublicFormMetricEventKey(visitorSessionId, eventType)
-    await prisma.publicFormMetricEvent.upsert({
+  await prisma.$transaction(async (tx) => {
+    await tx.publicFormSubmission.update({
+      where: { id: payload.submission.id },
+      data: { leadId: upserted.lead.id },
+    })
+    await tx.publicFormMetricEvent.upsert({
       where: { eventKey },
       create: {
         formId: payload.submission.formId,
@@ -230,9 +274,45 @@ async function applyLead(
       },
       update: {},
     })
-  }
+  })
+
+  await publishServerPublicFormMetricEvent(
+    buildPublicFormMetricQueuePayload(payload.submission.form.publicId, {
+      visitorSessionId,
+      eventType,
+      eventKey,
+      origin: payload.origin,
+    }),
+    "backfill-public-form-leads-ac",
+  )
 
   return upserted.lead.id
+}
+
+async function repairAlreadyAttached(
+  candidate: PublicFormLeadBackfillCandidate<ApplyPayload | null>,
+): Promise<void> {
+  const payload = candidate.payload
+  if (!payload) return
+
+  const visitorSessionId = resolveBackfillMetricSessionId({
+    visitorSessionId: payload.submission.visitorSessionId,
+    requestKey: payload.submission.requestKey,
+  })
+  const existing = await prisma.publicFormMetricEvent.findFirst({
+    where: {
+      visitorSessionId,
+      eventType: { in: ["lead_created", "lead_attached"] },
+    },
+    select: { id: true },
+  })
+  if (existing) return
+
+  await persistLeadMetric({
+    submission: payload.submission,
+    eventType: "lead_attached",
+    origin: payload.origin,
+  })
 }
 
 async function main() {
@@ -258,6 +338,7 @@ async function main() {
     expectedTeamNameContains: fixture.expectedTeamNameContains,
     candidates,
     applyLead,
+    repairAlreadyAttached,
   })
 
   for (const row of result.rows) {

@@ -8,6 +8,7 @@ import {
   parsePublicFormLeadBackfillArgs,
   PUBLIC_FORM_LEAD_BACKFILL_EXCLUDED_PREFIXES,
   PUBLIC_FORM_LEAD_BACKFILL_PREFIXES,
+  resolveBackfillMetricSessionId,
   resolvePublicFormLeadBackfillAction,
   runPublicFormLeadBackfill,
   type PublicFormLeadBackfillCandidate,
@@ -65,6 +66,21 @@ describe("backfill-public-form-leads-ac", () => {
   it("parseia dry-run por padrão e --apply só quando pedido", () => {
     expect(parsePublicFormLeadBackfillArgs([])).toEqual({ apply: false })
     expect(parsePublicFormLeadBackfillArgs(["--apply"])).toEqual({ apply: true })
+  })
+
+  it("usa visitorSessionId e cai para requestKey na métrica", () => {
+    expect(
+      resolveBackfillMetricSessionId({
+        visitorSessionId: "session-1",
+        requestKey: "progress:session-1:pub",
+      }),
+    ).toBe("session-1")
+    expect(
+      resolveBackfillMetricSessionId({
+        visitorSessionId: null,
+        requestKey: "progress:session-1:pub",
+      }),
+    ).toBe("progress:session-1:pub")
   })
 
   it("casa nome completo e primeiro nome da fixture", () => {
@@ -247,5 +263,28 @@ describe("backfill-public-form-leads-ac", () => {
     expect(result.failed).toBe(1)
     expect(result.rows[1]?.error).toBe("banco indisponível")
     expect(applyLead).toHaveBeenCalledTimes(2)
+  })
+
+  it("apply repara métrica de caso já anexado sem criar de novo", async () => {
+    const applyLead = mock(async () => "lead-new")
+    const repairAlreadyAttached = mock(async () => undefined)
+
+    const result = await runPublicFormLeadBackfill({
+      apply: true,
+      expectedTeamNameContains: "MultiSkill",
+      candidates: [
+        candidate({
+          existingLeadId: "already",
+          extractedName: "Sandra",
+        }),
+      ],
+      applyLead,
+      repairAlreadyAttached,
+    })
+
+    expect(result.skipped).toBe(1)
+    expect(result.created).toBe(0)
+    expect(applyLead).not.toHaveBeenCalled()
+    expect(repairAlreadyAttached).toHaveBeenCalledTimes(1)
   })
 })

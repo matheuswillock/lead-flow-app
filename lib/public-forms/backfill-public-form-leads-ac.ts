@@ -92,6 +92,9 @@ export type PublicFormLeadBackfillRunnerDeps<TPayload> = {
   expectedTeamNameContains: string
   candidates: Array<PublicFormLeadBackfillCandidate<TPayload>>
   applyLead: (candidate: PublicFormLeadBackfillCandidate<TPayload>) => Promise<string>
+  repairAlreadyAttached?: (
+    candidate: PublicFormLeadBackfillCandidate<TPayload>,
+  ) => Promise<void>
 }
 
 const SKIP_ACTIONS = new Set<PublicFormLeadBackfillAction>([
@@ -109,6 +112,13 @@ export function parsePublicFormLeadBackfillArgs(argv: string[]): { apply: boolea
 
 export function normalizeBackfillPersonName(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLowerCase()
+}
+
+export function resolveBackfillMetricSessionId(input: {
+  visitorSessionId: string | null
+  requestKey: string
+}): string {
+  return (input.visitorSessionId ?? input.requestKey).slice(0, 100)
 }
 
 export function namesMatchForBackfill(extractedName: string, expectedName: string): boolean {
@@ -212,6 +222,18 @@ export async function runPublicFormLeadBackfill<TPayload>(
       action,
       submissionId: candidate.submissionIds.length === 1 ? (candidate.submissionIds[0] ?? null) : null,
       leadId: candidate.existingLeadId ?? candidate.matchingLeadId,
+    }
+
+    if (action === "skip_already_attached" && deps.apply && deps.repairAlreadyAttached) {
+      try {
+        await deps.repairAlreadyAttached(candidate)
+        result.skipped += 1
+      } catch (error) {
+        result.failed += 1
+        row.error = error instanceof Error ? error.message : "Falha ao reparar métrica do backfill"
+      }
+      result.rows.push(row)
+      continue
     }
 
     if (isSkipAction(action)) {
