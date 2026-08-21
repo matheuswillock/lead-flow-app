@@ -242,4 +242,37 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     expect(output.result).toMatchObject({ skipped: "already_linked" })
     expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
   })
+
+  it("não cria de novo quando a sessão já tem leadId — só atualiza e reclama identidade", async () => {
+    findLatestSessionSubmissionOnForm.mockResolvedValue({
+      id: "sub-1",
+      leadId: "lead-session",
+    })
+    listSubmissionAnswers.mockResolvedValue([
+      { questionId: NAME_ID, value: "Maria Silva" },
+      { questionId: PHONE_ID, value: "(11) 98888-7777" },
+    ])
+    upsertLeadFromFormAnswers.mockResolvedValue({
+      lead: { id: "lead-session" },
+      created: false,
+    })
+
+    const output = await createCrmLeadFromRadarFormGateUseCase.execute({
+      ...baseInput,
+      questionId: PHONE_ID,
+      answerValue: "(11) 98888-1111",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject({ leadId: "lead-session", created: false })
+    expect(upsertLeadFromFormAnswers).toHaveBeenCalledWith(
+      expect.objectContaining({ allowCreate: false }),
+    )
+    expect(tryClaimLeadIdentity).toHaveBeenCalledWith(
+      "team-1",
+      "profile-1",
+      "lead-session",
+      "public_form_radar_gate",
+    )
+  })
 })

@@ -89,6 +89,7 @@ class CreateCrmLeadFromRadarFormGateUseCase {
         return new Output(true, [], [], { skipped: "gate_open" })
       }
 
+      const sessionLeadId = session?.leadId ?? null
       const form = await publicFormsRepository.findFormSubmissionContext(input.formId)
       const origin = sanitizePublicFormOrigin(asOriginRecord(input.origin))
       const upserted = await upsertLeadFromFormAnswers({
@@ -99,24 +100,25 @@ class CreateCrmLeadFromRadarFormGateUseCase {
         publicationId: input.publicationId,
         origin,
         submissionId: session?.id,
-        allowCreate: true,
+        allowCreate: !sessionLeadId,
         identityOverlay: profile,
       })
-      if (!upserted) {
+      const leadId = upserted?.lead.id ?? sessionLeadId
+      if (!leadId) {
         return new Output(true, [], [], { skipped: "upsert_skipped" })
       }
 
       await publicFormsRepository.attachLeadIdToSessionSubmission(
         input.formId,
         input.visitorSessionId,
-        upserted.lead.id,
+        leadId,
       )
 
       if (input.profileId) {
         await radarRepository.tryClaimLeadIdentity(
           input.teamId,
           input.profileId,
-          upserted.lead.id,
+          leadId,
           "public_form_radar_gate",
         )
       }
@@ -126,13 +128,13 @@ class CreateCrmLeadFromRadarFormGateUseCase {
         formId: input.formId,
         visitorSessionId: input.visitorSessionId,
         profileId: input.profileId,
-        leadId: upserted.lead.id,
-        created: upserted.created,
+        leadId,
+        created: upserted?.created ?? false,
       })
 
       return new Output(true, [], [], {
-        leadId: upserted.lead.id,
-        created: upserted.created,
+        leadId,
+        created: upserted?.created ?? false,
       })
     } catch (error) {
       console.error("[CreateCrmLeadFromRadarFormGateUseCase][execute]", error)
