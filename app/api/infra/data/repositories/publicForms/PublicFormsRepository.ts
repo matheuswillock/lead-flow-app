@@ -74,11 +74,16 @@ type ProgressSubmissionWrite = {
   completionStatus: import("@prisma/client").PublicFormCompletionStatus
   leadId?: string | null
   origin: Prisma.InputJsonValue
-  answers: Array<{
-    questionId: string
-    value: Prisma.InputJsonValue
-    questionSnapshot: Prisma.InputJsonValue
-  }>
+  answers: ProgressAnswerWrite[]
+}
+
+type ProgressAnswerWrite = {
+  questionId: string
+  value: Prisma.InputJsonValue
+  questionSnapshot: Prisma.InputJsonValue
+  answeredAt?: Date | null
+  sourceEventId?: string | null
+  mappingKey?: string | null
 }
 
 const leadSubmissionSelect = {
@@ -1137,6 +1142,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
+    thankYouPageId?: string | null
+    scheduledMeetingStartsAt?: Date | null
   }) {
     return prisma.publicFormSubmission.create({
       data: {
@@ -1154,11 +1161,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     origin: Prisma.InputJsonValue
     completionStatus: import("@prisma/client").PublicFormCompletionStatus
     leadId?: string | null
-    answers: Array<{
-      questionId: string
-      value: Prisma.InputJsonValue
-      questionSnapshot: Prisma.InputJsonValue
-    }>
+    answers: ProgressAnswerWrite[]
   }) {
     const existing = await this.findProgressSubmission(data.publicationId, data.visitorSessionId)
     if (existing) {
@@ -1322,18 +1325,43 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   private async mergeSubmissionAnswers(
     tx: Prisma.TransactionClient,
     submissionId: string,
-    answers: Array<{
-      questionId: string
-      value: Prisma.InputJsonValue
-      questionSnapshot: Prisma.InputJsonValue
-    }>,
+    answers: ProgressAnswerWrite[],
   ) {
     // Blur payloads carry one answer; deleteMany would wipe a concurrent full-page save.
     // Queue retries can still deliver a stale empty blur after a filled save of the same question.
     for (const answer of answers) {
       if (await this.shouldSkipBlankProgressOverwrite(tx, submissionId, answer)) continue
+      if (await this.shouldSkipStaleProgressOverwrite(tx, submissionId, answer)) continue
       await this.writeSubmissionAnswer(tx, submissionId, answer)
     }
+  }
+
+  /**
+   * Retry atrasado do outbox não pode regredir uma resposta mais nova.
+   * Ordem causal do contrato v1: (occurredAt, eventId). Resposta sem
+   * `answeredAt` (legado) preserva o comportamento anterior de overwrite.
+   */
+  private async shouldSkipStaleProgressOverwrite(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: ProgressAnswerWrite,
+  ): Promise<boolean> {
+    if (!answer.questionId || !answer.answeredAt) return false
+    const existing = await tx.publicFormAnswer.findUnique({
+      where: {
+        submissionId_questionId: {
+          submissionId,
+          questionId: answer.questionId,
+        },
+      },
+      select: { answeredAt: true, sourceEventId: true },
+    })
+    if (!existing?.answeredAt) return false
+    const incomingTime = answer.answeredAt.getTime()
+    const storedTime = existing.answeredAt.getTime()
+    if (incomingTime !== storedTime) return incomingTime < storedTime
+    if (!answer.sourceEventId || !existing.sourceEventId) return false
+    return answer.sourceEventId < existing.sourceEventId
   }
 
   private async shouldSkipBlankProgressOverwrite(
@@ -1387,12 +1415,22 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionId: string | null
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date | null
+      sourceEventId?: string | null
+      mappingKey?: string | null
     },
   ) {
+    // `undefined` = escrita sem envelope causal (submissão final/legado): não toca os metadados.
+    const causalMetadata = {
+      answeredAt: answer.answeredAt ?? undefined,
+      sourceEventId: answer.sourceEventId ?? undefined,
+      mappingKey: answer.mappingKey ?? undefined,
+    }
     if (!answer.questionId) {
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: answer.value,
         questionSnapshot: answer.questionSnapshot,
+        ...causalMetadata,
       })
       return
     }
@@ -1403,6 +1441,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionId,
       value: answer.value,
       questionSnapshot: answer.questionSnapshot,
+      ...causalMetadata,
     }
 
     try {
@@ -1418,6 +1457,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           update: {
             value: answer.value,
             questionSnapshot: answer.questionSnapshot,
+            ...causalMetadata,
           },
         }),
       )
@@ -1430,6 +1470,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: data.value,
         questionSnapshot: data.questionSnapshot,
+        ...causalMetadata,
       })
     }
   }
@@ -1440,6 +1481,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     data: {
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date
+      sourceEventId?: string
+      mappingKey?: string
     },
   ) {
     const snapshotId = questionIdFromSnapshot(data.questionSnapshot)
@@ -1456,6 +1500,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             data: {
               value: data.value,
               questionSnapshot: data.questionSnapshot,
+              answeredAt: data.answeredAt,
+              sourceEventId: data.sourceEventId,
+              mappingKey: data.mappingKey,
             },
           }),
         )
@@ -1469,6 +1516,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           questionId: null,
           value: data.value,
           questionSnapshot: data.questionSnapshot,
+          answeredAt: data.answeredAt,
+          sourceEventId: data.sourceEventId,
+          mappingKey: data.mappingKey,
         },
       }),
     )
@@ -1483,6 +1533,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue
       visitorSessionId?: string | null
+      thankYouPageId?: string | null
+      scheduledMeetingStartsAt?: Date | null
     },
   ) {
     return prisma.publicFormSubmission.update({
@@ -1494,6 +1546,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         scoreBandLabel: data.scoreBandLabel,
         origin: data.origin,
         visitorSessionId: data.visitorSessionId,
+        thankYouPageId: data.thankYouPageId,
+        scheduledMeetingStartsAt: data.scheduledMeetingStartsAt,
         completionStatus: "partial",
       },
       select: { id: true, eventId: true },
@@ -1652,6 +1706,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           score: true,
           scoreBandLabel: true,
           origin: true,
+          thankYouPageId: true,
+          scheduledMeetingStartsAt: true,
           publication: { select: { snapshot: true } },
           answers: {
             orderBy: { createdAt: "asc" },
@@ -1674,6 +1730,8 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             score: submission.score,
             scoreBandLabel: submission.scoreBandLabel,
             origin: submission.origin,
+            thankYouPageId: submission.thankYouPageId,
+            scheduledMeetingStartsAt: submission.scheduledMeetingStartsAt,
             snapshot: submission.publication.snapshot,
             answers: submission.answers,
           },

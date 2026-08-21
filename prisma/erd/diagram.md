@@ -4012,6 +4012,8 @@ completed completed
     Int dispatchAttemptCount 
     DateTime nextDispatchAt "❓"
     String lastDispatchError "❓"
+    String thankYouPageId "❓"
+    DateTime scheduledMeetingStartsAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }

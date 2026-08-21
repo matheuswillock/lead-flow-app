@@ -141,6 +141,8 @@ export type PendingPublicFormSubmissionDispatch = {
   score: number
   scoreBandLabel: string | null
   origin: Prisma.JsonValue | null
+  thankYouPageId: string | null
+  scheduledMeetingStartsAt: Date | null
   snapshot: Prisma.JsonValue
   answers: Array<{
     questionId: string | null
@@ -370,6 +372,8 @@ export interface IPublicFormsRepository {
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
+    thankYouPageId?: string | null
+    scheduledMeetingStartsAt?: Date | null
   }): Promise<PublicFormSubmission>
   upsertProgressSubmission(data: {
     formId: string
@@ -383,6 +387,9 @@ export interface IPublicFormsRepository {
       questionId: string
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date | null
+      sourceEventId?: string | null
+      mappingKey?: string | null
     }>
   }): Promise<PublicFormSubmission>
   findFormSubmissionContext(formId: string): Promise<PublicFormSubmissionContext>
@@ -416,6 +423,8 @@ export interface IPublicFormsRepository {
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue
       visitorSessionId?: string | null
+      thankYouPageId?: string | null
+      scheduledMeetingStartsAt?: Date | null
     },
   ): Promise<{ id: string; eventId: string | null }>
   completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>

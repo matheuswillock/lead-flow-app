@@ -64,6 +64,10 @@ function rehydrateSubmissionJob(
     origin: toOrigin(submission.origin),
     requestKey: submission.requestKey,
     visitorSessionId: submission.visitorSessionId,
+    thankYouPageId: submission.thankYouPageId,
+    scheduling: submission.scheduledMeetingStartsAt
+      ? { startsAt: submission.scheduledMeetingStartsAt.toISOString() }
+      : undefined,
   }
 }
 

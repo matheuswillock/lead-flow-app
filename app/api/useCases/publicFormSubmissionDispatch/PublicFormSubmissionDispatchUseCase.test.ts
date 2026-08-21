@@ -27,6 +27,8 @@ const pendingSubmission: PendingPublicFormSubmissionDispatch = {
   score: 75,
   scoreBandLabel: "Quente",
   origin: { campaignId: "campaign-1" },
+  thankYouPageId: null,
+  scheduledMeetingStartsAt: null,
   snapshot: {
     formId: "form-1",
     questions: [{ id: "question-1" }],
@@ -71,6 +73,30 @@ describe("PublicFormSubmissionDispatchUseCase", () => {
       }),
     )
     expect(output.result).toEqual({ claimed: 1, accepted: 1, deferred: 0 })
+  })
+
+  it("preserva agendamento e thank-you page ao reidratar a submissão", async () => {
+    const scheduledMeetingStartsAt = new Date("2026-08-25T14:00:00.000Z")
+    claimPendingSubmissionDispatches.mockResolvedValue([
+      {
+        ...pendingSubmission,
+        thankYouPageId: "0b7c56be-5c2d-45cb-9d10-25b6a1cf1f10",
+        scheduledMeetingStartsAt,
+      },
+    ])
+    const useCase = new PublicFormSubmissionDispatchUseCase(repository, queueSubmission)
+
+    const output = await useCase.execute()
+
+    expect(output.isValid).toBe(true)
+    expect(queueSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        submissionId: "submission-1",
+        thankYouPageId: "0b7c56be-5c2d-45cb-9d10-25b6a1cf1f10",
+        scheduling: { startsAt: "2026-08-25T14:00:00.000Z" },
+      }),
+      expect.anything(),
+    )
   })
 
   it("adia a submissão quando o snapshot persistido não pode ser reidratado", async () => {

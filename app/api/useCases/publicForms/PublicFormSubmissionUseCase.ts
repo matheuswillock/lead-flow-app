@@ -202,6 +202,10 @@ export class PublicFormSubmissionUseCase {
         ? await publicFormsRepository.findProgressSubmission(publicationId, input.visitorSessionId)
         : null
 
+    const dispatchContext = {
+      thankYouPageId: input.thankYouPageId ?? null,
+      scheduledMeetingStartsAt: input.scheduling ? new Date(input.scheduling.startsAt) : null,
+    }
     const submission = progressSubmission
       ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
           requestKey: input.requestKey,
@@ -210,6 +214,7 @@ export class PublicFormSubmissionUseCase {
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
           visitorSessionId: input.visitorSessionId ?? null,
+          ...dispatchContext,
         })
       : await publicFormsRepository.createSubmission({
           formId: snapshot.formId,
@@ -221,6 +226,7 @@ export class PublicFormSubmissionUseCase {
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
           completionStatus: "partial",
+          ...dispatchContext,
         })
 
     await publicFormsRepository.persistSubmissionAnswers(submission.id, answers)
