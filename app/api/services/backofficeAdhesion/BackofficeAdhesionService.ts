@@ -2438,12 +2438,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           leadId: adhesion.leadId,
           newEmail,
         })
-      } else {
-        const { prisma } = await import("@/app/api/infra/data/prisma")
-        await prisma.backofficeLead.update({ where: { id: adhesion.leadId }, data: { email: newEmail.trim() } })
-        console.info("[BackofficeAdhesionService][syncEmail] lead updated via prisma fallback", {
-          adhesionId: adhesion.id,
-        })
       }
     } catch (error) {
       console.error("[BackofficeAdhesionService][syncEmail][lead]", error)
@@ -2457,12 +2451,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           console.info("[BackofficeAdhesionService][syncEmail] profile updated", {
             adhesionId: adhesion.id,
             profileId: adhesion.createdProfileId,
-          })
-        } else {
-          const { prisma } = await import("@/app/api/infra/data/prisma")
-          await prisma.profile.update({ where: { id: adhesion.createdProfileId }, data: { email: newEmail.trim() } })
-          console.info("[BackofficeAdhesionService][syncEmail] profile updated via prisma fallback", {
-            adhesionId: adhesion.id,
           })
         }
       } catch (error) {
