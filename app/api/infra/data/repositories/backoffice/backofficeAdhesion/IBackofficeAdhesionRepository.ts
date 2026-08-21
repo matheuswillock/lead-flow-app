@@ -247,4 +247,7 @@ export interface IBackofficeAdhesionRepository {
     adhesionId: string,
     previousLeadStatus: import("@prisma/client").BackofficeLeadStatus
   ): Promise<void>
+  updateLeadEmail(leadId: string, email: string): Promise<void>
+  findProfileEmailById(profileId: string): Promise<string | null>
+  updateProfileEmail(profileId: string, email: string): Promise<void>
 }

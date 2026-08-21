@@ -818,6 +818,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         })
       : updated
 
+    if (existing.email?.trim().toLowerCase() !== (next.email ?? "").trim().toLowerCase()) {
+      await this.syncAdhesionEmailArtifacts(persisted, next.email ?? "", existing.email ?? null)
+    }
+
     if (next.activationMode === "external_paid") {
       if (!next.email) {
         throw new Error("E-mail é obrigatório para pagamento por fora")
@@ -930,8 +934,19 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return { email: existing.email }
     }
 
-    await this.sendSetPasswordEmail(existing, "recovery")
-    return { email: existing.email }
+    await this.syncAdhesionEmailArtifactsIfNeeded(existing)
+
+    const fresh = (await this.repo.findById(id)) ?? existing
+    if (!fresh.email) {
+      throw new Error("Adesão sem e-mail para reenvio de convite")
+    }
+
+    await this.sendSetPasswordEmail(fresh, "recovery")
+    console.info("[BackofficeAdhesionService][resendInvite] Novo convite gerado com expiração de 24h", {
+      adhesionId: id,
+      email: fresh.email,
+    })
+    return { email: fresh.email }
   }
 
   async getPendingInvoiceUrls(id: string): Promise<{
@@ -2340,6 +2355,106 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     if (!result.success) {
       throw new Error(result.error || "Erro ao enviar e-mail de convite")
+    }
+  }
+
+  private async syncAdhesionEmailArtifacts(
+    adhesion: BackofficeAdhesionWithRelations,
+    newEmail: string,
+    previousEmail: string | null
+  ): Promise<void> {
+    const normalizedNew = newEmail.trim().toLowerCase()
+    const normalizedPrev = previousEmail?.trim().toLowerCase() ?? null
+    if (!normalizedNew || normalizedNew === normalizedPrev) return
+
+    try {
+      const maybeRepo = this.repo as unknown as { updateLeadEmail?: (id: string, email: string) => Promise<void> }
+      if (maybeRepo.updateLeadEmail) {
+        await maybeRepo.updateLeadEmail(adhesion.leadId, newEmail.trim())
+      }
+    } catch (error) {
+      console.error("[BackofficeAdhesionService][syncEmail][lead]", error)
+    }
+
+    if (adhesion.createdProfileId) {
+      try {
+        const maybeRepo = this.repo as unknown as { updateProfileEmail?: (id: string, email: string) => Promise<void> }
+        if (maybeRepo.updateProfileEmail) {
+          await maybeRepo.updateProfileEmail(adhesion.createdProfileId, newEmail.trim())
+        }
+      } catch (error) {
+        console.error("[BackofficeAdhesionService][syncEmail][profile]", error)
+      }
+    }
+
+    if (adhesion.createdSupabaseId) {
+      const supabaseAdmin = createSupabaseAdmin()
+      if (!supabaseAdmin) {
+        console.error("[BackofficeAdhesionService][syncEmail] Supabase Admin não configurado")
+        return
+      }
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(adhesion.createdSupabaseId, {
+        email: newEmail.trim(),
+        email_confirm: true,
+      } as unknown as Record<string, unknown>)
+      if (error) {
+        console.error("[BackofficeAdhesionService][syncEmail][auth]", error)
+        if (String(error.message ?? "").toLowerCase().includes("already exists") || (error as { status?: number }).status === 422) {
+          throw new Error("Já existe uma conta cadastrada com este e-mail")
+        }
+        throw new Error(`Falha ao atualizar e-mail na autenticação: ${error.message}`)
+      }
+    }
+  }
+
+  private async syncAdhesionEmailArtifactsIfNeeded(
+    adhesion: BackofficeAdhesionWithRelations
+  ): Promise<void> {
+    if (!adhesion.email) return
+
+    const targetEmail = adhesion.email.trim()
+    const normalizedTarget = targetEmail.toLowerCase()
+
+    let needsSync = false
+    let previousEmail: string | null = null
+
+    if (adhesion.lead.email && adhesion.lead.email.trim().toLowerCase() !== normalizedTarget) {
+      needsSync = true
+      previousEmail = adhesion.lead.email
+    }
+
+    if (adhesion.createdProfileId) {
+      try {
+        const maybeRepo = this.repo as unknown as { findProfileEmailById?: (id: string) => Promise<string | null> }
+        const profileEmail = maybeRepo.findProfileEmailById
+          ? await maybeRepo.findProfileEmailById(adhesion.createdProfileId)
+          : null
+        if (profileEmail && profileEmail.trim().toLowerCase() !== normalizedTarget) {
+          needsSync = true
+          previousEmail = profileEmail
+        }
+      } catch (error) {
+        console.error("[BackofficeAdhesionService][syncEmail][profile-fetch]", error)
+      }
+    }
+
+    if (adhesion.createdSupabaseId) {
+      const supabaseAdmin = createSupabaseAdmin()
+      if (supabaseAdmin) {
+        try {
+          const { data, error } = await supabaseAdmin.auth.admin.getUserById(adhesion.createdSupabaseId)
+          if (!error && data?.user?.email && data.user.email.trim().toLowerCase() !== normalizedTarget) {
+            needsSync = true
+            previousEmail = data.user.email
+          }
+        } catch (error) {
+          console.error("[BackofficeAdhesionService][syncEmail][auth-fetch]", error)
+        }
+      }
+    }
+
+    if (needsSync) {
+      await this.syncAdhesionEmailArtifacts(adhesion, targetEmail, previousEmail)
     }
   }
 }

@@ -571,4 +571,26 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       }),
     ])
   }
+
+  async updateLeadEmail(leadId: string, email: string): Promise<void> {
+    await prisma.backofficeLead.update({
+      where: { id: leadId },
+      data: { email },
+    })
+  }
+
+  async findProfileEmailById(profileId: string): Promise<string | null> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { email: true },
+    })
+    return profile?.email ?? null
+  }
+
+  async updateProfileEmail(profileId: string, email: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { email },
+    })
+  }
 }
