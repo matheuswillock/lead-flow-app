@@ -366,7 +366,6 @@
       "app/[supabaseId]/performance/reunioes-realizadas/page.tsx",
       "app/[supabaseId]/pipeline/page.tsx",
       "app/[supabaseId]/pme-simulador/page.tsx",
-      "app/[supabaseId]/radar/page.tsx",
       "app/[supabaseId]/subscription/page.tsx",
       "app/[supabaseId]/teams/page.tsx",
       "app/[supabaseId]/whatsapp/auto-respostas/page.tsx",

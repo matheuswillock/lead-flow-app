@@ -468,18 +468,6 @@ export class RadarFrontendService implements IRadarService {
     return parseOutput<RadarProfileTouchpoints>(res)
   }
 
-  async getProfileContracts(
-    supabaseId: string,
-    teamId: string,
-    profileId: string
-  ): Promise<RadarProfileContracts> {
-    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/contracts`, {
-      cache: "no-store",
-      headers: this.buildHeaders(supabaseId, teamId),
-    })
-    return parseOutput<RadarProfileContracts>(res)
-  }
-
   async getProfileForms(
     supabaseId: string,
     teamId: string,
@@ -490,6 +478,18 @@ export class RadarFrontendService implements IRadarService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     return parseOutput<RadarProfileForms>(res)
+  }
+
+  async getProfileContracts(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileContracts> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/contracts`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileContracts>(res)
   }
 
   async materializeContactList(

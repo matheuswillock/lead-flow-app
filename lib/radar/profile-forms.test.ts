@@ -52,4 +52,56 @@ describe("buildRadarProfileFormItems", () => {
       answeredQuestionCount: 1,
     })
   })
+
+  it("não conta questionId de viewed/skipped em answeredQuestionCount", () => {
+    const items = buildRadarProfileFormItems({
+      events: [
+        {
+          eventType: "form.started",
+          occurredAt: new Date("2026-08-20T12:00:00.000Z"),
+          metadata: { formId: "form-1" },
+        },
+        {
+          eventType: "form.question_viewed",
+          occurredAt: new Date("2026-08-20T12:00:30.000Z"),
+          metadata: { formId: "form-1", questionId: "q-viewed" },
+        },
+        {
+          eventType: "form.question_skipped",
+          occurredAt: new Date("2026-08-20T12:00:45.000Z"),
+          metadata: { formId: "form-1", questionId: "q-skipped" },
+        },
+        {
+          eventType: "form.question_answered",
+          occurredAt: new Date("2026-08-20T12:01:00.000Z"),
+          metadata: { formId: "form-1", questionId: "q-name" },
+        },
+      ],
+      forms: [{ id: "form-1", name: "Qualificação PME", publicId: "pub-1" }],
+    })
+
+    expect(items[0]?.answeredQuestionCount).toBe(1)
+    expect(items[0]?.completionStatus).toBe(RADAR_PROFILE_FORM_COMPLETION.incomplete)
+  })
+
+  it("mantém iniciou sem resposta quando só há viewed/skipped com questionId", () => {
+    const items = buildRadarProfileFormItems({
+      events: [
+        {
+          eventType: "form.started",
+          occurredAt: new Date("2026-08-20T12:00:00.000Z"),
+          metadata: { formId: "form-2" },
+        },
+        {
+          eventType: "form.question_viewed",
+          occurredAt: new Date("2026-08-20T12:00:30.000Z"),
+          metadata: { formId: "form-2", questionId: "q-viewed" },
+        },
+      ],
+      forms: [{ id: "form-2", name: "Só visualizou", publicId: "pub-2" }],
+    })
+
+    expect(items[0]?.answeredQuestionCount).toBe(0)
+    expect(items[0]?.completionStatus).toBe(RADAR_PROFILE_FORM_COMPLETION.startedWithoutAnswers)
+  })
 })
