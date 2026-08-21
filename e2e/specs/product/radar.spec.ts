@@ -200,12 +200,15 @@ async function arrangeRadarFormsProfile() {
 
 test.describe("app/[supabaseId]/radar", () => {
   test.describe.configure({ mode: "serial" })
-  test.setTimeout(60_000)
+  test.setTimeout(90_000)
 
   test.beforeEach(async ({ context }) => {
     const profile = await findE2eMasterProfile()
     expect(profile, "Seed E2E ausente — rode `bun run db:seed:e2e`").not.toBeNull()
     await injectE2eAuthCookie(context)
+    await context.addInitScript((supabaseId: string) => {
+      window.localStorage.setItem(`whats-new:seen:v1:${supabaseId}`, "true")
+    }, E2E_MASTER_SUPABASE_ID)
     await arrangeRadarFormsProfile()
   })
 
@@ -214,26 +217,31 @@ test.describe("app/[supabaseId]/radar", () => {
   })
 
   test("carrega o Radar autenticado com heading e CTA de segmentos", async ({ page }) => {
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar`)
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar`, { waitUntil: "domcontentloaded" })
 
-    await expect(page.getByRole("heading", { name: "Radar" })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator("h1.text-xl", { hasText: "Radar" })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
     await expect(page.getByText("Você não tem acesso a esta funcionalidade.")).toHaveCount(0)
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0)
 
     const emptyState = page.getByText("Nenhum perfil encontrado")
     const profileName = page.getByText(PROFILE_DISPLAY_NAME)
-    await expect(emptyState.or(profileName).first()).toBeVisible()
+    await expect(emptyState.or(profileName).first()).toBeVisible({ timeout: 30_000 })
 
-    await page.getByRole("tab", { name: "Segmentos" }).click()
+    const segmentosTab = page.getByRole("tab", { name: "Segmentos" })
+    await expect(segmentosTab).toBeVisible({ timeout: 15_000 })
+    await segmentosTab.click()
     await expect(page.getByText("Segmentos do sistema")).toBeVisible()
   })
 
   test("mostra badges Completo, Incompleto e Iniciou sem nenhuma resposta na aba Formulários", async ({
     page,
   }) => {
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar?perfil=${E2E_RADAR_PROFILE_ID}`)
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar?perfil=${E2E_RADAR_PROFILE_ID}`, {
+      waitUntil: "domcontentloaded",
+    })
 
-    await expect(page.getByRole("heading", { name: "Radar" })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator("h1.text-xl", { hasText: "Radar" })).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole("heading", { name: "Detalhe do perfil" })).toBeVisible()
 
     await page.getByRole("tab", { name: "Formulários" }).click()

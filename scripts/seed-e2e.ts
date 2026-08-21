@@ -308,6 +308,42 @@ async function upsertE2eMaster(prisma: PrismaClient) {
   });
 
   info(`✓ Profile ${profile.id} (${E2E_MASTER_EMAIL}) + Team "${E2E_TEAM_NAME}"`);
+  return profile;
+}
+
+async function grantE2eMasterRadarBeta(prisma: PrismaClient, profileId: string) {
+  step("Granting Radar BETA to E2E master");
+
+  const radarFeature = await prisma.backofficeFeature.findUnique({
+    where: { slug: "radar" },
+    select: { id: true },
+  });
+  if (!radarFeature) {
+    fail("Feature radar ausente no catálogo após seed-backoffice-products.");
+  }
+
+  await prisma.backofficeFeatureGrant.upsert({
+    where: {
+      featureId_profileId_grantType: {
+        featureId: radarFeature.id,
+        profileId,
+        grantType: "BETA",
+      },
+    },
+    create: {
+      featureId: radarFeature.id,
+      profileId,
+      grantType: "BETA",
+      isActive: true,
+      betaTeamScope: "ALL_TEAMS",
+    },
+    update: {
+      isActive: true,
+      betaTeamScope: "ALL_TEAMS",
+    },
+  });
+
+  info("✓ Radar BETA liberado para o master E2E");
 }
 
 async function main() {
@@ -323,7 +359,8 @@ async function main() {
 
   const prisma = new PrismaClient({ datasourceUrl: dbUrl });
   try {
-    await upsertE2eMaster(prisma);
+    const profile = await upsertE2eMaster(prisma);
+    await grantE2eMasterRadarBeta(prisma, profile.id);
   } finally {
     await prisma.$disconnect();
   }
