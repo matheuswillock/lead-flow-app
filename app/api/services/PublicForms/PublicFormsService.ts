@@ -490,10 +490,10 @@ export class PublicFormsService implements IPublicFormsService {
       origin: json(origin),
     })
 
-    // PR 4: todo evento aceito atualiza a jornada de forma idempotente. A
-    // projeção nunca bloqueia a métrica — falha aqui é registrada e o cron de
-    // abandono reconcilia o estado na próxima passagem.
-    await this.recordJourneyProgress({
+    // Fire-and-forget: journey tracking must never block metric recording.
+    // DB connection contention from the advisory lock would exhaust the pool
+    // and cause the rate-limit query to time-out (fail-closed → 429).
+    void this.recordJourneyProgress({
       formId: current.snapshot.formId,
       publicationId,
       input,
