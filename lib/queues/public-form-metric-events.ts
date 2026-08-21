@@ -44,6 +44,9 @@ const queue = new QueueClient({ region: "gru1" });
 
 export type PublicFormMetricQueuePayload = {
   publicId: string;
+  schemaVersion?: 1;
+  eventId?: string | null;
+  occurredAt?: string;
   eventKey: string;
   eventType: PublicFormMetricQueueEventType;
   questionId: string | null;
@@ -73,6 +76,9 @@ export function buildPublicFormMetricQueuePayload(
 ): PublicFormMetricQueuePayload {
   return {
     publicId,
+    schemaVersion: input.schemaVersion ?? 1,
+    eventId: input.eventId ?? null,
+    occurredAt: input.occurredAt ?? new Date().toISOString(),
     eventKey: input.eventKey,
     eventType: input.eventType,
     questionId: input.questionId ?? null,

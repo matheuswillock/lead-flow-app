@@ -45,6 +45,17 @@ function isLeadIdentityMappingKey(mappingKey: string | null | undefined): boolea
   return mappingKey === "name" || mappingKey === "email" || mappingKey === "phone"
 }
 
+const MAX_FUTURE_OCCURRED_AT_MS = 5 * 60_000
+
+/** Contrato v1: `occurredAt` inválido ou >5min no futuro é normalizado para o horário de recebimento. */
+function resolveProgressAnsweredAt(occurredAt: string | undefined): Date {
+  if (!occurredAt) return new Date()
+  const parsed = new Date(occurredAt)
+  if (Number.isNaN(parsed.getTime())) return new Date()
+  if (parsed.getTime() - Date.now() > MAX_FUTURE_OCCURRED_AT_MS) return new Date()
+  return parsed
+}
+
 /** Fila OIDC/CI costuma falhar; o consumer não roda. Radar fecha A+C neste isolate. */
 async function processQuestionAnsweredWhenQueueUnavailable(
   publicId: string,
@@ -122,7 +133,20 @@ export class PublicFormProgressUseCase {
       })
       sessionLeadId = legacyLead?.lead.id ?? sessionLeadId
     }
-    const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers)
+    const answeredAt = resolveProgressAnsweredAt(input.occurredAt)
+    const incomingQuestionIds = new Set(incomingAnswers.map((answer) => answer.questionId))
+    const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers).map((answer) =>
+      incomingQuestionIds.has(answer.questionId)
+        ? {
+            ...answer,
+            answeredAt,
+            sourceEventId: input.eventId ?? null,
+            mappingKey:
+              snapshot.questions.find((question) => question.id === answer.questionId)
+                ?.mappingKey ?? null,
+          }
+        : answer,
+    )
 
     const submission = await publicFormsRepository.upsertProgressSubmission({
       formId: snapshot.formId,

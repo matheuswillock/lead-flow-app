@@ -17,7 +17,7 @@ mock.module("@/lib/public-forms/rate-limit", () => ({
   publicFormRequestFingerprint: mock(() => "fp-test"),
 }))
 
-const queueProgressForBackgroundProcessing = mock(async () => {})
+const queueProgressForBackgroundProcessing = mock(async () => ({ accepted: true }))
 mock.module("@/lib/public-forms/queue-progress-for-background-processing", () => ({
   queueProgressForBackgroundProcessing,
 }))
@@ -43,7 +43,7 @@ function makeRequest(body: unknown): Request {
 describe("POST /api/v1/public-forms/[publicId]/progress", () => {
   beforeEach(() => {
     queueProgressForBackgroundProcessing.mockReset()
-    queueProgressForBackgroundProcessing.mockResolvedValue(undefined)
+    queueProgressForBackgroundProcessing.mockResolvedValue({ accepted: true })
   })
 
   it("queue-first: loga blur, publica e retorna 202 sem chamar execute", async () => {
@@ -65,15 +65,13 @@ describe("POST /api/v1/public-forms/[publicId]/progress", () => {
     const body = (await res.json()) as { result: { queued?: boolean } }
     expect(body.result.queued).toBe(true)
     expect(queueProgressForBackgroundProcessing).toHaveBeenCalledTimes(1)
-    expect(info).toHaveBeenCalledWith(
-      "[PublicFormProgress][blur]",
-      expect.objectContaining({
-        publicId: VALID_PUBLIC_ID,
-        visitorSessionId: VALID_SESSION,
-        questionId: QUESTION_ID,
-        value: "Ana",
-      }),
-    )
+    expect(info).toHaveBeenCalledWith("[PublicFormProgressRoute][POST] recebido", {
+      publicId: VALID_PUBLIC_ID,
+      visitorSessionId: VALID_SESSION,
+      answerCount: 1,
+      eventId: null,
+      trigger: "blur",
+    })
   })
 
   it("progresso inválido: 400 sem publicar", async () => {
@@ -82,5 +80,22 @@ describe("POST /api/v1/public-forms/[publicId]/progress", () => {
     })
     expect(res.status).toBe(400)
     expect(queueProgressForBackgroundProcessing).not.toHaveBeenCalled()
+  })
+
+  it("fila e outbox indisponíveis: retorna 503 retryable", async () => {
+    queueProgressForBackgroundProcessing.mockResolvedValueOnce({ accepted: false })
+
+    const res = await POST(
+      makeRequest({
+        visitorSessionId: VALID_SESSION,
+        answers: [{ questionId: QUESTION_ID, value: "Ana" }],
+        origin: {},
+      }),
+      { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) },
+    )
+
+    expect(res.status).toBe(503)
+    expect(res.headers.get("Retry-After")).toBe("5")
+    expect((await res.json()) as unknown).toMatchObject({ result: { retryable: true } })
   })
 })

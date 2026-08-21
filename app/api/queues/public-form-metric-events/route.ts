@@ -44,13 +44,19 @@ export async function processPublicFormMetricQueueMessage(
   if (!message?.publicId || !message?.eventKey || !message?.visitorSessionId || !message?.eventType) {
     console.error("[PublicFormMetricEventsQueueRoute][POST] invalid payload, acking", {
       messageId: metadata.messageId,
-      message,
+      publicId: message?.publicId,
+      eventId: message?.eventId ?? null,
+      eventKey: message?.eventKey,
+      eventType: message?.eventType,
     })
     return
   }
 
   const input: PublicFormMetricEventInput = {
     visitorSessionId: message.visitorSessionId,
+    schemaVersion: message.schemaVersion,
+    eventId: message.eventId ?? undefined,
+    occurredAt: message.occurredAt,
     eventType: message.eventType as PublicFormMetricEventInput["eventType"],
     questionId: message.questionId ?? undefined,
     eventKey: message.eventKey,

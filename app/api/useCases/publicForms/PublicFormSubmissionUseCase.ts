@@ -49,6 +49,7 @@ const STALE_PROCESSING_MS = 2 * 60_000
 export type PublicFormSubmissionBackgroundJob = {
   submissionId: string
   publicationId: string
+  eventId?: string | null
   snapshot: PublicFormSnapshot
   visibleAnswers: PublicFormAnswerInput[]
   visibleIds: string[]
@@ -176,6 +177,7 @@ export class PublicFormSubmissionUseCase {
       const background: PublicFormSubmissionBackgroundJob = {
         submissionId: existing.id,
         publicationId,
+        eventId: input.eventId ?? existing.eventId,
         snapshot,
         visibleAnswers,
         visibleIds: [...visible],
@@ -200,23 +202,31 @@ export class PublicFormSubmissionUseCase {
         ? await publicFormsRepository.findProgressSubmission(publicationId, input.visitorSessionId)
         : null
 
+    const dispatchContext = {
+      thankYouPageId: input.thankYouPageId ?? null,
+      scheduledMeetingStartsAt: input.scheduling ? new Date(input.scheduling.startsAt) : null,
+    }
     const submission = progressSubmission
       ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
           requestKey: input.requestKey,
+          eventId: input.eventId,
           score,
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
           visitorSessionId: input.visitorSessionId ?? null,
+          ...dispatchContext,
         })
       : await publicFormsRepository.createSubmission({
           formId: snapshot.formId,
           publicationId,
           requestKey: input.requestKey,
+          eventId: input.eventId,
           visitorSessionId: input.visitorSessionId ?? null,
           score,
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
           completionStatus: "partial",
+          ...dispatchContext,
         })
 
     await publicFormsRepository.persistSubmissionAnswers(submission.id, answers)
@@ -224,6 +234,7 @@ export class PublicFormSubmissionUseCase {
     const background: PublicFormSubmissionBackgroundJob = {
       submissionId: submission.id,
       publicationId,
+      eventId: input.eventId ?? submission.eventId,
       snapshot,
       visibleAnswers,
       visibleIds: [...visible],

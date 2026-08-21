@@ -45,7 +45,10 @@ export async function processPublicFormProgressEventMessage(
   if (!message?.publicId || !message?.visitorSessionId || !message?.idempotencyKey) {
     console.error("[PublicFormProgressEventsQueueRoute][POST] invalid payload, acking", {
       messageId: metadata.messageId,
-      message,
+      publicId: message?.publicId,
+      visitorSessionId: message?.visitorSessionId,
+      idempotencyKey: message?.idempotencyKey,
+      eventId: message?.eventId,
     })
     return
   }
@@ -56,6 +59,10 @@ export async function processPublicFormProgressEventMessage(
       answers: message.answers ?? [],
       origin: message.origin ?? {},
       lastQuestionId: message.lastQuestionId,
+      schemaVersion: message.schemaVersion,
+      eventId: message.eventId,
+      occurredAt: message.occurredAt,
+      trigger: message.trigger,
     })
     if (!output.isValid) {
       console.info("[PublicFormProgressEventsQueueRoute][POST] form unavailable, acking", {

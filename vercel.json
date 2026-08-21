@@ -292,6 +292,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/public-forms/cron/dispatch-pending-submissions",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/queues/cron/retry-processing-failures",
       "schedule": "*/5 * * * *"
     }

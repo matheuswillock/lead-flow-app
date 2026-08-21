@@ -15,9 +15,11 @@ mock.module("@/lib/queues/public-form-progress-events", () => ({
 }))
 
 mock.module(
-  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  "@/app/api/infra/data/repositories/publicFormQueueEventFailure/PublicFormQueueEventFailureRepository",
   () => ({
-    queueProcessingFailureRepository: {
+    formatProcessingError: (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    publicFormQueueEventFailureRepository: {
       upsertFromProcessingFailure: upsertFromProcessingFailureMock,
     },
   }),
@@ -29,6 +31,10 @@ const { queueProgressForBackgroundProcessing } = await import(
 
 const PAYLOAD: PublicFormProgressQueuePayload = {
   publicId: "11111111-1111-4111-8111-111111111111",
+  schemaVersion: 1,
+  eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  occurredAt: "2026-08-21T00:00:00.000Z",
+  trigger: "blur",
   visitorSessionId: "session_abcdefghij",
   answers: [{ questionId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", value: "Ana" }],
   origin: {},
@@ -54,7 +60,7 @@ describe("queueProgressForBackgroundProcessing", () => {
     expect(upsertFromProcessingFailureMock).not.toHaveBeenCalled()
   })
 
-  it("publish falha 3x → grava no outbox QueueProcessingFailure", async () => {
+  it("publish falha 3x → grava no outbox de formulário", async () => {
     publishPublicFormProgressEventMock.mockRejectedValue(new Error("queue down"))
 
     await queueProgressForBackgroundProcessing(PAYLOAD, {
@@ -65,6 +71,7 @@ describe("queueProgressForBackgroundProcessing", () => {
     expect(publishPublicFormProgressEventMock).toHaveBeenCalledTimes(DEFAULT_PUBLISH_RETRY_ATTEMPTS)
     expect(upsertFromProcessingFailureMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        kind: "progress",
         topic: "public-form-progress-events",
         idempotencyKey: PAYLOAD.idempotencyKey,
         lastError: "queue down",
@@ -81,6 +88,6 @@ describe("queueProgressForBackgroundProcessing", () => {
         publish: publishPublicFormProgressEventMock,
         persistOutbox: upsertFromProcessingFailureMock,
       }),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual({ accepted: false })
   })
 })

@@ -23,6 +23,7 @@ import {
 } from "@/lib/public-forms/publication-snapshot"
 import {
   type IPublicFormsRepository,
+  type PendingPublicFormSubmissionDispatch,
   type PublicFormCompleteSubmissionInput,
   type PublicFormDetailRecord,
   type PublicFormListItemRecord,
@@ -73,11 +74,16 @@ type ProgressSubmissionWrite = {
   completionStatus: import("@prisma/client").PublicFormCompletionStatus
   leadId?: string | null
   origin: Prisma.InputJsonValue
-  answers: Array<{
-    questionId: string
-    value: Prisma.InputJsonValue
-    questionSnapshot: Prisma.InputJsonValue
-  }>
+  answers: ProgressAnswerWrite[]
+}
+
+type ProgressAnswerWrite = {
+  questionId: string
+  value: Prisma.InputJsonValue
+  questionSnapshot: Prisma.InputJsonValue
+  answeredAt?: Date | null
+  sourceEventId?: string | null
+  mappingKey?: string | null
 }
 
 const leadSubmissionSelect = {
@@ -641,6 +647,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     visitorSessionId: string
     eventType: import("@prisma/client").PublicFormMetricType
     eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
     origin: Prisma.InputJsonValue
   }) {
     const create = (questionId: string | null | undefined) => ({
@@ -651,6 +660,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,
+      eventId: input.eventId,
+      schemaVersion: input.schemaVersion,
+      occurredAt: input.occurredAt,
       origin: input.origin,
     })
 
@@ -1124,11 +1136,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     formId: string
     publicationId: string
     requestKey: string
+    eventId?: string | null
     visitorSessionId?: string | null
     score?: number
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
+    thankYouPageId?: string | null
+    scheduledMeetingStartsAt?: Date | null
   }) {
     return prisma.publicFormSubmission.create({
       data: {
@@ -1146,11 +1161,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     origin: Prisma.InputJsonValue
     completionStatus: import("@prisma/client").PublicFormCompletionStatus
     leadId?: string | null
-    answers: Array<{
-      questionId: string
-      value: Prisma.InputJsonValue
-      questionSnapshot: Prisma.InputJsonValue
-    }>
+    answers: ProgressAnswerWrite[]
   }) {
     const existing = await this.findProgressSubmission(data.publicationId, data.visitorSessionId)
     if (existing) {
@@ -1314,18 +1325,43 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   private async mergeSubmissionAnswers(
     tx: Prisma.TransactionClient,
     submissionId: string,
-    answers: Array<{
-      questionId: string
-      value: Prisma.InputJsonValue
-      questionSnapshot: Prisma.InputJsonValue
-    }>,
+    answers: ProgressAnswerWrite[],
   ) {
     // Blur payloads carry one answer; deleteMany would wipe a concurrent full-page save.
     // Queue retries can still deliver a stale empty blur after a filled save of the same question.
     for (const answer of answers) {
       if (await this.shouldSkipBlankProgressOverwrite(tx, submissionId, answer)) continue
+      if (await this.shouldSkipStaleProgressOverwrite(tx, submissionId, answer)) continue
       await this.writeSubmissionAnswer(tx, submissionId, answer)
     }
+  }
+
+  /**
+   * Retry atrasado do outbox não pode regredir uma resposta mais nova.
+   * Ordem causal do contrato v1: (occurredAt, eventId). Resposta sem
+   * `answeredAt` (legado) preserva o comportamento anterior de overwrite.
+   */
+  private async shouldSkipStaleProgressOverwrite(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: ProgressAnswerWrite,
+  ): Promise<boolean> {
+    if (!answer.questionId || !answer.answeredAt) return false
+    const existing = await tx.publicFormAnswer.findUnique({
+      where: {
+        submissionId_questionId: {
+          submissionId,
+          questionId: answer.questionId,
+        },
+      },
+      select: { answeredAt: true, sourceEventId: true },
+    })
+    if (!existing?.answeredAt) return false
+    const incomingTime = answer.answeredAt.getTime()
+    const storedTime = existing.answeredAt.getTime()
+    if (incomingTime !== storedTime) return incomingTime < storedTime
+    if (!answer.sourceEventId || !existing.sourceEventId) return false
+    return answer.sourceEventId < existing.sourceEventId
   }
 
   private async shouldSkipBlankProgressOverwrite(
@@ -1379,12 +1415,22 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionId: string | null
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date | null
+      sourceEventId?: string | null
+      mappingKey?: string | null
     },
   ) {
+    // `undefined` = escrita sem envelope causal (submissão final/legado): não toca os metadados.
+    const causalMetadata = {
+      answeredAt: answer.answeredAt ?? undefined,
+      sourceEventId: answer.sourceEventId ?? undefined,
+      mappingKey: answer.mappingKey ?? undefined,
+    }
     if (!answer.questionId) {
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: answer.value,
         questionSnapshot: answer.questionSnapshot,
+        ...causalMetadata,
       })
       return
     }
@@ -1395,6 +1441,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionId,
       value: answer.value,
       questionSnapshot: answer.questionSnapshot,
+      ...causalMetadata,
     }
 
     try {
@@ -1410,6 +1457,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           update: {
             value: answer.value,
             questionSnapshot: answer.questionSnapshot,
+            ...causalMetadata,
           },
         }),
       )
@@ -1422,6 +1470,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: data.value,
         questionSnapshot: data.questionSnapshot,
+        ...causalMetadata,
       })
     }
   }
@@ -1432,6 +1481,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     data: {
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date
+      sourceEventId?: string
+      mappingKey?: string
     },
   ) {
     const snapshotId = questionIdFromSnapshot(data.questionSnapshot)
@@ -1448,6 +1500,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             data: {
               value: data.value,
               questionSnapshot: data.questionSnapshot,
+              answeredAt: data.answeredAt,
+              sourceEventId: data.sourceEventId,
+              mappingKey: data.mappingKey,
             },
           }),
         )
@@ -1461,6 +1516,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           questionId: null,
           value: data.value,
           questionSnapshot: data.questionSnapshot,
+          answeredAt: data.answeredAt,
+          sourceEventId: data.sourceEventId,
+          mappingKey: data.mappingKey,
         },
       }),
     )
@@ -1470,23 +1528,29 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     submissionId: string,
     data: {
       requestKey: string
+      eventId?: string | null
       score: number
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue
       visitorSessionId?: string | null
+      thankYouPageId?: string | null
+      scheduledMeetingStartsAt?: Date | null
     },
   ) {
     return prisma.publicFormSubmission.update({
       where: { id: submissionId },
       data: {
         requestKey: data.requestKey,
+        eventId: data.eventId,
         score: data.score,
         scoreBandLabel: data.scoreBandLabel,
         origin: data.origin,
         visitorSessionId: data.visitorSessionId,
+        thankYouPageId: data.thankYouPageId,
+        scheduledMeetingStartsAt: data.scheduledMeetingStartsAt,
         completionStatus: "partial",
       },
-      select: { id: true },
+      select: { id: true, eventId: true },
     })
   }
 
@@ -1582,6 +1646,98 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     return result.count === 1
+  }
+
+  async markSubmissionDispatchAccepted(submissionId: string): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        dispatchAcceptedAt: new Date(),
+        dispatchAttemptCount: { increment: 1 },
+        nextDispatchAt: null,
+        lastDispatchError: null,
+      },
+    })
+  }
+
+  async markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        dispatchAttemptCount: { increment: 1 },
+        nextDispatchAt: new Date(Date.now() + 5 * 60_000),
+        lastDispatchError: errorMessage.slice(0, 2_000),
+      },
+    })
+  }
+
+  async claimPendingSubmissionDispatches(input: {
+    limit: number
+    leaseUntil: Date
+  }): Promise<PendingPublicFormSubmissionDispatch[]> {
+    return prisma.$transaction(async (transaction) => {
+      const claimedRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "public"."corretor_studio_public_form_submissions"
+        WHERE "status" = 'processing'
+          AND "dispatchAcceptedAt" IS NULL
+          AND ("nextDispatchAt" IS NULL OR "nextDispatchAt" <= NOW())
+        ORDER BY "nextDispatchAt" ASC NULLS FIRST, "createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${input.limit}
+      `)
+
+      const submissionIds = claimedRows.map((row) => row.id)
+      if (submissionIds.length === 0) return []
+
+      await transaction.publicFormSubmission.updateMany({
+        where: { id: { in: submissionIds } },
+        data: { nextDispatchAt: input.leaseUntil },
+      })
+
+      const submissions = await transaction.publicFormSubmission.findMany({
+        where: { id: { in: submissionIds } },
+        select: {
+          id: true,
+          publicationId: true,
+          eventId: true,
+          requestKey: true,
+          visitorSessionId: true,
+          score: true,
+          scoreBandLabel: true,
+          origin: true,
+          thankYouPageId: true,
+          scheduledMeetingStartsAt: true,
+          publication: { select: { snapshot: true } },
+          answers: {
+            orderBy: { createdAt: "asc" },
+            select: { questionId: true, value: true, questionSnapshot: true },
+          },
+        },
+      })
+
+      const submissionsById = new Map(submissions.map((submission) => [submission.id, submission]))
+      return submissionIds.flatMap((submissionId) => {
+        const submission = submissionsById.get(submissionId)
+        if (!submission) return []
+        return [
+          {
+            id: submission.id,
+            publicationId: submission.publicationId,
+            eventId: submission.eventId,
+            requestKey: submission.requestKey,
+            visitorSessionId: submission.visitorSessionId,
+            score: submission.score,
+            scoreBandLabel: submission.scoreBandLabel,
+            origin: submission.origin,
+            thankYouPageId: submission.thankYouPageId,
+            scheduledMeetingStartsAt: submission.scheduledMeetingStartsAt,
+            snapshot: submission.publication.snapshot,
+            answers: submission.answers,
+          },
+        ]
+      })
+    })
   }
 
   async findCampaignContactListIds(teamId: string, campaignId: string) {

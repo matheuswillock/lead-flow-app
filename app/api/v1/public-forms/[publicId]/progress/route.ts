@@ -33,14 +33,13 @@ export async function POST(
     })
   }
 
-  for (const answer of parsed.data.answers) {
-    console.info("[PublicFormProgress][blur]", {
-      publicId,
-      visitorSessionId: parsed.data.visitorSessionId,
-      questionId: answer.questionId,
-      value: answer.value,
-    })
-  }
+  console.info("[PublicFormProgressRoute][POST] recebido", {
+    publicId,
+    visitorSessionId: parsed.data.visitorSessionId,
+    answerCount: parsed.data.answers.length,
+    eventId: parsed.data.eventId ?? null,
+    trigger: parsed.data.trigger ?? "blur",
+  })
 
   if (parsed.data.answers.length > 0 && isE2eTestMode()) {
     const { publicFormProgressUseCase } = await import(
@@ -57,8 +56,18 @@ export async function POST(
       answers: parsed.data.answers,
       origin: parsed.data.origin ?? {},
       lastQuestionId: parsed.data.lastQuestionId,
+      schemaVersion: parsed.data.schemaVersion,
+      eventId: parsed.data.eventId,
+      occurredAt: parsed.data.occurredAt,
+      trigger: parsed.data.trigger,
     })
-    await queueProgressForBackgroundProcessing(payload)
+    const dispatch = await queueProgressForBackgroundProcessing(payload)
+    if (!dispatch.accepted) {
+      return NextResponse.json(
+        new Output(false, [], ["Não foi possível registrar o progresso"], { retryable: true }),
+        { status: 503, headers: { "Retry-After": "5" } },
+      )
+    }
   }
 
   return NextResponse.json(new Output(true, [], [], { queued: true }), { status: 202 })

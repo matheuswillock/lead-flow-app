@@ -46,7 +46,10 @@ export async function POST(
       `[PublicFormMetricEventsRoute][POST] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`,
       { publicId, eventType: parsed.data.eventType, eventKey: parsed.data.eventKey },
     )
-    return NextResponse.json(output, { status: 502 })
+    return NextResponse.json(
+      new Output(false, [], ["Não foi possível registrar o evento"], { retryable: true }),
+      { status: 503, headers: { "Retry-After": "5" } },
+    )
   }
 
   return NextResponse.json(output, { status: 404 })

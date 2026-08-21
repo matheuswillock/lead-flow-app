@@ -37,6 +37,10 @@ const { processPublicFormProgressEventMessage } = await import("./route")
 
 const baseMessage = (): PublicFormProgressQueuePayload => ({
   publicId: "11111111-1111-4111-8111-111111111111",
+  schemaVersion: 1,
+  eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  occurredAt: "2026-08-21T00:00:00.000Z",
+  trigger: "blur",
   visitorSessionId: "session_abcdefghij",
   answers: [{ questionId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", value: "Ana" }],
   origin: {},
@@ -65,6 +69,10 @@ describe("processPublicFormProgressEventMessage", () => {
       answers: message.answers,
       origin: message.origin,
       lastQuestionId: undefined,
+      schemaVersion: message.schemaVersion,
+      eventId: message.eventId,
+      occurredAt: message.occurredAt,
+      trigger: message.trigger,
     })
   })
 

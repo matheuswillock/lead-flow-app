@@ -16,6 +16,10 @@ const queue = new QueueClient({ region: "gru1" })
 
 export type PublicFormProgressQueuePayload = {
   publicId: string
+  schemaVersion: 1
+  eventId: string
+  occurredAt: string
+  trigger: "blur" | "change" | "page_flush" | "submit_reconciliation"
   visitorSessionId: string
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
@@ -70,15 +74,24 @@ export function buildPublicFormProgressQueuePayload(input: {
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
   lastQuestionId?: string
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
+  trigger?: "blur" | "change" | "page_flush" | "submit_reconciliation"
 }): PublicFormProgressQueuePayload {
-  const idempotencyKey = buildPublicFormProgressIdempotencyKey(input)
+  const fallbackIdempotencyKey = buildPublicFormProgressIdempotencyKey(input)
+  const eventId = input.eventId ?? crypto.randomUUID()
   return {
     publicId: input.publicId,
+    schemaVersion: input.schemaVersion ?? 1,
+    eventId,
+    occurredAt: input.occurredAt ?? new Date().toISOString(),
+    trigger: input.trigger ?? "blur",
     visitorSessionId: input.visitorSessionId,
     answers: input.answers,
     origin: input.origin,
     lastQuestionId: input.lastQuestionId,
-    idempotencyKey,
+    idempotencyKey: input.eventId ?? fallbackIdempotencyKey,
   }
 }
 

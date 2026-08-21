@@ -152,6 +152,67 @@ describe("PublicFormsRepository.upsertProgressSubmission P2002", () => {
     expect(answerUpsertMock).not.toHaveBeenCalled()
   })
 
+  it("retry atrasado não sobrescreve resposta mais nova", async () => {
+    findFirstMock.mockResolvedValueOnce({ id: "sub-existing", leadId: "lead-1" })
+    findUniqueOrThrowMock.mockResolvedValueOnce({ id: "sub-existing" })
+    answerFindUniqueMock.mockResolvedValueOnce({
+      answeredAt: new Date("2026-08-21T10:05:00.000Z"),
+      sourceEventId: "8b9e6f52-2f68-4f5f-9f9a-c5a4f3f5d002",
+    } as never)
+
+    const repo = new PublicFormsRepository()
+    await repo.upsertProgressSubmission({
+      ...BASE_DATA,
+      answers: [
+        {
+          questionId: "q-1",
+          value: "Valor antigo" as Prisma.InputJsonValue,
+          questionSnapshot: { id: "q-1" } as Prisma.InputJsonValue,
+          answeredAt: new Date("2026-08-21T10:00:00.000Z"),
+          sourceEventId: "1a2b3c4d-1111-4aaa-bbbb-c5a4f3f5d001",
+        },
+      ],
+    })
+
+    expect(answerUpsertMock).not.toHaveBeenCalled()
+  })
+
+  it("resposta mais nova sobrescreve e grava o envelope causal", async () => {
+    findFirstMock.mockResolvedValueOnce({ id: "sub-existing", leadId: "lead-1" })
+    findUniqueOrThrowMock.mockResolvedValueOnce({ id: "sub-existing" })
+    answerFindUniqueMock.mockResolvedValueOnce({
+      answeredAt: new Date("2026-08-21T10:00:00.000Z"),
+      sourceEventId: "1a2b3c4d-1111-4aaa-bbbb-c5a4f3f5d001",
+    } as never)
+
+    const answeredAt = new Date("2026-08-21T10:05:00.000Z")
+    const repo = new PublicFormsRepository()
+    await repo.upsertProgressSubmission({
+      ...BASE_DATA,
+      answers: [
+        {
+          questionId: "q-1",
+          value: "Valor novo" as Prisma.InputJsonValue,
+          questionSnapshot: { id: "q-1" } as Prisma.InputJsonValue,
+          answeredAt,
+          sourceEventId: "8b9e6f52-2f68-4f5f-9f9a-c5a4f3f5d002",
+          mappingKey: "name",
+        },
+      ],
+    })
+
+    expect(answerUpsertMock).toHaveBeenCalledTimes(1)
+    expect(answerUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          answeredAt,
+          sourceEventId: "8b9e6f52-2f68-4f5f-9f9a-c5a4f3f5d002",
+          mappingKey: "name",
+        }),
+      }),
+    )
+  })
+
   it("P2002 sem vencedor visível: relança o erro", async () => {
     createMock.mockRejectedValueOnce(uniqueRequestKeyError())
     findUniqueMock.mockResolvedValueOnce(null)
