@@ -6,6 +6,7 @@
  * - Cookie cs_form_vs criado no mount (Fase E)
  * - onBlur dispara POST /progress com o valor do campo (Fase D1)
  * - Prefill via cs_el pré-preenche nome/e-mail (Fase C)
+ * - Nome 3–30, sem @; e-mail digitado no Nome copia para e-mail vazio
  * - Gate A+C no progress cria Lead no time do formulário
  */
 
@@ -13,8 +14,8 @@ import { expect, test } from "@playwright/test"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
 
 const QUESTION_NAME_ID = "11111111-1111-4111-8111-111111111101"
-const QUESTION_PHONE_ID = "11111111-1111-4111-8111-111111111103"
 const QUESTION_EMAIL_ID = "11111111-1111-4111-8111-111111111102"
+const QUESTION_PHONE_ID = "11111111-1111-4111-8111-111111111103"
 const E2E_PUBLIC_ID = "e2e00000-0000-4000-8000-000000000001"
 const E2E_EMAIL_LOG_ID = "e2e10000-0000-4000-8000-000000000001"
 
@@ -74,25 +75,8 @@ function buildSnapshot(formId, publicId) {
         whatsappMessage: null,
       },
       {
-        id: QUESTION_PHONE_ID,
-        position: 2,
-        type: "phone",
-        title: "Qual o seu telefone?",
-        description: null,
-        placeholder: null,
-        required: true,
-        scoreWeight: 0,
-        options: [],
-        mappingTarget: "native_field",
-        mappingKey: "phone",
-        url: null,
-        config: null,
-        whatsappPhone: null,
-        whatsappMessage: null,
-      },
-      {
         id: QUESTION_EMAIL_ID,
-        position: 3,
+        position: 2,
         type: "email",
         title: "Qual o seu e-mail?",
         description: null,
@@ -102,6 +86,23 @@ function buildSnapshot(formId, publicId) {
         options: [],
         mappingTarget: "native_field",
         mappingKey: "email",
+        url: null,
+        config: null,
+        whatsappPhone: null,
+        whatsappMessage: null,
+      },
+      {
+        id: QUESTION_PHONE_ID,
+        position: 3,
+        type: "phone",
+        title: "Qual o seu telefone?",
+        description: null,
+        placeholder: null,
+        required: true,
+        scoreWeight: 0,
+        options: [],
+        mappingTarget: "native_field",
+        mappingKey: "phone",
         url: null,
         config: null,
         whatsappPhone: null,
@@ -246,19 +247,81 @@ test.describe("app/forms/[publicId]", () => {
     await expect(nameInput).toHaveValue("Destinatário E2E", { timeout: 10_000 })
   })
 
+  test("bloqueia Continuar quando o nome tem menos de 3 caracteres", async ({ page }) => {
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("Jo")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
+  })
+
+  test("bloqueia Continuar quando o nome tem só espaços", async ({ page }) => {
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("   ")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
+  })
+
+  test("e-mail no campo nome copia para e-mail vazio e bloqueia Continuar até nome de pessoa", async ({
+    page,
+  }) => {
+    const progressRequests = []
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/progress")) {
+        progressRequests.push(req.postData() ?? "")
+      }
+    })
+
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("user@example.com")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome de pessoa, não um e-mail")).toBeVisible()
+    await page.waitForTimeout(800)
+
+    expect(progressRequests.length, "Blur deve persistir mesmo com nome inválido").toBeGreaterThan(0)
+    const body = JSON.parse(progressRequests[0])
+    expect(body.answers[0].value).toBe("user@example.com")
+
+    await nameInput.fill("Maria Silva")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
+  })
+
   test("A+C no progress cria Lead no time do formulário", async ({ page }) => {
     const prisma = getPrisma()
-    const uniqueSuffix = String(Date.now()).slice(-6)
+    const uniqueSuffix = String(Date.now()).slice(-4)
     const leadName = `Maria Radarac ${uniqueSuffix}`
-    const phone = `1198${uniqueSuffix}7`
+    const phone = `1198888${uniqueSuffix}`
 
     await page.goto(`/forms/${publicId}`)
     await page.getByRole("button", { name: /começar/i }).click()
 
     const nameInput = page.getByRole("textbox").first()
     await nameInput.fill(leadName)
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
     await page.getByRole("button", { name: /continuar/i }).click()
 
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu telefone?")).toBeVisible()
     const phoneInput = page.getByRole("textbox").first()
     await phoneInput.fill(phone)
     await phoneInput.blur()

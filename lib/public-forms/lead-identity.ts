@@ -155,7 +155,8 @@ export function isBrazilianMobilePhone(normalizedDigits: string): boolean {
 }
 
 export function isBrazilianLandlinePhone(normalizedDigits: string): boolean {
-  return /^\d{10}$/.test(normalizedDigits)
+  // ANATEL: DDD + 8-digit subscriber starting 2–5. Rejects truncated mobiles (9…).
+  return /^\d{2}[2-5]\d{7}$/.test(normalizedDigits)
 }
 
 export function isBrazilianContactPhone(normalizedDigits: string): boolean {

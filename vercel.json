@@ -136,6 +136,17 @@
         }
       ]
     },
+    "app/api/queues/public-form-progress-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "public-form-progress-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
     "app/api/queues/backoffice-email-campaign-dispatch/route.ts": {
       "experimentalTriggers": [
         {

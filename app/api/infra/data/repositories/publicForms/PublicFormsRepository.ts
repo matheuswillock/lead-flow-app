@@ -49,6 +49,34 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+function isPrismaUniqueConstraint(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
+
+function isBlankProgressAnswerValue(
+  value: Prisma.JsonValue | Prisma.InputJsonValue | null | undefined,
+): boolean {
+  if (value == null) return true
+  if (typeof value === "string") return value.trim() === ""
+  if (Array.isArray(value)) return value.length === 0
+  return false
+}
+
+const PERSIST_ANSWER_FK_SAVEPOINT = "persist_answer_fk"
+const PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT = "persist_answer_without_fk"
+
+type ProgressSubmissionWrite = {
+  visitorSessionId: string
+  completionStatus: import("@prisma/client").PublicFormCompletionStatus
+  leadId?: string | null
+  origin: Prisma.InputJsonValue
+  answers: Array<{
+    questionId: string
+    value: Prisma.InputJsonValue
+    questionSnapshot: Prisma.InputJsonValue
+  }>
+}
+
 const leadSubmissionSelect = {
   id: true,
   formId: true,
@@ -1057,22 +1085,11 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   }) {
     const existing = await this.findProgressSubmission(data.publicationId, data.visitorSessionId)
     if (existing) {
-      await prisma.$transaction(async (tx) => {
-        await tx.publicFormSubmission.update({
-          where: { id: existing.id },
-          data: {
-            completionStatus: data.completionStatus,
-            leadId: data.leadId ?? existing.leadId,
-            origin: data.origin,
-          },
-        })
-        await this.syncSubmissionAnswers(tx, existing.id, data.answers)
-      })
-      return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: existing.id } })
+      return this.updateProgressSubmissionWithAnswers(existing.id, data, existing.leadId)
     }
 
-    return prisma.$transaction(async (tx) => {
-      const submission = await tx.publicFormSubmission.create({
+    try {
+      const submission = await prisma.publicFormSubmission.create({
         data: {
           formId: data.formId,
           publicationId: data.publicationId,
@@ -1084,8 +1101,48 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           score: 0,
         },
       })
-      await this.syncSubmissionAnswers(tx, submission.id, data.answers)
+      await this.withVisitorProgressLock(data.visitorSessionId, async (tx) => {
+        await this.mergeSubmissionAnswers(tx, submission.id, data.answers)
+      })
       return submission
+    } catch (error) {
+      if (!isPrismaUniqueConstraint(error)) throw error
+      const winner = await this.findSubmissionByRequestKey(data.requestKey)
+      if (!winner) throw error
+      console.info(
+        "[PublicFormsRepository][upsertProgressSubmission] requestKey em disputa, reusando o vencedor",
+        { requestKey: data.requestKey, submissionId: winner.id },
+      )
+      return this.updateProgressSubmissionWithAnswers(winner.id, data, winner.leadId)
+    }
+  }
+
+  private async updateProgressSubmissionWithAnswers(
+    submissionId: string,
+    data: ProgressSubmissionWrite,
+    previousLeadId: string | null,
+  ) {
+    await this.withVisitorProgressLock(data.visitorSessionId, async (tx) => {
+      await tx.publicFormSubmission.update({
+        where: { id: submissionId },
+        data: {
+          completionStatus: data.completionStatus,
+          leadId: data.leadId ?? previousLeadId,
+          origin: data.origin,
+        },
+      })
+      await this.mergeSubmissionAnswers(tx, submissionId, data.answers)
+    })
+    return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: submissionId } })
+  }
+
+  private async withVisitorProgressLock(
+    visitorSessionId: string,
+    work: (tx: Prisma.TransactionClient) => Promise<void>,
+  ) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`public-form-progress:${visitorSessionId}`}))`
+      await work(tx)
     })
   }
 
@@ -1185,6 +1242,67 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     }
   }
 
+  private async mergeSubmissionAnswers(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answers: Array<{
+      questionId: string
+      value: Prisma.InputJsonValue
+      questionSnapshot: Prisma.InputJsonValue
+    }>,
+  ) {
+    // Blur payloads carry one answer; deleteMany would wipe a concurrent full-page save.
+    // Queue retries can still deliver a stale empty blur after a filled save of the same question.
+    for (const answer of answers) {
+      if (await this.shouldSkipBlankProgressOverwrite(tx, submissionId, answer)) continue
+      await this.writeSubmissionAnswer(tx, submissionId, answer)
+    }
+  }
+
+  private async shouldSkipBlankProgressOverwrite(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: {
+      questionId: string
+      value: Prisma.InputJsonValue
+    },
+  ): Promise<boolean> {
+    if (!answer.questionId || !isBlankProgressAnswerValue(answer.value)) return false
+    const existing = await tx.publicFormAnswer.findUnique({
+      where: {
+        submissionId_questionId: {
+          submissionId,
+          questionId: answer.questionId,
+        },
+      },
+      select: { value: true },
+    })
+    return Boolean(existing && !isBlankProgressAnswerValue(existing.value))
+  }
+
+  private async withTransactionSavepoint<T>(
+    tx: Prisma.TransactionClient,
+    savepointName: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    await tx.$executeRawUnsafe(`SAVEPOINT ${savepointName}`)
+    try {
+      const result = await operation()
+      await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${savepointName}`)
+      return result
+    } catch (error) {
+      try {
+        await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${savepointName}`)
+      } catch (rollbackError) {
+        console.error("[PublicFormsRepository][withTransactionSavepoint] rollback falhou", {
+          savepointName,
+          rollbackError,
+        })
+      }
+      throw error
+    }
+  }
+
   private async writeSubmissionAnswer(
     tx: Prisma.TransactionClient,
     submissionId: string,
@@ -1202,32 +1320,35 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       return
     }
 
+    const questionId = answer.questionId
     const data = {
       submissionId,
-      questionId: answer.questionId,
+      questionId,
       value: answer.value,
       questionSnapshot: answer.questionSnapshot,
     }
 
     try {
-      await tx.publicFormAnswer.upsert({
-        where: {
-          submissionId_questionId: {
-            submissionId,
-            questionId: answer.questionId,
+      await this.withTransactionSavepoint(tx, PERSIST_ANSWER_FK_SAVEPOINT, () =>
+        tx.publicFormAnswer.upsert({
+          where: {
+            submissionId_questionId: {
+              submissionId,
+              questionId,
+            },
           },
-        },
-        create: data,
-        update: {
-          value: answer.value,
-          questionSnapshot: answer.questionSnapshot,
-        },
-      })
+          create: data,
+          update: {
+            value: answer.value,
+            questionSnapshot: answer.questionSnapshot,
+          },
+        }),
+      )
     } catch (error) {
-      if (!isStaleQuestionIdForeignKey(error, answer.questionId)) throw error
+      if (!isStaleQuestionIdForeignKey(error, questionId)) throw error
       console.info("[PublicFormsRepository][writeSubmissionAnswer] questionId obsoleto, gravando sem o FK", {
         submissionId,
-        questionId: answer.questionId,
+        questionId,
       })
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: data.value,
@@ -1252,24 +1373,28 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       })
       const match = existing.find((row) => questionIdFromSnapshot(row.questionSnapshot) === snapshotId)
       if (match) {
-        await tx.publicFormAnswer.update({
-          where: { id: match.id },
-          data: {
-            value: data.value,
-            questionSnapshot: data.questionSnapshot,
-          },
-        })
+        await this.withTransactionSavepoint(tx, PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT, () =>
+          tx.publicFormAnswer.update({
+            where: { id: match.id },
+            data: {
+              value: data.value,
+              questionSnapshot: data.questionSnapshot,
+            },
+          }),
+        )
         return
       }
     }
-    await tx.publicFormAnswer.create({
-      data: {
-        submissionId,
-        questionId: null,
-        value: data.value,
-        questionSnapshot: data.questionSnapshot,
-      },
-    })
+    await this.withTransactionSavepoint(tx, PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT, () =>
+      tx.publicFormAnswer.create({
+        data: {
+          submissionId,
+          questionId: null,
+          value: data.value,
+          questionSnapshot: data.questionSnapshot,
+        },
+      }),
+    )
   }
 
   finalizeProgressSubmission(
