@@ -9,9 +9,9 @@ export type DispatchScheduledCronUseCase = {
 /**
  * Orquestra um tick do cron `dispatch-scheduled`.
  *
- * `recoverStuck` roda **antes** de `resumeOrphan` para que dispatches
- * `sending` com mais de 30 min sejam marcados `failed` mesmo quando o
- * resume de órfãos recentes consome o `maxDuration` da rota (60s).
+ * `recoverStuck` roda **antes** de `resumeOrphan` para que campanhas
+ * `sending` sem dispatch voltem a `draft` e o restante dos lotes (>= 30 min)
+ * seja acordado na fila overflow — o timeout não marca `failed`.
  */
 export async function runDispatchScheduledCronTick(
   useCase: DispatchScheduledCronUseCase,

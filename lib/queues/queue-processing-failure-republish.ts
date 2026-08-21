@@ -48,7 +48,9 @@ import {
 } from "@/lib/queues/whatsapp-radar-events"
 import {
   publishEmailCampaignDispatchWake,
+  publishEmailCampaignDispatchOverflowWake,
   EMAIL_CAMPAIGN_DISPATCH_TOPIC,
+  EMAIL_CAMPAIGN_DISPATCH_OVERFLOW_TOPIC,
   type EmailCampaignDispatchWakePayload,
 } from "@/lib/queues/email-campaign-dispatch"
 import {
@@ -163,6 +165,13 @@ export const QUEUE_PROCESSING_FAILURE_REPUBLISHERS: Record<string, QueueProcessi
     [EMAIL_CAMPAIGN_DISPATCH_TOPIC]: (payload, idempotencyKey) =>
       publishOrThrow(() =>
         publishEmailCampaignDispatchWake(
+          parseJsonPayload<EmailCampaignDispatchWakePayload>(payload),
+          { idempotencyKey },
+        ),
+      ),
+    [EMAIL_CAMPAIGN_DISPATCH_OVERFLOW_TOPIC]: (payload, idempotencyKey) =>
+      publishOrThrow(() =>
+        publishEmailCampaignDispatchOverflowWake(
           parseJsonPayload<EmailCampaignDispatchWakePayload>(payload),
           { idempotencyKey },
         ),

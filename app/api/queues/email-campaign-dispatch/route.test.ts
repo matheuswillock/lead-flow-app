@@ -17,22 +17,26 @@ mock.module("@/lib/queues/email-campaign-dispatch", () => ({
       metadata: QueueMessageMetadata,
     ) => Promise<void>,
   ) => handler,
+  handleEmailCampaignDispatchOverflowCallback: (
+    handler: (
+      message: EmailCampaignDispatchWakePayload,
+      metadata: QueueMessageMetadata,
+    ) => Promise<void>,
+  ) => handler,
   publishEmailCampaignDispatchWake: mock(async () => ({ messageId: "mid-test" })),
+  publishEmailCampaignDispatchOverflowWake: mock(async () => ({ messageId: "mid-overflow" })),
   EMAIL_CAMPAIGN_DISPATCH_TOPIC: "email-campaign-dispatch",
+  EMAIL_CAMPAIGN_DISPATCH_OVERFLOW_TOPIC: "email-campaign-dispatch-overflow",
   EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS: 60 * 60 * 24 * 7,
   buildEmailCampaignDispatchIdempotencyKey: (payload: EmailCampaignDispatchWakePayload) =>
     `${payload.dispatchId}:${payload.reason}`,
-}))
-
-mock.module("@/app/api/useCases/email/EmailCampaignUseCase", () => ({
-  EmailCampaignUseCase: class EmailCampaignUseCase {},
 }))
 
 mock.module("@/lib/queues/queue-processing-failure", () => ({
   ackAfterMaxDeliveries: mock(async () => false),
 }))
 
-const { processEmailCampaignDispatchMessage } = await import("./route")
+const { processEmailCampaignDispatchMessage } = await import("./processDispatchMessage")
 
 const processDispatchQueueBatch = mock(async () => new Output(true, [], [], { hasMore: false }))
 
@@ -85,6 +89,26 @@ describe("processEmailCampaignDispatchMessage", () => {
       expect.objectContaining({
         topic: "email-campaign-dispatch",
         idempotencyKey: "dispatch-1:start",
+        deliveryCount: 20,
+      }),
+    )
+  })
+
+  it("overflow: dead-letter usa o tópico overflow", async () => {
+    const ackDeadLetter = mock(async () => true)
+    processDispatchQueueBatch.mockRejectedValueOnce(new Error("P2024"))
+    await expect(
+      processEmailCampaignDispatchMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 20, topicName: "email-campaign-dispatch-overflow" },
+        { processDispatchQueueBatch },
+        ackDeadLetter,
+        "email-campaign-dispatch-overflow",
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "email-campaign-dispatch-overflow",
         deliveryCount: 20,
       }),
     )
