@@ -6,6 +6,7 @@ import {
   mapAnswersForPersistence,
   parsePublicFormSnapshot,
   questionIdFromSnapshot,
+  resolveStoredSubmissionAnswerQuestionId,
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "./publication-snapshot"
@@ -48,6 +49,14 @@ describe("publication-snapshot", () => {
     expect(questionIdFromSnapshot({ title: "sem id" })).toBeNull()
     expect(questionIdFromSnapshot(null)).toBeNull()
     expect(questionIdFromSnapshot(["q-1"])).toBeNull()
+  })
+
+  it("recupera o id da resposta persistida sem FK (P2003)", () => {
+    expect(resolveStoredSubmissionAnswerQuestionId("q-1", { id: "ignored" })).toBe("q-1")
+    expect(resolveStoredSubmissionAnswerQuestionId(null, { id: "q-from-snapshot" })).toBe(
+      "q-from-snapshot",
+    )
+    expect(resolveStoredSubmissionAnswerQuestionId(null, { title: "sem id" })).toBeNull()
   })
 
   it("reconhece P2003 de FK de questionId", () => {

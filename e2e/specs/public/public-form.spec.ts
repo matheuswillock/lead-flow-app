@@ -145,6 +145,21 @@ async function arrangePublicForm() {
 
   const snapshot = buildSnapshot(form.id, form.publicId)
 
+  await prisma.publicFormQuestion.deleteMany({ where: { formId: form.id } })
+  await prisma.publicFormQuestion.createMany({
+    data: snapshot.questions.map((question) => ({
+      id: question.id,
+      formId: form.id,
+      type: question.type,
+      title: question.title,
+      required: question.required,
+      scoreWeight: question.scoreWeight,
+      position: question.position,
+      mappingTarget: question.mappingTarget,
+      mappingKey: question.mappingKey,
+    })),
+  })
+
   const publication = await prisma.publicFormPublication.upsert({
     where: { formId_version: { formId: form.id, version: 1 } },
     create: {
@@ -323,8 +338,12 @@ test.describe("app/forms/[publicId]", () => {
 
     await expect(page.getByText("Qual o seu telefone?")).toBeVisible()
     const phoneInput = page.getByRole("textbox").first()
+    const progressAfterPhone = page.waitForResponse(
+      (response) => response.url().includes("/progress") && response.request().method() === "POST",
+    )
     await phoneInput.fill(phone)
     await phoneInput.blur()
+    expect((await progressAfterPhone).status()).toBe(202)
 
     await expect
       .poll(

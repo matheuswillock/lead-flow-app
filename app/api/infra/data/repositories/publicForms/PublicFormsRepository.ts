@@ -17,6 +17,7 @@ import {
 import {
   isStaleQuestionIdForeignKey,
   questionIdFromSnapshot,
+  resolveStoredSubmissionAnswerQuestionId,
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "@/lib/public-forms/publication-snapshot"
@@ -1032,12 +1033,16 @@ export class PublicFormsRepository implements IPublicFormsRepository {
 
   async listSubmissionAnswers(submissionId: string) {
     const rows = await prisma.publicFormAnswer.findMany({
-      where: { submissionId, questionId: { not: null } },
-      select: { questionId: true, value: true },
+      where: { submissionId },
+      select: { questionId: true, value: true, questionSnapshot: true },
     })
-    return rows.flatMap((row) =>
-      row.questionId ? [{ questionId: row.questionId, value: row.value as unknown }] : [],
-    )
+    return rows.flatMap((row) => {
+      const questionId = resolveStoredSubmissionAnswerQuestionId(
+        row.questionId,
+        row.questionSnapshot,
+      )
+      return questionId ? [{ questionId, value: row.value as unknown }] : []
+    })
   }
 
   findFormsByIdsForTeam(
