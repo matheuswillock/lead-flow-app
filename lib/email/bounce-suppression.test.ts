@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import {
+  CONTENT_REJECTED_BOUNCE_SUBTYPE,
   isMailboxFullBounce,
+  isPermanentBounce,
   shouldStampIsBouncedFromEventMetadata,
   shouldSuppressContactOnBounce,
 } from "./bounce-suppression"
@@ -26,7 +28,7 @@ describe("shouldSuppressContactOnBounce", () => {
     expect(isMailboxFullBounce({ message: "inbox was full" })).toBe(true)
   })
 
-  it("stamp Permanent e ContentRejected (Terra)", () => {
+  it("stamp só Permanent — ContentRejected (Terra) não stamp", () => {
     expect(
       shouldSuppressContactOnBounce({
         type: "Permanent",
@@ -34,22 +36,39 @@ describe("shouldSuppressContactOnBounce", () => {
         message: "hard bounce",
       })
     ).toBe(true)
+    expect(isPermanentBounce({ type: "Permanent" })).toBe(true)
     expect(
       shouldSuppressContactOnBounce({
         type: "Transient",
-        subType: "ContentRejected",
+        subType: CONTENT_REJECTED_BOUNCE_SUBTYPE,
         message: "content that the provider doesn't allow",
       })
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  it("lê bounceSubType e bounceMessage do metadata do evento", () => {
+  it("não stamp sem bounceType", () => {
+    expect(
+      shouldSuppressContactOnBounce({
+        subType: "General",
+        message: "hard bounce",
+      })
+    ).toBe(false)
+  })
+
+  it("lê bounceType Permanent do metadata do evento", () => {
     expect(
       shouldStampIsBouncedFromEventMetadata({
         bounceType: "Transient",
-        bounceSubType: "ContentRejected",
+        bounceSubType: CONTENT_REJECTED_BOUNCE_SUBTYPE,
         bounceMessage: "content that the provider doesn't allow",
         bounceDiagnosticCode: ["smtp; 554 5.7.1"],
+      })
+    ).toBe(false)
+    expect(
+      shouldStampIsBouncedFromEventMetadata({
+        bounceType: "Permanent",
+        bounceSubType: "General",
+        bounceMessage: "user unknown",
       })
     ).toBe(true)
     expect(

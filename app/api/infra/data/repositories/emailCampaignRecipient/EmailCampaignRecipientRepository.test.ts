@@ -12,9 +12,13 @@ const emailContactListFindFirstMock = mock(
     } | null
 )
 const queryRawMock = mock(
-  async (): Promise<Array<{ count: bigint } | { id: string; email: string; name: string | null; customFields: unknown }>> => [
-    { count: BigInt(0) },
-  ]
+  async (): Promise<
+    Array<
+      | { count: bigint }
+      | { bounced: bigint; unsubscribed: bigint; complained: bigint }
+      | { id: string; email: string; name: string | null; customFields: unknown }
+    >
+  > => [{ count: BigInt(0) }]
 )
 
 mock.module("@/app/api/infra/data/prisma", () => ({
@@ -33,7 +37,11 @@ mock.module("@/app/api/infra/data/prisma", () => ({
 const { EmailCampaignRecipientRepository } = await import("./EmailCampaignRecipientRepository")
 
 function sqlFromQueryRawCall(call: unknown[] | undefined): string {
-  const strings = call?.[0] as TemplateStringsArray | undefined
+  const first = call?.[0]
+  if (first && typeof first === "object" && "strings" in first) {
+    return Array.from((first as { strings: readonly string[] }).strings).join(" ")
+  }
+  const strings = first as TemplateStringsArray | undefined
   const fragments = strings ? Array.from(strings) : []
   const values = (call ?? []).slice(1).map((value) => {
     if (value && typeof value === "object" && "strings" in value) {
@@ -155,5 +163,21 @@ describe("EmailCampaignRecipientRepository counts", () => {
     expect(sql).toContain("DISTINCT ON (LOWER(TRIM(c.email)))")
     expect(sql).toContain("OFFSET")
     expect(sql).toContain("LIMIT")
+  })
+
+  it("countSuppressedRecipientsForLists usa SQL split bounce/descadastro/reclamação", async () => {
+    queryRawMock.mockImplementation(async () => [
+      { bounced: BigInt(3), unsubscribed: BigInt(1), complained: BigInt(2) },
+    ])
+
+    const repo = new EmailCampaignRecipientRepository()
+    const counts = await repo.countSuppressedRecipientsForLists("team-1", ["list-1"])
+
+    expect(counts).toEqual({ bounced: 3, unsubscribed: 1, complained: 2, total: 6 })
+    const sql = sqlFromQueryRawCall(queryRawMock.mock.calls[0] as unknown[])
+    expect(sql).toContain("BOOL_OR(c.\"isBounced\")")
+    expect(sql).toContain("BOOL_OR(c.\"isUnsubscribed\")")
+    expect(sql).toContain("BOOL_OR(c.\"isComplained\")")
+    expect(sql).toContain('"corretor_studio_email_contacts"')
   })
 })

@@ -2,7 +2,12 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatIntimezone } from "@/lib/dates"
+import {
+  formatPermanentBounceAlert,
+  formatSuppressedAudienceSummary,
+} from "@/lib/email/campaign-audience-copy"
 import type { ContactList, RadarSegmentOption, Template } from "../context/CampanhasTypes"
 
 type LinkedForm = {
@@ -27,7 +32,9 @@ type CampaignWizardSummaryPanelProps = {
   selectedSegment?: RadarSegmentOption | null
   linkedForm: LinkedForm
   totalRecipients: number
-  suppressedExcludedCount?: number
+  bouncedExcludedCount?: number
+  unsubscribedExcludedCount?: number
+  complainedExcludedCount?: number
   listStrategy?: "single" | "merge" | "per_list"
   subCampaigns?: SummarySubCampaign[]
   uniformTemplate?: boolean
@@ -48,7 +55,9 @@ export function CampaignWizardSummaryPanel({
   selectedSegment = null,
   linkedForm,
   totalRecipients,
-  suppressedExcludedCount = 0,
+  bouncedExcludedCount = 0,
+  unsubscribedExcludedCount = 0,
+  complainedExcludedCount = 0,
   listStrategy,
   subCampaigns = [],
   uniformTemplate = true,
@@ -56,6 +65,11 @@ export function CampaignWizardSummaryPanel({
 }: CampaignWizardSummaryPanelProps) {
   const hasAudience =
     selectedLists.length > 0 || Boolean(selectedSegment)
+  const suppressedSummary = formatSuppressedAudienceSummary({
+    bounced: bouncedExcludedCount,
+    unsubscribed: unsubscribedExcludedCount,
+    complained: complainedExcludedCount,
+  })
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
@@ -114,11 +128,16 @@ export function CampaignWizardSummaryPanel({
         )}
         <span>
           Total: {totalRecipients.toLocaleString("pt-BR")} destinatários
-          {suppressedExcludedCount > 0
-            ? ` · ${suppressedExcludedCount.toLocaleString("pt-BR")} e-mails excluídos (bounce, descadastro ou reclamação)`
-            : null}
+          {suppressedSummary ? ` · ${suppressedSummary}` : null}
           {listStrategy ? ` · Estratégia: ${LIST_STRATEGY_LABELS[listStrategy]}` : null}
         </span>
+        {bouncedExcludedCount > 0 ? (
+          <Alert>
+            <AlertDescription>
+              {formatPermanentBounceAlert(bouncedExcludedCount)}
+            </AlertDescription>
+          </Alert>
+        ) : null}
       </div>
 
       {subCampaigns.length > 1 ? (
