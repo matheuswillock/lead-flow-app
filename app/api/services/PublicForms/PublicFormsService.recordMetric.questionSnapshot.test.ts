@@ -14,7 +14,12 @@ const findPublishedByPublicId = mock(async () => ({
   publicationId: PUBLICATION_ID,
   snapshot: {
     formId: FORM_ID,
-    questions: [questionFromSnapshot] as Array<{ id: string }>,
+    questions: [questionFromSnapshot] as Array<{
+      id: string
+      title?: string
+      type?: string
+      mappingKey?: string
+    }>,
   },
 }))
 const findAvailabilityTeamContext = mock(async () => ({
