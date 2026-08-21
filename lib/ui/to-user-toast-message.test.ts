@@ -34,6 +34,13 @@ describe("toUserToastMessage", () => {
     ).toBe("Não foi possível importar os contatos. Tente novamente.");
   });
 
+  it("hides Error class names when product PT-BR copy is present", () => {
+    const apiError = new Error("Erro ao buscar template");
+    apiError.name = "ApiRequestError";
+
+    expect(toUserToastMessage(apiError)).toBe("Erro ao buscar template");
+  });
+
   it("hides SyntaxError and English dumps when unsure", () => {
     expect(toUserToastMessage(new SyntaxError("Unexpected token < in JSON"))).toBe(
       USER_TOAST_GENERIC_ERROR,

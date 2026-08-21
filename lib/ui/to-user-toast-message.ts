@@ -64,16 +64,20 @@ const PRODUCT_PORTUGUESE_MARKERS = [
 const PRISMA_ERROR_CODE = /\bP2\d{3}\b/;
 const STACK_FRAME = /\n\s+at\s+/;
 
-function readErrorText(error: unknown): string {
+function readErrorCode(error: unknown): string {
+  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+  return "";
+}
+
+function readDisplayText(error: unknown): string {
   if (typeof error === "string") {
     return error;
   }
 
   if (error instanceof Error) {
-    const name = error.name && error.name !== "Error" ? error.name : "";
-    const code =
-      "code" in error && typeof error.code === "string" ? error.code : "";
-    return [name, error.message, code].filter(Boolean).join(" ");
+    return error.message;
   }
 
   if (error && typeof error === "object") {
@@ -90,6 +94,15 @@ function readErrorText(error: unknown): string {
   }
 
   return "";
+}
+
+function readClassificationText(error: unknown): string {
+  const display = readDisplayText(error);
+  if (error instanceof Error) {
+    const name = error.name && error.name !== "Error" ? error.name : "";
+    return [name, display, readErrorCode(error)].filter(Boolean).join(" ");
+  }
+  return [display, readErrorCode(error)].filter(Boolean).join(" ");
 }
 
 function hasTechnicalErrorSignal(text: string): boolean {
@@ -112,15 +125,15 @@ function hasProductPortugueseCopy(text: string): boolean {
 }
 
 export function toUserToastMessage(error: unknown): string {
-  const text = readErrorText(error).trim();
-  if (!text) {
+  const display = readDisplayText(error).trim();
+  if (!display) {
     return USER_TOAST_GENERIC_ERROR;
   }
-  if (hasTechnicalErrorSignal(text)) {
+  if (hasTechnicalErrorSignal(readClassificationText(error))) {
     return USER_TOAST_GENERIC_ERROR;
   }
-  if (hasProductPortugueseCopy(text)) {
-    return text;
+  if (hasProductPortugueseCopy(display)) {
+    return display;
   }
   return USER_TOAST_GENERIC_ERROR;
 }
