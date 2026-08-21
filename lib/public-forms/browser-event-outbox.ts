@@ -20,6 +20,28 @@ function getPriority(kind: PublicFormBrowserOutboxKind): number {
   return kind === "submission" ? 0 : kind === "answer" ? 1 : 2
 }
 
+/**
+ * Registros a remover: expirados + excedente do limite. Acima do limite,
+ * evict primeiro os comportamentais mais antigos; submissões/respostas ficam.
+ */
+export function selectEvictablePublicFormOutboxRecords(
+  records: PublicFormBrowserOutboxRecord[],
+  now: number,
+  maxRecords: number = MAX_RECORDS,
+): PublicFormBrowserOutboxRecord[] {
+  return records
+    .filter((record) => record.expiresAt <= now)
+    .concat(
+      records
+        .filter((record) => record.expiresAt > now)
+        .sort(
+          (left, right) =>
+            getPriority(left.kind) - getPriority(right.kind) || right.createdAt - left.createdAt,
+        )
+        .slice(maxRecords),
+    )
+}
+
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result)
@@ -72,17 +94,7 @@ export async function enqueuePublicFormBrowserOutboxEvent(input: {
       } satisfies PublicFormBrowserOutboxRecord),
     )
     const records = (await requestResult(store.getAll())) as PublicFormBrowserOutboxRecord[]
-    const removable = records
-      .filter((record) => record.expiresAt <= now)
-      .concat(
-        records
-          .filter((record) => record.expiresAt > now)
-          .sort(
-            (left, right) =>
-              getPriority(right.kind) - getPriority(left.kind) || left.createdAt - right.createdAt,
-          )
-          .slice(MAX_RECORDS),
-      )
+    const removable = selectEvictablePublicFormOutboxRecords(records, now)
     await Promise.all(removable.map((record) => requestResult(store.delete(record.eventId))))
   })
 }

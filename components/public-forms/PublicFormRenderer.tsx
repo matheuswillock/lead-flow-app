@@ -253,7 +253,12 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     async (kind: PublicFormBrowserOutboxKind, endpoint: string, body: Record<string, unknown>) => {
       const eventId = typeof body.eventId === "string" ? body.eventId : crypto.randomUUID()
       const payload = { ...body, eventId }
-      await enqueuePublicFormBrowserOutboxEvent({ eventId, kind, endpoint, body: payload })
+      try {
+        // Persistência local é best-effort: IndexedDB bloqueado/sem quota não pode impedir o envio.
+        await enqueuePublicFormBrowserOutboxEvent({ eventId, kind, endpoint, body: payload })
+      } catch (error) {
+        console.error("[PublicFormRenderer][outbox] Persistência local indisponível, enviando direto", error)
+      }
 
       try {
         const response = await fetch(endpoint, {
@@ -263,7 +268,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
           keepalive: kind !== "submission",
         })
         if (response.ok || (response.status !== 429 && response.status !== 503)) {
-          await removePublicFormBrowserOutboxEvent(eventId)
+          await removePublicFormBrowserOutboxEvent(eventId).catch(() => {})
         }
         return response
       } catch (error) {
