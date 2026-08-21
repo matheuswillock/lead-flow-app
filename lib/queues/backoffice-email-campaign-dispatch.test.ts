@@ -68,14 +68,29 @@ describe("buildBackofficeEmailCampaignDispatchIdempotencyKey", () => {
     expect(first).toBe(second)
   })
 
-  it("usa dispatchId:continue:batchOffset para reason continue", () => {
+  it("usa dispatchId:continue:offset:batchOffset (namespace distinto de remainingCount) para reason continue", () => {
     expect(
       buildBackofficeEmailCampaignDispatchIdempotencyKey({
         dispatchId: "d1",
         reason: "continue",
         batchOffset: 500,
       })
-    ).toBe("d1:continue:500")
+    ).toBe("d1:continue:offset:500")
+  })
+
+  it("não colide com uma chave remainingCount retida quando o valor numérico é igual ao batchOffset", () => {
+    const legacyRemainingCountKey = buildBackofficeEmailCampaignDispatchIdempotencyKey({
+      dispatchId: "d1",
+      reason: "continue",
+      remainingCount: 3000,
+    })
+    const newBatchOffsetKey = buildBackofficeEmailCampaignDispatchIdempotencyKey({
+      dispatchId: "d1",
+      reason: "continue",
+      batchOffset: 3000,
+    })
+
+    expect(legacyRemainingCountKey).not.toBe(newBatchOffsetKey)
   })
 
   it("gera chaves distintas para lotes consecutivos com o mesmo remainingCount quando batchOffset avança", () => {
@@ -168,7 +183,7 @@ describe("publishBackofficeEmailCampaignDispatchWake", () => {
       unknown,
       { idempotencyKey: string; retentionSeconds: number },
     ]
-    expect(call[2].idempotencyKey).toBe("dispatch-1:continue:500")
+    expect(call[2].idempotencyKey).toBe("dispatch-1:continue:offset:500")
   })
 
   it("respeita options.now ao computar o wakeBucket de cron-reclaim", async () => {

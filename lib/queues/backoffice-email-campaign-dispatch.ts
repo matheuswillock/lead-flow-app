@@ -44,8 +44,14 @@ function resolveBackofficeEmailCampaignDispatchWakeBucket(now: Date = new Date()
  *   bucket temporal garante uma chave nova a cada janela do cron (15 min),
  *   em vez de uma chave constante que trava novas tentativas por 24h.
  * - `continue` (republish após lote parcial) usa `batchOffset` — cursor de
- *   progresso monotonicamente crescente. `remainingCount` é fallback só
- *   para mensagens em trânsito publicadas antes desta mudança.
+ *   progresso monotonicamente crescente, namespaced como `continue:offset:N`
+ *   para não colidir com chaves `continue:N` (remainingCount) já retidas na
+ *   fila por até 24h — um deploy no meio de um disparo em andamento poderia,
+ *   sem esse namespace, gerar `d:continue:3000` tanto pelo `remainingCount`
+ *   de uma mensagem antiga quanto pelo `batchOffset` de uma nova, e a Vercel
+ *   Queue deduplicaria a segunda como se fosse retry da primeira.
+ *   `remainingCount` é fallback só para mensagens em trânsito publicadas
+ *   antes desta mudança.
  */
 export function buildBackofficeEmailCampaignDispatchIdempotencyKey(
   payload: BackofficeEmailCampaignDispatchWakePayload & {
@@ -55,9 +61,10 @@ export function buildBackofficeEmailCampaignDispatchIdempotencyKey(
   options?: { now?: Date }
 ): string {
   if (payload.reason === "continue") {
-    const discriminator =
-      payload.batchOffset != null ? payload.batchOffset : (payload.remainingCount ?? 0)
-    return `${payload.dispatchId}:continue:${discriminator}`
+    if (payload.batchOffset != null) {
+      return `${payload.dispatchId}:continue:offset:${payload.batchOffset}`
+    }
+    return `${payload.dispatchId}:continue:${payload.remainingCount ?? 0}`
   }
   if (payload.reason === "cron-start" || payload.reason === "cron-reclaim") {
     const bucket = resolveBackofficeEmailCampaignDispatchWakeBucket(options?.now)
