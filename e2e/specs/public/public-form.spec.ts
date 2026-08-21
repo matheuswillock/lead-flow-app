@@ -7,7 +7,7 @@
  * - onBlur dispara POST /progress com o valor do campo (Fase D1)
  * - Prefill via cs_el pré-preenche nome/e-mail (Fase C)
  * - Nome 3–30, sem @; e-mail digitado no Nome copia para e-mail vazio
- * - Gate A+C no progress cria Lead no time do formulário
+ * - Gate A+C no blur: Radar fecha A+C e cria Lead no time do formulário
  */
 
 import { expect, test } from "@playwright/test"
@@ -319,7 +319,7 @@ test.describe("app/forms/[publicId]", () => {
     await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
   })
 
-  test("A+C no progress cria Lead no time do formulário", async ({ page }) => {
+  test("A+C no blur cria Lead via Radar no time do formulário", async ({ page }) => {
     const prisma = getPrisma()
     const uniqueSuffix = String(Date.now()).slice(-4)
     const leadName = `Maria Radarac ${uniqueSuffix}`

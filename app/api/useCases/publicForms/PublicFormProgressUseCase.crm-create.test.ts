@@ -105,10 +105,11 @@ const listSubmissionAnswers = mock(async () => [] as Array<{ questionId: string;
 const upsertProgressSubmission = mock(async () => ({ id: "sub-progress" }))
 const upsertMetricEvent = mock(async () => {})
 const upsertLeadFromFormAnswers = mock(async () => null as { lead: { id: string } } | null)
-const publishServerPublicFormMetricEvent = mock(async () => {})
+const publishServerPublicFormMetricEvent = mock(async () => true)
+const recordMetric = mock(async () => true)
 
 mock.module("@/app/api/services/PublicForms/PublicFormsService", () => ({
-  publicFormsService: { getPublic },
+  publicFormsService: { getPublic, recordMetric },
 }))
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
@@ -153,11 +154,14 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     upsertProgressSubmission.mockClear()
     upsertMetricEvent.mockClear()
     publishServerPublicFormMetricEvent.mockClear()
+    recordMetric.mockClear()
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
     findPublicationById.mockResolvedValue(null)
     listSubmissionAnswers.mockResolvedValue([])
     upsertLeadFromFormAnswers.mockResolvedValue(null)
     upsertProgressSubmission.mockResolvedValue({ id: "sub-progress" })
+    publishServerPublicFormMetricEvent.mockResolvedValue(true)
+    recordMetric.mockResolvedValue(true)
   })
 
   it("não cria lead CRM — só encaminha question_answered com answerValue", async () => {
@@ -172,6 +176,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
 
     expect(output.isValid).toBe(true)
     expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
+    expect(recordMetric).not.toHaveBeenCalled()
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(2)
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -220,6 +225,33 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
         answerMappingKey: "phone",
       }),
       "PublicFormProgressUseCase",
+    )
+    expect(recordMetric).not.toHaveBeenCalled()
+  })
+
+  it("fila indisponível: encaminha question_answered inline ao Radar sem criar CRM no Progress", async () => {
+    publishServerPublicFormMetricEvent.mockResolvedValue(false)
+
+    const output = await useCase.execute(PUBLIC_ID, {
+      visitorSessionId: "session-queue-down",
+      answers: [
+        { questionId: NAME_ID, value: "Maria Silva" },
+        { questionId: PHONE_ID, value: "(11) 98888-7777" },
+      ],
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
+    expect(recordMetric).toHaveBeenCalledTimes(2)
+    expect(recordMetric).toHaveBeenCalledWith(
+      PUBLIC_ID,
+      expect.objectContaining({
+        eventType: "question_answered",
+        eventKey: `session-queue-down:question_answered:${PHONE_ID}`,
+        answerValue: "(11) 98888-7777",
+        answerMappingKey: "phone",
+      }),
+      { radarMode: "inline" },
     )
   })
 })

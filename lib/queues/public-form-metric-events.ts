@@ -92,13 +92,18 @@ export async function publishPublicFormMetricEvent(
   });
 }
 
-/** Publish após persist local no servidor. Falha de fila não reverte o persist — o cron/retry do consumer não se aplica; loga a tag. */
+/**
+ * Publish após persist local no servidor. Falha de fila não reverte o persist.
+ * Retorna `false` para o caller processar o evento no mesmo isolate (Radar-gate
+ * A+C) — o cron/retry do consumer não se aplica a este caminho.
+ */
 export async function publishServerPublicFormMetricEvent(
   payload: PublicFormMetricQueuePayload,
   logPrefix: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await publishPublicFormMetricEvent(payload);
+    return true;
   } catch (error) {
     console.error(`[${logPrefix}] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`, {
       tag: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
@@ -107,6 +112,7 @@ export async function publishServerPublicFormMetricEvent(
       eventKey: payload.eventKey,
       error,
     });
+    return false;
   }
 }
 

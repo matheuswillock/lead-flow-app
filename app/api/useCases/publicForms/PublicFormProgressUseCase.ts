@@ -4,7 +4,11 @@ import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsSe
 import { Output } from "@/lib/output"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
-import type { PublicFormProgressInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import type {
+  PublicFormMetricEventInput,
+  PublicFormProgressInput,
+  PublicFormSnapshot,
+} from "@/lib/public-forms/types"
 import { mergeProgressAnswers } from "@/lib/public-forms/merge-progress-answers"
 import { mapAnswersForPersistence } from "@/lib/public-forms/publication-snapshot"
 import { resolvePublicFormPublicationForVisitor } from "@/lib/public-forms/resolve-form-publication"
@@ -24,6 +28,18 @@ import {
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+/** Fila OIDC/CI costuma falhar; o consumer não roda. Radar fecha A+C neste isolate. */
+async function processQuestionAnsweredWhenQueueUnavailable(
+  publicId: string,
+  input: PublicFormMetricEventInput,
+): Promise<void> {
+  try {
+    await publicFormsService.recordMetric(publicId, input, { radarMode: "inline" })
+  } catch (error) {
+    console.error("[PublicFormProgressUseCase][radar-fallback]", error)
+  }
 }
 
 export class PublicFormProgressUseCase {
@@ -102,18 +118,22 @@ export class PublicFormProgressUseCase {
         eventKey,
         origin: origin as Prisma.InputJsonValue,
       })
-      await publishServerPublicFormMetricEvent(
-        buildPublicFormMetricQueuePayload(form.publicId, {
-          visitorSessionId: input.visitorSessionId,
-          eventType: "question_answered",
-          questionId: answer.questionId,
-          eventKey,
-          origin: origin as Record<string, unknown>,
-          answerMappingKey: question?.mappingKey ?? null,
-          answerValue,
-        }),
+      const metricInput: PublicFormMetricEventInput = {
+        visitorSessionId: input.visitorSessionId,
+        eventType: "question_answered",
+        questionId: answer.questionId,
+        eventKey,
+        origin: origin as Record<string, unknown>,
+        answerMappingKey: question?.mappingKey ?? null,
+        answerValue,
+      }
+      const queued = await publishServerPublicFormMetricEvent(
+        buildPublicFormMetricQueuePayload(form.publicId, metricInput),
         "PublicFormProgressUseCase",
       )
+      if (queued === false) {
+        await processQuestionAnsweredWhenQueueUnavailable(form.publicId, metricInput)
+      }
       console.info("[PublicFormProgressUseCase][execute] campo recebido", {
         publicId: form.publicId,
         visitorSessionId: input.visitorSessionId,

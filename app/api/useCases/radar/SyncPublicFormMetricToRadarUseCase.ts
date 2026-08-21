@@ -47,51 +47,53 @@ class SyncPublicFormMetricToRadarUseCase {
 
       if (hasFeature) {
         profileId = await this.resolveProfileId(input)
-        if (!profileId) {
+        if (!profileId && input.eventType !== "question_answered") {
           return new Output(false, [], ["Perfil Radar não resolvido"], null)
         }
 
-        if (input.answerMappingKey === "name" && input.answerValue?.trim()) {
-          await radarRepository.applyFormAnswerDisplayName(
+        if (profileId) {
+          if (input.answerMappingKey === "name" && input.answerValue?.trim()) {
+            await radarRepository.applyFormAnswerDisplayName(
+              profileId,
+              input.teamId,
+              input.answerValue.trim(),
+            )
+          }
+
+          const occurredAt = input.occurredAt ?? new Date()
+          const campaignId = this.extractCampaignId(input.origin)
+          const metadata: Prisma.InputJsonValue = {
+            formId: input.formId,
+            publicationId: input.publicationId,
+            ...(campaignId ? { campaignId } : {}),
+            ...(input.questionId ? { questionId: input.questionId } : {}),
+            ...(input.leadId ? { leadId: input.leadId } : {}),
+            ...(input.origin && typeof input.origin === "object" && input.origin !== null
+              ? { origin: input.origin as Prisma.InputJsonValue }
+              : {}),
+          }
+
+          const event = await radarRepository.appendEventIfNewBySourceKey({
             profileId,
-            input.teamId,
-            input.answerValue.trim(),
-          )
+            teamId: input.teamId,
+            eventType: radarEventType,
+            sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
+            sourceId: input.eventKey,
+            occurredAt,
+            metadata,
+          })
+          eventCreated = Boolean(event)
+
+          console.info("[SyncPublicFormMetricToRadarUseCase][execute] evento sincronizado com o Radar", {
+            eventKey: input.eventKey,
+            visitorSessionId: input.visitorSessionId,
+            questionId: input.questionId ?? null,
+            leadId: input.leadId ?? null,
+            profileId,
+            eventType: radarEventType,
+            eventCreated,
+          })
         }
-
-        const occurredAt = input.occurredAt ?? new Date()
-        const campaignId = this.extractCampaignId(input.origin)
-        const metadata: Prisma.InputJsonValue = {
-          formId: input.formId,
-          publicationId: input.publicationId,
-          ...(campaignId ? { campaignId } : {}),
-          ...(input.questionId ? { questionId: input.questionId } : {}),
-          ...(input.leadId ? { leadId: input.leadId } : {}),
-          ...(input.origin && typeof input.origin === "object" && input.origin !== null
-            ? { origin: input.origin as Prisma.InputJsonValue }
-            : {}),
-        }
-
-        const event = await radarRepository.appendEventIfNewBySourceKey({
-          profileId,
-          teamId: input.teamId,
-          eventType: radarEventType,
-          sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
-          sourceId: input.eventKey,
-          occurredAt,
-          metadata,
-        })
-        eventCreated = Boolean(event)
-
-        console.info("[SyncPublicFormMetricToRadarUseCase][execute] evento sincronizado com o Radar", {
-          eventKey: input.eventKey,
-          visitorSessionId: input.visitorSessionId,
-          questionId: input.questionId ?? null,
-          leadId: input.leadId ?? null,
-          profileId,
-          eventType: radarEventType,
-          eventCreated,
-        })
       }
 
       let leadId = input.leadId ?? null

@@ -146,7 +146,7 @@ describe("publishServerPublicFormMetricEvent", () => {
     expect(call[2].idempotencyKey).toBe("session:lead_created:form")
   })
 
-  it("falha de publish não propaga (log + ack local)", async () => {
+  it("falha de publish retorna false sem propagar (log + ack local)", async () => {
     send.mockRejectedValueOnce(new Error("queue down"))
     await expect(
       publishServerPublicFormMetricEvent(
@@ -163,6 +163,6 @@ describe("publishServerPublicFormMetricEvent", () => {
         },
         "PublicFormSubmissionUseCase",
       ),
-    ).resolves.toBeUndefined()
+    ).resolves.toBe(false)
   })
 })
