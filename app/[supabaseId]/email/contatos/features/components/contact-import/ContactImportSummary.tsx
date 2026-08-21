@@ -1,11 +1,12 @@
 "use client";
 
-import { FileCheck } from "lucide-react";
+import { AlertCircle, FileCheck } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ImportMappingHeader } from "@/components/import/ImportMappingHeader";
 import type { ContactImportPreview } from "@/lib/emailContactImport/buildContactImportPreview";
+import type { ContactImportBlock } from "@/lib/emailContactImport/evaluateContactImportBlocks";
 import { EMAIL_CONTACT_IMPORT_FIELDS } from "@/lib/emailContactImport/emailContactImportFields";
 import type { EmailContactImportFieldKey } from "@/lib/emailContactImport/emailContactImportFields";
 import type { EmailContactImportMapping } from "./autoMapEmailContactColumns";
@@ -15,16 +16,35 @@ interface ContactImportSummaryProps {
   fileName: string;
   preview: ContactImportPreview;
   mapping: EmailContactImportMapping;
+  blocks: ContactImportBlock[];
 }
 
 export function ContactImportSummary({
   fileName,
   preview,
   mapping,
+  blocks,
 }: ContactImportSummaryProps) {
   const mappedFields = EMAIL_CONTACT_IMPORT_FIELDS.filter(
     (field) => mapping[field.key as EmailContactImportFieldKey]
   );
+  const isBlocked = blocks.length > 0;
+
+  if (isBlocked) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="size-4" />
+        <AlertTitle>Não podemos importar por causa do seguinte:</AlertTitle>
+        <AlertDescription>
+          <ul className="flex list-disc flex-col gap-1 pl-4">
+            {blocks.map((block) => (
+              <li key={block.kind}>{block.message}</li>
+            ))}
+          </ul>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
