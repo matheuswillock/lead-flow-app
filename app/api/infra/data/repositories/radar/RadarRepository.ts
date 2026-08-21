@@ -31,6 +31,7 @@ import {
   RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/radar-engagement-score-updates"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
+import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
@@ -1651,6 +1652,19 @@ export class RadarRepository {
     return this.db.radarEvent.findMany({
       where: { profileId, teamId: scope.teamId },
       select: { eventType: true, occurredAt: true },
+      orderBy: { occurredAt: "asc" },
+    })
+  }
+
+  async listProfileFormEventMarkers(scope: RadarTeamScope, profileId: string) {
+    return this.db.radarEvent.findMany({
+      where: {
+        profileId,
+        teamId: scope.teamId,
+        sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
+        eventType: { startsWith: "form." },
+      },
+      select: { eventType: true, occurredAt: true, metadata: true },
       orderBy: { occurredAt: "asc" },
     })
   }

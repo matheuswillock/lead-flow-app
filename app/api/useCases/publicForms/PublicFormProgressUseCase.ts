@@ -2,15 +2,16 @@ import { Prisma } from "@prisma/client"
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
 import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService"
 import { Output } from "@/lib/output"
-import { isEmailCampaignFormOrigin, sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
+import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
 import type { PublicFormProgressInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import { mergeProgressAnswers } from "@/lib/public-forms/merge-progress-answers"
 import { mapAnswersForPersistence } from "@/lib/public-forms/publication-snapshot"
 import { resolvePublicFormPublicationForVisitor } from "@/lib/public-forms/resolve-form-publication"
 import {
-  canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
+  hasCrmGateAC,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
@@ -46,23 +47,29 @@ export class PublicFormProgressUseCase {
     }
 
     const { snapshot, publicationId } = resolved
-    const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
-    const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
+    const storedAnswers = resolved.sessionSubmission
+      ? await publicFormsRepository.listSubmissionAnswers(resolved.sessionSubmission.id)
+      : []
+    const mergedAnswers = mergeProgressAnswers({
+      stored: storedAnswers,
+      incoming: input.answers,
+    })
+    const visible = new Set(resolveVisibleQuestionIds(snapshot, mergedAnswers))
+    const visibleAnswers = mergedAnswers.filter((answer) => visible.has(answer.questionId))
+    const incomingAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
     const origin = sanitizePublicFormOrigin(input.origin ?? {})
     const extracted = extractLeadDataFromSnapshot(snapshot, visibleAnswers, visible)
 
     let completionStatus: "initial" | "partial" = "initial"
     if (visibleAnswers.length > 0) {
       completionStatus =
-        canCreateLeadFromExtracted(extracted) || canUpdateLeadFromExtracted(extracted)
-          ? "partial"
-          : "initial"
+        hasCrmGateAC(extracted) || canUpdateLeadFromExtracted(extracted) ? "partial" : "initial"
     }
 
     const requestKey = `progress:${input.visitorSessionId}:${publicationId}`
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
 
-    let leadId: string | null = null
+    let leadId: string | null = resolved.sessionSubmission?.leadId ?? null
     try {
       const upserted = await upsertLeadFromFormAnswers({
         form,
@@ -71,9 +78,9 @@ export class PublicFormProgressUseCase {
         visibleIds: visible,
         publicationId,
         origin: origin as Record<string, unknown>,
-        allowCreate: !isEmailCampaignFormOrigin(origin),
+        allowCreate: !leadId,
       })
-      leadId = upserted?.lead.id ?? null
+      leadId = upserted?.lead.id ?? leadId
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao sincronizar lead"
       console.error("[PublicFormProgressUseCase][execute]", message)
@@ -92,7 +99,7 @@ export class PublicFormProgressUseCase {
       answers: answerPayload,
     })
 
-    for (const answer of visibleAnswers) {
+    for (const answer of incomingAnswers) {
       const rawValue = answer.value
       // D1: não consumir a idempotencyKey da fila com payload vazio — o
       // primeiro blur frequentemente vem com string vazia/stale (autofill
