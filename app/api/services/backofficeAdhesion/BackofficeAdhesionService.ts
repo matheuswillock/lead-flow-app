@@ -29,10 +29,6 @@ import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
-
-function isE2eOrCiBypass(): boolean {
-  return isE2eTestMode() || process.env.CI === "true" || process.env.APP_ENV === "test"
-}
 import type {
   BackofficeAdhesionWithRelations,
   IBackofficeAdhesionRepository,
@@ -62,6 +58,10 @@ import type {
   BackofficeAdhesionUpdateInput,
   IBackofficeAdhesionService,
 } from "./IBackofficeAdhesionService"
+
+function isE2eOrCiBypass(): boolean {
+  return isE2eTestMode() || process.env.CI === "true" || process.env.APP_ENV === "test"
+}
 
 const CRM_MODULES = ["crm"]
 const CRM_PRODUCT_SLUG = "crm"
@@ -2317,10 +2317,22 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (!linkData) {
       const supabaseAdmin = createSupabaseAdmin()
       if (!supabaseAdmin) {
-        throw new Error("Supabase Admin não configurado")
-      }
-
-      try {
+        if (isE2eOrCiBypass()) {
+          console.info("[BackofficeAdhesionService][sendSetPasswordEmail] E2E fallback link (no Supabase Admin)", {
+            adhesionId: adhesion.id,
+            email: adhesion.email,
+          })
+          linkData = {
+            properties: {
+              action_link: getFullUrl("/set-password"),
+              hashed_token: `e2e-${Date.now()}`,
+            },
+          }
+        } else {
+          throw new Error("Supabase Admin não configurado")
+        }
+      } else {
+        try {
         const { data, error } =
           type === "invite"
             ? await supabaseAdmin.auth.admin.generateLink({
@@ -2377,6 +2389,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         } else {
           throw e
         }
+      }
       }
     }
 
