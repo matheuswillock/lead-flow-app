@@ -396,7 +396,7 @@ export interface IPublicFormsRepository {
       origin: Prisma.InputJsonValue
       visitorSessionId?: string | null
     },
-  ): Promise<{ id: string }>
+  ): Promise<{ id: string; eventId: string | null }>
   completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>
   persistSubmissionAnswers(
     submissionId: string,
@@ -416,6 +416,8 @@ export interface IPublicFormsRepository {
     publicationId: string,
     staleBefore: Date,
   ): Promise<boolean>
+  markSubmissionDispatchAccepted(submissionId: string): Promise<void>
+  markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void>
   findCampaignContactListIds(teamId: string, campaignId: string): Promise<string[]>
   findEmailContactCustomFields(
     email: string,

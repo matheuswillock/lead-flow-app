@@ -1495,7 +1495,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         visitorSessionId: data.visitorSessionId,
         completionStatus: "partial",
       },
-      select: { id: true },
+      select: { id: true, eventId: true },
     })
   }
 
@@ -1591,6 +1591,29 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     return result.count === 1
+  }
+
+  async markSubmissionDispatchAccepted(submissionId: string): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        dispatchAcceptedAt: new Date(),
+        dispatchAttemptCount: { increment: 1 },
+        nextDispatchAt: null,
+        lastDispatchError: null,
+      },
+    })
+  }
+
+  async markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        dispatchAttemptCount: { increment: 1 },
+        nextDispatchAt: new Date(Date.now() + 5 * 60_000),
+        lastDispatchError: errorMessage.slice(0, 2_000),
+      },
+    })
   }
 
   async findCampaignContactListIds(teamId: string, campaignId: string) {

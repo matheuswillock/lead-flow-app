@@ -4,6 +4,9 @@ import type { PublicFormSubmissionBackgroundJob } from "@/app/api/useCases/publi
 
 const publishPublicFormSubmissionEventMock = mock(async () => ({ messageId: "mid-test" }))
 const upsertFromProcessingFailureMock = mock(async () => {})
+const markAcceptedMock = mock(async () => {})
+const markDeferredMock = mock(async () => {})
+const dependencies = { markAccepted: markAcceptedMock, markDeferred: markDeferredMock }
 
 mock.module("@/lib/queues/public-form-submission-events", () => ({
   publishPublicFormSubmissionEvent: publishPublicFormSubmissionEventMock,
@@ -46,10 +49,12 @@ describe("queueSubmissionForBackgroundProcessing (PR2.3)", () => {
     publishPublicFormSubmissionEventMock.mockReset()
     publishPublicFormSubmissionEventMock.mockResolvedValue({ messageId: "mid-test" })
     upsertFromProcessingFailureMock.mockReset()
+    markAcceptedMock.mockReset()
+    markDeferredMock.mockReset()
   })
 
   it("publish com sucesso: não grava no outbox", async () => {
-    await queueSubmissionForBackgroundProcessing(JOB)
+    await queueSubmissionForBackgroundProcessing(JOB, dependencies)
 
     expect(publishPublicFormSubmissionEventMock).toHaveBeenCalledWith(JOB)
     expect(upsertFromProcessingFailureMock).not.toHaveBeenCalled()
@@ -58,7 +63,7 @@ describe("queueSubmissionForBackgroundProcessing (PR2.3)", () => {
   it("publish falha 3x → grava no outbox com kind=submission e queue_publish_failed", async () => {
     publishPublicFormSubmissionEventMock.mockRejectedValue(new Error("queue down"))
 
-    await queueSubmissionForBackgroundProcessing(JOB)
+    await queueSubmissionForBackgroundProcessing(JOB, dependencies)
 
     expect(publishPublicFormSubmissionEventMock).toHaveBeenCalledTimes(
       DEFAULT_PUBLISH_RETRY_ATTEMPTS,
@@ -76,6 +81,8 @@ describe("queueSubmissionForBackgroundProcessing (PR2.3)", () => {
     publishPublicFormSubmissionEventMock.mockRejectedValue(new Error("queue down"))
     upsertFromProcessingFailureMock.mockRejectedValueOnce(new Error("db down"))
 
-    await expect(queueSubmissionForBackgroundProcessing(JOB)).resolves.toBeUndefined()
+    await expect(queueSubmissionForBackgroundProcessing(JOB, dependencies)).resolves.toEqual({
+      accepted: false,
+    })
   })
 })
