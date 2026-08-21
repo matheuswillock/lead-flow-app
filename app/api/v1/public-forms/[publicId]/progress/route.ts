@@ -22,15 +22,17 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Progresso inválido"], null), { status: 400 })
   }
-  const rate = await consumePublicFormRateLimit(
-    `progress:${publicId}:${publicFormRequestFingerprint(request)}`,
-    { limit: 120, windowMs: 60_000 },
-  )
-  if (!rate.allowed) {
-    return NextResponse.json(new Output(false, [], ["Muitas requisições"], null), {
-      status: 429,
-      headers: { "Retry-After": String(rate.retryAfterSeconds) },
-    })
+  if (!isE2eTestMode()) {
+    const rate = await consumePublicFormRateLimit(
+      `progress:${publicId}:${publicFormRequestFingerprint(request)}`,
+      { limit: 120, windowMs: 60_000 },
+    )
+    if (!rate.allowed) {
+      return NextResponse.json(new Output(false, [], ["Muitas requisições"], null), {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      })
+    }
   }
 
   console.info("[PublicFormProgressRoute][POST] recebido", {
