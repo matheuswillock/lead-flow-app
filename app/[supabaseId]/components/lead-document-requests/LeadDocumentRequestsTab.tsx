@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Check, Clock, Copy, Loader2, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -149,7 +150,7 @@ export function LeadDocumentRequestsTab({
       await load();
     } catch (error) {
       console.error("[LeadDocumentRequestsTab] Erro ao criar:", error);
-      toast.error(error instanceof Error ? error.message : "Não foi possível criar a solicitação");
+      toastUserError(error);
     } finally {
       setIsCreating(false);
     }
@@ -170,7 +171,7 @@ export function LeadDocumentRequestsTab({
       toast.success("E-mail reenviado");
     } catch (error) {
       console.error("[LeadDocumentRequestsTab] Erro ao reenviar:", error);
-      toast.error(error instanceof Error ? error.message : "Não foi possível reenviar o e-mail");
+      toastUserError(error);
     } finally {
       setResendingId(null);
     }

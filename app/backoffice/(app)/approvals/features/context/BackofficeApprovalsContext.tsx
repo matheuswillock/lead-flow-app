@@ -8,6 +8,7 @@ import type {
   BackofficeDeletionApprovalDecision,
   BackofficeDeletionRequestItem,
 } from "./BackofficeApprovalsTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 interface BackofficeApprovalsContextValue {
   service: IBackofficeApprovalsService
@@ -63,7 +64,7 @@ export function BackofficeApprovalsProvider({
       lastSuccessKeyRef.current = loadKey
     } catch (err) {
       console.error("[BackofficeApprovalsProvider][refresh]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar aprovações")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightRef.current = false

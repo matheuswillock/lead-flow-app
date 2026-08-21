@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import {
   Bell,
   ChevronDown,
@@ -257,7 +258,7 @@ export function LeadContactsTab({ leadId, teamId, supabaseId }: LeadContactsTabP
       await load();
     } catch (error) {
       console.error("[LeadContactsTab] Erro ao salvar:", error);
-      toast.error(error instanceof Error ? error.message : "Não foi possível registrar o contato");
+      toastUserError(error);
     } finally {
       setIsSaving(false);
     }

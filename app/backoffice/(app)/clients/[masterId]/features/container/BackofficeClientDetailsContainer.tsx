@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -405,7 +406,7 @@ export function BackofficeClientDetailsContainer() {
       toast.success(nextValue ? "Cliente tornado vitalício com sucesso" : "Plano vitalício removido com sucesso")
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar plano")
+      toastUserError(err)
     } finally {
       setIsTogglingLifetime(false)
       lifetimeInFlight.current = false
@@ -426,7 +427,7 @@ export function BackofficeClientDetailsContainer() {
       )
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar MultiSkill")
+      toastUserError(err)
     } finally {
       setIsTogglingMultiskill(false)
       multiskillInFlight.current = false
@@ -447,7 +448,7 @@ export function BackofficeClientDetailsContainer() {
       )
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar usuários ilimitados")
+      toastUserError(err)
     } finally {
       setIsTogglingUnlimitedUsers(false)
       unlimitedUsersInFlight.current = false
@@ -469,7 +470,7 @@ export function BackofficeClientDetailsContainer() {
       )
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao habilitar Member PRO")
+      toastUserError(err)
     } finally {
       setIsTogglingMemberPro(false)
       memberProInFlight.current = false
@@ -486,7 +487,7 @@ export function BackofficeClientDetailsContainer() {
       setMemberProDisableOpen(false)
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao desabilitar Member PRO")
+      toastUserError(err)
     } finally {
       setIsTogglingMemberPro(false)
       memberProInFlight.current = false
@@ -514,10 +515,7 @@ export function BackofficeClientDetailsContainer() {
       )
     } catch (error) {
       console.error("[BackofficeClientDetailsContainer][handleSendMemberAccessEmail]", error)
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.",
-        { id: toastId }
-      )
+      toastUserError(error, { id: toastId })
     } finally {
       setMemberAccessActionId(null)
     }
@@ -542,10 +540,7 @@ export function BackofficeClientDetailsContainer() {
       await reload()
     } catch (error) {
       console.error("[BackofficeClientDetailsContainer][handleSendMasterAccessEmail]", error)
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.",
-        { id: toastId }
-      )
+      toastUserError(error, { id: toastId })
     } finally {
       setMasterAccessActionId(null)
     }
@@ -563,10 +558,7 @@ export function BackofficeClientDetailsContainer() {
       await reload()
     } catch (error) {
       console.error("[BackofficeClientDetailsContainer][handleAddMasterToTeam]", error)
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao adicionar master ao time.",
-        { id: toastId }
-      )
+      toastUserError(error, { id: toastId })
     } finally {
       setAddingMasterTeamId(null)
     }
@@ -1660,7 +1652,7 @@ export function BackofficeClientDetailsContainer() {
                     reload()
                   } catch (err) {
                     console.error("[BackofficeClientDetailsContainer][removeFromTeam]", err)
-                    toast.error(err instanceof Error ? err.message : "Erro ao remover do time")
+                    toastUserError(err)
                   } finally {
                     removeFromTeamInFlight.current = false
                     setIsRemovingFromTeam(false)

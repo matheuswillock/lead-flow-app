@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Crown, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -204,7 +205,7 @@ export function BackofficeMemberEditDialog({
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar membro")
+      toastUserError(err)
     } finally {
       setIsSubmitting(false)
       inFlight.current = false
@@ -344,9 +345,7 @@ export function BackofficeMemberEditDialog({
                           onOpenChange(false)
                         } catch (err) {
                           console.error("[BackofficeMemberEditDialog][requestDeletion]", err)
-                          toast.error(
-                            err instanceof Error ? err.message : "Erro ao solicitar exclusão"
-                          )
+                          toastUserError(err)
                         } finally {
                           deletionInFlight.current = false
                           setIsRequestingDeletion(false)
@@ -406,9 +405,7 @@ export function BackofficeMemberEditDialog({
                           onOpenChange(false)
                         } catch (err) {
                           console.error("[BackofficeMemberEditDialog][requestMasterDeletion]", err)
-                          toast.error(
-                            err instanceof Error ? err.message : "Erro ao solicitar exclusão"
-                          )
+                          toastUserError(err)
                         } finally {
                           deletionInFlight.current = false
                           setIsRequestingDeletion(false)

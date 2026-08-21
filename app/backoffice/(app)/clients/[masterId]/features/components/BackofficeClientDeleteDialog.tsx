@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, Mail, Shield, User } from "lucide-react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -117,7 +118,7 @@ export function BackofficeClientDeleteDialog({
       onOpenChange(false)
       router.push("/backoffice/clients")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao excluir conta"
+      const message = toUserToastMessage(err)
       toast.error(message)
       setIsDeleting(false)
       inFlight.current = false

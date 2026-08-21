@@ -10,6 +10,7 @@ import {
   type MeetingsHeldData,
   type MeetingsHeldFiltersState,
 } from './MeetingsHeldTypes';
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 export function useMeetingsHeldHook() {
   const params = useParams();
@@ -46,7 +47,7 @@ export function useMeetingsHeldHook() {
         );
         setData(result);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao buscar reuniões realizadas';
+        const message = toUserToastMessage(err);
         setError(message);
       } finally {
         setIsLoading(false);

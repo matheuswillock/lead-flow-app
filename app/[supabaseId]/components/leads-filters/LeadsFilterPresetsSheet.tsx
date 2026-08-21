@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -200,7 +201,7 @@ export function LeadsFilterPresetsSheet<T>({
     } catch (error) {
       // Assenta mesmo em erro para não martelar o endpoint em loop de 5xx.
       lastSettledKeyRef.current = requestKey;
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar filtros salvos.");
+      toastUserError(error);
       setPresets([]);
     } finally {
       if (inFlightKeyRef.current === requestKey) {
@@ -260,7 +261,7 @@ export function LeadsFilterPresetsSheet<T>({
       setPresetVisibility("private");
       await loadPresets({ force: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar preset.");
+      toastUserError(error);
     } finally {
       setIsSavingPreset(false);
     }
@@ -307,7 +308,7 @@ export function LeadsFilterPresetsSheet<T>({
       toast.success("Preset removido.");
       await loadPresets({ force: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao remover preset.");
+      toastUserError(error);
     }
   };
 

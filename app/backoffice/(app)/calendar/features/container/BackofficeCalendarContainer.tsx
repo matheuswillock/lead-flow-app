@@ -12,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent } from "@/components/ui/card"
@@ -296,7 +297,7 @@ export function BackofficeCalendarContainer() {
       setLeadToCancel(null)
       toast.success("Agendamento cancelado. Lead voltou para Nova oportunidade.")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao cancelar agendamento")
+      toastUserError(err)
     }
   }
 
@@ -598,11 +599,7 @@ export function BackofficeCalendarContainer() {
                           variant="outline"
                           onClick={() => {
                             void handleCopyPublicShareLink(lead.id).catch((err) => {
-                              toast.error(
-                                err instanceof Error
-                                  ? err.message
-                                  : "Erro ao copiar link público"
-                              )
+                              toastUserError(err)
                             })
                           }}
                         >
@@ -613,9 +610,7 @@ export function BackofficeCalendarContainer() {
                           variant="outline"
                           onClick={() => {
                             void handleResendInvite(lead.id).catch((err) => {
-                              toast.error(
-                                err instanceof Error ? err.message : "Erro ao reenviar convite"
-                              )
+                              toastUserError(err)
                             })
                           }}
                         >

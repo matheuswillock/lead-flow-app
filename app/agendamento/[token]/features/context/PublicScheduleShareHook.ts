@@ -7,6 +7,7 @@ import type {
   IPublicScheduleShareState,
 } from "./PublicScheduleShareTypes";
 import type { PublicScheduleShareData } from "../services/IPublicScheduleShareService";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 export function usePublicScheduleShare(
   token: string,
@@ -54,7 +55,7 @@ export function usePublicScheduleShare(
         token,
         status: "error",
         data: null,
-        error: error instanceof Error ? error.message : "Não foi possível carregar o agendamento.",
+        error: toUserToastMessage(error),
       });
     }
   }, [clearRetry, token]);

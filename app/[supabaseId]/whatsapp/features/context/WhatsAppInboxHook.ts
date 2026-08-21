@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { toastUserError } from '@/lib/ui/to-user-toast-message'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { useUserContext } from '@/app/context/UserContext'
 import { isManagerLikeRole } from '@/lib/roles'
@@ -306,7 +307,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         setConfig(null)
       }
       console.error('[useWhatsAppInbox] Erro ao carregar configuração do WhatsApp:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar a configuração do WhatsApp')
+      toastUserError(error)
     } finally {
       if (currentConfigKeyRef.current === key) {
         setIsLoadingConfig(false)
@@ -501,7 +502,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           setTotalConversations(0)
         }
         console.error('[useWhatsAppInbox] Erro ao carregar conversas:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível carregar as conversas')
+        toastUserError(error)
       } finally {
         if (currentConvsKeyRef.current === key) {
           setIsLoadingConversations(false)
@@ -580,7 +581,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           if (pageNum === 1) setMessages([])
         }
         console.error('[useWhatsAppInbox] Erro ao carregar mensagens:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível carregar as mensagens')
+        toastUserError(error)
       } finally {
         if (currentMessagesConvIdRef.current === conversationId) {
           if (pageNum === 1) setIsLoadingMessages(false)
@@ -876,7 +877,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         toast.success('Tags atualizadas')
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao atualizar tags:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar as tags')
+        toastUserError(error)
       } finally {
         setIsUpdatingTags(false)
       }
@@ -964,7 +965,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           )
         )
         console.error('[useWhatsAppInbox] Erro ao enviar mensagem:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível enviar a mensagem')
+        toastUserError(error)
       } finally {
         setIsSending(false)
         isSendingRef.current = false
@@ -1154,7 +1155,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
       setTeamMembers(result)
     } catch (error) {
       console.error('[useWhatsAppInbox] Erro ao carregar membros do time:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar os membros do time')
+      toastUserError(error)
     } finally {
       setIsLoadingTeamMembers(false)
       if (inFlightTeamMembersKeyRef.current === key) {
@@ -1572,7 +1573,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success('Responsável atribuído com sucesso')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao atribuir conversa:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível atribuir o responsável')
+          toastUserError(error)
         } finally {
           setIsAssigning(false)
           isAssigningRef.current = false
@@ -1618,7 +1619,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success('Conversa assumida com sucesso')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao assumir conversa:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível assumir a conversa')
+          toastUserError(error)
         } finally {
           setIsChangingHandoff(false)
           isChangingHandoffRef.current = false
@@ -1647,9 +1648,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success(mode === 'BOT' ? 'Conversa devolvida ao bot' : 'Conversa assumida para atendimento humano')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao alterar handoff:', error)
-          toast.error(
-            error instanceof Error ? error.message : 'Não foi possível alterar o modo de atendimento'
-          )
+          toastUserError(error)
         } finally {
           setIsChangingHandoff(false)
           isChangingHandoffRef.current = false
@@ -1691,7 +1690,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success('Lead vinculado com sucesso')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao vincular lead:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível vincular o lead')
+          toastUserError(error)
         } finally {
           setIsLinkingLead(false)
           isLinkingLeadRef.current = false
@@ -1726,7 +1725,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         toast.success('Lead criado e vinculado com sucesso')
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao criar lead:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível criar o lead')
+        toastUserError(error)
         throw error
       } finally {
         setIsCreatingLead(false)
@@ -1755,9 +1754,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         toast.success('Nome do contato atualizado')
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao atualizar nome do contato:', error)
-        toast.error(
-          error instanceof Error ? error.message : 'Não foi possível atualizar o nome do contato'
-        )
+        toastUserError(error)
         throw error
       } finally {
         setIsUpdatingContactName(false)
@@ -1799,7 +1796,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success('Conversa arquivada com sucesso')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao arquivar conversa:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível arquivar a conversa')
+          toastUserError(error)
         } finally {
           setIsArchiving(false)
           isArchivingRef.current = false
@@ -1829,7 +1826,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success('Conversa desarquivada com sucesso')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao desarquivar conversa:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível desarquivar a conversa')
+          toastUserError(error)
         } finally {
           setIsArchiving(false)
           isArchivingRef.current = false
@@ -1859,7 +1856,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
           toast.success('Conversa excluída com sucesso')
         } catch (error) {
           console.error('[useWhatsAppInbox] Erro ao excluir conversa:', error)
-          toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a conversa')
+          toastUserError(error)
         } finally {
           setIsDeleting(false)
           isDeletingRef.current = false
@@ -1898,7 +1895,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         return conversationWithAssignee
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao criar conversa:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível criar a conversa')
+        toastUserError(error)
         throw error
       } finally {
         setIsCreatingConversation(false)
@@ -1965,7 +1962,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         return result
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao sincronizar contatos:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível sincronizar os contatos')
+        toastUserError(error)
         throw error
       } finally {
         setIsSyncingContacts(false)
@@ -1998,9 +1995,7 @@ export function useWhatsAppInbox(supabaseId: string): InboxState & InboxActions 
         return result
       } catch (error) {
         console.error('[useWhatsAppInbox] Erro ao sincronizar participantes:', error)
-        toast.error(
-          error instanceof Error ? error.message : 'Não foi possível sincronizar os participantes'
-        )
+        toastUserError(error)
         throw error
       } finally {
         setIsSyncingGroupParticipants(false)

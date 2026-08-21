@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -79,7 +80,7 @@ export function BackofficeTeamEditDialog({
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar time")
+      toastUserError(err)
     } finally {
       setIsSubmitting(false)
       inFlight.current = false

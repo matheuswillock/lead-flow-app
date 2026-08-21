@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { getResendDomainDispatchWarnings } from "@/lib/email/campaign-dispatch-guards"
 import { EmailSettingsService } from "../services/EmailSettingsService"
 import type {
@@ -282,7 +283,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Remetente criado com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleCreateSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao criar remetente")
+      toastUserError(err)
     } finally {
       setCreatingSender(false)
     }
@@ -296,7 +297,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Remetente atualizado com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleUpdateSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar remetente")
+      toastUserError(err)
     } finally {
       setUpdatingSenderId(null)
     }
@@ -310,7 +311,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Remetente removido com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleDeleteSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao remover remetente")
+      toastUserError(err)
     } finally {
       setDeletingSenderId(null)
     }
@@ -324,7 +325,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Remetente padrão atualizado")
     } catch (err) {
       console.error("[useEmailSettings] handleSetDefaultSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao definir remetente padrão")
+      toastUserError(err)
     } finally {
       setSettingDefaultSenderId(null)
     }
@@ -338,7 +339,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Variável global criada com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleCreateVariable error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao criar variável global")
+      toastUserError(err)
       throw err
     } finally {
       setCreatingVariable(false)
@@ -355,7 +356,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Variável global atualizada com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleUpdateVariable error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar variável global")
+      toastUserError(err)
       throw err
     } finally {
       setUpdatingVariableId(null)
@@ -370,7 +371,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Variável global removida com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleDeleteVariable error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao remover variável global")
+      toastUserError(err)
     } finally {
       setDeletingVariableId(null)
     }
@@ -398,7 +399,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Domínio conectado. Configure os registros DNS abaixo.")
     } catch (err) {
       console.error("[useEmailSettings] handleConnectDomain error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao conectar domínio")
+      toastUserError(err)
     } finally {
       setConnectingDomain(false)
     }
@@ -478,7 +479,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
         return true
       } catch (err) {
         console.error("[useEmailSettings] handleConfigureDomainTracking error", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao configurar métricas de tracking")
+        toastUserError(err)
         return false
       } finally {
         setConfiguringDomainTracking(false)

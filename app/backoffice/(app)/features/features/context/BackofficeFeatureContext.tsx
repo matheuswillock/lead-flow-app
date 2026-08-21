@@ -10,6 +10,7 @@ import {
   isChargeDuringBetaSaveBlocked,
 } from "../utils/backofficeFeatureForm"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 
 const DEFAULT_ACCESS_RULES: AccessRuleFormEntry[] = [
@@ -186,7 +187,7 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
       }
       setDialogOpen(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao salvar funcionalidade"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setIsSaving(false)
@@ -211,7 +212,7 @@ export function BackofficeFeatureProvider({ children, featureService }: Props) {
       setDeleteDialogOpen(false)
       toast.success("Funcionalidade excluída com sucesso")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao excluir funcionalidade"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setIsDeleting(false)

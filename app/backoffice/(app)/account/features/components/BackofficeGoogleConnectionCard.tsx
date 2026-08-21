@@ -10,6 +10,7 @@ import {
   Link2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -156,7 +157,7 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
         })
         if (error) {
           sessionStorage.removeItem("googleConnectContext")
-          toast.error(error.message || "Erro ao reconectar Google Calendar")
+          toastUserError(error)
         }
         return
       }
@@ -185,7 +186,7 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
         if (error.message === "Manual linking is disabled") {
           toast.error("Vinculação manual desativada no Supabase. Ative em Auth > Providers.")
         } else {
-          toast.error(error.message || "Erro ao iniciar conexão com Google")
+          toastUserError(error)
         }
       }
     } catch (error) {
@@ -206,7 +207,7 @@ export function BackofficeGoogleConnectionCard({ account }: Props) {
       setGrantedScopes([])
       await refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao desconectar Google")
+      toastUserError(err)
     } finally {
       setIsDisconnectingGoogle(false)
     }

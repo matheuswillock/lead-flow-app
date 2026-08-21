@@ -33,6 +33,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { BackofficeMemberEditDialog } from "@/app/backoffice/(app)/clients/[masterId]/features/components/BackofficeMemberEditDialog"
 import type {
   BackofficeClientDetails,
@@ -311,7 +312,7 @@ export function BackofficeAllUsersContainer() {
       setSelectedMemberTeamId(memberTeamId)
       return { details, member, memberTeamId }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar dados do usuário")
+      toastUserError(err)
       return null
     } finally {
       setActionLoadingId(null)
@@ -376,7 +377,7 @@ export function BackofficeAllUsersContainer() {
       )
     } catch (error) {
       console.error("[BackofficeAllUsersContainer][handleSendAccessEmail]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.", {
+      toastUserError(error, {
         id: toastId,
       })
     } finally {

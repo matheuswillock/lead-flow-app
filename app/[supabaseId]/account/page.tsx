@@ -24,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/app/context/UserContext";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useUpdateAccountForm } from "@/hooks/useForms";
 import { AccountForm } from "@/components/forms/accountForm";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -552,7 +553,7 @@ export default function AccountProfilePage() {
         const { error } = await supabase.auth.signInWithOAuth(params);
         if (error) {
           sessionStorage.removeItem("googleConnectContext");
-          toast.error(error.message || "Erro ao reconectar Google Calendar");
+          toastUserError(error);
         }
         return;
       }
@@ -570,7 +571,7 @@ export default function AccountProfilePage() {
         if (error.message === "Manual linking is disabled") {
           toast.error("Vinculacao manual desativada no Supabase. Ative em Auth > Providers.");
         } else {
-          toast.error(error.message || "Erro ao iniciar conexão com Google");
+          toastUserError(error);
         }
       }
     } catch (error) {

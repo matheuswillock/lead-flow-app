@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -109,7 +110,7 @@ export function ForwardMessageDialog({ open, onOpenChange, message }: ForwardMes
 
       setSelectedIds(failedIds)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível encaminhar a mensagem")
+      toastUserError(error)
     } finally {
       setIsForwarding(false)
     }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowRight, Plus, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { Button } from '@/components/ui/button';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import {
@@ -321,7 +321,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
       });
       closeFlow();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao adicionar cliente');
+      toastUserError(error);
     } finally {
       setIsSubmitting(false);
     }

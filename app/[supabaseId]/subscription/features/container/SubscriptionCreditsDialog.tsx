@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -59,7 +60,7 @@ export function SubscriptionCreditsDialog({
       toast.success('Créditos atualizados com sucesso');
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao atualizar créditos');
+      toastUserError(error);
     } finally {
       setIsSubmitting(false);
     }

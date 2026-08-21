@@ -13,6 +13,7 @@ import {
 } from "react"
 import type { VisibilityState } from "@tanstack/react-table"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type { IBackofficeCrmService } from "../services/IBackofficeCrmService"
 import {
@@ -220,7 +221,7 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
           lastSuccessKeyRef.current = CRM_REQUEST_KEY
         } catch (err) {
           console.error("[BackofficeCrmContext][loadLeads]", err)
-          setError(err instanceof Error ? err.message : "Erro ao carregar dados do CRM")
+          setError(toUserToastMessage(err))
         } finally {
           if (inFlightKeyRef.current === CRM_REQUEST_KEY) {
             inFlightKeyRef.current = null

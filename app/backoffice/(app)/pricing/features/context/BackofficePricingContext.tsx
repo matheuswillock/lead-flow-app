@@ -15,6 +15,7 @@ import type {
 } from "./BackofficePricingTypes"
 import { BILLING_CYCLE_META, EMPTY_PRODUCT_FORM, groupSchedule, isCycleRuleConfigured } from "./BackofficePricingTypes"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 interface PricingContextValue {
   products: BackofficeProductItem[]
@@ -324,7 +325,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
       }
       setDialogOpen(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao salvar produto"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setIsSaving(false)
@@ -349,7 +350,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
       setDeleteDialogOpen(false)
       toast.success("Produto excluído com sucesso")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao excluir produto"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setIsDeleting(false)

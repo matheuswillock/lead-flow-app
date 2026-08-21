@@ -6,6 +6,7 @@ import type {
   BackofficeRadarOutboxThroughputHookResult,
   BackofficeRadarOutboxThroughputState,
 } from "./BackofficeRadarOutboxThroughputTypes";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 const initialState: BackofficeRadarOutboxThroughputState = {
   snapshot: null,
@@ -40,7 +41,7 @@ export function useBackofficeRadarOutboxThroughputHook(
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Erro ao carregar vazão",
+        error: toUserToastMessage(error),
       }));
     } finally {
       inFlightRef.current = false;

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -131,7 +132,7 @@ export function BackofficeProfileUserTypeDialog({
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar tipo de usuário")
+      toastUserError(err)
     } finally {
       setIsSubmitting(false)
       inFlight.current = false

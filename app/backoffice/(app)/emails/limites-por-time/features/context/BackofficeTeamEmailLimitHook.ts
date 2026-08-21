@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { IBackofficeTeamEmailLimitService } from "../services/IBackofficeTeamEmailLimitService"
 import type { IBackofficeTeamEmailLimitContext } from "./BackofficeTeamEmailLimitTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 export function useBackofficeTeamEmailLimitHook(
   service: IBackofficeTeamEmailLimitService
@@ -23,7 +24,7 @@ export function useBackofficeTeamEmailLimitHook(
       const result = await service.list()
       setGrants(result.grants)
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar limites")
+      setError(toUserToastMessage(fetchError))
     } finally {
       inFlightRef.current = false
       setIsLoading(false)
@@ -51,7 +52,7 @@ export function useBackofficeTeamEmailLimitHook(
         await fetchItems()
         return true
       } catch (grantError) {
-        setError(grantError instanceof Error ? grantError.message : "Erro ao conceder limite")
+        setError(toUserToastMessage(grantError))
         return false
       } finally {
         setIsGranting(false)
@@ -69,7 +70,7 @@ export function useBackofficeTeamEmailLimitHook(
         await fetchItems()
         return true
       } catch (revokeError) {
-        setError(revokeError instanceof Error ? revokeError.message : "Erro ao revogar limite")
+        setError(toUserToastMessage(revokeError))
         return false
       } finally {
         setIsRevokingId(null)

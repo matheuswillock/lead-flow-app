@@ -14,6 +14,7 @@ import {
   Settings,
 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { ManagedByCorretorStudioBadge } from "@/components/email/ManagedByCorretorStudioBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -121,7 +122,7 @@ export function BackofficeClientPublicFormsPanel({
       setItems(result.items)
       lastSuccessKey.current = key
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar formulários")
+      toastUserError(error)
     } finally {
       if (inFlightKey.current === key) inFlightKey.current = null
       setLoading(false)
@@ -141,7 +142,7 @@ export function BackofficeClientPublicFormsPanel({
       toast.success("Ação concluída")
       await loadForms()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível concluir")
+      toastUserError(error)
     } finally {
       setActionId(null)
     }
@@ -154,7 +155,7 @@ export function BackofficeClientPublicFormsPanel({
       setSettings(result)
       setSettingsOpen(true)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar configurações")
+      toastUserError(error)
     }
   }
 
@@ -171,7 +172,7 @@ export function BackofficeClientPublicFormsPanel({
       toast.success("Configurações salvas")
       setSettingsOpen(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar")
+      toastUserError(error)
     } finally {
       setSettingsSaving(false)
     }
@@ -186,7 +187,7 @@ export function BackofficeClientPublicFormsPanel({
       const result = await backofficeStudioPublicFormsService.analytics(masterId, teamId, form.id)
       setAnalytics(result)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar métricas")
+      toastUserError(error)
       setAnalytics(null)
     } finally {
       setAnalyticsLoading(false)

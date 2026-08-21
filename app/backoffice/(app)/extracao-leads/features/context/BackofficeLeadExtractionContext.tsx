@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import type {
   IBackofficeLeadExtractionFrontendService,
   LeadExtractionResultItem,
@@ -48,7 +49,7 @@ export function BackofficeLeadExtractionProvider({ children, service }: Props) {
       setExtractionId(data.extractionId)
       setHasSearched(true)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao realizar extração"
+      const message = toUserToastMessage(error)
       toast.error(message)
     } finally {
       setIsSearching(false)
@@ -71,7 +72,7 @@ export function BackofficeLeadExtractionProvider({ children, service }: Props) {
       setSocioTotalCount(data.totalCount)
       setHasSearchedSocios(true)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao pesquisar sócios"
+      const message = toUserToastMessage(error)
       toast.error(message)
     } finally {
       setIsSocioSearching(false)

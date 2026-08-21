@@ -2,6 +2,7 @@
 
 import { ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -116,7 +117,7 @@ export function BackofficeApprovalsContainer() {
       toast.success(successMessage)
     } catch (err) {
       console.error("[BackofficeApprovalsContainer][handleDecision]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao registrar decisão")
+      toastUserError(err)
     }
   }
 

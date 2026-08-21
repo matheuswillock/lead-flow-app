@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useUserContext } from "@/app/context/UserContext"
 import { isManagerLikeRole } from "@/lib/roles"
@@ -67,7 +68,7 @@ export function TagManagerCard() {
       setTags(output.result?.tags ?? [])
     } catch (error) {
       console.error("[TagManagerCard] loadTags", error)
-      toast.error(error instanceof Error ? error.message : "Não foi possível carregar as tags")
+      toastUserError(error)
     } finally {
       setIsLoading(false)
     }
@@ -130,7 +131,7 @@ export function TagManagerCard() {
       await loadTags()
     } catch (error) {
       console.error("[TagManagerCard] saveTag", error)
-      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a tag")
+      toastUserError(error)
     } finally {
       setIsSaving(false)
     }
@@ -159,7 +160,7 @@ export function TagManagerCard() {
       await loadTags()
     } catch (error) {
       console.error("[TagManagerCard] deleteTag", error)
-      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a tag")
+      toastUserError(error)
     } finally {
       setIsSaving(false)
     }

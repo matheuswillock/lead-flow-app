@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { CalendarClock, UserRound } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { z } from "zod"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -370,7 +371,7 @@ export function BackofficeLeadFormDialog() {
       await navigator.clipboard.writeText(output.result.publicUrl)
       toast.success("Link público copiado")
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao gerar link público")
+      toastUserError(error)
     } finally {
       setShareLoading(false)
     }
@@ -398,7 +399,7 @@ export function BackofficeLeadFormDialog() {
       }
       toast.success("Convite reenviado")
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao reenviar convite")
+      toastUserError(error)
     } finally {
       setResendLoading(false)
     }
@@ -483,7 +484,7 @@ export function BackofficeLeadFormDialog() {
       }
     } catch (err) {
       console.error("[BackofficeLeadFormDialog][submit]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar lead")
+      toastUserError(err)
     }
   }
 
