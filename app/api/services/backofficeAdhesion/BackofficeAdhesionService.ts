@@ -2417,16 +2417,33 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   private async syncAdhesionEmailArtifacts(
     adhesion: BackofficeAdhesionWithRelations,
     newEmail: string,
-    previousEmail: string | null
+    _previousEmail: string | null
   ): Promise<void> {
     const normalizedNew = newEmail.trim().toLowerCase()
-    const normalizedPrev = previousEmail?.trim().toLowerCase() ?? null
-    if (!normalizedNew || normalizedNew === normalizedPrev) return
+    if (!normalizedNew) return
+
+    console.info("[BackofficeAdhesionService][syncEmail] start", {
+      adhesionId: adhesion.id,
+      leadId: adhesion.leadId,
+      newEmail,
+      createdProfileId: adhesion.createdProfileId,
+    })
 
     try {
       const maybeRepo = this.repo as unknown as { updateLeadEmail?: (id: string, email: string) => Promise<void> }
       if (maybeRepo.updateLeadEmail) {
         await maybeRepo.updateLeadEmail(adhesion.leadId, newEmail.trim())
+        console.info("[BackofficeAdhesionService][syncEmail] lead updated", {
+          adhesionId: adhesion.id,
+          leadId: adhesion.leadId,
+          newEmail,
+        })
+      } else {
+        const { prisma } = await import("@/app/api/infra/data/prisma")
+        await prisma.backofficeLead.update({ where: { id: adhesion.leadId }, data: { email: newEmail.trim() } })
+        console.info("[BackofficeAdhesionService][syncEmail] lead updated via prisma fallback", {
+          adhesionId: adhesion.id,
+        })
       }
     } catch (error) {
       console.error("[BackofficeAdhesionService][syncEmail][lead]", error)
@@ -2437,6 +2454,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         const maybeRepo = this.repo as unknown as { updateProfileEmail?: (id: string, email: string) => Promise<void> }
         if (maybeRepo.updateProfileEmail) {
           await maybeRepo.updateProfileEmail(adhesion.createdProfileId, newEmail.trim())
+          console.info("[BackofficeAdhesionService][syncEmail] profile updated", {
+            adhesionId: adhesion.id,
+            profileId: adhesion.createdProfileId,
+          })
+        } else {
+          const { prisma } = await import("@/app/api/infra/data/prisma")
+          await prisma.profile.update({ where: { id: adhesion.createdProfileId }, data: { email: newEmail.trim() } })
+          console.info("[BackofficeAdhesionService][syncEmail] profile updated via prisma fallback", {
+            adhesionId: adhesion.id,
+          })
         }
       } catch (error) {
         console.error("[BackofficeAdhesionService][syncEmail][profile]", error)
@@ -2527,6 +2554,13 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
+    console.info("[BackofficeAdhesionService][syncEmail] check", {
+      adhesionId: adhesion.id,
+      targetEmail,
+      leadEmail: adhesion.lead.email,
+      needsSync,
+      previousEmail,
+    })
     if (needsSync) {
       await this.syncAdhesionEmailArtifacts(adhesion, targetEmail, previousEmail)
     }
