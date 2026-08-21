@@ -27,11 +27,12 @@ function mapSuppressedCountRow(row?: SuppressedCountRow): SuppressedAudienceCoun
 }
 
 function suppressedBreakdownSql(whereClause: Prisma.Sql) {
+  // Reclamação no produto também marca isUnsubscribed; reclamação vem antes do descadastro.
   return Prisma.sql`
     SELECT
       COUNT(*) FILTER (WHERE flags.is_bounced) AS bounced,
-      COUNT(*) FILTER (WHERE flags.is_unsubscribed AND NOT flags.is_bounced) AS unsubscribed,
-      COUNT(*) FILTER (WHERE flags.is_complained AND NOT flags.is_bounced AND NOT flags.is_unsubscribed) AS complained
+      COUNT(*) FILTER (WHERE flags.is_complained AND NOT flags.is_bounced) AS complained,
+      COUNT(*) FILTER (WHERE flags.is_unsubscribed AND NOT flags.is_bounced AND NOT flags.is_complained) AS unsubscribed
     FROM (
       SELECT
         BOOL_OR(c."isBounced") AS is_bounced,
