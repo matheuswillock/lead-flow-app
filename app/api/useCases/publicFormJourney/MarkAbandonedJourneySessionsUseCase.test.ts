@@ -42,12 +42,12 @@ describe("MarkAbandonedJourneySessionsUseCase", () => {
   it("reivindica com a janela de 30 minutos de inatividade", async () => {
     const useCase = new MarkAbandonedJourneySessionsUseCase(repository, publishAbandonment)
 
-    const before = Date.now()
     await useCase.execute(50)
+    const after = Date.now()
 
     const call = claimAbandonedJourneySessions.mock.calls[0][0]
     expect(call.limit).toBe(50)
-    const idleMs = before - call.idleBefore.getTime()
+    const idleMs = after - call.idleBefore.getTime()
     expect(idleMs).toBeGreaterThanOrEqual(30 * 60_000)
     expect(idleMs).toBeLessThan(30 * 60_000 + 5_000)
   })
