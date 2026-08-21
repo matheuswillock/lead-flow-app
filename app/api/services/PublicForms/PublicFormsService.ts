@@ -428,6 +428,13 @@ export class PublicFormsService implements IPublicFormsService {
           : null
         : null
 
+    const trustedAnswerValue =
+      typeof input.answerValue === "string" && input.answerValue.trim() ? input.answerValue : null
+    if (input.eventType === "question_answered" && !trustedAnswerValue) {
+      return true
+    }
+    const trustedMappingKey = matchedQuestion?.mappingKey ?? null
+
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
     let leadId: string | null = null
 
@@ -485,8 +492,8 @@ export class PublicFormsService implements IPublicFormsService {
         questionId: input.questionId,
         leadId,
         origin,
-        answerMappingKey: input.answerMappingKey ?? null,
-        answerValue: input.answerValue ?? null,
+        answerMappingKey: trustedMappingKey,
+        answerValue: trustedAnswerValue,
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)

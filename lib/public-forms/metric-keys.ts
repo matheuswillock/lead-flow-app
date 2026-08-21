@@ -16,3 +16,11 @@ export function buildPublicFormMetricEventKey(
 ): string {
   return `${visitorSessionId}:${eventType}`
 }
+
+/** Funil e Radar usam a mesma chave: `{session}:question_answered:{questionId}`. */
+export function buildPublicFormQuestionAnsweredEventKey(
+  visitorSessionId: string,
+  questionId: string,
+): string {
+  return `${visitorSessionId}:question_answered:${questionId}`
+}

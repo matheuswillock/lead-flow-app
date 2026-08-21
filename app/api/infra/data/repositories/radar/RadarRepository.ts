@@ -32,6 +32,7 @@ import {
 } from "@/lib/queues/radar-engagement-score-updates"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
+import { normalizeRadarName } from "@/lib/radar/normalization"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
@@ -1539,16 +1540,26 @@ export class RadarRepository {
   async tryInsertLeadIdentityIfAbsent(
     scope: RadarTeamScope,
     profileId: string,
-    leadId: string
+    leadId: string,
+    source = "manual_promote",
+  ): Promise<boolean> {
+    return this.tryClaimLeadIdentity(scope.teamId, profileId, leadId, source)
+  }
+
+  async tryClaimLeadIdentity(
+    teamId: string,
+    profileId: string,
+    leadId: string,
+    source: string,
   ): Promise<boolean> {
     return this.db.$transaction(async (tx) => {
-      const lockKey = `${scope.teamId}:promote-lead:${profileId}`
+      const lockKey = `${teamId}:promote-lead:${profileId}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
       const existing = await tx.radarIdentity.findFirst({
         where: {
           profileId,
-          teamId: scope.teamId,
+          teamId,
           type: "lead_id",
         },
         select: { id: true },
@@ -1559,11 +1570,11 @@ export class RadarRepository {
         await tx.radarIdentity.create({
           data: {
             profileId,
-            teamId: scope.teamId,
+            teamId,
             type: "lead_id",
             value: leadId,
             normalizedValue: leadId,
-            source: "manual_promote",
+            source,
             isPrimary: false,
           },
         })
@@ -1577,6 +1588,39 @@ export class RadarRepository {
         }
         throw error
       }
+    })
+  }
+
+  async findProfileForFormLeadGate(teamId: string, profileId: string) {
+    return this.db.radarProfile.findFirst({
+      where: { id: profileId, teamId },
+      select: {
+        id: true,
+        displayName: true,
+        displayPhone: true,
+        normalizedPhone: true,
+        primaryEmail: true,
+        normalizedPrimaryEmail: true,
+        identities: {
+          where: { type: { in: ["lead_id", "email"] } },
+          select: {
+            type: true,
+            value: true,
+            normalizedValue: true,
+          },
+        },
+      },
+    })
+  }
+
+  async applyFormAnswerDisplayName(profileId: string, teamId: string, displayName: string) {
+    const trimmed = displayName.trim()
+    if (!trimmed || trimmed === "Visitante Anônimo") return
+    const normalizedName = normalizeRadarName(trimmed)
+    if (!normalizedName) return
+    await this.db.radarProfile.updateMany({
+      where: { id: profileId, teamId },
+      data: { displayName: trimmed, normalizedName },
     })
   }
 

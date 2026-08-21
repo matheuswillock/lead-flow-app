@@ -5,6 +5,7 @@ import {
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
   hasCrmGateAC,
+  overlayRadarIdentityOnExtracted,
   isBrazilianContactPhone,
   isBrazilianLandlinePhone,
   isBrazilianMobilePhone,
@@ -170,5 +171,34 @@ describe("lead identity from public forms", () => {
       { questionId: phoneId, value: "(11) 98888-7777" },
     ])
     expect(canCreateLeadFromExtracted(companyName)).toBe(false)
+  })
+
+  it("overlay do perfil Radar preenche nome e fecha A+C com telefone do form", () => {
+    const extracted = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: phoneId, value: "(11) 98888-7777" },
+    ])
+    expect(hasCrmGateAC(extracted)).toBe(false)
+    const unified = overlayRadarIdentityOnExtracted(extracted, {
+      displayName: "Maria Silva",
+      primaryEmail: null,
+      displayPhone: null,
+      normalizedPhone: null,
+    })
+    expect(unified.name).toBe("Maria Silva")
+    expect(hasCrmGateAC(unified)).toBe(true)
+  })
+
+  it("overlay ignora Visitante Anônimo e converte telefone Radar 55… para dígitos do lead", () => {
+    const extracted = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Maria Silva" },
+    ])
+    const unified = overlayRadarIdentityOnExtracted(extracted, {
+      displayName: "Visitante Anônimo",
+      normalizedPhone: "5511988887777",
+      displayPhone: "+55 11 98888-7777",
+    })
+    expect(unified.name).toBe("Maria Silva")
+    expect(unified.normalizedPhone).toBe("11988887777")
+    expect(hasCrmGateAC(unified)).toBe(true)
   })
 })

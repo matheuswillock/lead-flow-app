@@ -156,6 +156,7 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
       eventKey: "session_abcdefghij:question_answered:q1",
       questionId: QUESTION_ID,
       origin: {},
+      answerValue: "R$ 1.000",
     }
 
     const accepted = await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })

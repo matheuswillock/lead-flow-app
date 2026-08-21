@@ -102,6 +102,9 @@ mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
   canUpdateLeadFromExtracted: () => false,
   extractLeadDataFromSnapshot: () => ({}),
   hasCrmGateAC: () => false,
+  isBlankPublicFormAnswerValue: (value: unknown) =>
+    value === undefined || value === null || (typeof value === "string" && value.trim() === ""),
+  publicFormAnswerValueText: (value: unknown) => (typeof value === "string" && value.trim() ? value : null),
   findMatchingLead: mock(async () => null),
   upsertLeadFromFormAnswers: mock(async () => null),
 }))

@@ -181,3 +181,66 @@ export const hasCrmGateAC = canCreateLeadFromExtracted
 export function canUpdateLeadFromExtracted(data: ExtractedLeadData): boolean {
   return Boolean(data.email || data.normalizedPhone)
 }
+
+const ANONYMOUS_RADAR_DISPLAY_NAME = "Visitante Anônimo"
+
+export type RadarIdentityOverlay = {
+  displayName?: string | null
+  primaryEmail?: string | null
+  displayPhone?: string | null
+  normalizedPhone?: string | null
+}
+
+function usableRadarDisplayName(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? ""
+  if (!trimmed || trimmed === ANONYMOUS_RADAR_DISPLAY_NAME) return ""
+  return trimmed
+}
+
+/** Completa name/email/phone do form com o perfil Radar já unificado. */
+export function overlayRadarIdentityOnExtracted(
+  extracted: ExtractedLeadData,
+  overlay: RadarIdentityOverlay | null | undefined,
+): ExtractedLeadData {
+  if (!overlay) return extracted
+
+  const name = extracted.name || usableRadarDisplayName(overlay.displayName)
+  const email = extracted.email || (overlay.primaryEmail?.trim().toLowerCase() ?? "")
+  let phone = extracted.phone
+  let normalizedPhone = extracted.normalizedPhone
+  if (!normalizedPhone) {
+    const overlayDigits = normalizeLeadPhoneDigits(
+      overlay.normalizedPhone || overlay.displayPhone || "",
+    )
+    if (overlayDigits) {
+      phone = overlay.displayPhone?.trim() || extracted.phone
+      normalizedPhone = overlayDigits
+    }
+  }
+
+  return {
+    ...extracted,
+    name,
+    email,
+    phone,
+    normalizedPhone,
+    native: {
+      ...extracted.native,
+      ...(name && !extracted.native.name ? { name } : {}),
+      ...(email && !extracted.native.email ? { email } : {}),
+      ...(phone && !extracted.native.phone ? { phone } : {}),
+    },
+  }
+}
+
+export function isBlankPublicFormAnswerValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value === "string") return value.trim() === ""
+  return false
+}
+
+export function publicFormAnswerValueText(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed ? value : null
+}

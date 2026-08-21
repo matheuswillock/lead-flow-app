@@ -244,6 +244,11 @@ export interface IPublicFormsRepository {
     formId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  attachLeadIdToSessionSubmission(
+    formId: string,
+    visitorSessionId: string,
+    leadId: string,
+  ): Promise<PublicFormSubmission | null>
   findAvailabilityTeamContext(formId: string): Promise<{
     teamId: string
     team: { master: { timezone: string | null } }

@@ -52,6 +52,14 @@ const syncLeadExecute = mock(async (_input: { leadId: string; teamId: string }) 
   isValid: true,
 }))
 
+const applyFormAnswerDisplayName = mock(async () => {})
+const gateExecute = mock(
+  async (): Promise<{ isValid: boolean; result: Record<string, unknown> }> => ({
+    isValid: true,
+    result: { skipped: "gate_open" },
+  }),
+)
+
 mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
   radarRepository: {
     findProfileByIdentity,
@@ -60,12 +68,19 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     resolveProfileForPhone,
     mergeProfiles,
     appendEventIfNewBySourceKey,
+    applyFormAnswerDisplayName,
   },
 }))
 
 mock.module("@/app/api/useCases/radar/SyncLeadToRadarUseCase", () => ({
   syncLeadToRadarUseCase: {
     execute: syncLeadExecute,
+  },
+}))
+
+mock.module("@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase", () => ({
+  createCrmLeadFromRadarFormGateUseCase: {
+    execute: gateExecute,
   },
 }))
 
@@ -118,6 +133,8 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     mergeProfiles.mockReset()
     appendEventIfNewBySourceKey.mockReset()
     syncLeadExecute.mockReset()
+    applyFormAnswerDisplayName.mockReset()
+    gateExecute.mockReset()
 
     findProfileByIdentity.mockImplementation(async () => null)
     resolveProfileForVisitorSession.mockImplementation(async () => ({
@@ -135,6 +152,8 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     mergeProfiles.mockImplementation(async () => {})
     appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
     syncLeadExecute.mockImplementation(async () => ({ isValid: true }))
+    applyFormAnswerDisplayName.mockImplementation(async () => {})
+    gateExecute.mockImplementation(async () => ({ isValid: true, result: { skipped: "gate_open" } }))
   })
 
   it.each([
@@ -417,5 +436,36 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     expect(resolveProfileForEmail).not.toHaveBeenCalled()
     expect(mergeProfiles).not.toHaveBeenCalled()
     expect(resolveProfileForVisitorSession).toHaveBeenCalledTimes(1)
+  })
+
+  it("question_answered com answerValue dispara o gate A+C do Radar e aplica nome no perfil", async () => {
+    gateExecute.mockImplementation(async () => ({
+      isValid: true,
+      result: { leadId: "lead-from-gate", created: true },
+    }))
+
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "question_answered",
+      eventKey: "vs-abc:question_answered:q-name",
+      questionId: "q-name",
+      answerMappingKey: "name",
+      answerValue: "Maria Silva",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(applyFormAnswerDisplayName).toHaveBeenCalledWith(
+      "anon-profile-1",
+      "team-1",
+      "Maria Silva",
+    )
+    expect(gateExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profileId: "anon-profile-1",
+        questionId: "q-name",
+        answerValue: "Maria Silva",
+      }),
+    )
+    expect(output.result).toMatchObject({ leadId: "lead-from-gate" })
   })
 })

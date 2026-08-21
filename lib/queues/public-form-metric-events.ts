@@ -49,7 +49,7 @@ export type PublicFormMetricQueuePayload = {
   questionId: string | null;
   visitorSessionId: string;
   origin: Record<string, unknown>;
-  /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue` — nunca vem do cliente. */
+  /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue`. mappingKey só no servidor. */
   answerMappingKey: string | null;
   answerValue: string | null;
   receivedAt: string;

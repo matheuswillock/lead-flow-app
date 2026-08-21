@@ -12,9 +12,11 @@ import {
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
   hasCrmGateAC,
-  upsertLeadFromFormAnswers,
+  isBlankPublicFormAnswerValue,
+  publicFormAnswerValueText,
 } from "./publicFormLeadSync"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
+import { buildPublicFormQuestionAnsweredEventKey } from "@/lib/public-forms/metric-keys"
 import {
   buildPublicFormMetricQueuePayload,
   publishServerPublicFormMetricEvent,
@@ -68,24 +70,7 @@ export class PublicFormProgressUseCase {
 
     const requestKey = `progress:${input.visitorSessionId}:${publicationId}`
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
-
-    let leadId: string | null = resolved.sessionSubmission?.leadId ?? null
-    try {
-      const upserted = await upsertLeadFromFormAnswers({
-        form,
-        snapshot,
-        answers: visibleAnswers,
-        visibleIds: visible,
-        publicationId,
-        origin: origin as Record<string, unknown>,
-        allowCreate: !leadId,
-      })
-      leadId = upserted?.lead.id ?? leadId
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao sincronizar lead"
-      console.error("[PublicFormProgressUseCase][execute]", message)
-    }
-
+    const leadId: string | null = resolved.sessionSubmission?.leadId ?? null
     const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers)
 
     const submission = await publicFormsRepository.upsertProgressSubmission({
@@ -100,16 +85,13 @@ export class PublicFormProgressUseCase {
     })
 
     for (const answer of incomingAnswers) {
-      const rawValue = answer.value
-      // D1: não consumir a idempotencyKey da fila com payload vazio — o
-      // primeiro blur frequentemente vem com string vazia/stale (autofill
-      // ainda não sincronizado, campo tocado e abandonado), o que marcaria
-      // `visitorSessionId:progress:questionId` como já entregue e faria a
-      // Vercel Queue descartar o blur seguinte com e-mail/telefone real,
-      // impedindo o D2 (reconciliação Radar) de rodar com valor útil.
-      const isEmptyStringValue = typeof rawValue === "string" && rawValue.trim() === ""
-      const eventKey = `${input.visitorSessionId}:progress:${answer.questionId}`
+      if (isBlankPublicFormAnswerValue(answer.value)) continue
       const question = snapshot.questions.find((item) => item.id === answer.questionId)
+      const eventKey = buildPublicFormQuestionAnsweredEventKey(
+        input.visitorSessionId,
+        answer.questionId,
+      )
+      const answerValue = publicFormAnswerValueText(answer.value)
       await publicFormsRepository.upsertMetricEvent({
         formId: snapshot.formId,
         publicationId,
@@ -118,28 +100,20 @@ export class PublicFormProgressUseCase {
         visitorSessionId: input.visitorSessionId,
         eventType: "question_answered",
         eventKey,
-        origin: {
-          ...(origin as Record<string, unknown>),
-          answerValue: answer.value,
-        } as Prisma.InputJsonValue,
+        origin: origin as Prisma.InputJsonValue,
       })
-      if (!isEmptyStringValue) {
-        await publishServerPublicFormMetricEvent(
-          buildPublicFormMetricQueuePayload(form.publicId, {
-            visitorSessionId: input.visitorSessionId,
-            eventType: "question_answered",
-            questionId: answer.questionId,
-            eventKey,
-            origin: origin as Record<string, unknown>,
-            answerMappingKey: question?.mappingKey ?? null,
-            answerValue: typeof rawValue === "string" ? rawValue : null,
-          }),
-          "PublicFormProgressUseCase",
-        )
-      }
-      // Log visível no Vercel de todo campo recebido via onBlur/progress —
-      // inclui o valor do campo (decisão do produto: útil pra debug de
-      // captação, ciente de que expande PII pros logs em relação ao banco).
+      await publishServerPublicFormMetricEvent(
+        buildPublicFormMetricQueuePayload(form.publicId, {
+          visitorSessionId: input.visitorSessionId,
+          eventType: "question_answered",
+          questionId: answer.questionId,
+          eventKey,
+          origin: origin as Record<string, unknown>,
+          answerMappingKey: question?.mappingKey ?? null,
+          answerValue,
+        }),
+        "PublicFormProgressUseCase",
+      )
       console.info("[PublicFormProgressUseCase][execute] campo recebido", {
         publicId: form.publicId,
         visitorSessionId: input.visitorSessionId,

@@ -595,6 +595,23 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async attachLeadIdToSessionSubmission(
+    formId: string,
+    visitorSessionId: string,
+    leadId: string,
+  ) {
+    const session = await this.findLatestSessionSubmissionOnForm(formId, visitorSessionId)
+    if (!session) return null
+    if (session.leadId) return session
+    return prisma.publicFormSubmission.update({
+      where: { id: session.id },
+      data: {
+        leadId,
+        ...(session.completionStatus === "complete" ? {} : { completionStatus: "partial" }),
+      },
+    })
+  }
+
   findAvailabilityTeamContext(formId: string) {
     return prisma.publicForm.findUnique({
       where: { id: formId },

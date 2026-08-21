@@ -43,6 +43,7 @@ import type {
   PublicFormThemeColors,
 } from "@/lib/public-forms/types"
 import {
+  buildPublicFormQuestionAnsweredEventKey,
   buildPublicFormSubmitRequestKey,
 } from "@/lib/public-forms/metric-keys"
 import { cn } from "@/lib/utils"
@@ -239,14 +240,25 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   }, [preview, publicId, snapshot.questions])
 
   const track = useCallback(
-    (eventType: PublicFormMetricEventInput["eventType"], questionId?: string) => {
+    (
+      eventType: PublicFormMetricEventInput["eventType"],
+      questionId?: string,
+      answerValue?: unknown,
+    ) => {
       if (preview || !publicId || !session) return
+      const stringValue = typeof answerValue === "string" ? answerValue : undefined
+      if (eventType === "question_answered" && (!stringValue || !stringValue.trim())) return
       const body = JSON.stringify({
         visitorSessionId: session,
         eventType,
         questionId,
-        eventKey: `${session}:${eventType}:${questionId ?? "form"}`,
+        eventKey: questionId
+          ? eventType === "question_answered"
+            ? buildPublicFormQuestionAnsweredEventKey(session, questionId)
+            : `${session}:${eventType}:${questionId}`
+          : `${session}:${eventType}:form`,
         origin: getOrigin(),
+        ...(stringValue ? { answerValue: stringValue } : {}),
       })
       const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
       if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) {
@@ -334,8 +346,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
           origin: getOrigin(),
         }),
         keepalive: true,
+      }).finally(() => {
+        track("question_answered", questionId, value)
       })
-      track("question_answered", questionId)
       const question = snapshot.questions.find((item) => item.id === questionId)
       if (question && isLeadNameQuestion(question)) {
         setError(validateAnswer(question, value))
@@ -360,13 +373,13 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       }
     }
     setError(null)
-    for (const item of pageQuestions) {
-      track("question_answered", item.id)
-    }
     try {
       await saveProgress()
     } catch (error) {
       console.error("[PublicFormRenderer][goNext] Falha ao salvar progresso", error)
+    }
+    for (const item of pageQuestions) {
+      track("question_answered", item.id, answers[item.id])
     }
     if (shouldGoToThankYou(snapshot, answerList)) {
       await submit()

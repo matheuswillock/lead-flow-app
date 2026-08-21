@@ -105,6 +105,7 @@ const listSubmissionAnswers = mock(async () => [] as Array<{ questionId: string;
 const upsertProgressSubmission = mock(async () => ({ id: "sub-progress" }))
 const upsertMetricEvent = mock(async () => {})
 const upsertLeadFromFormAnswers = mock(async () => null as { lead: { id: string } } | null)
+const publishServerPublicFormMetricEvent = mock(async () => {})
 
 mock.module("@/app/api/services/PublicForms/PublicFormsService", () => ({
   publicFormsService: { getPublic },
@@ -125,17 +126,23 @@ mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
   hasCrmGateAC,
+  isBlankPublicFormAnswerValue: (value: unknown) =>
+    value === undefined || value === null || (typeof value === "string" && value.trim() === ""),
+  publicFormAnswerValueText: (value: unknown) => (typeof value === "string" && value.trim() ? value : null),
   findMatchingLead: mock(async () => null),
   upsertLeadFromFormAnswers,
 }))
 mock.module("@/lib/queues/public-form-metric-events", () => ({
-  buildPublicFormMetricQueuePayload: mock(() => ({})),
-  publishServerPublicFormMetricEvent: mock(async () => {}),
+  buildPublicFormMetricQueuePayload: (
+    publicId: string,
+    input: Record<string, unknown>,
+  ) => ({ publicId, ...input }),
+  publishServerPublicFormMetricEvent,
 }))
 
 const { PublicFormProgressUseCase } = await import("./PublicFormProgressUseCase")
 
-describe("PublicFormProgressUseCase CRM A+C", () => {
+describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
   const useCase = new PublicFormProgressUseCase()
 
   beforeEach(() => {
@@ -144,6 +151,8 @@ describe("PublicFormProgressUseCase CRM A+C", () => {
     listSubmissionAnswers.mockClear()
     upsertLeadFromFormAnswers.mockClear()
     upsertProgressSubmission.mockClear()
+    upsertMetricEvent.mockClear()
+    publishServerPublicFormMetricEvent.mockClear()
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
     findPublicationById.mockResolvedValue(null)
     listSubmissionAnswers.mockResolvedValue([])
@@ -151,7 +160,7 @@ describe("PublicFormProgressUseCase CRM A+C", () => {
     upsertProgressSubmission.mockResolvedValue({ id: "sub-progress" })
   })
 
-  it("cria lead no time do form com allowCreate mesmo em origem de campanha cs_el", async () => {
+  it("não cria lead CRM — só encaminha question_answered com answerValue", async () => {
     const output = await useCase.execute(PUBLIC_ID, {
       visitorSessionId: "session-campaign",
       answers: [
@@ -162,39 +171,29 @@ describe("PublicFormProgressUseCase CRM A+C", () => {
     })
 
     expect(output.isValid).toBe(true)
-    expect(upsertLeadFromFormAnswers).toHaveBeenCalledTimes(1)
-    expect(upsertLeadFromFormAnswers).toHaveBeenCalledWith(
-      expect.objectContaining({ allowCreate: true }),
+    expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(2)
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKey: `session-campaign:question_answered:${NAME_ID}`,
+        answerValue: "Maria Silva",
+        answerMappingKey: "name",
+      }),
+      "PublicFormProgressUseCase",
     )
   })
 
-  it("não cria de novo quando a sessão já tem leadId", async () => {
-    findLatestSessionSubmissionOnForm.mockResolvedValue({
-      id: "sub-session",
-      publicationId: PUBLICATION_ID,
-      status: "processing",
-      leadId: "lead-existing",
-    })
-    findPublicationById.mockResolvedValue({
-      publicationId: PUBLICATION_ID,
-      snapshot,
-    })
-
+  it("não republica question_answered vazio (first-write não consome a chave)", async () => {
     await useCase.execute(PUBLIC_ID, {
-      visitorSessionId: "session-existing",
-      answers: [
-        { questionId: NAME_ID, value: "Maria Silva" },
-        { questionId: PHONE_ID, value: "(11) 98888-7777" },
-      ],
-      origin: { emailLogId: CAMPAIGN_EMAIL_LOG_ID },
+      visitorSessionId: "session-empty",
+      answers: [{ questionId: NAME_ID, value: "  " }],
     })
 
-    expect(upsertLeadFromFormAnswers).toHaveBeenCalledWith(
-      expect.objectContaining({ allowCreate: false }),
-    )
+    expect(upsertMetricEvent).not.toHaveBeenCalled()
+    expect(publishServerPublicFormMetricEvent).not.toHaveBeenCalled()
   })
 
-  it("avalia A+C com respostas acumuladas da sessão no blur de uma pergunta", async () => {
+  it("publica o blur de uma pergunta com a chave unificada mesmo com respostas acumuladas", async () => {
     findLatestSessionSubmissionOnForm.mockResolvedValue({
       id: "sub-session",
       publicationId: PUBLICATION_ID,
@@ -212,14 +211,15 @@ describe("PublicFormProgressUseCase CRM A+C", () => {
       answers: [{ questionId: PHONE_ID, value: "(11) 98888-7777" }],
     })
 
-    expect(upsertLeadFromFormAnswers).toHaveBeenCalledWith(
+    expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(1)
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        allowCreate: true,
-        answers: [
-          { questionId: NAME_ID, value: "Maria Silva" },
-          { questionId: PHONE_ID, value: "(11) 98888-7777" },
-        ],
+        eventKey: `session-blur:question_answered:${PHONE_ID}`,
+        answerValue: "(11) 98888-7777",
+        answerMappingKey: "phone",
       }),
+      "PublicFormProgressUseCase",
     )
   })
 })

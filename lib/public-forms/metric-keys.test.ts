@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   buildPublicFormMetricEventKey,
+  buildPublicFormQuestionAnsweredEventKey,
   buildPublicFormSubmitRequestKey,
 } from "@/lib/public-forms/metric-keys"
 
@@ -21,6 +22,12 @@ describe("public form metric keys", () => {
     )
     expect(buildPublicFormMetricEventKey("session-a", "form_completed")).toBe(
       buildPublicFormMetricEventKey("session-a", "form_completed"),
+    )
+  })
+
+  it("gera eventKey unificado de question_answered (funil = Radar)", () => {
+    expect(buildPublicFormQuestionAnsweredEventKey("session-a", "qid-1")).toBe(
+      "session-a:question_answered:qid-1",
     )
   })
 })
