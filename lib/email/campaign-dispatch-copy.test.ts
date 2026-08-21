@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import {
+  CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
+  CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
   CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE,
+  EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE,
   campaignDispatchSendOptions,
   formatCampaignDispatchErrorMessage,
   isCampaignFailedRetry,
@@ -115,5 +118,13 @@ describe("copy de disparo — ramo zero enviados", () => {
       : 'Abra a campanha e use "Disparar" nas partes'
     expect(parentTooltip).toContain("Disparar")
     expect(parentTooltip).not.toContain("Reenviar apenas falhas")
+  })
+})
+
+describe("copy de cancelar envio", () => {
+  it("deixa explícito que não enviados não saem e o Resend aceito permanece", () => {
+    expect(CAMPAIGN_CANCEL_SENDING_UNSENT_COPY).toContain("não serão disparados")
+    expect(CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY).toContain("Resend")
+    expect(EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE).toBe("Cancelado pelo usuário")
   })
 })

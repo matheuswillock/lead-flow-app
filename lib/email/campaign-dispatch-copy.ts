@@ -8,6 +8,15 @@
 export const CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE =
   "Ocorreu um erro ao disparar a campanha"
 
+/** Persistido em `EmailCampaignDispatch.errorMessage` quando o usuário cancela o envio. */
+export const EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE = "Cancelado pelo usuário"
+
+export const CAMPAIGN_CANCEL_SENDING_UNSENT_COPY =
+  "Destinatários que ainda não foram enviados não serão disparados."
+
+export const CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY =
+  "O que o Resend já aceitou permanece enviado."
+
 /** Constante INTERNAL antiga persistida em campanhas já falhas. */
 const LEGACY_INTERNAL_ERROR_MESSAGE = "Erro interno durante o disparo"
 
