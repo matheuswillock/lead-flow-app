@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, Eye, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -440,7 +440,7 @@ export function CampaignList({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table className="min-w-[1180px]">
           <TableHeader>
             <TableRow>
@@ -536,32 +536,23 @@ export function CampaignList({
                         : "—"}
                     </TableCell>
                     <TableCell className="align-middle text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {isSending ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
-                            <Loader2 className="size-3.5 animate-spin" />
-                            Enviando...
-                          </span>
-                        ) : (
-                          <CampaignActionsMenu
-                            campaign={campaign}
-                            canSendCampaign={canSendCampaign}
-                            sendBlockReason={getSendBlockReason(campaign)}
-                            deletingId={deletingId}
-                            cancelingId={cancelingId}
-                            archivingId={archivingId}
-                            readOnly={readOnly}
-                            openView={openView}
-                            openEditWizard={openEditWizard}
-                            openDuplicateWizard={openDuplicateWizard}
-                            handleSend={handleSend}
-                            handleCancel={handleCancel}
-                            handleDeleteDraft={handleDeleteDraft}
-                            handleArchive={handleArchive}
-                            onOpenAnalytics={onOpenAnalytics}
-                          />
-                        )}
-                      </div>
+                      <CampaignActionsMenu
+                        campaign={campaign}
+                        canSendCampaign={canSendCampaign}
+                        sendBlockReason={getSendBlockReason(campaign)}
+                        deletingId={deletingId}
+                        cancelingId={cancelingId}
+                        archivingId={archivingId}
+                        readOnly={readOnly}
+                        openView={openView}
+                        openEditWizard={openEditWizard}
+                        openDuplicateWizard={openDuplicateWizard}
+                        handleSend={handleSend}
+                        handleCancel={handleCancel}
+                        handleDeleteDraft={handleDeleteDraft}
+                        handleArchive={handleArchive}
+                        onOpenAnalytics={onOpenAnalytics}
+                      />
                     </TableCell>
                   </TableRow>
                 )

@@ -113,12 +113,15 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     })
 
     try {
+      await page.setViewportSize({ width: 1440, height: 900 })
       await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
         waitUntil: "domcontentloaded",
       })
-      const campaignRow = page.getByRole("row", { name: /E2E Cancelar Envio/ })
+      const campaignRow = page.getByRole("row").filter({ hasText: "E2E Cancelar Envio" })
       await expect(campaignRow).toBeVisible({ timeout: 30_000 })
-      await campaignRow.getByRole("button", { name: "Abrir menu" }).click()
+      const menuButton = campaignRow.getByRole("button", { name: "Abrir menu" })
+      await menuButton.scrollIntoViewIfNeeded()
+      await menuButton.click()
       await page.getByRole("menuitem", { name: "Cancelar envio" }).click()
       await expect(page.getByRole("alertdialog")).toBeVisible()
       await expect(page.getByText(CAMPAIGN_CANCEL_SENDING_UNSENT_COPY)).toBeVisible()
