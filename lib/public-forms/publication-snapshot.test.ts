@@ -43,6 +43,15 @@ describe("publication-snapshot", () => {
     expect(mapped[0]?.questionSnapshot).toEqual(SNAPSHOT.questions[0])
   })
 
+  it("persiste pelo snapshot publicado, não pela tabela viva do editor", () => {
+    const mapped = mapAnswersForPersistence(SNAPSHOT as never, [
+      { questionId: "q-2", value: "ana@ex.com" },
+    ])
+    expect(mapped).toHaveLength(1)
+    expect(mapped[0]?.questionId).toBe("q-2")
+    expect(mapped[0]?.questionSnapshot).toEqual(SNAPSHOT.questions[1])
+  })
+
   it("extrai o id da pergunta a partir do snapshot", () => {
     expect(questionIdFromSnapshot({ id: "q-1", title: "Nome" })).toBe("q-1")
     expect(questionIdFromSnapshot({ title: "sem id" })).toBeNull()

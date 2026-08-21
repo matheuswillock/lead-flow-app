@@ -5684,6 +5684,7 @@ model PublicFormQuestion {
   mappingKey    String?                  @db.Text
   createdAt     DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime                 @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime?                @db.Timestamptz(6)
   form          PublicForm               @relation(fields: [formId], references: [id], onDelete: Cascade)
   options       PublicFormOption[]
   sourceRules   PublicFormRule[]         @relation("PublicFormRuleSource")
@@ -5693,6 +5694,7 @@ model PublicFormQuestion {
 
   @@unique([formId, position])
   @@index([formId, position])
+  @@index([formId, deletedAt], map: "corretor_studio_public_form_questions_formId_deletedAt_idx")
   @@map("corretor_studio_public_form_questions")
 }
 
