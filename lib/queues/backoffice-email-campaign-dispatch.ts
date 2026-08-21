@@ -13,6 +13,17 @@ export const BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC = "backoffice-email-campai
 /** Retenção máxima documentada pela Vercel Queues (7 dias). */
 export const BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS = 60 * 60 * 24 * 7
 
+/**
+ * Janela de bucket para as chaves `cron-start`/`cron-reclaim` — alinhada à
+ * cadência do cron `/api/v1/backoffice/cron/dispatch-email-campaigns`
+ * (a cada 15 min, ver vercel.json). Sem isso, `dispatchId:cron-reclaim` é uma
+ * chave constante: dentro da janela de dedupe da Vercel Queue
+ * (`min(retenção, 24h)` = 24h), só a primeira publicação do dia é entregue —
+ * se ela se perder, o cron fica incapaz de acordar o dispatch travado por
+ * até 24h mesmo rodando a cada 15 min.
+ */
+export const BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_WAKE_RECOVERY_BUCKET_MS = 15 * 60 * 1000
+
 const queue = new QueueClient({ region: "gru1" })
 
 export type BackofficeEmailCampaignDispatchWakePayload = {
@@ -21,29 +32,51 @@ export type BackofficeEmailCampaignDispatchWakePayload = {
   reason: "start" | "cron-start" | "cron-reclaim" | "continue"
 }
 
+function resolveBackofficeEmailCampaignDispatchWakeBucket(now: Date = new Date()): number {
+  return Math.floor(now.getTime() / BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_WAKE_RECOVERY_BUCKET_MS)
+}
+
 /**
- * Idempotência: `start`/`cron-start`/`cron-reclaim` usam a própria
- * `dispatchId` (uma única publicação "inicial" por gatilho). `continue`
- * (republish após lote parcial) usa `remainingCount` — retries do mesmo
- * estado (mesma quantidade restante) deduplicam; progresso real gera uma
- * chave nova.
+ * Idempotência:
+ * - `start` usa a própria `dispatchId` (protege contra duplo clique —
+ *   uma única publicação "inicial" por disparo manual).
+ * - `cron-start`/`cron-reclaim` usam `dispatchId:reason:wakeBucket` — o
+ *   bucket temporal garante uma chave nova a cada janela do cron (15 min),
+ *   em vez de uma chave constante que trava novas tentativas por 24h.
+ * - `continue` (republish após lote parcial) usa `batchOffset` — cursor de
+ *   progresso monotonicamente crescente. `remainingCount` é fallback só
+ *   para mensagens em trânsito publicadas antes desta mudança.
  */
 export function buildBackofficeEmailCampaignDispatchIdempotencyKey(
-  payload: BackofficeEmailCampaignDispatchWakePayload & { remainingCount?: number }
+  payload: BackofficeEmailCampaignDispatchWakePayload & {
+    remainingCount?: number
+    batchOffset?: number
+  },
+  options?: { now?: Date }
 ): string {
   if (payload.reason === "continue") {
-    return `${payload.dispatchId}:continue:${payload.remainingCount ?? 0}`
+    const discriminator =
+      payload.batchOffset != null ? payload.batchOffset : (payload.remainingCount ?? 0)
+    return `${payload.dispatchId}:continue:${discriminator}`
+  }
+  if (payload.reason === "cron-start" || payload.reason === "cron-reclaim") {
+    const bucket = resolveBackofficeEmailCampaignDispatchWakeBucket(options?.now)
+    return `${payload.dispatchId}:${payload.reason}:${bucket}`
   }
   return `${payload.dispatchId}:${payload.reason}`
 }
 
 export async function publishBackofficeEmailCampaignDispatchWake(
-  payload: BackofficeEmailCampaignDispatchWakePayload & { remainingCount?: number },
-  options?: { idempotencyKey?: string },
+  payload: BackofficeEmailCampaignDispatchWakePayload & {
+    remainingCount?: number
+    batchOffset?: number
+  },
+  options?: { idempotencyKey?: string; now?: Date },
 ): Promise<{ messageId: string | null }> {
   return queue.send(BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC, payload, {
     idempotencyKey:
-      options?.idempotencyKey ?? buildBackofficeEmailCampaignDispatchIdempotencyKey(payload),
+      options?.idempotencyKey ??
+      buildBackofficeEmailCampaignDispatchIdempotencyKey(payload, { now: options?.now }),
     retentionSeconds: BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS,
   })
 }
