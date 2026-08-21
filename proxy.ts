@@ -19,6 +19,7 @@ import {
   updateSession,
 } from "@/lib/supabase/auth-sessions"
 import { API_CLIENT_SLUG } from "@/lib/route-map"
+import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 
 /** Prefixo público das chamadas client-side: /api/q/... */
 const SLUG_PREFIX = `/api/${API_CLIENT_SLUG}/`
@@ -157,10 +158,13 @@ export async function proxy(request: NextRequest) {
     // DEPOIS do refresh de sessão e da injeção de x-supabase-user-id — o early
     // rewrite anterior pulava isso e quebrava getTeamAccess() nas rotas mascaradas.
     if (pathname.startsWith("/api")) {
+      const incomingHeader = request.headers.get("x-supabase-user-id")
       const requestHeaders = new Headers(request.headers)
       requestHeaders.delete("x-supabase-user-id")
       if (user) {
         requestHeaders.set("x-supabase-user-id", user.id)
+      } else if (isE2eTestMode() && incomingHeader) {
+        requestHeaders.set("x-supabase-user-id", incomingHeader)
       }
 
       if (isClientApiSlug) {
