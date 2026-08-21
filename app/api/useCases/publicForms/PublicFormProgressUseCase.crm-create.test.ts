@@ -107,6 +107,7 @@ const upsertMetricEvent = mock(async () => {})
 const upsertLeadFromFormAnswers = mock(async () => null as { lead: { id: string } } | null)
 const publishServerPublicFormMetricEvent = mock(async () => true)
 const recordMetric = mock(async () => true)
+const gateExecute = mock(async () => ({ isValid: true, result: { skipped: "gate_open" as const } }))
 
 mock.module("@/app/api/services/PublicForms/PublicFormsService", () => ({
   publicFormsService: { getPublic, recordMetric },
@@ -140,6 +141,9 @@ mock.module("@/lib/queues/public-form-metric-events", () => ({
   ) => ({ publicId, ...input }),
   publishServerPublicFormMetricEvent,
 }))
+mock.module("@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase", () => ({
+  createCrmLeadFromRadarFormGateUseCase: { execute: gateExecute },
+}))
 
 const { PublicFormProgressUseCase } = await import("./PublicFormProgressUseCase")
 
@@ -155,6 +159,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     upsertMetricEvent.mockClear()
     publishServerPublicFormMetricEvent.mockClear()
     recordMetric.mockClear()
+    gateExecute.mockClear()
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
     findPublicationById.mockResolvedValue(null)
     listSubmissionAnswers.mockResolvedValue([])
@@ -162,6 +167,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     upsertProgressSubmission.mockResolvedValue({ id: "sub-progress" })
     publishServerPublicFormMetricEvent.mockResolvedValue(true)
     recordMetric.mockResolvedValue(true)
+    gateExecute.mockResolvedValue({ isValid: true, result: { skipped: "gate_open" as const } })
   })
 
   it("não cria lead CRM — só encaminha question_answered com answerValue", async () => {
@@ -177,12 +183,21 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     expect(output.isValid).toBe(true)
     expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
     expect(recordMetric).not.toHaveBeenCalled()
+    expect(gateExecute).toHaveBeenCalledTimes(1)
+    expect(gateExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formId: FORM_ID,
+        visitorSessionId: "session-campaign",
+        publicationId: PUBLICATION_ID,
+      }),
+    )
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(2)
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventKey: `session-campaign:question_answered:${NAME_ID}`,
         answerValue: "Maria Silva",
         answerMappingKey: "name",
+        createCrmLead: false,
       }),
       "PublicFormProgressUseCase",
     )
@@ -196,6 +211,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
 
     expect(upsertMetricEvent).not.toHaveBeenCalled()
     expect(publishServerPublicFormMetricEvent).not.toHaveBeenCalled()
+    expect(gateExecute).not.toHaveBeenCalled()
   })
 
   it("publica o blur de uma pergunta com a chave unificada mesmo com respostas acumuladas", async () => {
@@ -227,6 +243,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
       "PublicFormProgressUseCase",
     )
     expect(recordMetric).not.toHaveBeenCalled()
+    expect(gateExecute).toHaveBeenCalledTimes(1)
   })
 
   it("fila indisponível: encaminha question_answered inline ao Radar sem criar CRM no Progress", async () => {
@@ -250,8 +267,32 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
         eventKey: `session-queue-down:question_answered:${PHONE_ID}`,
         answerValue: "(11) 98888-7777",
         answerMappingKey: "phone",
+        createCrmLead: false,
       }),
       { radarMode: "inline" },
+    )
+    expect(gateExecute).toHaveBeenCalledTimes(1)
+  })
+
+  it("reavalia A+C na correção mesmo com o mesmo eventKey (fila first-write)", async () => {
+    await useCase.execute(PUBLIC_ID, {
+      visitorSessionId: "session-revision",
+      answers: [{ questionId: PHONE_ID, value: "119" }],
+    })
+    await useCase.execute(PUBLIC_ID, {
+      visitorSessionId: "session-revision",
+      answers: [{ questionId: PHONE_ID, value: "(11) 98888-7777" }],
+    })
+
+    expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
+    expect(gateExecute).toHaveBeenCalledTimes(2)
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(2)
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKey: `session-revision:question_answered:${PHONE_ID}`,
+        createCrmLead: false,
+      }),
+      "PublicFormProgressUseCase",
     )
   })
 })

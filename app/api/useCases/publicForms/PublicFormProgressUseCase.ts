@@ -30,6 +30,10 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+function isLeadIdentityMappingKey(mappingKey: string | null | undefined): boolean {
+  return mappingKey === "name" || mappingKey === "email" || mappingKey === "phone"
+}
+
 /** Fila OIDC/CI costuma falhar; o consumer não roda. Radar fecha A+C neste isolate. */
 async function processQuestionAnsweredWhenQueueUnavailable(
   publicId: string,
@@ -39,6 +43,44 @@ async function processQuestionAnsweredWhenQueueUnavailable(
     await publicFormsService.recordMetric(publicId, input, { radarMode: "inline" })
   } catch (error) {
     console.error("[PublicFormProgressUseCase][radar-fallback]", error)
+  }
+}
+
+/**
+ * A+C não depende da entrega do `eventKey` (first-write na fila). Radar
+ * reavalia pelas respostas da sessão depois de persistir identidade.
+ */
+async function evaluateRadarCrmGateFromSession(input: {
+  teamId: string
+  formId: string
+  publicationId: string
+  visitorSessionId: string
+  origin: Record<string, unknown>
+}): Promise<string | null> {
+  try {
+    const { createCrmLeadFromRadarFormGateUseCase } = await import(
+      "@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase"
+    )
+    const gate = await createCrmLeadFromRadarFormGateUseCase.execute({
+      teamId: input.teamId,
+      formId: input.formId,
+      publicationId: input.publicationId,
+      visitorSessionId: input.visitorSessionId,
+      origin: input.origin,
+      profileId: null,
+    })
+    if (!gate.isValid) {
+      console.error("[PublicFormProgressUseCase][radar-gate]", gate.errorMessages)
+      return null
+    }
+    const leadId =
+      gate.result && typeof gate.result === "object" && "leadId" in gate.result
+        ? (gate.result as { leadId?: string | null }).leadId
+        : null
+    return leadId ?? null
+  } catch (error) {
+    console.error("[PublicFormProgressUseCase][radar-gate]", error)
+    return null
   }
 }
 
@@ -126,6 +168,7 @@ export class PublicFormProgressUseCase {
         origin: origin as Record<string, unknown>,
         answerMappingKey: question?.mappingKey ?? null,
         answerValue,
+        createCrmLead: false,
       }
       const queued = await publishServerPublicFormMetricEvent(
         buildPublicFormMetricQueuePayload(form.publicId, metricInput),
@@ -142,6 +185,28 @@ export class PublicFormProgressUseCase {
         mappingTarget: question?.mappingTarget ?? null,
         value: answer.value,
       })
+    }
+
+    const persistedIdentity = incomingAnswers.some((answer) => {
+      if (isBlankPublicFormAnswerValue(answer.value)) return false
+      const mappingKey = snapshot.questions.find((item) => item.id === answer.questionId)?.mappingKey
+      return isLeadIdentityMappingKey(mappingKey)
+    })
+    if (persistedIdentity) {
+      const gateLeadId = await evaluateRadarCrmGateFromSession({
+        teamId: form.teamId,
+        formId: snapshot.formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        origin: origin as Record<string, unknown>,
+      })
+      if (gateLeadId) {
+        return new Output(true, [], [], {
+          submissionId: submission.id,
+          completionStatus,
+          leadId: gateLeadId,
+        })
+      }
     }
 
     return new Output(
