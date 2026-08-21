@@ -99,6 +99,17 @@
           "topic": "email-campaign-dispatch",
           "retryAfterSeconds": 30,
           "initialDelaySeconds": 0,
+          "maxConcurrency": 4
+        }
+      ]
+    },
+    "app/api/queues/email-campaign-dispatch-overflow/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "email-campaign-dispatch-overflow",
+          "retryAfterSeconds": 30,
+          "initialDelaySeconds": 0,
           "maxConcurrency": 1
         }
       ]

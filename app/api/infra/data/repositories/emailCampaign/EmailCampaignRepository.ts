@@ -1,5 +1,9 @@
 import type { PrismaClient } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import {
+  isPgAdvisoryLockAcquired,
+  toDispatchAdvisoryLockKeys,
+} from "@/lib/email/dispatch-advisory-lock"
 
 export type CampaignForSegmentGeneration = {
   id: string
@@ -21,6 +25,12 @@ export type SendingDispatchForReconciliation = {
   reservedCredits: number
   hasCampaignsBetaAccess: boolean
   materializeSourceOffset: number
+  createdAt: Date
+}
+
+export type DispatchCampaignSendState = {
+  dispatchStatus: string
+  campaignStatus: string
 }
 
 export interface IEmailCampaignRepository {
@@ -38,6 +48,9 @@ export interface IEmailCampaignRepository {
   ): Promise<SendingDispatchForReconciliation | null>
   countQueuedEmailLogsForDispatch(dispatchId: string): Promise<number>
   countEmailLogsForDispatch(dispatchId: string): Promise<number>
+  findDispatchCampaignSendState(dispatchId: string): Promise<DispatchCampaignSendState | null>
+  tryAcquireDispatchProcessingLock(dispatchId: string): Promise<boolean>
+  releaseDispatchProcessingLock(dispatchId: string): Promise<void>
 }
 
 export class EmailCampaignRepository implements IEmailCampaignRepository {
@@ -52,7 +65,17 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
 
   async findStuckSendingCampaigns(threshold: Date): Promise<StuckSendingCampaign[]> {
     const campaigns = await this.db.emailCampaign.findMany({
-      where: { status: "sending", updatedAt: { lt: threshold } },
+      where: {
+        status: "sending",
+        OR: [
+          { dispatches: { none: {} }, updatedAt: { lt: threshold } },
+          {
+            dispatches: {
+              some: { status: "sending", createdAt: { lt: threshold } },
+            },
+          },
+        ],
+      },
       select: { id: true, name: true, _count: { select: { dispatches: true } } },
     })
     return campaigns.map((campaign) => ({
@@ -83,6 +106,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
         reservedCredits: true,
         hasCampaignsBetaAccess: true,
         materializeSourceOffset: true,
+        createdAt: true,
       },
       orderBy: { dispatchNumber: "desc" },
     })
@@ -94,6 +118,36 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
 
   async countEmailLogsForDispatch(dispatchId: string): Promise<number> {
     return this.db.emailLog.count({ where: { dispatchId } })
+  }
+
+  async findDispatchCampaignSendState(
+    dispatchId: string
+  ): Promise<DispatchCampaignSendState | null> {
+    const row = await this.db.emailCampaignDispatch.findFirst({
+      where: { id: dispatchId },
+      select: { status: true, campaign: { select: { status: true } } },
+    })
+    if (!row) return null
+    return { dispatchStatus: row.status, campaignStatus: row.campaign.status }
+  }
+
+  async tryAcquireDispatchProcessingLock(dispatchId: string): Promise<boolean> {
+    const [classid, objid] = toDispatchAdvisoryLockKeys(dispatchId)
+    const rows = await this.db.$queryRawUnsafe<Array<{ acquired: unknown }>>(
+      "SELECT pg_try_advisory_lock($1::integer, $2::integer) AS acquired",
+      classid,
+      objid
+    )
+    return isPgAdvisoryLockAcquired(rows[0]?.acquired)
+  }
+
+  async releaseDispatchProcessingLock(dispatchId: string): Promise<void> {
+    const [classid, objid] = toDispatchAdvisoryLockKeys(dispatchId)
+    await this.db.$queryRawUnsafe(
+      "SELECT pg_advisory_unlock($1::integer, $2::integer)",
+      classid,
+      objid
+    )
   }
 }
 

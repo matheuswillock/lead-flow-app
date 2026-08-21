@@ -48,6 +48,8 @@ import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 import {
+  CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
+  CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
   campaignDispatchSendOptions,
   isCampaignFailedRetry,
 } from "@/lib/email/campaign-dispatch-copy"
@@ -312,9 +314,9 @@ function CampaignActionsMenu({
             <AlertDialogDescription>
               {campaign.status === "sending" ? (
                 <>
-                  O envio da campanha <strong>"{campaign.name}"</strong> será interrompido
-                  imediatamente. E-mails que ainda não foram enviados serão cancelados. E-mails já
-                  enviados não serão afetados.
+                  O envio da campanha <strong>&quot;{campaign.name}&quot;</strong> será
+                  interrompido. {CAMPAIGN_CANCEL_SENDING_UNSENT_COPY}{" "}
+                  {CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY}
                 </>
               ) : (
                 <>
