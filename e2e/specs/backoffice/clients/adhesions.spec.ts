@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { injectE2eAuthCookie } from "../../fixtures/auth";
-import { getPrisma, disconnectPrisma, findE2eMasterProfile } from "../../support/db";
-import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
+import { injectE2eAuthCookie } from "../../../fixtures/auth";
+import { getPrisma, disconnectPrisma, findE2eMasterProfile } from "../../../support/db";
+import { E2E_MASTER_SUPABASE_ID } from "../../../support/e2e-ids";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PrismaAny = any;
