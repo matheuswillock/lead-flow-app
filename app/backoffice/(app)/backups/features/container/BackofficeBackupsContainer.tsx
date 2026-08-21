@@ -2,6 +2,7 @@
 
 import { Database, HardDriveDownload, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -163,7 +164,7 @@ export function BackofficeBackupsContainer() {
       toast.success("Download iniciado")
     } catch (err) {
       console.error("[BackofficeBackupsContainer][handleDownload]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao baixar backup")
+      toastUserError(err)
     }
   }
 
@@ -174,7 +175,7 @@ export function BackofficeBackupsContainer() {
       toast.success("Backup gerado com sucesso")
     } catch (err) {
       console.error("[BackofficeBackupsContainer][handleGenerate]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao gerar backup")
+      toastUserError(err)
       await refresh({ force: true })
     }
   }
@@ -185,7 +186,7 @@ export function BackofficeBackupsContainer() {
       await refresh({ force: true })
     } catch (err) {
       console.error("[BackofficeBackupsContainer][handleRefresh]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar lista")
+      toastUserError(err)
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { Loader2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,7 +59,7 @@ export function UploadContactsDialog({ list, onOpenChange }: Props) {
                 selectedFileLabel="Arquivo de contatos"
                 onClearFile={() => setFile(null)}
                 onFileSelected={setFile}
-                onError={(message) => toast.error(message)}
+                onError={(message) => toast.error(toUserToastMessage(message))}
                 disabled={isSaving}
               />
             </Field>

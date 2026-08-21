@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
@@ -194,7 +195,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         resetBootstrapState();
       }
       console.error("[useIntegrations] Erro ao carregar configuração de integrações:", error);
-      toast.error(error instanceof Error ? error.message : "Não foi possível carregar as integrações");
+      toastUserError(error);
     } finally {
       if (currentBootstrapKeyRef.current === requestKey) {
         setIntegrationsBootstrapLoading(false);
@@ -278,7 +279,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
           resetLogsState();
         }
         console.error("[useIntegrations] Erro ao carregar logs do webhook:", error);
-        toast.error(error instanceof Error ? error.message : "Não foi possível carregar os logs do webhook");
+        toastUserError(error);
       } finally {
         if (currentLogsKeyRef.current === requestKey) {
           setStudioWebhookLogsLoading(false);
@@ -372,7 +373,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         toast.success("Webhook configurado com sucesso");
       } catch (error) {
         console.error("[useIntegrations] Erro ao salvar webhook:", error);
-        toast.error(error instanceof Error ? error.message : "Não foi possível salvar o webhook");
+        toastUserError(error);
       } finally {
         setStudioWebhookSaving(false);
       }
@@ -497,7 +498,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         setRadarPixelConfig(null);
       }
       console.error("[useIntegrations] Erro ao carregar configuração do pixel:", error);
-      toast.error(error instanceof Error ? error.message : "Não foi possível carregar a configuração do pixel");
+      toastUserError(error);
     } finally {
       if (currentPixelConfigKeyRef.current === requestKey) {
         setRadarPixelLoading(false);
@@ -580,7 +581,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
           setRadarPixelHitLogs([]);
         }
         console.error("[useIntegrations] Erro ao carregar logs do pixel:", error);
-        toast.error(error instanceof Error ? error.message : "Não foi possível carregar os logs do pixel");
+        toastUserError(error);
       } finally {
         if (currentPixelLogsKeyRef.current === requestKey) {
           setRadarPixelHitLogsLoading(false);
@@ -626,7 +627,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         toast.success("Pixel configurado com sucesso");
       } catch (error) {
         console.error("[useIntegrations] Erro ao salvar pixel:", error);
-        toast.error(error instanceof Error ? error.message : "Não foi possível salvar a configuração do pixel");
+        toastUserError(error);
       } finally {
         if (currentPixelConfigKeyRef.current === requestKey) {
           setRadarPixelSaving(false);
@@ -661,7 +662,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         toast.success("Pixel removido com sucesso");
       } catch (error) {
         console.error("[useIntegrations] Erro ao remover pixel:", error);
-        toast.error(error instanceof Error ? error.message : "Não foi possível remover o pixel");
+        toastUserError(error);
       } finally {
         if (currentPixelConfigKeyRef.current === requestKey) {
           setRadarPixelDeleting(false);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import { removeProfileFromSegmentList } from "@/lib/radar/radar-segment-promote-list"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { radarFrontendService } from "../services/RadarService"
 import { buildProfileHref, buildTabHref } from "../utils/radarSegmentBuilderUtils"
@@ -336,7 +337,7 @@ export function useRadarHookFn() {
           return true
         } catch (createError) {
           console.error("[useRadarHookFn][createCustomSegment]", createError)
-          toast.error(createError instanceof Error ? createError.message : "Não foi possível criar o segmento.")
+          toastUserError(createError)
           return false
         }
       })
@@ -357,7 +358,7 @@ export function useRadarHookFn() {
           return true
         } catch (updateError) {
           console.error("[useRadarHookFn][updateCustomSegment]", updateError)
-          toast.error(updateError instanceof Error ? updateError.message : "Não foi possível atualizar o segmento.")
+          toastUserError(updateError)
           return false
         }
       })
@@ -386,7 +387,7 @@ export function useRadarHookFn() {
           return true
         } catch (deleteError) {
           console.error("[useRadarHookFn][deleteCustomSegment]", deleteError)
-          toast.error(deleteError instanceof Error ? deleteError.message : "Não foi possível remover o segmento.")
+          toastUserError(deleteError)
           return false
         }
       })
@@ -419,11 +420,7 @@ export function useRadarHookFn() {
           return true
         } catch (materializeError) {
           console.error("[useRadarHookFn][materializeContactList]", materializeError)
-          toast.error(
-            materializeError instanceof Error
-              ? materializeError.message
-              : "Não foi possível criar a lista de contatos."
-          )
+          toastUserError(materializeError)
           return false
         }
       })
@@ -463,9 +460,7 @@ export function useRadarHookFn() {
           return true
         } catch (exportError) {
           console.error("[useRadarHookFn][exportFilteredProfiles]", exportError)
-          toast.error(
-            exportError instanceof Error ? exportError.message : "Não foi possível exportar os perfis."
-          )
+          toastUserError(exportError)
           return false
         }
       })
@@ -524,11 +519,7 @@ export function useRadarHookFn() {
           return true
         } catch (exportError) {
           console.error("[useRadarHookFn][exportSegmentMembers]", exportError)
-          toast.error(
-            exportError instanceof Error
-              ? exportError.message
-              : "Não foi possível exportar o segmento."
-          )
+          toastUserError(exportError)
           return false
         }
       })
@@ -715,11 +706,7 @@ export function useRadarHookFn() {
           return true
         } catch (materializeError) {
           console.error("[useRadarHookFn][materializeSegmentToContactList]", materializeError)
-          toast.error(
-            materializeError instanceof Error
-              ? materializeError.message
-              : "Não foi possível criar a lista de contatos."
-          )
+          toastUserError(materializeError)
           return false
         }
       })
@@ -756,11 +743,7 @@ export function useRadarHookFn() {
           return true
         } catch (promoteError) {
           console.error("[useRadarHookFn][promoteProfileToLead]", promoteError)
-          toast.error(
-            promoteError instanceof Error
-              ? promoteError.message
-              : "Não foi possível promover o perfil a Lead."
-          )
+          toastUserError(promoteError)
           return false
         }
       })
@@ -780,11 +763,7 @@ export function useRadarHookFn() {
           return true
         } catch (updateError) {
           console.error("[useRadarHookFn][updateProfileGender]", updateError)
-          toast.error(
-            updateError instanceof Error
-              ? updateError.message
-              : "Não foi possível atualizar o gênero do perfil."
-          )
+          toastUserError(updateError)
           return false
         }
       })

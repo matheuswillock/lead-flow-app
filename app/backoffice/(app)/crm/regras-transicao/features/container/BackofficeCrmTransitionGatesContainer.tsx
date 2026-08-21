@@ -27,6 +27,7 @@ import {
 import { CRM_GATE_TYPE_LABELS } from "@/lib/backoffice-crm-lead-status-transition-gates";
 import { BACKOFFICE_CRM_STATUS_LABELS } from "@/app/backoffice/(app)/crm/features/context/BackofficeCrmTypes";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ALL_CRM_STATUSES = Object.keys(BACKOFFICE_CRM_STATUS_LABELS) as BackofficeLeadStatus[];
@@ -77,7 +78,7 @@ export function BackofficeCrmTransitionGatesContainer() {
       }
       setGates((data.result?.gates as CrmGate[]) ?? []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar gates");
+      toastUserError(error);
     } finally {
       setIsLoading(false);
     }
@@ -148,7 +149,7 @@ export function BackofficeCrmTransitionGatesContainer() {
       setEditingGate(null);
       await loadGates();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar gate");
+      toastUserError(error);
     } finally {
       setIsSaving(false);
     }

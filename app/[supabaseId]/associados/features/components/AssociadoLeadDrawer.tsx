@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,7 +87,7 @@ export function AssociadoLeadDrawer({ row }: AssociadoLeadDrawerProps) {
       await action();
       toast.success(successMessage);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro na operação");
+      toastUserError(err);
     } finally {
       setSubmitting(false);
       inFlight.current = false;

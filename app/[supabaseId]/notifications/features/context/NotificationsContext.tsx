@@ -14,6 +14,7 @@ import type {
   NotificationsContextState,
 } from "../types/notification.types";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 type NotificationsProviderProps = {
   children: React.ReactNode;
@@ -173,7 +174,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
           markAuthFailure();
           return;
         }
-        const message = err instanceof Error ? err.message : "Erro ao carregar notificações";
+        const message = toUserToastMessage(err);
         setError(message);
       } finally {
         if (listInFlightKeyRef.current === capturedKey) {
@@ -279,7 +280,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
           return;
         }
         const message =
-          err instanceof Error ? err.message : "Erro ao marcar notificações como vistas";
+          toUserToastMessage(err);
         setError(message);
       }
     },

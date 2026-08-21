@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,7 +37,7 @@ export function BackofficeStudioBotAiContainer() {
       setConfiguration(nextConfiguration)
       lastKeyRef.current = key
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar IA")
+      toastUserError(error)
     } finally {
       inFlightRef.current = false
       setIsLoading(false)

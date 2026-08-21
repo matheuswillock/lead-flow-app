@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Ban, Copy, ExternalLink, Loader2, Plus, Tag } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,7 +111,7 @@ export function BackofficeLeadOffersSheet({
     } catch (error) {
       if (activeLeadIdRef.current !== requestedLeadId) return
       console.error("[BackofficeLeadOffersSheet][loadOffers]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar ofertas")
+      toastUserError(error)
     } finally {
       if (activeLeadIdRef.current === requestedLeadId) {
         setIsLoading(false)
@@ -137,7 +138,7 @@ export function BackofficeLeadOffersSheet({
       await loadOffers()
     } catch (error) {
       console.error("[BackofficeLeadOffersSheet][handleRevoke]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao revogar oferta")
+      toastUserError(error)
     } finally {
       setPendingOfferId(null)
     }

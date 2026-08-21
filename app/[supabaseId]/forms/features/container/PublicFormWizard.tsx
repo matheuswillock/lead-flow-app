@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
 import { ArrowLeft, Check, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { cn } from "@/lib/utils"
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { useOptionalUser } from "@/app/context/UserContext"
@@ -446,7 +447,7 @@ export function PublicFormWizard({
             setDraft(withCatalog)
           }
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+          toastUserError(error)
         } finally {
           if (!cancelled) setLoading(false)
         }
@@ -509,7 +510,7 @@ export function PublicFormWizard({
           setDraft(withCatalog)
         }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+        toastUserError(error)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -546,7 +547,7 @@ export function PublicFormWizard({
         if (!formId) router.replace(host.formHref(saved.id))
         return saved
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+        toastUserError(e)
         return null
       } finally {
         setSaving(false)
@@ -564,7 +565,7 @@ export function PublicFormWizard({
         if (!currentId) router.replace(host.formHref(f.id))
         return f
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+        toastUserError(e)
         return null
       } finally {
         setSaving(false)
@@ -582,7 +583,7 @@ export function PublicFormWizard({
       if (!currentId) router.replace(`/${params.supabaseId}/forms/${f.id}`)
       return f
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+      toastUserError(e)
       return null
     } finally {
       setSaving(false)
@@ -619,7 +620,7 @@ export function PublicFormWizard({
       toast.success("Formulário publicado")
       router.push(listHref)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível publicar")
+      toastUserError(e)
     } finally {
       setPublishing(false)
     }

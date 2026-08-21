@@ -34,6 +34,7 @@ import type {
   TemplateTestVariableValue,
   TemplateVariable,
 } from "../context/TemplateEditorTypes";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 type TestVariableDefinition = TemplateVariable & {
   source: "declared" | "discovered";
@@ -248,7 +249,7 @@ export function TemplateTestDialog({
       });
       onOpenChange(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao enviar e-mail de teste.";
+      const message = toUserToastMessage(error);
       setFormError(message);
     }
   };

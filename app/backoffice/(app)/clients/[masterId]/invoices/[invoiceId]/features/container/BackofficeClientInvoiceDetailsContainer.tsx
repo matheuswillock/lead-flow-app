@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -213,7 +214,7 @@ export function BackofficeClientInvoiceDetailsContainer() {
       setIsEditOpen(false)
     } catch (saveError) {
       const message =
-        saveError instanceof Error ? saveError.message : "Erro ao atualizar a cobrança"
+        toUserToastMessage(saveError)
       toast.error(message)
     }
   }
@@ -242,7 +243,7 @@ export function BackofficeClientInvoiceDetailsContainer() {
       const message = await sendStatusNotification()
       toast.success(message)
     } catch (sendError) {
-      const message = sendError instanceof Error ? sendError.message : "Erro ao enviar notificação"
+      const message = toUserToastMessage(sendError)
       toast.error(message)
     }
   }
@@ -257,7 +258,7 @@ export function BackofficeClientInvoiceDetailsContainer() {
       router.push(backHref)
     } catch (removeError) {
       const message =
-        removeError instanceof Error ? removeError.message : "Erro ao remover a cobrança"
+        toUserToastMessage(removeError)
       toast.error(message)
     }
   }

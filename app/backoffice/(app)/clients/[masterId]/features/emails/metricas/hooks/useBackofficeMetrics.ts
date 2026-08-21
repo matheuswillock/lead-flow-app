@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { backofficeStudioEmailService } from "../../services/BackofficeStudioEmailService"
 import type { StudioEmailAnalytics } from "../../services/IBackofficeStudioEmailService"
 
@@ -41,7 +41,7 @@ export function useBackofficeMetrics(
       const result = await backofficeStudioEmailService.getAnalytics(masterId, teamId, range)
       setData(result)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar métricas")
+      toastUserError(err)
     } finally {
       setLoading(false)
       inFlightRef.current = false

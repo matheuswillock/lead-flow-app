@@ -7,6 +7,7 @@ import {
   DetailedMetricsData, 
   MetricsFilters 
 } from '../services/DashboardMetricsService';
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 interface UseDashboardMetricsReturn {
   metrics: DashboardMetricsData | null;
@@ -41,7 +42,7 @@ export function useDashboardMetrics(supabaseId: string, teamId: string, initialF
       setDetailedMetrics(detailedData);
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      const errorMessage = toUserToastMessage(err);
       setError(errorMessage);
       console.error('Erro no hook useDashboardMetrics:', err);
     } finally {
@@ -97,7 +98,7 @@ export function useDashboardMetricsSimple(supabaseId: string, teamId: string, pe
         setMetrics(data);
 
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        const errorMessage = toUserToastMessage(err);
         setError(errorMessage);
       } finally {
         setLoading(false);

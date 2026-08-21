@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,7 +65,7 @@ export function BackofficeTeamDeleteDialog({
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao solicitar exclusão do time")
+      toastUserError(err)
     } finally {
       setIsDeleting(false)
       inFlight.current = false

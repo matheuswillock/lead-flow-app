@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Mail, MessageCircle, MessageSquare, Phone, Smile } from 'lucide-react';
-import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -121,7 +121,7 @@ export function CarteiraActivityFeed({ leadId, open = true }: CarteiraActivityFe
       setActivities((prev) => [newActivity, ...prev]);
       setActivityBody('');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao registrar atividade');
+      toastUserError(error);
     } finally {
       setActivitySubmitting(false);
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import {
   Dialog,
   DialogContent,
@@ -359,7 +360,7 @@ export function ChangeStatusDialog({
       onOpenChange(false);
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status', {
+      toastUserError(error, {
         id: loadingToast,
       });
       console.error('Erro ao atualizar status:', error);
@@ -463,7 +464,7 @@ export function ChangeStatusDialog({
       setShowSalesInfoDialog(false);
       setPendingSalesInfoGate(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar informações de venda');
+      toastUserError(error);
     } finally {
       setSalesInfoSaving(false);
     }
@@ -505,7 +506,7 @@ export function ChangeStatusDialog({
       setShowCloserRequirementDialog(false);
       setPendingCloserGate(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar closer do lead');
+      toastUserError(error);
     } finally {
       setCloserRequirementSaving(false);
     }
@@ -547,7 +548,7 @@ export function ChangeStatusDialog({
       setShowLeadInfoDialog(false);
       setPendingLeadInfoGate(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar informações do lead');
+      toastUserError(error);
     } finally {
       setLeadInfoSaving(false);
     }

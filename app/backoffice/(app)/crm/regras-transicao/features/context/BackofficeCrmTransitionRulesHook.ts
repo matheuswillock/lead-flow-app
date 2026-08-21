@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BackofficeLeadStatus } from "@prisma/client";
 import type { LeadTransitionFieldKey } from "@/lib/leadStatusTransitionFields";
 import { toast } from "sonner";
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message";
 import type {
   BackofficeCrmTransitionRulesContextValue,
 } from "./BackofficeCrmTransitionRulesTypes";
@@ -29,7 +30,7 @@ export function useBackofficeCrmTransitionRules({
       setRules(result.rules);
       setAvailableFieldKeys(result.availableFieldKeys);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao carregar regras";
+      const message = toUserToastMessage(err);
       setError(message);
     } finally {
       setIsLoading(false);
@@ -54,7 +55,7 @@ export function useBackofficeCrmTransitionRules({
         await refresh();
         return output;
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao salvar regras");
+        toastUserError(err);
         throw err;
       } finally {
         setIsSaving(false);

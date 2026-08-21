@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Check, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -335,7 +336,7 @@ export default function TeamsPage() {
       await refreshTeams();
     } catch (error: any) {
       console.error("Erro ao definir time padrão:", error);
-      toast.error(error?.message || "Erro ao definir time padrão.");
+      toastUserError(error);
     } finally {
       setSettingDefaultTeamId(null);
     }
@@ -392,7 +393,7 @@ export default function TeamsPage() {
       await refreshTeams();
     } catch (error: any) {
       console.error("Erro ao criar time:", error);
-      toast.error(error?.message || "Erro ao criar time.");
+      toastUserError(error);
     } finally {
       setIsCreatingTeam(false);
     }
@@ -433,7 +434,7 @@ export default function TeamsPage() {
         remainingMonths: Number(details.pricing?.remainingMonths ?? 1),
       });
     } catch (error: any) {
-      toast.error(error?.message || "Erro ao carregar pagamento pendente.");
+      toastUserError(error);
       setIsEditPendingPaymentOpen(false);
       setPendingPaymentTarget(null);
     } finally {
@@ -459,7 +460,7 @@ export default function TeamsPage() {
       await refreshTeams();
     } catch (error: any) {
       Sentry.captureException(error);
-      toast.error(error?.message || "Erro ao cancelar criação do time.");
+      toastUserError(error);
     } finally {
       setCancelingPendingTeamId(null);
     }
@@ -486,7 +487,7 @@ export default function TeamsPage() {
       setPendingPaymentTarget(null);
       await refreshTeams();
     } catch (error: any) {
-      toast.error(error?.message || "Erro ao atualizar forma de pagamento.");
+      toastUserError(error);
     } finally {
       setPendingPaymentSubmitting(false);
     }
@@ -617,7 +618,7 @@ export default function TeamsPage() {
       await loadTeamStatusRules(manageTeamId);
     } catch (error: any) {
       console.error("Erro ao salvar regras:", error);
-      toast.error(error?.message || "Erro ao salvar regras.");
+      toastUserError(error);
     } finally {
       setRulesSaving(false);
     }
@@ -729,7 +730,7 @@ export default function TeamsPage() {
       await loadTeamStatusRules(teamId);
     } catch (error: any) {
       console.error("Erro ao carregar membros:", error);
-      toast.error(error?.message || "Erro ao carregar dados do time.");
+      toastUserError(error);
     } finally {
       setManageLoading(false);
     }
@@ -774,7 +775,7 @@ export default function TeamsPage() {
       await refreshTeams();
     } catch (error: any) {
       console.error("Erro ao atualizar time:", error);
-      toast.error(error?.message || "Erro ao atualizar time.");
+      toastUserError(error);
     } finally {
       setIsRenaming(false);
     }
@@ -814,7 +815,7 @@ export default function TeamsPage() {
     } catch (error: any) {
       Sentry.captureException(error);
       console.error("Erro ao atualizar destinos de transferência:", error);
-      toast.error(error?.message || "Erro ao atualizar destinos de transferência.");
+      toastUserError(error);
     } finally {
       setSavingTransferTargets(false);
     }
@@ -852,7 +853,7 @@ export default function TeamsPage() {
       await refreshTeams();
     } catch (error: any) {
       console.error("Erro ao adicionar membro:", error);
-      toast.error(error?.message || "Erro ao adicionar membro.");
+      toastUserError(error);
     } finally {
       setIsAddingMember(false);
     }
@@ -880,7 +881,7 @@ export default function TeamsPage() {
       await refreshTeams();
     } catch (error: any) {
       console.error("Erro ao remover membro:", error);
-      toast.error(error?.message || "Erro ao remover membro.");
+      toastUserError(error);
     } finally {
       setRemovingMemberId(null);
     }
@@ -940,7 +941,7 @@ export default function TeamsPage() {
       }
     } catch (error: any) {
       console.error("Erro ao confirmar ação:", error);
-      toast.error(error?.message || "Erro ao confirmar ação.");
+      toastUserError(error);
     } finally {
       setConfirming(false);
       setConfirmAction(null);

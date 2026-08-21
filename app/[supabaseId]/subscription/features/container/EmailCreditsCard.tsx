@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { CheckCircle2 } from "lucide-react"
 import {
   Card,
@@ -105,9 +106,7 @@ export function EmailCreditsCard() {
       router.push(path)
     } catch (err) {
       console.error("[EmailCreditsCard] subscribe error", err)
-      toast.error(
-        err instanceof Error ? err.message : "Erro ao criar checkout de créditos"
-      )
+      toastUserError(err)
     } finally {
       setSubscribing(null)
     }

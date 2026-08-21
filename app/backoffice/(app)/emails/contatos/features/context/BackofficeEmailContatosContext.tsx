@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IBackofficeEmailContatosService } from "../services/IBackofficeEmailContatosService"
 import type {
   BackofficeEmailContactListItem,
@@ -55,7 +56,7 @@ export function BackofficeEmailContatosProvider({ children, service }: ProviderP
       setContactLists(lists)
     } catch (err) {
       console.error("[BackofficeEmailContatosContext][refresh]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar listas")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -72,7 +73,7 @@ export function BackofficeEmailContatosProvider({ children, service }: ProviderP
         return true
       } catch (err) {
         console.error("[BackofficeEmailContatosContext][createContactList]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao criar lista")
+        toastUserError(err)
         return false
       } finally {
         setIsSaving(false)
@@ -89,7 +90,7 @@ export function BackofficeEmailContatosProvider({ children, service }: ProviderP
         toast.success("Lista arquivada")
       } catch (err) {
         console.error("[BackofficeEmailContatosContext][archiveContactList]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao arquivar lista")
+        toastUserError(err)
       }
     },
     [service]
@@ -105,7 +106,7 @@ export function BackofficeEmailContatosProvider({ children, service }: ProviderP
         return true
       } catch (err) {
         console.error("[BackofficeEmailContatosContext][uploadContacts]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao enviar arquivo")
+        toastUserError(err)
         return false
       } finally {
         setIsSaving(false)
@@ -120,7 +121,7 @@ export function BackofficeEmailContatosProvider({ children, service }: ProviderP
         return await service.listContacts(listId, page, pageSize)
       } catch (err) {
         console.error("[BackofficeEmailContatosContext][listContacts]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar contatos")
+        toastUserError(err)
         return { contacts: [], total: 0 }
       }
     },
@@ -134,7 +135,7 @@ export function BackofficeEmailContatosProvider({ children, service }: ProviderP
         toast.success("Contato removido")
       } catch (err) {
         console.error("[BackofficeEmailContatosContext][deleteContact]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao remover contato")
+        toastUserError(err)
       }
     },
     [service]

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { IBackofficeOperationalAccessService } from "../services/IBackofficeOperationalAccessService"
 import type { IBackofficeOperationalAccessContext } from "./BackofficeOperationalAccessTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 export function useBackofficeOperationalAccessHook(
   service: IBackofficeOperationalAccessService
@@ -40,7 +41,7 @@ export function useBackofficeOperationalAccessHook(
       setEligibleAssociadosProfiles(result.eligibleAssociadosProfiles)
       setEligibleMultiskillMasters(result.eligibleMultiskillMasters)
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar acessos")
+      setError(toUserToastMessage(fetchError))
     } finally {
       inFlightRef.current = false
       setIsLoading(false)
@@ -60,7 +61,7 @@ export function useBackofficeOperationalAccessHook(
         await fetchItems()
         return true
       } catch (grantError) {
-        setError(grantError instanceof Error ? grantError.message : "Erro ao conceder acesso")
+        setError(toUserToastMessage(grantError))
         return false
       } finally {
         setIsGrantingAssociados(false)
@@ -78,7 +79,7 @@ export function useBackofficeOperationalAccessHook(
         await fetchItems()
         return true
       } catch (grantError) {
-        setError(grantError instanceof Error ? grantError.message : "Erro ao autorizar conta")
+        setError(toUserToastMessage(grantError))
         return false
       } finally {
         setIsGrantingMultiskill(false)
@@ -96,7 +97,7 @@ export function useBackofficeOperationalAccessHook(
         await fetchItems()
         return true
       } catch (revokeError) {
-        setError(revokeError instanceof Error ? revokeError.message : "Erro ao revogar autorização")
+        setError(toUserToastMessage(revokeError))
         return false
       } finally {
         setIsRevokingId(null)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 import { ContatosService } from "../services/ContatosService";
 import type { ContactList, Contact, ContactsState } from "./ContatosTypes";
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
@@ -240,7 +241,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         toast.success("Lista excluída com sucesso");
       } catch (error) {
         console.error("[useContatos] handleDeleteList error", error);
-        const message = error instanceof Error ? error.message : "Erro ao excluir lista";
+        const message = toUserToastMessage(error);
         toast.error(message);
         throw error;
       }
@@ -293,7 +294,7 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
         toast.success("Contato adicionado com sucesso");
       } catch (error) {
         console.error("[useContatos] handleAddContact error", error);
-        const message = error instanceof Error ? error.message : "Erro ao adicionar contato";
+        const message = toUserToastMessage(error);
         toast.error(message);
         throw error;
       }

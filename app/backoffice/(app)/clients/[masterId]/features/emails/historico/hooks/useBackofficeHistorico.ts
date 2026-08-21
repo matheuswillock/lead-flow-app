@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { backofficeStudioEmailService } from "../../services/BackofficeStudioEmailService"
 import type { StudioEmailLog, StudioEmailLogDetail } from "../../services/IBackofficeStudioEmailService"
 
@@ -56,7 +56,7 @@ export function useBackofficeHistorico(
         setPage(result.page)
         setTotalPages(result.totalPages)
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar histórico")
+        toastUserError(err)
       } finally {
         setLoading(false)
         inFlightRef.current = false
@@ -163,7 +163,7 @@ export function useBackofficeHistorico(
         const detail = await backofficeStudioEmailService.getLog(masterId, teamId, logId)
         setSelectedLog(detail)
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar detalhes")
+        toastUserError(err)
       } finally {
         setLoadingDetail(false)
       }
