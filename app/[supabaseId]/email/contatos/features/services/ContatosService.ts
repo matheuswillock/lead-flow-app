@@ -4,6 +4,10 @@ import type { EmailContactImportRow } from "@/lib/emailContactImport/emailContac
 import type { ContactList, Contact } from "../context/ContatosTypes";
 import type { EmailContactImportEnqueueResult } from "./IContatosService";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import {
+  getImportHttpErrorMessage,
+  parseImportOutputResponse,
+} from "@/lib/import/importBatchClient";
 
 export type RadarSegmentOption = {
   id: string
@@ -109,14 +113,17 @@ export class ContatosService implements IContatosService {
       body: JSON.stringify({ rows }),
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.isValid) {
+    const output = await parseImportOutputResponse<EmailContactImportEnqueueResult>(
+      response,
+      "contatos"
+    );
+    if (!response.ok || !output.isValid) {
       throw new Error(
-        data.errorMessages?.join(", ") || "Erro ao enfileirar importação de contatos"
+        output.errorMessages?.[0] || getImportHttpErrorMessage(response.status, "contatos")
       );
     }
 
-    return data.result as EmailContactImportEnqueueResult;
+    return output.result as EmailContactImportEnqueueResult;
   }
 
   async getContacts(
