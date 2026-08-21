@@ -324,6 +324,7 @@ export interface IPublicFormsRepository {
     publicationId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  listSubmissionAnswers(submissionId: string): Promise<Array<{ questionId: string; value: unknown }>>
   findFormsByIdsForTeam(
     teamId: string,
     formIds: string[],

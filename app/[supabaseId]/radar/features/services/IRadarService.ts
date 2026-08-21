@@ -6,11 +6,11 @@ import type {
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
+  RadarProfileForms,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
-import type { RadarProfileForms } from "@/lib/radar/profile-forms"
 
 export type CustomSegmentInput = {
   name: string

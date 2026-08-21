@@ -247,11 +247,18 @@ test.describe("app/[supabaseId]/radar", () => {
     await page.getByRole("tab", { name: "Formulários" }).click()
 
     const formsTab = page.getByRole("tabpanel", { name: "Formulários" })
-    await expect(formsTab.getByText("Qualificação Completa E2E")).toBeVisible()
-    await expect(formsTab.getByText("Completo")).toBeVisible()
-    await expect(formsTab.getByText("Qualificação Incompleta E2E")).toBeVisible()
-    await expect(formsTab.getByText("Incompleto")).toBeVisible()
-    await expect(formsTab.getByText("Qualificação Sem Resposta E2E")).toBeVisible()
-    await expect(formsTab.getByText("Iniciou sem nenhuma resposta")).toBeVisible()
+    const completeCard = formsTab.locator("div.rounded-md.border").filter({
+      hasText: "Qualificação Completa E2E",
+    })
+    const incompleteCard = formsTab.locator("div.rounded-md.border").filter({
+      hasText: "Qualificação Incompleta E2E",
+    })
+    const startedCard = formsTab.locator("div.rounded-md.border").filter({
+      hasText: "Qualificação Sem Resposta E2E",
+    })
+
+    await expect(completeCard.getByText("Completo", { exact: true })).toBeVisible()
+    await expect(incompleteCard.getByText("Incompleto", { exact: true })).toBeVisible()
+    await expect(startedCard.getByText("Iniciou sem nenhuma resposta", { exact: true })).toBeVisible()
   })
 })

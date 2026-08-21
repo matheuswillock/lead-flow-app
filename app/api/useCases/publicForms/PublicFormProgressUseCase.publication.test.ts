@@ -79,6 +79,7 @@ const findFormSubmissionContext = mock(async () => ({
   assignedSdr: null,
   team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
 }))
+const listSubmissionAnswers = mock(async () => [] as Array<{ questionId: string; value: unknown }>)
 const upsertProgressSubmission = mock(async () => ({ id: "sub-progress" }))
 const upsertMetricEvent = mock(async () => {})
 
@@ -91,6 +92,7 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
     findPublicationById,
     findPublicationContainingQuestions,
     findFormSubmissionContext,
+    listSubmissionAnswers,
     upsertProgressSubmission,
     upsertMetricEvent,
   },
@@ -99,6 +101,7 @@ mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
   canCreateLeadFromExtracted: () => false,
   canUpdateLeadFromExtracted: () => false,
   extractLeadDataFromSnapshot: () => ({}),
+  hasCrmGateAC: () => false,
   findMatchingLead: mock(async () => null),
   upsertLeadFromFormAnswers: mock(async () => null),
 }))
@@ -116,11 +119,13 @@ describe("PublicFormProgressUseCase publicação da sessão", () => {
     findLatestSessionSubmissionOnForm.mockClear()
     findPublicationById.mockClear()
     findPublicationContainingQuestions.mockClear()
+    listSubmissionAnswers.mockClear()
     upsertProgressSubmission.mockClear()
     upsertMetricEvent.mockClear()
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
     findPublicationById.mockResolvedValue(null)
     findPublicationContainingQuestions.mockResolvedValue(null)
+    listSubmissionAnswers.mockResolvedValue([])
   })
 
   it("continua na publicação da sessão e usa requestKey com esse publicationId", async () => {

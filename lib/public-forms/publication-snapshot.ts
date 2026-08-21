@@ -34,6 +34,14 @@ export function questionIdFromSnapshot(snapshot: unknown): string | null {
   return typeof id === "string" && id.length > 0 ? id : null
 }
 
+/** P2003 fallback grava `questionId` null e guarda o id no snapshot. */
+export function resolveStoredSubmissionAnswerQuestionId(
+  questionId: string | null,
+  questionSnapshot: unknown,
+): string | null {
+  return questionId ?? questionIdFromSnapshot(questionSnapshot)
+}
+
 export function isStaleQuestionIdForeignKey(
   error: unknown,
   questionId: string | null | undefined,

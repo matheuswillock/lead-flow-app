@@ -45,12 +45,23 @@ export function questionIdFromRadarEventMetadata(metadata: unknown): string | nu
   return typeof questionId === "string" && questionId.length > 0 ? questionId : null
 }
 
+const FORM_QUESTION_ANSWERED_EVENT = "form.question_answered"
+
+function addAnsweredQuestionId(
+  questionIds: Set<string>,
+  event: RadarProfileFormEventMarker,
+): void {
+  if (event.eventType !== FORM_QUESTION_ANSWERED_EVENT) return
+  const questionId = questionIdFromRadarEventMetadata(event.metadata)
+  if (questionId) questionIds.add(questionId)
+}
+
 export function resolveRadarProfileFormCompletion(
   eventTypes: Iterable<string>,
 ): RadarProfileFormCompletionStatus {
   const types = eventTypes instanceof Set ? eventTypes : new Set(eventTypes)
   if (types.has("form.completed")) return RADAR_PROFILE_FORM_COMPLETION.complete
-  if (types.has("form.question_answered")) return RADAR_PROFILE_FORM_COMPLETION.incomplete
+  if (types.has(FORM_QUESTION_ANSWERED_EVENT)) return RADAR_PROFILE_FORM_COMPLETION.incomplete
   return RADAR_PROFILE_FORM_COMPLETION.startedWithoutAnswers
 }
 
@@ -73,8 +84,7 @@ export function buildRadarProfileFormItems(input: {
     const existing = groups.get(formId)
     if (existing) {
       existing.eventTypes.add(event.eventType)
-      const questionId = questionIdFromRadarEventMetadata(event.metadata)
-      if (questionId) existing.questionIds.add(questionId)
+      addAnsweredQuestionId(existing.questionIds, event)
       if (event.occurredAt < existing.firstInteractionAt) {
         existing.firstInteractionAt = event.occurredAt
       }
@@ -85,8 +95,7 @@ export function buildRadarProfileFormItems(input: {
     }
 
     const questionIds = new Set<string>()
-    const questionId = questionIdFromRadarEventMetadata(event.metadata)
-    if (questionId) questionIds.add(questionId)
+    addAnsweredQuestionId(questionIds, event)
     groups.set(formId, {
       formId,
       eventTypes: new Set([event.eventType]),

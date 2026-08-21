@@ -19358,7 +19358,8 @@
                   "value": "{{radarProfileId}}"
                 }
               ]
-            }
+            },
+            "description": "Lista os formulários públicos com os quais o perfil Radar interagiu (completo / incompleto / iniciou sem resposta)."
           },
           "response": []
         },

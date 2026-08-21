@@ -6,6 +6,7 @@ import {
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
+import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import { buildPublicFormProgressQueuePayload } from "@/lib/queues/public-form-progress-events"
 import { queueProgressForBackgroundProcessing } from "@/lib/public-forms/queue-progress-for-background-processing"
 
@@ -39,6 +40,14 @@ export async function POST(
       questionId: answer.questionId,
       value: answer.value,
     })
+  }
+
+  if (parsed.data.answers.length > 0 && isE2eTestMode()) {
+    const { publicFormProgressUseCase } = await import(
+      "@/app/api/useCases/publicForms/PublicFormProgressUseCase"
+    )
+    const output = await publicFormProgressUseCase.execute(publicId, parsed.data)
+    return NextResponse.json(output, { status: output.isValid ? 202 : 400 })
   }
 
   if (parsed.data.answers.length > 0) {

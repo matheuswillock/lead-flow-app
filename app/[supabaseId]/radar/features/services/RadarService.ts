@@ -15,11 +15,11 @@ import type {
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
+  RadarProfileForms,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
 } from "../context/RadarTypes"
-import type { RadarProfileForms } from "@/lib/radar/profile-forms"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 async function parseOutput<T>(res: Response): Promise<T> {
