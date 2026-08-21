@@ -1,13 +1,21 @@
 import { describe, expect, it, mock, beforeEach } from "bun:test"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import type { SuppressedAudienceCounts } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
+
+const EMPTY_SUPPRESSED_COUNTS: SuppressedAudienceCounts = {
+  bounced: 0,
+  unsubscribed: 0,
+  complained: 0,
+  total: 0,
+}
 
 // =============================================================================
 // MOCKS — declarar ANTES de qualquer await import()
 // =============================================================================
 
 // --- EmailCampaignRecipientRepository (dynamic import in previewPlan) ---
-const countSuppressedRecipientsForListsMock = mock(async () => 0)
-const countSuppressedRecipientsForEmailsMock = mock(async () => 0)
+const countSuppressedRecipientsForListsMock = mock(async () => EMPTY_SUPPRESSED_COUNTS)
+const countSuppressedRecipientsForEmailsMock = mock(async () => EMPTY_SUPPRESSED_COUNTS)
 mock.module(
   "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository",
   () => ({
@@ -2693,9 +2701,14 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     expect(result.subCampaigns.length).toBe(2)
   })
 
-  it("inclui suppressedExcludedCount no preview de lista", async () => {
+  it("inclui contagens split de bounce, descadastro e reclamação no preview de lista", async () => {
     listActiveRecipientsMock.mockImplementation(async () => makeRecipients(100))
-    countSuppressedRecipientsForListsMock.mockImplementation(async () => 12)
+    countSuppressedRecipientsForListsMock.mockImplementation(async () => ({
+      bounced: 7,
+      unsubscribed: 3,
+      complained: 2,
+      total: 12,
+    }))
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.previewPlan(
@@ -2708,8 +2721,16 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     )
 
     expect(output.isValid).toBe(true)
-    const result = output.result as { suppressedExcludedCount?: number }
+    const result = output.result as {
+      suppressedExcludedCount?: number
+      bouncedExcludedCount?: number
+      unsubscribedExcludedCount?: number
+      complainedExcludedCount?: number
+    }
     expect(result.suppressedExcludedCount).toBe(12)
+    expect(result.bouncedExcludedCount).toBe(7)
+    expect(result.unsubscribedExcludedCount).toBe(3)
+    expect(result.complainedExcludedCount).toBe(2)
   })
 })
 

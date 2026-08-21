@@ -93,6 +93,10 @@ import {
   type ListStrategy,
   type SubCampaignScheduleInput,
 } from "@/lib/email/campaign-plan"
+import {
+  EMPTY_SUPPRESSED_AUDIENCE_COUNTS,
+  type SuppressedAudienceCounts,
+} from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
 import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
@@ -701,6 +705,15 @@ export class EmailCampaignUseCase {
     return this.recipientService.countActiveRecipients(teamId, options.contactListId)
   }
 
+  private previewSuppressionFields(counts: SuppressedAudienceCounts) {
+    return {
+      suppressedExcludedCount: counts.total,
+      bouncedExcludedCount: counts.bounced,
+      unsubscribedExcludedCount: counts.unsubscribed,
+      complainedExcludedCount: counts.complained,
+    }
+  }
+
   private async countSuppressedExcluded(
     teamId: string,
     options: {
@@ -708,7 +721,7 @@ export class EmailCampaignUseCase {
       radarSegmentSlug?: string | null
       audienceEmails?: string[]
     }
-  ): Promise<number> {
+  ): Promise<SuppressedAudienceCounts> {
     const { emailCampaignRecipientRepository } = await import(
       "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository"
     )
@@ -732,7 +745,7 @@ export class EmailCampaignUseCase {
       )
     }
 
-    return 0
+    return EMPTY_SUPPRESSED_AUDIENCE_COUNTS
   }
 
   private async listAudienceEmailsForLists(teamId: string, contactListIds: string[]): Promise<string[]> {
@@ -1075,7 +1088,7 @@ export class EmailCampaignUseCase {
         const totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           radarSegmentSlug: data.radarSegmentSlug,
         })
-        const suppressedExcludedCount = await this.countSuppressedExcluded(ctx.teamId, {
+        const suppressedCounts = await this.countSuppressedExcluded(ctx.teamId, {
           radarSegmentSlug: data.radarSegmentSlug,
         })
         if (requiresSubCampaignSplit(totalRecipients, maxPerSub)) {
@@ -1102,7 +1115,7 @@ export class EmailCampaignUseCase {
           ],
           needsSplit: false,
           totalRecipients,
-          suppressedExcludedCount,
+          ...this.previewSuppressionFields(suppressedCounts),
           listStrategy: "single",
           sourceContactListIds: [],
           isParentCampaign: false,
@@ -1135,7 +1148,7 @@ export class EmailCampaignUseCase {
         const segmentEmails = data.radarSegmentSlug
           ? await listRadarSegmentProfileEmails(ctx.teamId, data.radarSegmentSlug)
           : []
-        const suppressedExcludedCount = await this.countSuppressedExcluded(ctx.teamId, {
+        const suppressedCounts = await this.countSuppressedExcluded(ctx.teamId, {
           audienceEmails: [...new Set([...listEmails, ...segmentEmails])],
         })
 
@@ -1145,7 +1158,7 @@ export class EmailCampaignUseCase {
         return new Output(true, [], [], {
           ...plan,
           audienceMode: "combined",
-          suppressedExcludedCount,
+          ...this.previewSuppressionFields(suppressedCounts),
           // Não vaza placeholders no payload — create materializa de verdade
           subCampaigns: plan.subCampaigns.map((sub) => ({
             ...sub,
@@ -1171,14 +1184,18 @@ export class EmailCampaignUseCase {
         ...schedule,
       })
 
-      const suppressedExcludedCount = await this.countSuppressedExcluded(ctx.teamId, {
+      const suppressedCounts = await this.countSuppressedExcluded(ctx.teamId, {
         contactListIds,
       })
 
       // Preview é descoberta: devolve o plano dividido sem exigir horários
       // (o wizard só preenche os agendamentos depois de ver o split). A
       // validação de completude do agendamento fica no create/update.
-      return new Output(true, [], [], { ...plan, audienceMode: "list_only", suppressedExcludedCount })
+      return new Output(true, [], [], {
+        ...plan,
+        audienceMode: "list_only",
+        ...this.previewSuppressionFields(suppressedCounts),
+      })
     } catch (error) {
       console.error("[EmailCampaignUseCase][previewPlan]", error)
       return new Output(false, [], ["Erro ao calcular plano da campanha"], null)

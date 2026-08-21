@@ -1,12 +1,13 @@
 /**
  * app/[supabaseId]/email/campanhas/page.tsx
  *
- * Cobertura PR6: página carrega; copy do AlertDialog de cancelar envio.
- * Bounce/wizard da audiência ficam no PR7 — não duplicar aqui.
+ * PR6: copy do AlertDialog de cancelar envio.
+ * develop/PR7: wizard subtrai bounce permanente e avisa.
  */
 
 import { randomUUID } from "node:crypto"
 import { expect, test } from "@playwright/test"
+import { formatPermanentBounceAlert } from "@/lib/email/campaign-audience-copy"
 import {
   CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
   CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
@@ -128,6 +129,86 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
       await expect(page.getByText(CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY)).toBeVisible()
     } finally {
       await prisma.emailCampaign.delete({ where: { id: campaignId } }).catch(() => {})
+      await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
+    }
+  })
+
+  test("wizard avisa bounce permanente e subtrai da audiência", async ({ page }) => {
+    const profile = await findE2eMasterProfile()
+    if (!profile?.activeTeamId) {
+      throw new Error("Seed E2E sem time ativo")
+    }
+
+    const prisma = getPrisma()
+    const templateId = randomUUID()
+    const listId = randomUUID()
+    const listName = "E2E Bounce Permanente"
+    const templateName = "E2E Template Bounce"
+
+    await prisma.emailTemplate.create({
+      data: {
+        id: templateId,
+        versionGroupId: templateId,
+        teamId: profile.activeTeamId,
+        createdBy: profile.id,
+        name: templateName,
+        subject: "Assunto E2E bounce",
+        html: "<p>Olá</p>",
+        status: "published",
+        isCurrentPublished: true,
+        approvalStatus: "approved",
+        publishedAt: new Date(),
+        versionNumber: 1,
+      },
+    })
+    await prisma.emailContactList.create({
+      data: {
+        id: listId,
+        teamId: profile.activeTeamId,
+        createdBy: profile.id,
+        name: listName,
+        totalContacts: 5,
+      },
+    })
+    await prisma.emailContact.createMany({
+      data: [
+        { listId, email: "ativo-a@e2e.bounce.test", name: "Ativo A" },
+        { listId, email: "ativo-b@e2e.bounce.test", name: "Ativo B" },
+        { listId, email: "bounce-a@e2e.bounce.test", name: "Bounce A", isBounced: true },
+        { listId, email: "bounce-b@e2e.bounce.test", name: "Bounce B", isBounced: true },
+        { listId, email: "bounce-c@e2e.bounce.test", name: "Bounce C", isBounced: true },
+      ],
+    })
+
+    try {
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeVisible({
+        timeout: 30_000,
+      })
+      await page.getByRole("button", { name: /Nova Campanha/i }).click()
+      await expect(page.getByRole("dialog")).toBeVisible()
+
+      await page.getByLabel("Nome da campanha *").fill("E2E Campanha Bounce")
+      await page.getByRole("button", { name: "Próxima" }).click()
+
+      await expect(page.getByText(listName, { exact: false })).toBeVisible()
+      await page.getByText(listName, { exact: false }).click()
+      await page.getByRole("button", { name: "Próxima" }).click()
+
+      await page.getByRole("combobox").click()
+      await page.getByRole("option", { name: templateName }).click()
+      await page.getByRole("button", { name: "Próxima" }).click()
+
+      await expect(page.getByText(formatPermanentBounceAlert(3))).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(page.getByText("Total: 2 destinatários")).toBeVisible()
+      await expect(page.getByText("3 bounce permanente")).toBeVisible()
+    } finally {
+      await prisma.emailContact.deleteMany({ where: { listId } }).catch(() => {})
+      await prisma.emailContactList.delete({ where: { id: listId } }).catch(() => {})
       await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
     }
   })
