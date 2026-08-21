@@ -31,11 +31,7 @@ import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
 import { normalizeRadarName } from "@/lib/radar/normalization"
 import { applyPublicFormAnswerRevision } from "@/lib/radar/public-form-materialization"
-import {
-  projectPublicFormAnswerIdentity,
-  type PublicFormIdentityProjection,
-  type RadarIdentityField,
-} from "@/lib/radar/public-form-identity-projection"
+import { projectPublicFormAnswerIdentity } from "@/lib/radar/public-form-identity-projection"
 import type {
   MaterializePublicFormAnswerInput,
   MaterializePublicFormAnswerResult,
@@ -1770,7 +1766,14 @@ export class RadarRepository {
         }
 
         const decision = applyPublicFormAnswerRevision(profile.profileData, input)
-        if (decision.outcome !== "applied") {
+        // Retry do MESMO evento causal: a projeção já foi escrita, mas o gate
+        // pode ter falhado tecnicamente depois dela. Reexecutar é obrigatório,
+        // senão um perfil elegível ficaria sem lead silenciosamente. Um evento
+        // diferente que traga valor idêntico continua sem reexecutar o gate.
+        const isSameEventRetry =
+          decision.outcome === "unchanged" &&
+          decision.previous?.sourceEventId === input.sourceEventId
+        if (decision.outcome !== "applied" && !isSameEventRetry) {
           return { outcome: decision.outcome, identityChanged: null, emailChange: null }
         }
 
@@ -1779,22 +1782,29 @@ export class RadarRepository {
           value: input.value,
           currentPrimaryEmail: profile.primaryEmail,
         })
-        const identityPatch = this.buildChangedIdentityPatch(projection, profile)
 
-        await tx.radarProfile.update({
-          where: { id: input.profileId },
-          data: {
-            profileData: decision.profileData as Prisma.InputJsonValue,
-            ...identityPatch.data,
-            lastSeenAt: input.answeredAt,
-          },
-        })
+        if (decision.outcome === "applied") {
+          await tx.radarProfile.update({
+            where: { id: input.profileId },
+            data: {
+              profileData: decision.profileData as Prisma.InputJsonValue,
+              ...(projection?.patch ?? {}),
+              lastSeenAt: input.answeredAt,
+            },
+          })
+        }
 
+        // A mudança de identidade vem da projeção materializada, não das
+        // colunas do perfil: a resolução de identidade (`resolveProfileForPhone`
+        // / `resolveProfileForEmail`) já grava telefone e e-mail na linha antes
+        // desta transação, então comparar coluna daria sempre "não mudou" e o
+        // gate nunca rodaria.
         return {
-          outcome: "applied",
-          identityChanged: identityPatch.changedField,
+          outcome: decision.outcome,
+          identityChanged: projection?.field ?? null,
           emailChange:
-            identityPatch.changedField === "email" && projection?.field === "email"
+            projection?.field === "email" &&
+            profile.normalizedPrimaryEmail !== projection.patch.normalizedPrimaryEmail
               ? {
                   previousNormalizedEmail: profile.normalizedPrimaryEmail,
                   nextEmail: projection.patch.primaryEmail,
@@ -1805,34 +1815,6 @@ export class RadarRepository {
       },
       { timeout: 15_000 },
     )
-  }
-
-  /** Só reporta mudança de identidade quando o valor normalizado realmente difere. */
-  private buildChangedIdentityPatch(
-    projection: PublicFormIdentityProjection,
-    current: {
-      normalizedName: string
-      normalizedPhone: string | null
-      normalizedPrimaryEmail: string | null
-    },
-  ): { data: Record<string, string>; changedField: RadarIdentityField | null } {
-    if (!projection) return { data: {}, changedField: null }
-
-    const currentNormalized =
-      projection.field === "name"
-        ? current.normalizedName
-        : projection.field === "phone"
-          ? current.normalizedPhone
-          : current.normalizedPrimaryEmail
-    const nextNormalized =
-      projection.field === "name"
-        ? projection.patch.normalizedName
-        : projection.field === "phone"
-          ? projection.patch.normalizedPhone
-          : projection.patch.normalizedPrimaryEmail
-
-    if (currentNormalized === nextNormalized) return { data: {}, changedField: null }
-    return { data: projection.patch, changedField: projection.field }
   }
 
   /**
