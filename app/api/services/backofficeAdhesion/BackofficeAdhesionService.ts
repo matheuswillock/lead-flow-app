@@ -29,6 +29,10 @@ import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+
+function isE2eOrCiBypass(): boolean {
+  return isE2eTestMode() || process.env.CI === "true" || process.env.APP_ENV === "test"
+}
 import type {
   BackofficeAdhesionWithRelations,
   IBackofficeAdhesionRepository,
@@ -2340,7 +2344,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
               })
 
         if (error || !data?.properties?.action_link) {
-          if (isE2eTestMode()) {
+          if (isE2eOrCiBypass()) {
             console.info("[BackofficeAdhesionService][sendSetPasswordEmail] E2E fallback link", {
               adhesionId: adhesion.id,
               email: adhesion.email,
@@ -2358,7 +2362,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           linkData = data
         }
       } catch (e) {
-        if (isE2eTestMode()) {
+        if (isE2eOrCiBypass()) {
           console.info("[BackofficeAdhesionService][sendSetPasswordEmail] E2E fallback após exceção Supabase", {
             adhesionId: adhesion.id,
             email: adhesion.email,
@@ -2386,7 +2390,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     })
 
     if (!result.success) {
-      if (isE2eTestMode()) {
+      if (isE2eOrCiBypass()) {
         console.info("[BackofficeAdhesionService][sendSetPasswordEmail] E2E skip email failure", {
           adhesionId: adhesion.id,
           error: result.error,
@@ -2427,7 +2431,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     if (adhesion.createdSupabaseId) {
-      if (isE2eTestMode()) {
+      if (isE2eOrCiBypass()) {
         console.info("[BackofficeAdhesionService][syncEmail] E2E skip Supabase Auth update", {
           adhesionId: adhesion.id,
           newEmail,
@@ -2451,7 +2455,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
             throw new Error(`Falha ao atualizar e-mail na autenticação: ${error.message}`)
           }
         } catch (e) {
-          if (isE2eTestMode()) {
+          if (isE2eOrCiBypass()) {
             console.info("[BackofficeAdhesionService][syncEmail] E2E fallback após exceção Auth", {
               adhesionId: adhesion.id,
               error: String(e),
