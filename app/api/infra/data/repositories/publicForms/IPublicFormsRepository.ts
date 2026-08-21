@@ -244,6 +244,10 @@ export interface IPublicFormsRepository {
     formId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  withRadarFormLeadGateLock<T>(
+    input: { formId: string; visitorSessionId: string },
+    work: () => Promise<T>,
+  ): Promise<T>
   attachLeadIdToSessionSubmission(
     formId: string,
     visitorSessionId: string,

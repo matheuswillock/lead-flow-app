@@ -30,6 +30,8 @@ export type SyncPublicFormMetricToRadarInput = {
    */
   answerMappingKey?: string | null
   answerValue?: string | null
+  /** `false` no POST `/events` do renderer — Progress já dispara o gate. */
+  createCrmLead?: boolean
   occurredAt?: Date
 }
 
@@ -97,7 +99,7 @@ class SyncPublicFormMetricToRadarUseCase {
       }
 
       let leadId = input.leadId ?? null
-      if (input.eventType === "question_answered") {
+      if (input.eventType === "question_answered" && input.createCrmLead !== false) {
         const { createCrmLeadFromRadarFormGateUseCase } = await import(
           "@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase"
         )

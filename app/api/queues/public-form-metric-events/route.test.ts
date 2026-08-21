@@ -28,6 +28,7 @@ const baseMessage = (): PublicFormMetricQueuePayload => ({
   origin: { source: "queue-test" },
   answerMappingKey: null,
   answerValue: null,
+  createCrmLead: false,
   receivedAt: new Date().toISOString(),
 })
 

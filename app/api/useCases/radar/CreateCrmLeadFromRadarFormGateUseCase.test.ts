@@ -102,6 +102,10 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
     listSubmissionAnswers,
     findFormSubmissionContext,
     attachLeadIdToSessionSubmission,
+    withRadarFormLeadGateLock: async (
+      _input: { formId: string; visitorSessionId: string },
+      work: () => Promise<unknown>,
+    ) => work(),
   },
 }))
 

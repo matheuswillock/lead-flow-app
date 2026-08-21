@@ -468,4 +468,20 @@ describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
     )
     expect(output.result).toMatchObject({ leadId: "lead-from-gate" })
   })
+
+  it("POST /events (createCrmLead=false) espelha o Radar sem disparar o gate CRM", async () => {
+    const output = await syncPublicFormMetricToRadarUseCase.execute({
+      ...baseInput,
+      eventType: "question_answered",
+      eventKey: "vs-abc:question_answered:q-budget",
+      questionId: "q-budget",
+      answerMappingKey: null,
+      answerValue: null,
+      createCrmLead: false,
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(appendEventIfNewBySourceKey).toHaveBeenCalledTimes(1)
+    expect(gateExecute).not.toHaveBeenCalled()
+  })
 })

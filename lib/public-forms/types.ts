@@ -183,4 +183,10 @@ export type PublicFormMetricEventInput = {
    */
   answerMappingKey?: string | null
   answerValue?: string | null
+  /**
+   * POST `/events` do renderer não cria CRM — Progress já publicou o mesmo
+   * `eventKey`. O worker originado no Progress (fila ou fallback) deixa o
+   * default (`true`) para o Radar fechar A+C.
+   */
+  createCrmLead?: boolean
 }

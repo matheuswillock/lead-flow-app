@@ -52,6 +52,8 @@ export type PublicFormMetricQueuePayload = {
   /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue`. mappingKey só no servidor. */
   answerMappingKey: string | null;
   answerValue: string | null;
+  /** `false` no POST público `/events`; omitido/true no worker do Progress. */
+  createCrmLead: boolean;
   receivedAt: string;
 };
 
@@ -78,6 +80,7 @@ export function buildPublicFormMetricQueuePayload(
     origin: input.origin ?? {},
     answerMappingKey: input.answerMappingKey ?? null,
     answerValue: input.answerValue ?? null,
+    createCrmLead: input.createCrmLead !== false,
     receivedAt: new Date().toISOString(),
   };
 }

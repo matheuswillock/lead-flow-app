@@ -34,6 +34,7 @@ describe("publishPublicFormMetricEvent", () => {
       origin: {},
       answerMappingKey: null,
       answerValue: null,
+      createCrmLead: true,
       receivedAt: "2026-08-11T12:00:00.000Z",
     }
     const result = await publishPublicFormMetricEvent(payload)
@@ -62,6 +63,7 @@ describe("publishPublicFormMetricEvent", () => {
       origin: {},
       answerMappingKey: null,
       answerValue: null,
+      createCrmLead: true,
       receivedAt: "2026-08-11T12:00:00.000Z",
     }
     await publishPublicFormMetricEvent(payload, {
@@ -98,6 +100,18 @@ describe("public-form-metric-events helpers", () => {
     })
     expect(payload.eventType).toBe("lead_created")
     expect(payload.eventKey).toBe("key-lead")
+    expect(payload.createCrmLead).toBe(true)
+  })
+
+  it("buildPublicFormMetricQueuePayload marca createCrmLead false no POST público /events", () => {
+    const payload = buildPublicFormMetricQueuePayload("11111111-1111-4111-8111-111111111111", {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "question_answered",
+      eventKey: "key-answered",
+      origin: {},
+      createCrmLead: false,
+    })
+    expect(payload.createCrmLead).toBe(false)
   })
 
   it("buildPublicFormMetricQueuePayload usa eventKey e origin", () => {
@@ -132,6 +146,7 @@ describe("publishServerPublicFormMetricEvent", () => {
         origin: {},
         answerMappingKey: null,
         answerValue: null,
+        createCrmLead: true,
         receivedAt: "2026-08-14T12:00:00.000Z",
       },
       "PublicFormSubmissionUseCase",
@@ -159,6 +174,7 @@ describe("publishServerPublicFormMetricEvent", () => {
           origin: {},
           answerMappingKey: null,
           answerValue: null,
+          createCrmLead: true,
           receivedAt: "2026-08-14T12:00:00.000Z",
         },
         "PublicFormSubmissionUseCase",

@@ -595,6 +595,20 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async withRadarFormLeadGateLock<T>(
+    input: { formId: string; visitorSessionId: string },
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const lockKey = `radar-form-lead-gate:${input.formId}:${input.visitorSessionId}`
+    return prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+        return work()
+      },
+      { timeout: 15_000 },
+    )
+  }
+
   async attachLeadIdToSessionSubmission(
     formId: string,
     visitorSessionId: string,

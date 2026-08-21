@@ -184,4 +184,43 @@ describe("PublicFormsService.recordMetric questionSnapshot", () => {
     if (!call) throw new Error("Expected upsertMetricEvent to have been called")
     expect(call[0].questionSnapshot).toBeNull()
   })
+
+  it("question_answered sem answerValue em escolha ainda persiste e pode ir ao Radar", async () => {
+    const input: PublicFormMetricEventInput = {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "question_answered",
+      eventKey: "session_abcdefghij:question_answered:q1",
+      questionId: QUESTION_ID,
+      origin: {},
+    }
+
+    const accepted = await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })
+
+    expect(accepted).toBe(true)
+    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it("question_answered de identidade (name) vazio não persiste nem consome a chave", async () => {
+    findPublishedByPublicId.mockResolvedValueOnce({
+      publicationId: PUBLICATION_ID,
+      snapshot: {
+        formId: FORM_ID,
+        questions: [{ id: QUESTION_ID, title: "Nome", type: "text", mappingKey: "name" }],
+      },
+    })
+
+    const input: PublicFormMetricEventInput = {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "question_answered",
+      eventKey: "session_abcdefghij:question_answered:q1",
+      questionId: QUESTION_ID,
+      origin: {},
+      answerValue: "  ",
+    }
+
+    const accepted = await service.recordMetric(PUBLIC_ID, input, { radarMode: "skip" })
+
+    expect(accepted).toBe(true)
+    expect(upsertMetricEvent).not.toHaveBeenCalled()
+  })
 })

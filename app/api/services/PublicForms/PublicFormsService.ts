@@ -430,10 +430,14 @@ export class PublicFormsService implements IPublicFormsService {
 
     const trustedAnswerValue =
       typeof input.answerValue === "string" && input.answerValue.trim() ? input.answerValue : null
-    if (input.eventType === "question_answered" && !trustedAnswerValue) {
+    const trustedMappingKey = matchedQuestion?.mappingKey ?? null
+    const isIdentityMapping =
+      trustedMappingKey === "name" ||
+      trustedMappingKey === "email" ||
+      trustedMappingKey === "phone"
+    if (input.eventType === "question_answered" && isIdentityMapping && !trustedAnswerValue) {
       return true
     }
-    const trustedMappingKey = matchedQuestion?.mappingKey ?? null
 
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
     let leadId: string | null = null
@@ -494,6 +498,7 @@ export class PublicFormsService implements IPublicFormsService {
         origin,
         answerMappingKey: trustedMappingKey,
         answerValue: trustedAnswerValue,
+        createCrmLead: input.createCrmLead,
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)
