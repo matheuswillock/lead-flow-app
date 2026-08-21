@@ -3828,10 +3828,11 @@ export class EmailCampaignUseCase {
     dispatchId: string
     reason: "start" | "cron-start" | "cron-reclaim" | "continue"
     remainingCount?: number
+    batchOffset?: number
     createdAt?: Date
     now?: Date
   }): Promise<void> {
-    const { dispatchId, reason, remainingCount } = params
+    const { dispatchId, reason, remainingCount, batchOffset } = params
     const queue =
       params.createdAt != null
         ? resolveEmailCampaignDispatchWakeQueue({
@@ -3844,7 +3845,7 @@ export class EmailCampaignUseCase {
         ? publishEmailCampaignDispatchOverflowWake
         : publishEmailCampaignDispatchWake
     try {
-      await publish({ dispatchId, reason, remainingCount })
+      await publish({ dispatchId, reason, remainingCount, batchOffset })
     } catch (error) {
       console.error("[EmailCampaignUseCase][publishDispatchWake]", {
         dispatchId,
@@ -4013,6 +4014,7 @@ export class EmailCampaignUseCase {
     })
 
     let materializedHasMore = false
+    let materializedNextOffset = dispatch.materializeSourceOffset
     if (queuedLogs.length === 0) {
       if (!(await this.isDispatchStillSending(dispatchId))) {
         console.info("[EmailCampaignUseCase][processDispatchQueueBatch] cancelado antes de materializar", {
@@ -4033,6 +4035,7 @@ export class EmailCampaignUseCase {
         })
       }
       materializedHasMore = materialized.hasMore
+      materializedNextOffset = materialized.nextOffset
       if (materialized.created > 0) {
         queuedLogs = await this.db.emailLog.findMany({
           where: { dispatchId: dispatch.id, status: "queued" },
@@ -4046,6 +4049,7 @@ export class EmailCampaignUseCase {
           await this.publishDispatchWake({
             dispatchId: dispatch.id,
             reason: "continue",
+            batchOffset: materializedNextOffset,
             createdAt: dispatch.createdAt,
           })
           return new Output(true, ["Lote de destinatários materializado"], [], {
@@ -4193,6 +4197,7 @@ export class EmailCampaignUseCase {
         dispatchId: dispatch.id,
         reason: "continue",
         remainingCount: remaining,
+        batchOffset: materializedHasMore ? materializedNextOffset : undefined,
         createdAt: dispatch.createdAt,
       })
       return new Output(
@@ -4399,7 +4404,7 @@ export class EmailCampaignUseCase {
       }
     },
     chunkSize: number
-  ): Promise<{ created: number; hasMore: boolean; errorMessage?: string }> {
+  ): Promise<{ created: number; hasMore: boolean; errorMessage?: string; nextOffset: number }> {
     const existingCount = await this.db.emailLog.count({
       where: { dispatchId: dispatch.id },
     })
@@ -4489,7 +4494,7 @@ export class EmailCampaignUseCase {
     const chunk = selected
     if (chunk.length === 0) {
       await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
-      return { created: 0, hasMore: !exhausted }
+      return { created: 0, hasMore: !exhausted, nextOffset: sourceOffset }
     }
 
     const enriched = await enrichCampaignRecipientsWithRadar(dispatch.teamId, chunk)
@@ -4518,6 +4523,7 @@ export class EmailCampaignUseCase {
           created: 0,
           hasMore: false,
           errorMessage: this.buildUnresolvedTokensErrorMessage(unresolvedTokens),
+          nextOffset: sourceOffset,
         }
       }
     }
@@ -4540,7 +4546,7 @@ export class EmailCampaignUseCase {
     }))
     await teamEmailDispatchLogger.createQueuedTeamEmailLogs(logInputs)
     await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
-    return { created: chunk.length, hasMore: !exhausted }
+    return { created: chunk.length, hasMore: !exhausted, nextOffset: sourceOffset }
   }
 
   private async findExistingDispatchEmails(

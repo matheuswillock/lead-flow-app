@@ -29,21 +29,23 @@ export type EmailCampaignDispatchWakePayload = {
 /**
  * Idempotência: `start`/`cron-start`/`cron-reclaim` usam a própria
  * `dispatchId` (uma única publicação "inicial" por gatilho). `continue`
- * (republish após lote parcial) usa `remainingCount` — retries do mesmo
- * estado (mesma quantidade restante) deduplicam; progresso real gera uma
- * chave nova.
+ * usa `batchOffset` (posição do cursor de materialização após o lote
+ * atual — cresce monotonicamente, garantindo chave única por lote).
+ * `remainingCount` serve de fallback para mensagens em trânsito sem
+ * `batchOffset`.
  */
 export function buildEmailCampaignDispatchIdempotencyKey(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number }
+  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number; batchOffset?: number }
 ): string {
   if (payload.reason === "continue") {
-    return `${payload.dispatchId}:continue:${payload.remainingCount ?? 0}`
+    const discriminator = payload.batchOffset != null ? payload.batchOffset : (payload.remainingCount ?? 0)
+    return `${payload.dispatchId}:continue:${discriminator}`
   }
   return `${payload.dispatchId}:${payload.reason}`
 }
 
 export async function publishEmailCampaignDispatchWake(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number },
+  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number; batchOffset?: number },
   options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(EMAIL_CAMPAIGN_DISPATCH_TOPIC, payload, {
@@ -53,7 +55,7 @@ export async function publishEmailCampaignDispatchWake(
 }
 
 export async function publishEmailCampaignDispatchOverflowWake(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number },
+  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number; batchOffset?: number },
   options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return overflowQueue.send(EMAIL_CAMPAIGN_DISPATCH_OVERFLOW_TOPIC, payload, {
