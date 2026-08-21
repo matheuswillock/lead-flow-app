@@ -180,18 +180,25 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
       headers: { "x-supabase-user-id": backofficeSupabaseId! },
     });
 
+    const resStatus = res.status()
+    const resBodyText = await res.text().catch(() => "")
+    let resBody: unknown = null
+    try { resBody = JSON.parse(resBodyText) } catch { resBody = resBodyText }
+    console.log("[adhesions.spec] invite res", { status: resStatus, body: resBody, adhesionId, newEmail, backofficeSupabaseId: backofficeSupabaseId?.slice(0, 8) })
+
     // A API deve retornar 200 e email === newEmail
     // Se Supabase Admin não estiver configurado no ambiente E2E, a geração do link falha com 400/500;
     // nesse caso assertamos o sync de banco (lead/profile) que já prova o fix do BUG 1.
-    if (res.status() === 200) {
-      const body = await res.json();
+    if (resStatus === 200) {
+      const body = resBody as { isValid?: boolean; result?: { email?: string }; email?: string }
       expect(body.isValid).toBeTruthy();
       expect(String(body.result?.email ?? body.email ?? "")).toContain(newEmail);
     } else {
       // Fallback quando Supabase não está disponível: apenas verifica que o e-mail foi sincronizado no banco
-      const bodyText = await res.text().catch(() => "");
-      expect(res.status()).toBeGreaterThanOrEqual(200);
-      expect(bodyText.length).toBeGreaterThan(0);
+      // Log detalhado para diagnóstico CI
+      console.log("[adhesions.spec] invite non-200 fallback", { status: resStatus, body: resBody })
+      expect(resStatus).toBeGreaterThanOrEqual(200);
+      expect(String(resBodyText).length).toBeGreaterThan(0);
     }
 
     // 3) Assert no banco: lead.email e profile.email devem ter sido sincronizados para newEmail (BUG 1)
@@ -219,12 +226,15 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
     const res2 = await request.post(`${baseURL}/api/v1/backoffice/adhesions/${adhesionId}/invite`, {
       headers: { "x-supabase-user-id": backofficeSupabaseId! },
     });
+    const res2Status = res2.status()
+    const res2Text = await res2.text().catch(() => "")
+    console.log("[adhesions.spec] invite2 res", { status: res2Status, body: res2Text.slice(0, 500) })
     // Se Supabase ok, deve ser 200 novamente (novo hashed_token com TTL resetado)
-    if (res2.status() === 200) {
-      const body2 = await res2.json();
+    if (res2Status === 200) {
+      const body2 = JSON.parse(res2Text) as { isValid?: boolean }
       expect(body2.isValid).toBeTruthy();
     } else {
-      expect([200, 400, 500]).toContain(res2.status());
+      expect([200, 400, 500]).toContain(res2Status);
     }
   });
 });
