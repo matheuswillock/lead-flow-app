@@ -1,0 +1,49 @@
+{
+  "description": "Backfill MultiSkill #1–#7: submissões completed sem leadId rejeitadas pelo gate antigo. A+C atual cria. #8 Ricardo / #9 MARCO / #10 Volni ficam fora.",
+  "expectedTeamNameContains": "MultiSkill",
+  "excludedPrefixes": ["86c27c79", "d6a7d1d1", "4978ea92"],
+  "cases": [
+    {
+      "id": 1,
+      "submissionPrefix": "d2c5e0d3",
+      "expectedName": "Alexandre Barros Tavares",
+      "gateReason": "complete_name_and_landline"
+    },
+    {
+      "id": 2,
+      "submissionPrefix": "7a147f9b",
+      "expectedName": "Sandra",
+      "gateReason": "single_name_mobile_and_email"
+    },
+    {
+      "id": 3,
+      "submissionPrefix": "c0fd0f05",
+      "expectedName": "Debora",
+      "gateReason": "single_name_mobile_and_email"
+    },
+    {
+      "id": 4,
+      "submissionPrefix": "71c71cbd",
+      "expectedName": "Eliana",
+      "gateReason": "single_name_mobile_and_email"
+    },
+    {
+      "id": 5,
+      "submissionPrefix": "b3b714e7",
+      "expectedName": "Wesley",
+      "gateReason": "single_name_mobile_and_email"
+    },
+    {
+      "id": 6,
+      "submissionPrefix": "84fa96b4",
+      "expectedName": "Marcelo",
+      "gateReason": "single_name_mobile_and_email"
+    },
+    {
+      "id": 7,
+      "submissionPrefix": "f718e75e",
+      "expectedName": "Carlos",
+      "gateReason": "single_name_mobile_and_email"
+    }
+  ]
+}
