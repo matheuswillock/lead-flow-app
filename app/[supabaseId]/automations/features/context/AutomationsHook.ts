@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { toast } from "sonner";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 export function useAutomationsHook(service: IAutomationsService = automationsService) {
   const { activeTeam } = useTeamContext();
@@ -35,7 +36,7 @@ export function useAutomationsHook(service: IAutomationsService = automationsSer
       setRules(data);
       lastFetchKeyRef.current = key;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar automações");
+      setError(toUserToastMessage(err));
     } finally {
       setIsLoading(false);
       inFlightRef.current = false;

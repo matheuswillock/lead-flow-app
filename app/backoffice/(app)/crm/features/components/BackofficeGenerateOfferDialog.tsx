@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Check, Copy, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -95,7 +96,7 @@ export function BackofficeGenerateOfferDialog({
       })
       .catch((error) => {
         console.error("[BackofficeGenerateOfferDialog][listActiveProducts]", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar produtos")
+        toastUserError(error)
       })
       .finally(() => {
         if (!cancelled) setIsLoadingProducts(false)
@@ -138,7 +139,7 @@ export function BackofficeGenerateOfferDialog({
       toast.success("Oferta gerada com sucesso")
     } catch (error) {
       console.error("[BackofficeGenerateOfferDialog][handleGenerate]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao gerar oferta")
+      toastUserError(error)
     } finally {
       setIsSubmitting(false)
     }

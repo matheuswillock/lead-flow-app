@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Output } from "@/lib/output";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useUser } from "@/app/context/UserContext";
 import {
   readTeamsBootstrapCache,
@@ -310,7 +311,7 @@ export const TeamProvider = ({
       }
       setIsTeamSwitchPersisted(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao alterar o time ativo.");
+      toastUserError(error);
       if (generation !== teamSwitchGenerationRef.current) {
         return;
       }

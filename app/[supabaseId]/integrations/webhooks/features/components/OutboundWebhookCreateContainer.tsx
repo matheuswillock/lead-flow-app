@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { teamWebhooksService } from "../services/TeamWebhooksService";
@@ -49,7 +50,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
       toast.success("Webhook de saída criado");
       router.push(`/${supabaseId}/integrations/webhooks/outbound/${created.id}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao criar webhook");
+      toastUserError(error);
     } finally {
       setSaving(false);
     }

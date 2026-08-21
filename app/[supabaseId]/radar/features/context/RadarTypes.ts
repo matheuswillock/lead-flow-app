@@ -308,3 +308,9 @@ export type RadarProfileContracts = {
   portfolios: RadarPortfolioContract[]
   finalized: RadarFinalizedContract[]
 }
+
+export type {
+  RadarProfileFormCompletionStatus,
+  RadarProfileFormItem,
+  RadarProfileForms,
+} from "@/lib/radar/profile-forms"

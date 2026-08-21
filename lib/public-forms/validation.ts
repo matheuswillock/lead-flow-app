@@ -269,6 +269,9 @@ export const publicFormSubmissionSchema = z.object({
   requestKey: z.string().min(8).max(200),
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
+  schemaVersion: z.literal(1).optional(),
+  eventId: uuid.optional(),
+  occurredAt: z.string().datetime().optional(),
   scheduling: z.object({ startsAt: z.string().datetime() }).optional(),
   thankYouPageId: uuid.optional(),
   visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/).optional(),
@@ -279,6 +282,10 @@ export const publicFormProgressSchema = z.object({
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
   lastQuestionId: uuid.optional(),
+  schemaVersion: z.literal(1).optional(),
+  eventId: uuid.optional(),
+  occurredAt: z.string().datetime().optional(),
+  trigger: z.enum(["blur", "change", "page_flush", "submit_reconciliation"]).optional(),
 })
 
 export const publicFormMetricEventSchema = z.object({
@@ -287,11 +294,14 @@ export const publicFormMetricEventSchema = z.object({
     "form_viewed",
     "form_started",
     "question_viewed",
-    "question_answered",
     "question_skipped",
     "form_completed",
   ]),
   questionId: uuid.optional(),
   eventKey: z.string().regex(/^[A-Za-z0-9:_-]{16,250}$/),
   origin: z.record(z.string(), z.unknown()).default({}),
+  schemaVersion: z.literal(1).optional(),
+  eventId: uuid.optional(),
+  occurredAt: z.string().datetime().optional(),
+  answerValue: z.string().max(2000).optional(),
 })

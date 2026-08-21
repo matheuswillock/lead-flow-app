@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { toUserToastMessage } from '@/lib/ui/to-user-toast-message'
 import type { Template, TemplateRankingResult, TemplatesState, TemplateTab } from './TemplatesTypes'
 import { createTemplatesService } from '../services/TemplatesService'
 import { useStudioEmailRuntime } from '@/lib/email/use-studio-email-runtime'
@@ -70,7 +71,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
       setTemplateApprovalRequired(settings.templateApprovalRequired)
       lastFetchKeyRef.current = key
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao carregar templates'
+      const message = toUserToastMessage(err)
       console.error('[useTemplates] Failed to fetch templates', err)
       setError(message)
       toast.error('Erro ao carregar templates', { description: message })
@@ -124,7 +125,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
         setTemplates((prev) => prev.filter((t) => t.id !== id))
         toast.success('Template excluído com sucesso')
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao excluir template'
+        const message = toUserToastMessage(err)
         console.error('[useTemplates] Failed to delete template', err)
         toast.error('Erro ao excluir template', { description: message })
       } finally {
@@ -160,7 +161,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
         setTemplates((prev) => [duplicated, ...prev])
         toast.success('Template duplicado com sucesso')
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao duplicar template'
+        const message = toUserToastMessage(err)
         console.error('[useTemplates] Failed to duplicate template', err)
         await fetchTemplates()
         toast.error('Erro ao duplicar template', { description: message })
@@ -180,7 +181,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
         setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)))
         toast.success('Template enviado para aprovação')
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao enviar para aprovação'
+        const message = toUserToastMessage(err)
         console.error('[useTemplates] Failed to submit for approval', err)
         toast.error('Erro ao enviar para aprovação', { description: message })
       } finally {
@@ -199,7 +200,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
         setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)))
         toast.success('Template aprovado com sucesso')
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao aprovar template'
+        const message = toUserToastMessage(err)
         console.error('[useTemplates] Failed to approve template', err)
         toast.error('Erro ao aprovar template', { description: message })
       } finally {
@@ -218,7 +219,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
         setTemplates((prev) => prev.map((t) => (t.id === id ? updated : t)))
         toast.success('Template recusado')
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao recusar template'
+        const message = toUserToastMessage(err)
         console.error('[useTemplates] Failed to reject template', err)
         toast.error('Erro ao recusar template', { description: message })
       } finally {

@@ -925,12 +925,22 @@ skipped skipped
 
         public_form_queue_event_kind {
             metric metric
+progress progress
 submission submission
         }
     
 
 
         public_form_queue_event_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
+        }
+    
+
+
+        queue_processing_failure_status {
             pending pending
 processing processing
 resolved resolved
@@ -2857,6 +2867,25 @@ completed completed
     DateTime nextAttemptAt 
     String lastError "❓"
     String failureReason "❓"
+    String eventId "❓"
+    Int schemaVersion "❓"
+    String topic "❓"
+    String failureStage "❓"
+    String lastErrorCode "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_queue_processing_failures" {
+    String id "🗝️"
+    String topic 
+    String idempotencyKey 
+    Json payload 
+    QueueProcessingFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3918,6 +3947,7 @@ completed completed
     String mappingKey "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    DateTime deletedAt "❓"
     }
   
 
@@ -3969,6 +3999,7 @@ completed completed
   "corretor_studio_public_form_submissions" {
     String id "🗝️"
     String requestKey 
+    String eventId "❓"
     String visitorSessionId "❓"
     PublicFormCompletionStatus completionStatus 
     PublicFormSubmissionStatus status 
@@ -3977,6 +4008,12 @@ completed completed
     Json origin "❓"
     String errorMessage "❓"
     DateTime submittedAt "❓"
+    DateTime dispatchAcceptedAt "❓"
+    Int dispatchAttemptCount 
+    DateTime nextDispatchAt "❓"
+    String lastDispatchError "❓"
+    String thankYouPageId "❓"
+    DateTime scheduledMeetingStartsAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3986,6 +4023,9 @@ completed completed
     String id "🗝️"
     Json value 
     Json questionSnapshot 
+    String sourceEventId "❓"
+    DateTime answeredAt "❓"
+    String mappingKey "❓"
     DateTime createdAt 
     }
   
@@ -3996,6 +4036,9 @@ completed completed
     String visitorSessionId 
     PublicFormMetricType eventType 
     String eventKey 
+    String eventId "❓"
+    Int schemaVersion "❓"
+    DateTime occurredAt "❓"
     Json origin "❓"
     DateTime createdAt 
     }
@@ -4388,6 +4431,7 @@ completed completed
     "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
     "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventKind" : "enum:kind"
     "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventFailureStatus" : "enum:status"
+    "corretor_studio_queue_processing_failures" |o--|| "QueueProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"

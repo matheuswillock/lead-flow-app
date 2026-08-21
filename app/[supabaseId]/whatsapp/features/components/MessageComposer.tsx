@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Mic, MicOff, X } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -226,7 +227,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
           toast.message("Upload cancelado")
           return
         }
-        toast.error(error instanceof Error ? error.message : "Falha ao enviar arquivo.")
+        toastUserError(error)
       } finally {
         uploadAbortRef.current = null
         setIsUploading(false)
@@ -252,7 +253,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       if (error.code === "NotAllowedError") {
         setMicPermissionDenied(true)
       }
-      toast.error(error.message)
+      toastUserError(error)
     },
   })
 
@@ -444,7 +445,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       if (error instanceof MicrophoneAccessError && error.code === "NotAllowedError") {
         setMicPermissionDenied(true)
       }
-      toast.error(error instanceof Error ? error.message : "Não foi possível acessar o microfone.")
+      toastUserError(error)
     }
   }, [attachmentDraft, hasText, isDisabled, recorder])
 
@@ -458,7 +459,7 @@ export function MessageComposer({ disabled = false }: MessageComposerProps) {
       if (error instanceof MicrophoneAccessError && error.code === "NotAllowedError") {
         setMicPermissionDenied(true)
       }
-      toast.error(error instanceof Error ? error.message : "Microfone ainda bloqueado.")
+      toastUserError(error)
     }
   }, [])
 

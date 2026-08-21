@@ -9,6 +9,7 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type { IBackofficeWhatsAppInstancesService } from "../services/IBackofficeWhatsAppInstancesService"
 import type {
@@ -136,7 +137,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
       setPagination(result.pagination)
     } catch (err) {
       console.error("[BackofficeWhatsAppInstancesContext][refreshList]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar instâncias")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       listInFlight.current = false
@@ -171,7 +172,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         setSelectedDetail(detail)
       } catch (err) {
         console.error("[BackofficeWhatsAppInstancesContext][openDetail]", err)
-        setError(err instanceof Error ? err.message : "Erro ao carregar detalhe")
+        setError(toUserToastMessage(err))
         setSelectedConfigId(null)
       } finally {
         setIsLoadingDetail(false)
@@ -225,7 +226,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
       } catch (err) {
         console.error("[BackofficeWhatsAppInstancesContext][updateInstance]", err)
-        const message = err instanceof Error ? err.message : "Erro ao atualizar instância"
+        const message = toUserToastMessage(err)
         toast.error(message)
         return { isValid: false, errorMessages: [message] }
       } finally {
@@ -248,7 +249,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         }
         return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao reconectar"
+        const message = toUserToastMessage(err)
         toast.error(message)
         return { isValid: false, errorMessages: [message] }
       } finally {
@@ -271,7 +272,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         }
         return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao desconectar"
+        const message = toUserToastMessage(err)
         toast.error(message)
         return { isValid: false, errorMessages: [message] }
       } finally {
@@ -294,7 +295,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         }
         return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao sincronizar histórico"
+        const message = toUserToastMessage(err)
         toast.error(message)
         return { isValid: false, errorMessages: [message] }
       } finally {
@@ -320,7 +321,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         setEligibleTeams(teams)
       } catch (err) {
         console.error("[BackofficeWhatsAppInstancesContext][loadEligibleTeams]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar times")
+        toastUserError(err)
       } finally {
         setIsLoadingTeams(false)
       }
@@ -342,7 +343,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         }
         return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao provisionar instância"
+        const message = toUserToastMessage(err)
         toast.error(message)
         return { isValid: false, errorMessages: [message] }
       } finally {
@@ -362,7 +363,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
         toast.error(result.errorMessages?.[0] ?? "Erro ao pré-visualizar webhooks")
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao pré-visualizar webhooks"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setIsResyncingWebhooks(false)
@@ -383,7 +384,7 @@ export function BackofficeWhatsAppInstancesProvider({ children, instancesService
       }
       return { isValid: result.isValid, errorMessages: result.errorMessages ?? [] }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao reaplicar webhooks"
+      const message = toUserToastMessage(err)
       toast.error(message)
       return { isValid: false, errorMessages: [message] }
     } finally {

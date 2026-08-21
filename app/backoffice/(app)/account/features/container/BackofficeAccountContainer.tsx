@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Eye, EyeOff } from "lucide-react"
-import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -76,7 +76,7 @@ export function BackofficeAccountContainer() {
       }
       await updateAccount(payload)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar conta")
+      toastUserError(err)
     } finally {
       setIsSavingProfile(false)
     }
@@ -100,7 +100,7 @@ export function BackofficeAccountContainer() {
       setPassword("")
       setConfirmPassword("")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar senha")
+      toastUserError(err)
     } finally {
       setIsSavingPassword(false)
     }

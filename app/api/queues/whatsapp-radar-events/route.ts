@@ -1,8 +1,14 @@
 import type { ProcessWhatsappRadarEventUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsappRadarEventUseCase"
 import {
+  buildWhatsappRadarEventIdempotencyKey,
   handleWhatsappRadarEventsCallback,
+  WHATSAPP_RADAR_EVENTS_TOPIC,
   type WhatsappRadarEventPayload,
 } from "@/lib/queues/whatsapp-radar-events"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -30,7 +36,8 @@ function isValidPayload(message: WhatsappRadarEventPayload | null | undefined): 
 export async function processWhatsappRadarEventMessage(
   message: WhatsappRadarEventPayload,
   metadata: QueueMessageMetadata,
-  useCase?: Pick<ProcessWhatsappRadarEventUseCase, "execute">
+  useCase?: Pick<ProcessWhatsappRadarEventUseCase, "execute">,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[WhatsappRadarEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -73,6 +80,14 @@ export async function processWhatsappRadarEventMessage(
       teamId: message.teamId,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: WHATSAPP_RADAR_EVENTS_TOPIC,
+      idempotencyKey: buildWhatsappRadarEventIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

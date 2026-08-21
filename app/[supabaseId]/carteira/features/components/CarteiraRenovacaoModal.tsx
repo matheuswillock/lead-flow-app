@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { format, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { X } from 'lucide-react';
-import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -249,7 +249,7 @@ export function CarteiraRenovacaoModal({
         note: descricao.trim() || null,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar renovação');
+      toastUserError(error);
     } finally {
       setSaving(false);
     }

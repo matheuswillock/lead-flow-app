@@ -20,7 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { resolveVisibleQuestionIds, resolveThankYouPageId, shouldGoToThankYou, validateAnswer } from "@/lib/public-forms/engine"
+import {
+  applyLeadNameAnswerToFormAnswers,
+  isLeadNameQuestion,
+  PUBLIC_FORM_LEAD_NAME_MAX_LENGTH,
+  resolveThankYouPageId,
+  resolveVisibleQuestionIds,
+  shouldGoToThankYou,
+  validateAnswer,
+} from "@/lib/public-forms/engine"
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
@@ -34,9 +42,13 @@ import type {
   PublicFormSuccessAction,
   PublicFormThemeColors,
 } from "@/lib/public-forms/types"
+import { buildPublicFormSubmitRequestKey } from "@/lib/public-forms/metric-keys"
 import {
-  buildPublicFormSubmitRequestKey,
-} from "@/lib/public-forms/metric-keys"
+  drainPublicFormBrowserOutbox,
+  enqueuePublicFormBrowserOutboxEvent,
+  removePublicFormBrowserOutboxEvent,
+  type PublicFormBrowserOutboxKind,
+} from "@/lib/public-forms/browser-event-outbox"
 import { cn } from "@/lib/utils"
 
 type PublicQuestion = PublicFormSnapshot["questions"][number]
@@ -171,6 +183,13 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     () => pageQuestions.map((item) => item.id).join("\0"),
     [pageQuestions],
   )
+  const pageAnswers = useMemo(
+    () =>
+      pageQuestions.flatMap((question) =>
+        question.id in answers ? [{ questionId: question.id, value: answers[question.id] }] : [],
+      ),
+    [answers, pageQuestions],
+  )
   const pageIsValid = useMemo(
     () => pageQuestions.every((item) => !validateAnswer(item, answers[item.id])),
     [pageQuestions, answers],
@@ -230,28 +249,75 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       .catch(() => {})
   }, [preview, publicId, snapshot.questions])
 
+  const sendWithOutbox = useCallback(
+    async (kind: PublicFormBrowserOutboxKind, endpoint: string, body: Record<string, unknown>) => {
+      const eventId = typeof body.eventId === "string" ? body.eventId : crypto.randomUUID()
+      const payload = { ...body, eventId }
+      try {
+        // Persistência local é best-effort: IndexedDB bloqueado/sem quota não pode impedir o envio.
+        await enqueuePublicFormBrowserOutboxEvent({ eventId, kind, endpoint, body: payload })
+      } catch (error) {
+        console.error("[PublicFormRenderer][outbox] Persistência local indisponível, enviando direto", error)
+      }
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: kind !== "submission",
+        })
+        if (response.ok || (response.status !== 429 && response.status !== 503)) {
+          await removePublicFormBrowserOutboxEvent(eventId).catch(() => {})
+        }
+        return response
+      } catch (error) {
+        console.error("[PublicFormRenderer][outbox] Falha de rede", error)
+        throw error
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (preview || !publicId || !session) return
+    const drain = () =>
+      drainPublicFormBrowserOutbox((record) =>
+        fetch(record.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(record.body),
+          keepalive: record.kind !== "submission",
+        }),
+      ).catch((error) => console.error("[PublicFormRenderer][outbox-drain]", error))
+
+    void drain()
+    window.addEventListener("online", drain)
+    window.addEventListener("pageshow", drain)
+    const interval = window.setInterval(drain, 30_000)
+    return () => {
+      window.removeEventListener("online", drain)
+      window.removeEventListener("pageshow", drain)
+      window.clearInterval(interval)
+    }
+  }, [preview, publicId, session])
+
   const track = useCallback(
     (eventType: PublicFormMetricEventInput["eventType"], questionId?: string) => {
       if (preview || !publicId || !session) return
-      const body = JSON.stringify({
+      const body = {
         visitorSessionId: session,
         eventType,
         questionId,
-        eventKey: `${session}:${eventType}:${questionId ?? "form"}`,
+        eventKey: questionId ? `${session}:${eventType}:${questionId}` : `${session}:${eventType}:form`,
         origin: getOrigin(),
-      })
-      const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
-      if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) {
-        return
+        schemaVersion: 1,
+        occurredAt: new Date().toISOString(),
       }
-      void fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-      })
+      const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
+      void sendWithOutbox("behavior", url, body)
     },
-    [preview, publicId, session],
+    [preview, publicId, sendWithOutbox, session],
   )
 
   useEffect(() => {
@@ -301,33 +367,36 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
 
   const saveProgress = useCallback(async () => {
     if (preview || !publicId || !session) return
-    await fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    await sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
         visitorSessionId: session,
-        answers: answerList,
+        answers: pageAnswers,
         origin: getOrigin(),
-      }),
-      keepalive: true,
+        schemaVersion: 1,
+        eventId: crypto.randomUUID(),
+        occurredAt: new Date().toISOString(),
+        trigger: "page_flush",
     })
-  }, [answerList, preview, publicId, session])
+  }, [pageAnswers, preview, publicId, sendWithOutbox, session])
 
   const sendBlurProgress = useCallback(
-    (questionId: string, value: unknown) => {
+    (questionId: string, value: unknown, trigger: "blur" | "change" = "blur") => {
       if (preview || !publicId || !session) return
-      void fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
+      void sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
           visitorSessionId: session,
           answers: [{ questionId, value }],
           origin: getOrigin(),
-        }),
-        keepalive: true,
+          schemaVersion: 1,
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date().toISOString(),
+          trigger,
       })
+      const question = snapshot.questions.find((item) => item.id === questionId)
+      if (question && isLeadNameQuestion(question)) {
+        setError(validateAnswer(question, value))
+      }
     },
-    [preview, publicId, session],
+    [preview, publicId, sendWithOutbox, session, snapshot.questions],
   )
 
   function start() {
@@ -346,9 +415,6 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       }
     }
     setError(null)
-    for (const item of pageQuestions) {
-      track("question_answered", item.id)
-    }
     try {
       await saveProgress()
     } catch (error) {
@@ -410,20 +476,23 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     const thankYouPageId = resolveThankYouPageId(snapshot, answerList)
     setResolvedThankYouPageId(thankYouPageId)
     try {
-      const response = await fetch(`${API_CLIENT_BASE}/public-forms/${publicId}/submissions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await sendWithOutbox(
+        "submission",
+        `${API_CLIENT_BASE}/public-forms/${publicId}/submissions`,
+        {
           requestKey: buildPublicFormSubmitRequestKey(session),
           answers: answerList,
           origin: getOrigin(),
           visitorSessionId: session,
+          schemaVersion: 1,
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date().toISOString(),
           thankYouPageId: thankYouPageId ?? undefined,
           scheduling: scheduleAnswer?.startsAt
             ? { startsAt: scheduleAnswer.startsAt }
             : undefined,
-        }),
-      })
+        },
+      )
       const output = await response.json()
       if (!response.ok || !output.isValid) {
         throw new Error(output.errorMessages?.join("; ") || "Não foi possível enviar")
@@ -765,7 +834,17 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                         question={item}
                         value={answers[item.id]}
                         onChange={(value) => {
-                          setAnswers((current) => ({ ...current, [item.id]: value }))
+                          setAnswers((current) => {
+                            if (!isLeadNameQuestion(item)) {
+                              return { ...current, [item.id]: value }
+                            }
+                            return applyLeadNameAnswerToFormAnswers({
+                              questions: snapshot.questions,
+                              currentAnswers: current,
+                              nameQuestionId: item.id,
+                              nameValue: value,
+                            })
+                          })
                           setError(null)
                         }}
                         onBlur={sendBlurProgress}
@@ -833,7 +912,7 @@ function Question({
   question: PublicQuestion
   value: unknown
   onChange: (value: unknown) => void
-  onBlur?: (questionId: string, value: unknown) => void
+  onBlur?: (questionId: string, value: unknown, trigger?: "blur" | "change") => void
   publicId?: string
   preview: boolean
 }) {
@@ -859,7 +938,10 @@ function Question({
     return (
       <RadioGroup
         value={typeof value === "string" ? value : ""}
-        onValueChange={onChange}
+        onValueChange={(nextValue) => {
+          onChange(nextValue)
+          onBlur?.(question.id, nextValue, "change")
+        }}
         className={cn("gap-2.5", options.length > 3 && "sm:grid-cols-2 sm:grid")}
       >
         {options.map((option) => (
@@ -910,10 +992,14 @@ function Question({
                 onCheckedChange={(checked) => {
                   if (checked) {
                     if (atLimit) return
-                    onChange([...selected, option.value])
+                    const nextValue = [...selected, option.value]
+                    onChange(nextValue)
+                    onBlur?.(question.id, nextValue, "change")
                     return
                   }
-                  onChange(selected.filter((item) => item !== option.value))
+                  const nextValue = selected.filter((item) => item !== option.value)
+                  onChange(nextValue)
+                  onBlur?.(question.id, nextValue, "change")
                 }}
               />
               {option.label}
@@ -929,7 +1015,11 @@ function Question({
       <label className="flex items-start gap-3 rounded-lg border border-input bg-background p-4">
         <Checkbox
           checked={value === true}
-          onCheckedChange={(checked) => onChange(checked === true)}
+          onCheckedChange={(checked) => {
+            const nextValue = checked === true
+            onChange(nextValue)
+            onBlur?.(question.id, nextValue, "change")
+          }}
         />
         <span>Li e concordo com os termos apresentados.</span>
       </label>
@@ -938,6 +1028,7 @@ function Question({
 
   if (question.type === "text") {
     const auto = resolvePublicFormAutocompleteAttrs(question)
+    const isName = isLeadNameQuestion(question)
     return (
       <Input
         autoFocus
@@ -945,8 +1036,14 @@ function Question({
         autoComplete={auto.autoComplete}
         inputMode={auto.inputMode}
         value={String(value ?? "")}
+        maxLength={isName ? PUBLIC_FORM_LEAD_NAME_MAX_LENGTH : undefined}
         placeholder={question.placeholder ?? "Digite sua resposta"}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value
+          onChange(
+            isName ? next.slice(0, PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) : next,
+          )
+        }}
         onBlur={(event) => onBlur?.(question.id, event.currentTarget.value)}
         className="h-14 border-input bg-background text-lg"
       />
@@ -960,6 +1057,7 @@ function Question({
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "Digite sua resposta"}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={(event) => onBlur?.(question.id, event.currentTarget.value)}
         className="min-h-28 border-input bg-background text-lg"
       />
     )
@@ -975,6 +1073,7 @@ function Question({
           value={String(value ?? "")}
           placeholder={question.placeholder ?? "0,00"}
           onChange={(event) => onChange(formatCurrencyBR(event.target.value))}
+          onBlur={(event) => onBlur?.(question.id, formatCurrencyBR(event.currentTarget.value))}
           className="h-14 border-0 bg-transparent text-lg shadow-none focus-visible:ring-0"
         />
       </div>
@@ -1010,6 +1109,7 @@ function Question({
             ? "email"
             : "text"
   const auto = resolvePublicFormAutocompleteAttrs(question)
+  const isName = isLeadNameQuestion(question)
   return (
     <Input
       autoFocus
@@ -1018,14 +1118,16 @@ function Question({
       autoComplete={auto.autoComplete}
       inputMode={auto.inputMode}
       value={String(value ?? "")}
+      maxLength={isName ? PUBLIC_FORM_LEAD_NAME_MAX_LENGTH : undefined}
       placeholder={question.placeholder ?? "Digite sua resposta"}
-      onChange={(event) =>
-        onChange(
-          inputType === "number" && event.target.value !== ""
-            ? Number(event.target.value)
-            : event.target.value,
-        )
-      }
+      onChange={(event) => {
+        const raw = event.target.value
+        if (inputType === "number" && raw !== "") {
+          onChange(Number(raw))
+          return
+        }
+        onChange(isName ? raw.slice(0, PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) : raw)
+      }}
       onBlur={(event) => {
         const raw = event.currentTarget.value
         const normalized = inputType === "number" && raw !== "" ? Number(raw) : raw

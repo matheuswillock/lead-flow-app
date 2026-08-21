@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { IDashboardState, IDashboardActions, DashboardTeamScope } from './DashboardTypes';
 import { IDashboardMetricsService, MetricsFilters } from '../services/IDashboardMetricsService';
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 interface UseDashboardHookProps {
   supabaseId: string;
@@ -164,7 +165,7 @@ export function useDashboardHook({
 
       lastSuccessKeyRef.current = requestKey;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao carregar métricas';
+      const errorMessage = toUserToastMessage(err);
       setError(errorMessage);
       console.error('Erro ao buscar métricas do dashboard:', err);
     } finally {

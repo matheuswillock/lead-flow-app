@@ -13,6 +13,7 @@ import {
 import type { IPublicOfferService } from "../services/IPublicOfferService"
 import { PublicOfferService } from "../services/PublicOfferService"
 import type { PublicOfferShare } from "./PublicOfferTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 interface PublicOfferContextValue {
   token: string
@@ -53,7 +54,7 @@ export function PublicOfferProvider({
       lastSuccessKey.current = requestKey
     } catch (err) {
       console.error("[PublicOfferContext][loadShare]", err)
-      setError(err instanceof Error ? err.message : "Link de oferta indisponível")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightKey.current = null

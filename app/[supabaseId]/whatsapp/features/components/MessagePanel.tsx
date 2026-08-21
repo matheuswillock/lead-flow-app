@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { ArrowLeft, Loader2, Phone, RefreshCw, Search, UserSquare2, Wifi, WifiOff, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { toastUserError } from '@/lib/ui/to-user-toast-message'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -149,7 +150,7 @@ export function MessagePanel() {
         .catch((error) => {
           if (controller.signal.aborted) return
           if (error instanceof DOMException && error.name === 'AbortError') return
-          toast.error(error instanceof Error ? error.message : 'Não foi possível buscar nesta conversa')
+          toastUserError(error)
         })
         .finally(() => {
           if (!controller.signal.aborted) setIsSearching(false)

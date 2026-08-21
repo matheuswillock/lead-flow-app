@@ -7,6 +7,7 @@ export interface ParsedLeadRow {
 export interface ParsedLeadFile {
   columns: string[];
   rows: ParsedLeadRow[];
+  sheetNames: string[];
 }
 
 const toCellString = (value: unknown): string => {
@@ -38,7 +39,8 @@ const parseXlsxFile = async (file: File): Promise<ParsedLeadFile> => {
   const XLSX = await import("xlsx");
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  const sheetName = workbook.SheetNames[0];
+  const sheetNames = workbook.SheetNames;
+  const sheetName = sheetNames[0];
   if (!sheetName) {
     throw new Error("A planilha está vazia");
   }
@@ -59,7 +61,11 @@ const parseXlsxFile = async (file: File): Promise<ParsedLeadFile> => {
     throw new Error("Não foi possível identificar as colunas da planilha");
   }
 
-  return { columns, rows: buildRows(columns, matrix.slice(1), 2) };
+  return {
+    columns,
+    rows: buildRows(columns, matrix.slice(1), 2),
+    sheetNames,
+  };
 };
 
 const parseJsonFile = async (file: File): Promise<ParsedLeadFile> => {
@@ -109,7 +115,7 @@ const parseJsonFile = async (file: File): Promise<ParsedLeadFile> => {
     })
     .filter((row) => Object.values(row.values).some((value) => value !== ""));
 
-  return { columns, rows };
+  return { columns, rows, sheetNames: [] };
 };
 
 const parseCsvFile = async (file: File): Promise<ParsedLeadFile> => {
@@ -134,7 +140,7 @@ const parseCsvFile = async (file: File): Promise<ParsedLeadFile> => {
     throw new Error("Não foi possível identificar as colunas do CSV");
   }
 
-  return { columns, rows: buildRows(columns, matrix.slice(1), 2) };
+  return { columns, rows: buildRows(columns, matrix.slice(1), 2), sheetNames: [] };
 };
 
 export async function parseLeadFile(file: File): Promise<ParsedLeadFile> {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,7 +52,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
       toast.success("Webhook de entrada criado");
       setCreated(result);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao criar webhook");
+      toastUserError(error);
     } finally {
       setSaving(false);
     }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { publicFormsClientService } from "../services/PublicFormsService"
 import type { PublicFormTemplateListItem } from "../services/IPublicFormsService"
@@ -57,7 +58,7 @@ export function usePublicFormsState() {
       setCapabilities(result.capabilities)
       setTemplates(templateItems)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Não foi possível carregar")
+      setError(toUserToastMessage(requestError))
     } finally {
       setLoading(false)
     }
@@ -106,9 +107,7 @@ export function usePublicFormsState() {
         await refresh()
         await refreshRanking()
       } catch (actionError) {
-        toast.error(
-          actionError instanceof Error ? actionError.message : "Não foi possível concluir",
-        )
+        toastUserError(actionError)
       }
     },
     [ids, refresh, refreshRanking],

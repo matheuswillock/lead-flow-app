@@ -56,6 +56,7 @@ export const publicFormDetailSelect = {
     },
   },
   questions: {
+    where: { deletedAt: null },
     orderBy: { position: "asc" as const },
     select: {
       id: true,
@@ -127,6 +128,29 @@ export type PublicFormListItemRecord = Prisma.PublicFormGetPayload<{
 
 export type PublicFormPublishedOption = Pick<PublicForm, "id" | "name" | "publicId" | "status">
 
+/**
+ * Dados mínimos para reconstruir uma entrega de submissão que foi persistida,
+ * mas não obteve aceite da fila nem do outbox de publicação.
+ */
+export type PendingPublicFormSubmissionDispatch = {
+  id: string
+  publicationId: string
+  eventId: string | null
+  requestKey: string
+  visitorSessionId: string | null
+  score: number
+  scoreBandLabel: string | null
+  origin: Prisma.JsonValue | null
+  thankYouPageId: string | null
+  scheduledMeetingStartsAt: Date | null
+  snapshot: Prisma.JsonValue
+  answers: Array<{
+    questionId: string | null
+    value: Prisma.JsonValue
+    questionSnapshot: Prisma.JsonValue
+  }>
+}
+
 export type PublicFormPublishedSnapshot = {
   publicationId: string
   version: number
@@ -163,6 +187,9 @@ export type PublicFormCompleteSubmissionInput = {
     visitorSessionId: string
     eventType: PublicFormMetricType
     eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
     origin: Prisma.InputJsonValue
   }>
 }
@@ -243,6 +270,11 @@ export interface IPublicFormsRepository {
     formId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  attachLeadIdToSessionSubmission(
+    formId: string,
+    visitorSessionId: string,
+    leadId: string,
+  ): Promise<PublicFormSubmission | null>
   findAvailabilityTeamContext(formId: string): Promise<{
     teamId: string
     team: { master: { timezone: string | null } }
@@ -316,6 +348,7 @@ export interface IPublicFormsRepository {
     targetTeamId: string
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
+  findLeadForSubmission(submissionId: string): Promise<Lead | null>
   findCompletedSubmissionBySession(
     publicationId: string,
     visitorSessionId: string,
@@ -324,15 +357,23 @@ export interface IPublicFormsRepository {
     publicationId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  listSubmissionAnswers(submissionId: string): Promise<Array<{ questionId: string; value: unknown }>>
+  findFormsByIdsForTeam(
+    teamId: string,
+    formIds: string[],
+  ): Promise<Array<{ id: string; name: string; publicId: string }>>
   createSubmission(data: {
     formId: string
     publicationId: string
     requestKey: string
+    eventId?: string | null
     visitorSessionId?: string | null
     score?: number
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
+    thankYouPageId?: string | null
+    scheduledMeetingStartsAt?: Date | null
   }): Promise<PublicFormSubmission>
   upsertProgressSubmission(data: {
     formId: string
@@ -346,6 +387,9 @@ export interface IPublicFormsRepository {
       questionId: string
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date | null
+      sourceEventId?: string | null
+      mappingKey?: string | null
     }>
   }): Promise<PublicFormSubmission>
   findFormSubmissionContext(formId: string): Promise<PublicFormSubmissionContext>
@@ -374,12 +418,15 @@ export interface IPublicFormsRepository {
     submissionId: string,
     data: {
       requestKey: string
+      eventId?: string | null
       score: number
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue
       visitorSessionId?: string | null
+      thankYouPageId?: string | null
+      scheduledMeetingStartsAt?: Date | null
     },
-  ): Promise<{ id: string }>
+  ): Promise<{ id: string; eventId: string | null }>
   completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>
   persistSubmissionAnswers(
     submissionId: string,
@@ -399,6 +446,12 @@ export interface IPublicFormsRepository {
     publicationId: string,
     staleBefore: Date,
   ): Promise<boolean>
+  markSubmissionDispatchAccepted(submissionId: string): Promise<void>
+  markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void>
+  claimPendingSubmissionDispatches(input: {
+    limit: number
+    leaseUntil: Date
+  }): Promise<PendingPublicFormSubmissionDispatch[]>
   findCampaignContactListIds(teamId: string, campaignId: string): Promise<string[]>
   findEmailContactCustomFields(
     email: string,

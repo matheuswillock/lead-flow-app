@@ -54,6 +54,8 @@ import { formatIntimezone } from "@/lib/dates"
 import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 import {
+  CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
+  CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
   campaignDispatchSendOptions,
   formatCampaignDispatchErrorMessage,
   isCampaignFailedRetry,
@@ -942,9 +944,9 @@ export function CampaignDetailSheet({
                     <AlertDialogDescription>
                       {detailCampaign.status === "sending" ? (
                         <>
-                          O envio da campanha <strong>"{detailCampaign.name}"</strong> será interrompido
-                          imediatamente. E-mails que ainda não foram enviados serão cancelados. E-mails já
-                          enviados não serão afetados.
+                          O envio da campanha <strong>&quot;{detailCampaign.name}&quot;</strong> será
+                          interrompido. {CAMPAIGN_CANCEL_SENDING_UNSENT_COPY}{" "}
+                          {CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY}
                         </>
                       ) : (
                         <>

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type { IBackofficeStudioBotService } from "../services/IBackofficeStudioBotService"
 import type {
@@ -99,7 +100,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       const result = await service.getChannel()
       setChannel(result)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao carregar canal"
+      const message = toUserToastMessage(err)
       setError(message)
     } finally {
       setIsLoadingChannel(false)
@@ -121,7 +122,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
         toast.success(output.successMessages?.[0] ?? "Perfil atualizado")
         return true
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao salvar perfil")
+        toastUserError(err)
         return false
       } finally {
         setIsSavingProfile(false)
@@ -145,7 +146,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
         toast.success(output.successMessages?.[0] ?? "Canal atualizado")
         return true
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao salvar canal")
+        toastUserError(err)
         return false
       } finally {
         setIsSavingProfile(false)
@@ -166,7 +167,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       toast.success("N8N respondeu com sucesso")
       return true
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao testar ping")
+      toastUserError(err)
       return false
     } finally {
       setIsTestingPing(false)
@@ -188,7 +189,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
         toast.success(output.successMessages?.[0] ?? "Avatar atualizado")
         return true
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao enviar avatar")
+        toastUserError(err)
         return false
       } finally {
         setIsUploadingAvatar(false)
@@ -216,7 +217,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       )
       return true
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao reconectar canal")
+      toastUserError(err)
       setQrCode(null)
       return false
     } finally {
@@ -238,7 +239,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       toast.success(output.successMessages?.[0] ?? "WhatsApp da Bethânia desconectado")
       return true
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao desconectar canal")
+      toastUserError(err)
       return false
     } finally {
       setIsDisconnecting(false)
@@ -288,7 +289,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       await loadChannel()
       return true
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao sincronizar perfil")
+      toastUserError(err)
       return false
     } finally {
       setIsSyncingProfile(false)
@@ -309,7 +310,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       setConversationsPagination(result.pagination)
     } catch (err) {
       if (requestId !== conversationsRequestRef.current) return
-      const message = err instanceof Error ? err.message : "Erro ao carregar conversas"
+      const message = toUserToastMessage(err)
       setError(message)
     } finally {
       if (requestId === conversationsRequestRef.current) {
@@ -328,7 +329,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
         setMessages(result.messages)
       } catch (err) {
         if (requestId !== messagesRequestRef.current) return
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar mensagens")
+        toastUserError(err)
         setMessages([])
       } finally {
         if (requestId === messagesRequestRef.current) {
@@ -358,7 +359,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       setUserLinks(result.items)
       setUserLinksPagination(result.pagination)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao carregar vínculos"
+      const message = toUserToastMessage(err)
       setError(message)
     } finally {
       setIsLoadingUserLinks(false)
@@ -379,7 +380,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
         await loadUserLinks()
         return true
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao revogar vínculo")
+        toastUserError(err)
         return false
       } finally {
         setIsRevokingLink(false)
@@ -399,7 +400,7 @@ export function BackofficeStudioBotProvider({ children, service }: ProviderProps
       setAuthChallenges(result.items)
       setAuthChallengesPagination(result.pagination)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao carregar verificações"
+      const message = toUserToastMessage(err)
       setError(message)
     } finally {
       setIsLoadingAuthChallenges(false)

@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Lead } from "../context/BoardTypes";
 import { useParams } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -342,7 +343,7 @@ export function ScheduleMeetingDialog({
         if (!isMounted) return;
         setAvailabilityByDay(null);
         setAvailabilityError(
-          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
+          toUserToastMessage(error)
         );
       } finally {
         if (isMounted) {
@@ -637,7 +638,7 @@ export function ScheduleMeetingDialog({
 
       if (inviteDispatch?.status === "failed") {
         const errorText = inviteDispatch.error
-          ? `Agendamento salvo, mas o convite não foi enviado: ${inviteDispatch.error}`
+          ? `Agendamento salvo, mas o convite não foi enviado: ${toUserToastMessage(inviteDispatch.error)}`
           : "Agendamento salvo, mas o convite não foi enviado.";
         toast.error(errorText, { duration: 6000 });
       } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
@@ -706,7 +707,7 @@ export function ScheduleMeetingDialog({
       console.error("Erro ao agendar reunião:", error);
       
       // ❌ Erro - Mostrar mensagem de erro
-      toast.error(error instanceof Error ? error.message : "Erro ao agendar reunião", {
+      toastUserError(error, {
         id: loadingToast,
         duration: 5000,
       });

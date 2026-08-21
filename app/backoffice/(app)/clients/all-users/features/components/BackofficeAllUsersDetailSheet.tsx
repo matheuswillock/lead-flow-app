@@ -18,6 +18,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
 import { BanUserDialog } from "./BanUserDialog"
@@ -89,7 +90,7 @@ export function BackofficeAllUsersDetailSheet() {
       await openUserSheet(selectedDetail.id)
     } catch (error) {
       console.error("[BackofficeAllUsersDetailSheet][handleSendAccessEmail]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.")
+      toastUserError(error)
     } finally {
       setAccessAction(null)
     }
@@ -107,7 +108,7 @@ export function BackofficeAllUsersDetailSheet() {
       await openUserSheet(selectedDetail.id)
     } catch (error) {
       console.error("[BackofficeAllUsersDetailSheet][handleBanUser]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao banir usuário")
+      toastUserError(error)
     } finally {
       setIsBanning(false)
     }

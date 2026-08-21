@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { publicFormProgressUseCase } from "@/app/api/useCases/publicForms/PublicFormProgressUseCase"
 import { Output } from "@/lib/output"
 import { publicFormProgressSchema } from "@/lib/public-forms/validation"
 import {
@@ -7,6 +6,9 @@ import {
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
+import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import { buildPublicFormProgressQueuePayload } from "@/lib/queues/public-form-progress-events"
+import { queueProgressForBackgroundProcessing } from "@/lib/public-forms/queue-progress-for-background-processing"
 
 export async function POST(
   request: Request,
@@ -30,6 +32,43 @@ export async function POST(
       headers: { "Retry-After": String(rate.retryAfterSeconds) },
     })
   }
-  const output = await publicFormProgressUseCase.execute(publicId, parsed.data)
-  return NextResponse.json(output, { status: output.isValid ? 202 : 400 })
+
+  console.info("[PublicFormProgressRoute][POST] recebido", {
+    publicId,
+    visitorSessionId: parsed.data.visitorSessionId,
+    answerCount: parsed.data.answers.length,
+    eventId: parsed.data.eventId ?? null,
+    trigger: parsed.data.trigger ?? "blur",
+  })
+
+  if (parsed.data.answers.length > 0 && isE2eTestMode()) {
+    const { publicFormProgressUseCase } = await import(
+      "@/app/api/useCases/publicForms/PublicFormProgressUseCase"
+    )
+    const output = await publicFormProgressUseCase.execute(publicId, parsed.data)
+    return NextResponse.json(output, { status: output.isValid ? 202 : 400 })
+  }
+
+  if (parsed.data.answers.length > 0) {
+    const payload = buildPublicFormProgressQueuePayload({
+      publicId,
+      visitorSessionId: parsed.data.visitorSessionId,
+      answers: parsed.data.answers,
+      origin: parsed.data.origin ?? {},
+      lastQuestionId: parsed.data.lastQuestionId,
+      schemaVersion: parsed.data.schemaVersion,
+      eventId: parsed.data.eventId,
+      occurredAt: parsed.data.occurredAt,
+      trigger: parsed.data.trigger,
+    })
+    const dispatch = await queueProgressForBackgroundProcessing(payload)
+    if (!dispatch.accepted) {
+      return NextResponse.json(
+        new Output(false, [], ["Não foi possível registrar o progresso"], { retryable: true }),
+        { status: 503, headers: { "Retry-After": "5" } },
+      )
+    }
+  }
+
+  return NextResponse.json(new Output(true, [], [], { queued: true }), { status: 202 })
 }

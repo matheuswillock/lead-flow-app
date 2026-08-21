@@ -1,13 +1,21 @@
 import { describe, expect, it, mock, beforeEach } from "bun:test"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import type { SuppressedAudienceCounts } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
+
+const EMPTY_SUPPRESSED_COUNTS: SuppressedAudienceCounts = {
+  bounced: 0,
+  unsubscribed: 0,
+  complained: 0,
+  total: 0,
+}
 
 // =============================================================================
 // MOCKS — declarar ANTES de qualquer await import()
 // =============================================================================
 
 // --- EmailCampaignRecipientRepository (dynamic import in previewPlan) ---
-const countSuppressedRecipientsForListsMock = mock(async () => 0)
-const countSuppressedRecipientsForEmailsMock = mock(async () => 0)
+const countSuppressedRecipientsForListsMock = mock(async () => EMPTY_SUPPRESSED_COUNTS)
+const countSuppressedRecipientsForEmailsMock = mock(async () => EMPTY_SUPPRESSED_COUNTS)
 mock.module(
   "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository",
   () => ({
@@ -140,6 +148,7 @@ const queryRawMock = mock(async (..._args: unknown[]) => [] as Array<{
   failedCount: number
   queuedCount: number
 }>)
+const queryRawUnsafeMock = mock(async () => [{ acquired: true }] as Array<{ acquired: boolean }>)
 const emailLogCountMock = mock(async (..._args: unknown[]) => 0)
 const emailLogGroupByMock = mock(async (..._args: unknown[]) => [] as Array<{ campaignId: string | null }>)
 const profileFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
@@ -193,6 +202,7 @@ const prismaMock = {
   },
   $transaction: transactionMock,
   $queryRaw: queryRawMock,
+  $queryRawUnsafe: queryRawUnsafeMock,
 }
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
@@ -294,8 +304,12 @@ mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
 const publishEmailCampaignDispatchWakeMock = mock(async (..._args: unknown[]) => ({
   messageId: "msg-1",
 }))
+const publishEmailCampaignDispatchOverflowWakeMock = mock(async (..._args: unknown[]) => ({
+  messageId: "msg-overflow",
+}))
 mock.module("@/lib/queues/email-campaign-dispatch", () => ({
   publishEmailCampaignDispatchWake: publishEmailCampaignDispatchWakeMock,
+  publishEmailCampaignDispatchOverflowWake: publishEmailCampaignDispatchOverflowWakeMock,
 }))
 
 const findBouncedEmailsMock = mock(async (_emails: string[]) => new Set<string>())
@@ -320,6 +334,23 @@ mock.module(
   })
 )
 
+
+const pgQueryMock = mock(async (sql: string) => {
+  if (String(sql).includes("pg_try_advisory_lock")) {
+    return { rows: [{ acquired: true }] }
+  }
+  return { rows: [] }
+})
+const pgConnectMock = mock(async () => {})
+const pgEndMock = mock(async () => {})
+mock.module("pg", () => ({
+  Client: class {
+    connect = pgConnectMock
+    end = pgEndMock
+    query = pgQueryMock
+  },
+}))
+
 // =============================================================================
 // Importação dinâmica — APÓS todos os mocks
 // =============================================================================
@@ -335,6 +366,11 @@ const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
 const { aggregateDispatchLogCounters } = await import(
   "@/lib/email/campaign-dispatch-progress"
 )
+
+if (!process.env.DIRECT_URL && !process.env.DATABASE_URL) {
+  process.env.DIRECT_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres"
+}
+
 
 type ProgressLogFixture = {
   dispatchId?: string | null
@@ -425,8 +461,11 @@ function makeSendingDispatch(overrides: Record<string, unknown> = {}) {
     reservedCredits: 3,
     hasCampaignsBetaAccess: false,
     materializeSourceOffset: 0,
+    createdAt: new Date(),
+    status: "sending",
     campaign: {
       name: "Campanha Teste",
+      status: "sending",
       audienceContactIds: [] as string[],
       contactListId: "list-1",
       radarSegmentSlug: null,
@@ -629,6 +668,10 @@ const allMocks = [
   emailLogCountMock,
   emailLogGroupByMock,
   queryRawMock,
+  queryRawUnsafeMock,
+  pgQueryMock,
+  pgConnectMock,
+  pgEndMock,
   profileFindManyMock,
   transactionMock,
   reserveCreditsMock,
@@ -649,6 +692,7 @@ const allMocks = [
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
   publishEmailCampaignDispatchWakeMock,
+  publishEmailCampaignDispatchOverflowWakeMock,
   countSuppressedRecipientsForListsMock,
   countSuppressedRecipientsForEmailsMock,
   findBouncedEmailsMock,
@@ -680,6 +724,13 @@ describe("EmailCampaignUseCase.send", () => {
     emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
     emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
     queryRawMock.mockImplementation(async () => [])
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -904,6 +955,7 @@ describe("EmailCampaignUseCase.send", () => {
         radarSegmentSlug: "email_marketable",
         campaign: {
           name: "Campanha Teste",
+          status: "sending",
           audienceContactIds: [],
           contactListId: null,
           radarSegmentSlug: "email_marketable",
@@ -1830,6 +1882,13 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     emailTeamSenderFindFirstMock.mockImplementation(async () => null)
     emailLogFindManyMock.mockImplementation(async () => [])
     queryRawMock.mockImplementation(async () => [])
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -2194,7 +2253,9 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
       templateId: "tpl-1",
       reservedCredits: 1,
       hasCampaignsBetaAccess: false,
-      campaign: { name: "Campanha Teste" },
+      createdAt: new Date(),
+      status: "sending",
+      campaign: { name: "Campanha Teste", status: "sending" },
     }))
     // 1ª chamada (lote lido pelo processDispatchQueueBatch) e 2ª chamada (1ª
     // iteração do while de failDispatchOnDomainGuard) ainda veem o log
@@ -2297,6 +2358,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       reservedCredits: 60_646,
       hasCampaignsBetaAccess: false,
       materializeSourceOffset: 1500,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
     }))
     emailLogCountMock.mockImplementation(async () => 59_146)
 
@@ -2304,13 +2366,14 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
     const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
 
     expect(recovered).toBe(1)
-    expect(publishEmailCampaignDispatchWakeMock).toHaveBeenCalledWith(
+    expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         dispatchId: "dispatch-in-progress",
         reason: "cron-reclaim",
         remainingCount: 59_146,
       })
     )
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
     // Não deve tratar como falho enquanto ainda há trabalho na fila.
     expect(emailCampaignUpdateMock).not.toHaveBeenCalled()
     expect(captureMessageMock).not.toHaveBeenCalled()
@@ -2328,6 +2391,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       reservedCredits: 10,
       hasCampaignsBetaAccess: false,
       materializeSourceOffset: 10,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
     }))
     emailLogCountMock.mockImplementation(async (args: unknown) => {
       const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
@@ -2358,6 +2422,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       reservedCredits: 10,
       hasCampaignsBetaAccess: false,
       materializeSourceOffset: 10,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
     }))
     emailLogCountMock.mockImplementation(async (args: unknown) => {
       const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
@@ -2391,6 +2456,7 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
       reservedCredits: 60_646,
       hasCampaignsBetaAccess: false,
       materializeSourceOffset: 500,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
     }))
     emailLogCountMock.mockImplementation(async (args: unknown) => {
       const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
@@ -2402,14 +2468,109 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
     const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
 
     expect(recovered).toBe(1)
-    expect(publishEmailCampaignDispatchWakeMock).toHaveBeenCalledWith(
+    expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         dispatchId: "dispatch-lazy",
         reason: "cron-reclaim",
       })
     )
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
     expect(emailCampaignUpdateMock).not.toHaveBeenCalled()
     expect(captureMessageMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("EmailCampaignUseCase.processDispatchQueueBatch — PR6 lock, overflow e cancel", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => makeSendingDispatch())
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
+    queryRawMock.mockImplementation(async () => [])
+    installQueuedLogStore()
+    emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
+    emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 0,
+      failed: 0,
+      dispatched: [],
+      providerErrors: [],
+    }))
+    setupTemplateMock()
+    restoreRadarRecipientPageMock()
+    buildCampaignDispatchInputMock.mockImplementation(async () => makeDefaultDispatchInput([]))
+    findUnresolvedTokensMock.mockImplementation(() => [])
+    listActiveRecipientsMock.mockImplementation(async () => [])
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set<string>())
+  })
+
+  it("lock ocupado: ack sem chamar Resend", async () => {
+    pgQueryMock.mockImplementation(async () => ({ rows: [{ acquired: false }] }))
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1")
+    expect(output.isValid).toBe(true)
+    expect((output.result as { skipped?: boolean } | null)?.skipped).toBe(true)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("campanha cancelada: ack sem Resend", async () => {
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({
+        campaign: {
+          name: "Campanha Teste",
+          status: "canceled",
+          audienceContactIds: [],
+          contactListId: "list-1",
+          radarSegmentSlug: null,
+        },
+      })
+    )
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1")
+    expect(output.isValid).toBe(true)
+    expect((output.result as { skipped?: boolean } | null)?.skipped).toBe(true)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("idade >= 30 min republica continue na overflow", async () => {
+    const recipients = makeRecipients(3)
+    persistDispatchSourceOffset(
+      makeSendingDispatch({
+        totalRecipients: 3,
+        reservedCredits: 3,
+        createdAt: new Date(Date.now() - 31 * 60 * 1000),
+      })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.slice(0, 2).map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(output.isValid).toBe(true)
+    expect((output.result as { hasMore?: boolean } | null)?.hasMore).toBe(true)
+    expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchId: "dispatch-1", reason: "continue" })
+    )
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
   })
 })
 
@@ -2540,9 +2701,14 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     expect(result.subCampaigns.length).toBe(2)
   })
 
-  it("inclui suppressedExcludedCount no preview de lista", async () => {
+  it("inclui contagens split de bounce, descadastro e reclamação no preview de lista", async () => {
     listActiveRecipientsMock.mockImplementation(async () => makeRecipients(100))
-    countSuppressedRecipientsForListsMock.mockImplementation(async () => 12)
+    countSuppressedRecipientsForListsMock.mockImplementation(async () => ({
+      bounced: 7,
+      unsubscribed: 3,
+      complained: 2,
+      total: 12,
+    }))
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.previewPlan(
@@ -2555,8 +2721,16 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     )
 
     expect(output.isValid).toBe(true)
-    const result = output.result as { suppressedExcludedCount?: number }
+    const result = output.result as {
+      suppressedExcludedCount?: number
+      bouncedExcludedCount?: number
+      unsubscribedExcludedCount?: number
+      complainedExcludedCount?: number
+    }
     expect(result.suppressedExcludedCount).toBe(12)
+    expect(result.bouncedExcludedCount).toBe(7)
+    expect(result.unsubscribedExcludedCount).toBe(3)
+    expect(result.complainedExcludedCount).toBe(2)
   })
 })
 

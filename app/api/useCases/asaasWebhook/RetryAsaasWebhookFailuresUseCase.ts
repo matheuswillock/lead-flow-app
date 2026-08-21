@@ -7,6 +7,7 @@ import {
 } from "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
+import { buildOutboxRetryIdempotencyKey } from "@/lib/queues/outbox-retry-idempotency-key";
 
 /**
  * Tamanho do lote por execução do cron (a cada 5 min). Reprocessar aqui virou
@@ -53,6 +54,14 @@ export class RetryAsaasWebhookFailuresUseCase {
     return JSON.parse(String(payload)) as AsaasWebhookBody;
   }
 
+  private retryIdempotencyKey(row: AsaasWebhookEventClaimRow): string {
+    return buildOutboxRetryIdempotencyKey({
+      originalKey: row.id,
+      outboxRowId: row.id,
+      attemptCount: row.attemptCount,
+    });
+  }
+
   /**
    * Republica uma linha do outbox na fila `asaas-webhook-events` (mesmo
    * caminho do `after()` do webhook). Quem chama `processAsaasWebhookEvent`
@@ -70,7 +79,10 @@ export class RetryAsaasWebhookFailuresUseCase {
     try {
       const body = this.parsePayload(row.payload);
       const publishResult = await publishWithRetry(() =>
-        publishAsaasWebhookEvent({ eventId: row.id, body })
+        publishAsaasWebhookEvent(
+          { eventId: row.id, body },
+          { idempotencyKey: this.retryIdempotencyKey(row) },
+        )
       );
       if (!publishResult.ok) {
         throw publishResult.error instanceof Error

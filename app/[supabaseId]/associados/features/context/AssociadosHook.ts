@@ -11,6 +11,7 @@ import type {
   LeadAttachmentOption,
 } from "./AssociadosTypes";
 import { DEFAULT_ASSOCIADOS_FILTERS } from "./AssociadosTypes";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 interface UseAssociadosHookProps {
   supabaseId: string;
@@ -57,7 +58,7 @@ export function useAssociadosHook({
       lastListSuccessKey.current = requestKey;
     } catch (loadError) {
       console.error("[useAssociadosHook] Error:", loadError);
-      setError(loadError instanceof Error ? loadError.message : "Erro ao carregar propostas");
+      setError(toUserToastMessage(loadError));
     } finally {
       setIsLoading(false);
       listInFlight.current = false;
@@ -83,7 +84,7 @@ export function useAssociadosHook({
         lastDetailSuccessKey.current = requestKey;
       } catch (loadError) {
         console.error("[useAssociadosHook][detail]", loadError);
-        setDetailError(loadError instanceof Error ? loadError.message : "Erro ao carregar detalhe");
+        setDetailError(toUserToastMessage(loadError));
       } finally {
         setDetailLoading(false);
         detailInFlight.current = false;

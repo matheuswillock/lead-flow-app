@@ -149,12 +149,19 @@ export type PublicFormProgressInput = {
   answers: PublicFormAnswerInput[]
   origin?: Record<string, unknown>
   lastQuestionId?: string
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
+  trigger?: "blur" | "change" | "page_flush" | "submit_reconciliation"
 }
 
 export type PublicFormSubmissionInput = {
   requestKey: string
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
   scheduling?: { startsAt: string }
   thankYouPageId?: string
   visitorSessionId?: string
@@ -162,6 +169,9 @@ export type PublicFormSubmissionInput = {
 
 export type PublicFormMetricEventInput = {
   visitorSessionId: string
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
   eventType:
     | "form_viewed"
     | "form_started"
@@ -176,13 +186,16 @@ export type PublicFormMetricEventInput = {
   eventKey: string
   origin?: Record<string, unknown>
   /**
-   * `mappingKey`/valor da pergunta respondida (D2, resolução de perfil Radar
-   * por e-mail/telefone). Campo dedicado fora de `origin` — nunca aceito no
-   * schema Zod do POST público, só preenchido server-side a partir do
-   * snapshot em `PublicFormProgressUseCase`. Se estivesse dentro de `origin`
-   * (bag livre), tanto o sanitize quanto um payload forjado pelo cliente
-   * poderiam interferir na resolução de identidade do Radar.
+   * `mappingKey` da pergunta (D2 / gate A+C). Campo dedicado fora de `origin`.
+   * O POST público NÃO aceita este campo no Zod — o worker preenche a partir
+   * do snapshot. `answerValue` pode vir do cliente (o que foi digitado);
+   * `answerMappingKey` forjado é ignorado.
    */
   answerMappingKey?: string | null
-  answerValue?: string | null
+  answerValue?: unknown
+  /**
+   * POST `/events` do renderer não cria CRM. Progress encaminha identidade
+   * com `true` para o Radar reavaliar A+C a partir das respostas da sessão.
+   */
+  createCrmLead?: boolean
 }

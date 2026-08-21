@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ExternalLink, File, FileText, Image, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -301,7 +302,7 @@ export function CarteiraDetailModal({
       setForm(null);
       toast.success('Dados atualizados com sucesso');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
+      toastUserError(err);
     } finally {
       setIsSaving(false);
     }
@@ -377,7 +378,7 @@ export function CarteiraDetailModal({
       setIsContractEditOpen(false);
       toast.success('Dados atualizados com sucesso');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
+      toastUserError(err);
       throw err;
     } finally {
       setIsSaving(false);

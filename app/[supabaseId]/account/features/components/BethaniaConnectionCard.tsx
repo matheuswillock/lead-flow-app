@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CircleCheckBig, ExternalLink, Link2, MessageCircle, Unlink } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -101,7 +102,7 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
         return nextStatus;
       } catch (error) {
         if (statusRequestKeyRef.current === requestKey && !silent) {
-          toast.error(error instanceof Error ? error.message : "Erro ao carregar vínculo da Bethânia");
+          toastUserError(error);
         }
         return null;
       } finally {
@@ -176,7 +177,7 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
       setPendingOtp(result);
       toast.success("Código gerado. Abra o WhatsApp da Bethânia e envie o comando.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao gerar código");
+      toastUserError(error);
     } finally {
       setIsInitiating(false);
     }
@@ -202,7 +203,7 @@ export function BethaniaConnectionCard({ supabaseId, teamId }: BethaniaConnectio
       toast.success("Vínculo com a Bethânia revogado.");
       await loadStatus({ force: true });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao revogar vínculo");
+      toastUserError(error);
     } finally {
       setIsRevoking(false);
     }

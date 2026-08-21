@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type {
   BackofficeCrmUserOption,
@@ -67,7 +68,7 @@ export function BackofficeCalendarProvider({
         setUsers(userData)
       } catch (err) {
         console.error("[BackofficeCalendarContext][refresh]", err)
-        setError(err instanceof Error ? err.message : "Erro ao carregar calendário")
+        setError(toUserToastMessage(err))
       } finally {
         setIsLoading(false)
         inFlightRef.current = null

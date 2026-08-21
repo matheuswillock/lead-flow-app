@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useMemo, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IBackofficeStudioBotOpsService } from "../services/IBackofficeStudioBotOpsService"
 import type {
   BackofficeBotHostJob,
@@ -86,7 +87,7 @@ export function BackofficeStudioBotOpsProvider({
       setSettings(nextSettings)
       setJobs(nextJobs)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar Ops")
+      toastUserError(error)
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -99,7 +100,7 @@ export function BackofficeStudioBotOpsProvider({
     try {
       await fn()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro inesperado")
+      toastUserError(error)
     } finally {
       setActionLock(null)
     }

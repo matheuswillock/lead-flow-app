@@ -1,0 +1,93 @@
+import { describe, it, expect, mock, beforeEach } from "bun:test"
+import { DEFAULT_PUBLISH_RETRY_ATTEMPTS } from "@/lib/queues/publish-with-retry"
+import type { PublicFormProgressQueuePayload } from "@/lib/queues/public-form-progress-events"
+
+const publishPublicFormProgressEventMock = mock(async () => ({ messageId: "mid-test" }))
+const upsertFromProcessingFailureMock = mock(async () => {})
+
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: {},
+}))
+
+mock.module("@/lib/queues/public-form-progress-events", () => ({
+  publishPublicFormProgressEvent: publishPublicFormProgressEventMock,
+  PUBLIC_FORM_PROGRESS_EVENTS_TOPIC: "public-form-progress-events",
+}))
+
+mock.module(
+  "@/app/api/infra/data/repositories/publicFormQueueEventFailure/PublicFormQueueEventFailureRepository",
+  () => ({
+    formatProcessingError: (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    publicFormQueueEventFailureRepository: {
+      upsertFromProcessingFailure: upsertFromProcessingFailureMock,
+    },
+  }),
+)
+
+const { queueProgressForBackgroundProcessing } = await import(
+  "./queue-progress-for-background-processing"
+)
+
+const PAYLOAD: PublicFormProgressQueuePayload = {
+  publicId: "11111111-1111-4111-8111-111111111111",
+  schemaVersion: 1,
+  eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  occurredAt: "2026-08-21T00:00:00.000Z",
+  trigger: "blur",
+  visitorSessionId: "session_abcdefghij",
+  answers: [{ questionId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", value: "Ana" }],
+  origin: {},
+  idempotencyKey: "progress:session_abcdefghij:pub:q:hash",
+}
+
+describe("queueProgressForBackgroundProcessing", () => {
+  beforeEach(() => {
+    publishPublicFormProgressEventMock.mockReset()
+    publishPublicFormProgressEventMock.mockResolvedValue({ messageId: "mid-test" })
+    upsertFromProcessingFailureMock.mockReset()
+  })
+
+  it("publish com sucesso: não grava no outbox", async () => {
+    await queueProgressForBackgroundProcessing(PAYLOAD, {
+      publish: publishPublicFormProgressEventMock,
+      persistOutbox: upsertFromProcessingFailureMock,
+    })
+
+    expect(publishPublicFormProgressEventMock).toHaveBeenCalledWith(PAYLOAD, {
+      idempotencyKey: PAYLOAD.idempotencyKey,
+    })
+    expect(upsertFromProcessingFailureMock).not.toHaveBeenCalled()
+  })
+
+  it("publish falha 3x → grava no outbox de formulário", async () => {
+    publishPublicFormProgressEventMock.mockRejectedValue(new Error("queue down"))
+
+    await queueProgressForBackgroundProcessing(PAYLOAD, {
+      publish: publishPublicFormProgressEventMock,
+      persistOutbox: upsertFromProcessingFailureMock,
+    })
+
+    expect(publishPublicFormProgressEventMock).toHaveBeenCalledTimes(DEFAULT_PUBLISH_RETRY_ATTEMPTS)
+    expect(upsertFromProcessingFailureMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "progress",
+        topic: "public-form-progress-events",
+        idempotencyKey: PAYLOAD.idempotencyKey,
+        lastError: "queue down",
+      }),
+    )
+  })
+
+  it("publish falha 3x e outbox também falha: não lança", async () => {
+    publishPublicFormProgressEventMock.mockRejectedValue(new Error("queue down"))
+    upsertFromProcessingFailureMock.mockRejectedValueOnce(new Error("db down"))
+
+    await expect(
+      queueProgressForBackgroundProcessing(PAYLOAD, {
+        publish: publishPublicFormProgressEventMock,
+        persistOutbox: upsertFromProcessingFailureMock,
+      }),
+    ).resolves.toEqual({ accepted: false })
+  })
+})

@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { backofficePublicLeadFormService } from "../services/BackofficePublicLeadFormService"
 import type { SubmitBackofficePublicLeadPayload } from "../services/IBackofficePublicLeadFormService"
 import type { IBackofficePublicLeadFormContext } from "./BackofficePublicLeadFormTypes"
@@ -31,7 +32,7 @@ export function useBackofficePublicLeadForm(): IBackofficePublicLeadFormContext 
         return true
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Erro ao enviar o formulário."
+          toUserToastMessage(error)
         setSubmitError(message)
         toast.error(message)
         return false

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { toUserToastMessage, toastUserError } from '@/lib/ui/to-user-toast-message'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { isManagerLikeRole } from '@/lib/roles'
 import { dispatchWhatsAppConfigChanged } from '@/lib/whatsapp/unread-events'
@@ -97,7 +98,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
         setUsage(null)
       }
       console.error('[useWhatsAppSettings] Erro ao carregar configuração:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar a configuração do WhatsApp')
+      toastUserError(error)
     } finally {
       if (currentKeyRef.current === requestKey) setIsLoading(false)
       if (inFlightKeyRef.current === requestKey) inFlightKeyRef.current = null
@@ -260,7 +261,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       }
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao conectar:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível conectar o WhatsApp')
+      toastUserError(error)
     } finally {
       setIsConnecting(false)
     }
@@ -280,7 +281,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       toast.success('QR Code atualizado com sucesso')
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao reconectar:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível reconectar o WhatsApp')
+      toastUserError(error)
     } finally {
       setIsReconnecting(false)
     }
@@ -308,7 +309,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       }
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao desconectar:', error)
-      const message = error instanceof Error ? error.message : 'Não foi possível desconectar o WhatsApp'
+      const message = toUserToastMessage(error)
       if (message.includes('já está desconectado')) {
         toast.info(message)
         void refreshConfig()
@@ -334,7 +335,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       )
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao sincronizar contatos:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível sincronizar os contatos')
+      toastUserError(error)
     } finally {
       setIsSyncingContacts(false)
     }
@@ -357,7 +358,7 @@ export function useWhatsAppSettings(supabaseId: string): WhatsAppSettingsContext
       )
     } catch (error) {
       console.error('[useWhatsAppSettings] Erro ao zerar conversas:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível zerar as conversas')
+      toastUserError(error)
     } finally {
       setIsPurgingConversations(false)
     }

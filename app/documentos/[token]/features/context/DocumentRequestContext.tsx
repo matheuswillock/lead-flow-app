@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message";
 import { documentRequestService } from "../services/DocumentRequestService";
 import type {
   DocumentRequestContextValue,
@@ -48,7 +49,7 @@ export function DocumentRequestProvider({ token, children }: DocumentRequestProv
       .catch((err: unknown) => {
         console.error("[DocumentRequestProvider] Erro ao carregar:", err);
         setRequest(null);
-        setError(err instanceof Error ? err.message : "Solicitação não encontrada");
+        setError(toUserToastMessage(err));
       })
       .finally(() => {
         inFlightRef.current = false;
@@ -77,7 +78,7 @@ export function DocumentRequestProvider({ token, children }: DocumentRequestProv
         return true;
       } catch (err) {
         console.error("[DocumentRequestProvider] Erro no upload:", err);
-        toast.error(err instanceof Error ? err.message : "Não foi possível enviar o arquivo");
+        toastUserError(err);
         return false;
       }
     },

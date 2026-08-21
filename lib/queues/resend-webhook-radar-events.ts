@@ -38,10 +38,12 @@ export function buildResendWebhookRadarEventIdempotencyKey(
 }
 
 export async function publishResendWebhookRadarEvent(
-  payload: ResendWebhookRadarEventPayload
+  payload: ResendWebhookRadarEventPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RESEND_WEBHOOK_RADAR_EVENTS_TOPIC, payload, {
-    idempotencyKey: buildResendWebhookRadarEventIdempotencyKey(payload),
+    idempotencyKey:
+      options?.idempotencyKey ?? buildResendWebhookRadarEventIdempotencyKey(payload),
     retentionSeconds: RESEND_WEBHOOK_RADAR_EVENTS_RETENTION_SECONDS,
   })
 }
