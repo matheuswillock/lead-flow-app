@@ -238,6 +238,11 @@ export type PublicFormMetricEventInput = {
    */
   answerMappingKey?: string | null
   answerValue?: unknown
+  /** Jornada: página corrente. Nunca carrega valores de resposta. */
+  pageId?: string | null
+  pageIndex?: number | null
+  /** `form_validation_failed`: apenas IDs e códigos, nunca o valor inválido. */
+  validationCodes?: { questionId: string; code: string }[]
   /**
    * POST `/events` do renderer não cria CRM. Progress encaminha identidade
    * com `true` para o Radar reavaliar A+C a partir das respostas da sessão.

@@ -21,6 +21,8 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import { publicFormJourneyRepository } from "@/app/api/infra/data/repositories/publicFormJourney/PublicFormJourneyRepository"
+import { buildJourneyResumeEventKey } from "@/lib/public-forms/journey-session"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
 import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarFactory"
 import type { SyncPublicFormMetricToRadarInput } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
@@ -488,6 +490,15 @@ export class PublicFormsService implements IPublicFormsService {
       origin: json(origin),
     })
 
+    // PR 4: todo evento aceito atualiza a jornada de forma idempotente. A
+    // projeção nunca bloqueia a métrica — falha aqui é registrada e o cron de
+    // abandono reconcilia o estado na próxima passagem.
+    await this.recordJourneyProgress({
+      formId: current.snapshot.formId,
+      publicationId,
+      input,
+    })
+
     const radarMode = options?.radarMode ?? "after"
     if (teamCtx?.teamId && radarMode !== "skip") {
       const radarInput: SyncPublicFormMetricToRadarInput = {
@@ -520,6 +531,61 @@ export class PublicFormsService implements IPublicFormsService {
     }
 
     return true
+  }
+
+  /**
+   * Projeta o evento na sessão de jornada. `form_resumed` derivado da
+   * transição é persistido como métrica própria, com chave causal por
+   * `resumedAt`, para que o funil enxergue a retomada.
+   */
+  private async recordJourneyProgress(params: {
+    formId: string
+    publicationId: string
+    input: PublicFormMetricEventInput
+  }): Promise<void> {
+    const { formId, publicationId, input } = params
+    try {
+      const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date()
+      const result = await publicFormJourneyRepository.recordJourneyEvent({
+        formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        event: {
+          eventType: input.eventType,
+          occurredAt,
+          pageId: input.pageId ?? null,
+          pageIndex: input.pageIndex ?? null,
+        },
+      })
+
+      if (result.derivedEvent === "form_resumed" && result.projection.lastResumedAt) {
+        await publicFormsRepository.upsertMetricEvent({
+          formId,
+          publicationId,
+          questionId: null,
+          questionSnapshot: null,
+          visitorSessionId: input.visitorSessionId,
+          eventType: "form_resumed",
+          eventKey: buildJourneyResumeEventKey(
+            input.visitorSessionId,
+            result.projection.lastResumedAt,
+          ),
+          eventId: input.eventId ?? null,
+          schemaVersion: input.schemaVersion ?? null,
+          occurredAt: result.projection.lastResumedAt,
+          origin: json({ publicationId }),
+        })
+      }
+    } catch (error) {
+      console.error("[PublicFormsService][recordJourneyProgress]", {
+        formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        error,
+      })
+    }
   }
 
   async analytics(teamId: string, id: string, from?: Date, to?: Date, publicationId?: string) {
