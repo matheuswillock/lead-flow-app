@@ -120,10 +120,6 @@ function personNameWords(name: string): string[] {
     .filter((word) => /[a-zA-ZÀ-ÿ]{2,}/.test(word))
 }
 
-function hasCompletePersonLeadName(name: string): boolean {
-  return personNameWords(name).length >= 2
-}
-
 export function isValidPersonLeadName(name: string, email?: string): boolean {
   const trimmed = name.trim()
   if (!trimmed) return false
@@ -165,17 +161,10 @@ export function isBrazilianContactPhone(normalizedDigits: string): boolean {
 
 export function canCreateLeadFromExtracted(data: ExtractedLeadData): boolean {
   if (!isValidPersonLeadName(data.name, data.email)) return false
-
-  if (hasCompletePersonLeadName(data.name) && isBrazilianContactPhone(data.normalizedPhone)) {
-    return true
-  }
-
-  const hasSingleNameWord = personNameWords(data.name).length === 1
-  const hasEmail = Boolean(data.email.trim())
-  return hasSingleNameWord && isBrazilianMobilePhone(data.normalizedPhone) && hasEmail
+  return isBrazilianContactPhone(data.normalizedPhone)
 }
 
-/** Gate A+C: nome completo + telefone, ou 1 palavra + celular + e-mail. */
+/** Gate A+C: nome de pessoa com ao menos uma palavra + telefone brasileiro válido. */
 export const hasCrmGateAC = canCreateLeadFromExtracted
 
 export function canUpdateLeadFromExtracted(data: ExtractedLeadData): boolean {

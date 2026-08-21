@@ -182,11 +182,10 @@ export type PublicFormMetricEventInput = {
    * `answerMappingKey` forjado é ignorado.
    */
   answerMappingKey?: string | null
-  answerValue?: string | null
+  answerValue?: unknown
   /**
-   * POST `/events` do renderer não cria CRM — Progress já publicou o mesmo
-   * `eventKey`. O worker originado no Progress (fila ou fallback) deixa o
-   * default (`true`) para o Radar fechar A+C.
+   * POST `/events` do renderer não cria CRM. Progress encaminha identidade
+   * com `true` para o Radar reavaliar A+C a partir das respostas da sessão.
    */
   createCrmLead?: boolean
 }

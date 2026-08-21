@@ -1,56 +1,103 @@
 import { Output } from "@/lib/output"
-import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
-import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
-import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
-import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
-import {
-  hasCrmGateAC,
-  overlayRadarIdentityOnExtracted,
-  extractLeadDataFromSnapshot,
-} from "@/lib/public-forms/lead-identity"
-import { upsertLeadFromFormAnswers } from "@/app/api/useCases/publicForms/publicFormLeadSync"
-import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
-import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
+import type { IRadarLeadGateUnitOfWork } from "@/app/api/infra/data/repositories/radar/IRadarLeadGateUnitOfWork"
+import { EvaluateRadarProfileLeadEligibilityUseCase } from "./EvaluateRadarProfileLeadEligibilityUseCase"
 
 export type CreateCrmLeadFromRadarFormGateInput = {
   teamId: string
   formId: string
-  publicationId: string
   visitorSessionId: string
-  origin: unknown
-  profileId: string | null
-  questionId?: string | null
-  answerValue?: string | null
+  radarProfileId: string
+  eventId: string
 }
 
-function asOriginRecord(origin: unknown): Record<string, unknown> {
-  if (!origin || typeof origin !== "object") return {}
-  return origin as Record<string, unknown>
-}
+export class CreateCrmLeadFromRadarFormGateUseCase {
+  constructor(
+    private readonly unitOfWork: IRadarLeadGateUnitOfWork,
+    private readonly eligibilityUseCase: EvaluateRadarProfileLeadEligibilityUseCase,
+  ) {}
 
-function mergeCurrentAnswer(
-  answers: PublicFormAnswerInput[],
-  questionId: string | null | undefined,
-  answerValue: string | null | undefined,
-): PublicFormAnswerInput[] {
-  if (!questionId || !answerValue?.trim()) return answers
-  const next = answers.filter((answer) => answer.questionId !== questionId)
-  next.push({ questionId, value: answerValue })
-  return next
-}
-
-class CreateCrmLeadFromRadarFormGateUseCase {
   async execute(input: CreateCrmLeadFromRadarFormGateInput): Promise<Output> {
     try {
-      const publication = await publicFormsRepository.findPublicationById(input.publicationId)
-      const snapshot = publication ? parsePublicFormSnapshot(publication.snapshot) : null
-      if (!snapshot) {
-        return new Output(true, [], [], { skipped: "snapshot_unavailable" })
-      }
+      return await this.unitOfWork.execute(
+        { teamId: input.teamId, radarProfileId: input.radarProfileId },
+        async (transaction) => {
+          const profile = await transaction.reloadProfile(input.teamId, input.radarProfileId)
+          if (!profile) {
+            return new Output(true, [], [], { skipped: "profile_not_found" })
+          }
 
-      return await publicFormsRepository.withRadarFormLeadGateLock(
-        { formId: input.formId, visitorSessionId: input.visitorSessionId },
-        () => this.upsertCrmLeadInsideLock(input, snapshot),
+          const eligibility = this.eligibilityUseCase.evaluateProfile(profile)
+          if (!eligibility.eligible) {
+            return new Output(true, [], [], {
+              skipped: "not_eligible",
+              reason: eligibility.reason,
+            })
+          }
+
+          const matches = await transaction.findIdentityMatches(profile)
+          const distinctLeadIds = new Set(
+            [matches.leadIdMatch, matches.phoneMatch, matches.emailMatch].filter(
+              (leadId): leadId is string => Boolean(leadId),
+            ),
+          )
+          if (distinctLeadIds.size > 1) {
+            await transaction.appendGateEvent({
+              teamId: input.teamId,
+              radarProfileId: profile.id,
+              eventType: "radar.crm_identity_conflict",
+              eventId: input.eventId,
+              metadata: {
+                leadIdMatch: matches.leadIdMatch,
+                phoneMatch: matches.phoneMatch,
+                emailMatch: matches.emailMatch,
+              },
+            })
+            return new Output(true, [], [], {
+              skipped: "identity_conflict",
+              eligible: true,
+            })
+          }
+
+          const existingLeadId =
+            matches.leadIdMatch ?? matches.phoneMatch ?? matches.emailMatch ?? null
+          const promotion = await transaction.createOrUpdateFromRadarProfile({
+            teamId: input.teamId,
+            profile,
+            existingLeadId,
+          })
+          await transaction.linkLeadIdentity({
+            teamId: input.teamId,
+            radarProfileId: profile.id,
+            leadId: promotion.leadId,
+            source: "public_form_radar_gate",
+          })
+          await transaction.appendGateEvent({
+            teamId: input.teamId,
+            radarProfileId: profile.id,
+            eventType: promotion.created ? "radar.crm_lead_created" : "radar.crm_lead_attached",
+            eventId: input.eventId,
+            metadata: {
+              leadId: promotion.leadId,
+              created: promotion.created,
+              formId: input.formId,
+            },
+          })
+          await transaction.attachLeadToPendingSubmissions({
+            formId: input.formId,
+            visitorSessionId: input.visitorSessionId,
+            leadId: promotion.leadId,
+          })
+
+          console.info("[CreateCrmLeadFromRadarFormGateUseCase][execute] lead materializado", {
+            teamId: input.teamId,
+            formId: input.formId,
+            visitorSessionId: input.visitorSessionId,
+            radarProfileId: profile.id,
+            leadId: promotion.leadId,
+            created: promotion.created,
+          })
+          return new Output(true, [], [], promotion)
+        },
       )
     } catch (error) {
       console.error("[CreateCrmLeadFromRadarFormGateUseCase][execute]", error)
@@ -59,100 +106,4 @@ class CreateCrmLeadFromRadarFormGateUseCase {
       return new Output(false, [], [message], null)
     }
   }
-
-  private async upsertCrmLeadInsideLock(
-    input: CreateCrmLeadFromRadarFormGateInput,
-    snapshot: PublicFormSnapshot,
-  ): Promise<Output> {
-    const session = await publicFormsRepository.findLatestSessionSubmissionOnForm(
-      input.formId,
-      input.visitorSessionId,
-    )
-    const storedAnswers = session
-      ? await publicFormsRepository.listSubmissionAnswers(session.id)
-      : []
-    const answers = mergeCurrentAnswer(storedAnswers, input.questionId, input.answerValue)
-    if (answers.length === 0) {
-      return new Output(true, [], [], { skipped: "no_answers" })
-    }
-
-    const profile = input.profileId
-      ? await radarRepository.findProfileForFormLeadGate(input.teamId, input.profileId)
-      : null
-    if (profile?.identities.some((identity) => identity.type === "lead_id")) {
-      const existingLeadId =
-        profile.identities.find((identity) => identity.type === "lead_id")?.value ??
-        profile.identities.find((identity) => identity.type === "lead_id")?.normalizedValue
-      if (existingLeadId && session && !session.leadId) {
-        await publicFormsRepository.attachLeadIdToSessionSubmission(
-          input.formId,
-          input.visitorSessionId,
-          existingLeadId,
-        )
-      }
-      return new Output(true, [], [], {
-        skipped: "already_linked",
-        leadId: session?.leadId ?? existingLeadId ?? null,
-      })
-    }
-
-    const visible = new Set(resolveVisibleQuestionIds(snapshot, answers))
-    const extracted = overlayRadarIdentityOnExtracted(
-      extractLeadDataFromSnapshot(snapshot, answers, visible),
-      profile,
-    )
-    if (!hasCrmGateAC(extracted)) {
-      return new Output(true, [], [], { skipped: "gate_open" })
-    }
-
-    const sessionLeadId = session?.leadId ?? null
-    const form = await publicFormsRepository.findFormSubmissionContext(input.formId)
-    const origin = sanitizePublicFormOrigin(asOriginRecord(input.origin))
-    const upserted = await upsertLeadFromFormAnswers({
-      form,
-      snapshot,
-      answers,
-      visibleIds: visible,
-      publicationId: input.publicationId,
-      origin,
-      submissionId: session?.id,
-      allowCreate: !sessionLeadId,
-      identityOverlay: profile,
-    })
-    const leadId = upserted?.lead.id ?? sessionLeadId
-    if (!leadId) {
-      return new Output(true, [], [], { skipped: "upsert_skipped" })
-    }
-
-    await publicFormsRepository.attachLeadIdToSessionSubmission(
-      input.formId,
-      input.visitorSessionId,
-      leadId,
-    )
-
-    if (input.profileId) {
-      await radarRepository.tryClaimLeadIdentity(
-        input.teamId,
-        input.profileId,
-        leadId,
-        "public_form_radar_gate",
-      )
-    }
-
-    console.info("[CreateCrmLeadFromRadarFormGateUseCase][execute] gate A+C fechado", {
-      teamId: input.teamId,
-      formId: input.formId,
-      visitorSessionId: input.visitorSessionId,
-      profileId: input.profileId,
-      leadId,
-      created: upserted?.created ?? false,
-    })
-
-    return new Output(true, [], [], {
-      leadId,
-      created: upserted?.created ?? false,
-    })
-  }
 }
-
-export const createCrmLeadFromRadarFormGateUseCase = new CreateCrmLeadFromRadarFormGateUseCase()

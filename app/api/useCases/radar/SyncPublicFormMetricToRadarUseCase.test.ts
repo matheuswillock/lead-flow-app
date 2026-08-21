@@ -1,487 +1,257 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
-
-type AppendArg = {
-  profileId: string
-  eventType: string
-  sourceType: string
-  sourceId: string
-  metadata?: Record<string, unknown>
-}
+import { Output } from "@/lib/output"
+import type {
+  IRadarProfileMergeRepository,
+  IRadarPublicFormProfileRepository,
+} from "@/app/api/infra/data/repositories/radar/IRadarPublicFormProfileRepository"
+import { SyncPublicFormMetricToRadarUseCase } from "./SyncPublicFormMetricToRadarUseCase"
 
 const findProfileByIdentity = mock(
-  async (_teamId: string, _type: string, _value: string): Promise<{ profileId: string } | null> =>
-    null
+  async (_teamId: string, _type: string, _value: string) => null as { profileId: string } | null,
 )
-const resolveProfileForVisitorSession = mock(
-  async (_input: {
-    teamId: string
-    visitorSession: string
-    lastSeenAt?: Date
-  }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
-    profile: { id: "anon-profile-1" },
-    wasExisting: false,
-  })
-)
-const resolveProfileForEmail = mock(
-  async (_input: {
-    teamId: string
-    normalizedEmail: string
-    emailValue: string
-  }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
-    profile: { id: "email-profile-1" },
-    wasExisting: true,
-  })
-)
-const resolveProfileForPhone = mock(
-  async (_input: {
-    teamId: string
-    normalizedPhone: string
-    displayPhone: string
-  }): Promise<{ profile: { id: string }; wasExisting: boolean }> => ({
-    profile: { id: "phone-profile-1" },
-    wasExisting: true,
-  })
-)
-const mergeProfiles = mock(
-  async (_teamId: string, _sourceProfileId: string, _targetProfileId: string): Promise<void> => {}
-)
-const appendEventIfNewBySourceKey = mock(
-  async (_input: AppendArg): Promise<{ id: string } | null> => ({ id: "event-1" })
-)
-const syncLeadExecute = mock(async (_input: { leadId: string; teamId: string }) => ({
-  isValid: true,
+const resolveProfileForVisitorSession = mock(async () => ({
+  profile: { id: "visitor-profile" },
+  wasExisting: true,
 }))
-
+const resolveProfileForEmail = mock(async () => ({
+  profile: { id: "email-profile" },
+  wasExisting: true,
+}))
+const resolveProfileForPhone = mock(async () => ({
+  profile: { id: "phone-profile" },
+  wasExisting: true,
+}))
+const mergePublicFormProfiles = mock(async () => ({
+  winningProfileId: "phone-profile",
+  merged: true,
+  conflict: false,
+}))
 const applyFormAnswerDisplayName = mock(async () => {})
-const gateExecute = mock(
-  async (): Promise<{ isValid: boolean; result: Record<string, unknown> }> => ({
-    isValid: true,
-    result: { skipped: "gate_open" },
-  }),
+const appendEventIfNewBySourceKey = mock(
+  async (_input: unknown): Promise<{ id: string } | null> => ({ id: "event-1" }),
 )
+const leadSync = { execute: mock(async () => new Output(true, [], [], {})) }
+const leadGate = {
+  execute: mock(async () => new Output(true, [], [], { leadId: "lead-1", created: true })),
+}
+const eligibility = {
+  execute: mock(async () => new Output(true, [], [], { eligible: true, reason: "eligible" })),
+}
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    findProfileByIdentity,
-    resolveProfileForVisitorSession,
-    resolveProfileForEmail,
-    resolveProfileForPhone,
-    mergeProfiles,
-    appendEventIfNewBySourceKey,
-    applyFormAnswerDisplayName,
-  },
-}))
-
-mock.module("@/app/api/useCases/radar/SyncLeadToRadarUseCase", () => ({
-  syncLeadToRadarUseCase: {
-    execute: syncLeadExecute,
-  },
-}))
-
-mock.module("@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase", () => ({
-  createCrmLeadFromRadarFormGateUseCase: {
-    execute: gateExecute,
-  },
-}))
-
-mock.module("@/lib/radar/team-has-radar-feature", () => ({
-  teamHasRadarFeature: mock(async () => true),
-}))
-
-const { syncPublicFormMetricToRadarUseCase } = await import(
-  "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
-)
-const { mapPublicFormMetricToRadarEventType, PUBLIC_FORM_RADAR_SOURCE_TYPE } = await import(
-  "@/lib/radar/map-public-form-metric-to-radar-event"
-)
+const repository: IRadarPublicFormProfileRepository & IRadarProfileMergeRepository = {
+  findProfileByIdentity,
+  resolveProfileForVisitorSession,
+  resolveProfileForEmail,
+  resolveProfileForPhone,
+  mergePublicFormProfiles,
+  applyFormAnswerDisplayName,
+  appendEventIfNewBySourceKey,
+}
 
 const baseInput = {
   teamId: "team-1",
-  visitorSessionId: "vs-abc",
+  eventType: "form_viewed",
+  eventKey: "session-1:form_viewed:form",
+  visitorSessionId: "session-1",
   formId: "form-1",
-  publicationId: "pub-1",
-  eventKey: "vs-abc:form_viewed:form",
+  publicationId: "publication-1",
 }
 
-function lastAppendArg(): AppendArg {
-  const calls = appendEventIfNewBySourceKey.mock.calls as unknown as Array<[AppendArg]>
-  const arg = calls[calls.length - 1]?.[0]
-  if (!arg) throw new Error("appendEventIfNewBySourceKey não foi chamado")
-  return arg
+function createUseCase(mode: "legacy" | "shadow" | "radar") {
+  return new SyncPublicFormMetricToRadarUseCase(
+    repository,
+    leadSync,
+    leadGate,
+    eligibility,
+    () => mode,
+  )
 }
 
-describe("mapPublicFormMetricToRadarEventType", () => {
-  it("mapeia todos os PublicFormMetricType para prefixo form.", () => {
-    expect(mapPublicFormMetricToRadarEventType("form_viewed")).toBe("form.viewed")
-    expect(mapPublicFormMetricToRadarEventType("form_started")).toBe("form.started")
-    expect(mapPublicFormMetricToRadarEventType("question_viewed")).toBe("form.question_viewed")
-    expect(mapPublicFormMetricToRadarEventType("question_answered")).toBe("form.question_answered")
-    expect(mapPublicFormMetricToRadarEventType("question_skipped")).toBe("form.question_skipped")
-    expect(mapPublicFormMetricToRadarEventType("form_completed")).toBe("form.completed")
-    expect(mapPublicFormMetricToRadarEventType("lead_created")).toBe("form.lead_created")
-    expect(mapPublicFormMetricToRadarEventType("lead_attached")).toBe("form.lead_attached")
-    expect(mapPublicFormMetricToRadarEventType("meeting_scheduled")).toBe("form.meeting_scheduled")
-  })
-})
-
-describe("SyncPublicFormMetricToRadarUseCase (D8)", () => {
+describe("SyncPublicFormMetricToRadarUseCase", () => {
   beforeEach(() => {
     findProfileByIdentity.mockReset()
     resolveProfileForVisitorSession.mockReset()
     resolveProfileForEmail.mockReset()
     resolveProfileForPhone.mockReset()
-    mergeProfiles.mockReset()
-    appendEventIfNewBySourceKey.mockReset()
-    syncLeadExecute.mockReset()
+    mergePublicFormProfiles.mockReset()
     applyFormAnswerDisplayName.mockReset()
-    gateExecute.mockReset()
+    appendEventIfNewBySourceKey.mockReset()
+    leadSync.execute.mockReset()
+    leadGate.execute.mockReset()
+    eligibility.execute.mockReset()
 
     findProfileByIdentity.mockImplementation(async () => null)
     resolveProfileForVisitorSession.mockImplementation(async () => ({
-      profile: { id: "anon-profile-1" },
-      wasExisting: false,
+      profile: { id: "visitor-profile" },
+      wasExisting: true,
     }))
     resolveProfileForEmail.mockImplementation(async () => ({
-      profile: { id: "email-profile-1" },
+      profile: { id: "email-profile" },
       wasExisting: true,
     }))
     resolveProfileForPhone.mockImplementation(async () => ({
-      profile: { id: "phone-profile-1" },
+      profile: { id: "phone-profile" },
       wasExisting: true,
     }))
-    mergeProfiles.mockImplementation(async () => {})
-    appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
-    syncLeadExecute.mockImplementation(async () => ({ isValid: true }))
+    mergePublicFormProfiles.mockImplementation(async () => ({
+      winningProfileId: "phone-profile",
+      merged: true,
+      conflict: false,
+    }))
     applyFormAnswerDisplayName.mockImplementation(async () => {})
-    gateExecute.mockImplementation(async () => ({ isValid: true, result: { skipped: "gate_open" } }))
+    appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
+    leadSync.execute.mockImplementation(async () => new Output(true, [], [], {}))
+    leadGate.execute.mockImplementation(
+      async () => new Output(true, [], [], { leadId: "lead-1", created: true }),
+    )
+    eligibility.execute.mockImplementation(
+      async () => new Output(true, [], [], { eligible: true, reason: "eligible" }),
+    )
   })
 
-  it.each([
-    "form_viewed",
-    "form_started",
-    "question_viewed",
-    "question_answered",
-    "question_skipped",
-  ] as const)("evento pré-lead %s → perfil anônimo visitor_session (sem pixel)", async (eventType) => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType,
-      eventKey: `vs-abc:${eventType}:form`,
-    })
+  it("ingere fatos no Radar para qualquer time sem consultar add-on", async () => {
+    const output = await createUseCase("legacy").execute(baseInput)
 
     expect(output.isValid).toBe(true)
     expect(resolveProfileForVisitorSession).toHaveBeenCalledTimes(1)
-    expect(findProfileByIdentity).not.toHaveBeenCalled()
     expect(appendEventIfNewBySourceKey).toHaveBeenCalledTimes(1)
-
-    const appendArg = lastAppendArg()
-    const expectedType = mapPublicFormMetricToRadarEventType(eventType)
-    if (expectedType === null) {
-      throw new Error(`mapeamento ausente para ${eventType}`)
-    }
-    expect(appendArg.profileId).toBe("anon-profile-1")
-    expect(appendArg.eventType).toBe(expectedType)
-    expect(appendArg.sourceType).toBe(PUBLIC_FORM_RADAR_SOURCE_TYPE)
-    expect(appendArg.sourceId).toBe(`vs-abc:${eventType}:form`)
   })
 
-  it("form_viewed com recipientEmail (campanha) → perfil por e-mail", async () => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "vs-abc:form_viewed:form",
-      origin: { recipientEmail: "lead@campanha.com", emailLogId: "log-1" },
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForEmail).toHaveBeenCalledTimes(1)
-    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
-    expect(lastAppendArg().profileId).toBe("email-profile-1")
-  })
-
-  it("grava campaignId no topo do metadata (além de origin)", async () => {
-    await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_started",
-      eventKey: "vs-abc:form_started:form",
-      origin: {
-        recipientEmail: "lead@campanha.com",
-        campaignId: "camp-1",
-        emailLogId: "log-1",
-      },
-    })
-
-    expect(lastAppendArg().metadata).toMatchObject({
-      campaignId: "camp-1",
-      origin: expect.objectContaining({ campaignId: "camp-1" }),
-    })
-  })
-
-  it("form_viewed com leadId (atribuição e-mail) → identidade lead_id", async () => {
-    findProfileByIdentity.mockImplementation(async () => ({ profileId: "lead-profile-attr" }))
-
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "vs-abc:form_viewed:form",
-      leadId: "lead-attr-1",
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(findProfileByIdentity).toHaveBeenCalledWith("team-1", "lead_id", "lead-attr-1")
-    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
-    expect(lastAppendArg().profileId).toBe("lead-profile-attr")
-  })
-
-  it.each(["form_completed", "lead_created", "lead_attached"] as const)(
-    "evento com leadId %s → identidade lead_id",
-    async (eventType) => {
-      findProfileByIdentity.mockImplementation(async () => ({ profileId: "lead-profile-1" }))
-
-      const output = await syncPublicFormMetricToRadarUseCase.execute({
-        ...baseInput,
-        eventType,
-        eventKey: `req-1:${eventType}`,
-        leadId: "lead-1",
-      })
-
-      expect(output.isValid).toBe(true)
-      expect(findProfileByIdentity).toHaveBeenCalledWith("team-1", "lead_id", "lead-1")
-      expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
-
-      const appendArg = lastAppendArg()
-      const expectedType = mapPublicFormMetricToRadarEventType(eventType)
-      if (expectedType === null) {
-        throw new Error(`mapeamento ausente para ${eventType}`)
-      }
-      expect(appendArg.profileId).toBe("lead-profile-1")
-      expect(appendArg.eventType).toBe(expectedType)
-      expect(appendArg.sourceId).toBe(`req-1:${eventType}`)
-    }
-  )
-
-  it("form_completed com leadId sem perfil: sync lead e então anexa", async () => {
-    findProfileByIdentity
-      .mockImplementationOnce(async () => null)
-      .mockImplementationOnce(async () => ({ profileId: "lead-profile-2" }))
-
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_completed",
-      eventKey: "req-1:form_completed",
-      leadId: "lead-2",
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(syncLeadExecute).toHaveBeenCalledWith({ leadId: "lead-2", teamId: "team-1" })
-    expect(lastAppendArg()).toMatchObject({
-      profileId: "lead-profile-2",
-      eventType: "form.completed",
-    })
-  })
-
-  it("form_completed sem leadId → perfil anônimo", async () => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_completed",
-      eventKey: "req-1:form_completed",
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForVisitorSession).toHaveBeenCalledTimes(1)
-    expect(findProfileByIdentity).not.toHaveBeenCalled()
-  })
-
-  it("dedupe: segunda chamada com mesmo eventKey não cria evento novo", async () => {
-    appendEventIfNewBySourceKey
-      .mockImplementationOnce(async () => ({ id: "event-1" }))
-      .mockImplementationOnce(async () => null)
-
-    const first = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "same-key",
-    })
-    const second = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "same-key",
-    })
-
-    expect(first.result).toMatchObject({ created: true })
-    expect(second.result).toMatchObject({ created: false })
-    expect(appendEventIfNewBySourceKey).toHaveBeenCalledTimes(2)
-    const calls = appendEventIfNewBySourceKey.mock.calls as unknown as Array<[AppendArg]>
-    expect(calls[0]?.[0]).toMatchObject({ sourceId: "same-key" })
-    expect(calls[1]?.[0]).toMatchObject({ sourceId: "same-key" })
-  })
-
-  it("cria perfil anônimo mesmo sem pixel prévio", async () => {
-    resolveProfileForVisitorSession.mockImplementation(async () => ({
-      profile: { id: "fresh-anon" },
-      wasExisting: false,
-    }))
-
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "vs-new:form_viewed:form",
-      visitorSessionId: "vs-new",
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForVisitorSession).toHaveBeenCalledWith({
-      teamId: "team-1",
-      visitorSession: "vs-new",
-      lastSeenAt: expect.any(Date),
-    })
-    expect(output.result).toMatchObject({ profileId: "fresh-anon", created: true })
-  })
-
-  it("E1: form_viewed sem leadId com recipientEmail → resolveProfileForEmail (não sessão anônima)", async () => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "vs-abc:form_viewed:form",
-      leadId: null,
-      origin: {
-        emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-        recipientEmail: "destinatario@exemplo.com",
-      },
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForEmail).toHaveBeenCalledWith({
-      teamId: "team-1",
-      normalizedEmail: "destinatario@exemplo.com",
-      emailValue: "destinatario@exemplo.com",
-      displayName: null,
-      normalizedName: expect.any(String),
-      emailSource: "email_campaign_form",
-      lastSeenAt: expect.any(Date),
-    })
-    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
-    expect(findProfileByIdentity).not.toHaveBeenCalled()
-    expect(lastAppendArg().profileId).toBe("email-profile-1")
-  })
-
-  it("E1: form_viewed e form_completed com mesmo recipientEmail → mesmo perfil Radar", async () => {
-    resolveProfileForEmail.mockImplementation(async () => ({
-      profile: { id: "shared-email-profile" },
-      wasExisting: true,
-    }))
-
-    const viewed = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_viewed",
-      eventKey: "vs-abc:form_viewed:form",
-      origin: { recipientEmail: "mesmo@exemplo.com" },
-    })
-    const completed = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "form_completed",
-      eventKey: "vs-abc:form_completed:form",
-      origin: { recipientEmail: "mesmo@exemplo.com" },
-    })
-
-    expect(viewed.result).toMatchObject({ profileId: "shared-email-profile" })
-    expect(completed.result).toMatchObject({ profileId: "shared-email-profile" })
-    expect(resolveProfileForEmail).toHaveBeenCalledTimes(2)
-    expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()
-  })
-
-  it("D2: question_answered com answerMappingKey=email no campo dedicado → resolve por e-mail e mescla sessão anônima", async () => {
-    findProfileByIdentity.mockImplementation(
-      async () => ({ profileId: "anon-session-profile" }) as { profileId: string }
-    )
-
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
+  it("preserva valor JSON tipado no evento Radar", async () => {
+    await createUseCase("legacy").execute({
       ...baseInput,
       eventType: "question_answered",
-      eventKey: "vs-abc:progress:q1",
-      answerMappingKey: "email",
-      answerValue: "visitante@exemplo.com",
+      eventKey: "session-1:question_answered:q1",
+      questionId: "q1",
+      answerValue: ["individual", "familiar"],
     })
 
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ emailValue: "visitante@exemplo.com", emailSource: "public_form_answer" })
-    )
-    expect(mergeProfiles).toHaveBeenCalledWith("team-1", "anon-session-profile", "email-profile-1")
-  })
-
-  it("D2: question_answered com answerMappingKey=phone no campo dedicado → resolve por telefone", async () => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "question_answered",
-      eventKey: "vs-abc:progress:q2",
-      answerMappingKey: "phone",
-      answerValue: "+55 11 99999-0000",
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForPhone).toHaveBeenCalledTimes(1)
-    expect(lastAppendArg().profileId).toBe("phone-profile-1")
-  })
-
-  it("achado #3 (PR #912): answerMappingKey/answerValue forjados dentro de origin são ignorados — só o campo dedicado é confiável", async () => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "question_answered",
-      eventKey: "vs-abc:progress:q3",
-      origin: { answerMappingKey: "email", answerValue: "vitima@exemplo.com" },
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(resolveProfileForEmail).not.toHaveBeenCalled()
-    expect(mergeProfiles).not.toHaveBeenCalled()
-    expect(resolveProfileForVisitorSession).toHaveBeenCalledTimes(1)
-  })
-
-  it("question_answered com answerValue dispara o gate A+C do Radar e aplica nome no perfil", async () => {
-    gateExecute.mockImplementation(async () => ({
-      isValid: true,
-      result: { leadId: "lead-from-gate", created: true },
-    }))
-
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
-      ...baseInput,
-      eventType: "question_answered",
-      eventKey: "vs-abc:question_answered:q-name",
-      questionId: "q-name",
-      answerMappingKey: "name",
-      answerValue: "Maria Silva",
-    })
-
-    expect(output.isValid).toBe(true)
-    expect(applyFormAnswerDisplayName).toHaveBeenCalledWith(
-      "anon-profile-1",
-      "team-1",
-      "Maria Silva",
-    )
-    expect(gateExecute).toHaveBeenCalledWith(
+    expect(appendEventIfNewBySourceKey).toHaveBeenCalledWith(
       expect.objectContaining({
-        profileId: "anon-profile-1",
-        questionId: "q-name",
-        answerValue: "Maria Silva",
+        metadata: expect.objectContaining({ answerValue: ["individual", "familiar"] }),
       }),
     )
-    expect(output.result).toMatchObject({ leadId: "lead-from-gate" })
   })
 
-  it("POST /events (createCrmLead=false) espelha o Radar sem disparar o gate CRM", async () => {
-    const output = await syncPublicFormMetricToRadarUseCase.execute({
+  it("materializa nome antes de executar o gate no modo radar", async () => {
+    const output = await createUseCase("radar").execute({
       ...baseInput,
       eventType: "question_answered",
-      eventKey: "vs-abc:question_answered:q-budget",
-      questionId: "q-budget",
-      answerMappingKey: null,
-      answerValue: null,
-      createCrmLead: false,
+      eventKey: "session-1:question_answered:name:revision-1",
+      questionId: "name",
+      answerMappingKey: "name",
+      answerValue: "Maria",
+      leadGateRequest: "identity_revision",
     })
 
-    expect(output.isValid).toBe(true)
-    expect(appendEventIfNewBySourceKey).toHaveBeenCalledTimes(1)
-    expect(gateExecute).not.toHaveBeenCalled()
+    expect(applyFormAnswerDisplayName).toHaveBeenCalledWith("visitor-profile", "team-1", "Maria")
+    expect(leadGate.execute).toHaveBeenCalledWith({
+      teamId: "team-1",
+      formId: "form-1",
+      visitorSessionId: "session-1",
+      radarProfileId: "visitor-profile",
+      eventId: "session-1:question_answered:name:revision-1",
+    })
+    expect(output.result).toMatchObject({ leadId: "lead-1" })
+  })
+
+  it("modo legacy não executa o gate Radar", async () => {
+    await createUseCase("legacy").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      leadGateRequest: "identity_revision",
+    })
+
+    expect(leadGate.execute).not.toHaveBeenCalled()
+    expect(eligibility.execute).not.toHaveBeenCalled()
+  })
+
+  it("modo shadow calcula elegibilidade sem mutar CRM", async () => {
+    await createUseCase("shadow").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      leadGateRequest: "identity_revision",
+    })
+
+    expect(eligibility.execute).toHaveBeenCalledTimes(1)
+    expect(leadGate.execute).not.toHaveBeenCalled()
+    expect(appendEventIfNewBySourceKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "radar.crm_lead_gate_shadow",
+        sourceId: `${baseInput.eventKey}:shadow`,
+      }),
+    )
+  })
+
+  it("reexecuta o gate para revisão corrigida mesmo quando o evento já existia", async () => {
+    appendEventIfNewBySourceKey.mockImplementation(async () => null)
+
+    await createUseCase("radar").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      leadGateRequest: "identity_revision",
+      answerMappingKey: "phone",
+      answerValue: "(11) 98888-7777",
+    })
+
+    expect(leadGate.execute).toHaveBeenCalledTimes(1)
+  })
+
+  it("propaga o perfil vencedor após unir sessão anônima e telefone", async () => {
+    findProfileByIdentity.mockImplementation(async (_team: string, type: string) =>
+      type === "visitor_session" ? { profileId: "visitor-profile" } : null,
+    )
+    mergePublicFormProfiles.mockImplementation(async () => ({
+      winningProfileId: "visitor-profile",
+      merged: true,
+      conflict: false,
+    }))
+
+    const output = await createUseCase("legacy").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      answerMappingKey: "phone",
+      answerValue: "(11) 98888-7777",
+    })
+
+    expect(output.result).toMatchObject({ profileId: "visitor-profile" })
+    expect(appendEventIfNewBySourceKey).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: "visitor-profile" }),
+    )
+  })
+
+  it("materializa o telefone respondido mesmo quando a campanha já fornece e-mail", async () => {
+    await createUseCase("radar").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      answerMappingKey: "phone",
+      answerValue: "(11) 98888-7777",
+      origin: { recipientEmail: "maria@gmail.com" },
+      leadGateRequest: "identity_revision",
+    })
+
+    expect(resolveProfileForPhone).toHaveBeenCalledWith(
+      expect.objectContaining({
+        normalizedPhone: "5511988887777",
+        primaryEmail: "maria@gmail.com",
+        normalizedPrimaryEmail: "maria@gmail.com",
+      }),
+    )
+    expect(resolveProfileForEmail).not.toHaveBeenCalled()
+    expect(leadGate.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ radarProfileId: "phone-profile" }),
+    )
+  })
+
+  it("transforma Output técnico inválido do sync de Lead em falha retryable", async () => {
+    findProfileByIdentity.mockImplementation(async () => null)
+    leadSync.execute.mockImplementation(
+      async () => new Output(false, [], ["Radar temporariamente indisponível"], null),
+    )
+
+    const output = await createUseCase("legacy").execute({ ...baseInput, leadId: "lead-1" })
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toContain("Radar temporariamente indisponível")
   })
 })

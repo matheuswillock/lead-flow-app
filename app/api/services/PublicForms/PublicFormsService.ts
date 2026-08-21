@@ -22,7 +22,8 @@ import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
-import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
+import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarFactory"
+import type { SyncPublicFormMetricToRadarInput } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { instantiatePublicFormTemplateDraft } from "@/lib/public-forms/instantiate-template-draft"
 import { publicFormDraftSchema } from "@/lib/public-forms/validation"
@@ -486,7 +487,7 @@ export class PublicFormsService implements IPublicFormsService {
 
     const radarMode = options?.radarMode ?? "after"
     if (teamCtx?.teamId && radarMode !== "skip") {
-      const radarInput = {
+      const radarInput: SyncPublicFormMetricToRadarInput = {
         teamId: teamCtx.teamId,
         eventType: input.eventType,
         eventKey: input.eventKey,
@@ -497,8 +498,8 @@ export class PublicFormsService implements IPublicFormsService {
         leadId,
         origin,
         answerMappingKey: trustedMappingKey,
-        answerValue: trustedAnswerValue,
-        createCrmLead: input.createCrmLead,
+        answerValue: input.answerValue,
+        leadGateRequest: input.createCrmLead === true ? "identity_revision" : "none",
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)

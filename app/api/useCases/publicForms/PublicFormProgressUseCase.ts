@@ -20,7 +20,10 @@ import {
   publicFormAnswerValueText,
 } from "./publicFormLeadSync"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
-import { buildPublicFormQuestionAnsweredEventKey } from "@/lib/public-forms/metric-keys"
+import {
+  buildPublicFormIdentityGateIdempotencyKey,
+  buildPublicFormQuestionAnsweredEventKey,
+} from "@/lib/public-forms/metric-keys"
 import {
   buildPublicFormMetricQueuePayload,
   publishServerPublicFormMetricEvent,
@@ -39,54 +42,16 @@ async function processQuestionAnsweredWhenQueueUnavailable(
   publicId: string,
   input: PublicFormMetricEventInput,
 ): Promise<void> {
-  try {
-    await publicFormsService.recordMetric(publicId, input, { radarMode: "inline" })
-  } catch (error) {
-    console.error("[PublicFormProgressUseCase][radar-fallback]", error)
-  }
-}
-
-/**
- * A+C não depende da entrega do `eventKey` (first-write na fila). Radar
- * reavalia pelas respostas da sessão depois de persistir identidade.
- */
-async function evaluateRadarCrmGateFromSession(input: {
-  teamId: string
-  formId: string
-  publicationId: string
-  visitorSessionId: string
-  origin: Record<string, unknown>
-}): Promise<string | null> {
-  try {
-    const { createCrmLeadFromRadarFormGateUseCase } = await import(
-      "@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase"
-    )
-    const gate = await createCrmLeadFromRadarFormGateUseCase.execute({
-      teamId: input.teamId,
-      formId: input.formId,
-      publicationId: input.publicationId,
-      visitorSessionId: input.visitorSessionId,
-      origin: input.origin,
-      profileId: null,
-    })
-    if (!gate.isValid) {
-      console.error("[PublicFormProgressUseCase][radar-gate]", gate.errorMessages)
-      return null
-    }
-    const leadId =
-      gate.result && typeof gate.result === "object" && "leadId" in gate.result
-        ? (gate.result as { leadId?: string | null }).leadId
-        : null
-    return leadId ?? null
-  } catch (error) {
-    console.error("[PublicFormProgressUseCase][radar-gate]", error)
-    return null
+  const accepted = await publicFormsService.recordMetric(publicId, input, { radarMode: "inline" })
+  if (!accepted) {
+    throw new Error("Falha ao persistir evento de resposta no fallback do Radar")
   }
 }
 
 export class PublicFormProgressUseCase {
   async execute(publicId: string, input: PublicFormProgressInput): Promise<Output> {
-    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
+    if (!isValidPublicFormId(publicId))
+      return new Output(false, [], ["Formulário indisponível"], null)
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
@@ -102,7 +67,6 @@ export class PublicFormProgressUseCase {
       return new Output(true, [], [], {
         submissionId: resolved.sessionSubmission.id,
         completionStatus: "complete",
-        leadId: resolved.sessionSubmission.leadId,
       })
     }
 
@@ -128,7 +92,7 @@ export class PublicFormProgressUseCase {
 
     const requestKey = `progress:${input.visitorSessionId}:${publicationId}`
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
-    const leadId: string | null = resolved.sessionSubmission?.leadId ?? null
+    const sessionLeadId: string | null = resolved.sessionSubmission?.leadId ?? null
     const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers)
 
     const submission = await publicFormsRepository.upsertProgressSubmission({
@@ -138,7 +102,7 @@ export class PublicFormProgressUseCase {
       requestKey,
       origin: origin as Prisma.InputJsonValue,
       completionStatus,
-      leadId,
+      leadId: sessionLeadId,
       answers: answerPayload,
     })
 
@@ -149,7 +113,10 @@ export class PublicFormProgressUseCase {
         input.visitorSessionId,
         answer.questionId,
       )
-      const answerValue = publicFormAnswerValueText(answer.value)
+      const answerValue = answer.value
+      const identityAnswerValue = publicFormAnswerValueText(answer.value)
+      const mappingKey = question?.mappingKey ?? null
+      const isIdentityAnswer = isLeadIdentityMappingKey(mappingKey)
       await publicFormsRepository.upsertMetricEvent({
         formId: snapshot.formId,
         publicationId,
@@ -166,13 +133,21 @@ export class PublicFormProgressUseCase {
         questionId: answer.questionId,
         eventKey,
         origin: origin as Record<string, unknown>,
-        answerMappingKey: question?.mappingKey ?? null,
+        answerMappingKey: mappingKey,
         answerValue,
-        createCrmLead: false,
+        createCrmLead: isIdentityAnswer && Boolean(identityAnswerValue),
       }
       const queued = await publishServerPublicFormMetricEvent(
         buildPublicFormMetricQueuePayload(form.publicId, metricInput),
         "PublicFormProgressUseCase",
+        isIdentityAnswer && identityAnswerValue
+          ? {
+              idempotencyKey: buildPublicFormIdentityGateIdempotencyKey(
+                eventKey,
+                identityAnswerValue,
+              ),
+            }
+          : undefined,
       )
       if (queued === false) {
         await processQuestionAnsweredWhenQueueUnavailable(form.publicId, metricInput)
@@ -181,44 +156,15 @@ export class PublicFormProgressUseCase {
         publicId: form.publicId,
         visitorSessionId: input.visitorSessionId,
         questionId: answer.questionId,
-        mappingKey: question?.mappingKey ?? null,
+        mappingKey,
         mappingTarget: question?.mappingTarget ?? null,
-        value: answer.value,
       })
     }
 
-    const persistedIdentity = incomingAnswers.some((answer) => {
-      if (isBlankPublicFormAnswerValue(answer.value)) return false
-      const mappingKey = snapshot.questions.find((item) => item.id === answer.questionId)?.mappingKey
-      return isLeadIdentityMappingKey(mappingKey)
+    return new Output(true, [], [], {
+      submissionId: submission.id,
+      completionStatus,
     })
-    if (persistedIdentity) {
-      const gateLeadId = await evaluateRadarCrmGateFromSession({
-        teamId: form.teamId,
-        formId: snapshot.formId,
-        publicationId,
-        visitorSessionId: input.visitorSessionId,
-        origin: origin as Record<string, unknown>,
-      })
-      if (gateLeadId) {
-        return new Output(true, [], [], {
-          submissionId: submission.id,
-          completionStatus,
-          leadId: gateLeadId,
-        })
-      }
-    }
-
-    return new Output(
-      true,
-      [],
-      [],
-      {
-        submissionId: submission.id,
-        completionStatus,
-        leadId,
-      },
-    )
   }
 }
 

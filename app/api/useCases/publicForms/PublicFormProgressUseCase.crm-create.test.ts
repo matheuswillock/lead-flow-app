@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { buildPublicFormIdentityGateIdempotencyKey } from "@/lib/public-forms/metric-keys"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
 import {
   canCreateLeadFromExtracted,
@@ -80,16 +81,22 @@ const getPublic = mock(async () => ({
   publicationId: PUBLICATION_ID,
   snapshot,
 }))
-const findLatestSessionSubmissionOnForm = mock(async () => null as {
-  id: string
-  publicationId: string
-  status: string
-  leadId: string | null
-} | null)
-const findPublicationById = mock(async () => null as {
-  publicationId: string
-  snapshot: PublicFormSnapshot
-} | null)
+const findLatestSessionSubmissionOnForm = mock(
+  async () =>
+    null as {
+      id: string
+      publicationId: string
+      status: string
+      leadId: string | null
+    } | null,
+)
+const findPublicationById = mock(
+  async () =>
+    null as {
+      publicationId: string
+      snapshot: PublicFormSnapshot
+    } | null,
+)
 const findPublicationContainingQuestions = mock(async () => null)
 const findFormSubmissionContext = mock(async () => ({
   id: FORM_ID,
@@ -130,15 +137,16 @@ mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
   hasCrmGateAC,
   isBlankPublicFormAnswerValue: (value: unknown) =>
     value === undefined || value === null || (typeof value === "string" && value.trim() === ""),
-  publicFormAnswerValueText: (value: unknown) => (typeof value === "string" && value.trim() ? value : null),
+  publicFormAnswerValueText: (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : null,
   findMatchingLead: mock(async () => null),
   upsertLeadFromFormAnswers,
 }))
 mock.module("@/lib/queues/public-form-metric-events", () => ({
-  buildPublicFormMetricQueuePayload: (
-    publicId: string,
-    input: Record<string, unknown>,
-  ) => ({ publicId, ...input }),
+  buildPublicFormMetricQueuePayload: (publicId: string, input: Record<string, unknown>) => ({
+    publicId,
+    ...input,
+  }),
   publishServerPublicFormMetricEvent,
 }))
 mock.module("@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase", () => ({
@@ -181,25 +189,43 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     })
 
     expect(output.isValid).toBe(true)
+    expect(output.result).toEqual({
+      submissionId: "sub-progress",
+      completionStatus: "partial",
+    })
     expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
     expect(recordMetric).not.toHaveBeenCalled()
-    expect(gateExecute).toHaveBeenCalledTimes(1)
-    expect(gateExecute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        formId: FORM_ID,
-        visitorSessionId: "session-campaign",
-        publicationId: PUBLICATION_ID,
-      }),
-    )
+    expect(gateExecute).not.toHaveBeenCalled()
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(2)
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventKey: `session-campaign:question_answered:${NAME_ID}`,
         answerValue: "Maria Silva",
         answerMappingKey: "name",
-        createCrmLead: false,
+        createCrmLead: true,
       }),
       "PublicFormProgressUseCase",
+      {
+        idempotencyKey: buildPublicFormIdentityGateIdempotencyKey(
+          `session-campaign:question_answered:${NAME_ID}`,
+          "Maria Silva",
+        ),
+      },
+    )
+    expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKey: `session-campaign:question_answered:${PHONE_ID}`,
+        answerValue: "(11) 98888-7777",
+        answerMappingKey: "phone",
+        createCrmLead: true,
+      }),
+      "PublicFormProgressUseCase",
+      {
+        idempotencyKey: buildPublicFormIdentityGateIdempotencyKey(
+          `session-campaign:question_answered:${PHONE_ID}`,
+          "(11) 98888-7777",
+        ),
+      },
     )
   })
 
@@ -239,11 +265,18 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
         eventKey: `session-blur:question_answered:${PHONE_ID}`,
         answerValue: "(11) 98888-7777",
         answerMappingKey: "phone",
+        createCrmLead: true,
       }),
       "PublicFormProgressUseCase",
+      {
+        idempotencyKey: buildPublicFormIdentityGateIdempotencyKey(
+          `session-blur:question_answered:${PHONE_ID}`,
+          "(11) 98888-7777",
+        ),
+      },
     )
     expect(recordMetric).not.toHaveBeenCalled()
-    expect(gateExecute).toHaveBeenCalledTimes(1)
+    expect(gateExecute).not.toHaveBeenCalled()
   })
 
   it("fila indisponível: encaminha question_answered inline ao Radar sem criar CRM no Progress", async () => {
@@ -258,6 +291,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     })
 
     expect(output.isValid).toBe(true)
+    expect(output.result).not.toHaveProperty("leadId")
     expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
     expect(recordMetric).toHaveBeenCalledTimes(2)
     expect(recordMetric).toHaveBeenCalledWith(
@@ -267,14 +301,27 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
         eventKey: `session-queue-down:question_answered:${PHONE_ID}`,
         answerValue: "(11) 98888-7777",
         answerMappingKey: "phone",
-        createCrmLead: false,
+        createCrmLead: true,
       }),
       { radarMode: "inline" },
     )
-    expect(gateExecute).toHaveBeenCalledTimes(1)
+    expect(gateExecute).not.toHaveBeenCalled()
+  })
+
+  it("fila e fallback Radar indisponíveis: propaga erro para não confirmar sucesso silencioso", async () => {
+    publishServerPublicFormMetricEvent.mockResolvedValue(false)
+    recordMetric.mockRejectedValueOnce(new Error("radar unavailable"))
+
+    await expect(
+      useCase.execute(PUBLIC_ID, {
+        visitorSessionId: "session-total-failure",
+        answers: [{ questionId: PHONE_ID, value: "(11) 98888-7777" }],
+      }),
+    ).rejects.toThrow("radar unavailable")
   })
 
   it("reavalia A+C na correção mesmo com o mesmo eventKey (fila first-write)", async () => {
+    const eventKey = `session-revision:question_answered:${PHONE_ID}`
     await useCase.execute(PUBLIC_ID, {
       visitorSessionId: "session-revision",
       answers: [{ questionId: PHONE_ID, value: "119" }],
@@ -285,14 +332,34 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     })
 
     expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
-    expect(gateExecute).toHaveBeenCalledTimes(2)
+    expect(gateExecute).not.toHaveBeenCalled()
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledTimes(2)
+    const firstIdempotency = (
+      publishServerPublicFormMetricEvent.mock.calls[0] as unknown as [
+        { eventKey: string },
+        string,
+        { idempotencyKey: string },
+      ]
+    )[2].idempotencyKey
+    const secondIdempotency = (
+      publishServerPublicFormMetricEvent.mock.calls[1] as unknown as [
+        { eventKey: string },
+        string,
+        { idempotencyKey: string },
+      ]
+    )[2].idempotencyKey
+    expect(firstIdempotency).toBe(buildPublicFormIdentityGateIdempotencyKey(eventKey, "119"))
+    expect(secondIdempotency).toBe(
+      buildPublicFormIdentityGateIdempotencyKey(eventKey, "(11) 98888-7777"),
+    )
+    expect(firstIdempotency).not.toBe(secondIdempotency)
     expect(publishServerPublicFormMetricEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventKey: `session-revision:question_answered:${PHONE_ID}`,
-        createCrmLead: false,
+        eventKey,
+        createCrmLead: true,
       }),
       "PublicFormProgressUseCase",
+      { idempotencyKey: firstIdempotency },
     )
   })
 })

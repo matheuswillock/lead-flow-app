@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  buildPublicFormIdentityGateIdempotencyKey,
   buildPublicFormMetricEventKey,
   buildPublicFormQuestionAnsweredEventKey,
   buildPublicFormSubmitRequestKey,
@@ -29,5 +30,15 @@ describe("public form metric keys", () => {
     expect(buildPublicFormQuestionAnsweredEventKey("session-a", "qid-1")).toBe(
       "session-a:question_answered:qid-1",
     )
+  })
+
+  it("decoupla a reavaliação A+C do eventKey estável da métrica", () => {
+    const eventKey = buildPublicFormQuestionAnsweredEventKey("session-a", "qid-1")
+    const first = buildPublicFormIdentityGateIdempotencyKey(eventKey, "119")
+    const corrected = buildPublicFormIdentityGateIdempotencyKey(eventKey, "(11) 98888-7777")
+    expect(first).toMatch(new RegExp(`^${eventKey}:rev:[a-f0-9]{16}$`))
+    expect(corrected).toMatch(new RegExp(`^${eventKey}:rev:[a-f0-9]{16}$`))
+    expect(first).not.toBe(corrected)
+    expect(buildPublicFormIdentityGateIdempotencyKey(eventKey, "119")).toBe(first)
   })
 })

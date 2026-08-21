@@ -51,8 +51,8 @@ export type PublicFormMetricQueuePayload = {
   origin: Record<string, unknown>;
   /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue`. mappingKey só no servidor. */
   answerMappingKey: string | null;
-  answerValue: string | null;
-  /** `false` no POST público `/events`; omitido/true no worker do Progress. */
+  answerValue: unknown;
+  /** `false` no POST público `/events`; identidade originada no Progress usa `true`. */
   createCrmLead: boolean;
   receivedAt: string;
 };
@@ -103,9 +103,10 @@ export async function publishPublicFormMetricEvent(
 export async function publishServerPublicFormMetricEvent(
   payload: PublicFormMetricQueuePayload,
   logPrefix: string,
+  options?: { idempotencyKey?: string },
 ): Promise<boolean> {
   try {
-    await publishPublicFormMetricEvent(payload);
+    await publishPublicFormMetricEvent(payload, options);
     return true;
   } catch (error) {
     console.error(`[${logPrefix}] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`, {

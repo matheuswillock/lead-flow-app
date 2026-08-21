@@ -7,7 +7,7 @@
  * - onBlur dispara POST /progress com o valor do campo (Fase D1)
  * - Prefill via cs_el pré-preenche nome/e-mail (Fase C)
  * - Nome 3–30, sem @; e-mail digitado no Nome copia para e-mail vazio
- * - Gate A+C no blur: Radar fecha A+C e cria Lead no time do formulário
+ * - Gate A+C no blur: formulário só encaminha question_answered; Lead nasce no Radar/DB
  */
 
 import { expect, test } from "@playwright/test"
@@ -245,7 +245,10 @@ test.describe("app/forms/[publicId]", () => {
 
     await page.waitForTimeout(800)
 
-    expect(progressRequests.length, "Nenhuma request POST /progress disparada após blur").toBeGreaterThan(0)
+    expect(
+      progressRequests.length,
+      "Nenhuma request POST /progress disparada após blur",
+    ).toBeGreaterThan(0)
 
     const body = JSON.parse(progressRequests[0])
     expect(body.answers).toHaveLength(1)
@@ -307,7 +310,9 @@ test.describe("app/forms/[publicId]", () => {
     await expect(page.getByText("Informe um nome de pessoa, não um e-mail")).toBeVisible()
     await page.waitForTimeout(800)
 
-    expect(progressRequests.length, "Blur deve persistir mesmo com nome inválido").toBeGreaterThan(0)
+    expect(progressRequests.length, "Blur deve persistir mesmo com nome inválido").toBeGreaterThan(
+      0,
+    )
     const body = JSON.parse(progressRequests[0])
     expect(body.answers[0].value).toBe("user@example.com")
 
@@ -319,11 +324,26 @@ test.describe("app/forms/[publicId]", () => {
     await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
   })
 
-  test("A+C no blur cria Lead via Radar no time do formulário", async ({ page }) => {
+  test("A+C no blur: formulário só encaminha question_answered; Lead nasce no Radar/DB", async ({
+    page,
+  }) => {
     const prisma = getPrisma()
     const uniqueSuffix = String(Date.now()).slice(-4)
     const leadName = `Maria Radarac ${uniqueSuffix}`
     const phone = `1198888${uniqueSuffix}`
+    const questionAnsweredBodies: Array<{ eventType?: string; answerValue?: string }> = []
+
+    page.on("request", (req) => {
+      if (req.method() !== "POST" || !req.url().includes("/events")) return
+      const raw = req.postData()
+      if (!raw) return
+      try {
+        const body = JSON.parse(raw) as { eventType?: string; answerValue?: string }
+        if (body.eventType === "question_answered") questionAnsweredBodies.push(body)
+      } catch {
+        /* beacon/JSON inválido — o assert de answerValue falha se nada chegar */
+      }
+    })
 
     await page.goto(`/forms/${publicId}`)
     await page.getByRole("button", { name: /começar/i }).click()
@@ -343,7 +363,19 @@ test.describe("app/forms/[publicId]", () => {
     )
     await phoneInput.fill(phone)
     await phoneInput.blur()
-    expect((await progressAfterPhone).status()).toBe(202)
+    const progressResponse = await progressAfterPhone
+    expect(progressResponse.status()).toBe(202)
+    const progressJson = (await progressResponse.json()) as {
+      result?: { leadId?: unknown; leadCreated?: unknown }
+    }
+    expect(progressJson.result?.leadId).toBeUndefined()
+    expect(progressJson.result?.leadCreated).toBeUndefined()
+
+    await expect
+      .poll(() => questionAnsweredBodies.some((body) => body.answerValue === phone), {
+        timeout: 5_000,
+      })
+      .toBe(true)
 
     await expect
       .poll(

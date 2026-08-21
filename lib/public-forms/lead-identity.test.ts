@@ -125,21 +125,21 @@ describe("lead identity from public forms", () => {
     expect(canCreateLeadFromExtracted(extracted)).toBe(true)
   })
 
-  it("não cria lead com nome de uma palavra e celular sem e-mail", () => {
+  it("cria lead com nome de uma palavra e celular sem e-mail", () => {
     const extracted = extractLeadDataFromSnapshot(snapshot(), [
       { questionId: nameId, value: "Maria" },
       { questionId: phoneId, value: "(11) 98888-7777" },
     ])
-    expect(canCreateLeadFromExtracted(extracted)).toBe(false)
+    expect(canCreateLeadFromExtracted(extracted)).toBe(true)
   })
 
-  it("não cria lead com nome de uma palavra e telefone fixo mesmo com e-mail", () => {
+  it("cria lead com nome de uma palavra e telefone fixo", () => {
     const extracted = extractLeadDataFromSnapshot(snapshot(), [
       { questionId: nameId, value: "Maria" },
       { questionId: phoneId, value: "(11) 3897-1122" },
       { questionId: emailId, value: "maria@example.com" },
     ])
-    expect(canCreateLeadFromExtracted(extracted)).toBe(false)
+    expect(canCreateLeadFromExtracted(extracted)).toBe(true)
   })
 
   it("não cria lead sem telefone", () => {
@@ -154,7 +154,7 @@ describe("lead identity from public forms", () => {
   it("não cria lead sem nome válido", () => {
     expect(isValidPersonLeadName("andressa.kaminski@primavsa.com.br")).toBe(false)
     expect(isValidPersonLeadName("andressa.kaminski", "andressa.kaminski@primavsa.com.br")).toBe(
-      false
+      false,
     )
     expect(isValidPersonLeadName("financeiro@3pbrasil.com.br")).toBe(false)
     expect(isValidPersonLeadName("CONSORCIO CR ALMEIDA-CONSBEM LTDA")).toBe(false)

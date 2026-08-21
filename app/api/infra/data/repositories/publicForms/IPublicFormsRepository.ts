@@ -244,10 +244,6 @@ export interface IPublicFormsRepository {
     formId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
-  withRadarFormLeadGateLock<T>(
-    input: { formId: string; visitorSessionId: string },
-    work: () => Promise<T>,
-  ): Promise<T>
   attachLeadIdToSessionSubmission(
     formId: string,
     visitorSessionId: string,
@@ -326,6 +322,7 @@ export interface IPublicFormsRepository {
     targetTeamId: string
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
+  findLeadForSubmission(submissionId: string): Promise<Lead | null>
   findCompletedSubmissionBySession(
     publicationId: string,
     visitorSessionId: string,

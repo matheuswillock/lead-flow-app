@@ -595,20 +595,6 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  async withRadarFormLeadGateLock<T>(
-    input: { formId: string; visitorSessionId: string },
-    work: () => Promise<T>,
-  ): Promise<T> {
-    const lockKey = `radar-form-lead-gate:${input.formId}:${input.visitorSessionId}`
-    return prisma.$transaction(
-      async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
-        return work()
-      },
-      { timeout: 15_000 },
-    )
-  }
-
   async attachLeadIdToSessionSubmission(
     formId: string,
     visitorSessionId: string,
@@ -1079,6 +1065,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return prisma.publicFormSubmission.findUnique({ where: { requestKey } })
   }
 
+  async findLeadForSubmission(submissionId: string) {
+    const submission = await prisma.publicFormSubmission.findUnique({
+      where: { id: submissionId },
+      select: { lead: true },
+    })
+    return submission?.lead ?? null
+  }
+
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: {
@@ -1514,7 +1508,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
-          leadId: input.leadId ?? null,
+          leadId: input.leadId ?? undefined,
           status: "completed",
           completionStatus: "complete",
           submittedAt: new Date(),
