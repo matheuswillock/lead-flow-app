@@ -32,6 +32,10 @@ import { ContactListSegmentPicker } from "./ContactListSegmentPicker";
 import { useOptionalFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime";
+import {
+  evaluateContactImportBlocks,
+  measureContactImportPayloadBytes,
+} from "@/lib/emailContactImport/evaluateContactImportBlocks";
 
 type ContactImportStep = "upload" | "mapping" | "summary";
 
@@ -67,6 +71,8 @@ export function ContactImportDialog({
 }: ContactImportDialogProps) {
   const [step, setStep] = useState<ContactImportStep>("upload");
   const [fileName, setFileName] = useState("");
+  const [fileSizeBytes, setFileSizeBytes] = useState(0);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<ParsedLeadRow[]>([]);
   const [mapping, setMapping] = useState<EmailContactImportMapping>({});
@@ -83,6 +89,8 @@ export function ContactImportDialog({
   const resetState = () => {
     setStep("upload");
     setFileName("");
+    setFileSizeBytes(0);
+    setSheetNames([]);
     setColumns([]);
     setRows([]);
     setMapping({});
@@ -115,6 +123,8 @@ export function ContactImportDialog({
         return;
       }
       setFileName(file.name);
+      setFileSizeBytes(file.size);
+      setSheetNames(parsed.sheetNames);
       setColumns(parsed.columns);
       setRows(parsed.rows);
       setMapping(autoMapEmailContactColumns(parsed.columns));
@@ -144,8 +154,23 @@ export function ContactImportDialog({
     [rows, columns, mapping]
   );
 
+  const importBlocks = useMemo(
+    () =>
+      evaluateContactImportBlocks({
+        sheetNames,
+        fileSizeBytes,
+        payloadJsonBytes:
+          step === "summary"
+            ? measureContactImportPayloadBytes(importPreview.importableRows)
+            : 0,
+      }),
+    [sheetNames, fileSizeBytes, importPreview.importableRows, step]
+  );
+  const isImportBlocked = importBlocks.length > 0;
+
   const handleImport = async () => {
     if (isSubmitting) return;
+    if (isImportBlocked) return;
     if (!mapping.email) {
       toast.error("Mapeie a coluna de e-mail antes de importar");
       return;
@@ -177,7 +202,7 @@ export function ContactImportDialog({
       handleOpenChange(false);
     } catch (error) {
       console.error("[ContactImportDialog] handleImport error", error);
-      toast.error(error instanceof Error ? error.message : "Erro ao importar contatos");
+      toast.error("Ocorreu um erro.");
     } finally {
       setIsSubmitting(false);
     }
@@ -214,7 +239,7 @@ export function ContactImportDialog({
           </div>
         )}
 
-        <div className="overflow-y-auto flex-1 pr-1">
+        <div className="overflow-y-auto flex-1 pr-4">
           {step === "upload" && (
             <LeadFileDropzone
               onFileSelected={handleFileSelected}
@@ -236,8 +261,9 @@ export function ContactImportDialog({
                 fileName={fileName}
                 preview={importPreview}
                 mapping={mapping}
+                blocks={importBlocks}
               />
-              {hasRadar && (
+              {hasRadar && !isImportBlocked && (
                 <div className="flex flex-col gap-2 rounded-md border p-4">
                   <p className="text-sm font-medium">Segmento do Radar (opcional)</p>
                   <p className="text-xs text-muted-foreground">
@@ -287,16 +313,18 @@ export function ContactImportDialog({
                 <ArrowLeft className="mr-2 size-4" />
                 Voltar
               </Button>
-              <Button onClick={handleImport} disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  "Iniciar importação"
-                )}
-              </Button>
+              {!isImportBlocked && (
+                <Button onClick={handleImport} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    "Iniciar importação"
+                  )}
+                </Button>
+              )}
             </>
           )}
         </DialogFooter>

@@ -131,7 +131,10 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
     async (prev: SendingCampaign): Promise<SendingCampaign | null> => {
       try {
         const res = await fetch(`${API_CLIENT_BASE}/email/campaigns/${prev.id}`, {
-          headers: { "x-supabase-id": supabaseId },
+          headers: {
+            "x-supabase-id": supabaseId,
+            "x-supabase-user-id": supabaseId,
+          },
           cache: "no-store",
         })
         if (!res.ok) return null
@@ -181,7 +184,10 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
     try {
       const params = new URLSearchParams({ page: "1", pageSize: "50", status: "sending" })
       const res = await fetch(`${API_CLIENT_BASE}/email/campaigns?${params}`, {
-        headers: { "x-supabase-id": supabaseId },
+        headers: {
+          "x-supabase-id": supabaseId,
+          "x-supabase-user-id": supabaseId,
+        },
         cache: "no-store",
       })
       if (!res.ok) return
