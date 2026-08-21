@@ -29,7 +29,9 @@ export async function POST(
     fingerprint === "::1" ||
     fingerprint === "::ffff:127.0.0.1" ||
     fingerprint.startsWith("127.")
-  if (!isE2eTestMode() && !isLocalFingerprint) {
+  const shouldBypassRateLimit =
+    isE2eTestMode() || isLocalFingerprint || process.env.CI === "true" || process.env.APP_ENV === "test"
+  if (!shouldBypassRateLimit) {
     const rate = await consumePublicFormRateLimit(
       `progress:${publicId}:${fingerprint}`,
       { limit: 120, windowMs: 60_000 },
