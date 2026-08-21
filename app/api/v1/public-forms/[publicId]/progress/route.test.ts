@@ -22,6 +22,10 @@ mock.module("@/lib/public-forms/queue-progress-for-background-processing", () =>
   queueProgressForBackgroundProcessing,
 }))
 
+mock.module("@/lib/e2e/is-e2e-test-mode", () => ({
+  isE2eTestMode: () => false,
+}))
+
 const { POST } = await import("./route")
 
 const VALID_PUBLIC_ID = "11111111-1111-4111-8111-111111111111"

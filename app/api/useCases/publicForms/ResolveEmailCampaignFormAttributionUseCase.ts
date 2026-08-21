@@ -39,7 +39,8 @@ function json(value: unknown): Prisma.InputJsonValue {
 /**
  * Resolve `cs_el` → EmailLog → lead CRM existente + atividades de início + identidade Radar.
  * Premissa: EmailLog.id é o PID por destinatário no disparo da campanha.
- * Lead CRM novo só nasce no submit do formulário (`upsertLeadFromFormAnswers`).
+ * Lead CRM novo também nasce no progress quando o gate A+C fecha e a sessão
+ * ainda não tem `leadId` (`upsertLeadFromFormAnswers` com `allowCreate: true`).
  */
 class ResolveEmailCampaignFormAttributionUseCase {
   async execute(input: ResolveEmailCampaignFormAttributionInput): Promise<Output> {

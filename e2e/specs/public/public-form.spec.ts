@@ -7,6 +7,7 @@
  * - onBlur dispara POST /progress com o valor do campo (Fase D1)
  * - Prefill via cs_el pré-preenche nome/e-mail (Fase C)
  * - Nome 3–30, sem @; e-mail digitado no Nome copia para e-mail vazio
+ * - Gate A+C no progress cria Lead no time do formulário
  */
 
 import { expect, test } from "@playwright/test"
@@ -14,6 +15,7 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 
 const QUESTION_NAME_ID = "11111111-1111-4111-8111-111111111101"
 const QUESTION_EMAIL_ID = "11111111-1111-4111-8111-111111111102"
+const QUESTION_PHONE_ID = "11111111-1111-4111-8111-111111111103"
 const E2E_PUBLIC_ID = "e2e00000-0000-4000-8000-000000000001"
 const E2E_EMAIL_LOG_ID = "e2e10000-0000-4000-8000-000000000001"
 
@@ -89,6 +91,23 @@ function buildSnapshot(formId, publicId) {
         whatsappPhone: null,
         whatsappMessage: null,
       },
+      {
+        id: QUESTION_PHONE_ID,
+        position: 3,
+        type: "phone",
+        title: "Qual o seu telefone?",
+        description: null,
+        placeholder: null,
+        required: true,
+        scoreWeight: 0,
+        options: [],
+        mappingTarget: "native_field",
+        mappingKey: "phone",
+        url: null,
+        config: null,
+        whatsappPhone: null,
+        whatsappMessage: null,
+      },
     ],
     rules: [],
     scoreBands: [],
@@ -125,6 +144,21 @@ async function arrangePublicForm() {
   })
 
   const snapshot = buildSnapshot(form.id, form.publicId)
+
+  await prisma.publicFormQuestion.deleteMany({ where: { formId: form.id } })
+  await prisma.publicFormQuestion.createMany({
+    data: snapshot.questions.map((question) => ({
+      id: question.id,
+      formId: form.id,
+      type: question.type,
+      title: question.title,
+      required: question.required,
+      scoreWeight: question.scoreWeight,
+      position: question.position,
+      mappingTarget: question.mappingTarget,
+      mappingKey: question.mappingKey,
+    })),
+  })
 
   const publication = await prisma.publicFormPublication.upsert({
     where: { formId_version: { formId: form.id, version: 1 } },
@@ -283,6 +317,45 @@ test.describe("app/forms/[publicId]", () => {
 
     await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
     await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
+  })
+
+  test("A+C no progress cria Lead no time do formulário", async ({ page }) => {
+    const prisma = getPrisma()
+    const uniqueSuffix = String(Date.now()).slice(-4)
+    const leadName = `Maria Radarac ${uniqueSuffix}`
+    const phone = `1198888${uniqueSuffix}`
+
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill(leadName)
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu telefone?")).toBeVisible()
+    const phoneInput = page.getByRole("textbox").first()
+    const progressAfterPhone = page.waitForResponse(
+      (response) => response.url().includes("/progress") && response.request().method() === "POST",
+    )
+    await phoneInput.fill(phone)
+    await phoneInput.blur()
+    expect((await progressAfterPhone).status()).toBe(202)
+
+    await expect
+      .poll(
+        async () => {
+          return prisma.lead.findFirst({
+            where: { teamId, name: leadName },
+            select: { id: true, teamId: true },
+          })
+        },
+        { timeout: 15_000 },
+      )
+      .toMatchObject({ teamId })
   })
 
   test("estado de loading exibe Skeleton enquanto carrega o snapshot", async ({ page }) => {

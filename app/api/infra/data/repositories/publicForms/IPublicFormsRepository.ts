@@ -325,6 +325,11 @@ export interface IPublicFormsRepository {
     publicationId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  listSubmissionAnswers(submissionId: string): Promise<Array<{ questionId: string; value: unknown }>>
+  findFormsByIdsForTeam(
+    teamId: string,
+    formIds: string[],
+  ): Promise<Array<{ id: string; name: string; publicId: string }>>
   createSubmission(data: {
     formId: string
     publicationId: string

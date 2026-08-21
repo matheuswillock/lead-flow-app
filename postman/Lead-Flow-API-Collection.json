@@ -19364,6 +19364,44 @@
           "response": []
         },
         {
+          "name": "Formulários do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/forms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "forms"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            },
+            "description": "Lista os formulários públicos com os quais o perfil Radar interagiu (completo / incompleto / iniciou sem resposta)."
+          },
+          "response": []
+        },
+        {
           "name": "Perfis do segmento do sistema",
           "request": {
             "method": "GET",
