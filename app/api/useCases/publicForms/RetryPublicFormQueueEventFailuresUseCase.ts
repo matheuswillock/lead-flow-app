@@ -13,6 +13,10 @@ import {
   type PublicFormMetricQueuePayload,
 } from "@/lib/queues/public-form-metric-events"
 import { publishPublicFormSubmissionEvent } from "@/lib/queues/public-form-submission-events"
+import {
+  publishPublicFormProgressEvent,
+  type PublicFormProgressQueuePayload,
+} from "@/lib/queues/public-form-progress-events"
 import type { PublicFormSubmissionBackgroundJob } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
 
 /**
@@ -84,6 +88,17 @@ export class RetryPublicFormQueueEventFailuresUseCase {
       const payload = this.parseJsonPayload<PublicFormMetricQueuePayload>(row.payload)
       const result = await publishWithRetry(() =>
         publishPublicFormMetricEvent(payload, { idempotencyKey }),
+      )
+      if (!result.ok) {
+        throw result.error instanceof Error ? result.error : new Error(formatProcessingError(result.error))
+      }
+      return
+    }
+
+    if (row.kind === "progress") {
+      const payload = this.parseJsonPayload<PublicFormProgressQueuePayload>(row.payload)
+      const result = await publishWithRetry(() =>
+        publishPublicFormProgressEvent(payload, { idempotencyKey }),
       )
       if (!result.ok) {
         throw result.error instanceof Error ? result.error : new Error(formatProcessingError(result.error))

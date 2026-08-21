@@ -61,7 +61,13 @@ export async function POST(
       occurredAt: parsed.data.occurredAt,
       trigger: parsed.data.trigger,
     })
-    await queueProgressForBackgroundProcessing(payload)
+    const dispatch = await queueProgressForBackgroundProcessing(payload)
+    if (!dispatch.accepted) {
+      return NextResponse.json(
+        new Output(false, [], ["Não foi possível registrar o progresso"], { retryable: true }),
+        { status: 503, headers: { "Retry-After": "5" } },
+      )
+    }
   }
 
   return NextResponse.json(new Output(true, [], [], { queued: true }), { status: 202 })

@@ -641,6 +641,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     visitorSessionId: string
     eventType: import("@prisma/client").PublicFormMetricType
     eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
     origin: Prisma.InputJsonValue
   }) {
     const create = (questionId: string | null | undefined) => ({
@@ -651,6 +654,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,
+      eventId: input.eventId,
+      schemaVersion: input.schemaVersion,
+      occurredAt: input.occurredAt,
       origin: input.origin,
     })
 
@@ -1124,6 +1130,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     formId: string
     publicationId: string
     requestKey: string
+    eventId?: string | null
     visitorSessionId?: string | null
     score?: number
     scoreBandLabel?: string | null
@@ -1470,6 +1477,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     submissionId: string,
     data: {
       requestKey: string
+      eventId?: string | null
       score: number
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue
@@ -1480,6 +1488,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       where: { id: submissionId },
       data: {
         requestKey: data.requestKey,
+        eventId: data.eventId,
         score: data.score,
         scoreBandLabel: data.scoreBandLabel,
         origin: data.origin,

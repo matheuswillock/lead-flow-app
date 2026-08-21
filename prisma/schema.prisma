@@ -3427,6 +3427,7 @@ enum EmailOrphanEventStatus {
 
 enum PublicFormQueueEventKind {
   metric
+  progress
   submission
 
   @@map("public_form_queue_event_kind")
@@ -3509,10 +3510,16 @@ model PublicFormQueueEventFailure {
   nextAttemptAt  DateTime                           @default(now()) @db.Timestamptz(6)
   lastError      String?                            @db.Text
   failureReason  String?                            @db.Text
+  eventId        String?                            @db.Uuid
+  schemaVersion  Int?
+  topic          String?                            @db.Text
+  failureStage   String?                            @db.Text
+  lastErrorCode  String?                            @db.Text
   createdAt      DateTime                           @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime                           @updatedAt @db.Timestamptz(6)
 
   @@index([status, nextAttemptAt])
+  @@index([eventId])
   @@map("corretor_studio_public_form_queue_event_failures")
 }
 
@@ -5778,6 +5785,7 @@ model PublicFormSubmission {
   publicationId  String                     @db.Uuid
   leadId             String?                    @db.Uuid
   requestKey         String                     @unique @db.Text
+  eventId            String?                    @db.Uuid
   visitorSessionId   String?                    @db.Text
   completionStatus   PublicFormCompletionStatus @default(initial)
   status             PublicFormSubmissionStatus @default(processing)
@@ -5786,6 +5794,10 @@ model PublicFormSubmission {
   origin         Json?
   errorMessage   String?                    @db.Text
   submittedAt    DateTime?                  @db.Timestamptz(6)
+  dispatchAcceptedAt DateTime?               @db.Timestamptz(6)
+  dispatchAttemptCount Int                    @default(0)
+  nextDispatchAt DateTime?                    @db.Timestamptz(6)
+  lastDispatchError String?                   @db.Text
   createdAt      DateTime                   @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime                   @updatedAt @db.Timestamptz(6)
   form           PublicForm                 @relation(fields: [formId], references: [id], onDelete: Restrict)
@@ -5797,6 +5809,7 @@ model PublicFormSubmission {
   @@index([publicationId, createdAt(sort: Desc)])
   @@index([leadId, submittedAt(sort: Desc)])
   @@index([publicationId, visitorSessionId])
+  @@index([status, nextDispatchAt])
   @@map("corretor_studio_public_form_submissions")
 }
 
@@ -5806,6 +5819,9 @@ model PublicFormAnswer {
   questionId       String?              @db.Uuid
   value            Json
   questionSnapshot Json
+  sourceEventId    String?              @db.Uuid
+  answeredAt       DateTime?            @db.Timestamptz(6)
+  mappingKey       String?              @db.Text
   createdAt        DateTime             @default(now()) @db.Timestamptz(6)
   submission       PublicFormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   question         PublicFormQuestion?  @relation(fields: [questionId], references: [id], onDelete: SetNull)
@@ -5825,6 +5841,9 @@ model PublicFormMetricEvent {
   visitorSessionId String                @db.Text
   eventType        PublicFormMetricType
   eventKey         String                @unique @db.Text
+  eventId          String?               @db.Uuid
+  schemaVersion    Int?
+  occurredAt       DateTime?             @db.Timestamptz(6)
   origin           Json?
   createdAt        DateTime              @default(now()) @db.Timestamptz(6)
   form             PublicForm            @relation(fields: [formId], references: [id], onDelete: Cascade)
@@ -5835,6 +5854,7 @@ model PublicFormMetricEvent {
   @@index([formId, createdAt(sort: Desc)])
   @@index([visitorSessionId, createdAt])
   @@index([questionId])
+  @@index([eventId])
   @@map("corretor_studio_public_form_metric_events")
 }
 

@@ -482,6 +482,9 @@ export class PublicFormsService implements IPublicFormsService {
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,
+      eventId: input.eventId ?? null,
+      schemaVersion: input.schemaVersion ?? null,
+      occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
       origin: json(origin),
     })
 

@@ -51,6 +51,9 @@ export async function processPublicFormMetricQueueMessage(
 
   const input: PublicFormMetricEventInput = {
     visitorSessionId: message.visitorSessionId,
+    schemaVersion: message.schemaVersion,
+    eventId: message.eventId ?? undefined,
+    occurredAt: message.occurredAt,
     eventType: message.eventType as PublicFormMetricEventInput["eventType"],
     questionId: message.questionId ?? undefined,
     eventKey: message.eventKey,

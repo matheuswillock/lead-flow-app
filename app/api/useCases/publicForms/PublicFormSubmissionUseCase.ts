@@ -203,6 +203,7 @@ export class PublicFormSubmissionUseCase {
     const submission = progressSubmission
       ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
           requestKey: input.requestKey,
+          eventId: input.eventId,
           score,
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
@@ -212,6 +213,7 @@ export class PublicFormSubmissionUseCase {
           formId: snapshot.formId,
           publicationId,
           requestKey: input.requestKey,
+          eventId: input.eventId,
           visitorSessionId: input.visitorSessionId ?? null,
           score,
           scoreBandLabel: band?.label,

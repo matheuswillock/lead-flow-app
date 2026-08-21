@@ -289,6 +289,10 @@ export class PublicFormsUseCase {
         payload: payload as unknown as Prisma.InputJsonValue,
         lastError: formatProcessingError(publishResult.error),
         failureReason: "queue_publish_failed",
+        eventId: payload.eventId,
+        schemaVersion: payload.schemaVersion,
+        topic: "public-form-metric-events",
+        failureStage: "publisher_outbox",
       })
       return new Output(true, [], [], { queued: false, fallback: true })
     } catch (outboxError) {

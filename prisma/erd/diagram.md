@@ -925,6 +925,7 @@ skipped skipped
 
         public_form_queue_event_kind {
             metric metric
+progress progress
 submission submission
         }
     
@@ -2866,6 +2867,11 @@ completed completed
     DateTime nextAttemptAt 
     String lastError "❓"
     String failureReason "❓"
+    String eventId "❓"
+    Int schemaVersion "❓"
+    String topic "❓"
+    String failureStage "❓"
+    String lastErrorCode "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3993,6 +3999,7 @@ completed completed
   "corretor_studio_public_form_submissions" {
     String id "🗝️"
     String requestKey 
+    String eventId "❓"
     String visitorSessionId "❓"
     PublicFormCompletionStatus completionStatus 
     PublicFormSubmissionStatus status 
@@ -4001,6 +4008,10 @@ completed completed
     Json origin "❓"
     String errorMessage "❓"
     DateTime submittedAt "❓"
+    DateTime dispatchAcceptedAt "❓"
+    Int dispatchAttemptCount
+    DateTime nextDispatchAt "❓"
+    String lastDispatchError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4010,6 +4021,9 @@ completed completed
     String id "🗝️"
     Json value 
     Json questionSnapshot 
+    String sourceEventId "❓"
+    DateTime answeredAt "❓"
+    String mappingKey "❓"
     DateTime createdAt 
     }
   
@@ -4020,6 +4034,9 @@ completed completed
     String visitorSessionId 
     PublicFormMetricType eventType 
     String eventKey 
+    String eventId "❓"
+    Int schemaVersion "❓"
+    DateTime occurredAt "❓"
     Json origin "❓"
     DateTime createdAt 
     }

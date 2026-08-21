@@ -164,6 +164,9 @@ export type PublicFormCompleteSubmissionInput = {
     visitorSessionId: string
     eventType: PublicFormMetricType
     eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
     origin: Prisma.InputJsonValue
   }>
 }
@@ -340,6 +343,7 @@ export interface IPublicFormsRepository {
     formId: string
     publicationId: string
     requestKey: string
+    eventId?: string | null
     visitorSessionId?: string | null
     score?: number
     scoreBandLabel?: string | null
@@ -386,6 +390,7 @@ export interface IPublicFormsRepository {
     submissionId: string,
     data: {
       requestKey: string
+      eventId?: string | null
       score: number
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue

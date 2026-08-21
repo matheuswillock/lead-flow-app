@@ -15,9 +15,11 @@ mock.module("@/lib/queues/public-form-progress-events", () => ({
 }))
 
 mock.module(
-  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  "@/app/api/infra/data/repositories/publicFormQueueEventFailure/PublicFormQueueEventFailureRepository",
   () => ({
-    queueProcessingFailureRepository: {
+    formatProcessingError: (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    publicFormQueueEventFailureRepository: {
       upsertFromProcessingFailure: upsertFromProcessingFailureMock,
     },
   }),
@@ -58,7 +60,7 @@ describe("queueProgressForBackgroundProcessing", () => {
     expect(upsertFromProcessingFailureMock).not.toHaveBeenCalled()
   })
 
-  it("publish falha 3x → grava no outbox QueueProcessingFailure", async () => {
+  it("publish falha 3x → grava no outbox de formulário", async () => {
     publishPublicFormProgressEventMock.mockRejectedValue(new Error("queue down"))
 
     await queueProgressForBackgroundProcessing(PAYLOAD, {
@@ -69,6 +71,7 @@ describe("queueProgressForBackgroundProcessing", () => {
     expect(publishPublicFormProgressEventMock).toHaveBeenCalledTimes(DEFAULT_PUBLISH_RETRY_ATTEMPTS)
     expect(upsertFromProcessingFailureMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        kind: "progress",
         topic: "public-form-progress-events",
         idempotencyKey: PAYLOAD.idempotencyKey,
         lastError: "queue down",
@@ -85,6 +88,6 @@ describe("queueProgressForBackgroundProcessing", () => {
         publish: publishPublicFormProgressEventMock,
         persistOutbox: upsertFromProcessingFailureMock,
       }),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual({ accepted: false })
   })
 })
