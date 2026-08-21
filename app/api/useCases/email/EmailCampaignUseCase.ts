@@ -3854,8 +3854,10 @@ export class EmailCampaignUseCase {
     dispatchId: string,
     options?: { batchSize?: number }
   ): Promise<Output> {
-    const acquired = await this.repository.tryAcquireDispatchProcessingLock(dispatchId)
-    if (!acquired) {
+    const outcome = await this.repository.runWithDispatchProcessingLock(dispatchId, () =>
+      this.processLockedDispatchQueueBatch(dispatchId, options)
+    )
+    if (!outcome.acquired) {
       console.info("[EmailCampaignUseCase][processDispatchQueueBatch] lock ocupado, ack sem reenviar", {
         dispatchId,
       })
@@ -3865,19 +3867,7 @@ export class EmailCampaignUseCase {
         skipped: true,
       })
     }
-
-    try {
-      return await this.processLockedDispatchQueueBatch(dispatchId, options)
-    } finally {
-      try {
-        await this.repository.releaseDispatchProcessingLock(dispatchId)
-      } catch (error) {
-        console.error("[EmailCampaignUseCase][processDispatchQueueBatch] falha ao soltar lock", {
-          dispatchId,
-          error,
-        })
-      }
-    }
+    return outcome.result
   }
 
   private async isDispatchStillSending(dispatchId: string): Promise<boolean> {

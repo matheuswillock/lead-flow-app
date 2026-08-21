@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   isPgAdvisoryLockAcquired,
+  resolveDispatchLockConnectionString,
   toDispatchAdvisoryLockKeys,
 } from "./dispatch-advisory-lock"
 
@@ -11,6 +12,27 @@ describe("toDispatchAdvisoryLockKeys", () => {
     expect(classid).toBe(Number.parseInt("2608daaa", 16) | 0)
     expect(objid).toBe(Number.parseInt("45a14813", 16) | 0)
     expect(toDispatchAdvisoryLockKeys(dispatchId)).toEqual([classid, objid])
+  })
+})
+
+describe("resolveDispatchLockConnectionString", () => {
+  it("prefere DIRECT_URL e remove pgbouncer da query", () => {
+    expect(
+      resolveDispatchLockConnectionString({
+        DIRECT_URL: "postgresql://postgres:secret@db.example.com:5432/postgres",
+        DATABASE_URL:
+          "postgresql://postgres:secret@db.example.com:6543/postgres?pgbouncer=true&connection_limit=1",
+      })
+    ).toBe("postgresql://postgres:secret@db.example.com:5432/postgres")
+  })
+
+  it("cai em DATABASE_URL sem pgbouncer quando DIRECT_URL falta", () => {
+    expect(
+      resolveDispatchLockConnectionString({
+        DATABASE_URL:
+          "postgresql://postgres:secret@127.0.0.1:55322/postgres?pgbouncer=true&connection_limit=1&pool_timeout=20",
+      })
+    ).toBe("postgresql://postgres:secret@127.0.0.1:55322/postgres")
   })
 })
 

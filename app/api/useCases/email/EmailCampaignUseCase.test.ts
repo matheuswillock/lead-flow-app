@@ -326,6 +326,23 @@ mock.module(
   })
 )
 
+
+const pgQueryMock = mock(async (sql: string) => {
+  if (String(sql).includes("pg_try_advisory_lock")) {
+    return { rows: [{ acquired: true }] }
+  }
+  return { rows: [] }
+})
+const pgConnectMock = mock(async () => {})
+const pgEndMock = mock(async () => {})
+mock.module("pg", () => ({
+  Client: class {
+    connect = pgConnectMock
+    end = pgEndMock
+    query = pgQueryMock
+  },
+}))
+
 // =============================================================================
 // Importação dinâmica — APÓS todos os mocks
 // =============================================================================
@@ -341,6 +358,11 @@ const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
 const { aggregateDispatchLogCounters } = await import(
   "@/lib/email/campaign-dispatch-progress"
 )
+
+if (!process.env.DIRECT_URL && !process.env.DATABASE_URL) {
+  process.env.DIRECT_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres"
+}
+
 
 type ProgressLogFixture = {
   dispatchId?: string | null
@@ -639,6 +661,9 @@ const allMocks = [
   emailLogGroupByMock,
   queryRawMock,
   queryRawUnsafeMock,
+  pgQueryMock,
+  pgConnectMock,
+  pgEndMock,
   profileFindManyMock,
   transactionMock,
   reserveCreditsMock,
@@ -692,6 +717,12 @@ describe("EmailCampaignUseCase.send", () => {
     emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
     queryRawMock.mockImplementation(async () => [])
     queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -1844,6 +1875,12 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     emailLogFindManyMock.mockImplementation(async () => [])
     queryRawMock.mockImplementation(async () => [])
     queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -2440,6 +2477,12 @@ describe("EmailCampaignUseCase.processDispatchQueueBatch — PR6 lock, overflow 
     for (const m of allMocks) m.mockClear()
     emailCampaignDispatchFindFirstMock.mockImplementation(async () => makeSendingDispatch())
     queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     queryRawMock.mockImplementation(async () => [])
     installQueuedLogStore()
     emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
@@ -2461,7 +2504,7 @@ describe("EmailCampaignUseCase.processDispatchQueueBatch — PR6 lock, overflow 
   })
 
   it("lock ocupado: ack sem chamar Resend", async () => {
-    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: false }])
+    pgQueryMock.mockImplementation(async () => ({ rows: [{ acquired: false }] }))
     const uc = new EmailCampaignUseCase()
     const output = await uc.processDispatchQueueBatch("dispatch-1")
     expect(output.isValid).toBe(true)
