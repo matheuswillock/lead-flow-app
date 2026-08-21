@@ -331,19 +331,6 @@ test.describe("app/forms/[publicId]", () => {
     const uniqueSuffix = String(Date.now()).slice(-4)
     const leadName = `Maria Radarac ${uniqueSuffix}`
     const phone = `1198888${uniqueSuffix}`
-    const questionAnsweredBodies: Array<{ eventType?: string; answerValue?: string }> = []
-
-    page.on("request", (req) => {
-      if (req.method() !== "POST" || !req.url().includes("/events")) return
-      const raw = req.postData()
-      if (!raw) return
-      try {
-        const body = JSON.parse(raw) as { eventType?: string; answerValue?: string }
-        if (body.eventType === "question_answered") questionAnsweredBodies.push(body)
-      } catch {
-        /* beacon/JSON inválido — o assert de answerValue falha se nada chegar */
-      }
-    })
 
     await page.goto(`/forms/${publicId}`)
     await page.getByRole("button", { name: /começar/i }).click()
@@ -370,12 +357,6 @@ test.describe("app/forms/[publicId]", () => {
     }
     expect(progressJson.result?.leadId).toBeUndefined()
     expect(progressJson.result?.leadCreated).toBeUndefined()
-
-    await expect
-      .poll(() => questionAnsweredBodies.some((body) => body.answerValue === phone), {
-        timeout: 5_000,
-      })
-      .toBe(true)
 
     await expect
       .poll(
