@@ -497,3 +497,39 @@ Quando um dispatch fica preso em `sending` por mais de 30 minutos (function do V
 **Resultado:** o Resend detecta a mesma chave posicional (`campaign/{dispatchId}/0`) com payload diferente e responde `409` com `idempotency` na mensagem. **`409` idempotency é retryable** (`is-retryable-resend-batch-error.ts:17-21`): `dispatchBatch` re-tenta até `MAX_BATCH_SEND_ATTEMPTS` (3) com chaves variantes `attempt-1` e `attempt-2` (`EmailCampaignDispatchService.ts:190-197`, via `buildResendIdempotencyKeyWithVariant`). O erro terminal `Campanha já foi processada anteriormente` (`EmailCampaignDispatchService.ts:42-44`) aparece **depois** de esgotar essas variantes — não no primeiro `409` isolado. Mesmo assim, enquanto a chave for **posicional** (`chunkIndex`), a retomada continua frágil: variantes podem mascarar uma colisão pontual, mas não corrigem a identidade instável do lote; e rotacionar geração (`resumeCount`) sem reconciliar aceite do provedor arrisca **reenvio duplicado** se o Resend já aceitou um lote cujos logs ficaram `queued` (review PR #737 P1 — ver D13 Opção B em `EMAIL_SPEC.md`).
 
 **Escopo do achado:** confirmado por leitura de código, não reproduzido em teste automatizado nesta rodada — recomenda-se cobrir com teste de integração antes de corrigir (ver `EMAIL_SPEC.md`).
+
+## 11. Incidente de produção 2026-08-21 — filas de disparo travadas por colisão de idempotency key do **wake** (janela de dedupe de 24h)
+
+**Gatilho:** 11 dispatches parados simultaneamente em `status=sending` com `queued = 0` e `materializedLogCount < totalRecipients` — audiência materializada apenas parcialmente (offsets de 1.000 a 2.000 contra `totalRecipients` de até 60.623), avançando ~1 lote de 500 a cada ~24h em vez de drenar continuamente.
+
+Defeito **distinto** do §10/E4: aquele era a chave de lote enviada ao **Resend** (`campaign/{dispatchId}/{chunkIndex}`); este é a chave da mensagem de **wake da Vercel Queue** (`buildEmailCampaignDispatchIdempotencyKey`, `lib/queues/email-campaign-dispatch.ts`).
+
+### E5 — Chaves de wake sem discriminador colidem dentro da janela de dedupe de 24h 🔴
+
+**Fato de plataforma** (`node_modules/@vercel/queue/dist/index.d.ts:352-355`):
+
+```
+idempotencyKey?: string;
+// Deduplication window: `min(message retention, 24 hours)`.
+```
+
+`EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS` é 7 dias, então a janela efetiva é **24 horas** — não 7 dias. Toda chave de wake precisa mudar quando a mensagem representa trabalho novo; caso contrário a republicação é silenciosamente descartada.
+
+Três variantes da mesma falha:
+
+| Variante | Call site | Chave antes | Efeito |
+|---|---|---|---|
+| **Trava primária** | `EmailCampaignUseCase.ts` — `continue` pós-lote | `${id}:continue:${remainingCount}` com `remaining = remainingQueued + (materializedHasMore ? batchSize : 0)` | Quando o lote esvazia a fila mas resta audiência (`remainingQueued = 0`, `materializedHasMore = true`), `remaining` é **sempre** `batchSize` (500). Chave idêntica em todos os lotes intermediários ⇒ a continuação nunca é entregue. |
+| **Continuação sem contagem** | `continue` após materializar sem logs prontos | `${id}:continue:0` (via `?? 0`) | Mesma colisão, ancorada em zero. |
+| **Inanição de recuperação** | `recoverStuckSendingCampaigns`, `resumeOrphanSendingDispatches`, `reclaimCompletedDispatchesWithQueuedLogs`, `dispatchScheduledCampaigns` | `${id}:cron-start` / `${id}:cron-reclaim` — constantes | O cron `dispatch-scheduled` roda a cada 5 min, mas só consegue acordar um dispatch parado **uma vez por dia**: 287 dos 288 ticks diários são deduplicados. Explica o avanço de ~1 lote/24h. |
+
+**Armadilha de diagnóstico registrada:** o `updatedAt` das linhas travadas estava sempre recente (0–9 min), o que sugere progresso e levou a uma leitura inicial errada ("o sistema está se autocurando devagar"). Não era progresso: `EmailLogRepository.applyWebhookEvent` (`app/api/infra/data/repositories/emailLog/EmailLogRepository.ts:172`) faz `emailCampaignDispatch.update()` a cada webhook do Resend (`delivered`/`opened`/`clicked`/`bounced`/`complained`) dos e-mails **já enviados**, e o `@updatedAt` do Prisma bumpa em toda chamada de `update`. O sinal confiável é o `createdAt` dos `EmailLog` — daí `scripts/diagnose-stuck-campaign-dispatches.ts` comparar os dois explicitamente.
+
+**Correção:**
+- `continue` passa a usar `batchOffset` (o `materializeSourceOffset` persistido após o lote), que cresce monotonicamente. `materializeQueuedLogsChunk` devolve `nextOffset` para isso. `remainingCount` fica como fallback para mensagens em trânsito.
+- `cron-start`/`cron-reclaim` passam a usar `wakeBucket` — bucket temporal de `WAKE_RECOVERY_BUCKET_MS` (5 min, alinhado à cadência do cron), em `lib/email/dispatch-wake-queue.ts`. Um cursor de progresso **não** serviria: um dispatch parado tem cursor imóvel, que é exatamente quando mais se precisa de um wake novo.
+- `start` mantém chave estável de propósito — o `dispatchId` já é único por envio e a estabilidade protege contra duplo clique.
+- `wakeBucket`/`batchOffset` entram no `EmailCampaignDispatchWakePayload` (antes eram interseções só nas assinaturas dos publishers), tornando a chave função pura do payload — premissa que o dead-letter (`processDispatchMessage.ts`) e o republish (`queue-processing-failure-republish.ts`) já assumiam.
+- Wakes redundantes são seguros: `processDispatchQueueBatch` serializa em `runWithDispatchProcessingLock` e faz ack sem reprocessar.
+
+**Tooling criado:** `scripts/diagnose-stuck-campaign-dispatches.ts` (somente leitura, com critério numérico explícito de confirmação/refutação) e `scripts/recover-stuck-campaign-dispatches.ts` (dry-run por padrão; `--apply` publica wake com chave manual única, driblando as chaves já consumidas). O recover **só pode rodar depois** que a correção estiver em produção, senão cada dispatch drena um lote e trava de novo.

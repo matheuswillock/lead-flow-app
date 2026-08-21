@@ -132,6 +132,7 @@ import {
 import {
   ORPHAN_RESUME_MIN_AGE_MS,
   resolveEmailCampaignDispatchWakeQueue,
+  resolveWakeRecoveryBucket,
   STUCK_SENDING_THRESHOLD_MS,
 } from "@/lib/email/dispatch-wake-queue"
 
@@ -3844,8 +3845,15 @@ export class EmailCampaignUseCase {
       queue === "overflow"
         ? publishEmailCampaignDispatchOverflowWake
         : publishEmailCampaignDispatchWake
+    // Sem bucket, `cron-start`/`cron-reclaim` gerariam a mesma chave a cada
+    // tick e a fila deduplicaria por 24h — um dispatch parado só voltaria a
+    // ser acordado no dia seguinte.
+    const wakeBucket =
+      reason === "cron-start" || reason === "cron-reclaim"
+        ? resolveWakeRecoveryBucket(params.now ?? new Date())
+        : undefined
     try {
-      await publish({ dispatchId, reason, remainingCount, batchOffset })
+      await publish({ dispatchId, reason, remainingCount, batchOffset, wakeBucket })
     } catch (error) {
       console.error("[EmailCampaignUseCase][publishDispatchWake]", {
         dispatchId,
@@ -4335,7 +4343,7 @@ export class EmailCampaignUseCase {
         NOT: { errorMessage: EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE },
         logs: { some: { status: "queued" } },
       },
-      select: { id: true, campaignId: true },
+      select: { id: true, campaignId: true, createdAt: true },
       orderBy: { updatedAt: "asc" },
       take: maxDispatches,
     })
@@ -4353,7 +4361,11 @@ export class EmailCampaignUseCase {
             data: { status: "sending", errorMessage: null },
           }),
         ])
-        await this.publishDispatchWake({ dispatchId: dispatch.id, reason: "cron-reclaim" })
+        await this.publishDispatchWake({
+          dispatchId: dispatch.id,
+          reason: "cron-reclaim",
+          createdAt: dispatch.createdAt,
+        })
         reclaimed += 1
         console.info("[EmailCampaignUseCase][reclaimCompletedDispatchesWithQueuedLogs] reaberto", {
           dispatchId: dispatch.id,
@@ -4906,7 +4918,11 @@ export class EmailCampaignUseCase {
         // A audiência é resolvida e os EmailLog `queued` são criados em lotes de
         // DISPATCH_QUEUE_BATCH_SIZE por materializeQueuedLogsChunk, acionado pelo
         // consumer da fila a partir do wake abaixo — nunca de uma vez só aqui.
-        await this.publishDispatchWake({ dispatchId: dispatchRecord.id, reason: "cron-start" })
+        await this.publishDispatchWake({
+          dispatchId: dispatchRecord.id,
+          reason: "cron-start",
+          createdAt: dispatchRecord.createdAt,
+        })
         dispatched++
         const scheduledLabel = campaign.scheduledAt
           ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)

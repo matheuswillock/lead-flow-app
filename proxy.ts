@@ -19,6 +19,7 @@ import {
   updateSession,
 } from "@/lib/supabase/auth-sessions"
 import { API_CLIENT_SLUG } from "@/lib/route-map"
+import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 
 /** Prefixo público das chamadas client-side: /api/q/... */
 const SLUG_PREFIX = `/api/${API_CLIENT_SLUG}/`
@@ -51,7 +52,11 @@ export async function proxy(request: NextRequest) {
   const isClientApiSlug = pathname.startsWith(SLUG_PREFIX)
 
   // Rate limit only for the public client slug — before session work.
-  if (isClientApiSlug) {
+  // Desligado sob E2E: no CI não há `x-forwarded-for`, então os 4 workers do
+  // Playwright colapsam no mesmo balde "unknown" e estouram os 120 req/60 s da
+  // suíte inteira, devolvendo 429 antes do route handler. `isE2eTestMode()`
+  // exige E2E_TEST_MODE=true + APP_ENV=test e recusa VERCEL_ENV=production.
+  if (isClientApiSlug && !isE2eTestMode()) {
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       request.headers.get("x-real-ip") ??

@@ -2468,10 +2468,13 @@ describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
     const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
 
     expect(recovered).toBe(1)
+    // `wakeBucket` é o que impede a chave `dispatchId:cron-reclaim` constante
+    // de deduplicar por 24h e matar a recuperação pelo cron.
     expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         dispatchId: "dispatch-lazy",
         reason: "cron-reclaim",
+        wakeBucket: expect.any(Number),
       })
     )
     expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()

@@ -23,15 +23,7 @@ export async function POST(
     return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })
   }
   const fingerprint = publicFormRequestFingerprint(request)
-  const isLocalFingerprint =
-    fingerprint === "unknown" ||
-    fingerprint === "127.0.0.1" ||
-    fingerprint === "::1" ||
-    fingerprint === "::ffff:127.0.0.1" ||
-    fingerprint.startsWith("127.")
-  const shouldBypassRateLimit =
-    isE2eTestMode() || isLocalFingerprint || process.env.CI === "true" || process.env.APP_ENV === "test"
-  if (!shouldBypassRateLimit) {
+  if (!isE2eTestMode()) {
     const rate = await consumePublicFormRateLimit(
       `event:${publicId}:${fingerprint}`,
       { limit: 120, windowMs: 60_000 },

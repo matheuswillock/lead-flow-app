@@ -24,28 +24,44 @@ export type EmailCampaignDispatchWakePayload = {
   dispatchId: string
   /** Só para log/observabilidade; não influencia o processamento. */
   reason: "start" | "cron-start" | "cron-reclaim" | "continue"
+  /** Legado do `continue`: quantidade restante. Mantido só como fallback de chave. */
+  remainingCount?: number
+  /** `continue`: cursor de materialização após o lote — cresce a cada lote. */
+  batchOffset?: number
+  /** `cron-start`/`cron-reclaim`: bucket temporal (ver `resolveWakeRecoveryBucket`). */
+  wakeBucket?: number
 }
 
 /**
- * Idempotência: `start`/`cron-start`/`cron-reclaim` usam a própria
- * `dispatchId` (uma única publicação "inicial" por gatilho). `continue`
- * usa `batchOffset` (posição do cursor de materialização após o lote
- * atual — cresce monotonicamente, garantindo chave única por lote).
- * `remainingCount` serve de fallback para mensagens em trânsito sem
- * `batchOffset`.
+ * Idempotência por reason. A Vercel Queue deduplica numa janela de
+ * `min(retenção, 24h)` — 24h aqui —, então toda chave precisa de um
+ * discriminador que mude quando a mensagem representa trabalho novo.
+ *
+ * - `start`: chave estável de propósito. O `dispatchId` já é único por envio
+ *   e a estabilidade protege contra duplo clique no disparo manual.
+ * - `continue`: `batchOffset` (cursor de materialização após o lote). Cresce
+ *   monotonicamente, garantindo chave nova a cada lote. Antes usava
+ *   `remainingCount`, que era constante (`batchSize`) sempre que o lote
+ *   esvaziava a fila mas ainda havia audiência a materializar — a colisão que
+ *   travou os disparos em produção. `remainingCount` fica como fallback para
+ *   mensagens em trânsito publicadas antes desta mudança.
+ * - `cron-start`/`cron-reclaim`: `wakeBucket` temporal. Sem ele, o cron
+ *   conseguia acordar um dispatch parado no máximo uma vez por dia.
  */
 export function buildEmailCampaignDispatchIdempotencyKey(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number; batchOffset?: number }
+  payload: EmailCampaignDispatchWakePayload
 ): string {
   if (payload.reason === "continue") {
-    const discriminator = payload.batchOffset != null ? payload.batchOffset : (payload.remainingCount ?? 0)
-    return `${payload.dispatchId}:continue:${discriminator}`
+    return `${payload.dispatchId}:continue:${payload.batchOffset ?? payload.remainingCount ?? 0}`
+  }
+  if (payload.reason === "cron-start" || payload.reason === "cron-reclaim") {
+    return `${payload.dispatchId}:${payload.reason}:${payload.wakeBucket ?? 0}`
   }
   return `${payload.dispatchId}:${payload.reason}`
 }
 
 export async function publishEmailCampaignDispatchWake(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number; batchOffset?: number },
+  payload: EmailCampaignDispatchWakePayload,
   options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(EMAIL_CAMPAIGN_DISPATCH_TOPIC, payload, {
@@ -55,7 +71,7 @@ export async function publishEmailCampaignDispatchWake(
 }
 
 export async function publishEmailCampaignDispatchOverflowWake(
-  payload: EmailCampaignDispatchWakePayload & { remainingCount?: number; batchOffset?: number },
+  payload: EmailCampaignDispatchWakePayload,
   options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return overflowQueue.send(EMAIL_CAMPAIGN_DISPATCH_OVERFLOW_TOPIC, payload, {

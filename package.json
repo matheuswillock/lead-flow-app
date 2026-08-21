@@ -96,6 +96,8 @@
     "reprocess:public-form-submissions": "bunx tsx scripts/reprocess-public-form-submissions.ts",
     "backfill:public-form-leads-ac": "bunx tsx scripts/backfill-public-form-leads-ac.ts",
     "recover:campaign-attribution-leads": "bunx tsx scripts/recover-campaign-attribution-leads.ts",
+    "diagnose:stuck-campaign-dispatches": "bunx tsx scripts/diagnose-stuck-campaign-dispatches.ts",
+    "recover:stuck-campaign-dispatches": "bunx tsx scripts/recover-stuck-campaign-dispatches.ts",
     "cleanup:fake-email-attribution-leads": "bunx tsx scripts/cleanup-fake-email-attribution-leads.ts",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "bunx prisma studio",
