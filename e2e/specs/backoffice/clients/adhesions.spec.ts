@@ -12,39 +12,41 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
   let adhesionId: string | null = null;
   let leadId: string | null = null;
   let createdProfileId: string | null = null;
-  let originalRole: string | null = null;
+  let backofficeSupabaseId: string | null = null;
+  let backofficeProfileId: string | null = null;
 
   test.beforeAll(async () => {
     const prisma: PrismaAny = getPrisma();
     const master = await findE2eMasterProfile();
     if (!master) throw new Error("Seed E2E ausente — rode `bun run db:seed:e2e`");
-    originalRole = master.role;
 
-    // Garante que o master seja backoffice para acessar /backoffice/*
-    await prisma.profile.update({
-      where: { supabaseId: E2E_MASTER_SUPABASE_ID },
-      data: { role: "backoffice" },
+    // Cria um backoffice dedicado para o teste (sem mutar o master, para não quebrar outros specs em paralelo)
+    backofficeSupabaseId = `e2e-backoffice-${Date.now()}-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`;
+    // Usa um UUID determinístico para o supabaseId mas mantém formato UUID
+    const { randomUUID } = await import("node:crypto");
+    backofficeSupabaseId = randomUUID();
+    const backofficeEmail = `e2e.backoffice.${Date.now()}@example.com`;
+    const backofficeProfile = await prisma.profile.create({
+      data: {
+        supabaseId: backofficeSupabaseId,
+        email: backofficeEmail,
+        fullName: "E2E Backoffice",
+        role: "backoffice",
+        isMaster: false,
+      },
+      select: { id: true, email: true, supabaseId: true },
     });
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId: E2E_MASTER_SUPABASE_ID },
-      select: { id: true, email: true },
-    });
-    if (!profile) throw new Error("Profile master não encontrado após update");
+    backofficeProfileId = backofficeProfile.id;
 
-    await prisma.backofficeUser.upsert({
-      where: { profileId: profile.id },
-      create: {
-        profileId: profile.id,
-        email: profile.email,
+    await prisma.backofficeUser.create({
+      data: {
+        profileId: backofficeProfile.id,
+        email: backofficeProfile.email,
         fullAccess: true,
         isActive: true,
       },
-      update: {
-        email: profile.email,
-        fullAccess: true,
-        isActive: true,
-      },
     });
+    const profile = backofficeProfile;
 
     // Arrange adesão paga com conta já criada (cenário do bug)
     const lead = await prisma.backofficeLead.create({
@@ -89,7 +91,7 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
         paidAt: new Date(),
         billingType: "EXTERNAL",
         createdProfileId: profile.id,
-        createdSupabaseId: E2E_MASTER_SUPABASE_ID,
+        createdSupabaseId: profile.supabaseId,
         installmentLedger: [
           {
             index: 0,
@@ -115,13 +117,9 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
     if (leadId) {
       await prisma.backofficeLead.deleteMany({ where: { id: leadId } }).catch(() => null);
     }
-    if (originalRole) {
-      await prisma.profile
-        .update({
-          where: { supabaseId: E2E_MASTER_SUPABASE_ID },
-          data: { role: originalRole as string },
-        })
-        .catch(() => null);
+    if (backofficeProfileId) {
+      await prisma.backofficeUser.deleteMany({ where: { profileId: backofficeProfileId } }).catch(() => null);
+      await prisma.profile.deleteMany({ where: { id: backofficeProfileId } }).catch(() => null);
     }
     await disconnectPrisma();
   });
@@ -153,10 +151,10 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
   });
 
   test("reenviar convite após troca de e-mail envia para e-mail novo e gera novo link", async ({
-    page,
     request,
   }) => {
     test.skip(!adhesionId, "Adesão de arrange não criada");
+    test.skip(!backofficeSupabaseId, "Backoffice SupabaseId não criado");
     const newEmail = `adesao-nova-${Date.now()}@example.com`;
     const prisma: PrismaAny = getPrisma();
 
@@ -175,13 +173,11 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
     });
 
     // 2) Chama POST /api/v1/backoffice/adhesions/[id]/invite (reenviar convite)
-    // Usa request com cookie E2E injetado via page
-    const cookies = await page.context().cookies();
-    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    // Usa header x-supabase-user-id com o backoffice dedicado (sem depender de cookie master)
     const baseURL = process.env.E2E_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000";
 
     const res = await request.post(`${baseURL}/api/v1/backoffice/adhesions/${adhesionId}/invite`, {
-      headers: { cookie: cookieHeader },
+      headers: { "x-supabase-user-id": backofficeSupabaseId! },
     });
 
     // A API deve retornar 200 e email === newEmail
@@ -221,7 +217,7 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
 
     // 4) Segundo reenvio deve gerar novamente sucesso (prova que novo link tem nova expiração e anterior foi invalidado)
     const res2 = await request.post(`${baseURL}/api/v1/backoffice/adhesions/${adhesionId}/invite`, {
-      headers: { cookie: cookieHeader },
+      headers: { "x-supabase-user-id": backofficeSupabaseId! },
     });
     // Se Supabase ok, deve ser 200 novamente (novo hashed_token com TTL resetado)
     if (res2.status() === 200) {
