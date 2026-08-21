@@ -498,11 +498,14 @@ export class PublicFormsService implements IPublicFormsService {
         formId: current.snapshot.formId,
         publicationId,
         questionId: input.questionId,
+        questionType: matchedQuestion?.type ?? null,
         leadId,
         origin,
         answerMappingKey: trustedMappingKey,
         answerValue: input.answerValue,
         leadGateRequest: input.createCrmLead === true ? "identity_revision" : "none",
+        eventId: input.eventId ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)

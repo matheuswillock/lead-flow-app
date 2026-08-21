@@ -14,9 +14,14 @@ import {
   resolvePublicFormLeadGateMode,
   type PublicFormLeadGateMode,
 } from "@/lib/public-forms/public-form-lead-gate-mode"
+import type {
+  MaterializePublicFormAnswerRevisionInput,
+  MaterializePublicFormAnswerRevisionResult,
+} from "@/app/api/useCases/radar/MaterializePublicFormAnswerRevisionUseCase"
 
 type OutputUseCase<TInput> = { execute(input: TInput): Promise<Output> }
 type LeadSyncInput = { leadId: string; teamId: string }
+type MaterializationInput = MaterializePublicFormAnswerRevisionInput
 type GateInput = {
   teamId: string
   formId: string
@@ -35,11 +40,13 @@ export type SyncPublicFormMetricToRadarInput = {
   formId: string
   publicationId: string
   questionId?: string | null
+  questionType?: string | null
   leadId?: string | null
   origin?: unknown
   answerMappingKey?: string | null
   answerValue?: unknown
   leadGateRequest?: "none" | "identity_revision"
+  eventId?: string | null
   occurredAt?: Date
 }
 
@@ -50,6 +57,7 @@ export class SyncPublicFormMetricToRadarUseCase {
     private readonly leadSync: OutputUseCase<LeadSyncInput>,
     private readonly leadGate: OutputUseCase<GateInput>,
     private readonly eligibility: OutputUseCase<EligibilityInput>,
+    private readonly materializeAnswer: OutputUseCase<MaterializationInput>,
     private readonly resolveGateMode: (
       teamId: string,
     ) => PublicFormLeadGateMode = resolvePublicFormLeadGateMode,
@@ -60,24 +68,18 @@ export class SyncPublicFormMetricToRadarUseCase {
       const radarEventType = mapPublicFormMetricToRadarEventType(input.eventType)
       if (!radarEventType) return new Output(true, [], [], { skipped: "unknown_event_type" })
 
-      const profileId = await this.resolveProfileId(input)
-      if (!profileId) return new Output(false, [], ["Perfil Radar não resolvido"], null)
-
-      if (
-        input.eventType === "question_answered" &&
-        input.answerMappingKey === "name" &&
-        typeof input.answerValue === "string" &&
-        input.answerValue.trim()
-      ) {
-        await this.radarProfiles.applyFormAnswerDisplayName(
-          profileId,
-          input.teamId,
-          input.answerValue.trim(),
-        )
-      }
+      const resolvedProfileId = await this.resolveProfileId(input)
+      if (!resolvedProfileId) return new Output(false, [], ["Perfil Radar não resolvido"], null)
 
       const occurredAt = input.occurredAt ?? new Date()
       const campaignId = this.extractOriginString(input.origin, "campaignId")
+
+      const materialization = await this.materializeRevision(input, resolvedProfileId, {
+        occurredAt,
+        campaignId,
+      })
+      const profileId = materialization?.profileId ?? resolvedProfileId
+
       const metadata: Prisma.InputJsonValue = {
         formId: input.formId,
         publicationId: input.publicationId,
@@ -103,10 +105,7 @@ export class SyncPublicFormMetricToRadarUseCase {
       })
 
       let leadId = input.leadId ?? null
-      if (
-        input.eventType === "question_answered" &&
-        input.leadGateRequest === "identity_revision"
-      ) {
+      if (this.shouldRunGate(input, materialization)) {
         const gateOutput = await this.executeGateByMode(input, profileId)
         if (!gateOutput.isValid) return gateOutput
         const gateLeadId = this.extractLeadId(gateOutput)
@@ -120,12 +119,14 @@ export class SyncPublicFormMetricToRadarUseCase {
         profileId,
         eventType: radarEventType,
         eventCreated: Boolean(event),
+        identityChanged: materialization?.identityChanged ?? null,
         gateMode: this.resolveGateMode(input.teamId),
       })
       return new Output(true, [], [], {
         profileId,
         eventType: radarEventType,
         created: Boolean(event),
+        identityChanged: materialization?.identityChanged ?? null,
         leadId,
       })
     } catch (error) {
@@ -134,6 +135,55 @@ export class SyncPublicFormMetricToRadarUseCase {
         error instanceof Error ? error.message : "Erro ao espelhar métrica de formulário no Radar"
       return new Output(false, [], [message], null)
     }
+  }
+
+  /**
+   * Materializa a revisão no Radar antes do gate. Sem `questionId` ou `eventId`
+   * causal não há revisão a projetar — o evento comportamental segue apenas
+   * para timeline/engajamento.
+   */
+  private async materializeRevision(
+    input: SyncPublicFormMetricToRadarInput,
+    profileId: string,
+    context: { occurredAt: Date; campaignId: string | null },
+  ): Promise<MaterializePublicFormAnswerRevisionResult | null> {
+    if (input.eventType !== "question_answered") return null
+    if (!input.questionId || !input.eventId) return null
+
+    const output = await this.materializeAnswer.execute({
+      teamId: input.teamId,
+      profileId,
+      formId: input.formId,
+      publicationId: input.publicationId,
+      questionId: input.questionId,
+      questionType: input.questionType ?? null,
+      mappingKey: input.answerMappingKey ?? null,
+      value: input.answerValue,
+      eventId: input.eventId,
+      occurredAt: context.occurredAt,
+      campaignId: context.campaignId,
+    })
+    if (!output.isValid) {
+      throw new Error(
+        output.errorMessages.join("; ") || "Falha ao materializar revisão de resposta no Radar",
+      )
+    }
+    return (output.result as MaterializePublicFormAnswerRevisionResult | null) ?? null
+  }
+
+  /**
+   * O gate só roda quando a identidade materializada mudou. Sem revisão
+   * materializada (payload legado sem `eventId`/`questionId`) mantemos o
+   * comportamento anterior baseado em `leadGateRequest` durante a janela de
+   * compatibilidade.
+   */
+  private shouldRunGate(
+    input: SyncPublicFormMetricToRadarInput,
+    materialization: MaterializePublicFormAnswerRevisionResult | null,
+  ): boolean {
+    if (input.eventType !== "question_answered") return false
+    if (materialization) return materialization.identityChanged !== null
+    return input.leadGateRequest === "identity_revision"
   }
 
   private async executeGateByMode(

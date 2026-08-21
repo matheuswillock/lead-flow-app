@@ -26,7 +26,6 @@ const mergePublicFormProfiles = mock(async () => ({
   merged: true,
   conflict: false,
 }))
-const applyFormAnswerDisplayName = mock(async () => {})
 const appendEventIfNewBySourceKey = mock(
   async (_input: unknown): Promise<{ id: string } | null> => ({ id: "event-1" }),
 )
@@ -37,6 +36,16 @@ const leadGate = {
 const eligibility = {
   execute: mock(async () => new Output(true, [], [], { eligible: true, reason: "eligible" })),
 }
+const materializeAnswer = {
+  execute: mock(
+    async () =>
+      new Output(true, [], [], {
+        profileId: "visitor-profile",
+        outcome: "applied",
+        identityChanged: "name",
+      }),
+  ),
+}
 
 const repository: IRadarPublicFormProfileRepository & IRadarProfileMergeRepository = {
   findProfileByIdentity,
@@ -44,7 +53,6 @@ const repository: IRadarPublicFormProfileRepository & IRadarProfileMergeReposito
   resolveProfileForEmail,
   resolveProfileForPhone,
   mergePublicFormProfiles,
-  applyFormAnswerDisplayName,
   appendEventIfNewBySourceKey,
 }
 
@@ -63,6 +71,7 @@ function createUseCase(mode: "legacy" | "shadow" | "radar") {
     leadSync,
     leadGate,
     eligibility,
+    materializeAnswer,
     () => mode,
   )
 }
@@ -74,11 +83,11 @@ describe("SyncPublicFormMetricToRadarUseCase", () => {
     resolveProfileForEmail.mockReset()
     resolveProfileForPhone.mockReset()
     mergePublicFormProfiles.mockReset()
-    applyFormAnswerDisplayName.mockReset()
     appendEventIfNewBySourceKey.mockReset()
     leadSync.execute.mockReset()
     leadGate.execute.mockReset()
     eligibility.execute.mockReset()
+    materializeAnswer.execute.mockReset()
 
     findProfileByIdentity.mockImplementation(async () => null)
     resolveProfileForVisitorSession.mockImplementation(async () => ({
@@ -98,7 +107,6 @@ describe("SyncPublicFormMetricToRadarUseCase", () => {
       merged: true,
       conflict: false,
     }))
-    applyFormAnswerDisplayName.mockImplementation(async () => {})
     appendEventIfNewBySourceKey.mockImplementation(async () => ({ id: "event-1" }))
     leadSync.execute.mockImplementation(async () => new Output(true, [], [], {}))
     leadGate.execute.mockImplementation(
@@ -106,6 +114,14 @@ describe("SyncPublicFormMetricToRadarUseCase", () => {
     )
     eligibility.execute.mockImplementation(
       async () => new Output(true, [], [], { eligible: true, reason: "eligible" }),
+    )
+    materializeAnswer.execute.mockImplementation(
+      async () =>
+        new Output(true, [], [], {
+          profileId: "visitor-profile",
+          outcome: "applied",
+          identityChanged: "name",
+        }),
     )
   })
 
@@ -133,18 +149,29 @@ describe("SyncPublicFormMetricToRadarUseCase", () => {
     )
   })
 
-  it("materializa nome antes de executar o gate no modo radar", async () => {
+  it("materializa a revisão antes de executar o gate no modo radar", async () => {
     const output = await createUseCase("radar").execute({
       ...baseInput,
       eventType: "question_answered",
       eventKey: "session-1:question_answered:name:revision-1",
       questionId: "name",
+      questionType: "short_text",
       answerMappingKey: "name",
       answerValue: "Maria",
-      leadGateRequest: "identity_revision",
+      eventId: "0ef8dd3a-8a61-4bd4-9ef3-682d3c144254",
     })
 
-    expect(applyFormAnswerDisplayName).toHaveBeenCalledWith("visitor-profile", "team-1", "Maria")
+    expect(materializeAnswer.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profileId: "visitor-profile",
+        formId: "form-1",
+        questionId: "name",
+        questionType: "short_text",
+        mappingKey: "name",
+        value: "Maria",
+        eventId: "0ef8dd3a-8a61-4bd4-9ef3-682d3c144254",
+      }),
+    )
     expect(leadGate.execute).toHaveBeenCalledWith({
       teamId: "team-1",
       formId: "form-1",
@@ -153,7 +180,73 @@ describe("SyncPublicFormMetricToRadarUseCase", () => {
       eventId: "session-1:question_answered:name:revision-1",
       origin: {},
     })
-    expect(output.result).toMatchObject({ leadId: "lead-1" })
+    expect(output.result).toMatchObject({ leadId: "lead-1", identityChanged: "name" })
+  })
+
+  it("não executa o gate quando a identidade materializada não mudou", async () => {
+    materializeAnswer.execute.mockImplementation(
+      async () =>
+        new Output(true, [], [], {
+          profileId: "visitor-profile",
+          outcome: "unchanged",
+          identityChanged: null,
+        }),
+    )
+
+    await createUseCase("radar").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      questionId: "name",
+      answerMappingKey: "name",
+      answerValue: "Maria",
+      eventId: "0ef8dd3a-8a61-4bd4-9ef3-682d3c144254",
+      leadGateRequest: "identity_revision",
+    })
+
+    expect(leadGate.execute).not.toHaveBeenCalled()
+  })
+
+  it("usa o perfil vencedor da reconciliação de e-mail no gate", async () => {
+    materializeAnswer.execute.mockImplementation(
+      async () =>
+        new Output(true, [], [], {
+          profileId: "email-owner-profile",
+          outcome: "applied",
+          identityChanged: "email",
+        }),
+    )
+
+    const output = await createUseCase("radar").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      questionId: "email",
+      answerMappingKey: "email",
+      answerValue: "maria@gmail.com",
+      eventId: "0ef8dd3a-8a61-4bd4-9ef3-682d3c144254",
+    })
+
+    expect(leadGate.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ radarProfileId: "email-owner-profile" }),
+    )
+    expect(output.result).toMatchObject({ profileId: "email-owner-profile" })
+  })
+
+  it("materialização inválida vira falha retryable, sem executar o gate", async () => {
+    materializeAnswer.execute.mockImplementation(
+      async () => new Output(false, [], ["Radar indisponível"], null),
+    )
+
+    const output = await createUseCase("radar").execute({
+      ...baseInput,
+      eventType: "question_answered",
+      questionId: "name",
+      answerMappingKey: "name",
+      answerValue: "Maria",
+      eventId: "0ef8dd3a-8a61-4bd4-9ef3-682d3c144254",
+    })
+
+    expect(output.isValid).toBe(false)
+    expect(leadGate.execute).not.toHaveBeenCalled()
   })
 
   it("modo legacy não executa o gate Radar", async () => {

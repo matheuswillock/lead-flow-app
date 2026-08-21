@@ -185,6 +185,12 @@ export class PublicFormProgressUseCase {
         eventType: "question_answered",
         questionId: answer.questionId,
         eventKey,
+        // Envelope causal v1: o mesmo `eventId` acompanha a revisão até a
+        // materialização no Radar, permitindo dedupe e ordenação por
+        // `(occurredAt, eventId)` no consumer.
+        schemaVersion: input.schemaVersion,
+        eventId: input.eventId,
+        occurredAt: answeredAt.toISOString(),
         origin: origin as Record<string, unknown>,
         answerMappingKey: mappingKey,
         answerValue,

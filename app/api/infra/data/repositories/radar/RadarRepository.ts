@@ -30,6 +30,18 @@ import {
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
 import { normalizeRadarName } from "@/lib/radar/normalization"
+import { applyPublicFormAnswerRevision } from "@/lib/radar/public-form-materialization"
+import {
+  projectPublicFormAnswerIdentity,
+  type PublicFormIdentityProjection,
+  type RadarIdentityField,
+} from "@/lib/radar/public-form-identity-projection"
+import type {
+  MaterializePublicFormAnswerInput,
+  MaterializePublicFormAnswerResult,
+  ReconcileAnsweredEmailInput,
+  ReconcileAnsweredEmailResult,
+} from "@/app/api/infra/data/repositories/radar/IRadarPublicFormMaterializationRepository"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
@@ -1726,15 +1738,147 @@ export class RadarRepository {
     })
   }
 
-  async applyFormAnswerDisplayName(profileId: string, teamId: string, displayName: string) {
-    const trimmed = displayName.trim()
-    if (!trimmed || trimmed === "Visitante Anônimo") return
-    const normalizedName = normalizeRadarName(trimmed)
-    if (!normalizedName) return
-    await this.db.radarProfile.updateMany({
-      where: { id: profileId, teamId },
-      data: { displayName: trimmed, normalizedName },
+  /**
+   * PR 3: materializa uma revisão de resposta em
+   * `profileData.publicForms[formId].answers[questionId]`.
+   *
+   * Lock por `teamId + profileId`, reload dentro da transação e deep merge
+   * apenas da pergunta alterada — respostas irmãs nunca são apagadas. Revisão
+   * atrasada é descartada da projeção (o RadarEvent append-only preserva o
+   * histórico) e valor canônico idêntico não gera escrita nem reexecuta o gate.
+   */
+  async materializePublicFormAnswer(
+    input: MaterializePublicFormAnswerInput,
+  ): Promise<MaterializePublicFormAnswerResult> {
+    return this.db.$transaction(
+      async (tx) => {
+        const lockKey = `radar-public-form-materialization:${input.teamId}:${input.profileId}`
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+        const profile = await tx.radarProfile.findFirst({
+          where: { id: input.profileId, teamId: input.teamId },
+          select: {
+            profileData: true,
+            primaryEmail: true,
+            normalizedName: true,
+            normalizedPhone: true,
+            normalizedPrimaryEmail: true,
+          },
+        })
+        if (!profile) {
+          return { outcome: "profile_not_found", identityChanged: null, emailChange: null }
+        }
+
+        const decision = applyPublicFormAnswerRevision(profile.profileData, input)
+        if (decision.outcome !== "applied") {
+          return { outcome: decision.outcome, identityChanged: null, emailChange: null }
+        }
+
+        const projection = projectPublicFormAnswerIdentity({
+          mappingKey: input.mappingKey,
+          value: input.value,
+          currentPrimaryEmail: profile.primaryEmail,
+        })
+        const identityPatch = this.buildChangedIdentityPatch(projection, profile)
+
+        await tx.radarProfile.update({
+          where: { id: input.profileId },
+          data: {
+            profileData: decision.profileData as Prisma.InputJsonValue,
+            ...identityPatch.data,
+            lastSeenAt: input.answeredAt,
+          },
+        })
+
+        return {
+          outcome: "applied",
+          identityChanged: identityPatch.changedField,
+          emailChange:
+            identityPatch.changedField === "email" && projection?.field === "email"
+              ? {
+                  previousNormalizedEmail: profile.normalizedPrimaryEmail,
+                  nextEmail: projection.patch.primaryEmail,
+                  nextNormalizedEmail: projection.patch.normalizedPrimaryEmail,
+                }
+              : null,
+        }
+      },
+      { timeout: 15_000 },
+    )
+  }
+
+  /** Só reporta mudança de identidade quando o valor normalizado realmente difere. */
+  private buildChangedIdentityPatch(
+    projection: PublicFormIdentityProjection,
+    current: {
+      normalizedName: string
+      normalizedPhone: string | null
+      normalizedPrimaryEmail: string | null
+    },
+  ): { data: Record<string, string>; changedField: RadarIdentityField | null } {
+    if (!projection) return { data: {}, changedField: null }
+
+    const currentNormalized =
+      projection.field === "name"
+        ? current.normalizedName
+        : projection.field === "phone"
+          ? current.normalizedPhone
+          : current.normalizedPrimaryEmail
+    const nextNormalized =
+      projection.field === "name"
+        ? projection.patch.normalizedName
+        : projection.field === "phone"
+          ? projection.patch.normalizedPhone
+          : projection.patch.normalizedPrimaryEmail
+
+    if (currentNormalized === nextNormalized) return { data: {}, changedField: null }
+    return { data: projection.patch, changedField: projection.field }
+  }
+
+  /**
+   * PR 3: reconcilia o e-mail respondido com o perfil que já é dono do
+   * endereço. Locks dos dois perfis são adquiridos em ordem crescente de ID
+   * (determinística) para que consumers concorrentes nunca formem deadlock.
+   * Dois `lead_id` diferentes geram conflito explícito, sem merge.
+   */
+  async reconcileAnsweredEmail(
+    input: ReconcileAnsweredEmailInput,
+  ): Promise<ReconcileAnsweredEmailResult> {
+    const owner = await this.db.radarProfile.findFirst({
+      where: {
+        teamId: input.teamId,
+        normalizedPrimaryEmail: input.normalizedEmail,
+        id: { not: input.profileId },
+      },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
     })
+    if (!owner) {
+      return { winningProfileId: input.profileId, merged: false, conflict: false }
+    }
+
+    const [firstLock, secondLock] = [input.profileId, owner.id].sort()
+    const result = await this.db.$transaction(
+      async (tx) => {
+        for (const profileId of [firstLock, secondLock]) {
+          const lockKey = `radar-public-form-materialization:${input.teamId}:${profileId}`
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+        }
+        // O perfil dono do e-mail respondido é o canônico quando nenhum dos
+        // lados tem lead; `mergeProfilesWithTx` promove o lado com `lead_id`
+        // quando apenas um deles possui e sinaliza conflito quando são dois.
+        return this.mergeProfilesWithTx(
+          tx,
+          input.teamId,
+          input.profileId,
+          owner.id,
+          "preserve_distinct_leads",
+        )
+      },
+      { timeout: 15_000 },
+    )
+    if (result.merged) await this.updateEngagementScore(result.winningProfileId, input.teamId)
+    return result
   }
 
   async updateProfileGender(
