@@ -22,9 +22,10 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Progresso inválido"], null), { status: 400 })
   }
-  if (!isE2eTestMode()) {
+  const fingerprint = publicFormRequestFingerprint(request)
+  if (!isE2eTestMode() && fingerprint !== "unknown") {
     const rate = await consumePublicFormRateLimit(
-      `progress:${publicId}:${publicFormRequestFingerprint(request)}`,
+      `progress:${publicId}:${fingerprint}`,
       { limit: 120, windowMs: 60_000 },
     )
     if (!rate.allowed) {
