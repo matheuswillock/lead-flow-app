@@ -19326,44 +19326,6 @@
           "response": []
         },
         {
-          "name": "Contratos do perfil",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-supabase-user-id",
-                "value": "{{supabaseUserId}}"
-              },
-              {
-                "key": "x-team-id",
-                "value": "{{teamId}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/contracts",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "radar",
-                "profiles",
-                ":id",
-                "contracts"
-              ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "{{radarProfileId}}"
-                }
-              ]
-            },
-            "description": "D13: contratos atuais (LeadPortfolio[]) + histórico (LeadFinalized com holder/dependentes) do perfil Radar via identidades lead_id / portfolio_id."
-          },
-          "response": []
-        },
-        {
           "name": "Formulários do perfil",
           "request": {
             "method": "GET",
@@ -19398,6 +19360,44 @@
               ]
             },
             "description": "Lista os formulários públicos com os quais o perfil Radar interagiu (completo / incompleto / iniciou sem resposta)."
+          },
+          "response": []
+        },
+        {
+          "name": "Contratos do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "contracts"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            },
+            "description": "D13: contratos atuais (LeadPortfolio[]) + histórico (LeadFinalized com holder/dependentes) do perfil Radar via identidades lead_id / portfolio_id."
           },
           "response": []
         },
