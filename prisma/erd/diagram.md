@@ -4009,7 +4009,7 @@ completed completed
     String errorMessage "❓"
     DateTime submittedAt "❓"
     DateTime dispatchAcceptedAt "❓"
-    Int dispatchAttemptCount
+    Int dispatchAttemptCount 
     DateTime nextDispatchAt "❓"
     String lastDispatchError "❓"
     DateTime createdAt 
