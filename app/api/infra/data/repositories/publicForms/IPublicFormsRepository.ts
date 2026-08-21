@@ -56,6 +56,7 @@ export const publicFormDetailSelect = {
     },
   },
   questions: {
+    where: { deletedAt: null },
     orderBy: { position: "asc" as const },
     select: {
       id: true,

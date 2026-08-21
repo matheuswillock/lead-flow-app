@@ -3941,6 +3941,7 @@ completed completed
     String mappingKey "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    DateTime deletedAt "❓"
     }
   
 

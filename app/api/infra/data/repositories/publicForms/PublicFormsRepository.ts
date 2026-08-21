@@ -65,6 +65,8 @@ function isBlankProgressAnswerValue(
 
 const PERSIST_ANSWER_FK_SAVEPOINT = "persist_answer_fk"
 const PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT = "persist_answer_without_fk"
+/** Tombstone range above the live reorder band (100_000+) so unique(formId, position) stays free. */
+export const SOFT_DELETED_QUESTION_POSITION_BASE = 1_000_000
 
 type ProgressSubmissionWrite = {
   visitorSessionId: string
@@ -108,6 +110,46 @@ const leadSubmissionSelect = {
   },
 } satisfies Prisma.PublicFormSubmissionSelect
 
+export function nextSoftDeletedQuestionPosition(maxExistingDeletedPosition: number | null): number {
+  return Math.max(
+    SOFT_DELETED_QUESTION_POSITION_BASE,
+    (maxExistingDeletedPosition ?? SOFT_DELETED_QUESTION_POSITION_BASE - 1) + 1,
+  )
+}
+
+async function softDeleteQuestionsMissingFromDraft(
+  tx: Prisma.TransactionClient,
+  formId: string,
+  incomingQuestionIds: string[],
+) {
+  const removed = await tx.publicFormQuestion.findMany({
+    where: {
+      formId,
+      deletedAt: null,
+      ...(incomingQuestionIds.length > 0 ? { id: { notIn: incomingQuestionIds } } : {}),
+    },
+    select: { id: true },
+    orderBy: { position: "asc" },
+  })
+  if (removed.length === 0) return
+
+  const maxTombstone = await tx.publicFormQuestion.aggregate({
+    where: { formId, deletedAt: { not: null } },
+    _max: { position: true },
+  })
+  const startPosition = nextSoftDeletedQuestionPosition(maxTombstone._max.position)
+  const deletedAt = new Date()
+  for (const [index, question] of removed.entries()) {
+    await tx.publicFormQuestion.update({
+      where: { id: question.id },
+      data: {
+        deletedAt,
+        position: startPosition + index,
+      },
+    })
+  }
+}
+
 async function replaceDraftRelations(
   tx: Prisma.TransactionClient,
   formId: string,
@@ -121,16 +163,11 @@ async function replaceDraftRelations(
   const incomingQuestionIds = input.questions
     .map((question) => question.id)
     .filter((id): id is string => Boolean(id))
-  await tx.publicFormQuestion.deleteMany({
-    where: {
-      formId,
-      ...(incomingQuestionIds.length > 0 ? { id: { notIn: incomingQuestionIds } } : {}),
-    },
-  })
+  await softDeleteQuestionsMissingFromDraft(tx, formId, incomingQuestionIds)
 
-  // Avoid unique(formId, position) collisions while reordering existing rows.
+  // Avoid unique(formId, position) collisions while reordering existing live rows.
   const existingQuestions = await tx.publicFormQuestion.findMany({
-    where: { formId },
+    where: { formId, deletedAt: null },
     select: { id: true },
     orderBy: { position: "asc" },
   })
@@ -162,6 +199,7 @@ async function replaceDraftRelations(
         required: question.required,
         scoreWeight: question.scoreWeight ?? 0,
         position,
+        deletedAt: null,
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
         mappingKey: question.mappingKey,
@@ -175,6 +213,7 @@ async function replaceDraftRelations(
         required: question.required,
         scoreWeight: question.scoreWeight ?? 0,
         position,
+        deletedAt: null,
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
         mappingKey: question.mappingKey,

@@ -38,4 +38,17 @@ describe("PublicFormsRepository.questionExists", () => {
 
     expect(exists).toBe(false)
   })
+
+  it("retorna true para pergunta soft-deleted — a linha permanece para o FK do snapshot", async () => {
+    findUniqueMock.mockResolvedValueOnce({ id: "soft-deleted-question" })
+    const repo = new PublicFormsRepository()
+
+    const exists = await repo.questionExists("soft-deleted-question")
+
+    expect(exists).toBe(true)
+    expect(findUniqueMock).toHaveBeenCalledWith({
+      where: { id: "soft-deleted-question" },
+      select: { id: true },
+    })
+  })
 })
