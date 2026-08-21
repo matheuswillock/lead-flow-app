@@ -1447,6 +1447,23 @@ form_completed form_completed
 lead_created lead_created
 lead_attached lead_attached
 meeting_scheduled meeting_scheduled
+page_viewed page_viewed
+page_advanced page_advanced
+page_returned page_returned
+question_focused question_focused
+form_submit_attempted form_submit_attempted
+form_validation_failed form_validation_failed
+form_exit_intent form_exit_intent
+form_abandoned form_abandoned
+form_resumed form_resumed
+        }
+    
+
+
+        public_form_journey_state {
+            active active
+abandoned abandoned
+completed completed
         }
     
 
@@ -4044,6 +4061,25 @@ completed completed
     }
   
 
+  "corretor_studio_public_form_journey_sessions" {
+    String id "🗝️"
+    String visitorSessionId 
+    PublicFormJourneyState state 
+    DateTime startedAt 
+    DateTime lastActivityAt 
+    String currentPageId "❓"
+    Int currentPageIndex "❓"
+    DateTime lastExitIntentAt "❓"
+    DateTime lastAbandonedAt "❓"
+    DateTime lastResumedAt "❓"
+    Int abandonmentCount 
+    DateTime submittedAt "❓"
+    DateTime completedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_lead_extractions" {
     String id "🗝️"
     Json filters 
@@ -4666,6 +4702,9 @@ completed completed
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
+    "corretor_studio_public_form_journey_sessions" |o--|| "PublicFormJourneyState" : "enum:state"
+    "corretor_studio_public_form_journey_sessions" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_journey_sessions" }o--|| corretor_studio_public_form_publications : "publication"
     "backoffice_lead_extractions" |o--|| "BackofficeLeadExtractionStatus" : "enum:status"
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"
