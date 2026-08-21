@@ -103,9 +103,23 @@ begin
   end if;
 end $$;
 
-grant select, insert, update, delete, truncate, references, trigger
-  on table "public"."corretor_studio_public_form_journey_sessions" to "anon";
-grant select, insert, update, delete, truncate, references, trigger
-  on table "public"."corretor_studio_public_form_journey_sessions" to "authenticated";
-grant select, insert, update, delete, truncate, references, trigger
-  on table "public"."corretor_studio_public_form_journey_sessions" to "service_role";
+-- Acesso exclusivo pelo service_role (backend), consistente com as demais
+-- tabelas do domínio public-forms (ver 20260718215353_enable-public-typeform-forms-rls.sql).
+alter table "public"."corretor_studio_public_form_journey_sessions" enable row level security;
+
+revoke all on table "public"."corretor_studio_public_form_journey_sessions" from "anon", "authenticated";
+grant all on table "public"."corretor_studio_public_form_journey_sessions" to "service_role";
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'corretor_studio_public_form_journey_sessions'
+      and policyname = 'public_form_journey_sessions_service_role_all'
+  ) then
+    execute 'create policy public_form_journey_sessions_service_role_all
+      on public.corretor_studio_public_form_journey_sessions for all to service_role
+      using (true) with check (true)';
+  end if;
+end $$;

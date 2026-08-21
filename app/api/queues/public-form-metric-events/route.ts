@@ -63,6 +63,9 @@ export async function processPublicFormMetricQueueMessage(
     origin: message.origin ?? {},
     answerMappingKey: message.answerMappingKey ?? null,
     answerValue: message.answerValue ?? null,
+    pageId: message.pageId ?? null,
+    pageIndex: message.pageIndex ?? null,
+    validationCodes: message.validationCodes,
     createCrmLead: message.createCrmLead !== false,
   }
 

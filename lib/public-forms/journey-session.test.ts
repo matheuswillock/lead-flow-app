@@ -54,6 +54,32 @@ describe("applyPublicFormJourneyEvent", () => {
     expect(result.projection.abandonmentCount).toBe(1)
   })
 
+  it("evento atrasado (anterior ao lastAbandonedAt) não retoma sessão abandonada", () => {
+    const abandoned = projection({ state: "abandoned", lastAbandonedAt: T1, abandonmentCount: 1 })
+
+    // T0 < T1: evento chegou com atraso, já foi abandonado depois dele
+    const result = applyPublicFormJourneyEvent(abandoned, {
+      eventType: "question_focused",
+      occurredAt: T0,
+    })
+
+    expect(result.projection.state).toBe("abandoned")
+    expect(result.derivedEvent).toBeNull()
+    expect(result.changed).toBe(false)
+  })
+
+  it("evento simultâneo ao lastAbandonedAt (<=) não retoma sessão abandonada", () => {
+    const abandoned = projection({ state: "abandoned", lastAbandonedAt: T1, abandonmentCount: 1 })
+
+    const result = applyPublicFormJourneyEvent(abandoned, {
+      eventType: "question_focused",
+      occurredAt: T1,
+    })
+
+    expect(result.projection.state).toBe("abandoned")
+    expect(result.changed).toBe(false)
+  })
+
   it("sessão concluída nunca volta para abandonada nem ativa", () => {
     const completed = projection({ state: "completed", completedAt: T0 })
 

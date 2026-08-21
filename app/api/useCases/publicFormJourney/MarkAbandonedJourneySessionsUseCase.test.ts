@@ -12,11 +12,13 @@ const claimAbandonedJourneySessions = mock(
 const recordJourneyEvent = mock(async () => {
   throw new Error("não deve ser chamado pelo cron")
 })
+const revertAbandonedJourneySessionToActive = mock(async (_sessionId: string) => {})
 const publishAbandonment = mock(async () => true)
 
 const repository = {
   claimAbandonedJourneySessions,
   recordJourneyEvent,
+  revertAbandonedJourneySessionToActive,
 } as unknown as IPublicFormJourneyRepository
 
 const LAST_ACTIVITY = new Date("2026-08-21T10:00:00.000Z")
@@ -35,8 +37,10 @@ describe("MarkAbandonedJourneySessionsUseCase", () => {
   beforeEach(() => {
     claimAbandonedJourneySessions.mockReset()
     publishAbandonment.mockReset()
+    revertAbandonedJourneySessionToActive.mockReset()
     claimAbandonedJourneySessions.mockResolvedValue([])
     publishAbandonment.mockResolvedValue(true)
+    revertAbandonedJourneySessionToActive.mockResolvedValue(undefined)
   })
 
   it("reivindica com a janela de 30 minutos de inatividade", async () => {
@@ -81,7 +85,7 @@ describe("MarkAbandonedJourneySessionsUseCase", () => {
     expect(thirtyOneMinIdle <= idleBefore).toBe(true)
   })
 
-  it("falha de publicação é contabilizada sem derrubar o lote", async () => {
+  it("falha de publicação reverte sessão para active e é contabilizada sem derrubar o lote", async () => {
     claimAbandonedJourneySessions.mockResolvedValue([
       candidate,
       { ...candidate, sessionId: "session-row-2", visitorSessionId: "session_klmnopqrst" },
@@ -95,6 +99,9 @@ describe("MarkAbandonedJourneySessionsUseCase", () => {
 
     expect(output.isValid).toBe(true)
     expect(output.result).toEqual({ claimed: 2, published: 1, failed: 1 })
+    // Sessão com falha deve ser revertida para que o próximo cron possa retentar
+    expect(revertAbandonedJourneySessionToActive).toHaveBeenCalledWith("session-row-1")
+    expect(revertAbandonedJourneySessionToActive).not.toHaveBeenCalledWith("session-row-2")
   })
 
   it("erro técnico do claim vira Output inválido retryable", async () => {

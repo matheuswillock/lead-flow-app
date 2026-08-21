@@ -49,6 +49,13 @@ export interface IPublicFormJourneyRepository {
     limit: number
   }): Promise<AbandonedJourneyCandidate[]>
 
+  /**
+   * Reverte uma sessão `abandoned` para `active` quando a publicação do evento
+   * `form_abandoned` falhou. O próximo cron pode reivindicá-la novamente se o
+   * período de inatividade ainda valer — evitando perda silenciosa do evento.
+   */
+  revertAbandonedJourneySessionToActive(sessionId: string): Promise<void>
+
   /** Totais da jornada por estado, para o funil de analytics. */
   countJourneyStates(input: {
     formId: string

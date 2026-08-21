@@ -63,8 +63,23 @@ export class MarkAbandonedJourneySessionsUseCase {
           })
           return false
         })
-        if (accepted) published += 1
-        else failed += 1
+
+        if (accepted) {
+          published += 1
+        } else {
+          // Reverte para `active` para que o próximo cron possa reintentar a
+          // publicação. Sem isso, a sessão ficaria presa em `abandoned` sem o
+          // evento `form_abandoned` ter sido publicado, perdendo o fato.
+          await this.repository.revertAbandonedJourneySessionToActive(session.sessionId).catch(
+            (revertError) => {
+              console.error("[MarkAbandonedJourneySessionsUseCase][revert]", {
+                sessionId: session.sessionId,
+                revertError,
+              })
+            },
+          )
+          failed += 1
+        }
       }
 
       console.info("[MarkAbandonedJourneySessionsUseCase][execute] jornadas abandonadas", {

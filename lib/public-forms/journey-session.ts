@@ -101,6 +101,17 @@ export function applyPublicFormJourneyEvent(
     return { projection: current, derivedEvent: null, changed: false }
   }
 
+  // Evento entregue com atraso (outbox ou retry da fila) não reabre uma sessão
+  // que já foi abandonada após ele. Sem este guard, o cron abandona novamente em
+  // seguida, inflando contadores de retomada e abandono.
+  if (
+    current.state === "abandoned" &&
+    current.lastAbandonedAt !== null &&
+    event.occurredAt <= current.lastAbandonedAt
+  ) {
+    return { projection: current, derivedEvent: null, changed: false }
+  }
+
   const resumed = current.state === "abandoned"
   const next: PublicFormJourneySessionProjection = {
     ...current,

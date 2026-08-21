@@ -174,6 +174,16 @@ export class PublicFormJourneyRepository implements IPublicFormJourneyRepository
     }))
   }
 
+  async revertAbandonedJourneySessionToActive(sessionId: string): Promise<void> {
+    await this.db.$executeRaw`
+      UPDATE "public"."corretor_studio_public_form_journey_sessions"
+      SET "state" = 'active'::public.public_form_journey_state,
+          "updatedAt" = now()
+      WHERE "id" = ${sessionId}::uuid
+        AND "state" = 'abandoned'::public.public_form_journey_state
+    `
+  }
+
   async countJourneyStates(input: {
     formId: string
     publicationId?: string
