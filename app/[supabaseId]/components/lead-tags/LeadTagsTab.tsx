@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Check, Loader2, Plus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
       await load();
     } catch (error) {
       console.error("[LeadTagsTab] Erro ao criar tag:", error);
-      toast.error(error instanceof Error ? error.message : "Não foi possível criar a tag");
+      toastUserError(error);
     } finally {
       setIsCreating(false);
     }

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
 import type { IBackofficeAccountService } from "../services/IBackofficeAccountService"
 import type {
@@ -62,7 +63,7 @@ export function BackofficeAccountProvider({
         setAccount(data)
       } catch (err) {
         console.error("[BackofficeAccountContext][refresh]", err)
-        setError(err instanceof Error ? err.message : "Erro ao carregar conta")
+        setError(toUserToastMessage(err))
       } finally {
         setIsLoading(false)
         inFlightRef.current = null

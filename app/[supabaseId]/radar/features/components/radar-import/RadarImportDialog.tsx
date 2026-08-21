@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog"
 import { ImportDialogHeader } from "@/components/import/ImportDialogHeader"
@@ -97,7 +98,7 @@ export function RadarImportDialog({
       setStep("mapping")
     } catch (error) {
       console.error("[RadarImportDialog][handleFileSelected]", error)
-      toast.error(error instanceof Error ? error.message : "Não foi possível ler o arquivo")
+      toastUserError(error)
     } finally {
       setIsParsing(false)
     }
@@ -152,7 +153,7 @@ export function RadarImportDialog({
       handleOpenChange(false)
     } catch (error) {
       console.error("[RadarImportDialog][handleSubmit]", error)
-      toast.error(error instanceof Error ? error.message : "Não foi possível iniciar a importação")
+      toastUserError(error)
     } finally {
       setIsSubmitting(false)
     }
@@ -175,7 +176,7 @@ export function RadarImportDialog({
           {step === "upload" ? (
             <LeadFileDropzone
               onFileSelected={handleFileSelected}
-              onError={(message) => toast.error(message)}
+              onError={(message) => toast.error(toUserToastMessage(message))}
               disabled={isParsing}
             />
           ) : null}

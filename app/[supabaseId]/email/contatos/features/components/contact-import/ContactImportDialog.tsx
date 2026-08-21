@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { ImportDialogHeader } from "@/components/import/ImportDialogHeader";
@@ -121,7 +122,7 @@ export function ContactImportDialog({
       setStep("mapping");
     } catch (error) {
       console.error("[ContactImportDialog] handleFileSelected error", error);
-      toast.error(error instanceof Error ? error.message : "Erro ao ler o arquivo");
+      toastUserError(error);
     } finally {
       setIsParsing(false);
     }
@@ -177,7 +178,7 @@ export function ContactImportDialog({
       handleOpenChange(false);
     } catch (error) {
       console.error("[ContactImportDialog] handleImport error", error);
-      toast.error(error instanceof Error ? error.message : "Erro ao importar contatos");
+      toastUserError(error);
     } finally {
       setIsSubmitting(false);
     }
@@ -218,7 +219,7 @@ export function ContactImportDialog({
           {step === "upload" && (
             <LeadFileDropzone
               onFileSelected={handleFileSelected}
-              onError={(message) => toast.error(message)}
+              onError={(message) => toast.error(toUserToastMessage(message))}
               disabled={isParsing}
             />
           )}

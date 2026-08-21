@@ -17,6 +17,7 @@ import type {
 } from "./AddOnCheckoutTypes";
 import { initialState } from "./AddOnCheckoutTypes";
 import { addOnCheckoutService } from "../services/AddOnCheckoutService";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 type Action =
   | { type: "SET_LOADING" }
@@ -121,7 +122,7 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
           startPolling(pendingActionId);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar dados";
+        const message = toUserToastMessage(error);
         dispatch({ type: "SET_ERROR", payload: message });
       } finally {
         fetchInflightRef.current = false;
@@ -150,7 +151,7 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_STEP", payload: "payment" });
         startPolling(state.data.pendingActionId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao criar pagamento";
+        const message = toUserToastMessage(error);
         throw new Error(message);
       } finally {
         dispatch({ type: "SET_PROCESSING", payload: false });

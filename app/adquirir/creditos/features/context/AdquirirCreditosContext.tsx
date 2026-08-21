@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 import { z } from "zod";
 import type { IAdquirirCreditosService } from "../services/IAdquirirCreditosService";
 import { AdquirirCreditosService } from "../services/AdquirirCreditosService";
@@ -72,7 +73,7 @@ export function AdquirirCreditosProvider({ children }: { children: ReactNode }) 
       window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
       setOpen(false);
     } catch (error) {
-      setFieldError(error instanceof Error ? error.message : "Erro de conexão. Tente novamente.");
+      setFieldError(toUserToastMessage(error));
     } finally {
       setLoading(false);
       submitInFlight.current = false;

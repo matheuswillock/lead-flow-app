@@ -10,6 +10,7 @@ import type {
 } from "../services/IPublicLeadFormService";
 import type { PublicLeadFormState, PublicLeadFormActions, BootstrapStatus } from "./PublicLeadFormTypes";
 import { DEFAULT_TZ } from "@/lib/dates";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): PublicLeadFormState & PublicLeadFormActions {
   const [teamName, setTeamName] = useState("");
@@ -90,7 +91,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setCustomFieldDefinitions([]);
         setBootstrapStatus("error");
         setBootstrapError(
-          error instanceof Error ? error.message : "Erro ao carregar dados iniciais do formulário."
+          toUserToastMessage(error)
         );
       } finally {
         if (bootstrapInFlightKeyRef.current === requestKey) {

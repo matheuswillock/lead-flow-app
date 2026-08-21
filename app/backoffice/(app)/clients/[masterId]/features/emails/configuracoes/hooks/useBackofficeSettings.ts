@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { backofficeStudioEmailService } from "../../services/BackofficeStudioEmailService"
 import type {
   StudioEmailDomainConnectResult,
@@ -76,7 +77,7 @@ export function useBackofficeSettings(
         setDomainTrackingSubdomain(null)
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar configurações")
+      toastUserError(err)
     } finally {
       setLoading(false)
       inFlightRef.current = false
@@ -101,7 +102,7 @@ export function useBackofficeSettings(
       setDomainTrackingSubdomain(result.trackingSubdomain ?? "links")
       toast.success("Domínio configurado")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao conectar domínio")
+      toastUserError(err)
     } finally {
       setConnectingDomain(false)
     }
@@ -116,7 +117,7 @@ export function useBackofficeSettings(
       toast.success("Verificação solicitada")
       await load()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao verificar domínio")
+      toastUserError(err)
     } finally {
       setVerifyingDomain(false)
     }
@@ -134,7 +135,7 @@ export function useBackofficeSettings(
       setDomainClickTracking(result.clickTracking ?? false)
       setDomainTrackingSubdomain(result.trackingSubdomain ?? null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar registros DNS")
+      toastUserError(err)
     } finally {
       setLoadingRecords(false)
     }
@@ -157,7 +158,7 @@ export function useBackofficeSettings(
       setDomainTrackingSubdomain(result.trackingSubdomain ?? "links")
       toast.success("Tracking configurado. Adicione o DNS de Tracking e re-verifique.")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao configurar tracking")
+      toastUserError(err)
     } finally {
       setConfiguringDomainTracking(false)
     }
@@ -172,7 +173,7 @@ export function useBackofficeSettings(
         toast.success("Remetente criado")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao criar remetente")
+        toastUserError(err)
       } finally {
         setCreatingSender(false)
       }
@@ -189,7 +190,7 @@ export function useBackofficeSettings(
         toast.success("Remetente atualizado")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao atualizar remetente")
+        toastUserError(err)
       } finally {
         setUpdatingSenderId(null)
       }
@@ -206,7 +207,7 @@ export function useBackofficeSettings(
         toast.success("Remetente removido")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao remover remetente")
+        toastUserError(err)
       } finally {
         setDeletingSenderId(null)
       }
@@ -223,7 +224,7 @@ export function useBackofficeSettings(
         toast.success("Remetente padrão atualizado")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao definir remetente padrão")
+        toastUserError(err)
       } finally {
         setSettingDefaultSenderId(null)
       }
@@ -240,7 +241,7 @@ export function useBackofficeSettings(
         toast.success("Variável criada")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao criar variável")
+        toastUserError(err)
       } finally {
         setCreatingVariable(false)
       }
@@ -257,7 +258,7 @@ export function useBackofficeSettings(
         toast.success("Variável atualizada")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao atualizar variável")
+        toastUserError(err)
       } finally {
         setUpdatingVariableId(null)
       }
@@ -274,7 +275,7 @@ export function useBackofficeSettings(
         toast.success("Variável removida")
         await load()
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao remover variável")
+        toastUserError(err)
       } finally {
         setDeletingVariableId(null)
       }
@@ -289,7 +290,7 @@ export function useBackofficeSettings(
       await backofficeStudioEmailService.updateSettings(masterId, teamId, {})
       toast.success("Configurações salvas")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar configurações")
+      toastUserError(err)
     } finally {
       setSaving(false)
     }

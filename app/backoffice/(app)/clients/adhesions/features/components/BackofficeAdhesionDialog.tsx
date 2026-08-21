@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Check, ChevronsUpDown, Copy, Minus, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -464,7 +465,7 @@ export function BackofficeAdhesionDialog({
       })
       .catch((err) => {
         console.error("[BackofficeAdhesionDialog][options]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar opções")
+        toastUserError(err)
       })
       .finally(() => setIsLoadingOptions(false))
   }, [adhesion, mode, open, service])
@@ -643,7 +644,7 @@ export function BackofficeAdhesionDialog({
       if (!(err instanceof BackofficeAdhesionsRequestError && err.isValidationError)) {
         console.error("[BackofficeAdhesionDialog][submit]", err)
       }
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar adesão")
+      toastUserError(err)
     } finally {
       setIsSubmitting(false)
     }

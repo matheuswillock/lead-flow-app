@@ -23,6 +23,7 @@ import {
 import useBoardContext from "../context/BoardHook";
 import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
@@ -257,7 +258,7 @@ export function BoardContainer({
         patchLead(lead.id, { ...payload, status: "no_show" });
         toast.success("Lead marcado como no-show", { id: loadingToast });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show", {
+        toastUserError(error, {
           id: loadingToast,
         });
       }
@@ -298,7 +299,7 @@ export function BoardContainer({
         });
         toast.success("Agenda confirmada com o lead", { id: loadingToast });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao confirmar agenda", {
+        toastUserError(error, {
           id: loadingToast,
         });
       } finally {

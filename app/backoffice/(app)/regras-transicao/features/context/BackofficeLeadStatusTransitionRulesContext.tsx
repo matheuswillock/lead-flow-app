@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import type { LeadStatus } from "@prisma/client";
 import type { LeadTransitionFieldKey } from "@/lib/leadStatusTransitionFields";
 import type { IBackofficeLeadStatusTransitionRulesService } from "../services/IBackofficeLeadStatusTransitionRulesService";
@@ -47,7 +48,7 @@ export function BackofficeLeadStatusTransitionRulesProvider({
         toast.success("Regras salvas com sucesso.");
         return true;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao salvar regras");
+        toastUserError(error);
         return false;
       } finally {
         setSaving(false);

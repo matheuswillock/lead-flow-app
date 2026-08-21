@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext";
 import type {
   IBackofficeRadarEngagementService,
@@ -50,7 +51,7 @@ export function BackofficeRadarEngagementProvider({
         toast.success(result.successMessages?.[0] ?? "Pesos salvos com sucesso.");
         return true;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao salvar pesos");
+        toastUserError(error);
         return false;
       } finally {
         setSavingWeights(false);
@@ -77,7 +78,7 @@ export function BackofficeRadarEngagementProvider({
         toast.success(result.successMessages?.[0] ?? "Configuração salva com sucesso.");
         return true;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao salvar configuração");
+        toastUserError(error);
         return false;
       } finally {
         setSavingConfig(false);
@@ -104,7 +105,7 @@ export function BackofficeRadarEngagementProvider({
         toast.success(result.successMessages?.[0] ?? "Regras salvas com sucesso.");
         return true;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao salvar regras");
+        toastUserError(error);
         return false;
       } finally {
         setSavingFormRules(false);
@@ -131,7 +132,7 @@ export function BackofficeRadarEngagementProvider({
         toast.success(result.successMessages?.[0] ?? "Regra removida com sucesso.");
         return true;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao remover regra");
+        toastUserError(error);
         return false;
       } finally {
         setSavingFormRules(false);

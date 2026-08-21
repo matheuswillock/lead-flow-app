@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IBackofficeIntegrationsService } from "../services/IBackofficeIntegrationsService"
 import type {
   BackofficeMetaIntegrationConfig,
@@ -65,7 +66,7 @@ export function BackofficeIntegrationsProvider({ children, service }: ProviderPr
       setMetaLogs(logs)
     } catch (err) {
       console.error("[BackofficeIntegrationsContext][refreshLogs]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar logs")
+      toastUserError(err)
     } finally {
       setIsLoadingLogs(false)
       logsInFlightRef.current = false
@@ -89,7 +90,7 @@ export function BackofficeIntegrationsProvider({ children, service }: ProviderPr
       setTokenExpiryMode(config.expiryMode)
     } catch (err) {
       console.error("[BackofficeIntegrationsContext][refresh]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar integrações")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -113,7 +114,7 @@ export function BackofficeIntegrationsProvider({ children, service }: ProviderPr
       setMetaTokenHistory(tokenHistory)
     } catch (err) {
       console.error("[BackofficeIntegrationsContext][generateMetaToken]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao gerar token")
+      toastUserError(err)
     } finally {
       setIsGeneratingToken(false)
       generateInFlightRef.current = false

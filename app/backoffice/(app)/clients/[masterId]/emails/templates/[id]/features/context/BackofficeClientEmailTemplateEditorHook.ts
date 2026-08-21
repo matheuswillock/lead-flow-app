@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import type {
   Template,
   TemplateEditorDraft,
@@ -95,7 +96,7 @@ export function useBackofficeClientEmailTemplateEditor(
       initialDraftRef.current = nextDraft
       loadedKeyRef.current = key
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao carregar template"
+      const message = toUserToastMessage(err)
       setError(message)
       toast.error(message)
     } finally {
@@ -138,7 +139,7 @@ export function useBackofficeClientEmailTemplateEditor(
         toast.success("Rascunho salvo com sucesso")
         return saved
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao salvar template"
+        const message = toUserToastMessage(err)
         setError(message)
         toast.error(message)
         return null
@@ -173,7 +174,7 @@ export function useBackofficeClientEmailTemplateEditor(
         toast.success("Template publicado com sucesso")
         return published
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao publicar template"
+        const message = toUserToastMessage(err)
         setError(message)
         toast.error(message)
         return null
@@ -198,7 +199,7 @@ export function useBackofficeClientEmailTemplateEditor(
       toast.success("Template movido para rascunho")
       return updated
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao despublicar template"
+      const message = toUserToastMessage(err)
       setError(message)
       toast.error(message)
       return null
@@ -224,7 +225,7 @@ export function useBackofficeClientEmailTemplateEditor(
       initialDraftRef.current = updatedDraft
       toast.success("Template enviado para aprovação")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao enviar para aprovação"
+      const message = toUserToastMessage(err)
       setError(message)
       toast.error(message)
     } finally {
@@ -245,7 +246,7 @@ export function useBackofficeClientEmailTemplateEditor(
       initialDraftRef.current = updatedDraft
       toast.success("Template aprovado")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao aprovar template"
+      const message = toUserToastMessage(err)
       setError(message)
       toast.error(message)
     } finally {
@@ -267,7 +268,7 @@ export function useBackofficeClientEmailTemplateEditor(
         initialDraftRef.current = updatedDraft
         toast.success("Template recusado")
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao recusar template"
+        const message = toUserToastMessage(err)
         setError(message)
         toast.error(message)
       } finally {
@@ -290,7 +291,7 @@ export function useBackofficeClientEmailTemplateEditor(
         await service.sendTest(masterId, teamId, templateId, input)
         toast.success(`E-mail de teste enviado para ${input.to}`)
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao enviar e-mail de teste"
+        const message = toUserToastMessage(err)
         setError(message)
         toast.error(message)
         throw err
@@ -317,7 +318,7 @@ export function useBackofficeClientEmailTemplateEditor(
         setVersions(versionsResult.versions)
         toast.success("HTML da versão recuperado no rascunho")
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao recuperar HTML da versão"
+        const message = toUserToastMessage(err)
         setError(message)
         toast.error(message)
       } finally {

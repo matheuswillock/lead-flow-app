@@ -17,6 +17,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
 
@@ -137,7 +138,7 @@ export function BackofficeMemberProfileSheet({
       })
     } catch (error) {
       console.error("[BackofficeMemberProfileSheet][handleSendAccessEmail]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao enviar e-mail de acesso.")
+      toastUserError(error)
     } finally {
       setAccessAction(null)
     }

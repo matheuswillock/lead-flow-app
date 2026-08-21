@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { IBackofficeAuthorizedSponsorsContext } from "./BackofficeAuthorizedSponsorsTypes"
 import type { IBackofficeAuthorizedSponsorsService } from "../services/IBackofficeAuthorizedSponsorsService"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 export function useBackofficeAuthorizedSponsorsHook(
   service: IBackofficeAuthorizedSponsorsService
@@ -31,7 +32,7 @@ export function useBackofficeAuthorizedSponsorsHook(
       setEligibleMasters(result.eligibleMasters)
       lastSuccessKeyRef.current = "authorized-sponsors-list"
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar patrocinadores")
+      setError(toUserToastMessage(fetchError))
     } finally {
       inFlightRef.current = false
       setIsLoading(false)
@@ -52,7 +53,7 @@ export function useBackofficeAuthorizedSponsorsHook(
         await fetchItems()
         return true
       } catch (grantError) {
-        setError(grantError instanceof Error ? grantError.message : "Erro ao autorizar patrocinador")
+        setError(toUserToastMessage(grantError))
         return false
       } finally {
         setIsGranting(false)
@@ -71,7 +72,7 @@ export function useBackofficeAuthorizedSponsorsHook(
         await fetchItems()
         return true
       } catch (revokeError) {
-        setError(revokeError instanceof Error ? revokeError.message : "Erro ao revogar patrocinador")
+        setError(toUserToastMessage(revokeError))
         return false
       } finally {
         setIsRevokingId(null)

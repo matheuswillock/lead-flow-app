@@ -44,6 +44,7 @@ import { LEAD_FIELD_CATALOG, PORTFOLIO_FIELD_CATALOG, RADAR_SEGMENT_LEAD_STATUSE
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import type {
   RadarLeadCustomFieldCondition,
   RadarLeadFieldCondition,
@@ -873,7 +874,7 @@ export function GenerateSegmentDialog({
       onOpenChange(false)
     } catch (error) {
       console.error("[GenerateSegmentDialog][handleSubmit]", error)
-      toast.error(error instanceof Error ? error.message : "Não foi possível criar o segmento.")
+      toastUserError(error)
     } finally {
       setMutationLock(false)
     }

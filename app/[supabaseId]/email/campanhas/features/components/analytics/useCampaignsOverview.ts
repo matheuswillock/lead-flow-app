@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { CampaignAnalyticsService } from "../../services/CampaignAnalyticsService"
 import type { OverviewData } from "./AnalyticsTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 const service = new CampaignAnalyticsService()
 
@@ -34,7 +35,7 @@ export function useCampaignsOverview(enabled = true) {
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : "Erro ao carregar overview")
+        setError(toUserToastMessage(err))
       })
       .finally(() => {
         inFlightRef.current = false

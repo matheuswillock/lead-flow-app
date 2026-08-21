@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { ClipboardList, Copy, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,7 +26,7 @@ function notifyFormsError(context: string, error: unknown, fallback: string) {
   if (!isApiRequestError(error)) {
     console.error(context, error)
   }
-  toast.error(error instanceof Error ? error.message : fallback)
+  toast.error(toUserToastMessage(error instanceof Error ? error : fallback))
 }
 
 export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boolean }) {

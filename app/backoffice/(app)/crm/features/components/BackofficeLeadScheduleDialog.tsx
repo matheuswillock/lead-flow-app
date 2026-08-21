@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { CalendarClock, X } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -280,7 +281,7 @@ export function BackofficeLeadScheduleDialog({
       onOpenChange(false)
     } catch (error) {
       console.error("[BackofficeLeadScheduleDialog][submit]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar agendamento")
+      toastUserError(error)
     } finally {
       setIsSubmitting(false)
     }
@@ -293,7 +294,7 @@ export function BackofficeLeadScheduleDialog({
       await onResendInvite()
     } catch (error) {
       console.error("[BackofficeLeadScheduleDialog][resend]", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao reenviar convite")
+      toastUserError(error)
     } finally {
       setIsResending(false)
     }

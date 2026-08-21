@@ -12,6 +12,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { isManagerLikeRole } from "@/lib/roles";
 import type { FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import { toast } from "sonner";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 import { useLeadTransfersContext } from "../context/LeadTransfersContext";
 import type { LeadTransferRow } from "../context/LeadTransfersTypes";
 import { LeadTransfersFiltersBar } from "./LeadTransfersFiltersBar";
@@ -60,7 +61,7 @@ export function LeadTransfersContainer() {
         setSelectedLead(lead);
         setDialogOpen(true);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao abrir lead";
+        const message = toUserToastMessage(err);
         toast.error(message);
       } finally {
         setIsLeadLoading(false);
