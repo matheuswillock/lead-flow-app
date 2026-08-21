@@ -48,4 +48,19 @@ export interface IPublicFormJourneyRepository {
     idleBefore: Date
     limit: number
   }): Promise<AbandonedJourneyCandidate[]>
+
+  /** Totais da jornada por estado, para o funil de analytics. */
+  countJourneyStates(input: {
+    formId: string
+    publicationId?: string
+    from?: Date
+    to?: Date
+  }): Promise<PublicFormJourneyStateTotals>
+}
+
+export type PublicFormJourneyStateTotals = {
+  active: number
+  abandoned: number
+  completed: number
+  abandonmentEvents: number
 }

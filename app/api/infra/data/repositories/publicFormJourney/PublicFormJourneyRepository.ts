@@ -8,6 +8,7 @@ import {
 import type {
   AbandonedJourneyCandidate,
   IPublicFormJourneyRepository,
+  PublicFormJourneyStateTotals,
   RecordJourneyEventInput,
   RecordJourneyEventResult,
 } from "./IPublicFormJourneyRepository"
@@ -171,6 +172,41 @@ export class PublicFormJourneyRepository implements IPublicFormJourneyRepository
       lastActivityAt: row.lastActivityAt,
       abandonmentCount: row.abandonmentCount,
     }))
+  }
+
+  async countJourneyStates(input: {
+    formId: string
+    publicationId?: string
+    from?: Date
+    to?: Date
+  }): Promise<PublicFormJourneyStateTotals> {
+    const where = {
+      formId: input.formId,
+      ...(input.publicationId ? { publicationId: input.publicationId } : {}),
+      ...(input.from || input.to
+        ? { startedAt: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lte: input.to } : {}) } }
+        : {}),
+    }
+
+    const [grouped, abandonmentEvents] = await Promise.all([
+      this.db.publicFormJourneySession.groupBy({
+        by: ["state"],
+        where,
+        _count: { _all: true },
+      }),
+      this.db.publicFormJourneySession.aggregate({
+        where,
+        _sum: { abandonmentCount: true },
+      }),
+    ])
+
+    const byState = new Map(grouped.map((row) => [row.state, row._count._all]))
+    return {
+      active: byState.get("active") ?? 0,
+      abandoned: byState.get("abandoned") ?? 0,
+      completed: byState.get("completed") ?? 0,
+      abandonmentEvents: abandonmentEvents._sum.abandonmentCount ?? 0,
+    }
   }
 }
 

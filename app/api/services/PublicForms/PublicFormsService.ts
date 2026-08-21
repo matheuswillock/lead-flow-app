@@ -602,6 +602,14 @@ export class PublicFormsService implements IPublicFormsService {
       from,
       to,
     })
+    // PR 4: o funil passa a enxergar a jornada — quantos visitantes estão em
+    // andamento, quantos abandonaram e quantos concluíram.
+    const journey = await publicFormJourneyRepository.countJourneyStates({
+      formId: id,
+      publicationId,
+      from,
+      to,
+    })
     const originEvents = await publicFormsRepository.listFormViewOrigins({ formId: id, ...where })
     const origins = new Map<string, Set<string>>()
     for (const event of originEvents) {
@@ -632,6 +640,7 @@ export class PublicFormsService implements IPublicFormsService {
         }
       }),
       events,
+      journey,
       totals: {
         views: sessionsByType.form_viewed ?? 0,
         starts: sessionsByType.form_started ?? 0,
