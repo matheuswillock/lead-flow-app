@@ -595,6 +595,23 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async attachLeadIdToSessionSubmission(
+    formId: string,
+    visitorSessionId: string,
+    leadId: string,
+  ) {
+    const session = await this.findLatestSessionSubmissionOnForm(formId, visitorSessionId)
+    if (!session) return null
+    if (session.leadId) return session
+    return prisma.publicFormSubmission.update({
+      where: { id: session.id },
+      data: {
+        leadId,
+        ...(session.completionStatus === "complete" ? {} : { completionStatus: "partial" }),
+      },
+    })
+  }
+
   findAvailabilityTeamContext(formId: string) {
     return prisma.publicForm.findUnique({
       where: { id: formId },
@@ -1048,6 +1065,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return prisma.publicFormSubmission.findUnique({ where: { requestKey } })
   }
 
+  async findLeadForSubmission(submissionId: string) {
+    const submission = await prisma.publicFormSubmission.findUnique({
+      where: { id: submissionId },
+      select: { lead: true },
+    })
+    return submission?.lead ?? null
+  }
+
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: {
@@ -1483,7 +1508,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
-          leadId: input.leadId ?? null,
+          leadId: input.leadId ?? undefined,
           status: "completed",
           completionStatus: "complete",
           submittedAt: new Date(),

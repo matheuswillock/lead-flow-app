@@ -4,7 +4,11 @@ import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsSe
 import { Output } from "@/lib/output"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { resolveVisibleQuestionIds } from "@/lib/public-forms/engine"
-import type { PublicFormProgressInput, PublicFormSnapshot } from "@/lib/public-forms/types"
+import type {
+  PublicFormMetricEventInput,
+  PublicFormProgressInput,
+  PublicFormSnapshot,
+} from "@/lib/public-forms/types"
 import { mergeProgressAnswers } from "@/lib/public-forms/merge-progress-answers"
 import { mapAnswersForPersistence } from "@/lib/public-forms/publication-snapshot"
 import { resolvePublicFormPublicationForVisitor } from "@/lib/public-forms/resolve-form-publication"
@@ -12,21 +16,58 @@ import {
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
   hasCrmGateAC,
-  upsertLeadFromFormAnswers,
+  isBlankPublicFormAnswerValue,
+  publicFormAnswerValueText,
 } from "./publicFormLeadSync"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
+import {
+  buildPublicFormIdentityGateIdempotencyKey,
+  buildPublicFormQuestionAnsweredEventKey,
+} from "@/lib/public-forms/metric-keys"
 import {
   buildPublicFormMetricQueuePayload,
   publishServerPublicFormMetricEvent,
 } from "@/lib/queues/public-form-metric-events"
+import {
+  legacyPublicFormProgressLeadService,
+  type ILegacyPublicFormProgressLeadService,
+} from "@/app/api/services/PublicForms/LegacyPublicFormProgressLeadService"
+import {
+  resolvePublicFormLeadGateMode,
+  type PublicFormLeadGateMode,
+} from "@/lib/public-forms/public-form-lead-gate-mode"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+function isLeadIdentityMappingKey(mappingKey: string | null | undefined): boolean {
+  return mappingKey === "name" || mappingKey === "email" || mappingKey === "phone"
+}
+
+/** Fila OIDC/CI costuma falhar; o consumer não roda. Radar fecha A+C neste isolate. */
+async function processQuestionAnsweredWhenQueueUnavailable(
+  publicId: string,
+  input: PublicFormMetricEventInput,
+): Promise<void> {
+  const accepted = await publicFormsService.recordMetric(publicId, input, { radarMode: "inline" })
+  if (!accepted) {
+    throw new Error("Falha ao persistir evento de resposta no fallback do Radar")
+  }
+}
+
 export class PublicFormProgressUseCase {
+  constructor(
+    private readonly legacyLeadCreator: ILegacyPublicFormProgressLeadService =
+      legacyPublicFormProgressLeadService,
+    private readonly resolveLeadGateMode: (
+      teamId: string,
+    ) => PublicFormLeadGateMode = resolvePublicFormLeadGateMode,
+  ) {}
+
   async execute(publicId: string, input: PublicFormProgressInput): Promise<Output> {
-    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
+    if (!isValidPublicFormId(publicId))
+      return new Output(false, [], ["Formulário indisponível"], null)
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
@@ -42,7 +83,6 @@ export class PublicFormProgressUseCase {
       return new Output(true, [], [], {
         submissionId: resolved.sessionSubmission.id,
         completionStatus: "complete",
-        leadId: resolved.sessionSubmission.leadId,
       })
     }
 
@@ -68,24 +108,20 @@ export class PublicFormProgressUseCase {
 
     const requestKey = `progress:${input.visitorSessionId}:${publicationId}`
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
-
-    let leadId: string | null = resolved.sessionSubmission?.leadId ?? null
-    try {
-      const upserted = await upsertLeadFromFormAnswers({
+    let sessionLeadId: string | null = resolved.sessionSubmission?.leadId ?? null
+    const leadGateMode = this.resolveLeadGateMode(form.teamId)
+    if (leadGateMode !== "radar") {
+      const legacyLead = await this.legacyLeadCreator.createOrUpdate({
         form,
         snapshot,
         answers: visibleAnswers,
         visibleIds: visible,
         publicationId,
-        origin: origin as Record<string, unknown>,
-        allowCreate: !leadId,
+        origin,
+        allowCreate: !sessionLeadId,
       })
-      leadId = upserted?.lead.id ?? leadId
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao sincronizar lead"
-      console.error("[PublicFormProgressUseCase][execute]", message)
+      sessionLeadId = legacyLead?.lead.id ?? sessionLeadId
     }
-
     const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers)
 
     const submission = await publicFormsRepository.upsertProgressSubmission({
@@ -95,21 +131,21 @@ export class PublicFormProgressUseCase {
       requestKey,
       origin: origin as Prisma.InputJsonValue,
       completionStatus,
-      leadId,
+      leadId: sessionLeadId,
       answers: answerPayload,
     })
 
     for (const answer of incomingAnswers) {
-      const rawValue = answer.value
-      // D1: não consumir a idempotencyKey da fila com payload vazio — o
-      // primeiro blur frequentemente vem com string vazia/stale (autofill
-      // ainda não sincronizado, campo tocado e abandonado), o que marcaria
-      // `visitorSessionId:progress:questionId` como já entregue e faria a
-      // Vercel Queue descartar o blur seguinte com e-mail/telefone real,
-      // impedindo o D2 (reconciliação Radar) de rodar com valor útil.
-      const isEmptyStringValue = typeof rawValue === "string" && rawValue.trim() === ""
-      const eventKey = `${input.visitorSessionId}:progress:${answer.questionId}`
+      if (isBlankPublicFormAnswerValue(answer.value)) continue
       const question = snapshot.questions.find((item) => item.id === answer.questionId)
+      const eventKey = buildPublicFormQuestionAnsweredEventKey(
+        input.visitorSessionId,
+        answer.questionId,
+      )
+      const answerValue = answer.value
+      const identityAnswerValue = publicFormAnswerValueText(answer.value)
+      const mappingKey = question?.mappingKey ?? null
+      const isIdentityAnswer = isLeadIdentityMappingKey(mappingKey)
       await publicFormsRepository.upsertMetricEvent({
         formId: snapshot.formId,
         publicationId,
@@ -118,48 +154,46 @@ export class PublicFormProgressUseCase {
         visitorSessionId: input.visitorSessionId,
         eventType: "question_answered",
         eventKey,
-        origin: {
-          ...(origin as Record<string, unknown>),
-          answerValue: answer.value,
-        } as Prisma.InputJsonValue,
+        origin: origin as Prisma.InputJsonValue,
       })
-      if (!isEmptyStringValue) {
-        await publishServerPublicFormMetricEvent(
-          buildPublicFormMetricQueuePayload(form.publicId, {
-            visitorSessionId: input.visitorSessionId,
-            eventType: "question_answered",
-            questionId: answer.questionId,
-            eventKey,
-            origin: origin as Record<string, unknown>,
-            answerMappingKey: question?.mappingKey ?? null,
-            answerValue: typeof rawValue === "string" ? rawValue : null,
-          }),
-          "PublicFormProgressUseCase",
-        )
+      const metricInput: PublicFormMetricEventInput = {
+        visitorSessionId: input.visitorSessionId,
+        eventType: "question_answered",
+        questionId: answer.questionId,
+        eventKey,
+        origin: origin as Record<string, unknown>,
+        answerMappingKey: mappingKey,
+        answerValue,
+        createCrmLead: isIdentityAnswer && Boolean(identityAnswerValue),
       }
-      // Log visível no Vercel de todo campo recebido via onBlur/progress —
-      // inclui o valor do campo (decisão do produto: útil pra debug de
-      // captação, ciente de que expande PII pros logs em relação ao banco).
+      const queued = await publishServerPublicFormMetricEvent(
+        buildPublicFormMetricQueuePayload(form.publicId, metricInput),
+        "PublicFormProgressUseCase",
+        isIdentityAnswer && identityAnswerValue
+          ? {
+              idempotencyKey: buildPublicFormIdentityGateIdempotencyKey(
+                eventKey,
+                identityAnswerValue,
+              ),
+            }
+          : undefined,
+      )
+      if (queued === false) {
+        await processQuestionAnsweredWhenQueueUnavailable(form.publicId, metricInput)
+      }
       console.info("[PublicFormProgressUseCase][execute] campo recebido", {
         publicId: form.publicId,
         visitorSessionId: input.visitorSessionId,
         questionId: answer.questionId,
-        mappingKey: question?.mappingKey ?? null,
+        mappingKey,
         mappingTarget: question?.mappingTarget ?? null,
-        value: answer.value,
       })
     }
 
-    return new Output(
-      true,
-      [],
-      [],
-      {
-        submissionId: submission.id,
-        completionStatus,
-        leadId,
-      },
-    )
+    return new Output(true, [], [], {
+      submissionId: submission.id,
+      completionStatus,
+    })
   }
 }
 

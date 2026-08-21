@@ -12,10 +12,7 @@ import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
-import {
-  allowedCurrentSourcesForGenderWrite,
-  type RadarGenderSource,
-} from "@/lib/radar/gender"
+import { allowedCurrentSourcesForGenderWrite, type RadarGenderSource } from "@/lib/radar/gender"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
   DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
@@ -32,6 +29,7 @@ import {
 } from "@/lib/queues/radar-engagement-score-updates"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
+import { normalizeRadarName } from "@/lib/radar/normalization"
 
 const ENGAGEMENT_CACHE_TTL_MS = 5 * 60 * 1000
 const TRANSIENT_PRISMA_ERROR_CODES = new Set(["P1017", "P1001", "P1002", "P1008", "P2024"])
@@ -91,6 +89,12 @@ export type AppendEventInput = {
   metadata?: Prisma.InputJsonValue
 }
 
+export type RadarProfileMergeResult = {
+  winningProfileId: string
+  merged: boolean
+  conflict: boolean
+}
+
 export type UpsertConsentInput = {
   profileId: string
   teamId: string
@@ -124,7 +128,7 @@ export class RadarRepository {
   private async runWithTransientPrismaRetry<T>(
     operation: () => Promise<T>,
     label: string,
-    retries = 2
+    retries = 2,
   ): Promise<T> {
     const delayMs = 150
     let lastError: unknown
@@ -147,7 +151,7 @@ export class RadarRepository {
         }
 
         console.warn(
-          `[RadarRepository][${label}] Transient error (${code}). Retrying (${attempt + 1}/${retries})...`
+          `[RadarRepository][${label}] Transient error (${code}). Retrying (${attempt + 1}/${retries})...`,
         )
         await new Promise((resolve) => setTimeout(resolve, delayMs))
         await this.db.$connect()
@@ -233,15 +237,42 @@ export class RadarRepository {
   async mergeProfiles(
     teamId: string,
     losingProfileId: string,
-    winningProfileId: string
+    winningProfileId: string,
   ): Promise<void> {
     if (losingProfileId === winningProfileId) return
 
-    await prisma.$transaction(async (tx) => {
-      await this.mergeProfilesWithTx(tx, teamId, losingProfileId, winningProfileId)
+    const result = await this.db.$transaction(async (tx) => {
+      return this.mergeProfilesWithTx(
+        tx,
+        teamId,
+        losingProfileId,
+        winningProfileId,
+        "merge_crm_confirmed",
+      )
     })
 
-    await this.updateEngagementScore(winningProfileId, teamId)
+    if (result.merged) await this.updateEngagementScore(winningProfileId, teamId)
+  }
+
+  async mergePublicFormProfiles(
+    teamId: string,
+    losingProfileId: string,
+    winningProfileId: string,
+  ): Promise<RadarProfileMergeResult> {
+    if (losingProfileId === winningProfileId) {
+      return { winningProfileId, merged: false, conflict: false }
+    }
+    const result = await this.db.$transaction((tx) =>
+      this.mergeProfilesWithTx(
+        tx,
+        teamId,
+        losingProfileId,
+        winningProfileId,
+        "preserve_distinct_leads",
+      ),
+    )
+    if (result.merged) await this.updateEngagementScore(result.winningProfileId, teamId)
+    return result
   }
 
   /**
@@ -260,8 +291,91 @@ export class RadarRepository {
     tx: Prisma.TransactionClient,
     teamId: string,
     losingProfileId: string,
-    winningProfileId: string
-  ): Promise<void> {
+    winningProfileId: string,
+    leadConflictPolicy:
+      | "preserve_distinct_leads"
+      | "merge_crm_confirmed" = "preserve_distinct_leads",
+  ): Promise<RadarProfileMergeResult> {
+    const leadIdentities = await tx.radarIdentity.findMany({
+      where: {
+        teamId,
+        profileId: { in: [losingProfileId, winningProfileId] },
+        type: "lead_id",
+      },
+      select: { profileId: true, normalizedValue: true },
+    })
+    const losingLeadId = leadIdentities.find(
+      (identity) => identity.profileId === losingProfileId,
+    )?.normalizedValue
+    const winningLeadId = leadIdentities.find(
+      (identity) => identity.profileId === winningProfileId,
+    )?.normalizedValue
+    if (
+      leadConflictPolicy === "preserve_distinct_leads" &&
+      losingLeadId &&
+      winningLeadId &&
+      losingLeadId !== winningLeadId
+    ) {
+      return { winningProfileId, merged: false, conflict: true }
+    }
+
+    if (losingLeadId && !winningLeadId) {
+      const requestedWinnerId = winningProfileId
+      winningProfileId = losingProfileId
+      losingProfileId = requestedWinnerId
+    }
+
+    const [losingProfile, winningProfile] = await Promise.all([
+      tx.radarProfile.findUnique({
+        where: { id: losingProfileId },
+        select: {
+          displayName: true,
+          normalizedName: true,
+          displayPhone: true,
+          normalizedPhone: true,
+          primaryEmail: true,
+          normalizedPrimaryEmail: true,
+        },
+      }),
+      tx.radarProfile.findUnique({
+        where: { id: winningProfileId },
+        select: {
+          displayName: true,
+          normalizedName: true,
+          displayPhone: true,
+          normalizedPhone: true,
+          primaryEmail: true,
+          normalizedPrimaryEmail: true,
+        },
+      }),
+    ])
+    if (!losingProfile || !winningProfile) {
+      throw new Error("Perfil Radar não encontrado durante merge")
+    }
+
+    const winnerHasUsableName =
+      Boolean(winningProfile.displayName.trim()) &&
+      winningProfile.displayName !== "Visitante Anônimo"
+    await tx.radarProfile.update({
+      where: { id: winningProfileId },
+      data: {
+        ...(!winnerHasUsableName && losingProfile.displayName.trim()
+          ? {
+              displayName: losingProfile.displayName,
+              normalizedName: losingProfile.normalizedName,
+            }
+          : {}),
+        displayPhone: winningProfile.displayPhone ?? losingProfile.displayPhone ?? undefined,
+        normalizedPhone:
+          winningProfile.normalizedPhone ?? losingProfile.normalizedPhone ?? undefined,
+        primaryEmail: winningProfile.primaryEmail ?? losingProfile.primaryEmail ?? undefined,
+        normalizedPrimaryEmail:
+          winningProfile.normalizedPrimaryEmail ??
+          losingProfile.normalizedPrimaryEmail ??
+          undefined,
+      },
+    })
+
     await tx.radarIdentity.updateMany({
       where: { profileId: losingProfileId },
       data: { profileId: winningProfileId },
@@ -273,13 +387,21 @@ export class RadarRepository {
     })
     for (const link of losingSourceLinks) {
       const conflict = await tx.radarSourceLink.findFirst({
-        where: { teamId, sourceType: link.sourceType, sourceId: link.sourceId, profileId: winningProfileId },
+        where: {
+          teamId,
+          sourceType: link.sourceType,
+          sourceId: link.sourceId,
+          profileId: winningProfileId,
+        },
         select: { id: true },
       })
       if (conflict) {
         await tx.radarSourceLink.delete({ where: { id: link.id } })
       } else {
-        await tx.radarSourceLink.update({ where: { id: link.id }, data: { profileId: winningProfileId } })
+        await tx.radarSourceLink.update({
+          where: { id: link.id },
+          data: { profileId: winningProfileId },
+        })
       }
     }
 
@@ -299,10 +421,16 @@ export class RadarRepository {
           select: { id: true, occurredAt: true },
         })
         if (!existingFirstContact) {
-          await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+          await tx.radarEvent.update({
+            where: { id: event.id },
+            data: { profileId: winningProfileId },
+          })
         } else if (event.occurredAt < existingFirstContact.occurredAt) {
           await tx.radarEvent.delete({ where: { id: existingFirstContact.id } })
-          await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+          await tx.radarEvent.update({
+            where: { id: event.id },
+            data: { profileId: winningProfileId },
+          })
         } else {
           await tx.radarEvent.delete({ where: { id: event.id } })
         }
@@ -323,12 +451,17 @@ export class RadarRepository {
       if (conflict) {
         await tx.radarEvent.delete({ where: { id: event.id } })
       } else {
-        await tx.radarEvent.update({ where: { id: event.id }, data: { profileId: winningProfileId } })
+        await tx.radarEvent.update({
+          where: { id: event.id },
+          data: { profileId: winningProfileId },
+        })
       }
     }
 
     const consentRank: Record<RadarConsentStatus, number> = { blocked: 2, unknown: 0, allowed: 1 }
-    const losingConsents = await tx.radarChannelConsent.findMany({ where: { profileId: losingProfileId } })
+    const losingConsents = await tx.radarChannelConsent.findMany({
+      where: { profileId: losingProfileId },
+    })
     for (const consent of losingConsents) {
       const existing = await tx.radarChannelConsent.findUnique({
         where: { profileId_channel: { profileId: winningProfileId, channel: consent.channel } },
@@ -352,6 +485,7 @@ export class RadarRepository {
     }
 
     await tx.radarProfile.delete({ where: { id: losingProfileId } })
+    return { winningProfileId, merged: true, conflict: false }
   }
 
   /**
@@ -413,6 +547,7 @@ export class RadarRepository {
       })
 
       if (existingByIdentity) {
+        let resolvedProfileId = existingByIdentity.profileId
         if (input.normalizedPrimaryEmail) {
           const emailOwner = await tx.radarIdentity.findUnique({
             where: {
@@ -426,18 +561,19 @@ export class RadarRepository {
           })
 
           if (emailOwner && emailOwner.profileId !== existingByIdentity.profileId) {
-            await this.mergeProfilesWithTx(
+            const mergeResult = await this.mergeProfilesWithTx(
               tx,
               input.teamId,
               emailOwner.profileId,
-              existingByIdentity.profileId
+              existingByIdentity.profileId,
             )
-            mergedWinningProfileId = existingByIdentity.profileId
+            resolvedProfileId = mergeResult.winningProfileId
+            if (mergeResult.merged) mergedWinningProfileId = mergeResult.winningProfileId
           }
         }
 
         const existingProfile = await tx.radarProfile.findUnique({
-          where: { id: existingByIdentity.profileId },
+          where: { id: resolvedProfileId },
           select: {
             primaryEmail: true,
             normalizedPrimaryEmail: true,
@@ -449,7 +585,7 @@ export class RadarRepository {
         })
 
         const profile = await tx.radarProfile.update({
-          where: { id: existingByIdentity.profileId },
+          where: { id: resolvedProfileId },
           data: {
             displayPhone: input.displayPhone || undefined,
             primaryEmail: input.primaryEmail ?? existingProfile?.primaryEmail ?? undefined,
@@ -457,7 +593,9 @@ export class RadarRepository {
               input.normalizedPrimaryEmail ?? existingProfile?.normalizedPrimaryEmail ?? undefined,
             primaryDocument: input.primaryDocument ?? existingProfile?.primaryDocument ?? undefined,
             normalizedPrimaryDocument:
-              input.normalizedPrimaryDocument ?? existingProfile?.normalizedPrimaryDocument ?? undefined,
+              input.normalizedPrimaryDocument ??
+              existingProfile?.normalizedPrimaryDocument ??
+              undefined,
             displayName: input.displayName || existingProfile?.displayName || undefined,
             normalizedName: input.normalizedName || existingProfile?.normalizedName || undefined,
             lastSeenAt: input.lastSeenAt ?? new Date(),
@@ -922,7 +1060,7 @@ export class RadarRepository {
     sourceType: string,
     sourceId: string | null | undefined,
     eventType: string,
-    occurredAt: Date
+    occurredAt: Date,
   ) {
     if (!sourceId) return false
     const duplicate = await this.db.radarEvent.findFirst({
@@ -942,7 +1080,12 @@ export class RadarRepository {
    * criar um evento novo a cada edição. Aqui, uma vez registrado, nunca
    * mais se repete.
    */
-  async hasEventEverOccurredForSource(teamId: string, sourceType: string, sourceId: string, eventType: string) {
+  async hasEventEverOccurredForSource(
+    teamId: string,
+    sourceType: string,
+    sourceId: string,
+    eventType: string,
+  ) {
     const existing = await this.db.radarEvent.findFirst({
       where: { teamId, sourceType, sourceId, eventType },
       select: { id: true },
@@ -958,7 +1101,7 @@ export class RadarRepository {
         input.sourceType,
         input.sourceId,
         input.eventType,
-        input.occurredAt
+        input.occurredAt,
       ))
     ) {
       return null
@@ -989,10 +1132,7 @@ export class RadarRepository {
       this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
       return created
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
-      ) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
         return null
       }
@@ -1014,23 +1154,19 @@ export class RadarRepository {
    */
   async appendEventIfNewBySourceKey(input: AppendEventInput) {
     if (!input.sourceId) {
-      try {
-        const created = await this.db.radarEvent.create({
-          data: {
-            profileId: input.profileId,
-            teamId: input.teamId,
-            eventType: input.eventType,
-            sourceType: input.sourceType,
-            sourceId: null,
-            occurredAt: input.occurredAt,
-            metadata: input.metadata,
-          },
-        })
-        this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
-        return created
-      } catch {
-        return null
-      }
+      const created = await this.db.radarEvent.create({
+        data: {
+          profileId: input.profileId,
+          teamId: input.teamId,
+          eventType: input.eventType,
+          sourceType: input.sourceType,
+          sourceId: null,
+          occurredAt: input.occurredAt,
+          metadata: input.metadata,
+        },
+      })
+      this.scheduleEngagementScoreUpdate(input.profileId, input.teamId)
+      return created
     }
 
     const sourceId = input.sourceId
@@ -1049,21 +1185,17 @@ export class RadarRepository {
       })
       if (existing) return null
 
-      try {
-        return await tx.radarEvent.create({
-          data: {
-            profileId: input.profileId,
-            teamId: input.teamId,
-            eventType: input.eventType,
-            sourceType: input.sourceType,
-            sourceId,
-            occurredAt: input.occurredAt,
-            metadata: input.metadata,
-          },
-        })
-      } catch {
-        return null
-      }
+      return tx.radarEvent.create({
+        data: {
+          profileId: input.profileId,
+          teamId: input.teamId,
+          eventType: input.eventType,
+          sourceType: input.sourceType,
+          sourceId,
+          occurredAt: input.occurredAt,
+          metadata: input.metadata,
+        },
+      })
     })
 
     // Fora da transação/advisory lock — não participa do dedupe.
@@ -1082,7 +1214,7 @@ export class RadarRepository {
     void publishRadarEngagementScoreUpdate({ profileId, teamId }).catch((error) => {
       console.error(
         `[RadarRepository][scheduleEngagementScoreUpdate] ${RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG}`,
-        error
+        error,
       )
       void this.updateEngagementScore(profileId, teamId).catch((fallbackError) => {
         console.error("[RadarRepository][updateEngagementScore]", fallbackError)
@@ -1170,13 +1302,18 @@ export class RadarRepository {
       band = computed.band
     }
 
-    const topEvents = rankTopEngagementEvents(events, weights, config, 3, new Date(), formRules).map(
-      (item) => ({
-        eventType: item.eventType,
-        occurredAt: item.occurredAt.toISOString(),
-        contribution: Math.round(item.contribution * 100) / 100,
-      })
-    )
+    const topEvents = rankTopEngagementEvents(
+      events,
+      weights,
+      config,
+      3,
+      new Date(),
+      formRules,
+    ).map((item) => ({
+      eventType: item.eventType,
+      occurredAt: item.occurredAt.toISOString(),
+      contribution: Math.round(item.contribution * 100) / 100,
+    }))
 
     return {
       notFound: false as const,
@@ -1250,7 +1387,7 @@ export class RadarRepository {
             orderBy: { minPercent: "asc" },
           }),
         ]),
-      "loadEngagementWeightsAndConfig"
+      "loadEngagementWeightsAndConfig",
     )
 
     const weights: WeightMap = {}
@@ -1340,7 +1477,7 @@ export class RadarRepository {
       take: number
       sort?: "engagementScore" | "lastSeenAt"
       order?: "asc" | "desc"
-    }
+    },
   ) {
     const where = this.buildListProfilesWhere(scope, params)
     const sortField = params.sort === "lastSeenAt" ? "lastSeenAt" : "engagementScore"
@@ -1379,7 +1516,7 @@ export class RadarRepository {
       channel?: RadarChannel
       lastSeenFrom?: Date
       lastSeenTo?: Date
-    }
+    },
   ): Prisma.RadarProfileWhereInput {
     return {
       teamId: scope.teamId,
@@ -1452,7 +1589,7 @@ export class RadarRepository {
       channel?: RadarChannel
       lastSeenFrom?: Date
       lastSeenTo?: Date
-    }
+    },
   ) {
     const where = this.buildListProfilesWhere(scope, params)
 
@@ -1482,7 +1619,9 @@ export class RadarRepository {
     })
 
     const byId = new Map(items.map((item) => [item.id, item]))
-    return cappedIds.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item))
+    return cappedIds
+      .map((id) => byId.get(id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
   }
 
   async getProfileDetailWithCtx(scope: RadarTeamScope, profileId: string) {
@@ -1539,16 +1678,26 @@ export class RadarRepository {
   async tryInsertLeadIdentityIfAbsent(
     scope: RadarTeamScope,
     profileId: string,
-    leadId: string
+    leadId: string,
+    source = "manual_promote",
+  ): Promise<boolean> {
+    return this.tryClaimLeadIdentity(scope.teamId, profileId, leadId, source)
+  }
+
+  async tryClaimLeadIdentity(
+    teamId: string,
+    profileId: string,
+    leadId: string,
+    source: string,
   ): Promise<boolean> {
     return this.db.$transaction(async (tx) => {
-      const lockKey = `${scope.teamId}:promote-lead:${profileId}`
+      const lockKey = `${teamId}:promote-lead:${profileId}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
       const existing = await tx.radarIdentity.findFirst({
         where: {
           profileId,
-          teamId: scope.teamId,
+          teamId,
           type: "lead_id",
         },
         select: { id: true },
@@ -1559,20 +1708,17 @@ export class RadarRepository {
         await tx.radarIdentity.create({
           data: {
             profileId,
-            teamId: scope.teamId,
+            teamId,
             type: "lead_id",
             value: leadId,
             normalizedValue: leadId,
-            source: "manual_promote",
+            source,
             isPrimary: false,
           },
         })
         return true
       } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
-        ) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
           return false
         }
         throw error
@@ -1580,11 +1726,22 @@ export class RadarRepository {
     })
   }
 
+  async applyFormAnswerDisplayName(profileId: string, teamId: string, displayName: string) {
+    const trimmed = displayName.trim()
+    if (!trimmed || trimmed === "Visitante Anônimo") return
+    const normalizedName = normalizeRadarName(trimmed)
+    if (!normalizedName) return
+    await this.db.radarProfile.updateMany({
+      where: { id: profileId, teamId },
+      data: { displayName: trimmed, normalizedName },
+    })
+  }
+
   async updateProfileGender(
     profileId: string,
     teamId: string,
     gender: "male" | "female",
-    genderSource: "mapped" | "inferred" | "manual"
+    genderSource: "mapped" | "inferred" | "manual",
   ) {
     return this.db.radarProfile.updateMany({
       where: {
@@ -1600,7 +1757,7 @@ export class RadarRepository {
   async updateProfileGenderWithCtx(
     scope: RadarTeamScope,
     profileId: string,
-    gender: "male" | "female" | "unknown"
+    gender: "male" | "female" | "unknown",
   ): Promise<{ updated: boolean }> {
     const result = await this.db.radarProfile.updateMany({
       where: { id: profileId, teamId: scope.teamId },
@@ -1613,7 +1770,7 @@ export class RadarRepository {
     scope: RadarTeamScope,
     profileId: string,
     skip: number,
-    take: number
+    take: number,
   ) {
     const where = { profileId, teamId: scope.teamId }
     const [items, total] = await Promise.all([
@@ -1861,7 +2018,7 @@ export class RadarRepository {
         where: { email: { in: chunk }, isBounced: true },
         select: { email: true },
         distinct: ["email"],
-      })
+      }),
     )
     return new Set(rows.map((row) => row.email.trim().toLowerCase()))
   }
@@ -1939,7 +2096,10 @@ export class RadarRepository {
     return lead?.phone ? { phone: lead.phone } : null
   }
 
-  async findLeadStatuses(teamId: string, leadIds: string[]): Promise<Map<string, LeadStatus | null>> {
+  async findLeadStatuses(
+    teamId: string,
+    leadIds: string[],
+  ): Promise<Map<string, LeadStatus | null>> {
     const unique = [...new Set(leadIds.filter(Boolean))]
     if (unique.length === 0) return new Map<string, LeadStatus | null>()
 
@@ -1947,7 +2107,7 @@ export class RadarRepository {
       this.db.lead.findMany({
         where: { teamId, id: { in: chunk } },
         select: { id: true, status: true },
-      })
+      }),
     )
 
     return new Map(leads.map((lead) => [lead.id, lead.status]))
@@ -1962,7 +2122,7 @@ export class RadarRepository {
 
   async listProfileIdsByWhere(
     where: Prisma.RadarProfileWhereInput,
-    pagination?: { skip: number; take: number }
+    pagination?: { skip: number; take: number },
   ): Promise<string[]> {
     const profiles = await this.db.radarProfile.findMany({
       where,
@@ -1983,7 +2143,7 @@ export class RadarRepository {
    * usados para projetar perfis via identidades `lead_id` / `portfolio_id`.
    */
   async findPortfolioProfileIdsByWhere(
-    where: Prisma.LeadPortfolioWhereInput
+    where: Prisma.LeadPortfolioWhereInput,
   ): Promise<{ leadIds: string[]; portfolioIds: string[] }> {
     const rows = await this.db.leadPortfolio.findMany({ where, select: { id: true, leadId: true } })
     return {
@@ -2030,15 +2190,14 @@ export class RadarRepository {
     const leadIdSet = new Set(
       identities
         .filter((identity) => identity.type === "lead_id")
-        .map((identity) => identity.normalizedValue)
+        .map((identity) => identity.normalizedValue),
     )
     const portfolioIds = identities
       .filter((identity) => identity.type === "portfolio_id")
       .map((identity) => identity.normalizedValue)
     const contractDocuments = identities
       .filter(
-        (identity) =>
-          identity.type === "contract_holder" || identity.type === "contract_dependent"
+        (identity) => identity.type === "contract_holder" || identity.type === "contract_dependent",
       )
       .map((identity) => identity.normalizedValue)
       .filter(Boolean)
@@ -2191,14 +2350,11 @@ export class RadarRepository {
     `
   }
 
-  async findProfileIdsByEmailContactListIds(
-    teamId: string,
-    listIds: string[]
-  ): Promise<string[]> {
+  async findProfileIdsByEmailContactListIds(teamId: string, listIds: string[]): Promise<string[]> {
     if (listIds.length === 0) return []
 
     const rows = await this.db.$queryRaw<Array<{ profileId: string }>>(
-      this.emailContactListMatchedProfilesSql(teamId, listIds)
+      this.emailContactListMatchedProfilesSql(teamId, listIds),
     )
     return rows.map((row) => row.profileId)
   }
@@ -2218,7 +2374,7 @@ export class RadarRepository {
   async listProfileIdsByEmailContactListIds(
     teamId: string,
     listIds: string[],
-    pagination?: { skip: number; take: number }
+    pagination?: { skip: number; take: number },
   ): Promise<string[]> {
     if (listIds.length === 0) return []
 
@@ -2253,19 +2409,19 @@ export class RadarRepository {
 
   private combineProfileIdSourcesSql(
     sources: Prisma.Sql[],
-    combine: "intersect" | "union"
+    combine: "intersect" | "union",
   ): Prisma.Sql {
     if (sources.length === 1) return sources[0]
     const separator = combine === "intersect" ? " INTERSECT " : " UNION "
     return Prisma.join(
       sources.map((source) => Prisma.sql`(SELECT "profileId" FROM (${source}) part)`),
-      separator
+      separator,
     )
   }
 
   private async countProfilesByProfileIdSources(
     sources: Prisma.Sql[],
-    combine: "intersect" | "union"
+    combine: "intersect" | "union",
   ): Promise<number> {
     if (sources.length === 0) return 0
     const rows = await this.db.$queryRaw<Array<{ total: number | bigint }>>(Prisma.sql`
@@ -2280,7 +2436,7 @@ export class RadarRepository {
   private async listProfileIdsByProfileIdSources(
     sources: Prisma.Sql[],
     combine: "intersect" | "union",
-    pagination?: { skip: number; take: number }
+    pagination?: { skip: number; take: number },
   ): Promise<string[]> {
     if (sources.length === 0) return []
 
@@ -2306,7 +2462,7 @@ export class RadarRepository {
       combine: "intersect" | "union"
       listIdGroups?: string[][]
       emailContactIdGroups?: string[][]
-    }
+    },
   ): Promise<Prisma.Sql[] | null> {
     const sources: Prisma.Sql[] = []
 
@@ -2344,11 +2500,11 @@ export class RadarRepository {
 
   async countProfilesByEmailContactListIntersection(
     teamId: string,
-    listIdGroups: string[][]
+    listIdGroups: string[][],
   ): Promise<number> {
     if (listIdGroups.length === 0 || listIdGroups.some((group) => group.length === 0)) return 0
     const sources = listIdGroups.map((listIds) =>
-      this.emailContactListMatchedProfilesSql(teamId, listIds)
+      this.emailContactListMatchedProfilesSql(teamId, listIds),
     )
     return this.countProfilesByProfileIdSources(sources, "intersect")
   }
@@ -2356,11 +2512,11 @@ export class RadarRepository {
   async listProfileIdsByEmailContactListIntersection(
     teamId: string,
     listIdGroups: string[][],
-    pagination?: { skip: number; take: number }
+    pagination?: { skip: number; take: number },
   ): Promise<string[]> {
     if (listIdGroups.length === 0 || listIdGroups.some((group) => group.length === 0)) return []
     const sources = listIdGroups.map((listIds) =>
-      this.emailContactListMatchedProfilesSql(teamId, listIds)
+      this.emailContactListMatchedProfilesSql(teamId, listIds),
     )
     return this.listProfileIdsByProfileIdSources(sources, "intersect", pagination)
   }
@@ -2377,7 +2533,7 @@ export class RadarRepository {
       combine: "intersect" | "union"
       listIdGroups?: string[][]
       emailContactIdGroups?: string[][]
-    }
+    },
   ): Promise<number> {
     const sources = await this.buildSegmentAnyFilterSources(teamId, where, options)
     if (sources == null) return 0
@@ -2392,7 +2548,7 @@ export class RadarRepository {
       listIdGroups?: string[][]
       emailContactIdGroups?: string[][]
     },
-    pagination?: { skip: number; take: number }
+    pagination?: { skip: number; take: number },
   ): Promise<string[]> {
     const sources = await this.buildSegmentAnyFilterSources(teamId, where, options)
     if (sources == null) return []
@@ -2411,7 +2567,7 @@ export class RadarRepository {
     teamId: string,
     fieldKey: string,
     operator: "eq" | "neq" | "contains" | "is_empty" | "not_empty",
-    value: unknown
+    value: unknown,
   ): Promise<string[]> {
     const contacts = await this.db.emailContact.findMany({
       where: { list: { teamId } },
@@ -2456,14 +2612,20 @@ export class RadarRepository {
           consents: { where: { channel: "email" }, select: { status: true, reason: true } },
           sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
           events: {
-            select: { eventType: true, occurredAt: true, metadata: true, sourceType: true, sourceId: true },
+            select: {
+              eventType: true,
+              occurredAt: true,
+              metadata: true,
+              sourceType: true,
+              sourceId: true,
+            },
           },
           identities: {
             where: { type: "lead_id" },
             select: { type: true, normalizedValue: true },
           },
         },
-      })
+      }),
     )
   }
 
@@ -2486,7 +2648,13 @@ export class RadarRepository {
         consents: { where: { channel: "email" }, select: { status: true, reason: true } },
         sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
         events: {
-          select: { eventType: true, occurredAt: true, metadata: true, sourceType: true, sourceId: true },
+          select: {
+            eventType: true,
+            occurredAt: true,
+            metadata: true,
+            sourceType: true,
+            sourceId: true,
+          },
         },
         identities: {
           where: { type: "lead_id" },
@@ -2518,7 +2686,7 @@ export class RadarRepository {
           contractDueDate: true,
           referenceHospital: true,
         },
-      })
+      }),
     )
 
     return new Map(leads.map((lead) => [lead.id, lead]))
@@ -2567,7 +2735,7 @@ export class RadarRepository {
           sourceLinks: { select: { sourceType: true, sourceMetadata: true } },
           identities: { select: { type: true, normalizedValue: true } },
         },
-      })
+      }),
     )
   }
 
@@ -2579,7 +2747,7 @@ export class RadarRepository {
       this.db.radarProfile.findMany({
         where: { teamId, normalizedPrimaryEmail: { in: chunk } },
         select: { normalizedPrimaryEmail: true, profileData: true },
-      })
+      }),
     )
 
     const map = new Map<string, Record<string, string>>()
@@ -2590,8 +2758,11 @@ export class RadarRepository {
         map.set(
           profile.normalizedPrimaryEmail,
           Object.fromEntries(
-            Object.entries(data as Record<string, unknown>).map(([key, value]) => [key, String(value ?? "")])
-          )
+            Object.entries(data as Record<string, unknown>).map(([key, value]) => [
+              key,
+              String(value ?? ""),
+            ]),
+          ),
         )
       }
     }
@@ -2612,10 +2783,19 @@ export class RadarRepository {
     })
   }
 
-  async upsertPixelConfig(teamId: string, profileId: string, data: { publicToken: string; allowedOrigins: string[] }) {
+  async upsertPixelConfig(
+    teamId: string,
+    profileId: string,
+    data: { publicToken: string; allowedOrigins: string[] },
+  ) {
     return this.db.teamRadarPixelConfig.upsert({
       where: { teamId },
-      create: { teamId, publicToken: data.publicToken, allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
+      create: {
+        teamId,
+        publicToken: data.publicToken,
+        allowedOrigins: data.allowedOrigins,
+        updatedByProfileId: profileId,
+      },
       update: { allowedOrigins: data.allowedOrigins, updatedByProfileId: profileId },
       select: { publicToken: true, allowedOrigins: true, lastUsedAt: true },
     })
@@ -2630,11 +2810,22 @@ export class RadarRepository {
       where: { teamId },
       orderBy: { createdAt: "desc" },
       take: limit,
-      select: { id: true, teamId: true, eventType: true, visitorSession: true, origin: true, userAgent: true, metadata: true, createdAt: true },
+      select: {
+        id: true,
+        teamId: true,
+        eventType: true,
+        visitorSession: true,
+        origin: true,
+        userAgent: true,
+        metadata: true,
+        createdAt: true,
+      },
     })
   }
 
-  async findPixelConfigByPublicToken(publicToken: string): Promise<{ teamId: string; allowedOrigins: string[] } | null> {
+  async findPixelConfigByPublicToken(
+    publicToken: string,
+  ): Promise<{ teamId: string; allowedOrigins: string[] } | null> {
     return this.db.teamRadarPixelConfig.findUnique({
       where: { publicToken },
       select: { teamId: true, allowedOrigins: true },
@@ -2642,7 +2833,10 @@ export class RadarRepository {
   }
 
   async touchPixelLastUsed(teamId: string) {
-    await this.db.teamRadarPixelConfig.update({ where: { teamId }, data: { lastUsedAt: new Date() } })
+    await this.db.teamRadarPixelConfig.update({
+      where: { teamId },
+      data: { lastUsedAt: new Date() },
+    })
   }
 
   async logPixelHit(input: {
@@ -2709,9 +2903,7 @@ export class RadarRepository {
     const obsolete =
       input.keepNormalizedDocument === null
         ? identities
-        : identities.filter(
-            (identity) => identity.normalizedValue !== input.keepNormalizedDocument
-          )
+        : identities.filter((identity) => identity.normalizedValue !== input.keepNormalizedDocument)
     if (obsolete.length === 0) return { removed: 0 }
 
     await this.db.radarIdentity.deleteMany({
@@ -2758,7 +2950,7 @@ export class RadarRepository {
 
   async getProfileNormalizedDocument(
     teamId: string,
-    profileId: string
+    profileId: string,
   ): Promise<{ found: false } | { found: true; doc: string | null }> {
     const profile = await this.db.radarProfile.findFirst({
       where: { id: profileId, teamId },
@@ -2839,7 +3031,7 @@ export class RadarRepository {
    */
   async countFixedSegmentsSQL(
     teamId: string,
-    recentWindowDays: number = 30
+    recentWindowDays: number = 30,
   ): Promise<Map<string, number>> {
     const recentWindowMs = recentWindowDays * 24 * 60 * 60 * 1000
     const recentThreshold = new Date(Date.now() - recentWindowMs)
@@ -3035,9 +3227,7 @@ export class RadarRepository {
   }
 }
 
-function genderSourceWriteWhere(
-  incoming: RadarGenderSource
-): Prisma.RadarProfileWhereInput {
+function genderSourceWriteWhere(incoming: RadarGenderSource): Prisma.RadarProfileWhereInput {
   const guard = allowedCurrentSourcesForGenderWrite(incoming)
   if (!guard) return {}
 

@@ -257,6 +257,7 @@ export class PublicFormsUseCase {
     const payload = buildPublicFormMetricQueuePayload(publicId, {
       ...input,
       eventType: input.eventType,
+      createCrmLead: false,
     })
 
     const publishResult = await publishWithRetry(() => publishPublicFormMetricEvent(payload))

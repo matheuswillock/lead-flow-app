@@ -102,6 +102,9 @@ mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
   canUpdateLeadFromExtracted: () => false,
   extractLeadDataFromSnapshot: () => ({}),
   hasCrmGateAC: () => false,
+  isBlankPublicFormAnswerValue: (value: unknown) =>
+    value === undefined || value === null || (typeof value === "string" && value.trim() === ""),
+  publicFormAnswerValueText: (value: unknown) => (typeof value === "string" && value.trim() ? value : null),
   findMatchingLead: mock(async () => null),
   upsertLeadFromFormAnswers: mock(async () => null),
 }))
@@ -113,7 +116,10 @@ mock.module("@/lib/queues/public-form-metric-events", () => ({
 const { PublicFormProgressUseCase } = await import("./PublicFormProgressUseCase")
 
 describe("PublicFormProgressUseCase publicação da sessão", () => {
-  const useCase = new PublicFormProgressUseCase()
+  const useCase = new PublicFormProgressUseCase(
+    { createOrUpdate: mock(async () => null) },
+    () => "radar",
+  )
 
   beforeEach(() => {
     findLatestSessionSubmissionOnForm.mockClear()

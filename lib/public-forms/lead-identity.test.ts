@@ -5,6 +5,7 @@ import {
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
   hasCrmGateAC,
+  overlayRadarIdentityOnExtracted,
   isBrazilianContactPhone,
   isBrazilianLandlinePhone,
   isBrazilianMobilePhone,
@@ -124,21 +125,21 @@ describe("lead identity from public forms", () => {
     expect(canCreateLeadFromExtracted(extracted)).toBe(true)
   })
 
-  it("não cria lead com nome de uma palavra e celular sem e-mail", () => {
+  it("cria lead com nome de uma palavra e celular sem e-mail", () => {
     const extracted = extractLeadDataFromSnapshot(snapshot(), [
       { questionId: nameId, value: "Maria" },
       { questionId: phoneId, value: "(11) 98888-7777" },
     ])
-    expect(canCreateLeadFromExtracted(extracted)).toBe(false)
+    expect(canCreateLeadFromExtracted(extracted)).toBe(true)
   })
 
-  it("não cria lead com nome de uma palavra e telefone fixo mesmo com e-mail", () => {
+  it("cria lead com nome de uma palavra e telefone fixo", () => {
     const extracted = extractLeadDataFromSnapshot(snapshot(), [
       { questionId: nameId, value: "Maria" },
       { questionId: phoneId, value: "(11) 3897-1122" },
       { questionId: emailId, value: "maria@example.com" },
     ])
-    expect(canCreateLeadFromExtracted(extracted)).toBe(false)
+    expect(canCreateLeadFromExtracted(extracted)).toBe(true)
   })
 
   it("não cria lead sem telefone", () => {
@@ -153,7 +154,7 @@ describe("lead identity from public forms", () => {
   it("não cria lead sem nome válido", () => {
     expect(isValidPersonLeadName("andressa.kaminski@primavsa.com.br")).toBe(false)
     expect(isValidPersonLeadName("andressa.kaminski", "andressa.kaminski@primavsa.com.br")).toBe(
-      false
+      false,
     )
     expect(isValidPersonLeadName("financeiro@3pbrasil.com.br")).toBe(false)
     expect(isValidPersonLeadName("CONSORCIO CR ALMEIDA-CONSBEM LTDA")).toBe(false)
@@ -170,5 +171,34 @@ describe("lead identity from public forms", () => {
       { questionId: phoneId, value: "(11) 98888-7777" },
     ])
     expect(canCreateLeadFromExtracted(companyName)).toBe(false)
+  })
+
+  it("overlay do perfil Radar preenche nome e fecha A+C com telefone do form", () => {
+    const extracted = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: phoneId, value: "(11) 98888-7777" },
+    ])
+    expect(hasCrmGateAC(extracted)).toBe(false)
+    const unified = overlayRadarIdentityOnExtracted(extracted, {
+      displayName: "Maria Silva",
+      primaryEmail: null,
+      displayPhone: null,
+      normalizedPhone: null,
+    })
+    expect(unified.name).toBe("Maria Silva")
+    expect(hasCrmGateAC(unified)).toBe(true)
+  })
+
+  it("overlay ignora Visitante Anônimo e converte telefone Radar 55… para dígitos do lead", () => {
+    const extracted = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Maria Silva" },
+    ])
+    const unified = overlayRadarIdentityOnExtracted(extracted, {
+      displayName: "Visitante Anônimo",
+      normalizedPhone: "5511988887777",
+      displayPhone: "+55 11 98888-7777",
+    })
+    expect(unified.name).toBe("Maria Silva")
+    expect(unified.normalizedPhone).toBe("11988887777")
+    expect(hasCrmGateAC(unified)).toBe(true)
   })
 })

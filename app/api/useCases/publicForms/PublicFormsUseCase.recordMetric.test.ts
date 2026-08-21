@@ -93,6 +93,10 @@ describe("PublicFormsUseCase.recordMetric queue-first (PR2.3: sem bypass direto)
       eventType: "form_viewed",
       eventKey: `${VALID_SESSION}:form_viewed:form`,
     })
+    expect(buildPublicFormMetricQueuePayload).toHaveBeenCalledWith(
+      VALID_PUBLIC_ID,
+      expect.objectContaining({ createCrmLead: false }),
+    )
     expect(recordMetricService).not.toHaveBeenCalled()
   })
 

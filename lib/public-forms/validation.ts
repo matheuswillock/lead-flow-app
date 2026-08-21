@@ -294,4 +294,5 @@ export const publicFormMetricEventSchema = z.object({
   questionId: uuid.optional(),
   eventKey: z.string().regex(/^[A-Za-z0-9:_-]{16,250}$/),
   origin: z.record(z.string(), z.unknown()).default({}),
+  answerValue: z.string().max(2000).optional(),
 })

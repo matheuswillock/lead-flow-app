@@ -244,6 +244,11 @@ export interface IPublicFormsRepository {
     formId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  attachLeadIdToSessionSubmission(
+    formId: string,
+    visitorSessionId: string,
+    leadId: string,
+  ): Promise<PublicFormSubmission | null>
   findAvailabilityTeamContext(formId: string): Promise<{
     teamId: string
     team: { master: { timezone: string | null } }
@@ -317,6 +322,7 @@ export interface IPublicFormsRepository {
     targetTeamId: string
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
+  findLeadForSubmission(submissionId: string): Promise<Lead | null>
   findCompletedSubmissionBySession(
     publicationId: string,
     visitorSessionId: string,

@@ -49,9 +49,11 @@ export type PublicFormMetricQueuePayload = {
   questionId: string | null;
   visitorSessionId: string;
   origin: Record<string, unknown>;
-  /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue` — nunca vem do cliente. */
+  /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue`. mappingKey só no servidor. */
   answerMappingKey: string | null;
-  answerValue: string | null;
+  answerValue: unknown;
+  /** `false` no POST público `/events`; identidade originada no Progress usa `true`. */
+  createCrmLead: boolean;
   receivedAt: string;
 };
 
@@ -78,6 +80,7 @@ export function buildPublicFormMetricQueuePayload(
     origin: input.origin ?? {},
     answerMappingKey: input.answerMappingKey ?? null,
     answerValue: input.answerValue ?? null,
+    createCrmLead: input.createCrmLead !== false,
     receivedAt: new Date().toISOString(),
   };
 }
@@ -92,13 +95,19 @@ export async function publishPublicFormMetricEvent(
   });
 }
 
-/** Publish após persist local no servidor. Falha de fila não reverte o persist — o cron/retry do consumer não se aplica; loga a tag. */
+/**
+ * Publish após persist local no servidor. Falha de fila não reverte o persist.
+ * Retorna `false` para o caller processar o evento no mesmo isolate (Radar-gate
+ * A+C) — o cron/retry do consumer não se aplica a este caminho.
+ */
 export async function publishServerPublicFormMetricEvent(
   payload: PublicFormMetricQueuePayload,
   logPrefix: string,
-): Promise<void> {
+  options?: { idempotencyKey?: string },
+): Promise<boolean> {
   try {
-    await publishPublicFormMetricEvent(payload);
+    await publishPublicFormMetricEvent(payload, options);
+    return true;
   } catch (error) {
     console.error(`[${logPrefix}] ${PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG}`, {
       tag: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
@@ -107,6 +116,7 @@ export async function publishServerPublicFormMetricEvent(
       eventKey: payload.eventKey,
       error,
     });
+    return false;
   }
 }
 

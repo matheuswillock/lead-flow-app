@@ -57,6 +57,7 @@ export async function processPublicFormMetricQueueMessage(
     origin: message.origin ?? {},
     answerMappingKey: message.answerMappingKey ?? null,
     answerValue: message.answerValue ?? null,
+    createCrmLead: message.createCrmLead !== false,
   }
 
   try {
@@ -75,7 +76,6 @@ export async function processPublicFormMetricQueueMessage(
       eventType: message.eventType,
       visitorSessionId: message.visitorSessionId,
       questionId: message.questionId ?? null,
-      value: message.answerValue ?? null,
     })
   } catch (error) {
     console.error("[PublicFormMetricEventsQueueRoute][POST] persist failed, will retry", {

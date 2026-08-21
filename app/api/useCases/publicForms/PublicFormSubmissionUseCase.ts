@@ -13,8 +13,15 @@ import {
   validateAnswer,
 } from "@/lib/public-forms/engine"
 import { buildLeadSyncAlerts, formatLeadSyncAlerts } from "@/lib/public-forms/lead-sync-alerts"
-import type { PublicFormAnswerInput, PublicFormSnapshot, PublicFormSubmissionInput } from "@/lib/public-forms/types"
-import { mapAnswersForPersistence, parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import type {
+  PublicFormAnswerInput,
+  PublicFormSnapshot,
+  PublicFormSubmissionInput,
+} from "@/lib/public-forms/types"
+import {
+  mapAnswersForPersistence,
+  parsePublicFormSnapshot,
+} from "@/lib/public-forms/publication-snapshot"
 import { resolvePublicFormPublicationForVisitor } from "@/lib/public-forms/resolve-form-publication"
 import {
   extractLeadDataFromSnapshot,
@@ -22,9 +29,7 @@ import {
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
 import { FORM_COMPLETE_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
-import {
-  buildPublicFormMetricEventKey,
-} from "@/lib/public-forms/metric-keys"
+import { buildPublicFormMetricEventKey } from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
 import {
@@ -32,6 +37,7 @@ import {
   publishServerPublicFormMetricEvent,
 } from "@/lib/queues/public-form-metric-events"
 import { queueSubmissionForBackgroundProcessing } from "@/lib/public-forms/queue-submission-for-background-processing"
+import { resolvePublicFormLeadGateMode } from "@/lib/public-forms/public-form-lead-gate-mode"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -60,7 +66,7 @@ export type PublicFormSubmissionBackgroundJob = {
 function withFormCompletedScoreOrigin(
   origin: Record<string, unknown>,
   score: number,
-  scoreBandLabel: string | null | undefined
+  scoreBandLabel: string | null | undefined,
 ): Record<string, unknown> {
   return {
     ...origin,
@@ -71,7 +77,8 @@ function withFormCompletedScoreOrigin(
 
 export class PublicFormSubmissionUseCase {
   async accept(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
-    if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
+    if (!isValidPublicFormId(publicId))
+      return new Output(false, [], ["Formulário indisponível"], null)
     const current = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
@@ -80,12 +87,7 @@ export class PublicFormSubmissionUseCase {
 
     const existing = await publicFormsRepository.findSubmissionByRequestKey(input.requestKey)
     if (existing && existing.formId !== current.snapshot.formId) {
-      return new Output(
-        false,
-        [],
-        ["Chave de requisição já utilizada em outro formulário"],
-        null,
-      )
+      return new Output(false, [], ["Chave de requisição já utilizada em outro formulário"], null)
     }
 
     if (existing?.status === "completed") {
@@ -195,10 +197,7 @@ export class PublicFormSubmissionUseCase {
 
     const progressSubmission =
       input.visitorSessionId != null
-        ? await publicFormsRepository.findProgressSubmission(
-            publicationId,
-            input.visitorSessionId,
-          )
+        ? await publicFormsRepository.findProgressSubmission(publicationId, input.visitorSessionId)
         : null
 
     const submission = progressSubmission
@@ -252,6 +251,14 @@ export class PublicFormSubmissionUseCase {
 
     try {
       const form = await publicFormsRepository.findFormSubmissionContext(job.snapshot.formId)
+      const leadGateMode = resolvePublicFormLeadGateMode(form.teamId)
+      let attributionResult: {
+        leadId: string | null
+        enrichedOrigin: Record<string, unknown>
+      } | null = null
+      let origin = job.origin
+      let upserted: Awaited<ReturnType<typeof upsertLeadFromFormAnswers>> = null
+      let lead: Lead | null = null
 
       const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
         teamId: form.teamId,
@@ -264,34 +271,57 @@ export class PublicFormSubmissionUseCase {
         origin: job.origin,
         visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
       })
-      const attributionResult = attribution.isValid
-        ? (attribution.result as {
-            leadId: string | null
-            enrichedOrigin: Record<string, unknown>
-          } | null)
-        : null
-      const origin = attributionResult?.enrichedOrigin
+      if (!attribution.isValid) {
+        throw new Error(
+          attribution.errorMessages.join("; ") || "Falha ao atribuir formulário à campanha",
+        )
+      }
+      attributionResult = attribution.result as {
+        leadId: string | null
+        enrichedOrigin: Record<string, unknown>
+      } | null
+      origin = attributionResult?.enrichedOrigin
         ? sanitizePublicFormOrigin(attributionResult.enrichedOrigin)
         : job.origin
 
-      const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
-      const match = await findMatchingLead(form.teamId, extracted)
-      alerts.push(...buildLeadSyncAlerts(extracted, match))
+      if (leadGateMode === "radar") {
+        lead = await publicFormsRepository.findLeadForSubmission(job.submissionId)
+        const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
+        const match = await findMatchingLead(form.teamId, extracted)
+        alerts.push(...buildLeadSyncAlerts(extracted, match))
+        const enriched = await upsertLeadFromFormAnswers({
+          form,
+          snapshot: job.snapshot,
+          answers: job.visibleAnswers,
+          visibleIds: visible,
+          score: job.score,
+          scoreBandLabel: job.scoreBandLabel,
+          submissionId: job.submissionId,
+          publicationId: job.publicationId,
+          origin,
+          extraNotes: job.bandNote,
+          allowCreate: false,
+        })
+        lead = enriched?.lead ?? lead
+      } else {
+        const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
+        const match = await findMatchingLead(form.teamId, extracted)
+        alerts.push(...buildLeadSyncAlerts(extracted, match))
+        upserted = await upsertLeadFromFormAnswers({
+          form,
+          snapshot: job.snapshot,
+          answers: job.visibleAnswers,
+          visibleIds: visible,
+          score: job.score,
+          scoreBandLabel: job.scoreBandLabel,
+          submissionId: job.submissionId,
+          publicationId: job.publicationId,
+          origin,
+          extraNotes: job.bandNote,
+        })
+        lead = upserted?.lead ?? null
+      }
 
-      const upserted = await upsertLeadFromFormAnswers({
-        form,
-        snapshot: job.snapshot,
-        answers: job.visibleAnswers,
-        visibleIds: visible,
-        score: job.score,
-        scoreBandLabel: job.scoreBandLabel,
-        submissionId: job.submissionId,
-        publicationId: job.publicationId,
-        origin,
-        extraNotes: job.bandNote,
-      })
-
-      const lead = upserted?.lead ?? null
       const resolvedLeadId = lead?.id ?? attributionResult?.leadId ?? null
 
       let scheduled = false
@@ -317,7 +347,7 @@ export class PublicFormSubmissionUseCase {
       const formCompletedOrigin = withFormCompletedScoreOrigin(
         origin,
         job.score,
-        job.scoreBandLabel
+        job.scoreBandLabel,
       ) as Prisma.InputJsonValue
       const metricEvents: Array<{
         formId: string
@@ -340,9 +370,7 @@ export class PublicFormSubmissionUseCase {
       ]
 
       if (lead || attributionResult?.leadId) {
-        const eventType = upserted?.created
-          ? ("lead_created" as const)
-          : ("lead_attached" as const)
+        const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
         metricEvents.push({
           formId: job.snapshot.formId,
           publicationId: job.publicationId,
@@ -383,17 +411,15 @@ export class PublicFormSubmissionUseCase {
               score: job.score,
               scoreBand: job.scoreBandLabel,
               origin,
-              emailLogId:
-                typeof origin.emailLogId === "string" ? origin.emailLogId : null,
-              campaignId:
-                typeof origin.campaignId === "string" ? origin.campaignId : null,
+              emailLogId: typeof origin.emailLogId === "string" ? origin.emailLogId : null,
+              campaignId: typeof origin.campaignId === "string" ? origin.campaignId : null,
             })
           : undefined,
         metricEvents,
       })
 
       for (const event of metricEvents) {
-        await publishServerPublicFormMetricEvent(
+        const published = await publishServerPublicFormMetricEvent(
           buildPublicFormMetricQueuePayload(form.publicId, {
             visitorSessionId: event.visitorSessionId,
             eventType: event.eventType,
@@ -402,49 +428,15 @@ export class PublicFormSubmissionUseCase {
           }),
           "PublicFormSubmissionUseCase",
         )
+        if (!published) {
+          throw new Error(`Falha ao publicar evento ${event.eventType} da submissão`)
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao processar respostas"
       console.error("[PublicFormSubmissionUseCase][processInBackground]", message)
-      alerts.push(message)
-      const fallbackVisitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
-      const fallbackOrigin = withFormCompletedScoreOrigin(
-        job.origin,
-        job.score,
-        job.scoreBandLabel
-      )
-      const fallbackMetricEvents = [
-        {
-          formId: job.snapshot.formId,
-          publicationId: job.publicationId,
-          visitorSessionId: fallbackVisitorSessionId,
-          eventType: "form_completed" as const,
-          eventKey: buildPublicFormMetricEventKey(fallbackVisitorSessionId, "form_completed"),
-          origin: fallbackOrigin as Prisma.InputJsonValue,
-        },
-      ]
-      await publicFormsRepository.completeSubmission({
-        submissionId: job.submissionId,
-        leadId: null,
-        processingAlerts: formatLeadSyncAlerts(alerts),
-        answers,
-        metricEvents: fallbackMetricEvents,
-      })
-
-      const teamCtx = await publicFormsRepository.findAvailabilityTeamContext(job.snapshot.formId)
-      if (teamCtx?.publicId) {
-        for (const event of fallbackMetricEvents) {
-          await publishServerPublicFormMetricEvent(
-            buildPublicFormMetricQueuePayload(teamCtx.publicId, {
-              visitorSessionId: event.visitorSessionId,
-              eventType: event.eventType,
-              eventKey: event.eventKey,
-              origin: fallbackOrigin,
-            }),
-            "PublicFormSubmissionUseCase",
-          )
-        }
-      }
+      await publicFormsRepository.markSubmissionFailed(job.submissionId, message)
+      throw error
     }
   }
 
