@@ -149,12 +149,19 @@ export type PublicFormProgressInput = {
   answers: PublicFormAnswerInput[]
   origin?: Record<string, unknown>
   lastQuestionId?: string
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
+  trigger?: "blur" | "change" | "page_flush" | "submit_reconciliation"
 }
 
 export type PublicFormSubmissionInput = {
   requestKey: string
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
   scheduling?: { startsAt: string }
   thankYouPageId?: string
   visitorSessionId?: string
@@ -162,6 +169,9 @@ export type PublicFormSubmissionInput = {
 
 export type PublicFormMetricEventInput = {
   visitorSessionId: string
+  schemaVersion?: 1
+  eventId?: string
+  occurredAt?: string
   eventType:
     | "form_viewed"
     | "form_started"

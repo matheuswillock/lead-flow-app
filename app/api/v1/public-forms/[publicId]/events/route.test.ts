@@ -92,7 +92,7 @@ describe("POST /api/v1/public-forms/[publicId]/events", () => {
     expect(recordMetric.mock.calls[0]?.[1]).toMatchObject({ eventType: "form_started" })
   })
 
-  it("falha de publish: retorna 502 instrumentado com tag public_form_metric_queue_publish_failed", async () => {
+  it("falha de publish: retorna 503 retryable instrumentado com tag public_form_metric_queue_publish_failed", async () => {
     recordMetric.mockResolvedValueOnce(
       new Output(false, [], ["Falha ao enfileirar evento de métrica"], {
         code: PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG,
@@ -101,25 +101,41 @@ describe("POST /api/v1/public-forms/[publicId]/events", () => {
 
     const res = await POST(makeRequest({
       visitorSessionId: VALID_SESSION,
-      eventType: "question_answered",
+      eventType: "form_started",
       questionId: "11111111-1111-4111-8111-111111111111",
-      eventKey: `${VALID_SESSION}:question_answered:q1`,
+      eventKey: `${VALID_SESSION}:form_started:q1`,
       origin: {},
     }), { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) })
 
-    expect(res.status).toBe(502)
+    expect(res.status).toBe(503)
     const body = (await res.json()) as {
       isValid: boolean
-      result: { code?: string }
+      result: { retryable?: boolean }
     }
     expect(body.isValid).toBe(false)
-    expect(body.result.code).toBe(PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG)
+    expect(body.result.retryable).toBe(true)
   })
 
   it("payload inválido: retorna 400 sem chamar recordMetric", async () => {
     const res = await POST(makeRequest({ eventType: "form_viewed" }), {
       params: Promise.resolve({ publicId: VALID_PUBLIC_ID }),
     })
+    expect(res.status).toBe(400)
+    expect(recordMetric).not.toHaveBeenCalled()
+  })
+
+  it("rejeita question_answered: respostas só entram pelo endpoint de progresso", async () => {
+    const res = await POST(
+      makeRequest({
+        visitorSessionId: VALID_SESSION,
+        eventType: "question_answered",
+        questionId: "11111111-1111-4111-8111-111111111111",
+        eventKey: `${VALID_SESSION}:question_answered:q1`,
+        origin: {},
+      }),
+      { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) },
+    )
+
     expect(res.status).toBe(400)
     expect(recordMetric).not.toHaveBeenCalled()
   })

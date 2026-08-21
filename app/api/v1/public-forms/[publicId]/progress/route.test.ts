@@ -65,15 +65,13 @@ describe("POST /api/v1/public-forms/[publicId]/progress", () => {
     const body = (await res.json()) as { result: { queued?: boolean } }
     expect(body.result.queued).toBe(true)
     expect(queueProgressForBackgroundProcessing).toHaveBeenCalledTimes(1)
-    expect(info).toHaveBeenCalledWith(
-      "[PublicFormProgress][blur]",
-      expect.objectContaining({
-        publicId: VALID_PUBLIC_ID,
-        visitorSessionId: VALID_SESSION,
-        questionId: QUESTION_ID,
-        value: "Ana",
-      }),
-    )
+    expect(info).toHaveBeenCalledWith("[PublicFormProgressRoute][POST] recebido", {
+      publicId: VALID_PUBLIC_ID,
+      visitorSessionId: VALID_SESSION,
+      answerCount: 1,
+      eventId: null,
+      trigger: "blur",
+    })
   })
 
   it("progresso inválido: 400 sem publicar", async () => {
