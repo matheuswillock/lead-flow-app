@@ -37,7 +37,6 @@ export interface IRadarPublicFormProfileRepository {
     normalizedPrimaryEmail?: string | null
     lastSeenAt?: Date
   }): Promise<RadarPublicFormResolvedProfile>
-  applyFormAnswerDisplayName(profileId: string, teamId: string, displayName: string): Promise<void>
   appendEventIfNewBySourceKey(input: {
     profileId: string
     teamId: string
