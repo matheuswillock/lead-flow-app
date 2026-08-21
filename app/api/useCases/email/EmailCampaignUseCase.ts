@@ -122,13 +122,20 @@ import {
   type DispatchLogCounters,
 } from "@/lib/email/campaign-dispatch-progress"
 import {
+  publishEmailCampaignDispatchOverflowWake,
   publishEmailCampaignDispatchWake,
 } from "@/lib/queues/email-campaign-dispatch"
-import { isCampaignFailedRetry } from "@/lib/email/campaign-dispatch-copy"
+import {
+  EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE,
+  isCampaignFailedRetry,
+} from "@/lib/email/campaign-dispatch-copy"
+import {
+  ORPHAN_RESUME_MIN_AGE_MS,
+  resolveEmailCampaignDispatchWakeQueue,
+  STUCK_SENDING_THRESHOLD_MS,
+} from "@/lib/email/dispatch-wake-queue"
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
-const STUCK_SENDING_THRESHOLD_MS = 30 * 60 * 1000
-const ORPHAN_RESUME_MIN_AGE_MS = 2 * 60 * 1000
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
 /** Lote máximo de destinatários `queued` processado por invocação do consumer da fila (Fase 4 / PR1). */
@@ -3499,13 +3506,10 @@ export class EmailCampaignUseCase {
   }
 
   /**
-   * Campanhas em `sending` há mais de `STUCK_SENDING_THRESHOLD_MS`. Com o disparo
-   * agora sempre processado em lotes pela fila (ver `dispatchScheduledCampaigns`),
-   * "sending" há muito tempo não significa mais travado por padrão — pode só ser
-   * uma lista grande ainda em processamento. Espelha `BackofficeEmailCampaignUseCase.recoverStuckDispatches`:
-   * só falha de verdade campanhas sem nenhum dispatch (órfãs reais) ou dispatches
-   * sem `EmailLog` `queued` restante; se ainda há trabalho na fila, republica o
-   * wake em vez de sobrescrever um envio em andamento com "failed".
+   * Campanhas em `sending` há mais de `STUCK_SENDING_THRESHOLD_MS` (idade do
+   * dispatch/`createdAt`, não `updatedAt` de webhook). Timeout **não** falha o
+   * envio: trabalho restante acorda a fila principal ou overflow; sem dispatch
+   * → `draft`; audiência completa sem `queued` → `finalizeDispatchQueueBatch`.
    */
   async recoverStuckSendingCampaigns(now = new Date()): Promise<number> {
     const threshold = new Date(now.getTime() - STUCK_SENDING_THRESHOLD_MS)
@@ -3538,7 +3542,12 @@ export class EmailCampaignUseCase {
           "[EmailCampaignUseCase][recoverStuckSendingCampaigns] dispatch com queued pendente — republicando wake em vez de falhar",
           { campaignId: campaign.id, dispatchId: dispatch.id, queuedCount }
         )
-        await this.publishDispatchWake(dispatch.id, "cron-reclaim", queuedCount)
+        await this.publishDispatchWake({
+          dispatchId: dispatch.id,
+          reason: "cron-reclaim",
+          remainingCount: queuedCount,
+          createdAt: dispatch.createdAt,
+        })
         reconciledCount += 1
         continue
       }
@@ -3555,7 +3564,11 @@ export class EmailCampaignUseCase {
             materializeSourceOffset: dispatch.materializeSourceOffset,
           }
         )
-        await this.publishDispatchWake(dispatch.id, "cron-reclaim")
+        await this.publishDispatchWake({
+          dispatchId: dispatch.id,
+          reason: "cron-reclaim",
+          createdAt: dispatch.createdAt,
+        })
         reconciledCount += 1
         continue
       }
@@ -3628,8 +3641,8 @@ export class EmailCampaignUseCase {
   }
 
   /**
-   * Retoma dispatches manuais órfãos (ex.: after() cortado) que ainda têm logs queued
-   * e não atingiram o timeout de stuck.
+   * Retoma dispatches `sending` com trabalho restante. Sem janela `updatedAt`
+   * de webhook — só `minAge` curto para não competir com o lote em voo.
    */
   async resumeOrphanSendingDispatches(options?: {
     maxDispatches?: number
@@ -3637,13 +3650,12 @@ export class EmailCampaignUseCase {
   }): Promise<number> {
     const now = options?.now ?? new Date()
     const maxDispatches = options?.maxDispatches ?? DEFAULT_ORPHAN_RESUME_BATCH_SIZE
-    const stuckThreshold = new Date(now.getTime() - STUCK_SENDING_THRESHOLD_MS)
     const minAge = new Date(now.getTime() - ORPHAN_RESUME_MIN_AGE_MS)
 
     const orphanDispatches = await this.db.emailCampaignDispatch.findMany({
       where: {
         status: "sending",
-        updatedAt: { lt: minAge, gte: stuckThreshold },
+        createdAt: { lt: minAge },
         campaign: { status: "sending" },
       },
       select: {
@@ -3661,6 +3673,7 @@ export class EmailCampaignUseCase {
         templateId: true,
         reservedCredits: true,
         hasCampaignsBetaAccess: true,
+        createdAt: true,
         campaign: { select: { name: true } },
       },
       orderBy: { updatedAt: "asc" },
@@ -3689,7 +3702,12 @@ export class EmailCampaignUseCase {
               existingLogCount,
               totalRecipients: dispatch.totalRecipients,
             })
-            await this.publishDispatchWake(dispatch.id, "cron-start")
+            await this.publishDispatchWake({
+              dispatchId: dispatch.id,
+              reason: "cron-start",
+              createdAt: dispatch.createdAt,
+              now,
+            })
             resumed += 1
             continue
           }
@@ -3783,7 +3801,12 @@ export class EmailCampaignUseCase {
           dispatchId: dispatch.id,
           queued: queuedLogs.length,
         })
-        await this.publishDispatchWake(dispatch.id, "cron-start")
+        await this.publishDispatchWake({
+          dispatchId: dispatch.id,
+          reason: "cron-start",
+          createdAt: dispatch.createdAt,
+          now,
+        })
         resumed += 1
       } catch (error) {
         console.error("[EmailCampaignUseCase][resumeOrphanSendingDispatches]", {
@@ -3797,21 +3820,36 @@ export class EmailCampaignUseCase {
   }
 
   /**
-   * Publica (ou republica) o wake da fila `email-campaign-dispatch` para um dispatch.
-   * Falha de publish aqui não derruba o caller: o cron `recoverStuck`/reclaim
-   * é a rede de segurança que reabre dispatches travados sem wake.
+   * Publica (ou republica) o wake da fila principal ou overflow conforme a
+   * idade do dispatch. Falha de publish não derruba o caller: o cron
+   * `recoverStuck`/reclaim reabre dispatches travados sem wake.
    */
-  private async publishDispatchWake(
-    dispatchId: string,
-    reason: "start" | "cron-start" | "cron-reclaim" | "continue",
+  private async publishDispatchWake(params: {
+    dispatchId: string
+    reason: "start" | "cron-start" | "cron-reclaim" | "continue"
     remainingCount?: number
-  ): Promise<void> {
+    createdAt?: Date
+    now?: Date
+  }): Promise<void> {
+    const { dispatchId, reason, remainingCount } = params
+    const queue =
+      params.createdAt != null
+        ? resolveEmailCampaignDispatchWakeQueue({
+            createdAt: params.createdAt,
+            now: params.now,
+          })
+        : "main"
+    const publish =
+      queue === "overflow"
+        ? publishEmailCampaignDispatchOverflowWake
+        : publishEmailCampaignDispatchWake
     try {
-      await publishEmailCampaignDispatchWake({ dispatchId, reason, remainingCount })
+      await publish({ dispatchId, reason, remainingCount })
     } catch (error) {
       console.error("[EmailCampaignUseCase][publishDispatchWake]", {
         dispatchId,
         reason,
+        queue,
         error,
       })
     }
@@ -3830,6 +3868,43 @@ export class EmailCampaignUseCase {
    * restante dos destinatários nunca seria enviado.
    */
   async processDispatchQueueBatch(
+    dispatchId: string,
+    options?: { batchSize?: number }
+  ): Promise<Output> {
+    const outcome = await this.repository.runWithDispatchProcessingLock(dispatchId, () =>
+      this.processLockedDispatchQueueBatch(dispatchId, options)
+    )
+    if (!outcome.acquired) {
+      console.info("[EmailCampaignUseCase][processDispatchQueueBatch] lock ocupado, ack sem reenviar", {
+        dispatchId,
+      })
+      return new Output(true, ["Disparo já em processamento noutro isolate"], [], {
+        dispatchId,
+        hasMore: false,
+        skipped: true,
+      })
+    }
+    return outcome.result
+  }
+
+  private async isDispatchStillSending(dispatchId: string): Promise<boolean> {
+    const live = await this.repository.findDispatchCampaignSendState(dispatchId)
+    return live?.dispatchStatus === "sending" && live.campaignStatus === "sending"
+  }
+
+  /**
+   * Consumer da fila `email-campaign-dispatch` (Fase 4 / PR1): processa **um lote**
+   * (até `DISPATCH_QUEUE_BATCH_SIZE`) de destinatários `queued` do dispatch e, se
+   * sobrar mais, republica o wake em vez de tentar enviar tudo numa única invocação
+   * (causa dos timeouts/504 do cron `dispatch-scheduled` e do `after()` do `/send`).
+   *
+   * Reconstrói o `ManualDispatchJob` do lote a partir do `dispatchId` + logs `queued`,
+   * no mesmo padrão de `resumeOrphanSendingDispatches`. Só chama
+   * `commitDispatchTerminalState` quando não sobrar nenhum `queued` (última chamada),
+   * nunca em lote parcial — senão o dispatch seria fechado prematuramente e o
+   * restante dos destinatários nunca seria enviado.
+   */
+  private async processLockedDispatchQueueBatch(
     dispatchId: string,
     options?: { batchSize?: number }
   ): Promise<Output> {
@@ -3853,9 +3928,11 @@ export class EmailCampaignUseCase {
         reservedCredits: true,
         hasCampaignsBetaAccess: true,
         materializeSourceOffset: true,
+        createdAt: true,
         campaign: {
           select: {
             name: true,
+            status: true,
             audienceContactIds: true,
             contactListId: true,
             radarSegmentSlug: true,
@@ -3871,7 +3948,17 @@ export class EmailCampaignUseCase {
       return new Output(true, ["Disparo já finalizado"], [], { dispatchId, hasMore: false })
     }
 
-    await this.touchSendingDispatchHeartbeat(dispatch.campaignId)
+    if (dispatch.campaign.status !== "sending") {
+      console.info("[EmailCampaignUseCase][processDispatchQueueBatch] campanha não está em sending, ack sem Resend", {
+        dispatchId,
+        campaignStatus: dispatch.campaign.status,
+      })
+      return new Output(true, ["Disparo cancelado ou já finalizado"], [], {
+        dispatchId,
+        hasMore: false,
+        skipped: true,
+      })
+    }
 
     let teamSettings = null
     try {
@@ -3927,6 +4014,16 @@ export class EmailCampaignUseCase {
 
     let materializedHasMore = false
     if (queuedLogs.length === 0) {
+      if (!(await this.isDispatchStillSending(dispatchId))) {
+        console.info("[EmailCampaignUseCase][processDispatchQueueBatch] cancelado antes de materializar", {
+          dispatchId,
+        })
+        return new Output(true, ["Disparo cancelado ou já finalizado"], [], {
+          dispatchId,
+          hasMore: false,
+          skipped: true,
+        })
+      }
       const materialized = await this.materializeQueuedLogsChunk(dispatch, batchSize)
       if (materialized.errorMessage) {
         await this.failDispatchOnDomainGuard(dispatch, materialized.errorMessage)
@@ -3946,7 +4043,11 @@ export class EmailCampaignUseCase {
       }
       if (queuedLogs.length === 0) {
         if (materializedHasMore) {
-          await this.publishDispatchWake(dispatch.id, "continue")
+          await this.publishDispatchWake({
+            dispatchId: dispatch.id,
+            reason: "continue",
+            createdAt: dispatch.createdAt,
+          })
           return new Output(true, ["Lote de destinatários materializado"], [], {
             dispatchId: dispatch.id,
             remaining: 0,
@@ -3971,6 +4072,17 @@ export class EmailCampaignUseCase {
 
     const { valid: validRecipients, invalid: invalidRecipients } =
       this.partitionRecipientsByEmailValidity(recipients)
+
+    if (!(await this.isDispatchStillSending(dispatchId))) {
+      console.info("[EmailCampaignUseCase][processDispatchQueueBatch] cancelado antes do Resend", {
+        dispatchId,
+      })
+      return new Output(true, ["Disparo cancelado ou já finalizado"], [], {
+        dispatchId,
+        hasMore: false,
+        skipped: true,
+      })
+    }
 
     const dispatchResult =
       validRecipients.length > 0
@@ -4077,7 +4189,12 @@ export class EmailCampaignUseCase {
         remainingQueued,
         materializedHasMore,
       })
-      await this.publishDispatchWake(dispatch.id, "continue", remaining)
+      await this.publishDispatchWake({
+        dispatchId: dispatch.id,
+        reason: "continue",
+        remainingCount: remaining,
+        createdAt: dispatch.createdAt,
+      })
       return new Output(
         true,
         [`Lote processado: ${dispatchResult.sent} enviado(s), ${remaining} restante(s)`],
@@ -4210,6 +4327,7 @@ export class EmailCampaignUseCase {
     const staleDispatches = await this.db.emailCampaignDispatch.findMany({
       where: {
         status: { in: [...TERMINAL_DISPATCH_STATUSES_FOR_RECLAIM] },
+        NOT: { errorMessage: EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE },
         logs: { some: { status: "queued" } },
       },
       select: { id: true, campaignId: true },
@@ -4230,7 +4348,7 @@ export class EmailCampaignUseCase {
             data: { status: "sending", errorMessage: null },
           }),
         ])
-        await this.publishDispatchWake(dispatch.id, "cron-reclaim")
+        await this.publishDispatchWake({ dispatchId: dispatch.id, reason: "cron-reclaim" })
         reclaimed += 1
         console.info("[EmailCampaignUseCase][reclaimCompletedDispatchesWithQueuedLogs] reaberto", {
           dispatchId: dispatch.id,
@@ -4254,14 +4372,6 @@ export class EmailCampaignUseCase {
     await this.db.emailCampaignDispatch.update({
       where: { id: dispatchId },
       data: { materializeSourceOffset: Math.max(0, sourceOffset) },
-    })
-  }
-
-  /** Evita que campanha grande em fila saudável entre no recovery de 30 min. */
-  private async touchSendingDispatchHeartbeat(campaignId: string): Promise<void> {
-    await this.db.emailCampaign.update({
-      where: { id: campaignId },
-      data: { updatedAt: new Date() },
     })
   }
 
@@ -4379,7 +4489,7 @@ export class EmailCampaignUseCase {
     const chunk = selected
     if (chunk.length === 0) {
       await this.persistMaterializeSourceOffset(dispatch.id, sourceOffset)
-      return { created: 0, hasMore: false }
+      return { created: 0, hasMore: !exhausted }
     }
 
     const enriched = await enrichCampaignRecipientsWithRadar(dispatch.teamId, chunk)
@@ -4790,7 +4900,7 @@ export class EmailCampaignUseCase {
         // A audiência é resolvida e os EmailLog `queued` são criados em lotes de
         // DISPATCH_QUEUE_BATCH_SIZE por materializeQueuedLogsChunk, acionado pelo
         // consumer da fila a partir do wake abaixo — nunca de uma vez só aqui.
-        await this.publishDispatchWake(dispatchRecord.id, "cron-start")
+        await this.publishDispatchWake({ dispatchId: dispatchRecord.id, reason: "cron-start" })
         dispatched++
         const scheduledLabel = campaign.scheduledAt
           ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
@@ -5007,7 +5117,7 @@ export class EmailCampaignUseCase {
           },
           data: {
             status: "failed",
-            errorMessage: "Cancelado pelo usuário",
+            errorMessage: EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE,
           },
         })
 
