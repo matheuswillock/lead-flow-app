@@ -260,33 +260,50 @@ export class PublicFormSubmissionUseCase {
       let upserted: Awaited<ReturnType<typeof upsertLeadFromFormAnswers>> = null
       let lead: Lead | null = null
 
+      const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
+        teamId: form.teamId,
+        formId: form.id,
+        formName: form.name,
+        formPublicId: form.publicId,
+        publicationId: job.publicationId,
+        emailCampaignTrackingEnabled: form.emailCampaignTrackingEnabled,
+        eventType: "form_completed",
+        origin: job.origin,
+        visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
+      })
+      if (!attribution.isValid) {
+        throw new Error(
+          attribution.errorMessages.join("; ") || "Falha ao atribuir formulário à campanha",
+        )
+      }
+      attributionResult = attribution.result as {
+        leadId: string | null
+        enrichedOrigin: Record<string, unknown>
+      } | null
+      origin = attributionResult?.enrichedOrigin
+        ? sanitizePublicFormOrigin(attributionResult.enrichedOrigin)
+        : job.origin
+
       if (leadGateMode === "radar") {
         lead = await publicFormsRepository.findLeadForSubmission(job.submissionId)
-      } else {
-        const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
-          teamId: form.teamId,
-          formId: form.id,
-          formName: form.name,
-          formPublicId: form.publicId,
+        const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
+        const match = await findMatchingLead(form.teamId, extracted)
+        alerts.push(...buildLeadSyncAlerts(extracted, match))
+        const enriched = await upsertLeadFromFormAnswers({
+          form,
+          snapshot: job.snapshot,
+          answers: job.visibleAnswers,
+          visibleIds: visible,
+          score: job.score,
+          scoreBandLabel: job.scoreBandLabel,
+          submissionId: job.submissionId,
           publicationId: job.publicationId,
-          emailCampaignTrackingEnabled: form.emailCampaignTrackingEnabled,
-          eventType: "form_completed",
-          origin: job.origin,
-          visitorSessionId: (job.visitorSessionId ?? job.requestKey).slice(0, 100),
+          origin,
+          extraNotes: job.bandNote,
+          allowCreate: false,
         })
-        if (!attribution.isValid) {
-          throw new Error(
-            attribution.errorMessages.join("; ") || "Falha ao atribuir formulário à campanha",
-          )
-        }
-        attributionResult = attribution.result as {
-          leadId: string | null
-          enrichedOrigin: Record<string, unknown>
-        } | null
-        origin = attributionResult?.enrichedOrigin
-          ? sanitizePublicFormOrigin(attributionResult.enrichedOrigin)
-          : job.origin
-
+        lead = enriched?.lead ?? lead
+      } else {
         const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
         const match = await findMatchingLead(form.teamId, extracted)
         alerts.push(...buildLeadSyncAlerts(extracted, match))

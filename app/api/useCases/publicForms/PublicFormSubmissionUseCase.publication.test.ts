@@ -133,7 +133,15 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
 mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
   canCreateLeadFromExtracted: () => false,
   canUpdateLeadFromExtracted: () => false,
-  extractLeadDataFromSnapshot: () => ({}),
+  extractLeadDataFromSnapshot: () => ({
+    name: "Ana",
+    email: "",
+    phone: "",
+    normalizedPhone: "",
+    native: {},
+    custom: {},
+    notes: [],
+  }),
   findMatchingLead,
   upsertLeadFromFormAnswers,
 }))
@@ -238,7 +246,7 @@ describe("PublicFormSubmissionUseCase.accept publicação da sessão", () => {
     expect(createArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
   })
 
-  it("modo radar não executa o criador legado durante a submissão", async () => {
+  it("modo radar apenas enriquece o lead existente, sem permitir criação legada", async () => {
     const previousMode = process.env.PUBLIC_FORM_LEAD_GATE_MODE
     process.env.PUBLIC_FORM_LEAD_GATE_MODE = "radar"
 
@@ -257,9 +265,11 @@ describe("PublicFormSubmissionUseCase.accept publicação da sessão", () => {
       })
 
       expect(findLeadForSubmission).toHaveBeenCalledWith("sub-radar")
-      expect(attributionExecute).not.toHaveBeenCalled()
-      expect(findMatchingLead).not.toHaveBeenCalled()
-      expect(upsertLeadFromFormAnswers).not.toHaveBeenCalled()
+      expect(attributionExecute).toHaveBeenCalledTimes(1)
+      expect(findMatchingLead).toHaveBeenCalledTimes(1)
+      expect(upsertLeadFromFormAnswers).toHaveBeenCalledWith(
+        expect.objectContaining({ allowCreate: false }),
+      )
       expect(completeSubmission).toHaveBeenCalledTimes(1)
     } finally {
       if (previousMode === undefined) delete process.env.PUBLIC_FORM_LEAD_GATE_MODE

@@ -50,8 +50,10 @@ export interface IRadarCrmLeadPort {
   findIdentityMatches(profile: RadarLeadGateProfile): Promise<RadarCrmIdentityMatch>
   createOrUpdateFromRadarProfile(input: {
     teamId: string
+    formId: string
     profile: RadarLeadGateProfile
     existingLeadId: string | null
+    origin: Record<string, unknown>
   }): Promise<RadarLeadGatePromotionResult>
 }
 

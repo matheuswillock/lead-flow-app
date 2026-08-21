@@ -151,6 +151,7 @@ describe("SyncPublicFormMetricToRadarUseCase", () => {
       visitorSessionId: "session-1",
       radarProfileId: "visitor-profile",
       eventId: "session-1:question_answered:name:revision-1",
+      origin: {},
     })
     expect(output.result).toMatchObject({ leadId: "lead-1" })
   })

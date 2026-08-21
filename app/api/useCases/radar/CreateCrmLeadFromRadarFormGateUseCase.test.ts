@@ -87,8 +87,10 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     expect(output.result).toEqual({ leadId: "lead-1", created: true })
     expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith({
       teamId: "team-1",
+      formId: input.formId,
       profile,
       existingLeadId: null,
+      origin: {},
     })
     expect(linkLeadIdentity).toHaveBeenCalledTimes(1)
     expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({

@@ -23,6 +23,7 @@ type GateInput = {
   visitorSessionId: string
   radarProfileId: string
   eventId: string
+  origin?: Record<string, unknown>
 }
 type EligibilityInput = { teamId: string; radarProfileId: string }
 
@@ -177,6 +178,10 @@ export class SyncPublicFormMetricToRadarUseCase {
       visitorSessionId: input.visitorSessionId,
       radarProfileId,
       eventId: input.eventKey,
+      origin:
+        input.origin && typeof input.origin === "object"
+          ? (input.origin as Record<string, unknown>)
+          : {},
     })
   }
 

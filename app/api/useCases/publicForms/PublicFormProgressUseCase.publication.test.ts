@@ -116,7 +116,10 @@ mock.module("@/lib/queues/public-form-metric-events", () => ({
 const { PublicFormProgressUseCase } = await import("./PublicFormProgressUseCase")
 
 describe("PublicFormProgressUseCase publicação da sessão", () => {
-  const useCase = new PublicFormProgressUseCase()
+  const useCase = new PublicFormProgressUseCase(
+    { createOrUpdate: mock(async () => null) },
+    () => "radar",
+  )
 
   beforeEach(() => {
     findLatestSessionSubmissionOnForm.mockClear()

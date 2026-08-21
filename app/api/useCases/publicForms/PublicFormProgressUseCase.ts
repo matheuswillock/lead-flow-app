@@ -28,6 +28,14 @@ import {
   buildPublicFormMetricQueuePayload,
   publishServerPublicFormMetricEvent,
 } from "@/lib/queues/public-form-metric-events"
+import {
+  legacyPublicFormProgressLeadService,
+  type ILegacyPublicFormProgressLeadService,
+} from "@/app/api/services/PublicForms/LegacyPublicFormProgressLeadService"
+import {
+  resolvePublicFormLeadGateMode,
+  type PublicFormLeadGateMode,
+} from "@/lib/public-forms/public-form-lead-gate-mode"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -49,6 +57,14 @@ async function processQuestionAnsweredWhenQueueUnavailable(
 }
 
 export class PublicFormProgressUseCase {
+  constructor(
+    private readonly legacyLeadCreator: ILegacyPublicFormProgressLeadService =
+      legacyPublicFormProgressLeadService,
+    private readonly resolveLeadGateMode: (
+      teamId: string,
+    ) => PublicFormLeadGateMode = resolvePublicFormLeadGateMode,
+  ) {}
+
   async execute(publicId: string, input: PublicFormProgressInput): Promise<Output> {
     if (!isValidPublicFormId(publicId))
       return new Output(false, [], ["Formulário indisponível"], null)
@@ -92,7 +108,20 @@ export class PublicFormProgressUseCase {
 
     const requestKey = `progress:${input.visitorSessionId}:${publicationId}`
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
-    const sessionLeadId: string | null = resolved.sessionSubmission?.leadId ?? null
+    let sessionLeadId: string | null = resolved.sessionSubmission?.leadId ?? null
+    const leadGateMode = this.resolveLeadGateMode(form.teamId)
+    if (leadGateMode !== "radar") {
+      const legacyLead = await this.legacyLeadCreator.createOrUpdate({
+        form,
+        snapshot,
+        answers: visibleAnswers,
+        visibleIds: visible,
+        publicationId,
+        origin,
+        allowCreate: !sessionLeadId,
+      })
+      sessionLeadId = legacyLead?.lead.id ?? sessionLeadId
+    }
     const answerPayload = mapAnswersForPersistence(snapshot, visibleAnswers)
 
     const submission = await publicFormsRepository.upsertProgressSubmission({

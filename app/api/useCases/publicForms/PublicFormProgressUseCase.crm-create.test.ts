@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { buildPublicFormIdentityGateIdempotencyKey } from "@/lib/public-forms/metric-keys"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import type { UpsertLeadResult } from "./publicFormLeadSync"
 import {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
@@ -111,7 +112,7 @@ const findFormSubmissionContext = mock(async () => ({
 const listSubmissionAnswers = mock(async () => [] as Array<{ questionId: string; value: unknown }>)
 const upsertProgressSubmission = mock(async () => ({ id: "sub-progress" }))
 const upsertMetricEvent = mock(async () => {})
-const upsertLeadFromFormAnswers = mock(async () => null as { lead: { id: string } } | null)
+const upsertLeadFromFormAnswers = mock(async () => null as UpsertLeadResult | null)
 const publishServerPublicFormMetricEvent = mock(async () => true)
 const recordMetric = mock(async () => true)
 const gateExecute = mock(async () => ({ isValid: true, result: { skipped: "gate_open" as const } }))
@@ -156,7 +157,10 @@ mock.module("@/app/api/useCases/radar/CreateCrmLeadFromRadarFormGateUseCase", ()
 const { PublicFormProgressUseCase } = await import("./PublicFormProgressUseCase")
 
 describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
-  const useCase = new PublicFormProgressUseCase()
+  const useCase = new PublicFormProgressUseCase(
+    { createOrUpdate: upsertLeadFromFormAnswers },
+    () => "radar",
+  )
 
   beforeEach(() => {
     findLatestSessionSubmissionOnForm.mockClear()
@@ -360,6 +364,30 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
       }),
       "PublicFormProgressUseCase",
       { idempotencyKey: firstIdempotency },
+    )
+  })
+
+  it("mantém o criador legado ativo no Progress nos modos legacy e shadow", async () => {
+    upsertLeadFromFormAnswers.mockResolvedValue({
+      lead: { id: "legacy-lead" } as UpsertLeadResult["lead"],
+      created: true,
+    })
+    const legacyUseCase = new PublicFormProgressUseCase(
+      { createOrUpdate: upsertLeadFromFormAnswers },
+      () => "shadow",
+    )
+
+    await legacyUseCase.execute(PUBLIC_ID, {
+      visitorSessionId: "session-legacy",
+      answers: [
+        { questionId: NAME_ID, value: "Maria Silva" },
+        { questionId: PHONE_ID, value: "(11) 98888-7777" },
+      ],
+    })
+
+    expect(upsertLeadFromFormAnswers).toHaveBeenCalledTimes(1)
+    expect(upsertProgressSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ leadId: "legacy-lead" }),
     )
   })
 })

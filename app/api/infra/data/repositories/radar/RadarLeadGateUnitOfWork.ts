@@ -102,11 +102,25 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
 
   async createOrUpdateFromRadarProfile(input: {
     teamId: string
+    formId: string
     profile: RadarLeadGateProfile
     existingLeadId: string | null
+    origin: Record<string, unknown>
   }): Promise<RadarLeadGatePromotionResult> {
     const phone = input.profile.displayPhone ?? input.profile.normalizedPhone
     const email = input.profile.primaryEmail ?? input.profile.normalizedPrimaryEmail
+
+    const form = await this.transaction.publicForm.findFirst({
+      where: { id: input.formId, teamId: input.teamId },
+      select: { assignedSdrId: true, name: true, publicId: true },
+    })
+    if (!form) throw new Error("Formulário do gate Radar não encontrado")
+
+    const campaignId =
+      typeof input.origin.campaignId === "string" ? input.origin.campaignId : null
+    const emailLogId =
+      typeof input.origin.emailLogId === "string" ? input.origin.emailLogId : null
+    const fromEmailCampaign = Boolean(campaignId || emailLogId)
 
     if (input.existingLeadId) {
       await this.transaction.lead.update({
@@ -115,6 +129,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
           name: input.profile.displayName,
           ...(phone ? { phone } : {}),
           ...(email ? { email } : {}),
+          assignedTo: form.assignedSdrId ?? undefined,
           updatedAt: new Date(),
         },
       })
@@ -137,10 +152,16 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
         name: input.profile.displayName,
         phone,
         email,
-        originChannel: "public_form",
+        assignedTo: form.assignedSdrId ?? undefined,
+        originChannel: fromEmailCampaign ? "email_campaign" : "public_form",
         originMetadata: {
           source: "radar_public_form_gate",
           radarProfileId: input.profile.id,
+          formId: input.formId,
+          formPublicId: form.publicId,
+          formName: form.name,
+          ...(campaignId ? { campaignId } : {}),
+          ...(emailLogId ? { emailLogId } : {}),
         },
         createdBy: team.masterId,
         updatedBy: team.masterId,

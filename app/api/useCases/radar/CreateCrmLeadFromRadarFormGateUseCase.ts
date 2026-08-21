@@ -8,6 +8,7 @@ export type CreateCrmLeadFromRadarFormGateInput = {
   visitorSessionId: string
   radarProfileId: string
   eventId: string
+  origin?: Record<string, unknown>
 }
 
 export class CreateCrmLeadFromRadarFormGateUseCase {
@@ -62,8 +63,10 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
             matches.leadIdMatch ?? matches.phoneMatch ?? matches.emailMatch ?? null
           const promotion = await transaction.createOrUpdateFromRadarProfile({
             teamId: input.teamId,
+            formId: input.formId,
             profile,
             existingLeadId,
+            origin: input.origin ?? {},
           })
           await transaction.linkLeadIdentity({
             teamId: input.teamId,
