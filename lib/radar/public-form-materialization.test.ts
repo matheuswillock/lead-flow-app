@@ -160,6 +160,66 @@ describe("applyPublicFormAnswerRevision", () => {
     expect(decision.outcome).toBe("unchanged")
   })
 
+  it("valor idêntico mais novo avança o cursor causal", () => {
+    const existing = profileWith({
+      value: "Ana",
+      mappingKey: "name",
+      answeredAt: "2026-08-21T10:00:00.000Z",
+      sourceEventId: EVENT_OLD,
+    })
+
+    const decision = applyPublicFormAnswerRevision(existing, revision())
+
+    expect(decision.outcome).toBe("unchanged")
+    expect(decision.requiresWrite).toBe(true)
+    expect(readMaterializedPublicFormAnswer(decision.profileData, "form-1", "q-1")).toMatchObject({
+      value: "Ana",
+      answeredAt: "2026-08-21T10:05:00.000Z",
+      sourceEventId: EVENT_NEW,
+    })
+  })
+
+  it("reentrega do mesmo evento não pede escrita", () => {
+    const existing = profileWith({
+      value: "Ana",
+      mappingKey: "name",
+      answeredAt: "2026-08-21T10:05:00.000Z",
+      sourceEventId: EVENT_NEW,
+    })
+
+    const decision = applyPublicFormAnswerRevision(existing, revision())
+
+    expect(decision.outcome).toBe("unchanged")
+    expect(decision.requiresWrite).toBe(false)
+  })
+
+  it("evento atrasado perde para o cursor avançado por uma repetição", () => {
+    // A em t1, repetido em t3, depois B atrasado em t2: B não pode vencer.
+    const afterRepeat = applyPublicFormAnswerRevision(
+      profileWith({
+        value: "Ana",
+        mappingKey: "name",
+        answeredAt: "2026-08-21T10:00:00.000Z",
+        sourceEventId: EVENT_OLD,
+      }),
+      revision({ answeredAt: new Date("2026-08-21T10:10:00.000Z") }),
+    )
+
+    const delayedB = applyPublicFormAnswerRevision(
+      afterRepeat.profileData,
+      revision({
+        value: "Ana Maria",
+        answeredAt: new Date("2026-08-21T10:05:00.000Z"),
+        sourceEventId: "3d3d3d3d-3333-4ccc-dddd-c5a4f3f5d004",
+      }),
+    )
+
+    expect(delayedB.outcome).toBe("stale")
+    expect(readMaterializedPublicFormAnswer(delayedB.profileData, "form-1", "q-1")?.value).toBe(
+      "Ana",
+    )
+  })
+
   it("valor realmente diferente gera revisão e atualiza o envelope causal", () => {
     const existing = profileWith({
       value: "Ana",

@@ -38,6 +38,12 @@ export type PublicFormMaterializationDecision = {
   outcome: PublicFormMaterializationOutcome
   profileData: Record<string, unknown>
   previous: MaterializedPublicFormAnswer | null
+  /**
+   * `profileData` precisa ser persistido: valor novo, ou valor idêntico cujo
+   * cursor causal avançou. Sem persistir o avanço do cursor, um evento
+   * atrasado posterior venceria a projeção mais nova.
+   */
+  requiresWrite: boolean
 }
 
 const PUBLIC_FORMS_KEY = "publicForms"
@@ -115,15 +121,25 @@ export function applyPublicFormAnswerRevision(
   const previous = readMaterializedPublicFormAnswer(root, revision.formId, revision.questionId)
 
   if (isStalePublicFormRevision(previous, revision)) {
-    return { outcome: "stale", profileData: root, previous }
+    return { outcome: "stale", profileData: root, previous, requiresWrite: false }
   }
-  if (
-    previous &&
+
+  const isUnchanged =
+    previous !== null &&
     canonicalizePublicFormAnswerValue(previous.value) ===
       canonicalizePublicFormAnswerValue(revision.value) &&
     previous.mappingKey === revision.mappingKey
-  ) {
-    return { outcome: "unchanged", profileData: root, previous }
+
+  // Valor idêntico não gera revisão, mas o cursor causal avança: sem isso, A em
+  // t1 repetido em t3 deixaria o cursor em t1 e um B atrasado em t2 venceria
+  // indevidamente a projeção mais nova.
+  const cursorAdvanced =
+    isUnchanged &&
+    (previous.answeredAt !== revision.answeredAt.toISOString() ||
+      previous.sourceEventId !== revision.sourceEventId)
+
+  if (isUnchanged && !cursorAdvanced) {
+    return { outcome: "unchanged", profileData: root, previous, requiresWrite: false }
   }
 
   const forms = asRecord(root[PUBLIC_FORMS_KEY])
@@ -142,5 +158,10 @@ export function applyPublicFormAnswerRevision(
   forms[revision.formId] = form
   root[PUBLIC_FORMS_KEY] = forms
 
-  return { outcome: "applied", profileData: root, previous }
+  return {
+    outcome: isUnchanged ? "unchanged" : "applied",
+    profileData: root,
+    previous,
+    requiresWrite: true,
+  }
 }

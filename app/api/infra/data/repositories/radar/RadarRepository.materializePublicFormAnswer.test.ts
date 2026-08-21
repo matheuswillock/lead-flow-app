@@ -3,12 +3,20 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 const profileFindFirstMock = mock(async () => null as Record<string, unknown> | null)
 const profileUpdateMock = mock(async () => ({}))
 const executeRawMock = mock(async () => 0)
+const identityFindUniqueMock = mock(async () => null as { profileId: string } | null)
+const identityUpdateManyMock = mock(async () => ({ count: 0 }))
+const identityUpsertMock = mock(async () => ({}))
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
         radarProfile: { findFirst: profileFindFirstMock, update: profileUpdateMock },
+        radarIdentity: {
+          findUnique: identityFindUniqueMock,
+          updateMany: identityUpdateManyMock,
+          upsert: identityUpsertMock,
+        },
         $executeRaw: executeRawMock,
       }),
   },
@@ -47,6 +55,12 @@ describe("RadarRepository.materializePublicFormAnswer", () => {
     profileFindFirstMock.mockReset()
     profileUpdateMock.mockReset()
     executeRawMock.mockReset()
+    identityFindUniqueMock.mockReset()
+    identityUpdateManyMock.mockReset()
+    identityUpsertMock.mockReset()
+    identityFindUniqueMock.mockResolvedValue(null)
+    identityUpdateManyMock.mockResolvedValue({ count: 0 })
+    identityUpsertMock.mockResolvedValue({})
     profileFindFirstMock.mockResolvedValue(profile())
     profileUpdateMock.mockResolvedValue({})
     executeRawMock.mockResolvedValue(0)
@@ -204,6 +218,48 @@ describe("RadarRepository.materializePublicFormAnswer", () => {
 
     expect(result.identityChanged).toBe("email")
     expect(result.emailChange).toBeNull()
+  })
+
+  it("cria a RadarIdentity do telefone projetado, sem depender do resolver", async () => {
+    // Perfil resolvido por lead_id nunca passa por `resolveProfileForPhone`;
+    // sem esta identidade, uma resolução futura criaria um perfil duplicado.
+    await new RadarRepository().materializePublicFormAnswer(baseInput)
+
+    expect(identityUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          teamId_type_normalizedValue: {
+            teamId: "team-1",
+            type: "phone",
+            normalizedValue: "5511988887777",
+          },
+        },
+        create: expect.objectContaining({ profileId: "profile-1", isPrimary: true }),
+      }),
+    )
+    expect(identityUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { isPrimary: false } }),
+    )
+  })
+
+  it("não rouba a identidade quando o valor já pertence a outro perfil", async () => {
+    identityFindUniqueMock.mockResolvedValue({ profileId: "outro-perfil" })
+
+    await new RadarRepository().materializePublicFormAnswer(baseInput)
+
+    expect(identityUpsertMock).not.toHaveBeenCalled()
+    expect(identityUpdateManyMock).not.toHaveBeenCalled()
+  })
+
+  it("resposta de nome não cria identidade de contato", async () => {
+    await new RadarRepository().materializePublicFormAnswer({
+      ...baseInput,
+      questionId: "q-name",
+      mappingKey: "name",
+      value: "Ana",
+    })
+
+    expect(identityUpsertMock).not.toHaveBeenCalled()
   })
 
   it("perfil inexistente não escreve nada", async () => {

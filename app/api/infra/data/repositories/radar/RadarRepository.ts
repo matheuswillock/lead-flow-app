@@ -1783,7 +1783,7 @@ export class RadarRepository {
           currentPrimaryEmail: profile.primaryEmail,
         })
 
-        if (decision.outcome === "applied") {
+        if (decision.requiresWrite) {
           await tx.radarProfile.update({
             where: { id: input.profileId },
             data: {
@@ -1792,6 +1792,7 @@ export class RadarRepository {
               lastSeenAt: input.answeredAt,
             },
           })
+          await this.syncProjectedContactIdentity(tx, input, projection)
         }
 
         // A mudança de identidade vem da projeção materializada, não das
@@ -1815,6 +1816,66 @@ export class RadarRepository {
       },
       { timeout: 15_000 },
     )
+  }
+
+  /**
+   * Mantém `RadarIdentity` em sincronia com a projeção de contato.
+   *
+   * Quando o perfil é resolvido por `lead_id`, uma resposta de telefone/e-mail
+   * nunca passa por `resolveProfileForPhone`/`resolveProfileForEmail`, então
+   * só a linha do `RadarProfile` seria atualizada. Sem a identidade
+   * correspondente, uma resolução posterior por `findProfileByIdentity` não
+   * acharia este perfil e criaria um duplicado. A identidade antiga do mesmo
+   * tipo deixa de ser primária, mas é preservada como fonte de atribuição.
+   *
+   * Se o valor já pertence a outro perfil do time, a identidade não é movida
+   * aqui — quem decide o perfil canônico é `reconcileAnsweredEmail`.
+   */
+  private async syncProjectedContactIdentity(
+    tx: Prisma.TransactionClient,
+    input: MaterializePublicFormAnswerInput,
+    projection: ReturnType<typeof projectPublicFormAnswerIdentity>,
+  ): Promise<void> {
+    if (!projection || projection.field === "name") return
+
+    const type: RadarIdentityType = projection.field === "phone" ? "phone" : "email"
+    const normalizedValue =
+      projection.field === "phone"
+        ? projection.patch.normalizedPhone
+        : projection.patch.normalizedPrimaryEmail
+    const value =
+      projection.field === "phone" ? projection.patch.displayPhone : projection.patch.primaryEmail
+
+    const existing = await tx.radarIdentity.findUnique({
+      where: { teamId_type_normalizedValue: { teamId: input.teamId, type, normalizedValue } },
+      select: { profileId: true },
+    })
+    if (existing && existing.profileId !== input.profileId) return
+
+    await tx.radarIdentity.updateMany({
+      where: {
+        teamId: input.teamId,
+        profileId: input.profileId,
+        type,
+        isPrimary: true,
+        normalizedValue: { not: normalizedValue },
+      },
+      data: { isPrimary: false },
+    })
+
+    await tx.radarIdentity.upsert({
+      where: { teamId_type_normalizedValue: { teamId: input.teamId, type, normalizedValue } },
+      create: {
+        profileId: input.profileId,
+        teamId: input.teamId,
+        type,
+        value,
+        normalizedValue,
+        source: "public_form_answer",
+        isPrimary: true,
+      },
+      update: { value, isPrimary: true },
+    })
   }
 
   /**
