@@ -128,6 +128,27 @@ export type PublicFormListItemRecord = Prisma.PublicFormGetPayload<{
 
 export type PublicFormPublishedOption = Pick<PublicForm, "id" | "name" | "publicId" | "status">
 
+/**
+ * Dados mínimos para reconstruir uma entrega de submissão que foi persistida,
+ * mas não obteve aceite da fila nem do outbox de publicação.
+ */
+export type PendingPublicFormSubmissionDispatch = {
+  id: string
+  publicationId: string
+  eventId: string | null
+  requestKey: string
+  visitorSessionId: string | null
+  score: number
+  scoreBandLabel: string | null
+  origin: Prisma.JsonValue | null
+  snapshot: Prisma.JsonValue
+  answers: Array<{
+    questionId: string | null
+    value: Prisma.JsonValue
+    questionSnapshot: Prisma.JsonValue
+  }>
+}
+
 export type PublicFormPublishedSnapshot = {
   publicationId: string
   version: number
@@ -418,6 +439,10 @@ export interface IPublicFormsRepository {
   ): Promise<boolean>
   markSubmissionDispatchAccepted(submissionId: string): Promise<void>
   markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void>
+  claimPendingSubmissionDispatches(input: {
+    limit: number
+    leaseUntil: Date
+  }): Promise<PendingPublicFormSubmissionDispatch[]>
   findCampaignContactListIds(teamId: string, campaignId: string): Promise<string[]>
   findEmailContactCustomFields(
     email: string,

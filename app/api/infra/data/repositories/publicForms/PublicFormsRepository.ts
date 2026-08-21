@@ -23,6 +23,7 @@ import {
 } from "@/lib/public-forms/publication-snapshot"
 import {
   type IPublicFormsRepository,
+  type PendingPublicFormSubmissionDispatch,
   type PublicFormCompleteSubmissionInput,
   type PublicFormDetailRecord,
   type PublicFormListItemRecord,
@@ -1613,6 +1614,71 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         nextDispatchAt: new Date(Date.now() + 5 * 60_000),
         lastDispatchError: errorMessage.slice(0, 2_000),
       },
+    })
+  }
+
+  async claimPendingSubmissionDispatches(input: {
+    limit: number
+    leaseUntil: Date
+  }): Promise<PendingPublicFormSubmissionDispatch[]> {
+    return prisma.$transaction(async (transaction) => {
+      const claimedRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "public"."corretor_studio_public_form_submissions"
+        WHERE "status" = 'processing'
+          AND "dispatchAcceptedAt" IS NULL
+          AND ("nextDispatchAt" IS NULL OR "nextDispatchAt" <= NOW())
+        ORDER BY "nextDispatchAt" ASC NULLS FIRST, "createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${input.limit}
+      `)
+
+      const submissionIds = claimedRows.map((row) => row.id)
+      if (submissionIds.length === 0) return []
+
+      await transaction.publicFormSubmission.updateMany({
+        where: { id: { in: submissionIds } },
+        data: { nextDispatchAt: input.leaseUntil },
+      })
+
+      const submissions = await transaction.publicFormSubmission.findMany({
+        where: { id: { in: submissionIds } },
+        select: {
+          id: true,
+          publicationId: true,
+          eventId: true,
+          requestKey: true,
+          visitorSessionId: true,
+          score: true,
+          scoreBandLabel: true,
+          origin: true,
+          publication: { select: { snapshot: true } },
+          answers: {
+            orderBy: { createdAt: "asc" },
+            select: { questionId: true, value: true, questionSnapshot: true },
+          },
+        },
+      })
+
+      const submissionsById = new Map(submissions.map((submission) => [submission.id, submission]))
+      return submissionIds.flatMap((submissionId) => {
+        const submission = submissionsById.get(submissionId)
+        if (!submission) return []
+        return [
+          {
+            id: submission.id,
+            publicationId: submission.publicationId,
+            eventId: submission.eventId,
+            requestKey: submission.requestKey,
+            visitorSessionId: submission.visitorSessionId,
+            score: submission.score,
+            scoreBandLabel: submission.scoreBandLabel,
+            origin: submission.origin,
+            snapshot: submission.publication.snapshot,
+            answers: submission.answers,
+          },
+        ]
+      })
     })
   }
 
