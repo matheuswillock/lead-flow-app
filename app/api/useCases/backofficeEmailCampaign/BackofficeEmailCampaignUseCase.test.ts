@@ -271,22 +271,31 @@ describe("BackofficeEmailCampaignUseCase — processDispatchQueueBatch (consumer
     expect(result.isValid).toBe(false)
   })
 
-  it("processa um lote parcial, incrementa contadores e republica wake 'continue'", async () => {
+  it("processa um lote parcial, incrementa contadores e republica wake 'continue' com batchOffset monotônico", async () => {
     const repos = makeRepositories()
+    repos.dispatchRepository.findById.mockImplementation(async () =>
+      buildDispatch({ totalRecipients: 500 })
+    )
     repos.logRepository.findQueuedByDispatchId.mockImplementation(async () => [
       { id: "log-1", contactId: "contact-1", recipientEmail: "a@example.com" },
     ])
-    repos.logRepository.countQueuedByDispatchId.mockImplementation(async () => 3)
+    repos.logRepository.countQueuedByDispatchId.mockImplementation(async () => 100)
     repos.dispatchService.dispatchBatch.mockImplementation(async () => ({ sent: 1, failed: 0 }))
     const useCase = makeUseCase(repos)
 
     const result = await useCase.processDispatchQueueBatch("dispatch-1")
 
     expect(result.isValid).toBe(true)
-    expect(result.result).toMatchObject({ hasMore: true, remaining: 3, batchSent: 1 })
+    expect(result.result).toMatchObject({ hasMore: true, remaining: 100, batchSent: 1 })
     expect(repos.dispatchRepository.incrementCounters).toHaveBeenCalledWith("dispatch-1", { totalSent: 1 })
     expect(publishWakeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ dispatchId: "dispatch-1", reason: "continue", remainingCount: 3 })
+      expect.objectContaining({
+        dispatchId: "dispatch-1",
+        reason: "continue",
+        remainingCount: 100,
+        // totalRecipients (500) - remaining (100) = progresso real já processado.
+        batchOffset: 400,
+      })
     )
     expect(repos.dispatchRepository.updateStatus).not.toHaveBeenCalled()
   })
