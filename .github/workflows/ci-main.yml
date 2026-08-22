@@ -176,21 +176,31 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-      # Empacotado com `tar` porque `upload-artifact` NÃO preserva symlinks, e o
-      # build depende deles: `.next/node_modules/` é só um diretório de links
-      # relativos para pacotes externalizados na raiz
-      # (`import-in-the-middle-<hash> -> ../../node_modules/import-in-the-middle`,
-      # idem `pg`, `postcss`, `@prisma`...). Subindo apenas `.vercel/output` e
-      # perdendo os links, o `vercel deploy --prebuilt` aborta com
-      # `Please ensure project dependencies have been installed: File does not
-      # exist: ...`. O job de deploy reinstala as deps, então os links relativos
-      # voltam a resolver do outro lado.
+      # `.vercel/output` NÃO é autocontido: cada `.func/.vc-config.json` traz um
+      # `filePathMap` (~3.4k entradas por função) e o `vercel deploy --prebuilt`
+      # exige que todo caminho ali exista, relativo à raiz do projeto.
+      #
+      # Levantamento sobre o artefato do run 32593997089 — 21 configs, 4.834
+      # arquivos únicos — mostrou que as referências saem de exatamente quatro
+      # origens:
+      #
+      #   node_modules/**        -> restaurado pelo `bun install` do job de deploy
+      #   .next/server/**        -> 4.215 refs   <- faltava
+      #   .next/<manifests>      -> BUILD_ID, required-server-files.json, ...
+      #   .next/node_modules/**  -> symlinks relativos para pacotes externalizados
+      #   .env.*.example         -> vêm do checkout
+      #
+      # Daí `.next` inteiro, não um subconjunto: as três tentativas anteriores
+      # falharam uma a uma justamente por listar caminhos à mão
+      # (`node_modules/.prisma`, depois `.next/node_modules`, depois
+      # `.next/server/chunks`). `tar` também preserva os symlinks, que o
+      # `upload-artifact` descarta.
       #
       # `.vercel/project.json` continua de fora: a identidade do projeto vem das
       # env vars, conforme o guardrail de `VPS/GitHub Actions Self-Hosted`.
       - name: Empacotar artefato de deploy
         if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
-        run: tar -czf vercel-deploy.tgz .vercel/output .next/node_modules
+        run: tar -czf vercel-deploy.tgz .vercel/output .next
 
       - name: Upload build artifact
         if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
@@ -292,22 +302,52 @@ jobs:
             fail "artefato vazio: .vercel/output nao tem conteudo"
           fi
 
-          # Alvo do symlink relativo que derrubou o deploy de 22/08.
-          [ -f node_modules/.prisma/client/client.js ] \
-            || fail "prisma client ausente: node_modules/.prisma/client/client.js nao existe (o --prebuilt vai abortar)"
+          [ -d .next ] || fail ".next ausente: o artefato nao trouxe o build do Next"
 
-          # Diretório de pacotes externalizados pelo build. Sem ele o CLI aborta
-          # com `File does not exist: .next/node_modules/<pkg>-<hash>`.
-          [ -d .next/node_modules ] \
-            || fail ".next/node_modules ausente: o artefato nao trouxe os pacotes externalizados do build"
+          # Verificação exaustiva: reproduz o que o `vercel deploy --prebuilt`
+          # faz ao validar o `filePathMap` de cada função, só que aqui e com o
+          # arquivo faltante nomeado. Substitui a lista de caminhos escrita à
+          # mão que deixou passar três falhas seguidas — cada uma revelando um
+          # caminho que ninguém tinha previsto.
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
 
-          # Um symlink quebrado em qualquer um dos dois produz o mesmo erro no
-          # upload. Este check cobre a classe inteira, não só os casos já vistos.
-          BROKEN="$(find .vercel/output .next/node_modules -xtype l 2>/dev/null | head -10 || true)"
-          if [ -n "$BROKEN" ]; then
-            echo "$BROKEN"
-            fail "symlink(s) quebrado(s) no artefato — o deploy vai abortar"
-          fi
+            const missing = new Set();
+            let configs = 0;
+            let refs = 0;
+
+            const walk = (dir) => {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  walk(full);
+                  continue;
+                }
+                if (entry.name !== ".vc-config.json") continue;
+                configs += 1;
+                let config;
+                try {
+                  config = JSON.parse(fs.readFileSync(full, "utf8"));
+                } catch {
+                  continue;
+                }
+                for (const target of Object.values(config.filePathMap ?? {})) {
+                  refs += 1;
+                  if (!fs.existsSync(target)) missing.add(target);
+                }
+              }
+            };
+
+            walk(".vercel/output/functions");
+            process.stdout.write(`filePathMap: ${configs} configs, ${refs} refs\n`);
+
+            if (missing.size === 0) return;
+
+            process.stderr.write(`::error::${missing.size} arquivo(s) do filePathMap ausente(s) — o deploy vai abortar\n`);
+            for (const file of [...missing].slice(0, 15)) process.stderr.write(`  ${file}\n`);
+            process.exit(1);
+          '
 
           echo "Pre-flight OK."
 
@@ -336,10 +376,14 @@ jobs:
             --meta githubCommitSha="$GITHUB_SHA" \
             >"$DEPLOY_LOG" 2>&1; then
             echo "::error::vercel deploy falhou (exit code preservado)"
+            echo "::group::Vercel CLI — saida completa (deploy falhou)"
             cat "$DEPLOY_LOG"
+            echo "::endgroup::"
             exit 1
           fi
+          echo "::group::Vercel CLI — saida completa"
           cat "$DEPLOY_LOG"
+          echo "::endgroup::"
 
           DEPLOY_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.vercel\.app' "$DEPLOY_LOG" | tail -1 || true)"
           if [ -z "$DEPLOY_URL" ]; then
@@ -379,7 +423,37 @@ jobs:
               process.exitCode = 1;
             };
 
-            process.stdout.write(`readyState=${readyState} target=${target} sha=${sha}\n`);
+            // Bloco completo em vez de uma linha: quando um deploy falha, é
+            // isto que responde "qual versão está no ar?" sem ter que abrir a
+            // Vercel. Diagnosticar os falsos positivos de 21-22/08 custou caro
+            // justamente porque o log não guardava nada disso.
+            const info = {
+              id: data.uid ?? data.id ?? "-",
+              url: data.url ? `https://${data.url}` : "-",
+              readyState: readyState || "-",
+              target: target || "-",
+              commitSha: sha || "(sem meta)",
+              commitEsperado: expected,
+              criadoEm: data.createdAt ? new Date(data.createdAt).toISOString() : "-",
+              regiao: (data.regions ?? []).join(",") || "-",
+              inspector: data.inspectorUrl ?? "-",
+              erro: data.errorMessage ?? data.errorCode ?? "-",
+            };
+
+            process.stdout.write("::group::Vercel — deployment de producao\n");
+            for (const [key, value] of Object.entries(info)) {
+              process.stdout.write(`  ${key.padEnd(14)} ${value}\n`);
+            }
+            process.stdout.write("::endgroup::\n");
+
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            if (summary) {
+              const rows = Object.entries(info).map(([k, v]) => `| ${k} | \`${v}\` |`).join("\n");
+              require("fs").appendFileSync(
+                summary,
+                `\n### Vercel — deployment verificado\n\n| campo | valor |\n|---|---|\n${rows}\n`
+              );
+            }
 
             if (readyState !== "READY") fail(`deployment nao esta READY: ${readyState || "desconhecido"}`);
             if (target !== "production") fail(`deployment nao e production: ${target || "desconhecido"}`);
