@@ -249,6 +249,35 @@ jobs:
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
+      # Pre-flight: falhar aqui, com mensagem explícita, em vez de deixar o CLI
+      # abortar no meio do upload com um erro críptico. Cada item abaixo é um
+      # modo de falha já observado ou diretamente adjacente a um.
+      - name: Pre-flight do artefato de deploy
+        run: |
+          set -euo pipefail
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          [ -d .vercel/output ] || fail "artefato ausente: .vercel/output nao foi baixado"
+          [ -f .vercel/output/config.json ] || fail "artefato incompleto: .vercel/output/config.json ausente"
+
+          if [ -z "$(find .vercel/output -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            fail "artefato vazio: .vercel/output nao tem conteudo"
+          fi
+
+          # Alvo do symlink relativo que derrubou o deploy de 22/08.
+          [ -f node_modules/.prisma/client/client.js ] \
+            || fail "prisma client ausente: node_modules/.prisma/client/client.js nao existe (o --prebuilt vai abortar)"
+
+          # Symlinks quebrados dentro do output viram o mesmo erro no upload.
+          BROKEN="$(find .vercel/output -xtype l 2>/dev/null | head -5 || true)"
+          if [ -n "$BROKEN" ]; then
+            echo "$BROKEN"
+            fail "artefato tem symlink(s) quebrado(s) — o upload vai falhar"
+          fi
+
+          echo "Pre-flight OK."
+
       # `--prebuilt` sobe o `.vercel/output` já pronto em vez de mandar o
       # código-fonte para a Vercel rebuildar. Build CPU Minutes -> ~0.
       #
@@ -294,6 +323,7 @@ jobs:
       # mudou. Aqui confirmamos, pela API, que o deployment ficou READY, que o
       # alvo é production e que o SHA publicado é o mesmo do commit em `main`.
       - name: Verify production deployment
+        id: verify-prod
         run: |
           set -euo pipefail
 
@@ -328,9 +358,79 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
 
+      # Só roda se a verificação reprovou um deployment que chegou a ser
+      # promovido. Não cobre o caso em que o deploy nem aconteceu (aí produção
+      # simplesmente continua na versão anterior, que é o estado desejado).
+      - name: Rollback em verificação reprovada
+        if: ${{ failure() && steps.verify-prod.outcome == 'failure' && steps.vercel-prod.outputs.deploy-url != '' }}
+        run: |
+          set -euo pipefail
+          echo "::warning::verificacao reprovou o deployment promovido — revertendo"
+          npx --yes vercel@56.3.2 rollback \
+            --token="$VERCEL_TOKEN" \
+            --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
       - name: Production Summary
         run: |
           echo "### Production Deploy (main)" >> $GITHUB_STEP_SUMMARY
           echo "- URL: ${{ steps.vercel-prod.outputs.deploy-url }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: main" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Um push em `main` que não termina com produção no SHA do push é um
+  # incidente, e o modo mais perigoso é o job de deploy ser **pulado** (o `if:`
+  # exige build + migration-status + e2e verdes): nesse caso nada falha e
+  # produção fica defasada em silêncio. Foi assim que produção passou 3 dias em
+  # 16bf5dd3. Este job roda sempre e é o único que enxerga esse caso.
+  deploy-guard:
+    name: Deploy Guard (main)
+    if: ${{ always() && github.event_name == 'push' }}
+    needs:
+      - deploy-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Alertar se produção não ficou no SHA do push
+        run: |
+          set -euo pipefail
+
+          RESULT="${{ needs.deploy-production.result }}"
+          echo "deploy-production: $RESULT"
+
+          if [ "$RESULT" = "success" ]; then
+            echo "Deploy concluiu e foi verificado."
+            exit 0
+          fi
+
+          if [ "$RESULT" = "skipped" ]; then
+            MESSAGE="Deploy de producao PULADO no push $GITHUB_SHA — producao continua na versao anterior."
+          else
+            MESSAGE="Deploy de producao terminou '$RESULT' no push $GITHUB_SHA — producao pode estar defasada."
+          fi
+
+          echo "::error::$MESSAGE"
+
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            MESSAGE="$MESSAGE" RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              node -e '
+                const body = JSON.stringify({
+                  text: `:rotating_light: *Lead Flow — deploy de produção não concluiu*\n${process.env.MESSAGE}\n${process.env.RUN_URL}`,
+                });
+                fetch(process.env.SLACK_WEBHOOK_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body,
+                }).then((r) => process.stdout.write(`slack=${r.status}\n`))
+                  .catch((e) => process.stderr.write(`slack falhou: ${e}\n`));
+              ' || echo "::warning::nao foi possivel notificar o Slack"
+          else
+            echo "::warning::SLACK_DEPLOY_WEBHOOK_URL nao configurado — alerta so no Actions"
+          fi
+
+          exit 1
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}
