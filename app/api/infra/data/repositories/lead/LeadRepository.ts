@@ -1,4 +1,4 @@
-import { ILeadRepository, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
+import { ILeadRepository, type LeadAuthorizationSnapshot, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
@@ -190,6 +190,21 @@ export class LeadRepository implements ILeadRepository {
             attachments: true,
           },
         },
+      },
+    });
+  }
+
+  async findAuthorizationSnapshotById(id: string): Promise<LeadAuthorizationSnapshot | null> {
+    return await prisma.lead.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        teamId: true,
+        status: true,
+        closerId: true,
+        assignedTo: true,
+        isTransfer: true,
+        meetingDate: true,
       },
     });
   }
