@@ -1,18 +1,69 @@
 import { after, NextRequest, NextResponse, connection } from "next/server";
-import { LeadRepository } from "../../../infra/data/repositories/lead/LeadRepository";
-import { LeadUseCase } from "../../../useCases/leads/LeadUseCase";
-import { RegisterNewUserProfile } from "../../../useCases/profiles/ProfileUseCase";
 import { UpdateLeadRequestSchema } from "../DTO/requestToUpdateLead";
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
+import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseInstance";
+import {
+  authorizeLeadAccessUseCase,
+  type AuthorizeLeadAccessInput,
+  type LeadAuthorizationSnapshot,
+} from "@/app/api/useCases/leads/AuthorizeLeadAccessUseCase";
 import { invalidateLeadCache, invalidateLeadFullCache } from "@/lib/cache/invalidation";
-import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
+import {
+  getTeamAccess,
+  hasLeadActivityAccess,
+  isManagerOrMaster,
+  type TeamAccess,
+} from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
-const leadRepository = new LeadRepository();
-const profileUseCase = new RegisterNewUserProfile();
-const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
+const LEAD_FUNCTION_DENIED_MESSAGE =
+  "Acesso negado: funcao SDR ou Closer necessaria para visualizar leads.";
+
+/**
+ * Resolve autorizacao de time para as rotas de lead.
+ *
+ * Antes cada handler repetia `profile.findUnique` + `teamMember.findUnique` na
+ * mao, o que (a) violava a regra de resolucao unica de TeamContext e (b) pulava
+ * as checagens de conta banida e assinatura inativa que o getTeamAccess faz.
+ */
+async function resolveLeadRouteAccess(
+  request: NextRequest
+): Promise<{ access: TeamAccess } | { error: Output; status: number }> {
+  const teamAccess = await getTeamAccess(request);
+  if (teamAccess.error) {
+    return { error: teamAccess.error, status: teamAccess.status };
+  }
+
+  if (!hasLeadActivityAccess(teamAccess.access.teamMember)) {
+    return {
+      error: new Output(false, [], [LEAD_FUNCTION_DENIED_MESSAGE], null),
+      status: 403,
+    };
+  }
+
+  return { access: teamAccess.access };
+}
+
+/** Traduz o Output do use case de autorizacao no par lead/erro que a rota usa. */
+async function resolveAuthorizedLead(
+  access: TeamAccess,
+  leadId: string,
+  allowTransferredFromTeam: AuthorizeLeadAccessInput["allowTransferredFromTeam"]
+): Promise<{ lead: LeadAuthorizationSnapshot } | { error: Output; status: number }> {
+  const output = await authorizeLeadAccessUseCase.execute({
+    leadId,
+    teamId: access.teamId,
+    profileId: access.profileId,
+    allowTransferredFromTeam,
+  });
+
+  if (!output.isValid) {
+    return { error: output, status: 404 };
+  }
+
+  return { lead: output.result as LeadAuthorizationSnapshot };
+}
 
 export async function GET(
   request: NextRequest,
@@ -21,82 +72,24 @@ export async function GET(
   await connection();
 
   try {
-    const supabaseId = request.headers.get('x-supabase-user-id');
-    const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');
-    
-    if (!supabaseId) {
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
-    }
-    if (!teamId) {
-      const output = new Output(false, [], ["Team ID é obrigatório"], null);
-      return NextResponse.json(output, { status: 400 });
+    const routeAccess = await resolveLeadRouteAccess(request);
+    if ("error" in routeAccess) {
+      return NextResponse.json(routeAccess.error, { status: routeAccess.status });
     }
 
+    const { access } = routeAccess;
     const { id } = await params;
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true }
-    });
-
-    if (!profile) {
-      const output = new Output(false, [], ["Perfil não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
+    const authorized = await resolveAuthorizedLead(
+      access,
+      id,
+      isManagerOrMaster(access)
+    );
+    if ("error" in authorized) {
+      return NextResponse.json(authorized.error, { status: authorized.status });
     }
 
-    // membership e lead check em paralelo — lead não depende do membership
-    const [membership, lead] = await Promise.all([
-      prisma.teamMember.findUnique({
-        where: { teamId_profileId: { teamId, profileId: profile.id } },
-      }),
-      prisma.lead.findUnique({
-        where: { id },
-        select: { id: true, teamId: true },
-      }),
-    ]);
-
-    if (!membership) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-    if (
-      membership.role === "operator" &&
-      !membership.functions?.includes("SDR") &&
-      !membership.functions?.includes("CLOSER")
-    ) {
-      const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
-      return NextResponse.json(output, { status: 403 });
-    }
-
-    if (!lead) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    if (lead.teamId !== teamId) {
-      const teamAccess = await getTeamAccess(request);
-      const canViewTransferredLead =
-        !teamAccess.error &&
-        isManagerOrMaster(teamAccess.access) &&
-        (await prisma.leadTransfer.findFirst({
-          where: { leadId: id, fromTeamId: teamId },
-          select: { id: true },
-        }));
-
-      if (!canViewTransferredLead) {
-        console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
-          requestedLeadId: id,
-          requestTeamId: teamId,
-          leadTeamId: lead.teamId,
-          profileId: profile.id,
-        });
-        const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-        return NextResponse.json(output, { status: 404 });
-      }
-    }
-
-    const output = await leadUseCase.getLeadById(supabaseId, id);
+    const output = await leadUseCase.getLeadById(access.supabaseId, id);
     const status = output.isValid ? 200 : (output.errorMessages.includes("Lead não encontrado") ? 404 : 400);
     return NextResponse.json(output, { status });
 
@@ -113,21 +106,16 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Extrair supabaseId dos headers
-    const supabaseId = request.headers.get('x-supabase-user-id');
-    const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');
-    
-    if (!supabaseId) {
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
-    }
-    if (!teamId) {
-      const output = new Output(false, [], ["Team ID é obrigatório"], null);
-      return NextResponse.json(output, { status: 400 });
+    const routeAccess = await resolveLeadRouteAccess(request);
+    if ("error" in routeAccess) {
+      return NextResponse.json(routeAccess.error, { status: routeAccess.status });
     }
 
+    const { access } = routeAccess;
+    const { teamId, profileId, teamMember } = access;
+
     const body = await request.json();
-    
+
     let validatedData;
     try {
       validatedData = UpdateLeadRequestSchema.parse(body);
@@ -138,65 +126,21 @@ export async function PUT(
 
     const { id } = await params;
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true }
-    });
-
-    if (!profile) {
-      const output = new Output(false, [], ["Perfil não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
+    const authorized = await resolveAuthorizedLead(access, id, false);
+    if ("error" in authorized) {
+      return NextResponse.json(authorized.error, { status: authorized.status });
     }
 
+    const { lead } = authorized;
+    // access.managerId ja e o masterId do time da requisicao (teamAccess.ts),
+    // entao a consulta a tabela team que existia aqui era redundante.
+    const isTeamMaster = access.managerId === profileId;
     const wantsMeetingHealdUpdate = Object.prototype.hasOwnProperty.call(body, "meetingHeald");
 
-    // membership e lead check em paralelo — lead não depende do membership
-    const [membership, lead] = await Promise.all([
-      prisma.teamMember.findUnique({
-        where: { teamId_profileId: { teamId, profileId: profile.id } },
-      }),
-      prisma.lead.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          teamId: true,
-          status: true,
-          closerId: true,
-          assignedTo: true,
-          isTransfer: true,
-          meetingDate: true,
-        },
-      }),
-    ]);
-
-    if (!membership) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-    if (
-      membership.role === "operator" &&
-      !membership.functions?.includes("SDR") &&
-      !membership.functions?.includes("CLOSER")
-    ) {
-      const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
-      return NextResponse.json(output, { status: 403 });
-    }
-
-    if (!lead || lead.teamId !== teamId) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
     if (wantsMeetingHealdUpdate) {
-      const team = await prisma.team.findUnique({
-        where: { id: teamId },
-        select: { masterId: true },
-      });
-
-      const isTeamMaster = !!(team && team.masterId === profile.id);
-      const isAssignedCloser = !!lead.closerId && lead.closerId === profile.id;
+      const isAssignedCloser = !!lead.closerId && lead.closerId === profileId;
       const canMarkMeetingHeald =
-        isTeamMaster || (membership.functions?.includes("CLOSER") && isAssignedCloser);
+        isTeamMaster || (teamMember.functions?.includes("CLOSER") && isAssignedCloser);
 
       if (lead.status !== "scheduled") {
         const output = new Output(false, [], ["Reuniao so pode ser marcada como realizada para leads agendados."], null);
@@ -212,21 +156,15 @@ export async function PUT(
     const wantsMeetingPresenceUpdate = Object.prototype.hasOwnProperty.call(body, "meetingPresenceConfirmed");
 
     if (wantsMeetingPresenceUpdate && body.meetingPresenceConfirmed === true) {
-      const team = await prisma.team.findUnique({
-        where: { id: teamId },
-        select: { masterId: true },
-      });
-
-      const isTeamMaster = !!(team && team.masterId === profile.id);
-      const isManagerLike = isManagerLikeRole(membership.role);
-      const isAssignedSdr = !!lead.assignedTo && lead.assignedTo === profile.id;
-      const isAssignedCloser = !!lead.closerId && lead.closerId === profile.id;
+      const isManagerLike = isManagerLikeRole(teamMember.role);
+      const isAssignedSdr = !!lead.assignedTo && lead.assignedTo === profileId;
+      const isAssignedCloser = !!lead.closerId && lead.closerId === profileId;
       const canConfirmPresence =
         isTeamMaster ||
         isManagerLike ||
         isAssignedSdr ||
-        (membership.functions?.includes("CLOSER") && isAssignedCloser) ||
-        (membership.functions?.includes("SDR") && isAssignedSdr);
+        (teamMember.functions?.includes("CLOSER") && isAssignedCloser) ||
+        (teamMember.functions?.includes("SDR") && isAssignedSdr);
 
       if (lead.status !== "scheduled") {
         const output = new Output(false, [], ["Só é possível confirmar agenda para leads agendados."], null);
@@ -249,7 +187,7 @@ export async function PUT(
       }
     }
 
-    const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
+    const output = await leadUseCase.updateLead(access.supabaseId, id, validatedData);
     if (output.isValid) {
       invalidateLeadCache({ leadId: id, teamId });
 
@@ -277,62 +215,21 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Extrair supabaseId dos headers
-    const supabaseId = request.headers.get('x-supabase-user-id');
-    const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');
-    
-    if (!supabaseId) {
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
-    }
-    if (!teamId) {
-      const output = new Output(false, [], ["Team ID é obrigatório"], null);
-      return NextResponse.json(output, { status: 400 });
+    const routeAccess = await resolveLeadRouteAccess(request);
+    if ("error" in routeAccess) {
+      return NextResponse.json(routeAccess.error, { status: routeAccess.status });
     }
 
+    const { access } = routeAccess;
+    const { teamId } = access;
     const { id } = await params;
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true }
-    });
-
-    if (!profile) {
-      const output = new Output(false, [], ["Perfil não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
+    const authorized = await resolveAuthorizedLead(access, id, false);
+    if ("error" in authorized) {
+      return NextResponse.json(authorized.error, { status: authorized.status });
     }
 
-    // membership e lead check em paralelo — lead não depende do membership
-    const [membership, lead] = await Promise.all([
-      prisma.teamMember.findUnique({
-        where: { teamId_profileId: { teamId, profileId: profile.id } },
-      }),
-      prisma.lead.findUnique({
-        where: { id },
-        select: { id: true, teamId: true },
-      }),
-    ]);
-
-    if (!membership) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-    if (
-      membership.role === "operator" &&
-      !membership.functions?.includes("SDR") &&
-      !membership.functions?.includes("CLOSER")
-    ) {
-      const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
-      return NextResponse.json(output, { status: 403 });
-    }
-
-    if (!lead || lead.teamId !== teamId) {
-      console.error("[LeadsRoute][DELETE] Lead não encontrado ou teamId mismatch:", { id, teamId, leadTeamId: lead?.teamId });
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    const output = await leadUseCase.deleteLead(supabaseId, id);
+    const output = await leadUseCase.deleteLead(access.supabaseId, id);
     if (output.isValid) {
       invalidateLeadFullCache({ leadId: id, teamId });
     }

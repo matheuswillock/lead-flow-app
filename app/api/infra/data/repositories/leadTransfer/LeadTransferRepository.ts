@@ -55,6 +55,14 @@ function hasTransferDateFilter(filters: LeadTransferListFilters): boolean {
 }
 
 export class LeadTransferRepository implements ILeadTransferRepository {
+  async existsTransferFromTeam(params: { leadId: string; fromTeamId: string }): Promise<boolean> {
+    const transfer = await prisma.leadTransfer.findFirst({
+      where: { leadId: params.leadId, fromTeamId: params.fromTeamId },
+      select: { id: true },
+    });
+    return transfer !== null;
+  }
+
   async findPendingByTeam(filters: LeadTransferListFilters): Promise<LeadTransferPendingRow[]> {
     if (hasTransferDateFilter(filters)) {
       return [];
