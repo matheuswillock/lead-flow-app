@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { sanitizeWebhookPayload } from '@/lib/webhooks/sanitize-webhook-payload';
+
 export async function POST(request: NextRequest) {
   try {
-    console.info('[3cplusWebhookRoute][POST] ============================================');
     console.info('[3cplusWebhookRoute][POST] Requisicao recebida');
-    console.info('[3cplusWebhookRoute][POST] Headers:', JSON.stringify(Object.fromEntries(request.headers.entries()), null, 2));
 
     const body = await request.json();
 
-    console.info('[3cplusWebhookRoute][POST] Body completo:', JSON.stringify(body, null, 2));
-    console.info('[3cplusWebhookRoute][POST] ============================================');
+    console.info(
+      '[3cplusWebhookRoute][POST] Payload:',
+      JSON.stringify(sanitizeWebhookPayload(body))
+    );
 
     return NextResponse.json(
       { success: true, message: 'Webhook recebido' },
