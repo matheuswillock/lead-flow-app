@@ -116,6 +116,9 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
 
+      - name: Validar saida do build
+        uses: ./.github/actions/validate-build-output
+
   e2e:
     name: E2E (Playwright)
     if: ${{ github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
