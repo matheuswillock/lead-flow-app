@@ -7,6 +7,15 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened]
+  # Escotilha de retomada, mesmo padrão de `ci-develop.yml`: sem ela, um deploy
+  # de produção que falha só pode ser re-tentado com um commit artificial em
+  # `main`. Foi exatamente o que faltou quando produção ficou 3 dias em
+  # 16bf5dd3 — não havia como refazer o deploy do SHA que já estava em `main`.
+  #
+  # `workflow_dispatch` aceita qualquer `--ref`, então os jobs que publicam são
+  # travados em `github.ref_name == 'main'`; sem isso, um dispatch a partir de
+  # uma feature colocaria aquele ref em produção.
+  workflow_dispatch:
 
 concurrency:
   group: ci-main-${{ github.event_name }}-${{ github.ref }}
@@ -66,7 +75,7 @@ jobs:
 
   migration-status:
     name: Migration Status
-    if: github.event_name == 'push'
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
@@ -139,7 +148,7 @@ jobs:
 
       # PR: só quality gate — não gera artefato de deploy.
       - name: Build (quality gate)
-        if: ${{ github.event_name != 'push' }}
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
@@ -158,7 +167,7 @@ jobs:
       # `vercel build` executa o mesmo build command do projeto, então o quality
       # gate é preservado: se o build quebrar, o job falha aqui como antes.
       - name: Vercel build (produção)
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
         run: |
           npx --yes vercel@56.3.2 pull --yes --environment=production --token="$VERCEL_TOKEN"
           npx --yes vercel@56.3.2 build --prod --token="$VERCEL_TOKEN"
@@ -170,7 +179,7 @@ jobs:
       # `.vercel/output` contém o build pronto. `.vercel/project.json` NÃO sobe:
       # o job de deploy reconstrói a identidade do projeto pelas env vars.
       - name: Upload build artifact
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
         uses: actions/upload-artifact@v4
         with:
           name: vercel-output-${{ github.sha }}
@@ -212,7 +221,7 @@ jobs:
   deploy-production:
     name: Deploy Vercel (Production)
     if: |
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' &&
       needs.build.result == 'success' &&
       needs['migration-status'].result == 'success' &&
       needs.e2e.result == 'success'
@@ -388,7 +397,7 @@ jobs:
   # 16bf5dd3. Este job roda sempre e é o único que enxerga esse caso.
   deploy-guard:
     name: Deploy Guard (main)
-    if: ${{ always() && github.event_name == 'push' }}
+    if: ${{ always() && ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main') }}
     needs:
       - deploy-production
     runs-on: ubuntu-latest
