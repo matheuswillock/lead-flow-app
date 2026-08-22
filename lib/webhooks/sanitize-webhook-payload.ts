@@ -1,8 +1,8 @@
 const SENSITIVE_KEYS = new Set(["base64", "qrcode", "qr", "token", "secret", "apikey", "authorization"])
 
-/** Removes credentials and large inline media before a webhook is persisted. */
-export function sanitizeWhatsAppWebhookPayload(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeWhatsAppWebhookPayload)
+/** Removes credentials and large inline media before a webhook payload is persisted or logged. */
+export function sanitizeWebhookPayload(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeWebhookPayload)
   if (!value || typeof value !== "object") return value
 
   return Object.fromEntries(
@@ -11,7 +11,7 @@ export function sanitizeWhatsAppWebhookPayload(value: unknown): unknown {
       if (SENSITIVE_KEYS.has(normalized) || normalized.includes("base64") || normalized.includes("secret")) {
         return []
       }
-      return [[key, sanitizeWhatsAppWebhookPayload(nested)]]
+      return [[key, sanitizeWebhookPayload(nested)]]
     })
   )
 }
