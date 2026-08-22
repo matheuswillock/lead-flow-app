@@ -31,6 +31,7 @@ This document defines the implementation governance for AI agents in this reposi
 - Read at most 5 files before starting implementation. Do not explore the codebase extensively without necessity.
 - Before deleting any record, check for FK constraints in the schema.
 - **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
+- **MUST NOT** refactor source code with scripts — regex, `sed`, `awk` or `python` rewriting files in bulk — without explicit authorization from the project owner. Refactors **MUST** be applied one edit at a time through the editor tooling, so every change is reviewed in context and fails loudly when the target text does not match. Bulk rewriting hides malformed output behind a substitution counter and defers type errors that a single edit surfaces immediately. Scripts remain allowed for read-only analysis (counting, searching, measuring).
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
 
 ## Clean Code & SOLID (MUST)
