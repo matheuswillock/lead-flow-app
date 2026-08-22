@@ -157,6 +157,10 @@ jobs:
           DIRECT_URL: 'postgresql://placeholder:placeholder@placeholder:5432/placeholder'
         run: bun run build
 
+      - name: Validar saida do build (quality gate)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: ./.github/actions/validate-build-output
+
       # Push: o MESMO build vira o artefato de deploy.
       #
       # Antes: este job buildava aqui e o `deploy-production` chamava
@@ -175,6 +179,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Valida na origem, antes de empacotar: um `vercel build` que sai 0 com
+      # saída inconsistente falha aqui, com os arquivos nomeados, em vez de
+      # atravessar a transferência entre runners e só estourar no deploy.
+      - name: Validar saida do build (deploy)
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
+        uses: ./.github/actions/validate-build-output
+        with:
+          mode: vercel
 
       # `.vercel/output` NÃO é autocontido: cada `.func/.vc-config.json` traz um
       # `filePathMap` (~3.4k entradas por função) e o `vercel deploy --prebuilt`
@@ -342,7 +355,7 @@ jobs:
             walk(".vercel/output/functions");
             process.stdout.write(`filePathMap: ${configs} configs, ${refs} refs\n`);
 
-            if (missing.size === 0) return;
+            if (missing.size === 0) process.exit(0);
 
             process.stderr.write(`::error::${missing.size} arquivo(s) do filePathMap ausente(s) — o deploy vai abortar\n`);
             for (const file of [...missing].slice(0, 15)) process.stderr.write(`  ${file}\n`);
