@@ -180,6 +180,9 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
 
+      - name: Validar saida do build
+        uses: ./.github/actions/validate-build-output
+
   e2e:
     name: E2E (Playwright)
     needs: validate-branch
