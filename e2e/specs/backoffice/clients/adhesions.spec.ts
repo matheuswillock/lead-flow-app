@@ -47,12 +47,13 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
       },
     });
 
-    // Customer descartável (conta provisionada pela adesão paga)
+    // Customer descartável (conta provisionada pela adesão paga) — e-mail único para evitar colisão entre workers paralelos
     customerSupabaseId = randomUUID();
+    const initialEmail = `e2e.adesao.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@example.com`;
     const customerProfile = await prisma.profile.create({
       data: {
         supabaseId: customerSupabaseId,
-        email: "adesao-antiga@example.com",
+        email: initialEmail,
         fullName: "E2E Adhesion Customer",
         role: "manager",
         isMaster: true,
@@ -66,7 +67,7 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
     const lead = await prisma.backofficeLead.create({
       data: {
         name: "E2E Adhesion User",
-        email: "adesao-antiga@example.com",
+        email: initialEmail,
         phone: "11999999999",
         cpfCnpj: "52998224725",
         status: "new_adhesion",
@@ -84,7 +85,7 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
         leadId: lead.id,
         fullName: "E2E Adhesion User",
         phone: "11999999999",
-        email: "adesao-antiga@example.com",
+        email: initialEmail,
         cpfCnpj: "52998224725",
         plan: "crm",
         productId: product?.id ?? null,
