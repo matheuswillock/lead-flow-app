@@ -515,10 +515,25 @@ jobs:
         if: ${{ vars.DEPLOY_DEVELOP_PREVIEW == 'true' && steps['push-release'].outcome == 'success' && steps['push-release'].outputs.pushed == 'true' }}
         run: |
           # Working tree is already release/develop-to-main (post version bump).
-          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy \
+          # Sem `| tail -1`: sem `pipefail` o shell via o exit code do `tail`,
+          # e a mesma construcao mascarou 3 dias de deploy de producao falhando
+          # em silencio (ver Postmortem/2026-08-22 — Deploy verde sem publicar
+          # versao). Aqui o impacto e menor, mas o defeito e identico.
+          set -euo pipefail
+          PREVIEW_LOG="$(mktemp)"
+          if ! npx --yes vercel@56.3.2 deploy \
             --token=${{ secrets.VERCEL_TOKEN }} \
-            --yes \
-            2>&1 | tail -1)
+            --yes >"$PREVIEW_LOG" 2>&1; then
+            echo "::error::vercel deploy (preview) falhou"
+            cat "$PREVIEW_LOG"
+            exit 1
+          fi
+          cat "$PREVIEW_LOG"
+          DEPLOY_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.vercel\.app' "$PREVIEW_LOG" | tail -1 || true)"
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::preview terminou 0 mas nao imprimiu URL Vercel valida"
+            exit 1
+          fi
           echo "preview-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "### Preview Deploy (release/develop-to-main)" >> "$GITHUB_STEP_SUMMARY"
           echo "- URL: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
