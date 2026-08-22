@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { PublicLeadFormRequestSchema } from "./DTO/requestPublicLeadForm";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 import { detectSqlInjection } from "@/app/api/v1/utils/inputSecurity";
+import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const normalizeTrackingValue = (value?: string | null): string | undefined => {
@@ -103,6 +104,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = output.result as { id?: string } | null;
+    if (result?.id) {
+      invalidateLeadCache({ leadId: result.id, teamId: validation.data.teamId });
+    }
+
     console.info("[IntegrationLeadFormRoute][POST] Lead público criado com sucesso", {
       leadId: result?.id ?? null,
       teamId: validation.data.teamId,
