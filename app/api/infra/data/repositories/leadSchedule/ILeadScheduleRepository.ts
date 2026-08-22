@@ -36,11 +36,25 @@ export interface UpdateLeadScheduleDTO {
   publicShareExpiresAt?: Date | null;
 }
 
+export interface UpsertTransferPreScheduleDTO {
+  leadId: string;
+  date: Date;
+  meetingTitle: string;
+  notes: string | null;
+  meetingType: string;
+}
+
 export interface ILeadScheduleRepository {
   /**
    * Cria um registro de agendamento
    */
   create(data: CreateLeadScheduleDTO): Promise<LeadsSchedule>;
+
+  /**
+   * Cria ou atualiza o pre-agendamento herdado numa transferencia de time.
+   * Sempre zera link e compartilhamento publico, que nao sobrevivem a troca de time.
+   */
+  upsertTransferPreSchedule(data: UpsertTransferPreScheduleDTO): Promise<void>;
 
   /**
    * Busca registros de agendamentos por leadId

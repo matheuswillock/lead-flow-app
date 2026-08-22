@@ -1,13 +1,32 @@
 import { prisma } from "../../prisma";
-import type { 
-  ILeadScheduleRepository, 
+import type {
+  ILeadScheduleRepository,
   CreateLeadScheduleDTO,
-  UpdateLeadScheduleDTO
+  UpdateLeadScheduleDTO,
+  UpsertTransferPreScheduleDTO
 } from "./ILeadScheduleRepository";
 import { LeadsSchedule, Prisma } from "@prisma/client";
 
 export class LeadScheduleRepository implements ILeadScheduleRepository {
-  
+  async upsertTransferPreSchedule(data: UpsertTransferPreScheduleDTO): Promise<void> {
+    const shared = {
+      date: data.date,
+      meetingTitle: data.meetingTitle,
+      notes: data.notes,
+      meetingLink: null,
+      meetingType: data.meetingType,
+      publicShareTokenHash: null,
+      publicShareExpiresAt: null,
+    };
+
+    await prisma.leadsSchedule.upsert({
+      where: { leadId: data.leadId },
+      create: { leadId: data.leadId, extraGuests: [], ...shared },
+      update: shared,
+    });
+  }
+
+
   /**
    * Cria um registro de agendamento
    */
