@@ -12,6 +12,9 @@ async function getCachedTasks(
 ) {
   "use cache";
   cacheTag(cacheTags.teamTasks(teamId));
+  // teamCalendar significa "tudo que a pagina de calendario renderiza". Tasks sao
+  // metade disso, entao uma mutacao de agendamento tambem precisa derrubar esta entrada.
+  cacheTag(cacheTags.teamCalendar(teamId));
   cacheLife({ stale: 30, revalidate: 60 });
   return taskRepository.findByTeamAndDateRange({
     teamId,

@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
 import { leadCustomFieldsUseCase } from "@/app/api/useCases/leadCustomFields/LeadCustomFieldsUseCase";
+import { invalidatePublicFormBootstrapCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 const leadCustomFieldTypeSchema = z.enum([
@@ -110,6 +111,9 @@ export async function POST(
     }
 
     const output = await leadCustomFieldsUseCase.createDefinition(teamAccess.access, parsed.data);
+    if (output.isValid) {
+      invalidatePublicFormBootstrapCache({ teamId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
