@@ -25,6 +25,17 @@ const PUBLIC_FORM_METRIC_TO_RADAR_EVENT_TYPE: Record<PublicFormMetricType, strin
   lead_created: "form.lead_created",
   lead_attached: "form.lead_attached",
   meeting_scheduled: "form.meeting_scheduled",
+  // Jornada (PR 4): alimentam timeline, funil e engajamento. Nenhum deles
+  // promove ao CRM — só nome/telefone/e-mail materializados movem o gate.
+  page_viewed: "form.page_viewed",
+  page_advanced: "form.page_advanced",
+  page_returned: "form.page_returned",
+  question_focused: "form.question_focused",
+  form_submit_attempted: "form.submit_attempted",
+  form_validation_failed: "form.validation_failed",
+  form_exit_intent: "form.exit_intent",
+  form_abandoned: "form.abandoned",
+  form_resumed: "form.resumed",
 }
 
 export function mapPublicFormMetricToRadarEventType(

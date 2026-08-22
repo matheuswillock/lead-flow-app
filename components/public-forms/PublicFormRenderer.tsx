@@ -37,6 +37,7 @@ import { API_CLIENT_BASE } from "@/lib/route-map"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
 import type {
+  PublicFormClientEventType,
   PublicFormMetricEventInput,
   PublicFormSnapshot,
   PublicFormSuccessAction,
@@ -183,6 +184,12 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     () => pageQuestions.map((item) => item.id).join("\0"),
     [pageQuestions],
   )
+  /**
+   * `pageKey` pode ser uma string arbitrária vinda do config, mas a projeção
+   * guarda `currentPageId` como uuid. O id da primeira pergunta da página é
+   * estável e sempre um uuid válido.
+   */
+  const currentPageId = pageQuestions[0]?.id
   const pageAnswers = useMemo(
     () =>
       pageQuestions.flatMap((question) =>
@@ -303,16 +310,37 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   }, [preview, publicId, session])
 
   const track = useCallback(
-    (eventType: PublicFormMetricEventInput["eventType"], questionId?: string) => {
+    (
+      eventType: PublicFormClientEventType,
+      questionId?: string,
+      /**
+       * Contexto de jornada. `pageId`/`pageIndex` situam o evento; nunca
+       * carregam respostas. `validationCodes` leva só questionId + código —
+       * o valor inválido jamais sai do navegador.
+       */
+      journey?: {
+        pageId?: string
+        pageIndex?: number
+        validationCodes?: { questionId: string; code: string }[]
+        eventKeySuffix?: string
+      },
+    ) => {
       if (preview || !publicId || !session) return
+      const scope = questionId ?? "form"
+      const suffix = journey?.eventKeySuffix ? `:${journey.eventKeySuffix}` : ""
       const body = {
         visitorSessionId: session,
         eventType,
         questionId,
-        eventKey: questionId ? `${session}:${eventType}:${questionId}` : `${session}:${eventType}:form`,
+        eventKey: `${session}:${eventType}:${scope}${suffix}`,
         origin: getOrigin(),
         schemaVersion: 1,
         occurredAt: new Date().toISOString(),
+        ...(journey?.pageId ? { pageId: journey.pageId } : {}),
+        ...(journey?.pageIndex !== undefined ? { pageIndex: journey.pageIndex } : {}),
+        ...(journey?.validationCodes?.length
+          ? { validationCodes: journey.validationCodes }
+          : {}),
       }
       const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
       void sendWithOutbox("behavior", url, body)
@@ -330,6 +358,37 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       track("question_viewed", questionId)
     }
   }, [started, pageQuestionsKey, track])
+
+  useEffect(() => {
+    if (!started || !currentPageId) return
+    track("page_viewed", undefined, {
+      pageId: currentPageId,
+      pageIndex: index,
+      eventKeySuffix: String(index),
+    })
+  }, [started, currentPageId, index, track])
+
+  /**
+   * `visibilitychange`/`pagehide` emitem apenas `form_exit_intent`. Sair da aba
+   * não é abandono: só o cron, após 30 minutos de inatividade, decide isso.
+   */
+  useEffect(() => {
+    if (!started) return
+    const notifyExitIntent = () => {
+      if (document.visibilityState !== "hidden") return
+      track("form_exit_intent", undefined, {
+        ...(currentPageId ? { pageId: currentPageId } : {}),
+        pageIndex: index,
+        eventKeySuffix: String(Date.now()),
+      })
+    }
+    document.addEventListener("visibilitychange", notifyExitIntent)
+    window.addEventListener("pagehide", notifyExitIntent)
+    return () => {
+      document.removeEventListener("visibilitychange", notifyExitIntent)
+      window.removeEventListener("pagehide", notifyExitIntent)
+    }
+  }, [started, currentPageId, index, track])
 
   useEffect(() => {
     if (!started) {
@@ -407,12 +466,23 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
 
   async function goNext() {
     if (!pageQuestions.length) return
-    for (const item of pageQuestions) {
-      const validationError = validateAnswer(item, answers[item.id])
-      if (validationError) {
-        setError(validationError)
-        return
-      }
+    // Só IDs e códigos saem daqui — a mensagem e o valor inválido ficam no
+    // navegador. `validateAnswer` devolve texto para o usuário, não telemetria.
+    const validationCodes = pageQuestions.flatMap((item) =>
+      validateAnswer(item, answers[item.id])
+        ? [{ questionId: item.id, code: item.required && answers[item.id] === undefined ? "required" : "invalid" }]
+        : [],
+    )
+    if (validationCodes.length) {
+      track("form_validation_failed", undefined, {
+        ...(currentPageId ? { pageId: currentPageId } : {}),
+        pageIndex: index,
+        validationCodes,
+        eventKeySuffix: String(index),
+      })
+      const firstInvalid = pageQuestions.find((item) => validateAnswer(item, answers[item.id]))
+      if (firstInvalid) setError(validateAnswer(firstInvalid, answers[firstInvalid.id]))
+      return
     }
     setError(null)
     try {
@@ -437,6 +507,11 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         void runSimulationFlow()
         return
       }
+      track("page_advanced", undefined, {
+        ...(currentPageId ? { pageId: currentPageId } : {}),
+        pageIndex: index + 1,
+        eventKeySuffix: `${index}-${index + 1}`,
+      })
       setIndex(index + 1)
       return
     }
@@ -467,6 +542,10 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     if (!publicId || !session) return
     if (sending || done || submitLockRef.current) return
     submitLockRef.current = true
+    track("form_submit_attempted", undefined, {
+      ...(currentPageId ? { pageId: currentPageId } : {}),
+      pageIndex: index,
+    })
     const scheduleAnswer = snapshot.questions
       .filter((item) => item.type === "scheduling")
       .map((item) => answers[item.id] as SchedulingAnswer | undefined)
@@ -829,7 +908,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                         {item.description}
                       </FieldDescription>
                     ) : null}
-                    <div className="mt-2">
+                    {/* Focus borbulha na captura: um handler cobre todo tipo de
+                        campo. Focos repetidos colapsam no mesmo eventKey. */}
+                    <div className="mt-2" onFocusCapture={() => track("question_focused", item.id)}>
                       <Question
                         question={item}
                         value={answers[item.id]}
@@ -865,7 +946,15 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                   type="button"
                   variant="ghost"
                   disabled={index === 0 || sending}
-                  onClick={() => setIndex(Math.max(0, index - 1))}
+                  onClick={() => {
+                    const previous = Math.max(0, index - 1)
+                    track("page_returned", undefined, {
+                      ...(currentPageId ? { pageId: currentPageId } : {}),
+                      pageIndex: previous,
+                      eventKeySuffix: `${index}-${previous}`,
+                    })
+                    setIndex(previous)
+                  }}
                 >
                   <ArrowLeft data-icon="inline-start" />
                   Voltar

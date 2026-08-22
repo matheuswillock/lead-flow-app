@@ -14,22 +14,103 @@ const {
   buildBackofficeEmailCampaignDispatchIdempotencyKey,
   BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC,
   BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS,
+  BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_WAKE_RECOVERY_BUCKET_MS,
 } = await import("./backoffice-email-campaign-dispatch")
 
 describe("buildBackofficeEmailCampaignDispatchIdempotencyKey", () => {
-  it("usa dispatchId:reason para start/cron-start/cron-reclaim", () => {
+  it("usa dispatchId:reason (chave estável) para start", () => {
     expect(
       buildBackofficeEmailCampaignDispatchIdempotencyKey({ dispatchId: "d1", reason: "start" })
     ).toBe("d1:start")
-    expect(
-      buildBackofficeEmailCampaignDispatchIdempotencyKey({ dispatchId: "d1", reason: "cron-start" })
-    ).toBe("d1:cron-start")
-    expect(
-      buildBackofficeEmailCampaignDispatchIdempotencyKey({ dispatchId: "d1", reason: "cron-reclaim" })
-    ).toBe("d1:cron-reclaim")
   })
 
-  it("usa dispatchId:continue:remainingCount para reason continue", () => {
+  it("usa dispatchId:reason:wakeBucket para cron-start/cron-reclaim", () => {
+    const now = new Date("2026-08-21T12:07:00.000Z")
+    const bucket = Math.floor(now.getTime() / BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_WAKE_RECOVERY_BUCKET_MS)
+
+    expect(
+      buildBackofficeEmailCampaignDispatchIdempotencyKey(
+        { dispatchId: "d1", reason: "cron-start" },
+        { now }
+      )
+    ).toBe(`d1:cron-start:${bucket}`)
+    expect(
+      buildBackofficeEmailCampaignDispatchIdempotencyKey(
+        { dispatchId: "d1", reason: "cron-reclaim" },
+        { now }
+      )
+    ).toBe(`d1:cron-reclaim:${bucket}`)
+  })
+
+  it("gera chaves distintas para cron-reclaim em janelas de 15 min diferentes", () => {
+    const first = buildBackofficeEmailCampaignDispatchIdempotencyKey(
+      { dispatchId: "d1", reason: "cron-reclaim" },
+      { now: new Date("2026-08-21T12:00:00.000Z") }
+    )
+    const second = buildBackofficeEmailCampaignDispatchIdempotencyKey(
+      { dispatchId: "d1", reason: "cron-reclaim" },
+      { now: new Date("2026-08-21T12:15:00.000Z") }
+    )
+
+    expect(first).not.toBe(second)
+  })
+
+  it("mantém a mesma chave para cron-reclaim dentro da mesma janela de 15 min", () => {
+    const first = buildBackofficeEmailCampaignDispatchIdempotencyKey(
+      { dispatchId: "d1", reason: "cron-reclaim" },
+      { now: new Date("2026-08-21T12:00:00.000Z") }
+    )
+    const second = buildBackofficeEmailCampaignDispatchIdempotencyKey(
+      { dispatchId: "d1", reason: "cron-reclaim" },
+      { now: new Date("2026-08-21T12:14:59.000Z") }
+    )
+
+    expect(first).toBe(second)
+  })
+
+  it("usa dispatchId:continue:offset:batchOffset (namespace distinto de remainingCount) para reason continue", () => {
+    expect(
+      buildBackofficeEmailCampaignDispatchIdempotencyKey({
+        dispatchId: "d1",
+        reason: "continue",
+        batchOffset: 500,
+      })
+    ).toBe("d1:continue:offset:500")
+  })
+
+  it("não colide com uma chave remainingCount retida quando o valor numérico é igual ao batchOffset", () => {
+    const legacyRemainingCountKey = buildBackofficeEmailCampaignDispatchIdempotencyKey({
+      dispatchId: "d1",
+      reason: "continue",
+      remainingCount: 3000,
+    })
+    const newBatchOffsetKey = buildBackofficeEmailCampaignDispatchIdempotencyKey({
+      dispatchId: "d1",
+      reason: "continue",
+      batchOffset: 3000,
+    })
+
+    expect(legacyRemainingCountKey).not.toBe(newBatchOffsetKey)
+  })
+
+  it("gera chaves distintas para lotes consecutivos com o mesmo remainingCount quando batchOffset avança", () => {
+    const first = buildBackofficeEmailCampaignDispatchIdempotencyKey({
+      dispatchId: "d1",
+      reason: "continue",
+      remainingCount: 4500,
+      batchOffset: 500,
+    })
+    const second = buildBackofficeEmailCampaignDispatchIdempotencyKey({
+      dispatchId: "d1",
+      reason: "continue",
+      remainingCount: 4500,
+      batchOffset: 1000,
+    })
+
+    expect(first).not.toBe(second)
+  })
+
+  it("usa remainingCount como fallback quando batchOffset não é informado no reason continue", () => {
     expect(
       buildBackofficeEmailCampaignDispatchIdempotencyKey({
         dispatchId: "d1",
@@ -39,7 +120,7 @@ describe("buildBackofficeEmailCampaignDispatchIdempotencyKey", () => {
     ).toBe("d1:continue:42")
   })
 
-  it("usa 0 como fallback quando remainingCount não é informado no reason continue", () => {
+  it("usa 0 como fallback final quando nem batchOffset nem remainingCount são informados no reason continue", () => {
     expect(
       buildBackofficeEmailCampaignDispatchIdempotencyKey({ dispatchId: "d1", reason: "continue" })
     ).toBe("d1:continue:0")
@@ -87,5 +168,39 @@ describe("publishBackofficeEmailCampaignDispatchWake", () => {
     ]
     expect(call[1]).toEqual({ dispatchId: "dispatch-1", reason: "continue", remainingCount: 10 })
     expect(call[2].idempotencyKey).toBe("dispatch-1:continue:10")
+  })
+
+  it("prefere batchOffset a remainingCount na idempotencyKey quando reason=continue", async () => {
+    await publishBackofficeEmailCampaignDispatchWake({
+      dispatchId: "dispatch-1",
+      reason: "continue",
+      remainingCount: 4500,
+      batchOffset: 500,
+    })
+
+    const call = send.mock.calls[0] as unknown as [
+      string,
+      unknown,
+      { idempotencyKey: string; retentionSeconds: number },
+    ]
+    expect(call[2].idempotencyKey).toBe("dispatch-1:continue:offset:500")
+  })
+
+  it("respeita options.now ao computar o wakeBucket de cron-reclaim", async () => {
+    await publishBackofficeEmailCampaignDispatchWake(
+      { dispatchId: "dispatch-1", reason: "cron-reclaim" },
+      { now: new Date("2026-08-21T12:00:00.000Z") }
+    )
+
+    const bucket = Math.floor(
+      new Date("2026-08-21T12:00:00.000Z").getTime() /
+        BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_WAKE_RECOVERY_BUCKET_MS
+    )
+    const call = send.mock.calls[0] as unknown as [
+      string,
+      unknown,
+      { idempotencyKey: string; retentionSeconds: number },
+    ]
+    expect(call[2].idempotencyKey).toBe(`dispatch-1:cron-reclaim:${bucket}`)
   })
 })

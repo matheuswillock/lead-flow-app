@@ -10,26 +10,14 @@ type QueueMessageMetadata = {
   region?: string
 }
 
-mock.module("@/lib/queues/email-campaign-dispatch", () => ({
-  handleEmailCampaignDispatchCallback: (
-    handler: (
-      message: EmailCampaignDispatchWakePayload,
-      metadata: QueueMessageMetadata,
-    ) => Promise<void>,
-  ) => handler,
-  handleEmailCampaignDispatchOverflowCallback: (
-    handler: (
-      message: EmailCampaignDispatchWakePayload,
-      metadata: QueueMessageMetadata,
-    ) => Promise<void>,
-  ) => handler,
-  publishEmailCampaignDispatchWake: mock(async () => ({ messageId: "mid-test" })),
-  publishEmailCampaignDispatchOverflowWake: mock(async () => ({ messageId: "mid-overflow" })),
-  EMAIL_CAMPAIGN_DISPATCH_TOPIC: "email-campaign-dispatch",
-  EMAIL_CAMPAIGN_DISPATCH_OVERFLOW_TOPIC: "email-campaign-dispatch-overflow",
-  EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS: 60 * 60 * 24 * 7,
-  buildEmailCampaignDispatchIdempotencyKey: (payload: EmailCampaignDispatchWakePayload) =>
-    `${payload.dispatchId}:${payload.reason}`,
+// Só o cliente da Vercel é stubado: `processDispatchMessage` usa o builder de
+// idempotência de verdade, senão a chave assertada aqui divergiria em silêncio
+// da que roda em produção.
+mock.module("@vercel/queue", () => ({
+  QueueClient: class {
+    send = mock(async () => ({ messageId: "mid-test" }))
+    handleCallback = (handler: unknown) => handler
+  },
 }))
 
 mock.module("@/lib/queues/queue-processing-failure", () => ({

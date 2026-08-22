@@ -36,6 +36,37 @@ function uniqueApiQHeaders(
   }
 }
 
+/**
+ * Ajusta as variáveis lidas por `isE2eTestMode()` e devolve o restaurador.
+ * `undefined` remove a variável.
+ */
+function withE2eEnv(next: {
+  e2e?: string
+  appEnv?: string
+  vercelEnv?: string
+}): () => void {
+  const keys = {
+    E2E_TEST_MODE: next.e2e,
+    APP_ENV: next.appEnv,
+    VERCEL_ENV: next.vercelEnv,
+  } as const
+  const previous = Object.fromEntries(
+    Object.keys(keys).map((key) => [key, process.env[key]]),
+  )
+
+  for (const [key, value] of Object.entries(keys)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+
+  return () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
+
 function makeRequest(
   pathname: string,
   options?: { headers?: Record<string, string>; search?: string },
@@ -316,22 +347,74 @@ describe("proxy", () => {
 
     it("rate-limits /api/q before updateSession and returns 429", async () => {
       updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
-      // IP único por execução — o contador do proxy é module-level.
-      const headers = uniqueApiQHeaders()
-      const sessionCallsBefore = updateSessionSpy.mock.calls.length
-      const rewriteCallsBefore = rewriteWithSessionSpy.mock.calls.length
+      const restoreEnv = withE2eEnv({ e2e: undefined, appEnv: undefined })
 
-      let lastStatus = 0
-      for (let i = 0; i < 121; i++) {
-        const response = await proxy(
-          makeRequest("/api/q/leads", { headers }),
-        )
-        lastStatus = response.status
+      try {
+        // IP único por execução — o contador do proxy é module-level.
+        const headers = uniqueApiQHeaders()
+        const sessionCallsBefore = updateSessionSpy.mock.calls.length
+        const rewriteCallsBefore = rewriteWithSessionSpy.mock.calls.length
+
+        let lastStatus = 0
+        for (let i = 0; i < 121; i++) {
+          const response = await proxy(
+            makeRequest("/api/q/leads", { headers }),
+          )
+          lastStatus = response.status
+        }
+
+        expect(lastStatus).toBe(429)
+        expect(updateSessionSpy.mock.calls.length - sessionCallsBefore).toBe(120)
+        expect(rewriteWithSessionSpy.mock.calls.length - rewriteCallsBefore).toBe(120)
+      } finally {
+        restoreEnv()
       }
+    })
 
-      expect(lastStatus).toBe(429)
-      expect(updateSessionSpy.mock.calls.length - sessionCallsBefore).toBe(120)
-      expect(rewriteWithSessionSpy.mock.calls.length - rewriteCallsBefore).toBe(120)
+    /**
+     * Regressão do 429 intermitente no job Playwright (PR #936): no CI não há
+     * `x-forwarded-for`, então todos os workers colapsam no balde "unknown" e
+     * estouram os 120 req/60 s da suíte inteira. O proxy devolvia 429 antes do
+     * route handler — por isso nenhum bypass no rate-limit da rota resolvia.
+     */
+    it("não aplica rate-limit em /api/q sob E2E_TEST_MODE (regressão CI)", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+      const restoreEnv = withE2eEnv({ e2e: "true", appEnv: "test", vercelEnv: undefined })
+
+      try {
+        // Sem x-forwarded-for: reproduz o balde "unknown" compartilhado do CI.
+        const statuses = new Set<number>()
+        for (let i = 0; i < 150; i++) {
+          const response = await proxy(makeRequest("/api/q/leads"))
+          statuses.add(response.status)
+        }
+
+        expect(statuses.has(429)).toBe(false)
+      } finally {
+        restoreEnv()
+      }
+    })
+
+    it("mantém o rate-limit em produção mesmo com E2E_TEST_MODE setado", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(makeUser(USER_A)))
+      const restoreEnv = withE2eEnv({
+        e2e: "true",
+        appEnv: "test",
+        vercelEnv: "production",
+      })
+
+      try {
+        const headers = uniqueApiQHeaders()
+        let lastStatus = 0
+        for (let i = 0; i < 121; i++) {
+          const response = await proxy(makeRequest("/api/q/leads", { headers }))
+          lastStatus = response.status
+        }
+
+        expect(lastStatus).toBe(429)
+      } finally {
+        restoreEnv()
+      }
     })
   })
 

@@ -296,6 +296,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/public-forms/cron/mark-abandoned-sessions",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/queues/cron/retry-processing-failures",
       "schedule": "*/5 * * * *"
     }
