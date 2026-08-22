@@ -5,8 +5,16 @@ import { cacheTags } from "@/lib/cache/cacheTags";
 
 function revalidateDefinedTags(tags: Array<string | null | undefined>) {
   for (const tag of tags) {
-    if (tag) {
+    if (!tag) continue;
+
+    try {
       revalidateTag(tag, "max");
+    } catch (error) {
+      // Fora de um work store do Next (scripts CLI, seeds, workers) o revalidateTag
+      // lanca "Invariant: static generation store missing". Nesses contextos nao existe
+      // Data Cache para invalidar, entao ignorar e o comportamento correto — e uma tag
+      // que falha nao pode abortar as seguintes.
+      console.warn(`[CacheInvalidation] revalidateTag ignorado fora de request: ${tag}`, error);
     }
   }
 }
@@ -20,6 +28,9 @@ export function invalidateLeadCache(input: {
     .filter((teamId): teamId is string => Boolean(teamId))
     .flatMap((teamId) => [
       cacheTags.teamLeads(teamId),
+      // Uma alteracao de lead pode mover meetingDate, que e exatamente o que o
+      // calendario renderiza — por isso teamCalendar entra junto de teamLeads.
+      cacheTags.teamCalendar(teamId),
       cacheTags.teamDashboard(teamId),
       cacheTags.teamPerformance(teamId),
     ]);
@@ -78,6 +89,18 @@ export function invalidateFeatureAccessCache(input: {
 
 export function invalidateTeamMembersCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.teamMembers(input.teamId)]);
+}
+
+/**
+ * Invalida o bootstrap do formulario publico.
+ *
+ * Só e necessario para os dados que o bootstrap cacheia e que NAO estao cobertos
+ * pelas tags co-declaradas em getCachedPublicFormBootstrap (`healthPlans` e
+ * `teamMembers`): definicoes de campos customizados, rotas de transferencia
+ * (`hasTransferTargets`), nome do time e timezone do master.
+ */
+export function invalidatePublicFormBootstrapCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.publicFormBootstrap(input.teamId)]);
 }
 
 export function invalidateHealthPlansCache() {
