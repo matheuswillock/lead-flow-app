@@ -346,7 +346,7 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
           dispatchId: sendingDispatch.id,
           remaining,
         })
-        await this.publishDispatchWake(sendingDispatch.id, "cron-reclaim", remaining)
+        await this.publishDispatchWake(sendingDispatch.id, "cron-reclaim", { remainingCount: remaining })
         reclaimed += 1
         continue
       }
@@ -494,10 +494,15 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
   private async publishDispatchWake(
     dispatchId: string,
     reason: BackofficeEmailCampaignDispatchWakePayload["reason"],
-    remainingCount?: number
+    options?: { remainingCount?: number; batchOffset?: number }
   ): Promise<void> {
     try {
-      await publishBackofficeEmailCampaignDispatchWake({ dispatchId, reason, remainingCount })
+      await publishBackofficeEmailCampaignDispatchWake({
+        dispatchId,
+        reason,
+        remainingCount: options?.remainingCount,
+        batchOffset: options?.batchOffset,
+      })
     } catch (error) {
       console.error("[BackofficeEmailCampaignUseCase][publishDispatchWake] falha ao publicar wake", {
         dispatchId,
@@ -571,7 +576,10 @@ export class BackofficeEmailCampaignUseCase implements IBackofficeEmailCampaignU
         "[BackofficeEmailCampaignUseCase][processDispatchQueueBatch] lote processado, republicando wake",
         { dispatchId, batchSent: result.sent, remaining }
       )
-      await this.publishDispatchWake(dispatchId, "continue", remaining)
+      await this.publishDispatchWake(dispatchId, "continue", {
+        remainingCount: remaining,
+        batchOffset: dispatch.totalRecipients - remaining,
+      })
       return new Output(
         true,
         [`Lote processado: ${result.sent} enviado(s), ${remaining} restante(s)`],

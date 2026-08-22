@@ -162,10 +162,13 @@ export async function proxy(request: NextRequest) {
     // DEPOIS do refresh de sessão e da injeção de x-supabase-user-id — o early
     // rewrite anterior pulava isso e quebrava getTeamAccess() nas rotas mascaradas.
     if (pathname.startsWith("/api")) {
+      const incomingHeader = request.headers.get("x-supabase-user-id")
       const requestHeaders = new Headers(request.headers)
       requestHeaders.delete("x-supabase-user-id")
       if (user) {
         requestHeaders.set("x-supabase-user-id", user.id)
+      } else if (isE2eTestMode() && incomingHeader) {
+        requestHeaders.set("x-supabase-user-id", incomingHeader)
       }
 
       if (isClientApiSlug) {
