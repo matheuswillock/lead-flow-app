@@ -237,6 +237,18 @@ jobs:
           name: vercel-output-${{ github.sha }}
           path: .vercel/output
 
+      # `.vercel/output` referencia `node_modules/.prisma/client/client.js` por
+      # caminho relativo à raiz do projeto (output tracing do Next). O build roda
+      # em `ubuntu-latest` e o deploy aqui, noutra máquina, então esse alvo não
+      # existe e o `vercel deploy --prebuilt` aborta com
+      # `File does not exist: "node_modules/.prisma/client/client.js"`.
+      # Reinstalar as deps + gerar o client restaura o alvo do link.
+      - name: Setup Bun & deps
+        uses: ./.github/actions/setup-bun-deps
+
+      - name: Generate Prisma Client
+        run: bun run prisma:generate
+
       # `--prebuilt` sobe o `.vercel/output` já pronto em vez de mandar o
       # código-fonte para a Vercel rebuildar. Build CPU Minutes -> ~0.
       #
@@ -244,21 +256,81 @@ jobs:
       # já identificam o projeto, e `pull` traria as env vars de produção para o
       # disco do runner self-hosted — o guardrail da nota
       # `VPS/GitHub Actions Self-Hosted` pede o contrário.
+      #
+      # NÃO reintroduzir `2>&1 | tail -1`: sem `pipefail` o shell enxergava o
+      # exit code do `tail`, não o do CLI. Dois deploys de produção falharam em
+      # silêncio (21/08 capturou a borda `╰──╯` do CLI, 22/08 capturou
+      # `File does not exist: ...`) e produção ficou 3 dias atrás de `main` com
+      # o job verde. `--meta` carimba o SHA para o passo de verificação abaixo.
       - name: Deploy to Vercel (Production)
         id: vercel-prod
         run: |
-          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy --prebuilt --prod \
+          set -euo pipefail
+
+          DEPLOY_LOG="$(mktemp)"
+          if ! npx --yes vercel@56.3.2 deploy --prebuilt --prod \
             --token="$VERCEL_TOKEN" \
             --yes \
-            2>&1 | tail -1)
-          echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+            --meta githubCommitSha="$GITHUB_SHA" \
+            >"$DEPLOY_LOG" 2>&1; then
+            echo "::error::vercel deploy falhou (exit code preservado)"
+            cat "$DEPLOY_LOG"
+            exit 1
+          fi
+          cat "$DEPLOY_LOG"
+
+          DEPLOY_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.vercel\.app' "$DEPLOY_LOG" | tail -1 || true)"
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::deploy terminou 0 mas nao imprimiu URL Vercel valida"
+            exit 1
+          fi
+          echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Um `vercel deploy` bem-sucedido não prova que o runtime de produção
+      # mudou. Aqui confirmamos, pela API, que o deployment ficou READY, que o
+      # alvo é production e que o SHA publicado é o mesmo do commit em `main`.
+      - name: Verify production deployment
+        run: |
+          set -euo pipefail
+
+          DEPLOY_HOST="${DEPLOY_URL#https://}"
+          API="https://api.vercel.com/v13/deployments/${DEPLOY_HOST}"
+          if [ -n "${VERCEL_ORG_ID:-}" ]; then
+            API="${API}?teamId=${VERCEL_ORG_ID}"
+          fi
+
+          RESPONSE="$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" "$API")"
+
+          RESPONSE="$RESPONSE" EXPECTED_SHA="$GITHUB_SHA" node -e '
+            const data = JSON.parse(process.env.RESPONSE ?? "{}");
+            const expected = process.env.EXPECTED_SHA ?? "";
+            const readyState = data.readyState ?? data.status ?? "";
+            const target = data.target ?? "";
+            const sha = data.meta?.githubCommitSha ?? "";
+            const fail = (message) => {
+              process.stderr.write("::error::" + message + "\n");
+              process.exitCode = 1;
+            };
+
+            process.stdout.write(`readyState=${readyState} target=${target} sha=${sha}\n`);
+
+            if (readyState !== "READY") fail(`deployment nao esta READY: ${readyState || "desconhecido"}`);
+            if (target !== "production") fail(`deployment nao e production: ${target || "desconhecido"}`);
+            if (!sha) fail("deployment sem githubCommitSha — nao da para provar a versao publicada");
+            else if (sha !== expected) fail(`SHA divergente: publicado=${sha} esperado=${expected}`);
+          '
+        env:
+          DEPLOY_URL: ${{ steps.vercel-prod.outputs.deploy-url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
 
       - name: Production Summary
         run: |
           echo "### Production Deploy (main)" >> $GITHUB_STEP_SUMMARY
           echo "- URL: ${{ steps.vercel-prod.outputs.deploy-url }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: main" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
