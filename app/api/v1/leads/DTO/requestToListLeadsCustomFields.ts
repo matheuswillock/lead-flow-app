@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LeadStatus } from "@prisma/client";
 import { MAX_CUSTOM_FIELD_FILTERS } from "@/lib/leadCustomFields/customFieldQuery";
 
 const customFieldFilterOperatorSchema = z.enum(["eq", "neq", "contains", "is_empty", "not_empty"]);
@@ -44,4 +45,17 @@ export function parseCustomFieldSortQueryParam(raw: string | null) {
   if (!raw) return undefined;
   const json: unknown = JSON.parse(raw);
   return CustomFieldSortQuerySchema.parse(json);
+}
+
+export const LeadStatusQuerySchema = z.nativeEnum(LeadStatus);
+
+/**
+ * Valida o `status` da query contra o enum real do banco. Antes era um cast
+ * (`as LeadStatus`), que deixava `?status=qualquer-coisa` chegar ate a consulta
+ * Prisma como enum invalido. Retorna `undefined` quando ausente e lanca
+ * `ZodError` quando presente mas invalido — o caller decide como responder.
+ */
+export function parseLeadStatusQueryParam(raw: string | null) {
+  if (!raw) return undefined;
+  return LeadStatusQuerySchema.parse(raw);
 }
