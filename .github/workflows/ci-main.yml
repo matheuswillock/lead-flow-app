@@ -176,14 +176,28 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-      # `.vercel/output` contém o build pronto. `.vercel/project.json` NÃO sobe:
-      # o job de deploy reconstrói a identidade do projeto pelas env vars.
+      # Empacotado com `tar` porque `upload-artifact` NÃO preserva symlinks, e o
+      # build depende deles: `.next/node_modules/` é só um diretório de links
+      # relativos para pacotes externalizados na raiz
+      # (`import-in-the-middle-<hash> -> ../../node_modules/import-in-the-middle`,
+      # idem `pg`, `postcss`, `@prisma`...). Subindo apenas `.vercel/output` e
+      # perdendo os links, o `vercel deploy --prebuilt` aborta com
+      # `Please ensure project dependencies have been installed: File does not
+      # exist: ...`. O job de deploy reinstala as deps, então os links relativos
+      # voltam a resolver do outro lado.
+      #
+      # `.vercel/project.json` continua de fora: a identidade do projeto vem das
+      # env vars, conforme o guardrail de `VPS/GitHub Actions Self-Hosted`.
+      - name: Empacotar artefato de deploy
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
+        run: tar -czf vercel-deploy.tgz .vercel/output .next/node_modules
+
       - name: Upload build artifact
         if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
         uses: actions/upload-artifact@v4
         with:
           name: vercel-output-${{ github.sha }}
-          path: .vercel/output
+          path: vercel-deploy.tgz
           retention-days: 1
           include-hidden-files: true
 
@@ -244,7 +258,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: vercel-output-${{ github.sha }}
-          path: .vercel/output
+
+      # `tar -x` restaura `.vercel/output` e `.next/node_modules` com os
+      # symlinks intactos, nos mesmos caminhos relativos do build.
+      - name: Extrair artefato de deploy
+        run: tar -xzf vercel-deploy.tgz
 
       # `.vercel/output` referencia `node_modules/.prisma/client/client.js` por
       # caminho relativo à raiz do projeto (output tracing do Next). O build roda
@@ -278,11 +296,17 @@ jobs:
           [ -f node_modules/.prisma/client/client.js ] \
             || fail "prisma client ausente: node_modules/.prisma/client/client.js nao existe (o --prebuilt vai abortar)"
 
-          # Symlinks quebrados dentro do output viram o mesmo erro no upload.
-          BROKEN="$(find .vercel/output -xtype l 2>/dev/null | head -5 || true)"
+          # Diretório de pacotes externalizados pelo build. Sem ele o CLI aborta
+          # com `File does not exist: .next/node_modules/<pkg>-<hash>`.
+          [ -d .next/node_modules ] \
+            || fail ".next/node_modules ausente: o artefato nao trouxe os pacotes externalizados do build"
+
+          # Um symlink quebrado em qualquer um dos dois produz o mesmo erro no
+          # upload. Este check cobre a classe inteira, não só os casos já vistos.
+          BROKEN="$(find .vercel/output .next/node_modules -xtype l 2>/dev/null | head -10 || true)"
           if [ -n "$BROKEN" ]; then
             echo "$BROKEN"
-            fail "artefato tem symlink(s) quebrado(s) — o upload vai falhar"
+            fail "symlink(s) quebrado(s) no artefato — o deploy vai abortar"
           fi
 
           echo "Pre-flight OK."
