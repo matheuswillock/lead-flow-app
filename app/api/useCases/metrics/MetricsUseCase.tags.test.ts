@@ -16,7 +16,9 @@ mock.module("next/cache", () => ({
  * vir desta classe porque MetricsUseCase so usa o cache quando o service injetado
  * e identico ao singleton default construido no modulo.
  */
-const getDashboardMetricsMock = mock(async () => ({ totalLeads: 0 }));
+const getDashboardMetricsMock = mock(
+  async (_filters: { teamIds?: string[] }, _ctx?: unknown) => ({ totalLeads: 0 })
+);
 
 mock.module("@/app/api/services/DashboardInfos/DashboardInfosService", () => ({
   DashboardInfosService: class {
