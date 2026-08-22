@@ -2419,44 +2419,40 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     newEmail: string,
     _previousEmail: string | null
   ): Promise<void> {
-    const normalizedNew = newEmail.trim().toLowerCase()
+    const trimmed = newEmail.trim()
+    const normalizedNew = trimmed.toLowerCase()
     if (!normalizedNew) return
 
-    console.info("[BackofficeAdhesionService][syncEmail] start", {
+    // Preflight: já existe outra conta com este e-mail?
+    const existingProfileId = await this.repo.findProfileIdByEmail(trimmed)
+    if (existingProfileId && existingProfileId !== adhesion.createdProfileId) {
+      throw new Error("Já existe uma conta cadastrada com este e-mail")
+    }
+
+    // Transação atômica para lead + profile
+    const maybeRepo = this.repo as unknown as {
+      syncLeadAndProfileEmails?: (input: { leadId: string; profileId: string | null; email: string }) => Promise<void>
+      updateLeadEmail?: (id: string, email: string) => Promise<void>
+      updateProfileEmail?: (id: string, email: string) => Promise<void>
+    }
+
+    if (maybeRepo.syncLeadAndProfileEmails) {
+      await maybeRepo.syncLeadAndProfileEmails({
+        leadId: adhesion.leadId,
+        profileId: adhesion.createdProfileId ?? null,
+        email: trimmed,
+      })
+    } else {
+      // fallback legado mantido para testes unitários com mock parcial
+      await maybeRepo.updateLeadEmail?.(adhesion.leadId, trimmed)
+      if (adhesion.createdProfileId) {
+        await maybeRepo.updateProfileEmail?.(adhesion.createdProfileId, trimmed)
+      }
+    }
+
+    console.info("[BackofficeAdhesionService][syncEmail] db sincronizado", {
       adhesionId: adhesion.id,
-      leadId: adhesion.leadId,
-      newEmail,
-      createdProfileId: adhesion.createdProfileId,
     })
-
-    try {
-      const maybeRepo = this.repo as unknown as { updateLeadEmail?: (id: string, email: string) => Promise<void> }
-      if (maybeRepo.updateLeadEmail) {
-        await maybeRepo.updateLeadEmail(adhesion.leadId, newEmail.trim())
-        console.info("[BackofficeAdhesionService][syncEmail] lead updated", {
-          adhesionId: adhesion.id,
-          leadId: adhesion.leadId,
-          newEmail,
-        })
-      }
-    } catch (error) {
-      console.error("[BackofficeAdhesionService][syncEmail][lead]", error)
-    }
-
-    if (adhesion.createdProfileId) {
-      try {
-        const maybeRepo = this.repo as unknown as { updateProfileEmail?: (id: string, email: string) => Promise<void> }
-        if (maybeRepo.updateProfileEmail) {
-          await maybeRepo.updateProfileEmail(adhesion.createdProfileId, newEmail.trim())
-          console.info("[BackofficeAdhesionService][syncEmail] profile updated", {
-            adhesionId: adhesion.id,
-            profileId: adhesion.createdProfileId,
-          })
-        }
-      } catch (error) {
-        console.error("[BackofficeAdhesionService][syncEmail][profile]", error)
-      }
-    }
 
     if (adhesion.createdSupabaseId) {
       if (isE2eOrCiBypass()) {
@@ -2542,13 +2538,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
-    console.info("[BackofficeAdhesionService][syncEmail] check", {
-      adhesionId: adhesion.id,
-      targetEmail,
-      leadEmail: adhesion.lead.email,
-      needsSync,
-      previousEmail,
-    })
     if (needsSync) {
       await this.syncAdhesionEmailArtifacts(adhesion, targetEmail, previousEmail)
     }

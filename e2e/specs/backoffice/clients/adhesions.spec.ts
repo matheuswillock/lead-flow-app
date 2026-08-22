@@ -12,6 +12,7 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
   let adhesionId: string | null = null;
   let leadId: string | null = null;
   let createdProfileId: string | null = null;
+  let customerSupabaseId: string | null = null;
   let backofficeSupabaseId: string | null = null;
   let backofficeProfileId: string | null = null;
 
@@ -20,10 +21,9 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
     const master = await findE2eMasterProfile();
     if (!master) throw new Error("Seed E2E ausente — rode `bun run db:seed:e2e`");
 
-    // Cria um backoffice dedicado para o teste (sem mutar o master, para não quebrar outros specs em paralelo)
-    backofficeSupabaseId = `e2e-backoffice-${Date.now()}-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`;
-    // Usa um UUID determinístico para o supabaseId mas mantém formato UUID
     const { randomUUID } = await import("node:crypto");
+
+    // Backoffice operator descartável (quem chama o resendInvite)
     backofficeSupabaseId = randomUUID();
     const backofficeEmail = `e2e.backoffice.${Date.now()}@example.com`;
     const backofficeProfile = await prisma.profile.create({
@@ -46,7 +46,21 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
         isActive: true,
       },
     });
-    const profile = backofficeProfile;
+
+    // Customer descartável (conta provisionada pela adesão paga)
+    customerSupabaseId = randomUUID();
+    const customerProfile = await prisma.profile.create({
+      data: {
+        supabaseId: customerSupabaseId,
+        email: "adesao-antiga@example.com",
+        fullName: "E2E Adhesion Customer",
+        role: "manager",
+        isMaster: true,
+      },
+      select: { id: true, supabaseId: true },
+    });
+    createdProfileId = customerProfile.id;
+    const profile = customerProfile;
 
     // Arrange adesão paga com conta já criada (cenário do bug)
     const lead = await prisma.backofficeLead.create({
@@ -106,7 +120,6 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
       select: { id: true },
     });
     adhesionId = adhesion.id;
-    createdProfileId = profile.id;
   });
 
   test.afterAll(async () => {
@@ -116,6 +129,13 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
     }
     if (leadId) {
       await prisma.backofficeLead.deleteMany({ where: { id: leadId } }).catch(() => null);
+    }
+    // Remove customer + suas dependências (Team/TeamMember/ProfileSubscription)
+    if (createdProfileId) {
+      await prisma.profileSubscription.deleteMany({ where: { profileId: createdProfileId } }).catch(() => null);
+      await prisma.teamMember.deleteMany({ where: { profileId: createdProfileId } }).catch(() => null);
+      await prisma.team.deleteMany({ where: { masterId: createdProfileId } }).catch(() => null);
+      await prisma.profile.deleteMany({ where: { id: createdProfileId } }).catch(() => null);
     }
     if (backofficeProfileId) {
       await prisma.backofficeUser.deleteMany({ where: { profileId: backofficeProfileId } }).catch(() => null);
@@ -180,26 +200,10 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
       headers: { "x-supabase-user-id": backofficeSupabaseId! },
     });
 
-    const resStatus = res.status()
-    const resBodyText = await res.text().catch(() => "")
-    let resBody: unknown = null
-    try { resBody = JSON.parse(resBodyText) } catch { resBody = resBodyText }
-    console.log("[adhesions.spec] invite res", { status: resStatus, body: resBody, adhesionId, newEmail, backofficeSupabaseId: backofficeSupabaseId?.slice(0, 8) })
-
-    // A API deve retornar 200 e email === newEmail
-    // Se Supabase Admin não estiver configurado no ambiente E2E, a geração do link falha com 400/500;
-    // nesse caso assertamos o sync de banco (lead/profile) que já prova o fix do BUG 1.
-    if (resStatus === 200) {
-      const body = resBody as { isValid?: boolean; result?: { email?: string }; email?: string }
-      expect(body.isValid).toBeTruthy();
-      expect(String(body.result?.email ?? body.email ?? "")).toContain(newEmail);
-    } else {
-      // Fallback quando Supabase não está disponível: apenas verifica que o e-mail foi sincronizado no banco
-      // Log detalhado para diagnóstico CI
-      console.log("[adhesions.spec] invite non-200 fallback", { status: resStatus, body: resBody })
-      expect(resStatus).toBeGreaterThanOrEqual(200);
-      expect(String(resBodyText).length).toBeGreaterThan(0);
-    }
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { isValid?: boolean; result?: { email?: string }; email?: string };
+    expect(body.isValid).toBeTruthy();
+    expect(String(body.result?.email ?? body.email ?? "")).toContain(newEmail);
 
     // 3) Assert no banco: lead.email e profile.email devem ter sido sincronizados para newEmail (BUG 1)
     const adhesionAfter = await prisma.backofficeAdhesion.findUnique({
@@ -222,19 +226,12 @@ test.describe("app/backoffice/(app)/clients/adhesions", () => {
       expect(profileEmail?.email?.toLowerCase()).toBe(newEmail.toLowerCase());
     }
 
-    // 4) Segundo reenvio deve gerar novamente sucesso (prova que novo link tem nova expiração e anterior foi invalidado)
+    // 4) Segundo reenvio deve gerar novamente sucesso (prova que novo link tem nova expiração)
     const res2 = await request.post(`${baseURL}/api/v1/backoffice/adhesions/${adhesionId}/invite`, {
       headers: { "x-supabase-user-id": backofficeSupabaseId! },
     });
-    const res2Status = res2.status()
-    const res2Text = await res2.text().catch(() => "")
-    console.log("[adhesions.spec] invite2 res", { status: res2Status, body: res2Text.slice(0, 500) })
-    // Se Supabase ok, deve ser 200 novamente (novo hashed_token com TTL resetado)
-    if (res2Status === 200) {
-      const body2 = JSON.parse(res2Text) as { isValid?: boolean }
-      expect(body2.isValid).toBeTruthy();
-    } else {
-      expect([200, 400, 500]).toContain(res2Status);
-    }
+    expect(res2.status()).toBe(200);
+    const body2 = (await res2.json()) as { isValid?: boolean };
+    expect(body2.isValid).toBeTruthy();
   });
 });

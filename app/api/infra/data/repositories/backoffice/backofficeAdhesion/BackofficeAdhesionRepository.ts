@@ -593,4 +593,23 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       data: { email },
     })
   }
+
+  async syncLeadAndProfileEmails(input: {
+    leadId: string
+    profileId: string | null
+    email: string
+  }): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.backofficeLead.update({
+        where: { id: input.leadId },
+        data: { email: input.email },
+      })
+      if (input.profileId) {
+        await tx.profile.update({
+          where: { id: input.profileId },
+          data: { email: input.email },
+        })
+      }
+    })
+  }
 }

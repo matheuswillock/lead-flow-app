@@ -250,4 +250,9 @@ export interface IBackofficeAdhesionRepository {
   updateLeadEmail(leadId: string, email: string): Promise<void>
   findProfileEmailById(profileId: string): Promise<string | null>
   updateProfileEmail(profileId: string, email: string): Promise<void>
+  syncLeadAndProfileEmails(input: {
+    leadId: string
+    profileId: string | null
+    email: string
+  }): Promise<void>
 }
