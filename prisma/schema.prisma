@@ -5574,6 +5574,23 @@ enum PublicFormMetricType {
   lead_created
   lead_attached
   meeting_scheduled
+  page_viewed
+  page_advanced
+  page_returned
+  question_focused
+  form_submit_attempted
+  form_validation_failed
+  form_exit_intent
+  form_abandoned
+  form_resumed
+}
+
+enum PublicFormJourneyState {
+  active
+  abandoned
+  completed
+
+  @@map("public_form_journey_state")
 }
 
 model PublicFormSettings {
@@ -5655,6 +5672,7 @@ model PublicForm {
   publications              PublicFormPublication[]
   submissions               PublicFormSubmission[]
   metricEvents              PublicFormMetricEvent[]
+  journeySessions           PublicFormJourneySession[]
 
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([teamId, approvalStatus, updatedAt(sort: Desc)])
@@ -5773,6 +5791,7 @@ model PublicFormPublication {
   publishedBy   Profile                 @relation("PublicFormPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
   submissions   PublicFormSubmission[]
   metricEvents  PublicFormMetricEvent[]
+  journeySessions PublicFormJourneySession[]
 
   @@unique([formId, version])
   @@index([formId, endedAt, publishedAt(sort: Desc)])
@@ -5858,6 +5877,37 @@ model PublicFormMetricEvent {
   @@index([questionId])
   @@index([eventId])
   @@map("corretor_studio_public_form_metric_events")
+}
+
+/// Projeção da jornada do visitante em uma publicação. Atualizada de forma
+/// idempotente por evento aceito; o cron de abandono só marca `abandoned`
+/// após 30 minutos sem atividade e nunca reverte uma sessão `completed`.
+model PublicFormJourneySession {
+  id               String                 @id @default(uuid()) @db.Uuid
+  formId           String                 @db.Uuid
+  publicationId    String                 @db.Uuid
+  visitorSessionId String                 @db.Text
+  state            PublicFormJourneyState @default(active)
+  startedAt        DateTime               @default(now()) @db.Timestamptz(6)
+  lastActivityAt   DateTime               @default(now()) @db.Timestamptz(6)
+  currentPageId    String?                @db.Uuid
+  currentPageIndex Int?
+  lastExitIntentAt DateTime?              @db.Timestamptz(6)
+  lastAbandonedAt  DateTime?              @db.Timestamptz(6)
+  lastResumedAt    DateTime?              @db.Timestamptz(6)
+  abandonmentCount Int                    @default(0)
+  submittedAt      DateTime?              @db.Timestamptz(6)
+  completedAt      DateTime?              @db.Timestamptz(6)
+  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
+
+  form        PublicForm            @relation(fields: [formId], references: [id], onDelete: Cascade)
+  publication PublicFormPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@unique([publicationId, visitorSessionId])
+  @@index([state, lastActivityAt])
+  @@index([formId, state])
+  @@map("corretor_studio_public_form_journey_sessions")
 }
 
 enum BackofficeLeadExtractionStatus {

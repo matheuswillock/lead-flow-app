@@ -55,6 +55,11 @@ export type PublicFormMetricQueuePayload = {
   /** Ver `PublicFormMetricEventInput.answerMappingKey`/`answerValue`. mappingKey só no servidor. */
   answerMappingKey: string | null;
   answerValue: unknown;
+  /** Jornada: página corrente no momento do evento. */
+  pageId?: string | null;
+  pageIndex?: number | null;
+  /** `form_validation_failed`: IDs e códigos de erro, nunca o valor inválido. */
+  validationCodes?: { questionId: string; code: string }[];
   /** `false` no POST público `/events`; identidade originada no Progress usa `true`. */
   createCrmLead: boolean;
   receivedAt: string;
@@ -86,6 +91,9 @@ export function buildPublicFormMetricQueuePayload(
     origin: input.origin ?? {},
     answerMappingKey: input.answerMappingKey ?? null,
     answerValue: input.answerValue ?? null,
+    pageId: input.pageId ?? null,
+    pageIndex: input.pageIndex ?? null,
+    validationCodes: input.validationCodes,
     createCrmLead: input.createCrmLead !== false,
     receivedAt: new Date().toISOString(),
   };
