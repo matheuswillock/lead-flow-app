@@ -344,33 +344,70 @@ jobs:
       # `/api/health` faz um `SELECT 1`, então cobre Prisma Client + engine +
       # conexão. Tentativas com espera porque a promoção leva alguns segundos
       # para propagar no edge.
-      # Bate no domínio de produção, não na URL do deployment: é o que o
-      # usuário acessa, e a URL específica do deployment responde 302 por
-      # deployment protection, o que viraria falso negativo (e rollback
-      # indevido). Como o alias só aponta para o novo deployment depois da
-      # promoção, isto também confirma que a troca aconteceu de fato.
+      # Bate na URL DO DEPLOYMENT, não no domínio de produção.
+      #
+      # A primeira versão usava o domínio, com o argumento de que é o que o
+      # usuário acessa. Errado neste projeto: Rolling Releases estão ativos,
+      # então após a promoção o canary começa em 10% e o domínio serve
+      # majoritariamente o deployment ANTERIOR. Medido em 22/08 durante um
+      # canary de 10%: 0 de 20 requisições ao domínio chegaram ao deployment
+      # novo. Como smoke test isso seria falso negativo em todo deploy — e
+      # dispararia rollback de deployments saudáveis.
+      #
+      # A URL do deployment endereça exatamente o que acabou de subir,
+      # independente da fatia de canary; o 302 de deployment protection é
+      # resolvido pelo header de bypass.
+      #
+      # Prova: o deployment novo sobe, responde e alcança o banco.
+      # Não prova: que o tráfego já migrou — isso é decisão do rolling release.
       - name: Smoke test pós-deploy
         id: smoke-test
         run: |
           set -euo pipefail
 
-          URL="${PRODUCTION_URL%/}/api/health"
-          echo "GET $URL"
+          if [ -z "${BYPASS_SECRET:-}" ]; then
+            echo "::error::VERCEL_AUTOMATION_BYPASS_SECRET ausente nos secrets do repositorio."
+            echo "::error::Sem ele o smoke test nao endereca o deployment (302 de deployment protection)."
+            echo "::error::Valor em: Vercel > Settings > Deployment Protection > Protection Bypass for Automation."
+            exit 1
+          fi
+
+          URL="${DEPLOY_URL%/}/api/health"
+          echo "GET $URL (via protection bypass)"
 
           for attempt in 1 2 3 4 5; do
             BODY="$(mktemp)"
-            CODE="$(curl -sSL -o "$BODY" -w '%{http_code}' --max-time 25 "$URL" || echo "000")"
+            CODE="$(curl -sSL -o "$BODY" -w '%{http_code}' --max-time 25 \
+              -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
+              -H "x-vercel-set-bypass-cookie: false" \
+              "$URL" || echo "000")"
             echo "  tentativa $attempt: HTTP $CODE — $(head -c 200 "$BODY")"
 
-            if [ "$CODE" = "200" ]; then
-              echo "Smoke test OK — producao no ar e alcancando o banco."
+            # Status 200 sozinho NAO basta: com bypass invalido a Vercel serve
+            # a tela de login SSO com HTTP 200. Verificado em 22/08 — o check
+            # por status aprovava essa resposta. So aceitamos o corpo que
+            # apenas o /api/health produz.
+            if [ "$CODE" = "200" ] && grep -q '"database":"ok"' "$BODY"; then
+              echo "Smoke test OK — deployment no ar e alcancando o banco."
               exit 0
             fi
 
-            # 503 = rota respondeu mas o banco/engine falhou: é o modo de falha
-            # do incidente de 22/08 e não melhora com retry. Falha na hora.
+            if [ "$CODE" = "200" ]; then
+              echo "::error::smoke test: HTTP 200 mas o corpo nao e do /api/health"
+              echo "::error::provavel tela de deployment protection — verifique VERCEL_AUTOMATION_BYPASS_SECRET"
+              exit 1
+            fi
+
+            # 503 = rota respondeu mas o banco/engine falhou. Modo de falha de
+            # 22/08 (Prisma engine de outra plataforma); nao melhora com retry.
             if [ "$CODE" = "503" ]; then
               echo "::error::smoke test: /api/health respondeu 503 — runtime no ar mas sem acesso ao banco"
+              exit 1
+            fi
+
+            # 401/403 = bypass recusado. Insistir nao resolve.
+            if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
+              echo "::error::smoke test: bypass recusado (HTTP $CODE) — verifique VERCEL_AUTOMATION_BYPASS_SECRET"
               exit 1
             fi
 
@@ -380,7 +417,8 @@ jobs:
           echo "::error::smoke test falhou: /api/health nao respondeu 200 em 5 tentativas (ultimo: $CODE)"
           exit 1
         env:
-          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://www.corretorstudio.com' }}
+          DEPLOY_URL: ${{ steps.vercel-prod.outputs.deploy-url }}
+          BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       # Roda quando a verificação OU o smoke test reprovam um deployment que
       # chegou a ser promovido. Não cobre o caso em que o deploy nem aconteceu
