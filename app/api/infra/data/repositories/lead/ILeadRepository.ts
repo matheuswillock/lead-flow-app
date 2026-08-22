@@ -20,9 +20,19 @@ export type TransferToTeamSanitization = {
   clearCnpj: boolean;
 };
 
+/**
+ * Campos escalares que as rotas de lead precisam para decidir autorizacao e
+ * regras de reuniao, sem carregar o registro completo com relacoes.
+ */
+export type LeadAuthorizationSnapshot = Pick<
+  Lead,
+  "id" | "teamId" | "status" | "closerId" | "assignedTo" | "isTransfer" | "meetingDate"
+>;
+
 export interface ILeadRepository {
   create(data: LeadCreateRepositoryInput): Promise<LeadRecord>;
   findById(id: string): Promise<LeadRecord | null>;
+  findAuthorizationSnapshotById(id: string): Promise<LeadAuthorizationSnapshot | null>;
   findByLeadCode(leadCode: string): Promise<Lead | null>;
   findLeadByPhoneInTeam(teamId: string, normalizedPhone: string): Promise<Pick<Lead, "id"> | null>;
   /**

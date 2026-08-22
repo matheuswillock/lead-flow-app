@@ -1,21 +1,15 @@
 import { after, NextRequest, NextResponse, connection } from "next/server";
-import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
-import { LeadUseCase } from "../../useCases/leads/LeadUseCase";
-import { RegisterNewUserProfile } from "../../useCases/profiles/ProfileUseCase";
+import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseInstance";
 import { CreateLeadRequestSchema } from "./DTO/requestToCreateLead";
 import { Output } from "@/lib/output";
-import { LeadStatus } from "@prisma/client";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import {
   parseCustomFieldFiltersQueryParam,
   parseCustomFieldSortQueryParam,
+  parseLeadStatusQueryParam,
 } from "./DTO/requestToListLeadsCustomFields";
-
-const leadRepository = new LeadRepository();
-const profileUseCase = new RegisterNewUserProfile();
-const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,7 +85,6 @@ export async function GET(request: NextRequest) {
     const { access } = teamAccess;
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
-    const status = searchParams.get('status') as LeadStatus | null;
     const assignedTo = searchParams.get('assignedTo');
     const search = searchParams.get('search');
     const startDate = searchParams.get('startDate');
@@ -105,6 +98,15 @@ export async function GET(request: NextRequest) {
     if (!role) {
       console.warn('[LeadsRoute][GET] No role in query params');
       const output = new Output(false, [], ["Role do usuário é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
+    let status;
+    try {
+      status = parseLeadStatusQueryParam(searchParams.get('status'));
+    } catch (parseError) {
+      console.warn('[LeadsRoute][GET] status inválido:', parseError);
+      const output = new Output(false, [], ["Status de lead inválido"], null);
       return NextResponse.json(output, { status: 400 });
     }
 

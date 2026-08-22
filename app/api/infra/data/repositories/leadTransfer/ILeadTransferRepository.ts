@@ -56,6 +56,12 @@ export type LeadTransferListFilters = {
 };
 
 export interface ILeadTransferRepository {
+  /**
+   * Indica se o lead ja foi transferido a partir do time informado. Usado para
+   * autorizar que um manager do time de origem ainda visualize um lead que
+   * saiu do time dele.
+   */
+  existsTransferFromTeam(params: { leadId: string; fromTeamId: string }): Promise<boolean>;
   findPendingByTeam(filters: LeadTransferListFilters): Promise<LeadTransferPendingRow[]>;
   findCompletedByTeam(filters: LeadTransferListFilters): Promise<LeadTransferCompletedRow[]>;
   findFacetsByTeam(teamId: string): Promise<{
