@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeHealthPlanUseCase } from "@/app/api/useCases/backofficeHealthPlan/BackofficeHealthPlanUseCase"
+import { invalidateHealthPlansCache } from "@/lib/cache/invalidation"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const updateSchema = z.object({
@@ -37,6 +38,9 @@ export async function PUT(
         ? { email: access.access.backofficeEmail, password: parsed.data.password }
         : undefined
     )
+    if (output.isValid) {
+      invalidateHealthPlansCache()
+    }
     const firstError = output.errorMessages[0] ?? ""
     const status = output.isValid ? 200 : firstError === "Plano de saúde não encontrado" ? 404 : firstError === "Senha incorreta" ? 401 : 400
     return NextResponse.json(output, { status })
@@ -64,6 +68,9 @@ export async function DELETE(
       email: access.access.backofficeEmail,
       password,
     })
+    if (output.isValid) {
+      invalidateHealthPlansCache()
+    }
     const firstError = output.errorMessages[0] ?? ""
     const status = output.isValid ? 200 : firstError === "Plano de saúde não encontrado" ? 404 : firstError === "Senha incorreta" ? 401 : 400
     return NextResponse.json(output, { status })
