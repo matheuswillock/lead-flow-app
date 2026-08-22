@@ -335,14 +335,61 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
 
-      # Só roda se a verificação reprovou um deployment que chegou a ser
-      # promovido. Não cobre o caso em que o deploy nem aconteceu (aí produção
-      # simplesmente continua na versão anterior, que é o estado desejado).
-      - name: Rollback em verificação reprovada
-        if: ${{ failure() && steps.verify-prod.outcome == 'failure' && steps.vercel-prod.outputs.deploy-url != '' }}
+      # A checagem que faltava. Todas as anteriores olham procedência e
+      # integridade: commit certo, arquivos presentes, deployment READY. Nenhuma
+      # exercita o serviço. Em 22/08/2026 um deploy passou em todas elas e
+      # mesmo assim devolvia 500 em qualquer rota que tocasse o banco — o
+      # Prisma engine era de outra plataforma. Só uma requisição real pega isso.
+      #
+      # `/api/health` faz um `SELECT 1`, então cobre Prisma Client + engine +
+      # conexão. Tentativas com espera porque a promoção leva alguns segundos
+      # para propagar no edge.
+      # Bate no domínio de produção, não na URL do deployment: é o que o
+      # usuário acessa, e a URL específica do deployment responde 302 por
+      # deployment protection, o que viraria falso negativo (e rollback
+      # indevido). Como o alias só aponta para o novo deployment depois da
+      # promoção, isto também confirma que a troca aconteceu de fato.
+      - name: Smoke test pós-deploy
+        id: smoke-test
         run: |
           set -euo pipefail
-          echo "::warning::verificacao reprovou o deployment promovido — revertendo"
+
+          URL="${PRODUCTION_URL%/}/api/health"
+          echo "GET $URL"
+
+          for attempt in 1 2 3 4 5; do
+            BODY="$(mktemp)"
+            CODE="$(curl -sSL -o "$BODY" -w '%{http_code}' --max-time 25 "$URL" || echo "000")"
+            echo "  tentativa $attempt: HTTP $CODE — $(head -c 200 "$BODY")"
+
+            if [ "$CODE" = "200" ]; then
+              echo "Smoke test OK — producao no ar e alcancando o banco."
+              exit 0
+            fi
+
+            # 503 = rota respondeu mas o banco/engine falhou: é o modo de falha
+            # do incidente de 22/08 e não melhora com retry. Falha na hora.
+            if [ "$CODE" = "503" ]; then
+              echo "::error::smoke test: /api/health respondeu 503 — runtime no ar mas sem acesso ao banco"
+              exit 1
+            fi
+
+            [ "$attempt" -lt 5 ] && sleep 10
+          done
+
+          echo "::error::smoke test falhou: /api/health nao respondeu 200 em 5 tentativas (ultimo: $CODE)"
+          exit 1
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://www.corretorstudio.com' }}
+
+      # Roda quando a verificação OU o smoke test reprovam um deployment que
+      # chegou a ser promovido. Não cobre o caso em que o deploy nem aconteceu
+      # (aí produção continua na versão anterior, que é o estado desejado).
+      - name: Rollback em verificação reprovada
+        if: ${{ failure() && (steps.verify-prod.outcome == 'failure' || steps.smoke-test.outcome == 'failure') && steps.vercel-prod.outputs.deploy-url != '' }}
+        run: |
+          set -euo pipefail
+          echo "::warning::deployment promovido reprovou (verificacao ou smoke test) — revertendo"
           npx --yes vercel@56.3.2 rollback \
             --token="$VERCEL_TOKEN" \
             --yes
