@@ -123,6 +123,13 @@ export interface IProfileRepository {
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
   /** Dados minimos de contato, para notificacao e rotulo em atividade. */
   findContactById(id: string): Promise<ProfileContact | null>;
+  /** Identidade Supabase do perfil, para acoes executadas em nome dele. */
+  findIdentityById(id: string): Promise<ProfileIdentity | null>;
+  /**
+   * Primeiro master com assinatura vigente. Fallback da ingestao do Meta quando
+   * o webhook chega sem `managerId` no query param.
+   */
+  findFirstActiveMasterManager(): Promise<ProfileIdentity | null>;
   /**
    * Perfil com a conexao Google, para operar o calendario em nome dele.
    * Devolve o Profile completo porque `cancelCalendarEvent` o recebe como organizer.
@@ -131,6 +138,8 @@ export interface IProfileRepository {
 }
 
 export type ProfileContact = Pick<Profile, "id" | "email" | "fullName">;
+
+export type ProfileIdentity = Pick<Profile, "id" | "supabaseId">;
 
 export type ProfileWithGoogleConnection = Profile & {
   googleConnection: {

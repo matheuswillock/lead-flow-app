@@ -15,4 +15,9 @@ export interface ITeamRepository {
   findMasterWithSponsor(teamId: string): Promise<TeamMasterWithSponsor | null>;
   /** Indica se existe rota de transferencia configurada entre dois times. */
   hasTransferRoute(sourceTeamId: string, targetTeamId: string): Promise<boolean>;
+  /**
+   * Time onde um lead sem time explicito deve cair: o marcado como padrao e,
+   * na ausencia dele, o mais antigo da conta.
+   */
+  findDefaultTeamIdByMaster(masterId: string): Promise<string | null>;
 }
