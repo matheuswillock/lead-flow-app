@@ -284,6 +284,43 @@ export class EmailLogRepository implements IEmailLogRepository {
       })
     })
   }
+
+  /**
+   * Irmão de `markFailed` para recusa da **nossa** pré-validação, não do
+   * provedor.
+   *
+   * A diferença importa para o usuário: `failed` é retentável (o Resend pode
+   * ter recusado por rate limit, cota, erro transitório), enquanto `suppressed`
+   * é terminal — typo de domínio, provedor morto, endereço genérico e bounce
+   * anterior reprovam de novo na mesma regra determinística. Reenviar só queima
+   * reputação de domínio e cota.
+   *
+   * `CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES` já trata `suppressed` como não
+   * retentável; este método é o que finalmente escreve esse status.
+   */
+  async markSuppressed(
+    logId: string,
+    eventId: string,
+    reason: string,
+    occurredAt: Date
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.emailLog.update({
+        where: { id: logId },
+        data: { status: "suppressed" },
+      })
+
+      await tx.emailEvent.create({
+        data: {
+          id: eventId,
+          logId,
+          type: "suppressed",
+          occurredAt,
+          metadata: { reason },
+        },
+      })
+    })
+  }
 }
 
 export const emailLogRepository = new EmailLogRepository()
