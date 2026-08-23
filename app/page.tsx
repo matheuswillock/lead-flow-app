@@ -17,7 +17,7 @@ import { getAbsoluteUrl } from "@/lib/metadata/share"
 import { featurePanelsData } from "@/lib/landing/feature-panels-data"
 import { faqData } from "@/lib/landing/faq-data"
 import { getLandingStats } from "@/lib/landing/public-stats"
-import { buildStatsData } from "@/lib/landing/stats-data"
+import { buildStatsData, hasPublishableStats } from "@/lib/landing/stats-data"
 
 const homeTitle = "Corretor Studio | CRM, Radar e Campanhas para Corretores de Saúde"
 const homeDescription =
@@ -35,7 +35,7 @@ export default async function HomePage() {
   const websiteUrl = getAbsoluteUrl("/")
   const logoUrl = getAbsoluteUrl("/corretor-studio-icon.svg")
   const landingStats = await getLandingStats()
-  const statsData = buildStatsData(landingStats)
+  const statsData = hasPublishableStats(landingStats) ? buildStatsData(landingStats) : null
 
   const graphSchema = {
     "@context": "https://schema.org",
@@ -115,7 +115,7 @@ export default async function HomePage() {
           <LandingHero />
           <OperatorsMarquee />
           <FeatureCarousel />
-          <StatsBand stats={statsData} />
+          {statsData ? <StatsBand stats={statsData} /> : null}
           <IntegrationsSection />
           <HowItWorksSteps />
           <FaqSection />
