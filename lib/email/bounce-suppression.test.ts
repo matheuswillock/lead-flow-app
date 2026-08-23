@@ -80,3 +80,57 @@ describe("shouldSuppressContactOnBounce", () => {
     ).toBe(false)
   })
 })
+
+/**
+ * Trava de decisão de produto, não teste de comportamento.
+ *
+ * A supressão por bounce é intencionalmente GLOBAL: não filtra por time. Já
+ * houve tentativa de "corrigir" isso como se fosse falta de escopo. Estes
+ * testes falham se alguém adicionar `teamId` às consultas, forçando a leitura
+ * do racional antes de mudar.
+ */
+describe("escopo da supressão por bounce (decisão de produto)", () => {
+  it("findBouncedEmails não filtra por time", async () => {
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailContactList/EmailContactListRepository.ts",
+    ).text()
+    const body = source.slice(
+      source.indexOf("async findBouncedEmails"),
+      source.indexOf("async createContacts"),
+    )
+
+    expect(body).not.toContain("teamId")
+    expect(body).toContain("isBounced: true")
+  })
+
+  it("o stamp de bounce é global, ao contrário do de reclamação", async () => {
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+    const complainedBranch = source.slice(
+      source.indexOf('if (eventType === "complained")'),
+      source.indexOf("if (log.campaignId)"),
+    )
+
+    // Bounce: propriedade do endereço, vale para qualquer remetente.
+    expect(bouncedBranch).not.toContain("teamId")
+    // Reclamação: relação destinatário-remetente, por time.
+    expect(complainedBranch).toContain("teamId")
+  })
+
+  it("o stamp casa e-mail sem depender de caixa (contatos não são normalizados na escrita)", async () => {
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+
+    expect(bouncedBranch).toContain('mode: "insensitive"')
+  })
+})

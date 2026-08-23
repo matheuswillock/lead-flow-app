@@ -55,6 +55,19 @@ export type LeadTransferListFilters = {
   multiskillOnly?: boolean;
 };
 
+export interface CreateLeadTransferDTO {
+  leadId: string;
+  fromTeamId: string;
+  toTeamId: string;
+  transferredByProfileId: string;
+  receivedByProfileId: string;
+  fromManagerId: string;
+  toManagerId: string;
+  transferTagUsed: boolean;
+  preScheduledAt: Date | null;
+  scheduledAtTransfer: boolean;
+}
+
 export interface ILeadTransferRepository {
   /**
    * Indica se o lead ja foi transferido a partir do time informado. Usado para
@@ -62,6 +75,10 @@ export interface ILeadTransferRepository {
    * saiu do time dele.
    */
   existsTransferFromTeam(params: { leadId: string; fromTeamId: string }): Promise<boolean>;
+  /** Registra a transferencia de um lead entre times. */
+  create(data: CreateLeadTransferDTO): Promise<void>;
+  /** Marca que o agendamento foi criado junto da transferencia. */
+  markScheduledAtTransfer(params: { leadId: string; toTeamId: string }): Promise<void>;
   findPendingByTeam(filters: LeadTransferListFilters): Promise<LeadTransferPendingRow[]>;
   findCompletedByTeam(filters: LeadTransferListFilters): Promise<LeadTransferCompletedRow[]>;
   findFacetsByTeam(teamId: string): Promise<{
