@@ -146,9 +146,10 @@ jobs:
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
-      # PR: só quality gate — não gera artefato de deploy.
+      # Quality gate em todo evento. Este job NÃO gera mais artefato de
+      # deploy: `vercel build` + transferência do `.vercel/output` entre
+      # runners foi revertido (ver comentário no job `deploy-production`).
       - name: Build (quality gate)
-        if: ${{ github.event_name == 'pull_request' }}
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
@@ -157,72 +158,8 @@ jobs:
           DIRECT_URL: 'postgresql://placeholder:placeholder@placeholder:5432/placeholder'
         run: bun run build
 
-      - name: Validar saida do build (quality gate)
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Validar saida do build
         uses: ./.github/actions/validate-build-output
-
-      # Push: o MESMO build vira o artefato de deploy.
-      #
-      # Antes: este job buildava aqui e o `deploy-production` chamava
-      # `vercel deploy` sem `--prebuilt` — a Vercel rebuildava do zero em
-      # máquina dela, cobrada como Build CPU Minutes (72% da fatura de uso em
-      # ago/2026, ~$145/ciclo). Pagávamos para buildar duas vezes.
-      #
-      # `vercel build` executa o mesmo build command do projeto, então o quality
-      # gate é preservado: se o build quebrar, o job falha aqui como antes.
-      - name: Vercel build (produção)
-        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
-        run: |
-          npx --yes vercel@56.3.2 pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@56.3.2 build --prod --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      # Valida na origem, antes de empacotar: um `vercel build` que sai 0 com
-      # saída inconsistente falha aqui, com os arquivos nomeados, em vez de
-      # atravessar a transferência entre runners e só estourar no deploy.
-      - name: Validar saida do build (deploy)
-        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
-        uses: ./.github/actions/validate-build-output
-        with:
-          mode: vercel
-
-      # `.vercel/output` NÃO é autocontido: cada `.func/.vc-config.json` traz um
-      # `filePathMap` (~3.4k entradas por função) e o `vercel deploy --prebuilt`
-      # exige que todo caminho ali exista, relativo à raiz do projeto.
-      #
-      # Levantamento sobre o artefato do run 32593997089 — 21 configs, 4.834
-      # arquivos únicos — mostrou que as referências saem de exatamente quatro
-      # origens:
-      #
-      #   node_modules/**        -> restaurado pelo `bun install` do job de deploy
-      #   .next/server/**        -> 4.215 refs   <- faltava
-      #   .next/<manifests>      -> BUILD_ID, required-server-files.json, ...
-      #   .next/node_modules/**  -> symlinks relativos para pacotes externalizados
-      #   .env.*.example         -> vêm do checkout
-      #
-      # Daí `.next` inteiro, não um subconjunto: as três tentativas anteriores
-      # falharam uma a uma justamente por listar caminhos à mão
-      # (`node_modules/.prisma`, depois `.next/node_modules`, depois
-      # `.next/server/chunks`). `tar` também preserva os symlinks, que o
-      # `upload-artifact` descarta.
-      #
-      # `.vercel/project.json` continua de fora: a identidade do projeto vem das
-      # env vars, conforme o guardrail de `VPS/GitHub Actions Self-Hosted`.
-      - name: Empacotar artefato de deploy
-        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
-        run: tar -czf vercel-deploy.tgz .vercel/output .next
-
-      - name: Upload build artifact
-        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: vercel-output-${{ github.sha }}
-          path: vercel-deploy.tgz
-          retention-days: 1
-          include-hidden-files: true
 
   e2e:
     name: E2E (Playwright)
@@ -277,113 +214,33 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: vercel-output-${{ github.sha }}
-
-      # `tar -x` restaura `.vercel/output` e `.next/node_modules` com os
-      # symlinks intactos, nos mesmos caminhos relativos do build.
-      - name: Extrair artefato de deploy
-        run: tar -xzf vercel-deploy.tgz
-
-      # `.vercel/output` referencia `node_modules/.prisma/client/client.js` por
-      # caminho relativo à raiz do projeto (output tracing do Next). O build roda
-      # em `ubuntu-latest` e o deploy aqui, noutra máquina, então esse alvo não
-      # existe e o `vercel deploy --prebuilt` aborta com
-      # `File does not exist: "node_modules/.prisma/client/client.js"`.
-      # Reinstalar as deps + gerar o client restaura o alvo do link.
-      - name: Setup Bun & deps
-        uses: ./.github/actions/setup-bun-deps
-
-      - name: Generate Prisma Client
-        run: bun run prisma:generate
-
-      # Pre-flight: falhar aqui, com mensagem explícita, em vez de deixar o CLI
-      # abortar no meio do upload com um erro críptico. Cada item abaixo é um
-      # modo de falha já observado ou diretamente adjacente a um.
-      - name: Pre-flight do artefato de deploy
-        run: |
-          set -euo pipefail
-
-          fail() { echo "::error::$1"; exit 1; }
-
-          [ -d .vercel/output ] || fail "artefato ausente: .vercel/output nao foi baixado"
-          [ -f .vercel/output/config.json ] || fail "artefato incompleto: .vercel/output/config.json ausente"
-
-          if [ -z "$(find .vercel/output -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-            fail "artefato vazio: .vercel/output nao tem conteudo"
-          fi
-
-          [ -d .next ] || fail ".next ausente: o artefato nao trouxe o build do Next"
-
-          # Verificação exaustiva: reproduz o que o `vercel deploy --prebuilt`
-          # faz ao validar o `filePathMap` de cada função, só que aqui e com o
-          # arquivo faltante nomeado. Substitui a lista de caminhos escrita à
-          # mão que deixou passar três falhas seguidas — cada uma revelando um
-          # caminho que ninguém tinha previsto.
-          node -e '
-            const fs = require("fs");
-            const path = require("path");
-
-            const missing = new Set();
-            let configs = 0;
-            let refs = 0;
-
-            const walk = (dir) => {
-              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                  walk(full);
-                  continue;
-                }
-                if (entry.name !== ".vc-config.json") continue;
-                configs += 1;
-                let config;
-                try {
-                  config = JSON.parse(fs.readFileSync(full, "utf8"));
-                } catch {
-                  continue;
-                }
-                for (const target of Object.values(config.filePathMap ?? {})) {
-                  refs += 1;
-                  if (!fs.existsSync(target)) missing.add(target);
-                }
-              }
-            };
-
-            walk(".vercel/output/functions");
-            process.stdout.write(`filePathMap: ${configs} configs, ${refs} refs\n`);
-
-            if (missing.size === 0) process.exit(0);
-
-            process.stderr.write(`::error::${missing.size} arquivo(s) do filePathMap ausente(s) — o deploy vai abortar\n`);
-            for (const file of [...missing].slice(0, 15)) process.stderr.write(`  ${file}\n`);
-            process.exit(1);
-          '
-
-          echo "Pre-flight OK."
-
-      # `--prebuilt` sobe o `.vercel/output` já pronto em vez de mandar o
-      # código-fonte para a Vercel rebuildar. Build CPU Minutes -> ~0.
+      # REVERTIDO: `vercel build` no CI + transferência do `.vercel/output`
+      # entre runners (introduzido em 9a57c733, 20/08) para poupar Build CPU
+      # Minutes. Essa estratégia NUNCA produziu um deploy de produção
+      # funcional: os 6 deploys tentados desde então falharam, cada um num
+      # arquivo diferente que o `filePathMap` esperava
+      # (`node_modules/.prisma`, `.next/node_modules`, `.next/server/chunks`),
+      # e a tentativa de resolver regenerando dependências aqui publicou um
+      # Prisma engine de outra plataforma e derrubou produção em 22/08.
       #
-      # Sem `vercel pull` aqui de propósito: `VERCEL_ORG_ID` + `VERCEL_PROJECT_ID`
-      # já identificam o projeto, e `pull` traria as env vars de produção para o
-      # disco do runner self-hosted — o guardrail da nota
-      # `VPS/GitHub Actions Self-Hosted` pede o contrário.
+      # A raiz é estrutural: `.vercel/output` não é autocontido — referencia o
+      # workspace inteiro do build — e binários nativos como o query engine do
+      # Prisma são específicos do runtime. Nenhum dos dois sobrevive a uma
+      # transferência entre máquinas diferentes.
       #
-      # NÃO reintroduzir `2>&1 | tail -1`: sem `pipefail` o shell enxergava o
-      # exit code do `tail`, não o do CLI. Dois deploys de produção falharam em
-      # silêncio (21/08 capturou a borda `╰──╯` do CLI, 22/08 capturou
-      # `File does not exist: ...`) e produção ficou 3 dias atrás de `main` com
-      # o job verde. `--meta` carimba o SHA para o passo de verificação abaixo.
+      # Voltando a mandar o código-fonte, a Vercel builda no próprio runtime de
+      # destino. Custa Build CPU Minutes, e é a configuração que rodou estável
+      # até 19/08.
+      #
+      # Ver: Postmortem/2026-08-22 — Prisma engine de outro runtime derruba producao
+
       - name: Deploy to Vercel (Production)
         id: vercel-prod
         run: |
           set -euo pipefail
 
           DEPLOY_LOG="$(mktemp)"
-          if ! npx --yes vercel@56.3.2 deploy --prebuilt --prod \
+          if ! npx --yes vercel@56.3.2 deploy --prod \
             --token="$VERCEL_TOKEN" \
             --yes \
             --meta githubCommitSha="$GITHUB_SHA" \
@@ -478,14 +335,99 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
 
-      # Só roda se a verificação reprovou um deployment que chegou a ser
-      # promovido. Não cobre o caso em que o deploy nem aconteceu (aí produção
-      # simplesmente continua na versão anterior, que é o estado desejado).
-      - name: Rollback em verificação reprovada
-        if: ${{ failure() && steps.verify-prod.outcome == 'failure' && steps.vercel-prod.outputs.deploy-url != '' }}
+      # A checagem que faltava. Todas as anteriores olham procedência e
+      # integridade: commit certo, arquivos presentes, deployment READY. Nenhuma
+      # exercita o serviço. Em 22/08/2026 um deploy passou em todas elas e
+      # mesmo assim devolvia 500 em qualquer rota que tocasse o banco — o
+      # Prisma engine era de outra plataforma. Só uma requisição real pega isso.
+      #
+      # `/api/health` faz um `SELECT 1`, então cobre Prisma Client + engine +
+      # conexão. Tentativas com espera porque a promoção leva alguns segundos
+      # para propagar no edge.
+      # Bate na URL DO DEPLOYMENT, não no domínio de produção.
+      #
+      # A primeira versão usava o domínio, com o argumento de que é o que o
+      # usuário acessa. Errado neste projeto: Rolling Releases estão ativos,
+      # então após a promoção o canary começa em 10% e o domínio serve
+      # majoritariamente o deployment ANTERIOR. Medido em 22/08 durante um
+      # canary de 10%: 0 de 20 requisições ao domínio chegaram ao deployment
+      # novo. Como smoke test isso seria falso negativo em todo deploy — e
+      # dispararia rollback de deployments saudáveis.
+      #
+      # A URL do deployment endereça exatamente o que acabou de subir,
+      # independente da fatia de canary; o 302 de deployment protection é
+      # resolvido pelo header de bypass.
+      #
+      # Prova: o deployment novo sobe, responde e alcança o banco.
+      # Não prova: que o tráfego já migrou — isso é decisão do rolling release.
+      - name: Smoke test pós-deploy
+        id: smoke-test
         run: |
           set -euo pipefail
-          echo "::warning::verificacao reprovou o deployment promovido — revertendo"
+
+          if [ -z "${BYPASS_SECRET:-}" ]; then
+            echo "::error::VERCEL_AUTOMATION_BYPASS_SECRET ausente nos secrets do repositorio."
+            echo "::error::Sem ele o smoke test nao endereca o deployment (302 de deployment protection)."
+            echo "::error::Valor em: Vercel > Settings > Deployment Protection > Protection Bypass for Automation."
+            exit 1
+          fi
+
+          URL="${DEPLOY_URL%/}/api/health"
+          echo "GET $URL (via protection bypass)"
+
+          for attempt in 1 2 3 4 5; do
+            BODY="$(mktemp)"
+            CODE="$(curl -sSL -o "$BODY" -w '%{http_code}' --max-time 25 \
+              -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
+              -H "x-vercel-set-bypass-cookie: false" \
+              "$URL" || echo "000")"
+            echo "  tentativa $attempt: HTTP $CODE — $(head -c 200 "$BODY")"
+
+            # Status 200 sozinho NAO basta: com bypass invalido a Vercel serve
+            # a tela de login SSO com HTTP 200. Verificado em 22/08 — o check
+            # por status aprovava essa resposta. So aceitamos o corpo que
+            # apenas o /api/health produz.
+            if [ "$CODE" = "200" ] && grep -q '"database":"ok"' "$BODY"; then
+              echo "Smoke test OK — deployment no ar e alcancando o banco."
+              exit 0
+            fi
+
+            if [ "$CODE" = "200" ]; then
+              echo "::error::smoke test: HTTP 200 mas o corpo nao e do /api/health"
+              echo "::error::provavel tela de deployment protection — verifique VERCEL_AUTOMATION_BYPASS_SECRET"
+              exit 1
+            fi
+
+            # 503 = rota respondeu mas o banco/engine falhou. Modo de falha de
+            # 22/08 (Prisma engine de outra plataforma); nao melhora com retry.
+            if [ "$CODE" = "503" ]; then
+              echo "::error::smoke test: /api/health respondeu 503 — runtime no ar mas sem acesso ao banco"
+              exit 1
+            fi
+
+            # 401/403 = bypass recusado. Insistir nao resolve.
+            if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
+              echo "::error::smoke test: bypass recusado (HTTP $CODE) — verifique VERCEL_AUTOMATION_BYPASS_SECRET"
+              exit 1
+            fi
+
+            [ "$attempt" -lt 5 ] && sleep 10
+          done
+
+          echo "::error::smoke test falhou: /api/health nao respondeu 200 em 5 tentativas (ultimo: $CODE)"
+          exit 1
+        env:
+          DEPLOY_URL: ${{ steps.vercel-prod.outputs.deploy-url }}
+          BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      # Roda quando a verificação OU o smoke test reprovam um deployment que
+      # chegou a ser promovido. Não cobre o caso em que o deploy nem aconteceu
+      # (aí produção continua na versão anterior, que é o estado desejado).
+      - name: Rollback em verificação reprovada
+        if: ${{ failure() && (steps.verify-prod.outcome == 'failure' || steps.smoke-test.outcome == 'failure') && steps.vercel-prod.outputs.deploy-url != '' }}
+        run: |
+          set -euo pipefail
+          echo "::warning::deployment promovido reprovou (verificacao ou smoke test) — revertendo"
           npx --yes vercel@56.3.2 rollback \
             --token="$VERCEL_TOKEN" \
             --yes
