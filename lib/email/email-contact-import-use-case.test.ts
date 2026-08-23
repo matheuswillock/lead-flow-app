@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { Prisma } from "@prisma/client"
+import { AUDIENCE_REASON_BLOCKLISTED } from "@/lib/email/audience-prevalidation"
 
 const updateManyMock = mock(async () => ({ count: 0 }))
 const jobUpdateMock = mock(async () => ({}))
 const emailContactFindManyMock = mock(
-  async (_args?: { select?: { id?: boolean; email?: boolean } }) =>
-    [] as { id?: string; email?: string }[]
+  async (_args?: {
+    select?: { id?: boolean; email?: boolean }
+    where?: { list?: { isBlocklist?: boolean } }
+  }) => [] as { id?: string; email?: string }[]
 )
 const emailContactCreateManyMock = mock(async () => ({ count: 0 }))
 const emailContactUpdateMock = mock(async () => ({}))
@@ -215,6 +218,52 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     downloadPayloadMock.mockImplementation(async () =>
       JSON.stringify({ rows: [] })
     )
+  })
+
+  it("não importa e-mail bloqueado no time, nem na lista alvo nem no fan-out padrão", async () => {
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      // Lista comum: força o fan-out para a lista padrão (o segundo destino de escrita).
+      isSystemDefault: false,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "bloqueado@example.com", name: "Bloqueado" },
+          { email: "livre@example.com", name: "Livre" },
+        ],
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      // Caixa alta de propósito: a blocklist compara normalizada.
+      if (args?.where?.list?.isBlocklist) return [{ email: "Bloqueado@Example.com" }]
+      return []
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const createManyArgs = emailContactCreateManyMock.mock.calls as unknown as Array<
+      [{ data?: { email: string }[] } | undefined]
+    >
+    const importedEmails = createManyArgs.flatMap(([args]) =>
+      (args?.data ?? []).map((row) => row.email)
+    )
+    expect(importedEmails).toContain("livre@example.com")
+    expect(importedEmails).not.toContain("bloqueado@example.com")
+
+    // A gravação de progresso carrega skippedCount; finalizeJob roda depois só com o status.
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { skippedCount?: number; skippedIssues?: unknown } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.skippedCount !== undefined)
+    expect(progressUpdate?.data?.skippedCount).toBe(1)
+    expect(progressUpdate?.data?.skippedIssues).toEqual([
+      { email: "bloqueado@example.com", reason: AUDIENCE_REASON_BLOCKLISTED },
+    ])
   })
 
   it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {

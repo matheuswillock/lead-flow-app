@@ -7,6 +7,8 @@ import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
   EMAIL_BLOCKLIST_NAME,
   ensureTeamEmailBlocklist,
+  findTeamBlocklistedEmails,
+  partitionByBlocklist,
 } from "@/lib/email/email-contact-blocklist"
 import {
   attachUnsubscribeSourceToContacts,
@@ -14,6 +16,7 @@ import {
   type UnsubscribeSourceCandidate,
 } from "@/lib/email/resolve-contact-unsubscribe-source"
 import {
+  AUDIENCE_REASON_BLOCKLISTED,
   AUDIENCE_REASON_BOUNCED,
   evaluateEmailForAudience,
 } from "@/lib/email/audience-prevalidation"
@@ -608,6 +611,18 @@ export class EmailContactListUseCase {
         )
       }
 
+      const blocklistedEmails = await findTeamBlocklistedEmails(ctx.teamId)
+      if (blocklistedEmails.has(normalizedEmail) && !existingContact) {
+        return new Output(
+          false,
+          [],
+          [
+            `E-mail inválido. Este contato não será adicionado à base. (${AUDIENCE_REASON_BLOCKLISTED})`,
+          ],
+          null
+        )
+      }
+
       const upsertedContact = await prisma.emailContact.upsert({
         where: { listId_email: { listId, email: normalizedEmail } },
         update: { name: name ?? null },
@@ -836,7 +851,7 @@ export class EmailContactListUseCase {
       const bouncedEmails = await emailContactListRepository.findBouncedEmails(
         candidates.map((row) => row.email)
       )
-      const validRows: Array<{
+      const notBouncedRows: Array<{
         line?: number
         email: string
         name?: string
@@ -853,7 +868,22 @@ export class EmailContactListUseCase {
           })
           continue
         }
-        validRows.push(row)
+        notBouncedRows.push(row)
+      }
+
+      const blocklistedEmails = await findTeamBlocklistedEmails(ctx.teamId)
+      const { allowed: validRows, blocked } = partitionByBlocklist(
+        notBouncedRows,
+        blocklistedEmails
+      )
+      for (const row of blocked) {
+        skipped += 1
+        issues.push({
+          line: row.line,
+          email: row.email,
+          name: row.name,
+          reason: AUDIENCE_REASON_BLOCKLISTED,
+        })
       }
 
       if (validRows.length === 0) {
@@ -929,6 +959,24 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Nenhum contato válido encontrado no CSV"], null)
       }
 
+      // Antes do upsert e do fan-out para a lista padrão: quem o time bloqueou
+      // não volta por import.
+      const blocklistedEmails = await findTeamBlocklistedEmails(ctx.teamId)
+      const { allowed: allowedContacts, blocked: blockedContacts } = partitionByBlocklist(
+        contacts,
+        blocklistedEmails
+      )
+      contacts = allowedContacts
+
+      if (contacts.length === 0) {
+        return new Output(
+          false,
+          [],
+          [`Nenhum contato importado: todos os ${blockedContacts.length} e-mails estão na lista de bloqueados`],
+          null
+        )
+      }
+
       // Upsert contacts in batches of 500
       const BATCH_SIZE = 500
       let upsertedCount = 0
@@ -994,9 +1042,13 @@ export class EmailContactListUseCase {
 
       return new Output(
         true,
-        [`${upsertedCount} contatos importados com sucesso`],
+        [
+          blockedContacts.length > 0
+            ? `${upsertedCount} contatos importados com sucesso. ${blockedContacts.length} recusado(s): ${AUDIENCE_REASON_BLOCKLISTED}.`
+            : `${upsertedCount} contatos importados com sucesso`,
+        ],
         [],
-        { imported: upsertedCount, total: totalCount }
+        { imported: upsertedCount, total: totalCount, skipped: blockedContacts.length }
       )
     } catch (error) {
       console.error("[EmailContactListUseCase][uploadCsv]", error)
