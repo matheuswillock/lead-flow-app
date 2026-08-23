@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { metaLeadUseCase } from '@/app/api/useCases/metaLeads/MetaLeadUseCase';
-import { metaLeadService } from '@/app/api/services/MetaLeadService';
+import { invalidateLeadCache } from '@/lib/cache/invalidation';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+
+/**
+ * Invalida o cache de cada lead criado ou tocado pelo webhook.
+ *
+ * `processWebhook` devolve um array com um item por `leadgen_id` processado.
+ * Itens sem `teamId` sao ignorados em silencio: significam falha de
+ * processamento, ja reportada em `errorMessages`.
+ */
+function invalidateLeadCacheForCreatedLeads(result: unknown): void {
+  if (!Array.isArray(result)) return;
+
+  for (const item of result) {
+    if (!item || typeof item !== 'object') continue;
+
+    const { id, teamId } = item as { id?: unknown; teamId?: unknown };
+    if (typeof id !== 'string' || typeof teamId !== 'string') continue;
+
+    invalidateLeadCache({ leadId: id, teamId });
+  }
+}
 
 /**
  * GET - Verificação do webhook (Meta envia para validar)
@@ -71,7 +91,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Validar assinatura HMAC SHA256
-    const isValid = metaLeadService.validateWebhookSignature(signature, body);
+    const isValid = metaLeadUseCase.validateWebhookSignature(signature, body);
 
     if (!isValid) {
       console.error('❌ Assinatura do webhook inválida');
@@ -104,6 +124,13 @@ export async function POST(request: NextRequest) {
 
     // 4. Processar webhook via UseCase
     const result = await metaLeadUseCase.processWebhook(payload, managerId);
+
+    // 5. Invalidar o cache dos times que receberam lead.
+    //
+    // Sem isto o lead entra no banco mas nao aparece no board ate o TTL do
+    // cache expirar (60s) — os demais caminhos de criacao de lead ja invalidam,
+    // este era o unico que nao invalidava.
+    invalidateLeadCacheForCreatedLeads(result.result);
 
     // Meta espera uma resposta rápida (200 OK)
     // Mesmo se houver erros, retornamos 200 para não ser bloqueado

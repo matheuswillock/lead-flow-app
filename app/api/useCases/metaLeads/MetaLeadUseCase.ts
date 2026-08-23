@@ -2,8 +2,12 @@ import type { IMetaLeadUseCase, CreateLeadFromMetaDTO } from "./IMetaLeadUseCase
 import { Output } from "@/lib/output";
 import { metaLeadService, type MetaWebhookPayload } from "../../services/MetaLeadService";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
-import { prisma } from "../../infra/data/prisma";
 import { ActivityType } from "@prisma/client";
+import { leadRepository } from "../../infra/data/repositories/lead/LeadRepository";
+import type { LeadDuplicateByEmail } from "../../infra/data/repositories/lead/ILeadRepository";
+import { leadActivityRepository } from "../../infra/data/repositories/leadActivity/LeadActivityRepository";
+import { profileRepository } from "../../infra/data/repositories/profile/ProfileRepository";
+import { teamRepository } from "../../infra/data/repositories/team/TeamRepository";
 import { leadUseCase } from "../leads/leadUseCaseFactory";
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 
@@ -100,6 +104,10 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   /**
    * Processa webhook do Meta
    */
+  validateWebhookSignature(signature: string, rawBody: string): boolean {
+    return metaLeadService.validateWebhookSignature(signature, rawBody);
+  }
+
   async processWebhook(payload: MetaWebhookPayload, managerId?: string): Promise<Output> {
     try {
       // Validar estrutura do payload
@@ -187,17 +195,11 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
         console.warn(`⚠️  Lead duplicado encontrado: ${existingLead.id}`);
 
         // Adicionar atividade mencionando tentativa de duplicação
-        await prisma.lead.update({
-          where: { id: existingLead.id },
-          data: {
-            activities: {
-              create: {
-                type: ActivityType.note,
-                body: `Tentativa de criação duplicada via Meta Lead Ads (leadgen_id: ${metaData.leadgenId})`,
-                author: { connect: { id: managerId } }
-              }
-            }
-          }
+        await leadActivityRepository.create({
+          leadId: existingLead.id,
+          type: ActivityType.note,
+          body: `Tentativa de criação duplicada via Meta Lead Ads (leadgen_id: ${metaData.leadgenId})`,
+          createdBy: managerId,
         });
 
         return existingLead;
@@ -206,16 +208,9 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       // Mapear plano de saúde
       const healthPlan = await healthPlanService.resolvePlanNameFromText(metaData.currentHealthPlan);
 
-      const team = await prisma.team.findFirst({
-        where: { masterId: managerId },
-        orderBy: [
-          { isDefault: "desc" },
-          { createdAt: "asc" },
-        ],
-        select: { id: true }
-      });
+      const defaultTeamId = await teamRepository.findDefaultTeamIdByMaster(managerId);
 
-      if (!team) {
+      if (!defaultTeamId) {
         throw new Error("Time padrao nao encontrado para o manager.");
       }
 
@@ -260,7 +255,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       const leadOutput = await leadUseCase.createLead(
         supabaseId,
         leadData,
-        team.id,
+        defaultTeamId,
         {
           authorAsStudio: true,
           body: `Lead importado automaticamente do Meta Lead Ads\n\nFormulário ID: ${metaData.formId || 'N/A'}\nAnúncio ID: ${metaData.adId || 'N/A'}\nCidade: ${metaData.city || 'N/A'}\n\nDados brutos: ${JSON.stringify(metaData.rawData, null, 2)}`,
@@ -276,7 +271,9 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       const lead = leadOutput.result as { id: string };
       console.info(`✅ Lead criado com sucesso: ${lead.id}`);
 
-      return lead;
+      // `teamId` sobe junto porque o webhook precisa dele para invalidar o
+      // cache do time — sem isso o lead fica invisível no board até o TTL.
+      return { id: lead.id, teamId: defaultTeamId };
 
     } catch (error) {
       console.error('❌ Erro ao criar lead do Meta:', error);
@@ -290,19 +287,10 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   private async checkDuplicateLead(
     managerId: string,
     email?: string
-  ): Promise<any | null> {
+  ): Promise<LeadDuplicateByEmail | null> {
     try {
-      if (email) {
-        const byEmail = await prisma.lead.findFirst({
-          where: {
-            managerId,
-            email
-          }
-        });
-        if (byEmail) return byEmail;
-      }
-
-      return null;
+      if (!email) return null;
+      return await leadRepository.findDuplicateByManagerAndEmail(managerId, email);
     } catch {
       return null;
     }
@@ -315,26 +303,11 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   private async getManagerId(managerId?: string): Promise<MetaManagerLookup | null> {
     try {
       if (managerId) {
-        const profile = await prisma.profile.findUnique({
-          where: { id: managerId },
-          select: { id: true, supabaseId: true },
-        });
-        return profile ?? null;
+        return await profileRepository.findIdentityById(managerId);
       }
 
       // Buscar primeiro manager master com assinatura ativa
-      const manager = await prisma.profile.findFirst({
-        where: {
-          role: 'manager',
-          isMaster: true,
-          subscriptionStatus: {
-            in: ['active', 'trial']
-          }
-        },
-        select: { id: true, supabaseId: true },
-      });
-
-      return manager ?? null;
+      return await profileRepository.findFirstActiveMasterManager();
     } catch (error) {
       console.error('Erro ao buscar manager:', error);
       return null;

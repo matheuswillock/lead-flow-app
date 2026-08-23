@@ -29,10 +29,45 @@ export type LeadAuthorizationSnapshot = Pick<
   "id" | "teamId" | "status" | "closerId" | "assignedTo" | "isTransfer" | "meetingDate"
 >;
 
+
+/** Identificacao minima usada em mensagens de conflito de lead. */
+export type LeadConflictRef = Pick<Lead, "id" | "leadCode" | "name">;
+
+/**
+ * Lead duplicado detectado na ingestao do Meta. Carrega `teamId` porque o
+ * webhook precisa dele para invalidar o cache do time.
+ */
+export type LeadDuplicateByEmail = Pick<Lead, "id" | "teamId" | "leadCode" | "name" | "email">;
+
+/** Conflitos de email/CNPJ no time destino de uma transferencia. */
+export type LeadTransferConflict = Pick<
+  Lead,
+  "id" | "email" | "cnpj" | "leadCode" | "name" | "status"
+>;
+
 export interface ILeadRepository {
   create(data: LeadCreateRepositoryInput): Promise<LeadRecord>;
   findById(id: string): Promise<LeadRecord | null>;
   findAuthorizationSnapshotById(id: string): Promise<LeadAuthorizationSnapshot | null>;
+  /** Lead do mesmo time com o CNPJ informado, ignorando opcionalmente um id. */
+  findCnpjConflictInTeam(input: { teamId: string; cnpj: string; excludeLeadId?: string }): Promise<LeadConflictRef | null>;
+  /** Leads do time destino que conflitam com o lead transferido. */
+  findTransferConflictsInTeam(input: { targetTeamId: string; excludeLeadId: string; filters: Prisma.LeadWhereInput[] }): Promise<LeadTransferConflict[]>;
+  /** Desmarca o estado de transferencia pendente do lead. */
+  clearTransferFlag(id: string): Promise<LeadRecord>;
+  /**
+   * Lead ja existente na conta com o mesmo e-mail. Usado pela ingestao do Meta
+   * Lead Ads para nao duplicar contato entrando pelo mesmo formulario.
+   */
+  findDuplicateByManagerAndEmail(
+    managerId: string,
+    email: string
+  ): Promise<LeadDuplicateByEmail | null>;
+  /**
+   * Remove o lead e, quando informado, o agendamento associado, na mesma
+   * transacao — o agendamento sai primeiro, como no fluxo original.
+   */
+  deleteWithSchedule(input: { leadId: string; scheduleId: string | null }): Promise<void>;
   findByLeadCode(leadCode: string): Promise<Lead | null>;
   findLeadByPhoneInTeam(teamId: string, normalizedPhone: string): Promise<Pick<Lead, "id"> | null>;
   /**
