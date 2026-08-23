@@ -232,7 +232,7 @@ export function useLeadActivitiesRealtime({
             {
               event: "INSERT",
               schema: "public",
-              table: "lead_activity_reactions",
+              table: "corretor_studio_lead_activity_reactions",
               filter: reactionsRealtimeFilter,
             },
             (payload) => {
@@ -261,7 +261,7 @@ export function useLeadActivitiesRealtime({
             {
               event: "DELETE",
               schema: "public",
-              table: "lead_activity_reactions",
+              table: "corretor_studio_lead_activity_reactions",
               filter: reactionsRealtimeFilter,
             },
             (payload) => {
