@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailContactListUseCase } from "@/app/api/useCases/email/EmailContactListUseCase"
+import { isManagerLikeRole } from "@/lib/roles"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function parsePositiveInt(value: string | null, fallback: number): number {
@@ -44,6 +45,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const teamAccess = await getTeamAccess(request)
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+    }
+
+    if (!isManagerLikeRole(teamAccess.access.teamMember.role)) {
+      return NextResponse.json(
+        new Output(false, [], ["Apenas managers podem adicionar contatos"], null),
+        { status: 403 }
+      )
     }
 
     const body = await request.json().catch(() => null)

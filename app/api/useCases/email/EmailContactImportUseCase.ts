@@ -12,9 +12,14 @@ import {
 } from "@/lib/email/email-import-storage"
 import { generateEmailImportId } from "@/lib/email/generate-import-id"
 import {
+  AUDIENCE_REASON_BLOCKLISTED,
   AUDIENCE_REASON_BOUNCED,
   evaluateEmailForAudience,
 } from "@/lib/email/audience-prevalidation"
+import {
+  findTeamBlocklistedEmails,
+  partitionByBlocklist,
+} from "@/lib/email/email-contact-blocklist"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
 import {
   formatTransientTransactionErrorMessage,
@@ -158,7 +163,15 @@ export class EmailContactImportUseCase {
     return { imported, updated: updateRows.length }
   }
 
-  private async validateRows(rows: ImportRow[]): Promise<{
+  /**
+   * Três portas de descarte, nesta ordem: pré-validação de audiência, bounce e
+   * blocklist do time. Roda antes do fan-out para a lista padrão, senão o
+   * endereço descartado na lista alvo entraria por "Todos contatos".
+   */
+  private async validateRows(
+    rows: ImportRow[],
+    teamId: string
+  ): Promise<{
     validRows: ImportRow[]
     skipped: number
     skippedIssues: SkippedImportIssue[]
@@ -187,7 +200,7 @@ export class EmailContactImportUseCase {
     const bouncedEmails = await emailContactListRepository.findBouncedEmails(
       candidates.map((row) => row.email)
     )
-    const validRows: ImportRow[] = []
+    const notBouncedRows: ImportRow[] = []
     for (const row of candidates) {
       if (bouncedEmails.has(row.email)) {
         skippedIssues.push({
@@ -197,7 +210,20 @@ export class EmailContactImportUseCase {
         })
         continue
       }
-      validRows.push(row)
+      notBouncedRows.push(row)
+    }
+
+    const blocklistedEmails = await findTeamBlocklistedEmails(teamId)
+    const { allowed: validRows, blocked } = partitionByBlocklist(
+      notBouncedRows,
+      blocklistedEmails
+    )
+    for (const row of blocked) {
+      skippedIssues.push({
+        line: row.line,
+        email: row.email,
+        reason: AUDIENCE_REASON_BLOCKLISTED,
+      })
     }
 
     return {
@@ -499,7 +525,7 @@ export class EmailContactImportUseCase {
         validRows,
         skipped: initialSkipped,
         skippedIssues: initialSkippedIssues,
-      } = await this.validateRows(allRows)
+      } = await this.validateRows(allRows, claimed.teamId)
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
