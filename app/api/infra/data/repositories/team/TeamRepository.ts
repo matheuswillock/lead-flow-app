@@ -30,6 +30,15 @@ export class TeamRepository implements ITeamRepository {
     });
     return route !== null;
   }
+
+  async findDefaultTeamIdByMaster(masterId: string): Promise<string | null> {
+    const team = await prisma.team.findFirst({
+      where: { masterId },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+      select: { id: true },
+    });
+    return team?.id ?? null;
+  }
 }
 
 export const teamRepository = new TeamRepository();
