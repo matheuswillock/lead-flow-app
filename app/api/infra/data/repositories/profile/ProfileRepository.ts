@@ -1018,6 +1018,24 @@ class PrismaProfileRepository implements IProfileRepository {
     });
   }
 
+  async findIdentityById(id: string) {
+    return await prisma.profile.findUnique({
+      where: { id },
+      select: { id: true, supabaseId: true },
+    });
+  }
+
+  async findFirstActiveMasterManager() {
+    return await prisma.profile.findFirst({
+      where: {
+        role: "manager",
+        isMaster: true,
+        subscriptionStatus: { in: ["active", "trial"] },
+      },
+      select: { id: true, supabaseId: true },
+    });
+  }
+
   async findWithGoogleConnectionById(id: string) {
     return await prisma.profile.findUnique({
       where: { id },

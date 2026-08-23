@@ -34,19 +34,34 @@ mock.module("@/app/api/useCases/leads/leadUseCaseFactory", () => ({
   leadUseCase: { createLead: createLeadMock },
 }));
 
+// Os colaboradores passaram de acesso direto ao ORM para a camada de
+// repositorio, entao os mocks acompanham. As assercoes seguem as mesmas:
+// `leadFindFirstMock` continua sendo o dedupe por e-mail e `leadUpdateMock`
+// continua sendo o registro de atividade no lead duplicado.
 const profileFindUniqueMock = mock(
-  async () => ({ id: "manager-1", supabaseId: "supabase-1" }) as { id: string; supabaseId: string | null }
+  async () => ({ id: "manager-1", supabaseId: "supabase-1" }) as { id: string; supabaseId: string | null } | null
 );
-const teamFindFirstMock = mock(async () => ({ id: "team-1" }));
-const leadFindFirstMock = mock(async () => null as { id: string } | null);
-const leadUpdateMock = mock(async () => ({ id: "existing-lead-1" }));
+const teamFindFirstMock = mock(async () => "team-1" as string | null);
+const leadFindFirstMock = mock(async () => null as { id: string; teamId: string | null } | null);
+const leadUpdateMock = mock(async () => ({ id: "activity-1" }));
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    profile: { findUnique: profileFindUniqueMock, findFirst: mock(async () => null) },
-    team: { findFirst: teamFindFirstMock },
-    lead: { findFirst: leadFindFirstMock, update: leadUpdateMock },
+mock.module("@/app/api/infra/data/repositories/profile/ProfileRepository", () => ({
+  profileRepository: {
+    findIdentityById: profileFindUniqueMock,
+    findFirstActiveMasterManager: mock(async () => null),
   },
+}));
+
+mock.module("@/app/api/infra/data/repositories/team/TeamRepository", () => ({
+  teamRepository: { findDefaultTeamIdByMaster: teamFindFirstMock },
+}));
+
+mock.module("@/app/api/infra/data/repositories/lead/LeadRepository", () => ({
+  leadRepository: { findDuplicateByManagerAndEmail: leadFindFirstMock },
+}));
+
+mock.module("@/app/api/infra/data/repositories/leadActivity/LeadActivityRepository", () => ({
+  leadActivityRepository: { create: leadUpdateMock },
 }));
 
 const { MetaLeadUseCase } = await import("./MetaLeadUseCase");
@@ -76,7 +91,10 @@ describe("MetaLeadUseCase.processMetaLead (D2)", () => {
     createLeadMock.mockClear();
     leadFindFirstMock.mockClear();
     leadUpdateMock.mockClear();
-    leadFindFirstMock.mockImplementationOnce(async () => ({ id: "existing-lead-1" }));
+    leadFindFirstMock.mockImplementationOnce(async () => ({
+      id: "existing-lead-1",
+      teamId: "team-1",
+    }));
 
     const useCase = new MetaLeadUseCase();
     const output = await useCase.processMetaLead("leadgen-1", "manager-1");
