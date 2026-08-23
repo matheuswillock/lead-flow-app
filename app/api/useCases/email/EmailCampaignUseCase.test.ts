@@ -104,11 +104,13 @@ const createQueuedLogsMock = mock(async (inputs: Array<{ recipientEmail: string 
 )
 const markManyTeamEmailLogsSentMock = mock(async (_entries: Array<{ logId: string }>) => {})
 const markTeamEmailLogFailedMock = mock(async (_logId: string) => {})
+const markTeamEmailLogSuppressedMock = mock(async (_logId: string) => {})
 mock.module("@/lib/email/team-email-dispatch-logger", () => ({
   teamEmailDispatchLogger: {
     createQueuedTeamEmailLogs: createQueuedLogsMock,
     markManyTeamEmailLogsSent: markManyTeamEmailLogsSentMock,
     markTeamEmailLogFailed: markTeamEmailLogFailedMock,
+    markTeamEmailLogSuppressed: markTeamEmailLogSuppressedMock,
   },
 }))
 
@@ -545,6 +547,10 @@ function installQueuedLogStore() {
     const log = materializedQueuedLogs.find((item) => item.id === logId)
     if (log) log.status = "failed"
   })
+  markTeamEmailLogSuppressedMock.mockImplementation(async (logId: string) => {
+    const log = materializedQueuedLogs.find((item) => item.id === logId)
+    if (log) log.status = "suppressed"
+  })
 }
 
 function queuedLogFindManyImpl(args: unknown) {
@@ -680,6 +686,7 @@ const allMocks = [
   createQueuedLogsMock,
   markManyTeamEmailLogsSentMock,
   markTeamEmailLogFailedMock,
+  markTeamEmailLogSuppressedMock,
   resolveEmailBetaAccessMock,
   resolveRadarBetaAccessMock,
   processPendingBatchMock,
@@ -1223,7 +1230,7 @@ describe("EmailCampaignUseCase.send", () => {
   // ---------------------------------------------------------------------------
   // C12 — e-mails pipe (casos reais) filtrados antes do Resend
   // ---------------------------------------------------------------------------
-  it("C12 — destinatários com pipe: não chama dispatchBatch; marca failed com motivo local; campanha failed", async () => {
+  it("C12 — destinatários com pipe: não chama dispatchBatch; marca suppressed com motivo local", async () => {
     const recipients = [
       {
         email: "carol.ocipriani@gmail.com|hugopoli@gmail.com",
@@ -1247,21 +1254,24 @@ describe("EmailCampaignUseCase.send", () => {
 
     expect(output.isValid).toBe(true)
     expect(dispatchBatchMock).not.toHaveBeenCalled()
-    expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(2)
+    expect(markTeamEmailLogSuppressedMock).toHaveBeenCalledTimes(2)
     expect(output.result.sent).toBe(0)
 
-    const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
+    // Recusa da pre-validacao e terminal: vira `suppressed`, nao `failed`,
+    // para nao oferecer reenvio de endereco que reprova na mesma regra.
+    expect(markTeamEmailLogFailedMock).not.toHaveBeenCalled()
+    const suppressedReasons = markTeamEmailLogSuppressedMock.mock.calls.map(
       (call) => (call as unknown as [string, string])[1]
     )
     expect(
-      failedReasons.every((reason) => reason.includes("E-mail inválido para o Resend"))
+      suppressedReasons.every((reason) => reason.includes("E-mail inválido para o Resend"))
     ).toBe(true)
   })
 
   // ---------------------------------------------------------------------------
   // C13 — mix: válidos enviados + pipe filtrado localmente
   // ---------------------------------------------------------------------------
-  it("C13 — mix válido + pipe: dispatchBatch só recebe válidos; pipe falha localmente", async () => {
+  it("C13 — mix válido + pipe: dispatchBatch só recebe válidos; pipe vira suppressed", async () => {
     const recipients = [
       {
         email: "ok@example.com",
@@ -1306,10 +1316,11 @@ describe("EmailCampaignUseCase.send", () => {
     expect(output.result.sent).toBe(1)
     expect(output.result.failed).toBe(1)
     expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
-    expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(1)
-    expect((markTeamEmailLogFailedMock.mock.calls[0] as unknown as [string, string])[1]).toContain(
-      "carol.ocipriani@gmail.com|hugopoli@gmail.com"
-    )
+    expect(markTeamEmailLogFailedMock).not.toHaveBeenCalled()
+    expect(markTeamEmailLogSuppressedMock).toHaveBeenCalledTimes(1)
+    expect(
+      (markTeamEmailLogSuppressedMock.mock.calls[0] as unknown as [string, string])[1]
+    ).toContain("carol.ocipriani@gmail.com|hugopoli@gmail.com")
   })
 
   // ---------------------------------------------------------------------------
