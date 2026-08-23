@@ -48,12 +48,32 @@ export async function findTeamBlocklistedEmails(teamId: string): Promise<Set<str
   return new Set(contacts.map((contact) => contact.email.trim().toLowerCase()))
 }
 
+/**
+ * Separa as duas metades em uma passada só. Quem só precisa descartar usa
+ * `excludeBlocklistedEmails`; quem precisa reportar o motivo (import, inclusão
+ * manual) usa `blocked` para montar o `skippedIssues`.
+ */
+export function partitionByBlocklist<T extends { email: string }>(
+  rows: T[],
+  blocklistedEmails: Set<string>
+): { allowed: T[]; blocked: T[] } {
+  if (blocklistedEmails.size === 0) return { allowed: rows, blocked: [] }
+
+  const allowed: T[] = []
+  const blocked: T[] = []
+  for (const row of rows) {
+    if (blocklistedEmails.has(row.email.trim().toLowerCase())) {
+      blocked.push(row)
+      continue
+    }
+    allowed.push(row)
+  }
+  return { allowed, blocked }
+}
+
 export function excludeBlocklistedEmails<T extends { email: string }>(
   recipients: T[],
   blocklistedEmails: Set<string>
 ): T[] {
-  if (blocklistedEmails.size === 0) return recipients
-  return recipients.filter(
-    (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
-  )
+  return partitionByBlocklist(recipients, blocklistedEmails).allowed
 }
