@@ -317,11 +317,19 @@ Produza `docs/design/landing-fatos-<slug>.md` com a tabela
 - **Seção sem fato na tabela não existe.**
 - Fontes: `PRODUCT.md`, `PRICING_TABLE.md` (só o que está ✅ vigente vai ao ar),
   `PRICING_MODEL.md`, `SEO-PAGE-*.md`.
-- Número sem fonte **MUST NOT** ir para a UI. `lib/landing/stats-data.ts` hoje
-  publica `31%` (Mais fechamentos) e `4.9/5` (Satisfação) sem lastro — não
-  copie esse padrão nem o use como referência.
-- `components/landing/TestimonialsSection.tsx` contém prova social fabricada e
-  **MUST NOT** ser renderizado ou usado como template.
+- Número sem fonte **MUST NOT** ir para a UI, nem como fallback. Quando o dado
+  real não existe, a seção **MUST** ser escondida — ver `hasPublishableStats()`
+  em `lib/landing/stats-data.ts`. Zero também não vai ao ar: "+0 corretores
+  ativos" é pior que faixa nenhuma.
+- Prova social (depoimento, nome, empresa, nota) **MUST** ter autorização por
+  escrito de quem é citado. Sem isso a seção não existe — **MUST NOT** criar
+  persona de exemplo "para preencher o layout".
+
+Precedentes já removidos deste repo, para não serem recriados: `31%` e `4,9/5`
+hardcoded na faixa de stats; um `landingStatsFallback` de 280 corretores /
+1,2M de leads que entrava silenciosamente quando a query falhava; e um
+`TestimonialsSection` com três depoimentos de pessoas inexistentes. Os três
+passavam em `typecheck`, `lint`, `governance:check` e `design:check`.
 
 ### Copy aprovada antes de código (MUST)
 
