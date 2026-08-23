@@ -60,6 +60,14 @@ export class TeamEmailDispatchLogger implements ITeamEmailDispatchLogger {
   async markTeamEmailLogFailed(logId: string, errorMessage: string): Promise<void> {
     await emailLogRepository.markFailed(logId, randomUUID(), errorMessage, new Date())
   }
+
+  /**
+   * Recusa da pré-validação interna: terminal, não retentável. Ver
+   * `EmailLogRepository.markSuppressed`.
+   */
+  async markTeamEmailLogSuppressed(logId: string, reason: string): Promise<void> {
+    await emailLogRepository.markSuppressed(logId, randomUUID(), reason, new Date())
+  }
 }
 
 export const teamEmailDispatchLogger = new TeamEmailDispatchLogger()
