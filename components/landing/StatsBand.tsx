@@ -62,7 +62,7 @@ export function StatsBand({ stats }: StatsBandProps) {
 
   return (
     <section ref={ref} className="landing-stats-band py-16 md:py-20" aria-label="Resultados do Corretor Studio">
-      <div className="mx-auto grid max-w-7xl gap-8 px-6 text-center sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-3xl gap-8 px-6 text-center sm:grid-cols-2 sm:px-8 lg:px-10">
         {stats.map((stat) => {
           const currentValue = stat.value * progress
           return (

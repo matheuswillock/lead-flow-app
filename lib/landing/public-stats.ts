@@ -2,7 +2,7 @@ import "server-only"
 
 import { SubscriptionStatus, UserFunction, type Prisma } from "@prisma/client"
 import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma"
-import { landingStatsFallback, type LandingStatsSnapshot } from "@/lib/landing/stats-data"
+import { type LandingStatsSnapshot } from "@/lib/landing/stats-data"
 
 const activeSubscriptionStatuses = [
   SubscriptionStatus.active,
@@ -27,7 +27,7 @@ const activeBillingProfileWhere: Prisma.ProfileWhereInput = {
   ],
 }
 
-export async function getLandingStats(): Promise<LandingStatsSnapshot> {
+export async function getLandingStats(): Promise<LandingStatsSnapshot | null> {
   try {
     const [masters, profileClosers, teamClosers, totalLeads] = await withPrismaRetry(
       () =>
@@ -81,6 +81,7 @@ export async function getLandingStats(): Promise<LandingStatsSnapshot> {
     }
   } catch (error) {
     console.error("[landing] Failed to load public stats", error)
-    return landingStatsFallback
+    // Sem número inventado como degradação: quem chama esconde a seção.
+    return null
   }
 }
