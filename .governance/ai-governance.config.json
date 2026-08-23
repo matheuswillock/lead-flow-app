@@ -96,7 +96,6 @@
       "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
-      "app/api/useCases/leads/LeadUseCase.ts",
       "app/api/useCases/pendingActions/PendingActionUseCase.ts",
       "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
@@ -126,7 +125,6 @@
       "app/api/useCases/leads/LeadContactsUseCase.ts",
       "app/api/useCases/leads/LeadDocumentRequestUseCase.ts",
       "app/api/useCases/leads/LeadTagUseCase.ts",
-      "app/api/useCases/leads/LeadUseCase.ts",
       "app/api/useCases/metaLeads/MetaLeadUseCase.ts",
       "app/api/useCases/pendingActions/PendingActionUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
@@ -204,9 +202,7 @@
       "app/api/v1/subscriptions/check/route.ts"
     ],
     "routeHttpRequestAllowlist": [],
-    "useCaseHttpRequestAllowlist": [
-      "app/api/useCases/leads/LeadUseCase.ts"
-    ],
+    "useCaseHttpRequestAllowlist": [],
     "repositoryHttpRequestAllowlist": [],
     "serviceImportOutsideUseCaseAllowlist": [
       "app/api/services/calendarAvailability/CalendarAvailabilityService.ts",
@@ -251,7 +247,6 @@
       "app/api/services/teamAutomation/executors/SendEmailExecutor.ts",
       "app/api/services/teamAutomation/executors/SendWhatsAppMessageExecutor.ts",
       "app/api/services/teamAutomation/TeamAutomationDispatcherService.ts",
-      "app/api/useCases/leads/LeadUseCase.ts",
       "app/api/lib/cron/cronSlackCallback.ts"
     ],
     "clientApiPathMaskingAllowlist": [
@@ -298,7 +293,6 @@
       "app/api/useCases/CreateManagerOnboarding.ts",
       "app/api/useCases/integrations/PublicLeadFormUseCase.ts",
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
-      "app/api/useCases/leads/LeadUseCase.ts",
       "app/api/useCases/metaLeads/MetaLeadUseCase.ts",
       "app/api/useCases/pendingActions/PendingActionUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",

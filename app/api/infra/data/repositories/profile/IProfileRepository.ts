@@ -121,4 +121,22 @@ export interface IProfileRepository {
     asaasCustomerId: string | null;
   } | null>;
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
+  /** Dados minimos de contato, para notificacao e rotulo em atividade. */
+  findContactById(id: string): Promise<ProfileContact | null>;
+  /**
+   * Perfil com a conexao Google, para operar o calendario em nome dele.
+   * Devolve o Profile completo porque `cancelCalendarEvent` o recebe como organizer.
+   */
+  findWithGoogleConnectionById(id: string): Promise<ProfileWithGoogleConnection | null>;
 }
+
+export type ProfileContact = Pick<Profile, "id" | "email" | "fullName">;
+
+export type ProfileWithGoogleConnection = Profile & {
+  googleConnection: {
+    accessToken: string | null;
+    refreshToken: string | null;
+    tokenExpiresAt: Date | null;
+    revokedAt: Date | null;
+  } | null;
+};
