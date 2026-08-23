@@ -124,10 +124,31 @@ export class EmailLogRepository implements IEmailLogRepository {
             },
           })
 
+          // Bounce é GLOBAL de propósito, ao contrário de `complained` logo
+          // abaixo. Não é falta de escopo: um bounce permanente significa que a
+          // caixa não existe, o que vale para qualquer remetente. Tratar como
+          // sinal compartilhado evita que cada time redescubra o mesmo endereço
+          // morto pagando com a própria reputação de domínio.
+          //
+          // Medido em 22/08/2026: 11.535 contatos (16,7% dos 69.094 marcados)
+          // estão suprimidos por evidência de outro time, em 8 times. Escopar
+          // por time devolveria esses endereços para envio e geraria uma onda
+          // de re-bounce concentrada — decisão de produto foi manter global.
+          //
+          // O `shouldStampIsBouncedFromEventMetadata` já restringe a bounce
+          // `Permanent` (ver lib/email/bounce-suppression.ts); soft bounce e
+          // caixa cheia não carimbam.
           if (eventType === "bounced") {
             if (shouldStampIsBouncedFromEventMetadata(metadata)) {
               await tx.emailContact.updateMany({
-                where: { email: log.recipientEmail },
+                // Case-insensitive, não `toLowerCase()`: os leitores comparam
+                // em lowercase, mas `EmailContact.email` é gravado como veio
+                // (`createContacts` não normaliza). Forçar lowercase no filtro
+                // deixaria de casar as linhas salvas com maiúsculas; comparar
+                // insensitive pega os dois formatos.
+                where: {
+                  email: { equals: log.recipientEmail.trim(), mode: "insensitive" },
+                },
                 data: { isBounced: true },
               })
             }
