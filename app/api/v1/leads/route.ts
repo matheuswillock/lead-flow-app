@@ -5,7 +5,12 @@ import { Output } from "@/lib/output";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { isManagerLikeRole } from "@/lib/roles";
+import { getCachedTeamLeads } from "@/app/api/useCases/leads/getCachedTeamLeads";
+import { isBoundedLeadsQuery } from "@/app/api/useCases/leads/boundedLeadsQuery";
 import {
+  canonicalizeCustomFieldFilters,
+  canonicalizeCustomFieldSort,
   parseCustomFieldFiltersQueryParam,
   parseCustomFieldSortQueryParam,
   parseLeadStatusQueryParam,
@@ -119,6 +124,31 @@ export async function GET(request: NextRequest) {
       console.warn('[LeadsRoute][GET] customFieldFilters/customFieldSort inválido:', parseError);
       const output = new Output(false, [], ["Filtros de campos personalizados inválidos"], null);
       return NextResponse.json(output, { status: 400 });
+    }
+
+    const customFieldFiltersJSON = canonicalizeCustomFieldFilters(customFieldFilters);
+    const customFieldSortJSON = canonicalizeCustomFieldSort(customFieldSort);
+
+    // Só a fatia limitada entra no cache — ver isBoundedLeadsQuery.
+    if (isBoundedLeadsQuery({ search, startDate, endDate, limit, customFieldFiltersJSON })) {
+      const payload = await getCachedTeamLeads({
+        teamId: access.teamId,
+        // Papel do TeamAccess, nunca o `?role=` da query: o use case ignora o param.
+        role: access.teamMember.role,
+        // Manager-like enxerga o time inteiro, então todos colapsam na mesma entrada.
+        scopeProfileId: isManagerLikeRole(access.teamMember.role) ? "" : access.profileId,
+        status: status ?? "",
+        assignedTo: assignedTo ?? "",
+        onlyTransfer,
+        calendarWindowStartISO: calendarWindowStart ?? "",
+        calendarWindowEndISO: calendarWindowEnd ?? "",
+        customFieldFiltersJSON,
+        customFieldSortJSON,
+      });
+
+      return NextResponse.json(
+        new Output(payload.isValid, payload.successMessages, payload.errorMessages, payload.result)
+      );
     }
 
     const options = {

@@ -194,7 +194,8 @@ describe("resolveCampaignStatusAfterDispatch", () => {
   })
 
   it("marca partially_sent quando houve envios mas faltam destinatários", () => {
-    const terminal = resolveCampaignStatusAfterDispatch(7223, "Cota mensal excedida", 12664)
+    // Cota excedida deixa 5441 logs `failed` — recusa do provedor, retentável.
+    const terminal = resolveCampaignStatusAfterDispatch(7223, "Cota mensal excedida", 12664, 5441)
     expect(terminal.campaignStatus).toBe("partially_sent")
     expect(terminal.dispatchStatus).toBe("completed")
     expect(terminal.errorMessage).toBe("Cota mensal excedida")
@@ -204,5 +205,33 @@ describe("resolveCampaignStatusAfterDispatch", () => {
     const terminal = resolveCampaignStatusAfterDispatch(10, null, 10)
     expect(terminal.campaignStatus).toBe("sent")
     expect(terminal.errorMessage).toBeNull()
+  })
+
+  // `partially_sent` = sobrou alguem que vale retentar. Suprimido (nossa
+  // pre-validacao) e bounce nao valem: reprovam de novo na mesma regra.
+  it("so suprimidos fecham a campanha como sent, sem oferecer reenvio", () => {
+    // Homens v2 (1/4), 22/08/2026: 1998 na audiencia, 1969 logs, 1782 enviados,
+    // 187 suprimidos, 0 falhas reais. Os 29 restantes nunca viraram log.
+    const terminal = resolveCampaignStatusAfterDispatch(1782, null, 1998, 0)
+    expect(terminal.campaignStatus).toBe("sent")
+    expect(terminal.dispatchStatus).toBe("completed")
+    expect(terminal.errorMessage).toBeNull()
+  })
+
+  it("uma falha real ja basta para partially_sent", () => {
+    const terminal = resolveCampaignStatusAfterDispatch(1782, "429 — rate limit", 1998, 1)
+    expect(terminal.campaignStatus).toBe("partially_sent")
+    expect(terminal.errorMessage).toBe("429 — rate limit")
+  })
+
+  it("audiencia inteiramente suprimida nao e sucesso", () => {
+    const terminal = resolveCampaignStatusAfterDispatch(0, null, 500, 0)
+    expect(terminal.campaignStatus).toBe("failed")
+    expect(terminal.errorMessage).toBeTruthy()
+  })
+
+  it("total nao fechado sem falha real nao segura a campanha em partially_sent", () => {
+    // Era o bug: 1969 < 1998 mantinha reenvio disponivel para sempre.
+    expect(resolveCampaignStatusAfterDispatch(1969, null, 1998, 0).campaignStatus).toBe("sent")
   })
 })
