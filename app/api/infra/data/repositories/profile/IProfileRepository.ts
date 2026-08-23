@@ -125,6 +125,12 @@ export interface IProfileRepository {
   findContactById(id: string): Promise<ProfileContact | null>;
   /** Identidade Supabase do perfil, para acoes executadas em nome dele. */
   findIdentityById(id: string): Promise<ProfileIdentity | null>;
+  /** Fuso horario configurado, para exibicao e para o bootstrap do form publico. */
+  findTimezoneBySupabaseId(supabaseId: string): Promise<{ id: string; timezone: string } | null>;
+  /** Id e e-mail do solicitante, para reautenticacao por senha e log de auditoria. */
+  findAuthContactBySupabaseId(supabaseId: string): Promise<{ id: string; email: string } | null>;
+  /** Atualiza o fuso e devolve o id do perfil, para invalidacao em cascata. */
+  updateTimezoneBySupabaseId(supabaseId: string, timezone: string): Promise<{ id: string } | null>;
   /**
    * Primeiro master com assinatura vigente. Fallback da ingestao do Meta quando
    * o webhook chega sem `managerId` no query param.
