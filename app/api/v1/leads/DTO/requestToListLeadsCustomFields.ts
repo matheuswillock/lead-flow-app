@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { LeadStatus } from "@prisma/client";
-import { MAX_CUSTOM_FIELD_FILTERS } from "@/lib/leadCustomFields/customFieldQuery";
+import {
+  MAX_CUSTOM_FIELD_FILTERS,
+  type CustomFieldFilterInput,
+  type CustomFieldSortInput,
+} from "@/lib/leadCustomFields/customFieldQuery";
 
 const customFieldFilterOperatorSchema = z.enum(["eq", "neq", "contains", "is_empty", "not_empty"]);
 const OPERATORS_REQUIRING_VALUE = new Set(["eq", "neq", "contains"]);
@@ -58,4 +62,38 @@ export const LeadStatusQuerySchema = z.nativeEnum(LeadStatus);
 export function parseLeadStatusQueryParam(raw: string | null) {
   if (!raw) return undefined;
   return LeadStatusQuerySchema.parse(raw);
+}
+
+/**
+ * Serializa filtros/ordenacao de campos personalizados de forma canonica, para
+ * uso como argumento de cache.
+ *
+ * Sem isso, `[{a},{b}]` e `[{b},{a}]` — semanticamente a mesma consulta —
+ * gerariam duas entradas de cache distintas. Ordena o array por
+ * `definitionId`/`operator` e as chaves de cada objeto, e devolve `""` quando
+ * ausente (sentinela de "sem filtro" aceita como argumento primitivo).
+ */
+export function canonicalizeCustomFieldFilters(
+  filters: CustomFieldFilterInput[] | undefined
+): string {
+  if (!filters?.length) return "";
+
+  const normalized = filters
+    .map((filter) => ({
+      definitionId: filter.definitionId,
+      operator: filter.operator,
+      ...(filter.value !== undefined && { value: filter.value }),
+    }))
+    .sort((a, b) =>
+      a.definitionId === b.definitionId
+        ? a.operator.localeCompare(b.operator)
+        : a.definitionId.localeCompare(b.definitionId)
+    );
+
+  return JSON.stringify(normalized);
+}
+
+export function canonicalizeCustomFieldSort(sort: CustomFieldSortInput | undefined): string {
+  if (!sort) return "";
+  return JSON.stringify({ definitionId: sort.definitionId, direction: sort.direction });
 }
