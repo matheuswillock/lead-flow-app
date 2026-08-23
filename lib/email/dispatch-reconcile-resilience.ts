@@ -31,6 +31,23 @@ export async function countSuccessfulDispatchLogs(dispatchId: string): Promise<n
 }
 
 /**
+ * Conta só o que um reenvio poderia resolver: recusas do provedor (`failed`).
+ *
+ * Fora da conta de propósito: `suppressed`, que é recusa da nossa
+ * pré-validação e reprovaria de novo na mesma regra; e bounce, que já entrou
+ * em `countSuccessfulDispatchLogs` por ter `sentAt`. É este valor que decide
+ * entre `sent` e `partially_sent`.
+ */
+export async function countRetriableFailedDispatchLogs(dispatchId: string): Promise<number> {
+  return prisma.emailLog.count({
+    where: {
+      dispatchId,
+      status: "failed",
+    },
+  });
+}
+
+/**
  * Isolated writes (no transaction) when commitDispatchTerminalState fails after retries.
  * D10 — preserve totalSent and terminal statuses when EmailLog proves sends occurred.
  */
