@@ -2196,6 +2196,12 @@ export class RadarRepository {
     })
   }
 
+  /**
+   * Global de propósito, sem filtro de time — mesma decisão de
+   * `EmailContactListRepository.findBouncedEmails`, onde o racional está
+   * documentado por extenso. Bounce permanente é propriedade do endereço, não
+   * da relação com o remetente.
+   */
   async findBouncedEmails(emails: string[]): Promise<Set<string>> {
     const normalized = [
       ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
