@@ -1010,6 +1010,29 @@ class PrismaProfileRepository implements IProfileRepository {
             data: { asaasCustomerId },
         });
     }
+
+  async findContactById(id: string) {
+    return await prisma.profile.findUnique({
+      where: { id },
+      select: { id: true, email: true, fullName: true },
+    });
+  }
+
+  async findWithGoogleConnectionById(id: string) {
+    return await prisma.profile.findUnique({
+      where: { id },
+      include: {
+        googleConnection: {
+          select: {
+            accessToken: true,
+            refreshToken: true,
+            tokenExpiresAt: true,
+            revokedAt: true,
+          },
+        },
+      },
+    });
+  }
 }
 
 export const profileRepository: IProfileRepository = new PrismaProfileRepository();

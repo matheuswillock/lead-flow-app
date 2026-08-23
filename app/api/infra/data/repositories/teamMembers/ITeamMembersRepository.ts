@@ -65,10 +65,32 @@ export interface TeamMembersSnapshot {
   createdAt: Date;
 }
 
+
+export interface TeamMemberRoleAndFunctions {
+  role: UserRole;
+  functions: UserFunction[];
+}
+
+export interface TeamMemberTransferAuthorization {
+  role: UserRole;
+  canTransferAccountLeads: boolean;
+}
+
+export interface TeamMemberNotificationRecipient {
+  profileId: string;
+  profile: { email: string; fullName: string | null } | null;
+}
+
 export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
   findMembership(teamId: string, profileId: string): Promise<TeamMembersMembershipAccess | null>;
+  /** Papel e funcoes do membro, para decisoes de permissao no dominio de leads. */
+  findRoleAndFunctions(teamId: string, profileId: string): Promise<TeamMemberRoleAndFunctions | null>;
+  /** Papel e permissao de transferencia, para autorizar transferencia de lead. */
+  findTransferAuthorization(teamId: string, profileId: string): Promise<TeamMemberTransferAuthorization | null>;
+  /** Membros do time nos papeis informados, para destinatarios de notificacao. */
+  findNotificationRecipients(input: { teamId: string; roles: UserRole[]; onlyTransferAuthorized?: boolean }): Promise<TeamMemberNotificationRecipient[]>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;
