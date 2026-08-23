@@ -1,5 +1,6 @@
 import { prisma } from "../../prisma";
 import type {
+  DayAgendaScheduleRow,
   ILeadScheduleRepository,
   CreateLeadScheduleDTO,
   UpdateLeadScheduleDTO,
@@ -152,6 +153,56 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
   async delete(id: string): Promise<void> {
     await prisma.leadsSchedule.delete({
       where: { id },
+    });
+  }
+
+  async findDayAgendaByTeams(input: {
+    teamIds: string[];
+    restrictToProfileId: string | null;
+    dayStart: Date;
+    dayEnd: Date;
+  }): Promise<DayAgendaScheduleRow[]> {
+    const teamFilter =
+      input.teamIds.length === 1 ? { teamId: input.teamIds[0] } : { teamId: { in: input.teamIds } };
+
+    return await prisma.leadsSchedule.findMany({
+      where: {
+        lead: {
+          ...teamFilter,
+          ...(input.restrictToProfileId && {
+            OR: [
+              { assignedTo: input.restrictToProfileId },
+              { createdBy: input.restrictToProfileId },
+            ],
+          }),
+        },
+        date: { gte: input.dayStart, lte: input.dayEnd },
+      },
+      select: {
+        id: true,
+        leadId: true,
+        date: true,
+        meetingTitle: true,
+        notes: true,
+        meetingLink: true,
+        createdAt: true,
+        updatedAt: true,
+        lead: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            meetingHeald: true,
+            meetingPresenceConfirmed: true,
+            assignedTo: true,
+            assignee: { select: { id: true, fullName: true, email: true } },
+            manager: { select: { id: true, fullName: true, email: true } },
+            closer: { select: { id: true, fullName: true, email: true } },
+            team: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { date: "asc" },
     });
   }
 }

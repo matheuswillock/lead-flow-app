@@ -37,7 +37,6 @@
   "legacyExceptions": {
     "prismaInV1RouteAllowlist": [
       "app/api/v1/billing/summary/route.ts",
-      "app/api/v1/dashboard/schedules/route.ts",
       "app/api/v1/debug/lead-query/route.ts",
       "app/api/v1/leads/[id]/activities/route.ts",
       "app/api/v1/leads/[id]/activities/[activityId]/reactions/route.ts",
@@ -60,7 +59,6 @@
       "app/api/v1/operators/resend-invite/route.ts",
       "app/api/v1/payments/create-card/route.ts",
       "app/api/v1/profiles/[supabaseId]/route.ts",
-      "app/api/v1/profiles/[supabaseId]/timezone/route.ts",
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/subscriptions/[subscriptionId]/notify-payment/route.ts",
       "app/api/v1/teams/active/route.ts",
@@ -68,7 +66,6 @@
       "app/api/v1/teams/payments/create/route.ts",
       "app/api/v1/teams/pending-actions/[id]/route.ts",
       "app/api/v1/teams/route.ts",
-      "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",
