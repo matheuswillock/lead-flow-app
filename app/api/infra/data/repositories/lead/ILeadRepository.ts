@@ -33,6 +33,12 @@ export type LeadAuthorizationSnapshot = Pick<
 /** Identificacao minima usada em mensagens de conflito de lead. */
 export type LeadConflictRef = Pick<Lead, "id" | "leadCode" | "name">;
 
+/**
+ * Lead duplicado detectado na ingestao do Meta. Carrega `teamId` porque o
+ * webhook precisa dele para invalidar o cache do time.
+ */
+export type LeadDuplicateByEmail = Pick<Lead, "id" | "teamId" | "leadCode" | "name" | "email">;
+
 /** Conflitos de email/CNPJ no time destino de uma transferencia. */
 export type LeadTransferConflict = Pick<
   Lead,
@@ -49,6 +55,14 @@ export interface ILeadRepository {
   findTransferConflictsInTeam(input: { targetTeamId: string; excludeLeadId: string; filters: Prisma.LeadWhereInput[] }): Promise<LeadTransferConflict[]>;
   /** Desmarca o estado de transferencia pendente do lead. */
   clearTransferFlag(id: string): Promise<LeadRecord>;
+  /**
+   * Lead ja existente na conta com o mesmo e-mail. Usado pela ingestao do Meta
+   * Lead Ads para nao duplicar contato entrando pelo mesmo formulario.
+   */
+  findDuplicateByManagerAndEmail(
+    managerId: string,
+    email: string
+  ): Promise<LeadDuplicateByEmail | null>;
   /**
    * Remove o lead e, quando informado, o agendamento associado, na mesma
    * transacao — o agendamento sai primeiro, como no fluxo original.

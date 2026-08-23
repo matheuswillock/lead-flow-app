@@ -1390,6 +1390,13 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
+  async findDuplicateByManagerAndEmail(managerId: string, email: string) {
+    return await prisma.lead.findFirst({
+      where: { managerId, email },
+      select: { id: true, teamId: true, leadCode: true, name: true, email: true },
+    });
+  }
+
   async clearTransferFlag(id: string): Promise<LeadRecord> {
     return await prisma.lead.update({
       where: { id },
