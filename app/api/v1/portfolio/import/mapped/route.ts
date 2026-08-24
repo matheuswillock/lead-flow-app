@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
-import { invalidatePortfolioCache } from "@/lib/cache/invalidation";
+import { invalidatePortfolioCache, invalidateTeamLeadsCache } from "@/lib/cache/invalidation";
 import { importMappedPortfolioClientsUseCase } from "@/app/api/useCases/portfolio/ImportMappedPortfolioClientsUseCase";
 import { MappedPortfolioImportRequestSchema } from "./DTO/mappedPortfolioImportRequest";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
 
     if ((output.result?.created ?? 0) > 0) {
       invalidatePortfolioCache({ teamId });
+      // A importacao de carteira cria Leads — board e dashboard tambem mudam.
+      invalidateTeamLeadsCache({ teamId });
     }
 
     return NextResponse.json(output);

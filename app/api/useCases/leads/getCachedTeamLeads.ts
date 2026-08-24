@@ -6,6 +6,7 @@ import type {
   CustomFieldFilterInput,
   CustomFieldSortInput,
 } from "@/lib/leadCustomFields/customFieldQuery";
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { leadUseCase } from "./leadUseCaseInstance";
 
 /**
@@ -20,6 +21,25 @@ export type CachedTeamLeadsPayload = {
   errorMessages: string[];
   result: unknown;
 };
+
+const UNAVAILABLE_MESSAGE = "Erro interno do servidor";
+
+/**
+ * Sinaliza que a listagem falhou e que nada deve ser gravado no cache.
+ *
+ * Lancar e proposital: o Next so grava entrada quando a funcao `"use cache"`
+ * retorna. Devolver o Output invalido congelaria o erro pelo TTL inteiro.
+ *
+ * Quem usa `instanceof` com esta classe MUST pegar o erro de
+ * `getCachedTeamLeads` (o wrapper nao cacheado), nunca de
+ * `getCachedTeamLeadsPayload` direto — ver o comentario no wrapper.
+ */
+export class CachedTeamLeadsUnavailableError extends Error {
+  constructor(readonly errorMessages: string[]) {
+    super(errorMessages[0] ?? UNAVAILABLE_MESSAGE);
+    this.name = "CachedTeamLeadsUnavailableError";
+  }
+}
 
 /**
  * Reconstrói o `TeamAccess` a partir de primitivos.
@@ -88,6 +108,21 @@ async function getCachedTeamLeadsPayload(
     }
   );
 
+  // NAO gravar falha no cache.
+  //
+  // `getAllLeadsByUserRoleWithCtx` engole a excecao e devolve um Output
+  // invalido em vez de lancar (LeadUseCase.ts, catch de
+  // getAllLeadsByUserRoleWithCtx). Retornar esse payload daqui faria o Next
+  // gravar a entrada — uma queda momentanea do banco viraria board com erro
+  // para o time inteiro por ate `expire`, sem mutacao nenhuma para disparar
+  // revalidateTag e limpar.
+  //
+  // Lancando, o Next nao grava entrada e o caller decide o fallback. Mesmo
+  // desenho de getCachedLandingStats/getLandingStats.
+  if (!output.isValid) {
+    throw new CachedTeamLeadsUnavailableError(output.errorMessages);
+  }
+
   return {
     isValid: output.isValid,
     successMessages: output.successMessages,
@@ -114,17 +149,46 @@ export type TeamLeadsCacheArgs = {
   customFieldSortJSON: string;
 };
 
-export function getCachedTeamLeads(args: TeamLeadsCacheArgs): Promise<CachedTeamLeadsPayload> {
-  return getCachedTeamLeadsPayload(
-    args.teamId,
-    args.role,
-    args.scopeProfileId,
-    args.status,
-    args.assignedTo,
-    args.onlyTransfer,
-    args.calendarWindowStartISO,
-    args.calendarWindowEndISO,
-    args.customFieldFiltersJSON,
-    args.customFieldSortJSON
-  );
+/**
+ * Wrapper NAO cacheado — e o unico ponto onde `instanceof
+ * CachedTeamLeadsUnavailableError` e confiavel.
+ *
+ * O erro lancado dentro de `"use cache"` nao chega ao caller com o prototipo
+ * intacto. O Next serializa o retorno da funcao cacheada com React Flight
+ * (`use-cache-wrapper.js`, via `createReactServerErrorHandler`): em producao a
+ * excecao original e trocada por um `Error` generico com `digest`, perdendo a
+ * classe e o campo `errorMessages`. So em desenvolvimento ela passa intacta —
+ * por isso o bug nao aparece nem no `bun test`, que chama a funcao sem a
+ * transformacao do compilador.
+ *
+ * Reetiquetar aqui devolve ao caller um erro com prototipo real. O original vai
+ * para o log antes de ser descartado, e a mensagem exposta e generica porque em
+ * producao a especifica ja foi ofuscada pelo Next de qualquer forma.
+ */
+export async function getCachedTeamLeads(
+  args: TeamLeadsCacheArgs
+): Promise<CachedTeamLeadsPayload> {
+  try {
+    return await getCachedTeamLeadsPayload(
+      args.teamId,
+      args.role,
+      args.scopeProfileId,
+      args.status,
+      args.assignedTo,
+      args.onlyTransfer,
+      args.calendarWindowStartISO,
+      args.calendarWindowEndISO,
+      args.customFieldFiltersJSON,
+      args.customFieldSortJSON
+    );
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
+
+    if (error instanceof CachedTeamLeadsUnavailableError) {
+      throw error;
+    }
+
+    console.error("[getCachedTeamLeads] listagem de leads indisponivel:", error);
+    throw new CachedTeamLeadsUnavailableError([UNAVAILABLE_MESSAGE]);
+  }
 }

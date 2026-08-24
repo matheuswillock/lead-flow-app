@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
 import { Output } from "@/lib/output";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
@@ -566,7 +567,7 @@ export class PendingActionUseCase {
       };
 
     let profile = await tx.profile.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
+      where: { email: { equals: escapeLikePattern(email), mode: "insensitive" } },
       select: { id: true },
     });
 

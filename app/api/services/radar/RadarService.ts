@@ -667,7 +667,7 @@ export class RadarService {
       const sendableEmail = emailValidation.ok ? emailValidation.email : null
 
       const phoneFromCustom = contact.name
-        ? await this.repo.findLeadPhoneByEmail(scope.teamId, contact.email.trim().toLowerCase())
+        ? await this.repo.findLeadPhoneByEmail(scope.teamId, contact.email)
         : null
       const hasValidPhone = Boolean(
         contact.name && phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)
@@ -1136,7 +1136,7 @@ export class RadarService {
     const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
 
     const lead = input.recipientName
-      ? await this.repo.findLeadPhoneByEmail(input.teamId, normalizedEmail)
+      ? await this.repo.findLeadPhoneByEmail(input.teamId, input.recipientEmail)
       : null
     const hasValidPhone = Boolean(
       input.recipientName && lead?.phone && isValidRadarPrimaryIdentity(lead.phone, input.recipientName)

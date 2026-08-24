@@ -27,6 +27,7 @@ import {
   publishRadarEngagementScoreUpdate,
   RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/radar-engagement-score-updates"
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
 import { normalizeRadarName } from "@/lib/radar/normalization"
@@ -2281,9 +2282,21 @@ export class RadarRepository {
     })
   }
 
-  async findLeadPhoneByEmail(teamId: string, normalizedEmail: string) {
+  /**
+   * Aceita o endereço em qualquer caixa. O `escapeLikePattern` é obrigatório:
+   * sem ele o `mode: "insensitive"` vira `ILIKE` com o valor cru e o `_` do
+   * endereço buscado casa o lead de outra pessoa, devolvendo o telefone dela —
+   * vazamento de PII entre leads do mesmo time. Ver `lib/prisma/escape-like-pattern.ts`.
+   */
+  async findLeadPhoneByEmail(teamId: string, email: string) {
+    const address = email.trim()
+    if (!address) return null
+
     const lead = await this.db.lead.findFirst({
-      where: { teamId, email: { equals: normalizedEmail, mode: "insensitive" } },
+      where: {
+        teamId,
+        email: { equals: escapeLikePattern(address), mode: "insensitive" },
+      },
       select: { phone: true },
     })
     return lead?.phone ? { phone: lead.phone } : null
