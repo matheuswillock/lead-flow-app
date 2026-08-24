@@ -3,9 +3,11 @@ import {
   aggregateCumulativeDispatchLogCounters,
   aggregateDispatchLogCounters,
   buildCampaignDispatchProgress,
+  buildCampaignDispatchProgressSummary,
   buildCumulativeCampaignDispatchProgress,
   deriveDispatchCompletionKind,
   formatCampaignDispatchProgressLabel,
+  type CampaignDispatchProgress,
 } from "./campaign-dispatch-progress"
 
 describe("campaign-dispatch-progress helpers", () => {
@@ -318,6 +320,7 @@ describe("buildCumulativeCampaignDispatchProgress", () => {
         acceptedCount: 5,
         failedCount: 0,
         queuedCount: 15,
+        suppressedCount: 0,
         retryFailedOnly: true,
         errorMessage: null,
         updatedAt: "2026-01-02T00:00:00.000Z",
@@ -333,5 +336,48 @@ describe("buildCumulativeCampaignDispatchProgress", () => {
       totalRecipients: 100,
       retryFailedOnly: true,
     })
+  })
+})
+
+describe("buildCampaignDispatchProgressSummary — supressão no agregado do pai", () => {
+  function terminalProgress(over: Partial<CampaignDispatchProgress> = {}): CampaignDispatchProgress {
+    return {
+      dispatchId: "d1",
+      dispatchNumber: 1,
+      status: "completed",
+      completionKind: "full",
+      totalRecipients: 100,
+      acceptedCount: 80,
+      failedCount: 0,
+      queuedCount: 0,
+      suppressedCount: 20,
+      retryFailedOnly: false,
+      errorMessage: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      ...over,
+    }
+  }
+
+  it("pai com filho 80 aceitos + 20 suprimidos de 100 fecha como `full`", () => {
+    // Regressão: os builders de folha já resolviam isso, mas o agregado do pai
+    // avaliava `acceptedCount < totalRecipients` antes e devolvia `partial` —
+    // aviso de parcial na lista/detalhe sem nenhum destinatário retentável.
+    const summary = buildCampaignDispatchProgressSummary([terminalProgress()])
+    expect(summary?.completionKind).toBe("full")
+  })
+
+  it("supressão não mascara destinatário que nunca virou log", () => {
+    // 80 + 10 = 90 de 100: sobraram 10 sem log nenhum. Continua parcial.
+    const summary = buildCampaignDispatchProgressSummary([
+      terminalProgress({ suppressedCount: 10, completionKind: "partial" }),
+    ])
+    expect(summary?.completionKind).toBe("partial")
+  })
+
+  it("supressão não mascara falha retentável", () => {
+    const summary = buildCampaignDispatchProgressSummary([
+      terminalProgress({ acceptedCount: 70, failedCount: 10, suppressedCount: 20 }),
+    ])
+    expect(summary?.completionKind).toBe("partial")
   })
 })

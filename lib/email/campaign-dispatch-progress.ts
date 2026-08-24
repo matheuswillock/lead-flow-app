@@ -11,6 +11,14 @@ export type CampaignDispatchProgress = {
   acceptedCount: number
   failedCount: number
   queuedCount: number
+  /**
+   * Recusados pela pré-validação. Precisa viajar no progresso, não só ser
+   * consumido na derivação do `completionKind`: o agregado do pai
+   * (`buildCampaignDispatchProgressSummary`) soma os contadores dos filhos e,
+   * sem este campo, recalculava `acceptedCount < totalRecipients` e mostrava
+   * aviso de parcial num disparo sem nada retentável.
+   */
+  suppressedCount: number
   retryFailedOnly: boolean
   errorMessage: string | null
   updatedAt: string
@@ -188,6 +196,7 @@ export function buildCumulativeCampaignDispatchProgress(params: {
       acceptedCount: counters.acceptedCount,
       failedCount: counters.failedCount,
       queuedCount: counters.queuedCount,
+      suppressedCount: counters.suppressedCount,
       completionKind: "pending",
     }
   }
@@ -209,6 +218,7 @@ export function buildCumulativeCampaignDispatchProgress(params: {
     acceptedCount: counters.acceptedCount,
     failedCount: counters.failedCount,
     queuedCount: counters.queuedCount,
+    suppressedCount: counters.suppressedCount,
     retryFailedOnly: base?.retryFailedOnly ?? false,
     errorMessage: base?.errorMessage ?? null,
     updatedAt: base?.updatedAt ?? new Date(0).toISOString(),
@@ -293,6 +303,7 @@ export function buildCampaignDispatchProgress(
     acceptedCount: counters.acceptedCount,
     failedCount: counters.failedCount,
     queuedCount: counters.queuedCount,
+    suppressedCount: counters.suppressedCount,
     retryFailedOnly: dispatch.retryFailedOnly,
     errorMessage: dispatch.errorMessage,
     updatedAt,
@@ -311,6 +322,13 @@ export function buildCampaignDispatchProgressSummary(
   const acceptedCount = progresses.reduce((sum, p) => sum + p.acceptedCount, 0)
   const failedCount = progresses.reduce((sum, p) => sum + p.failedCount, 0)
   const queuedCount = progresses.reduce((sum, p) => sum + p.queuedCount, 0)
+  const suppressedCount = progresses.reduce((sum, p) => sum + p.suppressedCount, 0)
+
+  // Recusado na pré-validação FECHA o destinatário: é terminal e não retentável.
+  // Comparar `acceptedCount` cru contra `totalRecipients` marcava como parcial um
+  // pai cujos filhos não têm nada a reenviar — mesma regra já aplicada nos
+  // builders de folha e em `resolveReconciledCampaignStatus`.
+  const terminalCount = acceptedCount + suppressedCount
 
   let completionKind: CampaignDispatchCompletionKind = "pending"
   if (active.length > 0) {
@@ -319,10 +337,10 @@ export function buildCampaignDispatchProgressSummary(
     completionKind = "failed"
   } else if (
     acceptedCount > 0 &&
-    (failedCount > 0 || acceptedCount < totalRecipients || terminal.some((p) => p.completionKind === "partial"))
+    (failedCount > 0 || terminalCount < totalRecipients || terminal.some((p) => p.completionKind === "partial"))
   ) {
     completionKind = "partial"
-  } else if (acceptedCount >= totalRecipients && totalRecipients > 0) {
+  } else if (terminalCount >= totalRecipients && totalRecipients > 0) {
     completionKind = "full"
   } else if (terminal.every((p) => p.completionKind === "full")) {
     completionKind = "full"

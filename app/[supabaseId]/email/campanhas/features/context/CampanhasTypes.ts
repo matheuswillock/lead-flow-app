@@ -15,6 +15,7 @@ export type CampaignStatus =
 export type CampaignDispatchProgressStatus = "sending" | "completed" | "failed"
 export type CampaignDispatchCompletionKind = "pending" | "full" | "partial" | "failed"
 
+/** Espelho de `CampaignDispatchProgress` em lib/email/campaign-dispatch-progress. */
 export type CampaignDispatchProgress = {
   dispatchId: string
   dispatchNumber: number
@@ -24,6 +25,8 @@ export type CampaignDispatchProgress = {
   acceptedCount: number
   failedCount: number
   queuedCount: number
+  /** Recusados pela pré-validação — terminais e não retentáveis. */
+  suppressedCount: number
   retryFailedOnly: boolean
   errorMessage: string | null
   updatedAt: string
