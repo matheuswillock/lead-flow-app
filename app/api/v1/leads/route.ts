@@ -156,7 +156,10 @@ export async function GET(request: NextRequest) {
       } catch (cacheError) {
         rethrowIfPrerenderInterrupted(cacheError);
         // A funcao cacheada lanca quando a listagem falha, justamente para o
-        // Next nao gravar o erro. O erro em si vira resposta aqui, fora do cache.
+        // Next nao gravar o erro. `getCachedTeamLeads` e o wrapper NAO cacheado
+        // que reetiqueta essa falha depois da fronteira do `"use cache"`, onde o
+        // Next ja trocou a excecao original por um Error generico com digest —
+        // e por isso que este `instanceof` casa em producao.
         if (cacheError instanceof CachedTeamLeadsUnavailableError) {
           console.error('[LeadsRoute][GET] listagem indisponivel:', cacheError.errorMessages);
           return NextResponse.json(
