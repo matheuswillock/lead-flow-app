@@ -51,7 +51,6 @@
       "app/api/v1/leads/[id]/schedule/resend/route.ts",
       "app/api/v1/leads/[id]/status/route.ts",
       "app/api/v1/leads/[id]/transfer/route.ts",
-      "app/api/v1/manager/[supabaseId]/users/route.ts",
       "app/api/v1/manager/[supabaseId]/users/[userId]/teams/route.ts",
       "app/api/v1/operators/pending/[id]/route.ts",
       "app/api/v1/operators/pending/[id]/status/route.ts",
@@ -103,7 +102,6 @@
       "app/api/v1/leads/[id]/schedule/cancel/route.ts",
       "app/api/v1/leads/[id]/schedule/resend/route.ts",
       "app/api/v1/leads/[id]/schedule/route.ts",
-      "app/api/v1/manager/[supabaseId]/users/route.ts",
       "app/api/v1/operators/pending/[id]/route.ts",
       "app/api/v1/operators/pending/[id]/status/route.ts",
       "app/api/v1/teams/route.ts"
@@ -190,7 +188,6 @@
       "app/api/v1/leads/[id]/status/route.ts",
       "app/api/v1/leads/[id]/transfer/route.ts",
       "app/api/v1/leads/[id]/transfer-teams/route.ts",
-      "app/api/v1/manager/[supabaseId]/users/route.ts",
       "app/api/v1/payments/validate/route.ts",
       "app/api/v1/profiles/[supabaseId]/permanent-subscription/route.ts",
       "app/api/v1/subscriptions/check/route.ts"
@@ -217,7 +214,6 @@
       "app/api/v1/leads/[id]/schedule/cancel/route.ts",
       "app/api/v1/leads/[id]/schedule/resend/route.ts",
       "app/api/v1/leads/[id]/schedule/route.ts",
-      "app/api/v1/manager/[supabaseId]/users/route.ts",
       "app/api/v1/meta/forms/route.ts",
       "app/api/v1/meta/forms/[formId]/leads/route.ts",
       "app/api/v1/meta/forms/[formId]/stats/route.ts",
