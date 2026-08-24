@@ -13,6 +13,7 @@ import {
   validateAnswer,
 } from "@/lib/public-forms/engine"
 import { buildLeadSyncAlerts, formatLeadSyncAlerts } from "@/lib/public-forms/lead-sync-alerts"
+import { invalidateLeadCache } from "@/lib/cache/invalidation"
 import type {
   PublicFormAnswerInput,
   PublicFormSnapshot,
@@ -408,6 +409,15 @@ export class PublicFormSubmissionUseCase {
 
       if (lead || attributionResult?.leadId) {
         const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
+
+        // O lead do formulario publico nasce aqui, no processamento em
+        // background — nao na rota de submissao, que so enfileira. Sem esta
+        // invalidacao ele ficava invisivel no board ate o TTL do cache de
+        // listagem, mesma classe do bug do webhook do Meta.
+        if (resolvedLeadId && form.teamId) {
+          invalidateLeadCache({ leadId: resolvedLeadId, teamId: form.teamId })
+        }
+
         metricEvents.push({
           formId: job.snapshot.formId,
           publicationId: job.publicationId,
