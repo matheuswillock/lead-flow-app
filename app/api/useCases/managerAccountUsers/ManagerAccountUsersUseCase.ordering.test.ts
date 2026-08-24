@@ -20,6 +20,18 @@ const eventos: string[] = []
 // runner de teste conseguir carregar a cadeia de imports.
 mock.module("server-only", () => ({}))
 
+// Estes dois leem variável de ambiente e viviam DENTRO do try/catch de
+// `finalizeUserCreation`. Sem stub, um runner sem `NEXT_PUBLIC_APP_URL` faz o
+// caminho feliz cair na compensação e o teste falha por ambiente, não por
+// regressão — foi exatamente o que aconteceu na CI enquanto passava local.
+mock.module("@/lib/utils/app-url", () => ({
+  getFullUrl: (path: string) => `https://example.test${path}`,
+}))
+
+mock.module("@/lib/supabase/email-auth-link", () => ({
+  buildSetPasswordEmailAuthLink: () => "https://example.test/set-password?token=abc",
+}))
+
 mock.module("@/lib/supabase/server", () => ({
   createSupabaseAdmin: () => {
     eventos.push("supabase:createAdmin")
