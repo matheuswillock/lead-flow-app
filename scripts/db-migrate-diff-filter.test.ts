@@ -23,6 +23,29 @@ describe("splitSqlStatements", () => {
     expect(splitSqlStatements(sql)).toHaveLength(2);
   });
 
+  test("reconhece tag de dollar-quote com dígito", () => {
+    // `$fn1$` é identificador válido no Postgres. Sem aceitar dígito, o corpo
+    // era cortado no `;` interno e um pedaço órfão podia começar com GRANT.
+    const sql = `create function f() returns void as $fn1$ begin grant select on t to anon; end $fn1$ language plpgsql; select 1;`;
+    const parts = splitSqlStatements(sql);
+
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toContain("grant select on t to anon;");
+  });
+
+  test("tag com underscore e dígitos", () => {
+    const sql = `do $tag_2$ begin perform 1; end $tag_2$; select 1;`;
+    expect(splitSqlStatements(sql)).toHaveLength(2);
+  });
+
+  test("um GRANT preso dentro de função não é filtrado como statement", () => {
+    const sql = `create function f() returns void as $fn1$ begin grant select on t to anon; end $fn1$ language plpgsql;`;
+    const result = filterUnmanagedStatements(sql);
+
+    expect(result.removedTotal).toBe(0);
+    expect(result.sql).toContain("create function");
+  });
+
   test("não quebra dentro de literal com ponto e vírgula", () => {
     const sql = `insert into t (c) values ('a;b'); select 1;`;
     expect(splitSqlStatements(sql)).toHaveLength(2);

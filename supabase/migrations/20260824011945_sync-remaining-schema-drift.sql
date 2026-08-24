@@ -42,15 +42,46 @@ BEGIN
     DROP INDEX "public"."whatsapp_auto_response_logs_conversationId_ruleType_createdAt_i";
   END IF;
 
-  -- Aqui os dois NÃO são equivalentes: o antigo é (teamId, lastSeenAt DESC
-  -- NULLS LAST) — o que o schema declara — e o novo, criado fora das migrations,
-  -- é (teamId, lastSeenAt DESC), ou seja NULLS FIRST. Descarta o que não bate
-  -- com o schema e promove o correto ao nome canônico.
-  IF to_regclass('public."corretor_studio_radar_profiles_team_last_seen_idx"') IS NOT NULL
-     AND to_regclass('public."corretor_studio_radar_profiles_teamId_lastSeenAt_idx"') IS NOT NULL THEN
-    DROP INDEX "public"."corretor_studio_radar_profiles_teamId_lastSeenAt_idx";
-    ALTER INDEX "public"."corretor_studio_radar_profiles_team_last_seen_idx"
-      RENAME TO "corretor_studio_radar_profiles_teamId_lastSeenAt_idx";
+END $$;
+
+-- 1d. radar_profiles: qual dos dois índices de lastSeenAt fica ------------------
+-- Os dois NÃO são equivalentes, e a assimetria foi deixada de propósito em
+-- 20260723222103_radar-dedupe-indexes.sql:
+--
+--   corretor_studio_radar_profiles_team_last_seen_idx     ("teamId","lastSeenAt" DESC NULLS LAST)
+--   corretor_studio_radar_profiles_teamId_lastSeenAt_idx  ("teamId","lastSeenAt" DESC)  -- NULLS FIRST
+--
+-- O `schema.prisma` declara `@@index([teamId, lastSeenAt(sort: Desc)])`, que o
+-- Prisma materializa como `DESC` puro. Verificado com `prisma db push` em base
+-- vazia — no banco de dev o índice antigo já existia e o push não o recria só
+-- por causa da ordenação de NULL, o que mascarava a diferença.
+--
+-- Estado alvo: só o do Prisma. Índice não altera resultado de query (a ordem vem
+-- do ORDER BY), então dropar o legado muda plano, não resposta.
+
+DROP INDEX IF EXISTS "public"."corretor_studio_radar_profiles_team_last_seen_idx";
+
+CREATE INDEX IF NOT EXISTS "corretor_studio_radar_profiles_teamId_lastSeenAt_idx"
+  ON public.corretor_studio_radar_profiles USING btree ("teamId", "lastSeenAt" DESC);
+
+-- 1e. Mesmo caso em whatsapp_conversations ------------------------------------
+-- Aqui o nome é o mesmo dos dois lados, então nenhum rename cobria: a migration
+-- criou `("teamId","lastMessageAt" DESC NULLS LAST)` e o schema declara
+-- `@@index([teamId, lastMessageAt(sort: Desc)])`, que vira `DESC` puro.
+-- Só apareceu ao comparar o replay das migrations com um `db push` em base
+-- vazia — o banco de dev tinha o índice antigo e mascarava a diferença.
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_index x
+    JOIN pg_class i ON i.oid = x.indexrelid
+    WHERE i.relname = 'whatsapp_conversations_teamId_lastMessageAt_idx'
+      AND pg_get_indexdef(i.oid) LIKE '%NULLS LAST%'
+  ) THEN
+    DROP INDEX "public"."whatsapp_conversations_teamId_lastMessageAt_idx";
+    CREATE INDEX "whatsapp_conversations_teamId_lastMessageAt_idx"
+      ON public.whatsapp_conversations USING btree ("teamId", "lastMessageAt" DESC);
   END IF;
 END $$;
 

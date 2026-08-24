@@ -409,6 +409,31 @@ Would push these migrations:
 Só as três novas estão pendentes — as 311 anteriores já constam em
 `supabase_migrations.schema_migrations` no remoto. **Nenhuma foi aplicada.**
 
+### 7.8b O banco de dev mente sobre ordenação de NULL
+
+`prisma db push` casa índice por **nome + colunas**. Se a única diferença é a
+ordenação de NULL, ele não recria — o índice antigo fica, e o
+`supabase db diff` compara contra esse artefato velho em vez de contra o que o
+Prisma realmente gera. Foi assim que dois índices passaram batido:
+
+```
+corretor_studio_radar_profiles_teamId_lastSeenAt_idx
+whatsapp_conversations_teamId_lastMessageAt_idx
+  migrations: ("teamId", "…At" DESC NULLS LAST)
+  prisma    : ("teamId", "…At" DESC)          -- NULLS FIRST
+```
+
+O `@@index([campo(sort: Desc)])` do Prisma vira `DESC` puro, que em btree é
+`NULLS FIRST`. As migrations tinham escrito `DESC NULLS LAST` explícito. Não é a
+mesma coisa, e `20260723222103_radar-dedupe-indexes.sql` já documentava a
+assimetria como pendência deliberada.
+
+**Como verificar sem cair nisso:** comparar o replay das migrations com um
+`prisma db push` em base **vazia**, catálogo contra catálogo, sem o banco de dev
+no meio. Feito assim, o delta de índices fica em 14 — todos parciais
+(`CREATE INDEX … WHERE …`), que o Prisma não expressa e por isso vivem só nas
+migrations. Nenhum outro.
+
 ### 7.9 Conferência do catálogo de produção (24/08/2026)
 
 As três migrations são guardadas por nome e definição exatos

@@ -121,9 +121,17 @@ function skipQuoted(sql: string, openIndex: number, quote: string): number {
   return sql.length;
 }
 
-/** Retorna o índice após o fechamento do dollar-quote, ou null se não for um. */
+/**
+ * Retorna o índice após o fechamento do dollar-quote, ou null se não for um.
+ *
+ * A tag segue a regra de identificador do Postgres: começa com letra ou `_` e
+ * daí aceita dígitos também (`$fn1$`, `$tag_2$`). Sem os dígitos, `$fn1$` não
+ * era reconhecido como delimitador e o splitter cortava dentro do corpo da
+ * função — se o pedaço resultante começasse com `GRANT` ou DDL de policy, o
+ * filtro descartaria um trecho do meio do statement.
+ */
 function skipDollarQuoted(sql: string, openIndex: number): number | null {
-  const match = /^\$[A-Za-z_]*\$/.exec(sql.slice(openIndex));
+  const match = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(openIndex));
   if (!match) return null;
 
   const tag = match[0];

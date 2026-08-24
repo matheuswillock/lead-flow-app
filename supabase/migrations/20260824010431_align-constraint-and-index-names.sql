@@ -399,10 +399,11 @@ BEGIN
      AND to_regclass('public."corretor_studio_lead_document_request_items_requestId_idx"') IS NULL THEN
     ALTER INDEX "public"."corretor_studio_lead_document_request_items_request_idx" RENAME TO "corretor_studio_lead_document_request_items_requestId_idx";
   END IF;
-  IF to_regclass('public."corretor_studio_radar_profiles_team_last_seen_idx"') IS NOT NULL
-     AND to_regclass('public."corretor_studio_radar_profiles_teamId_lastSeenAt_idx"') IS NULL THEN
-    ALTER INDEX "public"."corretor_studio_radar_profiles_team_last_seen_idx" RENAME TO "corretor_studio_radar_profiles_teamId_lastSeenAt_idx";
-  END IF;
+  -- `corretor_studio_radar_profiles_team_last_seen_idx` NÃO entra aqui de
+  -- propósito: ele é `("teamId", "lastSeenAt" DESC NULLS LAST)` e o Prisma gera
+  -- `DESC` (NULLS FIRST) para `@@index([teamId, lastSeenAt(sort: Desc)])`.
+  -- Renomear daria a ele o nome canônico com a semântica errada. A troca é
+  -- feita em 20260824011945, que dropa o legado e garante o do Prisma.
   IF to_regclass('public."corretor_studio_email_campaign_dispatches_teamId_dispatchedAt_i"') IS NOT NULL
      AND to_regclass('public."corretor_studio_email_campaign_dispatches_teamId_dispatched_idx"') IS NULL THEN
     ALTER INDEX "public"."corretor_studio_email_campaign_dispatches_teamId_dispatchedAt_i" RENAME TO "corretor_studio_email_campaign_dispatches_teamId_dispatched_idx";
