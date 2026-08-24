@@ -398,11 +398,16 @@ export class EmailLogRepository implements IEmailLogRepository {
           logId,
           type: "suppressed",
           occurredAt,
-          metadata: { reason },
+          // `errorMessage`, não `reason`: é a única chave que a linha do tempo
+          // do log lê (CampaignLogsTab). Gravar em `reason` deixava o motivo da
+          // recusa persistido num campo que nenhum consumidor abre — o suporte
+          // via o evento "Recusado" sem explicação nenhuma.
+          metadata: { errorMessage: reason },
         },
       })
     })
   }
+
 }
 
 export const emailLogRepository = new EmailLogRepository()
