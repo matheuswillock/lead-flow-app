@@ -31,6 +31,26 @@ export class EmailLogRepository implements IEmailLogRepository {
     })
   }
 
+  async findCampaignWebhookRecordById(teamId: string, emailLogId: string) {
+    return prisma.emailLog.findFirst({
+      where: { id: emailLogId, teamId, category: "campaign" },
+      select: {
+        id: true,
+        teamId: true,
+        status: true,
+        recipientEmail: true,
+        recipientName: true,
+        campaignId: true,
+        dispatchId: true,
+        deliveredAt: true,
+        openedAt: true,
+        clickedAt: true,
+        bouncedAt: true,
+        complainedAt: true,
+      },
+    })
+  }
+
   async findCampaignLogForAttribution(teamId: string, emailLogId: string) {
     const log = await prisma.emailLog.findFirst({
       where: {

@@ -627,10 +627,16 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
+      // Click tracking fica desligado por padrão: ele reescreve todo href do
+      // template para o subdomínio de tracking, e esse redirecionador é
+      // penalizado pelo Safe Browsing ("link parece perigoso" no Gmail). O
+      // clique é medido no first-party, pelo `cs_el` carimbado na URL do
+      // formulário. O `trackingSubdomain` continua sendo criado porque o open
+      // tracking usa o mesmo CNAME.
       await resend.domains.update({
         id: data.id,
         openTracking: true,
-        clickTracking: true,
+        clickTracking: false,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
 
@@ -650,7 +656,7 @@ export class EmailTeamSettingsUseCase {
           resendDomainRegion: DEFAULT_DOMAIN_REGION,
           resendDomainConnectedAt: connectedAt,
           resendOpenTracking: true,
-          resendClickTracking: true,
+          resendClickTracking: false,
           dispatchAllowedRoles: DEFAULTS.dispatchAllowedRoles,
           templateCreateRoles: DEFAULTS.templateCreateRoles,
           templateApprovalRequired: DEFAULTS.templateApprovalRequired,
@@ -664,7 +670,7 @@ export class EmailTeamSettingsUseCase {
           resendDomainRegion: DEFAULT_DOMAIN_REGION,
           resendDomainConnectedAt: connectedAt,
           resendOpenTracking: true,
-          resendClickTracking: true,
+          resendClickTracking: false,
           ...(senderCount === 0
             ? {
                 fromEmail: deliveryFromEmail,

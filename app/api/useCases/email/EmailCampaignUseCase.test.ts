@@ -424,7 +424,7 @@ function makeDefaultDispatchInput(
     from: "Test <test@sender.com>",
     replyTo: null as string | null,
     resolvedFrom:
-      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "deliveryby@corretorstudio.com" },
+      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "contato@corretorstudio.com" },
   }
 }
 
@@ -1941,7 +1941,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     expect(createQueuedLogsMock).not.toHaveBeenCalled()
   })
 
-  it("D13b — domínio null sem sender → from de plataforma (deliveryby) permite disparo", async () => {
+  it("D13b — domínio null sem sender → from de plataforma (contato) permite disparo", async () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 

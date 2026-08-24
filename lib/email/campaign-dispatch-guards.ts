@@ -3,7 +3,7 @@ import { formatLocalDateValue, getMinutesInTz } from "@/lib/dates"
 export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: string }
 
 export const RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE =
-  "Com domínio próprio, é obrigatório habilitar as métricas de abertura e clique. Nenhum disparo será liberado até que as métricas estejam ativas e o DNS de tracking esteja verificado."
+  "Com domínio próprio, é obrigatório habilitar a métrica de abertura e verificar o DNS de tracking. Nenhum disparo será liberado até que isso esteja ativo. O rastreio de cliques permanece desligado de propósito: ele reescreve os links do e-mail e faz provedores marcarem a mensagem como suspeita."
 
 /** @deprecated Use RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE — same copy after tracking became a hard gate. */
 export const RESEND_DOMAIN_TRACKING_DEGRADED_WARNING = RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE
