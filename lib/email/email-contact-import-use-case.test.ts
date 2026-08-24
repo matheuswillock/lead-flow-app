@@ -16,7 +16,9 @@ const emailContactCountMock = mock(async () => 0)
 const emailContactListFindFirstMock = mock(async () => null as null | {
   id: string
   isSystemDefault: boolean
+  isBlocklist?: boolean
 })
+const emailContactDeleteManyMock = mock(async () => ({ count: 0 }))
 const emailContactListUpdateMock = mock(async () => ({}))
 
 const syncExecuteMock = mock(async () => ({
@@ -78,6 +80,8 @@ const prismaStub = {
     createMany: emailContactCreateManyMock,
     update: emailContactUpdateMock,
     count: emailContactCountMock,
+    deleteMany: emailContactDeleteManyMock,
+    upsert: mock(async () => ({})),
   },
 }
 
@@ -186,6 +190,8 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
           findFirst: mock(async () => claimedJob),
           updateMany: mock(async () => ({ count: claimedJob ? 1 : 0 })),
         },
+        emailContact: prismaStub.emailContact,
+        emailContactList: prismaStub.emailContactList,
       }
       return fn(tx)
     })
@@ -200,6 +206,8 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     emailContactCountMock.mockImplementation(async () => 0)
     emailContactListFindFirstMock.mockClear()
     emailContactListFindFirstMock.mockImplementation(async () => null)
+    emailContactDeleteManyMock.mockClear()
+    emailContactDeleteManyMock.mockImplementation(async () => ({ count: 0 }))
     emailContactListUpdateMock.mockClear()
     syncExecuteMock.mockClear()
     syncExecuteMock.mockImplementation(async () => ({
@@ -264,6 +272,67 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(progressUpdate?.data?.skippedIssues).toEqual([
       { email: "bloqueado@example.com", reason: AUDIENCE_REASON_BLOCKLISTED },
     ])
+  })
+
+  it("import para a blocklist grava o checkpoint de progresso a cada lote", async () => {
+    // Regressão: a branch de blocklist usava `continue`, que pula o
+    // `emailImportJob.update` do fim do laço. O job terminava com processedRows
+    // parado em 0 e, se o cron fosse interrompido, reprocessava tudo de novo.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: false,
+      isBlocklist: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "a@example.com", name: "A" },
+          { email: "b@example.com", name: "B" },
+        ],
+      })
+    )
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { processedRows?: number; importedCount?: number } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.processedRows !== undefined)
+
+    expect(progressUpdate?.data?.processedRows).toBe(2)
+    expect(progressUpdate?.data?.importedCount).toBe(2)
+  })
+
+  it("import para a blocklist não abre uma transação por endereço", async () => {
+    // Regressão: 500 linhas × 9 queries em 500 transações seriais estouravam o
+    // maxDuration=60s do cron antes de qualquer checkpoint.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: false,
+      isBlocklist: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: Array.from({ length: 50 }, (_, i) => ({
+          email: `user${i}@example.com`,
+          name: `User ${i}`,
+        })),
+      })
+    )
+
+    const transactionsBefore = transactionMock.mock.calls.length
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+    const transactionsForBatch = transactionMock.mock.calls.length - transactionsBefore
+
+    // 1 do claim + 1 do lote inteiro. Nunca proporcional ao número de linhas.
+    expect(transactionsForBatch).toBeLessThanOrEqual(3)
+    expect(emailContactDeleteManyMock.mock.calls.length).toBeLessThanOrEqual(2)
   })
 
   it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {
