@@ -3240,6 +3240,10 @@ model EmailContact {
   isUnsubscribed Boolean  @default(false)
   isBounced      Boolean  @default(false)
   isComplained   Boolean  @default(false)
+  // Preenchidos só na linha que vive na lista de bloqueados do time — a
+  // blocklist é uma lista, e a linha do contato nela é o registro de supressão.
+  blockReason    String?   @db.Text
+  blockedAt      DateTime? @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 

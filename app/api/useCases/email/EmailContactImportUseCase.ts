@@ -17,6 +17,7 @@ import {
   evaluateEmailForAudience,
 } from "@/lib/email/audience-prevalidation"
 import {
+  BLOCK_REASON_IMPORT,
   blockTeamEmailsBulk,
   findBlocklistedEmailsAmong,
   partitionByBlocklist,
@@ -246,6 +247,7 @@ export class EmailContactImportUseCase {
         teamId,
         createdBy,
         contacts: batch.map((row) => ({ email: row.email, name: row.name ?? null })),
+        reason: BLOCK_REASON_IMPORT,
       })
     )
     return result.blockedCount

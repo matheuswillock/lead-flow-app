@@ -1,7 +1,10 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
-import { blockTeamEmail } from "@/lib/email/email-contact-blocklist"
+import {
+  BLOCK_REASON_UNSUBSCRIBE,
+  blockTeamEmail,
+} from "@/lib/email/email-contact-blocklist"
 import { parseEmailUnsubscribeToken, maskEmailForUnsubscribe } from "@/lib/email/unsubscribe-token"
 import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 
@@ -135,6 +138,7 @@ export class EmailUnsubscribeUseCase {
           email: normalizedEmail,
           name: contact.name,
           createdBy: campaign?.createdBy ?? contact.list.createdBy,
+          reason: BLOCK_REASON_UNSUBSCRIBE,
           markUnsubscribed: true,
         })
       }

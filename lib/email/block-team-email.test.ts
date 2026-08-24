@@ -6,7 +6,7 @@ const state: {
   lists: Array<{ id: string; teamId: string; isArchived: boolean; isBlocklist: boolean; isSystemDefault: boolean }>
   contacts: ContactRow[]
   totals: Record<string, number>
-  upserts: Array<{ listId: string; email: string }>
+  upserts: Array<{ listId: string; email: string; blockReason?: string; blockedAt?: Date }>
 } = { lists: [], contacts: [], totals: {}, upserts: [] }
 
 type ContactWhere = {
@@ -38,7 +38,13 @@ const tx = {
       return { count: before - state.contacts.length }
     }),
     createMany: mock(async (args: {
-      data: Array<{ listId: string; email: string; name: string | null }>
+      data: Array<{
+        listId: string
+        email: string
+        name: string | null
+        blockReason?: string
+        blockedAt?: Date
+      }>
       skipDuplicates?: boolean
     }) => {
       let count = 0
@@ -47,7 +53,12 @@ const tx = {
           (contact) => contact.listId === row.listId && contact.email === row.email
         )
         if (exists && args.skipDuplicates) continue
-        state.upserts.push({ listId: row.listId, email: row.email })
+        state.upserts.push({
+          listId: row.listId,
+          email: row.email,
+          blockReason: row.blockReason,
+          blockedAt: row.blockedAt,
+        })
         state.contacts.push({ listId: row.listId, email: row.email, name: row.name })
         count += 1
       }
@@ -60,7 +71,12 @@ const tx = {
     upsert: mock(async (args: {
       where: { listId_email: { listId: string; email: string } }
       create: { listId: string; email: string; name: string | null }
-      update: { name?: string; isUnsubscribed?: boolean }
+      update: {
+        name?: string
+        isUnsubscribed?: boolean
+        blockReason?: string
+        blockedAt?: Date
+      }
     }) => {
       const { listId, email } = args.where.listId_email
       state.upserts.push({ listId, email, ...args.update })
@@ -96,7 +112,9 @@ const tx = {
 
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: tx, default: tx }))
 
-const { blockTeamEmail, blockTeamEmailsBulk } = await import("./email-contact-blocklist")
+const { blockTeamEmail, blockTeamEmailsBulk, BLOCK_REASON_MANUAL } = await import(
+  "./email-contact-blocklist"
+)
 
 function resetState() {
   state.lists = [
@@ -125,6 +143,7 @@ describe("blockTeamEmailsBulk", () => {
     const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
       contacts: Array.from({ length: 40 }, (_, i) => ({
         email: `bulk${i}@example.com`,
         name: `Bulk ${i}`,
@@ -141,6 +160,7 @@ describe("blockTeamEmailsBulk", () => {
     const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
       contacts: [
         { email: "Repetido@Example.com", name: "A" },
         { email: " repetido@example.com ", name: "B" },
@@ -160,6 +180,7 @@ describe("blockTeamEmailsBulk", () => {
     await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
       contacts: [{ email: "alvo@example.com", name: null }],
     })
 
@@ -178,6 +199,7 @@ describe("blockTeamEmailsBulk", () => {
     const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
       contacts: [
         { email: "javablocked@example.com", name: "Ja" },
         { email: "novo@example.com", name: "Novo" },
@@ -197,6 +219,7 @@ describe("blockTeamEmailsBulk", () => {
     const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
       contacts: [{ email: "a@example.com", name: null }, { email: "b@example.com", name: null }],
     })
 
@@ -207,6 +230,7 @@ describe("blockTeamEmailsBulk", () => {
     const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
       contacts: [{ email: "   ", name: null }, { email: "valido@example.com", name: null }],
     })
     expect(blockedCount).toBe(1)
@@ -237,6 +261,7 @@ describe("blockTeamEmail", () => {
       email: " Alvo@Example.COM ",
       name: "Alvo",
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
     })
 
     const listasComAlvo = state.contacts
@@ -247,6 +272,9 @@ describe("blockTeamEmail", () => {
 
     expect(state.upserts).toHaveLength(1)
     expect(state.upserts[0].listId).toBe("blocklist")
+    // O motivo é persistido, não inferido na leitura.
+    expect(state.upserts[0].blockReason).toBe(BLOCK_REASON_MANUAL)
+    expect(state.upserts[0].blockedAt).toBeInstanceOf(Date)
   })
 
   it("recalcula totalContacts das listas afetadas e da blocklist", async () => {
@@ -255,6 +283,7 @@ describe("blockTeamEmail", () => {
       email: "alvo@example.com",
       name: null,
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
     })
 
     expect(state.totals["padrao"]).toBe(0)
@@ -270,6 +299,7 @@ describe("blockTeamEmail", () => {
       email: "alvo@example.com",
       name: null,
       createdBy: "profile-1",
+      reason: BLOCK_REASON_MANUAL,
     }
     await blockTeamEmail(tx as never, params)
     await blockTeamEmail(tx as never, params)
