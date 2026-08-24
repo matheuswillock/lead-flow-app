@@ -568,7 +568,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         "submission",
         `${API_CLIENT_BASE}/public-forms/${publicId}/submissions`,
         {
-          requestKey: buildPublicFormSubmitRequestKey(session),
+          requestKey: buildPublicFormSubmitRequestKey(session, getOrigin().emailLogId),
           answers: answerList,
           origin: getOrigin(),
           visitorSessionId: session,

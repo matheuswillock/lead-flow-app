@@ -216,6 +216,13 @@ jobs:
         with:
           version: 2.109.1
 
+      # `install: false` — o parser não tem dependências, então não vale pagar
+      # `bun install` só para rodá-lo.
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun-deps
+        with:
+          install: 'false'
+
       - name: Detect Migration Status
         id: detect
         shell: bash
@@ -225,31 +232,14 @@ jobs:
           MIGRATION_LIST="$(supabase migration list --db-url "$DIRECT_URL" 2>&1)"
           echo "$MIGRATION_LIST"
 
-          RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" node -e '
-            const input = process.env.MIGRATION_LIST ?? "";
-            let hasPending = false;
-
-            const stripCell = (value) => value.trim().replace(/^`|`$/g, "");
-
-            for (const line of input.split(/\r?\n/)) {
-              if (!/\d{14}/.test(line)) continue;
-              const parts = line.split(/[│|]/).map(stripCell);
-              const local = parts[0] ?? "";
-              const remote = parts[1] ?? "";
-
-              if (!local && remote) {
-                process.stderr.write("Remote migration " + remote + " not tracked locally. Repair history before continuing.\n");
-                process.exit(1);
-              }
-              if (local && remote && local !== remote) {
-                process.stderr.write("Migration mismatch: local=" + local + " remote=" + remote + "\n");
-                process.exit(1);
-              }
-              if (local && !remote) hasPending = true;
-            }
-
-            process.stdout.write(hasPending ? "true" : "false");
-          ') || { echo "::error::Migration history is inconsistent. Repair remote history before continuing."; exit 1; }
+          # O parser vive em scripts/parse-supabase-migration-list.ts, com
+          # testes. Ele era JS inline aqui e um bug de uma linha — `.trim()`
+          # antes de remover as crases, deixando `" "` truthy numa célula vazia
+          # — classificava toda migration pendente como histórico corrompido e
+          # travou a esteira de release por 4+ execuções, sem nada para rodar
+          # que pegasse isso.
+          RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" bun scripts/parse-supabase-migration-list.ts) \
+            || { echo "::error::Migration history is inconsistent. Repair remote history before continuing."; exit 1; }
 
           echo "has_pending=$RESULT" >> "$GITHUB_OUTPUT"
 

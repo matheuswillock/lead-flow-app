@@ -82,10 +82,19 @@ services:
       - ./docker/local/init-realtime-schema.sql:/docker-entrypoint-initdb.d/init-realtime-schema.sql:ro,Z
       # Stub do schema `storage` (Storage API é remoto) — necessário para
       # migrations que fazem INSERT em storage.buckets/CREATE POLICY em
-      # storage.objects durante `db reset --db-url`.
+      # storage.objects (ex.: 20260701173214_email-template-assets-bucket.sql).
       # Prefixo "zz-" é proposital: precisa rodar DEPOIS de migrate.sh (a
       # imagem cria o role "postgres" lá) — nomes de init script rodam em
       # ordem alfabética e este script faz ALTER ... OWNER TO postgres.
+      #
+      # ATENÇÃO: como todo `/docker-entrypoint-initdb.d/`, só roda com o volume
+      # VAZIO — nunca durante `supabase db reset --db-url`. O reset derruba o
+      # schema `storage` e o stub não é reaplicado, então
+      # `bun run db:migrate:reset:local` quebra no modo db-only. Para reaplicar
+      # as migrations sem wipar o volume:
+      #   podman exec -i leadflow-local-db psql -U postgres -f - \
+      #     < docker/local/zz-init-storage-stub-schema.sql
+      #   bun run db:migrate:apply:local
       - ./docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro,Z
       # Stub GoTrue moderno (colunas email_change_token_* + auth.identities).
       # A imagem traz schema auth legado; migrations históricas tocam essas

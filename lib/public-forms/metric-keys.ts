@@ -7,9 +7,23 @@ export type PublicFormCompletionMetricType =
   | "lead_attached"
   | "meeting_scheduled"
 
-/** Stable submit idempotency key for a visitor session. */
-export function buildPublicFormSubmitRequestKey(visitorSessionId: string): string {
-  return `${visitorSessionId}:submit`
+/**
+ * Stable submit idempotency key for a visitor session.
+ *
+ * `emailLogId` escopa a chave por atribuição pelo mesmo motivo de
+ * `buildPublicFormMetricEventKey` — e aqui o efeito é pior. `requestKey` é
+ * `@unique` em `PublicFormSubmission`, e o `accept()` devolve
+ * "Respostas já recebidas" quando acha uma submissão completa com a mesma
+ * chave. Sem o escopo, o mesmo navegador convertendo por uma segunda campanha
+ * dentro dos 30 dias do cookie de sessão bate nesse curto-circuito: nenhuma
+ * submissão nova nasce, e portanto NENHUMA métrica é gerada — o escopo do
+ * `eventKey` nem chega a ser alcançado.
+ */
+export function buildPublicFormSubmitRequestKey(
+  visitorSessionId: string,
+  emailLogId?: string | null,
+): string {
+  return `${visitorSessionId}:submit${buildAttributionEventKeySuffix(emailLogId)}`
 }
 
 /**

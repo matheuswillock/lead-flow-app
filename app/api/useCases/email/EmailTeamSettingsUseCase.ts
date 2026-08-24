@@ -1,6 +1,12 @@
-import { Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { emailTeamSettingsRepository } from "@/app/api/infra/data/repositories/emailTeamSettings/EmailTeamSettingsRepository"
+import type {
+  BlockedDateRange,
+  EmailTeamSenderRecord,
+  EmailTeamSettingsRecord,
+  EmailTeamVariableRecord,
+  IEmailTeamSettingsRepository,
+} from "@/app/api/infra/data/repositories/emailTeamSettings/IEmailTeamSettingsRepository"
 import { assertResend } from "@/lib/email"
 import {
   isTrackingSubdomainAlreadyExists,
@@ -24,9 +30,9 @@ import {
 } from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
-export type BlockedDateRange =
-  | { date: string }
-  | { from: string; to: string }
+// A definição vive na camada de persistência (é o formato gravado na coluna Json);
+// reexportada aqui porque os consumidores históricos importam deste módulo.
+export type { BlockedDateRange }
 
 export type ResendDomainStatus =
   | "not_started"
@@ -57,13 +63,6 @@ export interface UpsertEmailSenderInput {
 const VALID_ROLES = ["manager", "backoffice", "operator"] as const
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
-const senderSelect = {
-  id: true,
-  name: true,
-  email: true,
-  replyTo: true,
-  isDefault: true,
-} satisfies Prisma.EmailTeamSenderSelect
 
 const DEFAULT_DOMAIN_REGION = "sa-east-1"
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
@@ -82,16 +81,7 @@ function normalizeTrackingSubdomain(value: string): string | null {
   return normalized
 }
 
-const CLEAR_DOMAIN_DATA = {
-  resendDomainId: null,
-  resendDomainName: null,
-  resendDomainStatus: null,
-  resendDomainRegion: null,
-  resendDomainConnectedAt: null,
-  resendOpenTracking: false,
-  resendClickTracking: false,
-} as const
-
+/** Valores de exibição quando o time ainda não tem linha de configuração. */
 const DEFAULTS = {
   fromName: PLATFORM_FROM_NAME,
   fromEmail: PLATFORM_FROM_EMAIL,
@@ -162,32 +152,17 @@ function normalizeSenderPayload(input: UpsertEmailSenderInput) {
 }
 
 export class EmailTeamSettingsUseCase {
-  private async getSettingsRecord(tx: Prisma.TransactionClient, teamId: string) {
-    return tx.emailTeamSettings.findUnique({
-      where: { teamId },
-    })
-  }
-
-  private async getSenders(tx: Prisma.TransactionClient, teamId: string) {
-    return tx.emailTeamSender.findMany({
-      where: { teamId },
-      select: senderSelect,
-      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }, { name: "asc" }],
-    })
-  }
-
-  private async getVariables(tx: Prisma.TransactionClient, teamId: string) {
-    return tx.emailTeamVariable.findMany({
-      where: { teamId },
-      select: { id: true, key: true, type: true, defaultValue: true, description: true, isActive: true },
-      orderBy: [{ key: "asc" }],
-    })
-  }
+  // Default singleton: existem 10 call sites fazendo `new EmailTeamSettingsUseCase()`
+  // (8 rotas de produto, o UseCase de backoffice em field initializer e o teste).
+  // Parâmetro obrigatório quebraria todos sem ganho nenhum.
+  constructor(
+    private readonly settingsRepo: IEmailTeamSettingsRepository = emailTeamSettingsRepository
+  ) {}
 
   private composeResult(
-    settings: Awaited<ReturnType<EmailTeamSettingsUseCase["getSettingsRecord"]>>,
-    senders: Awaited<ReturnType<EmailTeamSettingsUseCase["getSenders"]>>,
-    globalVariables: Awaited<ReturnType<EmailTeamSettingsUseCase["getVariables"]>> = [],
+    settings: EmailTeamSettingsRecord | null,
+    senders: EmailTeamSenderRecord[],
+    globalVariables: EmailTeamVariableRecord[] = [],
     domainEvents: Array<{
       id: string
       type: string
@@ -209,10 +184,7 @@ export class EmailTeamSettingsUseCase {
       fromName: resolvedFrom.fromName,
       fromEmail: resolvedFrom.fromEmail,
       replyTo: settings?.replyTo ?? DEFAULTS.replyTo,
-      dispatchBlockedDates:
-        settings?.dispatchBlockedDates === null || settings?.dispatchBlockedDates === undefined
-          ? DEFAULTS.dispatchBlockedDates
-          : (settings.dispatchBlockedDates as BlockedDateRange[]),
+      dispatchBlockedDates: settings?.dispatchBlockedDates ?? DEFAULTS.dispatchBlockedDates,
       dispatchTimeFrom: settings?.dispatchTimeFrom ?? DEFAULTS.dispatchTimeFrom,
       dispatchTimeTo: settings?.dispatchTimeTo ?? DEFAULTS.dispatchTimeTo,
       dispatchAllowedRoles: settings?.dispatchAllowedRoles ?? DEFAULTS.dispatchAllowedRoles,
@@ -238,75 +210,6 @@ export class EmailTeamSettingsUseCase {
     }
   }
 
-  private async syncLegacySenderFields(
-    tx: Prisma.TransactionClient,
-    teamId: string,
-    sender: { name: string; email: string; replyTo: string | null } | null,
-    domainName?: string | null
-  ) {
-    const resolvedDomain =
-      domainName ??
-      (
-        await tx.emailTeamSettings.findUnique({
-          where: { teamId },
-          select: { resendDomainName: true },
-        })
-      )?.resendDomainName
-
-    const resolvedFrom = resolveCampaignFrom({
-      domainName: resolvedDomain,
-      defaultSender: sender,
-    })
-
-    await tx.emailTeamSettings.upsert({
-      where: { teamId },
-      create: {
-        teamId,
-        fromName: resolvedFrom.fromName,
-        fromEmail: resolvedFrom.fromEmail,
-        replyTo: sender?.replyTo ?? DEFAULTS.replyTo,
-        dispatchAllowedRoles: DEFAULTS.dispatchAllowedRoles,
-        templateCreateRoles: DEFAULTS.templateCreateRoles,
-        templateApprovalRequired: DEFAULTS.templateApprovalRequired,
-        templateApprovalRoles: DEFAULTS.templateApprovalRoles,
-        blockedDispatchDays: DEFAULTS.blockedDispatchDays,
-      },
-      update: {
-        fromName: resolvedFrom.fromName,
-        fromEmail: resolvedFrom.fromEmail,
-        replyTo: sender?.replyTo ?? DEFAULTS.replyTo,
-      },
-    })
-  }
-
-  private async ensureSingleDefaultSender(tx: Prisma.TransactionClient, teamId: string) {
-    const senders = await this.getSenders(tx, teamId)
-    if (senders.length === 0) {
-      await this.syncLegacySenderFields(tx, teamId, null)
-      return
-    }
-
-    const defaultSender = senders.find((sender) => sender.isDefault) ?? senders[0]
-
-    await tx.emailTeamSender.updateMany({
-      where: { teamId, id: { not: defaultSender.id }, isDefault: true },
-      data: { isDefault: false },
-    })
-
-    if (!defaultSender.isDefault) {
-      await tx.emailTeamSender.update({
-        where: { id: defaultSender.id },
-        data: { isDefault: true },
-      })
-    }
-
-    await this.syncLegacySenderFields(tx, teamId, {
-      name: defaultSender.name,
-      email: defaultSender.email,
-      replyTo: defaultSender.replyTo,
-    })
-  }
-
   async get(ctx: TeamContext): Promise<Output> {
     try {
       const rawEvents = await emailTeamDomainEventRepository.listEvents(ctx.teamId)
@@ -316,12 +219,15 @@ export class EmailTeamSettingsUseCase {
         occurredAt: event.occurredAt.toISOString(),
         metadata: event.metadata,
       }))
-      const result = await prisma.$transaction(async (tx) => {
-        const settings = await this.getSettingsRecord(tx, ctx.teamId)
-        const senders = await this.getSenders(tx, ctx.teamId)
-        const variables = await this.getVariables(tx, ctx.teamId)
-        return this.composeResult(settings, senders, variables, domainEvents)
-      })
+      // O histórico de eventos fica FORA do snapshot: é uma tabela append-only de
+      // auditoria, não participa do invariante settings ↔ senders.
+      const snapshot = await this.settingsRepo.findSettingsSnapshot(ctx.teamId)
+      const result = this.composeResult(
+        snapshot.settings,
+        snapshot.senders,
+        snapshot.variables,
+        domainEvents
+      )
 
       return new Output(true, [], [], result)
     } catch (error) {
@@ -368,52 +274,14 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Pelo menos uma role deve aprovar templates"], null)
       }
 
-      const result = await prisma.$transaction(async (tx) => {
-        const existing = await this.getSettingsRecord(tx, ctx.teamId)
-
-        await tx.emailTeamSettings.upsert({
-          where: { teamId: ctx.teamId },
-          create: {
-            teamId: ctx.teamId,
-            fromName: existing?.fromName ?? DEFAULTS.fromName,
-            fromEmail: existing?.fromEmail ?? DEFAULTS.fromEmail,
-            replyTo: existing?.replyTo ?? DEFAULTS.replyTo,
-            dispatchBlockedDates:
-              data.dispatchBlockedDates === undefined || data.dispatchBlockedDates === null
-                ? Prisma.JsonNull
-                : data.dispatchBlockedDates,
-            dispatchTimeFrom: data.dispatchTimeFrom ?? DEFAULTS.dispatchTimeFrom,
-            dispatchTimeTo: data.dispatchTimeTo ?? DEFAULTS.dispatchTimeTo,
-            dispatchAllowedRoles: data.dispatchAllowedRoles ?? DEFAULTS.dispatchAllowedRoles,
-            templateCreateRoles: data.templateCreateRoles ?? DEFAULTS.templateCreateRoles,
-            templateApprovalRequired: data.templateApprovalRequired ?? DEFAULTS.templateApprovalRequired,
-            templateApprovalRoles: data.templateApprovalRoles ?? DEFAULTS.templateApprovalRoles,
-            blockedDispatchDays: data.blockedDispatchDays ?? DEFAULTS.blockedDispatchDays,
-            resendDomainId: existing?.resendDomainId ?? DEFAULTS.resendDomainId,
-            resendDomainName: existing?.resendDomainName ?? DEFAULTS.resendDomainName,
-            resendDomainStatus: existing?.resendDomainStatus ?? DEFAULTS.resendDomainStatus,
-          },
-          update: {
-            ...(data.dispatchBlockedDates !== undefined && {
-              dispatchBlockedDates: data.dispatchBlockedDates === null ? Prisma.DbNull : data.dispatchBlockedDates,
-            }),
-            ...(data.dispatchTimeFrom !== undefined && { dispatchTimeFrom: data.dispatchTimeFrom }),
-            ...(data.dispatchTimeTo !== undefined && { dispatchTimeTo: data.dispatchTimeTo }),
-            ...(data.dispatchAllowedRoles !== undefined && { dispatchAllowedRoles: data.dispatchAllowedRoles }),
-            ...(data.templateCreateRoles !== undefined && { templateCreateRoles: data.templateCreateRoles }),
-            ...(data.templateApprovalRequired !== undefined && { templateApprovalRequired: data.templateApprovalRequired }),
-            ...(data.templateApprovalRoles !== undefined && { templateApprovalRoles: data.templateApprovalRoles }),
-            ...(data.blockedDispatchDays !== undefined && {
-              blockedDispatchDays: data.blockedDispatchDays ?? [],
-            }),
-          },
-        })
-
-        const settings = await this.getSettingsRecord(tx, ctx.teamId)
-        const senders = await this.getSenders(tx, ctx.teamId)
-        const variables = await this.getVariables(tx, ctx.teamId)
-        return this.composeResult(settings, senders, variables)
+      // `data` é repassado inteiro: cada chave carrega a distinção
+      // `undefined` (não mexer) / `null` (limpar), que o repositório traduz para
+      // os dois "nulos" distintos de coluna Json.
+      const snapshot = await this.settingsRepo.saveDispatchPolicy(ctx.teamId, {
+        ...data,
+        createDefaults: { fromName: DEFAULTS.fromName, fromEmail: DEFAULTS.fromEmail },
       })
+      const result = this.composeResult(snapshot.settings, snapshot.senders, snapshot.variables)
 
       return new Output(true, ["Configurações salvas com sucesso"], [], result)
     } catch (error) {
@@ -424,11 +292,7 @@ export class EmailTeamSettingsUseCase {
 
   async listSenders(ctx: TeamContext): Promise<Output> {
     try {
-      const senders = await prisma.emailTeamSender.findMany({
-        where: { teamId: ctx.teamId },
-        select: senderSelect,
-        orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }, { name: "asc" }],
-      })
+      const senders = await this.settingsRepo.listSenders(ctx.teamId)
       return new Output(true, [], [], senders)
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][listSenders]", error)
@@ -441,10 +305,9 @@ export class EmailTeamSettingsUseCase {
       const validationError = validateSenderInput(input)
       if (validationError) return new Output(false, [], [validationError], null)
 
-      const settings = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: { resendDomainName: true, resendDomainStatus: true },
-      })
+      // A guarda de domínio roda ANTES de qualquer escrita: um remetente fora de
+      // um domínio verificado nunca chega a existir no banco.
+      const settings = await this.settingsRepo.findSettings(ctx.teamId)
       const domainError = validateSenderEmailForDomain(
         input.email,
         settings?.resendDomainName,
@@ -452,22 +315,10 @@ export class EmailTeamSettingsUseCase {
       )
       if (domainError) return new Output(false, [], [domainError], null)
 
-      const sender = await prisma.$transaction(async (tx) => {
-        const payload = normalizeSenderPayload(input)
-        const senderCount = await tx.emailTeamSender.count({ where: { teamId: ctx.teamId } })
-        const created = await tx.emailTeamSender.create({
-          data: {
-            teamId: ctx.teamId,
-            ...payload,
-            isDefault: senderCount === 0,
-          },
-          select: senderSelect,
-        })
-
-        await this.ensureSingleDefaultSender(tx, ctx.teamId)
-
-        return created
-      })
+      const sender = await this.settingsRepo.createSender(
+        ctx.teamId,
+        normalizeSenderPayload(input)
+      )
 
       return new Output(true, ["Remetente criado com sucesso"], [], sender)
     } catch (error) {
@@ -481,10 +332,7 @@ export class EmailTeamSettingsUseCase {
       const validationError = validateSenderInput(input)
       if (validationError) return new Output(false, [], [validationError], null)
 
-      const settings = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: { resendDomainName: true, resendDomainStatus: true },
-      })
+      const settings = await this.settingsRepo.findSettings(ctx.teamId)
       const domainError = validateSenderEmailForDomain(
         input.email,
         settings?.resendDomainName,
@@ -492,30 +340,19 @@ export class EmailTeamSettingsUseCase {
       )
       if (domainError) return new Output(false, [], [domainError], null)
 
-      const sender = await prisma.$transaction(async (tx) => {
-        const existing = await tx.emailTeamSender.findFirst({
-          where: { id: senderId, teamId: ctx.teamId },
-          select: senderSelect,
-        })
-        if (!existing) {
-          throw new Error("NOT_FOUND")
-        }
-
-        const updated = await tx.emailTeamSender.update({
-          where: { id: senderId },
-          data: normalizeSenderPayload(input),
-          select: senderSelect,
-        })
-
-        await this.ensureSingleDefaultSender(tx, ctx.teamId)
-        return updated
-      })
+      // `null` significa "remetente não pertence a este time" — o repositório já
+      // reverteu a transação nesse caminho.
+      const sender = await this.settingsRepo.updateSender(
+        ctx.teamId,
+        senderId,
+        normalizeSenderPayload(input)
+      )
+      if (!sender) {
+        return new Output(false, [], ["Remetente não encontrado"], null)
+      }
 
       return new Output(true, ["Remetente atualizado com sucesso"], [], sender)
     } catch (error) {
-      if (error instanceof Error && error.message === "NOT_FOUND") {
-        return new Output(false, [], ["Remetente não encontrado"], null)
-      }
       console.error("[EmailTeamSettingsUseCase][updateSender]", error)
       return new Output(false, [], ["Erro ao atualizar remetente"], null)
     }
@@ -523,24 +360,13 @@ export class EmailTeamSettingsUseCase {
 
   async deleteSender(senderId: string, ctx: TeamContext): Promise<Output> {
     try {
-      await prisma.$transaction(async (tx) => {
-        const existing = await tx.emailTeamSender.findFirst({
-          where: { id: senderId, teamId: ctx.teamId },
-          select: { id: true },
-        })
-        if (!existing) {
-          throw new Error("NOT_FOUND")
-        }
-
-        await tx.emailTeamSender.delete({ where: { id: senderId } })
-        await this.ensureSingleDefaultSender(tx, ctx.teamId)
-      })
+      const deleted = await this.settingsRepo.deleteSender(ctx.teamId, senderId)
+      if (!deleted) {
+        return new Output(false, [], ["Remetente não encontrado"], null)
+      }
 
       return new Output(true, ["Remetente removido com sucesso"], [], null)
     } catch (error) {
-      if (error instanceof Error && error.message === "NOT_FOUND") {
-        return new Output(false, [], ["Remetente não encontrado"], null)
-      }
       console.error("[EmailTeamSettingsUseCase][deleteSender]", error)
       return new Output(false, [], ["Erro ao remover remetente"], null)
     }
@@ -548,42 +374,14 @@ export class EmailTeamSettingsUseCase {
 
   async setDefaultSender(senderId: string, ctx: TeamContext): Promise<Output> {
     try {
-      const result = await prisma.$transaction(async (tx) => {
-        const sender = await tx.emailTeamSender.findFirst({
-          where: { id: senderId, teamId: ctx.teamId },
-          select: senderSelect,
-        })
-        if (!sender) {
-          throw new Error("NOT_FOUND")
-        }
-
-        await tx.emailTeamSender.updateMany({
-          where: { teamId: ctx.teamId, isDefault: true },
-          data: { isDefault: false },
-        })
-
-        await tx.emailTeamSender.update({
-          where: { id: senderId },
-          data: { isDefault: true },
-        })
-
-        await this.syncLegacySenderFields(tx, ctx.teamId, {
-          name: sender.name,
-          email: sender.email,
-          replyTo: sender.replyTo,
-        })
-
-        const settings = await this.getSettingsRecord(tx, ctx.teamId)
-        const senders = await this.getSenders(tx, ctx.teamId)
-        const variables = await this.getVariables(tx, ctx.teamId)
-        return this.composeResult(settings, senders, variables)
-      })
-
-      return new Output(true, ["Remetente padrão atualizado"], [], result)
-    } catch (error) {
-      if (error instanceof Error && error.message === "NOT_FOUND") {
+      const snapshot = await this.settingsRepo.promoteSenderToDefault(ctx.teamId, senderId)
+      if (!snapshot) {
         return new Output(false, [], ["Remetente não encontrado"], null)
       }
+
+      const result = this.composeResult(snapshot.settings, snapshot.senders, snapshot.variables)
+      return new Output(true, ["Remetente padrão atualizado"], [], result)
+    } catch (error) {
       console.error("[EmailTeamSettingsUseCase][setDefaultSender]", error)
       return new Output(false, [], ["Erro ao definir remetente padrão"], null)
     }
@@ -595,10 +393,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Nome de domínio inválido"], null)
       }
 
-      const existing = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: { resendDomainId: true },
-      })
+      const existing = await this.settingsRepo.findSettings(ctx.teamId)
       if (existing?.resendDomainId) {
         return new Output(
           false,
@@ -649,6 +444,21 @@ export class EmailTeamSettingsUseCase {
           "[EmailTeamSettingsUseCase][connectDomain] Resend tracking error",
           trackingError
         )
+        // Remove o domínio recém-criado antes de devolver o erro. Sem isso o
+        // `create` acima deixa um domínio órfão no Resend que nós nunca
+        // persistimos: a retentativa tenta criar o mesmo nome e trava para
+        // sempre num erro de domínio já existente, sem caminho de saída pela
+        // UI. Preferimos desfazer a deixar estado pendurado no provedor.
+        const { error: cleanupError } = await resend.domains.remove(data.id)
+        if (cleanupError) {
+          // Aqui o órfão ficou mesmo. Logar o id é o que permite limpeza
+          // manual no painel — sem ele, o domínio some do nosso alcance.
+          console.error(
+            "[EmailTeamSettingsUseCase][connectDomain] Falha ao remover domínio órfão no Resend",
+            { domainId: data.id, domainName: data.name, cleanupError }
+          )
+        }
+
         return new Output(
           false,
           [],
@@ -658,43 +468,28 @@ export class EmailTeamSettingsUseCase {
       }
 
       const connectedAt = new Date()
-      const senderCount = await prisma.emailTeamSender.count({ where: { teamId: ctx.teamId } })
+      const senderCount = await this.settingsRepo.countSenders(ctx.teamId)
       const deliveryFromEmail = buildDeliveryFromEmail(data.name)
 
-      await prisma.emailTeamSettings.upsert({
-        where: { teamId: ctx.teamId },
-        create: {
-          teamId: ctx.teamId,
-          fromName: DEFAULTS.fromName,
-          fromEmail: senderCount === 0 ? deliveryFromEmail : DEFAULTS.fromEmail,
-          resendDomainId: data.id,
-          resendDomainName: data.name,
-          resendDomainStatus: "pending",
-          resendDomainRegion: DEFAULT_DOMAIN_REGION,
-          resendDomainConnectedAt: connectedAt,
-          resendOpenTracking: true,
-          resendClickTracking: false,
-          dispatchAllowedRoles: DEFAULTS.dispatchAllowedRoles,
-          templateCreateRoles: DEFAULTS.templateCreateRoles,
-          templateApprovalRequired: DEFAULTS.templateApprovalRequired,
-          templateApprovalRoles: DEFAULTS.templateApprovalRoles,
-          blockedDispatchDays: DEFAULTS.blockedDispatchDays,
-        },
-        update: {
-          resendDomainId: data.id,
-          resendDomainName: data.name,
-          resendDomainStatus: "pending",
-          resendDomainRegion: DEFAULT_DOMAIN_REGION,
-          resendDomainConnectedAt: connectedAt,
-          resendOpenTracking: true,
-          resendClickTracking: false,
-          ...(senderCount === 0
-            ? {
-                fromEmail: deliveryFromEmail,
-                fromName: DEFAULTS.fromName,
-              }
-            : {}),
-        },
+      // Persistência DEPOIS do Resend e fora de transação: a guarda de
+      // idempotência é o `resendDomainId` lido lá em cima. Uma transação
+      // englobando as duas pontas deixaria um domínio órfão no provedor em caso
+      // de rollback, e o retry bateria em 409.
+      await this.settingsRepo.saveConnectedDomain(ctx.teamId, {
+        domainId: data.id,
+        domainName: data.name,
+        status: "pending",
+        region: DEFAULT_DOMAIN_REGION,
+        connectedAt,
+        openTracking: true,
+        clickTracking: false,
+        // Só assume o endereço de entrega do domínio quando o time ainda não
+        // escolheu nenhum remetente — caso contrário sobrescreveria a escolha dele.
+        deliveryFrom:
+          senderCount === 0
+            ? { fromName: DEFAULTS.fromName, fromEmail: deliveryFromEmail }
+            : null,
+        createDefaults: { fromName: DEFAULTS.fromName, fromEmail: DEFAULTS.fromEmail },
       })
 
       await emailTeamDomainEventRepository.recordEventIfMissing(ctx.teamId, "domain_added", connectedAt, {
@@ -745,10 +540,7 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      const settings = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: { resendDomainId: true, resendDomainName: true },
-      })
+      const settings = await this.settingsRepo.findSettings(ctx.teamId)
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado para configurar tracking"], null)
       }
@@ -901,14 +693,7 @@ export class EmailTeamSettingsUseCase {
 
   async disconnectDomain(ctx: TeamContext): Promise<Output> {
     try {
-      const settings = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: {
-          resendDomainId: true,
-          resendDomainName: true,
-          fromEmail: true,
-        },
-      })
+      const settings = await this.settingsRepo.findSettings(ctx.teamId)
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
       }
@@ -946,15 +731,15 @@ export class EmailTeamSettingsUseCase {
         (domainDelivery !== null &&
           settings.fromEmail.trim().toLowerCase() === domainDelivery)
 
-      await prisma.emailTeamSettings.update({
-        where: { teamId: ctx.teamId },
-        data: {
-          ...CLEAR_DOMAIN_DATA,
-          ...(shouldResetFrom
-            ? { fromEmail: PLATFORM_FROM_EMAIL, fromName: PLATFORM_FROM_NAME }
-            : {}),
-        },
-      })
+      // Método próprio do repositório, e não o `clearDomainSettings` do
+      // EmailTeamDomainEventRepository: aquele limpa os campos resend* mas deixa
+      // fromEmail/fromName apontando para um domínio que já saiu do Resend.
+      await this.settingsRepo.clearConnectedDomain(
+        ctx.teamId,
+        shouldResetFrom
+          ? { fromName: PLATFORM_FROM_NAME, fromEmail: PLATFORM_FROM_EMAIL }
+          : null
+      )
 
       return new Output(true, ["Domínio removido com sucesso"], [], null)
     } catch (error) {
@@ -965,10 +750,7 @@ export class EmailTeamSettingsUseCase {
 
   async verifyDomain(ctx: TeamContext): Promise<Output> {
     try {
-      const settings = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: { resendDomainId: true },
-      })
+      const settings = await this.settingsRepo.findSettings(ctx.teamId)
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado para verificar"], null)
       }
@@ -1006,18 +788,7 @@ export class EmailTeamSettingsUseCase {
 
   async getDomainRecords(ctx: TeamContext): Promise<Output> {
     try {
-      const settings = await prisma.emailTeamSettings.findUnique({
-        where: { teamId: ctx.teamId },
-        select: {
-          resendDomainId: true,
-          resendDomainName: true,
-          resendDomainStatus: true,
-          resendDomainRegion: true,
-          resendDomainConnectedAt: true,
-          resendOpenTracking: true,
-          resendClickTracking: true,
-        },
-      })
+      const settings = await this.settingsRepo.findSettings(ctx.teamId)
       if (!settings?.resendDomainId) {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
       }

@@ -2,6 +2,7 @@ import { ActivityType } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
 import { isManagerLikeRole } from "@/lib/roles";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { buildStudioBotActivityPayload } from "@/lib/studio-bot/activity-payload";
@@ -70,10 +71,13 @@ class StudioBotActionRepository {
           ],
         };
 
+    // `escapeLikePattern`: sem ele o `mode: "insensitive"` vira ILIKE com o
+    // valor cru, então `LD_0001` casa `LD-0001` e `LD-%` casa qualquer código.
+    // O retorno vai direto para o bot agir sobre o lead, sem reconferência.
     const lead = await prisma.lead.findFirst({
       where: {
         ...scopedWhere,
-        leadCode: { equals: code, mode: "insensitive" },
+        leadCode: { equals: escapeLikePattern(code), mode: "insensitive" },
       },
       select: { id: true },
     });

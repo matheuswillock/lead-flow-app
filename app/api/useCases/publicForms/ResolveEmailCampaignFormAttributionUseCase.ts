@@ -86,14 +86,25 @@ class ResolveEmailCampaignFormAttributionUseCase {
       // está desligado. Fire-and-forget: falha ao gravar clique nunca pode
       // derrubar o registro da métrica do formulário.
       if (input.eventType === "form_viewed") {
-        void this.recordFirstPartyClick({
-          teamId: input.teamId,
-          emailLogId: log.id,
-          formPublicId: input.formPublicId,
-          occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-        }).catch((error) => {
+        // AWAIT, não fire-and-forget. O consumidor da fila roda em serverless:
+        // ele pode dar ack na mensagem e congelar o isolate enquanto a promise
+        // ainda está pendente — a view do formulário fica persistida e o
+        // `clickedAt` mais os contadores de clique da campanha se perdem, sem
+        // erro em lugar nenhum. Com o click tracking do Resend desligado, esta
+        // é a ÚNICA fonte de clique, então a perda é definitiva.
+        //
+        // O catch interno preserva a intenção original: falha ao gravar clique
+        // não pode derrubar o registro da métrica do formulário.
+        try {
+          await this.recordFirstPartyClick({
+            teamId: input.teamId,
+            emailLogId: log.id,
+            formPublicId: input.formPublicId,
+            occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+          })
+        } catch (error) {
           console.error("[ResolveEmailCampaignFormAttributionUseCase][recordFirstPartyClick]", error)
-        })
+        }
       }
 
       const phone = await this.resolveRecipientPhone(input.teamId, log.recipientEmail, log.campaignId)

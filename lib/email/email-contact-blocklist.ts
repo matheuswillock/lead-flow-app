@@ -50,6 +50,48 @@ export async function findTeamBlocklistedEmails(teamId: string): Promise<Set<str
 }
 
 /**
+ * Mesma consulta, restrita aos endereços perguntados.
+ *
+ * Existe porque o import passou a checar a blocklist LOTE A LOTE: com a versão
+ * sem predicado, um arquivo de N lotes contra uma blocklist de M contatos
+ * transferia O(N×M) linhas — dentro do worker que tem 45s de orçamento. Aqui o
+ * custo por lote é proporcional ao lote, não ao tamanho da blocklist do time.
+ *
+ * O `IN` compara com as duas variantes (como veio e minúscula) porque
+ * `EmailContact.email` não é normalizado na escrita.
+ */
+export async function findBlocklistedEmailsAmong(
+  teamId: string,
+  emails: string[]
+): Promise<Set<string>> {
+  if (emails.length === 0) return new Set()
+
+  const candidates = [
+    ...new Set(
+      emails.flatMap((email) => {
+        const trimmed = email.trim()
+        return trimmed ? [trimmed, trimmed.toLowerCase()] : []
+      })
+    ),
+  ]
+  if (candidates.length === 0) return new Set()
+
+  const contacts = await prisma.emailContact.findMany({
+    where: {
+      email: { in: candidates },
+      list: {
+        teamId,
+        isArchived: false,
+        isBlocklist: true,
+      },
+    },
+    select: { email: true },
+  })
+
+  return new Set(contacts.map((contact) => contact.email.trim().toLowerCase()))
+}
+
+/**
  * Separa as duas metades em uma passada só. Quem só precisa descartar usa
  * `excludeBlocklistedEmails`; quem precisa reportar o motivo (import, inclusão
  * manual) usa `blocked` para montar o `skippedIssues`.
@@ -164,7 +206,7 @@ export async function blockTeamEmailsBulk(
   await removeEmailsFromTeamLists(tx, params.teamId, emails)
 
   // skipDuplicates: quem já estava bloqueado permanece, sem P2002 derrubar o lote.
-  await tx.emailContact.createMany({
+  const created = await tx.emailContact.createMany({
     data: [...byEmail.values()].map((contact) => ({
       id: randomUUID(),
       listId: blocklistId,
@@ -183,7 +225,11 @@ export async function blockTeamEmailsBulk(
   }
 
   await refreshListTotal(tx, blocklistId)
-  return { blocklistId, blockedCount: byEmail.size }
+  // `created.count`, não `byEmail.size`: com `skipDuplicates`, quem já estava na
+  // blocklist não gera linha nova. Devolver o total do input faria a importação
+  // e a UI reportarem endereços preexistentes como recém-bloqueados, e inflaria
+  // o `importedCount` a cada reprocessamento do mesmo lote.
+  return { blocklistId, blockedCount: created.count }
 }
 
 /** Tira os endereços de todas as listas não arquivadas do time, menos a blocklist. */

@@ -2,9 +2,45 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
+/**
+ * Liga o log de query do Prisma sob demanda, via `PRISMA_LOG_QUERIES=1`.
+ *
+ * Existe para verificar cache de leitura. Uma funcao `"use cache"` chamada de
+ * dentro de um route handler dinamico nao emite `x-nextjs-cache` — esse header
+ * pertence ao Full Route Cache, nao ao Data Cache — entao nao ha resposta HTTP
+ * para inspecionar. O sinal observavel e a AUSENCIA da query no log: um hit de
+ * cache nao toca o banco.
+ *
+ * Ignorado quando `NODE_ENV=production` de proposito. O log do Prisma imprime
+ * os parametros de cada query, o que inclui e-mail, telefone e nome de lead;
+ * isso nao pode vazar para o log de um deploy. Verificacao e local.
+ */
+export type QueryLogEnv = {
+  PRISMA_LOG_QUERIES?: string;
+  NODE_ENV?: string;
+};
+
+export function resolveQueryLogOptions(
+  env: QueryLogEnv = process.env
+): { log?: Prisma.LogLevel[] } {
+  if (env.PRISMA_LOG_QUERIES !== "1") {
+    return {};
+  }
+
+  if (env.NODE_ENV === "production") {
+    console.warn(
+      "[prisma] PRISMA_LOG_QUERIES ignorado: o log de query expoe parametros com dado de cliente e so roda fora de producao."
+    );
+    return {};
+  }
+
+  console.info("[prisma] PRISMA_LOG_QUERIES ativo — log de query ligado.");
+  return { log: ["query"] };
+}
+
 export const prisma =
   globalForPrisma.prisma ||
-  new PrismaClient();
+  new PrismaClient(resolveQueryLogOptions());
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
