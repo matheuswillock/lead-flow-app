@@ -1,5 +1,6 @@
 import { Prisma, UserRole, SubscriptionStatus, SubscriptionPlan, type BackofficeAdhesionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import type {
   BackofficeAdhesionOptions,
   BackofficeAdhesionWithRelations,
@@ -358,7 +359,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
 
   async findProfileIdByEmail(email: string): Promise<string | null> {
     const profile = await prisma.profile.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
+      where: { email: { equals: escapeLikePattern(email), mode: "insensitive" } },
       select: { id: true },
     })
 
