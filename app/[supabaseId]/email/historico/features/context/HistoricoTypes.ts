@@ -7,6 +7,8 @@ export type EmailLogStatus =
   | "bounced"
   | "complained"
   | "failed"
+  // Recusado pela pré-validação de audiência, antes de tocar o provedor.
+  | "suppressed"
 
 export type EmailLogCategory =
   | "campaign"

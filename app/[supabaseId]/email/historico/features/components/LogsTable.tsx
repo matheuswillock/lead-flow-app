@@ -14,6 +14,7 @@ import {
 import { useHistoricoContext } from "../context/HistoricoContext"
 import type { EmailLog, EmailLogCategory, EmailLogStatus } from "../context/HistoricoTypes"
 import { getEmailLogCategoryLabel } from "@/lib/email/email-log-category-labels"
+import { resolveEmailLogStatusBadge } from "@/lib/email/email-log-status-badge"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 
@@ -22,19 +23,8 @@ function getLogOriginLabel(log: EmailLog): string {
   return getEmailLogCategoryLabel(log.category as EmailLogCategory)
 }
 
-const STATUS_CONFIG: Record<EmailLogStatus, { label: string; className: string }> = {
-  queued: { label: "Na fila", className: "border bg-transparent text-muted-foreground" },
-  sent: { label: "Enviado", className: "border-semantic-info-border bg-semantic-info-surface text-semantic-info" },
-  delivered: { label: "Entregue", className: "border-semantic-info-border bg-semantic-info-surface text-semantic-info" },
-  opened: { label: "Aberto", className: "border-semantic-new-border bg-semantic-new-surface text-semantic-new" },
-  clicked: { label: "Clicado", className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success" },
-  bounced: { label: "Bounce", className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger" },
-  complained: { label: "Reclamação", className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning" },
-  failed: { label: "Falhou", className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger" },
-}
-
 function LogStatusBadge({ status }: { status: EmailLogStatus }) {
-  const cfg = STATUS_CONFIG[status]
+  const cfg = resolveEmailLogStatusBadge(status)
   return <Badge className={cfg.className}>{cfg.label}</Badge>
 }
 
