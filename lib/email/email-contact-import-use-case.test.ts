@@ -335,6 +335,55 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(emailContactDeleteManyMock.mock.calls.length).toBeLessThanOrEqual(2)
   })
 
+  it("resume não perde linha quando a blocklist cresce entre claims", async () => {
+    // Regressão: `processedRows` é offset POSICIONAL sobre `validRows`, mas
+    // `validRows` passou a depender da blocklist — estado mutável escrito em
+    // runtime pelo descadastro (endpoint público). Se um e-mail do prefixo já
+    // processado entra na blocklist entre claims, o array encolhe, todo o
+    // sufixo desloca uma posição para a esquerda, e a linha que estava no
+    // offset nunca é gravada nem reportada como recusada.
+    //
+    // Arranjo: 1000 linhas, BATCH_SIZE = 500. O claim 1 processou o lote 0 e
+    // gravou processedRows = 500. Entre os claims, a linha 0 entra na
+    // blocklist. No claim 2 `validRows` tem 999 itens e
+    // `batchIndex = floor(500/500) = 1` → `slice(500, 1000)` começa no ANTIGO
+    // índice 501. A linha 500 (`l500`) nunca é gravada nem reportada.
+    claimedJob = makeJob({ processedRows: 500, importedCount: 500 })
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: Array.from({ length: 1000 }, (_, i) => ({
+          email: `l${i}@example.com`,
+          name: `L${i}`,
+        })),
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      // l0 foi bloqueada depois do claim 1 — descadastro durante o import.
+      if (args?.where?.list?.isBlocklist) return [{ email: "l0@example.com" }]
+      return []
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const createManyArgs = emailContactCreateManyMock.mock.calls as unknown as Array<
+      [{ data?: { email: string }[] } | undefined]
+    >
+    const gravados = createManyArgs.flatMap(([args]) =>
+      (args?.data ?? []).map((row) => row.email)
+    )
+
+    // A linha exatamente no checkpoint é a que o deslocamento come.
+    expect(gravados).toContain("l500@example.com")
+    expect(gravados).toContain("l999@example.com")
+    // l0 está bloqueada — não pode entrar.
+    expect(gravados).not.toContain("l0@example.com")
+  })
+
   it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {
     const useCase = new EmailContactImportUseCase()
     const output = await useCase.processPendingJobs()

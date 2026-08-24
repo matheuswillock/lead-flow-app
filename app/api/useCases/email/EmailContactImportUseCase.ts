@@ -252,19 +252,26 @@ export class EmailContactImportUseCase {
   }
 
   /**
-   * Três portas de descarte, nesta ordem: pré-validação de audiência, bounce e
-   * blocklist do time. Roda antes do fan-out para a lista padrão, senão o
-   * endereço descartado na lista alvo entraria por "Todos contatos".
+   * Porta de descarte ESTÁVEL: pré-validação de audiência, que é pura — mesmo
+   * arquivo, mesmo resultado, em qualquer claim.
+   *
+   * Essa estabilidade é requisito, não detalhe. `processedRows` é um offset
+   * POSICIONAL sobre a lista devolvida aqui (`batchIndex = processedRows /
+   * BATCH_SIZE`). Se a lista pudesse encolher entre claims, todo o sufixo
+   * deslocaria para a esquerda e a linha no offset nunca seria gravada nem
+   * reportada como recusada — some em silêncio.
+   *
+   * Por isso bounce e blocklist NÃO entram aqui: são estado mutável (a
+   * blocklist é escrita em runtime pelo descadastro, endpoint público, e
+   * imports grandes rodam justamente durante disparo de campanha). Esses dois
+   * são aplicados por lote em `partitionBatchBySuppression`.
    */
-  private async validateRows(
-    rows: ImportRow[],
-    teamId: string
-  ): Promise<{
+  private collectAudienceValidRows(rows: ImportRow[]): {
     validRows: ImportRow[]
     skipped: number
     skippedIssues: SkippedImportIssue[]
-  }> {
-    const candidates: ImportRow[] = []
+  } {
+    const validRows: ImportRow[] = []
     const skippedIssues: SkippedImportIssue[] = []
 
     for (const row of rows) {
@@ -277,7 +284,7 @@ export class EmailContactImportUseCase {
         })
         continue
       }
-      candidates.push({
+      validRows.push({
         line: row.line,
         email: validation.email,
         name: row.name?.trim() || undefined,
@@ -285,27 +292,39 @@ export class EmailContactImportUseCase {
       })
     }
 
+    return { validRows, skipped: skippedIssues.length, skippedIssues }
+  }
+
+  /**
+   * Portas de descarte VOLÁTEIS: bounce e blocklist do time. Aplicadas por lote,
+   * imediatamente antes da escrita, e por isso enxergam bloqueios feitos DURANTE
+   * o import — comportamento desejável, e que a filtragem antecipada não tinha.
+   *
+   * Roda antes do fan-out para a lista padrão, senão o endereço descartado na
+   * lista alvo entraria por "Todos contatos".
+   */
+  private async partitionBatchBySuppression(
+    batch: ImportRow[],
+    teamId: string
+  ): Promise<{ allowed: ImportRow[]; skippedIssues: SkippedImportIssue[] }> {
+    if (batch.length === 0) return { allowed: [], skippedIssues: [] }
+
+    const skippedIssues: SkippedImportIssue[] = []
+
     const bouncedEmails = await emailContactListRepository.findBouncedEmails(
-      candidates.map((row) => row.email)
+      batch.map((row) => row.email)
     )
     const notBouncedRows: ImportRow[] = []
-    for (const row of candidates) {
+    for (const row of batch) {
       if (bouncedEmails.has(row.email)) {
-        skippedIssues.push({
-          line: row.line,
-          email: row.email,
-          reason: AUDIENCE_REASON_BOUNCED,
-        })
+        skippedIssues.push({ line: row.line, email: row.email, reason: AUDIENCE_REASON_BOUNCED })
         continue
       }
       notBouncedRows.push(row)
     }
 
     const blocklistedEmails = await findTeamBlocklistedEmails(teamId)
-    const { allowed: validRows, blocked } = partitionByBlocklist(
-      notBouncedRows,
-      blocklistedEmails
-    )
+    const { allowed, blocked } = partitionByBlocklist(notBouncedRows, blocklistedEmails)
     for (const row of blocked) {
       skippedIssues.push({
         line: row.line,
@@ -314,11 +333,7 @@ export class EmailContactImportUseCase {
       })
     }
 
-    return {
-      validRows,
-      skipped: skippedIssues.length,
-      skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT),
-    }
+    return { allowed, skippedIssues }
   }
 
   private formatSkippedNotificationSuffix(skippedCount: number, issues: SkippedImportIssue[]): string {
@@ -618,14 +633,22 @@ export class EmailContactImportUseCase {
         skippedIssues: initialSkippedIssues,
       } = list.isBlocklist
         ? this.collectRowsWithEmail(allRows)
-        : await this.validateRows(allRows, claimed.teamId)
+        : this.collectAudienceValidRows(allRows)
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
       let updatedCount = claimed.updatedCount
-      // Validação é refeita no arquivo completo a cada claim — não somar de novo no resume.
-      const skippedCount = initialSkipped
-      const skippedIssues = initialSkippedIssues
+
+      // `initialSkipped` é estável: vem só da pré-validação, que é pura sobre o
+      // mesmo arquivo. Por isso é ATRIBUÍDO a cada claim, não somado.
+      //
+      // Os recusados por bounce/blocklist são descobertos lote a lote e
+      // precisam sobreviver ao resume. Não há coluna própria para eles, então
+      // são derivados: o que o job já tinha em `skippedCount` menos a parcela
+      // estável. Como a parcela estável é idêntica em todo claim, a subtração
+      // devolve exatamente o volátil acumulado até aqui.
+      let suppressedSkippedCount = Math.max(0, claimed.skippedCount - initialSkipped)
+      const skippedIssues = [...initialSkippedIssues]
       const failedBatches = this.parseFailedBatches(claimed.failedBatches)
       const attemptsByBatch = this.parseAttemptsByBatch(claimed.attemptsByBatch)
 
@@ -642,8 +665,11 @@ export class EmailContactImportUseCase {
               processedRows,
               importedCount,
               updatedCount,
-              skippedCount,
-              skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
+              skippedCount: initialSkipped + suppressedSkippedCount,
+              skippedIssues: skippedIssues.slice(
+                0,
+                SKIPPED_ISSUES_PERSIST_LIMIT
+              ) as unknown as Prisma.InputJsonValue,
               failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
               attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
             },
@@ -678,20 +704,33 @@ export class EmailContactImportUseCase {
               `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${blocked} bloqueio(s) — sucesso`
             )
           } else {
+            // Bounce e blocklist são checados AQUI, não na montagem de
+            // `validRows`: mantém os índices estáveis entre claims e ainda
+            // enxerga bloqueios feitos durante o import.
+            const { allowed, skippedIssues: batchSkipped } =
+              await this.partitionBatchBySuppression(batch, claimed.teamId)
+
+            if (batchSkipped.length > 0) {
+              suppressedSkippedCount += batchSkipped.length
+              skippedIssues.push(...batchSkipped)
+            }
+
             const batchResult = await this.importContactsBatch({
               listId: claimed.listId,
               teamId: claimed.teamId,
               importJobId: claimed.id,
-              batch,
+              batch: allowed,
               hasRadarFeature,
               fanOutToDefaultList: !list.isSystemDefault,
               ctx,
             })
             importedCount += batchResult.imported
             updatedCount += batchResult.updated
+            // Avança pelo tamanho do LOTE, não pelo dos permitidos: o offset
+            // indexa `validRows`, que não muda.
             processedRows += batch.length
             console.info(
-              `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${batch.length} contatos — sucesso`
+              `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${allowed.length} contatos, ${batchSkipped.length} recusado(s) — sucesso`
             )
           }
 
@@ -722,13 +761,18 @@ export class EmailContactImportUseCase {
             processedRows,
             importedCount,
             updatedCount,
-            skippedCount,
-            skippedIssues: skippedIssues as unknown as Prisma.InputJsonValue,
+            skippedCount: initialSkipped + suppressedSkippedCount,
+            skippedIssues: skippedIssues.slice(
+              0,
+              SKIPPED_ISSUES_PERSIST_LIMIT
+            ) as unknown as Prisma.InputJsonValue,
             failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
             attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
           },
         })
       }
+
+      const skippedCount = initialSkipped + suppressedSkippedCount
 
       await this.finalizeJob(
         {
@@ -740,7 +784,10 @@ export class EmailContactImportUseCase {
           importedCount,
           updatedCount,
           skippedCount,
-          skippedIssues: skippedIssues as unknown as Prisma.JsonValue,
+          skippedIssues: skippedIssues.slice(
+            0,
+            SKIPPED_ISSUES_PERSIST_LIMIT
+          ) as unknown as Prisma.JsonValue,
           failedBatches: failedBatches as unknown as Prisma.JsonValue,
         },
         list.isSystemDefault,
