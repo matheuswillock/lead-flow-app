@@ -136,13 +136,31 @@ export class EmailLogRepository implements IEmailLogRepository {
             return
           }
 
-          await tx.emailLog.update({
-            where: { id: log.id },
-            data: {
-              ...(shouldUpdateStatus && { status: eventType as never }),
-              ...timestampUpdate,
-            },
-          })
+          // Reivindica o primeiro evento deste tipo de forma ATÔMICA: o filtro
+          // no próprio campo de timestamp faz o banco decidir quem venceu.
+          //
+          // O guard anterior comparava `log.<tipo>At`, lido ANTES da transação.
+          // Dois caminhos concorrentes — clique first-party e webhook do Resend,
+          // ou duas visualizações do mesmo formulário — leem `null` juntos e
+          // ambos incrementam o contador. A unique do EmailEvent não segura,
+          // porque ela inclui `occurredAt` e os dois carimbos diferem.
+          const timestampFieldName = timestampField[eventType]
+          const statusUpdate = shouldUpdateStatus
+            ? { status: eventType as never }
+            : {}
+
+          let claimedFirstEvent = false
+          if (timestampFieldName) {
+            const claim = await tx.emailLog.updateMany({
+              where: { id: log.id, [timestampFieldName]: null },
+              data: { ...statusUpdate, ...timestampUpdate },
+            })
+            claimedFirstEvent = claim.count === 1
+          } else if (shouldUpdateStatus) {
+            // Tipos sem timestamp próprio (sent, failed, suppressed, …) não têm
+            // contador de campanha; só a promoção de status.
+            await tx.emailLog.update({ where: { id: log.id }, data: statusUpdate })
+          }
 
           // Bounce é GLOBAL de propósito, ao contrário de `complained` logo
           // abaixo. Não é falta de escopo: um bounce permanente significa que a
@@ -192,13 +210,15 @@ export class EmailLogRepository implements IEmailLogRepository {
             }
           }
 
-          if (log.campaignId) {
+          // `claimedFirstEvent` — e não a leitura pré-transação — é o que
+          // garante que cada contador sobe no máximo uma vez por destinatário.
+          if (log.campaignId && claimedFirstEvent) {
             const campaignIncrements: Record<string, number> = {}
-            if (eventType === "delivered" && !log.deliveredAt) campaignIncrements.totalDelivered = 1
-            if (eventType === "opened" && !log.openedAt) campaignIncrements.totalOpened = 1
-            if (eventType === "clicked" && !log.clickedAt) campaignIncrements.totalClicked = 1
-            if (eventType === "bounced" && !log.bouncedAt) campaignIncrements.totalBounced = 1
-            if (eventType === "complained" && !log.complainedAt) campaignIncrements.totalComplained = 1
+            if (eventType === "delivered") campaignIncrements.totalDelivered = 1
+            if (eventType === "opened") campaignIncrements.totalOpened = 1
+            if (eventType === "clicked") campaignIncrements.totalClicked = 1
+            if (eventType === "bounced") campaignIncrements.totalBounced = 1
+            if (eventType === "complained") campaignIncrements.totalComplained = 1
 
             if (Object.keys(campaignIncrements).length > 0) {
               // lock order: campaign then dispatch (must match EmailCampaignUseCase completion)
