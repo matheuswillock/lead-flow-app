@@ -3,6 +3,35 @@
 -- docs/audits/prisma-migrations-drift-2026-08-23.md.
 --
 -- Depois desta migration o `db:migrate:from-prisma` passa a gerar diff vazio.
+--
+-- LOCK TIMEOUT (adicionado depois do deadlock do run 32745879206)
+--
+-- `SET` de sessao, nao `SET LOCAL`. O `supabase db push` NAO roda o arquivo
+-- dentro de um bloco de transacao — `SET LOCAL` so emite
+-- `WARNING (25P01): SET LOCAL can only be used in transaction blocks` e nao tem
+-- efeito. O `SET` de sessao vale para todas as statements seguintes na mesma
+-- conexao, que e o que precisamos aqui, porque quase tudo neste arquivo sao
+-- statements soltas e nao blocos DO.
+--
+-- Por que importa mesmo com as operacoes sendo rapidas: `DROP INDEX` e
+-- `ALTER TABLE` pedem ACCESS EXCLUSIVE, e um pedido de lock ENFILEIRADO bloqueia
+-- todas as requisicoes que chegam atras dele. O custo nao e a duracao da
+-- operacao, e a espera pelo lock. `corretor_studio_radar_profiles` tem 219 MB e
+-- 329.777 linhas e e tabela quente do Radar.
+--
+-- 500ms e curto de proposito: sob contencao esta migration desiste (55P03) em
+-- vez de segurar a fila. Reaplicar e seguro — tudo aqui e idempotente
+-- (`IF NOT EXISTS`, `IF EXISTS`, guards por catalogo).
+--
+-- NAO usamos `CREATE INDEX CONCURRENTLY`, e isso foi medido, nao assumido. Dos
+-- 8 indices criados aqui, o unico sobre tabela grande
+-- (`corretor_studio_radar_profiles_teamId_lastSeenAt_idx`) JA EXISTE em
+-- producao, entao o `IF NOT EXISTS` o torna no-op. Os que serao de fato
+-- construidos ficam em tabelas de 0 a 3.335 linhas. `CONCURRENTLY` custaria dois
+-- scans, nao poderia rodar dentro de bloco DO, e deixaria indice INVALID
+-- exigindo limpeza manual se falhasse — pior para este caso.
+
+SET lock_timeout = '500ms';
 
 -- 1. team_whatsapp_configs.webhookSecret ------------------------------------
 -- Estado alvo: um único índice ÚNICO chamado
@@ -233,3 +262,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "team_whatsapp_contacts_teamId_phoneE164_key"
 
 CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_messages_teamId_clientMessageId_key"
   ON public.whatsapp_messages USING btree ("teamId", "clientMessageId");
+
+-- Devolve o lock_timeout ao default. O `SET` acima e de sessao, entao sem isto
+-- ele vazaria para as migrations seguintes do mesmo `db push`.
+RESET lock_timeout;
