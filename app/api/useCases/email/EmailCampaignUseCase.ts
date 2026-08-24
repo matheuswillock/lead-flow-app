@@ -257,6 +257,99 @@ export type ManualDispatchJob = {
   warnings?: string[]
 }
 
+type ListPlanRowsInput = {
+  plan: ReturnType<typeof buildCampaignPlan>
+  ctx: TeamContext
+  campaignName: string
+  data: CreateCampaignInput
+  contactListIds: string[]
+  listStrategy: ReturnType<typeof resolveListStrategy>
+}
+
+/**
+ * Monta as linhas de campanha nascida somente de listas de contato.
+ *
+ * Espelha o construtor do caminho combinado (lista + Radar), mas NAO e o mesmo:
+ * aqui nao ha `radarSegmentSlug`, o fallback de `contactListId` olha
+ * `listStrategy` em vez da quantidade de listas, `sourceContactListIds` so e
+ * preenchido em `merge`, e cada sub-campanha pode ter template proprio via
+ * `data.subCampaignTemplates`. Unificar os dois exigiria parametrizar cinco
+ * regras de negocio distintas — mais caro que manter os dois construtores.
+ */
+function buildListPlanRows({
+  plan,
+  ctx,
+  campaignName,
+  data,
+  contactListIds,
+  listStrategy,
+}: ListPlanRowsInput): Pick<CreateCampaignPlanInput, "single" | "parent" | "children"> {
+  const description = data.description?.trim() ? data.description.trim() : null
+  const singleListFallback = listStrategy === "single" ? (contactListIds[0] ?? null) : null
+  const sourceContactListIds = listStrategy === "merge" ? contactListIds : []
+
+  if (!plan.isParentCampaign) {
+    const single = plan.subCampaigns[0]
+    return {
+      single: {
+        id: randomUUID(),
+        teamId: ctx.teamId,
+        createdBy: ctx.profileId,
+        name: campaignName,
+        description,
+        templateId: data.templateId,
+        contactListId: single?.contactListId ?? singleListFallback,
+        audienceContactIds: single?.audienceContactIds ?? [],
+        sourceContactListIds,
+        status: single?.scheduledAt ? "scheduled" : "draft",
+        scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
+        totalRecipients: plan.totalRecipients,
+      },
+      parent: null,
+      children: [],
+    }
+  }
+
+  const parentId = randomUUID()
+  const parentStatus: EmailCampaignStatus = plan.subCampaigns.some((sub) => sub.scheduledAt)
+    ? "scheduled"
+    : "draft"
+
+  return {
+    single: null,
+    parent: {
+      id: parentId,
+      teamId: ctx.teamId,
+      createdBy: ctx.profileId,
+      name: campaignName,
+      description,
+      templateId: data.templateId,
+      contactListId: singleListFallback,
+      sourceContactListIds,
+      status: parentStatus,
+      scheduledAt: null,
+      totalRecipients: plan.totalRecipients,
+    },
+    children: plan.subCampaigns.map((sub) => ({
+      id: randomUUID(),
+      teamId: ctx.teamId,
+      createdBy: ctx.profileId,
+      name: sub.name,
+      description,
+      templateId:
+        data.subCampaignTemplates?.find((t) => t.index === sub.index)?.templateId ??
+        data.templateId,
+      contactListId: sub.contactListId ?? singleListFallback,
+      parentCampaignId: parentId,
+      subCampaignIndex: sub.index,
+      audienceContactIds: sub.audienceContactIds ?? [],
+      status: sub.scheduledAt ? "scheduled" : "draft",
+      scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
+      totalRecipients: sub.totalRecipients,
+    })),
+  }
+}
+
 export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private recipientService = new EmailCampaignRecipientService()
@@ -2016,87 +2109,28 @@ export class EmailCampaignUseCase {
         return new Output(false, [], [scheduleError], null)
       }
 
-      if (!plan.isParentCampaign) {
-        const single = plan.subCampaigns[0]
-        const campaign = await this.db.emailCampaign.create({
-          data: {
-            id: randomUUID(),
-            teamId: ctx.teamId,
-            createdBy: ctx.profileId,
-            name: trimmedName,
-            description: data.description?.trim() ? data.description.trim() : null,
-            templateId: data.templateId,
-            contactListId: single?.contactListId ?? (listStrategy === "single" ? (contactListIds[0] ?? null) : null),
-            audienceContactIds: single?.audienceContactIds ?? [],
-            sourceContactListIds: listStrategy === "merge" ? contactListIds : [],
-            status: single?.scheduledAt ? "scheduled" : "draft",
-            scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
-            totalRecipients: plan.totalRecipients,
-          },
-        })
-        return new Output(true, ["Campanha criada com sucesso"], [], campaign)
+      const result = await this.repository.createCampaignPlan({
+        ...buildListPlanRows({
+          plan,
+          ctx,
+          campaignName: trimmedName,
+          data,
+          contactListIds,
+          listStrategy,
+        }),
+        radarSegmentLock: null,
+      })
+      // Mesma razão das guardas dos caminhos acima: sem lock o null é
+      // inalcançável hoje, mas a assinatura declara `| null`.
+      if (!result) {
+        console.error("[EmailCampaignUseCase][create] createCampaignPlan devolveu null sem lock")
+        return new Output(false, [], ["Erro ao criar campanha"], null)
       }
 
-      const parentId = randomUUID()
-      const parentStatus: EmailCampaignStatus = plan.subCampaigns.some((sub) => sub.scheduledAt)
-        ? "scheduled"
-        : "draft"
-
-      const result = await this.db.$transaction(async (tx) => {
-        const parent = await tx.emailCampaign.create({
-          data: {
-            id: parentId,
-            teamId: ctx.teamId,
-            createdBy: ctx.profileId,
-            name: trimmedName,
-            description: data.description?.trim() ? data.description.trim() : null,
-            templateId: data.templateId,
-            contactListId: listStrategy === "single" ? contactListIds[0] ?? null : null,
-            sourceContactListIds: listStrategy === "merge" ? contactListIds : [],
-            status: parentStatus,
-            scheduledAt: null,
-            totalRecipients: plan.totalRecipients,
-          },
-        })
-
-        const subCampaigns = []
-        for (const sub of plan.subCampaigns) {
-          const subTemplateId =
-            data.subCampaignTemplates?.find((t) => t.index === sub.index)?.templateId ??
-            data.templateId
-          const child = await tx.emailCampaign.create({
-            data: {
-              id: randomUUID(),
-              teamId: ctx.teamId,
-              createdBy: ctx.profileId,
-              name: sub.name,
-              description: data.description?.trim() ? data.description.trim() : null,
-              templateId: subTemplateId,
-              contactListId: sub.contactListId ?? (listStrategy === "single" ? contactListIds[0] ?? null : null),
-              parentCampaignId: parentId,
-              subCampaignIndex: sub.index,
-              audienceContactIds: sub.audienceContactIds ?? [],
-              status: sub.scheduledAt ? "scheduled" : "draft",
-              scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
-              totalRecipients: sub.totalRecipients,
-            },
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              subCampaignIndex: true,
-              scheduledAt: true,
-              totalRecipients: true,
-              status: true,
-            },
-          })
-          subCampaigns.push(child)
-        }
-
-        return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
-      })
-
-      return new Output(true, ["Campanha criada com sub-campanhas"], [], result)
+      const message = plan.isParentCampaign
+        ? "Campanha criada com sub-campanhas"
+        : "Campanha criada com sucesso"
+      return new Output(true, [message], [], result)
     } catch (error) {
       console.error("[EmailCampaignUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar campanha"], null)
