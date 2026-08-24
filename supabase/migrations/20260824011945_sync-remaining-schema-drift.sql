@@ -1,0 +1,116 @@
+-- Últimos itens de estrutura que existiam só de um lado da fronteira
+-- schema.prisma <-> supabase/migrations. Ver §7.5 de
+-- docs/audits/prisma-migrations-drift-2026-08-23.md.
+--
+-- Depois desta migration o `db:migrate:from-prisma` passa a gerar diff vazio.
+
+-- 1. team_whatsapp_configs.webhookSecret ------------------------------------
+-- Estado alvo: um único índice ÚNICO chamado
+-- `team_whatsapp_configs_webhookSecret_key` (o schema declara `@unique`).
+-- A migration 20260618223151_whatsapp-module.sql cria esse índice único; um
+-- `@@index([webhookSecret])` posterior criou o `_idx` comum, redundante.
+--
+-- ATENÇÃO à ordem. Em produção (verificado em 24/08/2026) o `_key` NÃO existe —
+-- só o `_idx`. Dropar o `_idx` sem criar o `_key` antes deixaria a coluna sem
+-- índice algum e sem a unicidade que a aplicação assume. Verificado: 0 valores
+-- de `webhookSecret` duplicados no remoto, então o índice único é seguro.
+
+CREATE UNIQUE INDEX IF NOT EXISTS "team_whatsapp_configs_webhookSecret_key"
+  ON public.team_whatsapp_configs USING btree ("webhookSecret");
+
+DROP INDEX IF EXISTS "public"."team_whatsapp_configs_webhookSecret_idx";
+
+-- 1b. Índice de FK ausente em produção ---------------------------------------
+-- `corretor_studio_leads_referrer_lead_idx` é criado por
+-- 20260531173050_add-referral-fields-to-lead.sql, que consta como aplicada no
+-- remoto — mas o índice não existe lá e `referrerLeadId` está sem índice
+-- nenhum. Recriado aqui; no-op onde já existe.
+
+CREATE INDEX IF NOT EXISTS "corretor_studio_leads_referrer_lead_idx"
+  ON public.corretor_studio_leads USING btree ("referrerLeadId");
+
+-- 1c. Índices duplicados que sobraram em produção -----------------------------
+-- Nos dois casos o remoto tem o nome antigo E o novo ao mesmo tempo, então o
+-- RENAME de 20260824010431 é pulado (destino ocupado) e o antigo ficaria para
+-- sempre. Ambos os blocos são no-op onde só existe um dos dois.
+
+DO $$
+BEGIN
+  -- Definições idênticas: basta remover o nome antigo.
+  IF to_regclass('public."whatsapp_auto_response_logs_conversationId_ruleType_createdAt_i"') IS NOT NULL
+     AND to_regclass('public."whatsapp_auto_response_logs_conversationId_ruleType_created_idx"') IS NOT NULL THEN
+    DROP INDEX "public"."whatsapp_auto_response_logs_conversationId_ruleType_createdAt_i";
+  END IF;
+
+  -- Aqui os dois NÃO são equivalentes: o antigo é (teamId, lastSeenAt DESC
+  -- NULLS LAST) — o que o schema declara — e o novo, criado fora das migrations,
+  -- é (teamId, lastSeenAt DESC), ou seja NULLS FIRST. Descarta o que não bate
+  -- com o schema e promove o correto ao nome canônico.
+  IF to_regclass('public."corretor_studio_radar_profiles_team_last_seen_idx"') IS NOT NULL
+     AND to_regclass('public."corretor_studio_radar_profiles_teamId_lastSeenAt_idx"') IS NOT NULL THEN
+    DROP INDEX "public"."corretor_studio_radar_profiles_teamId_lastSeenAt_idx";
+    ALTER INDEX "public"."corretor_studio_radar_profiles_team_last_seen_idx"
+      RENAME TO "corretor_studio_radar_profiles_teamId_lastSeenAt_idx";
+  END IF;
+END $$;
+
+-- 2. Precisão dos timestamps de corretor_studio_radar_pixel_rate_limits ------
+-- A migration 20260803004716 criou as colunas como TIMESTAMPTZ (typmod -1);
+-- o Prisma emite timestamptz(6). Guardado para não reescrever a tabela quando
+-- o tipo já estiver correto.
+--
+-- O guard usa pg_attribute.atttypmod, e não information_schema.columns:
+-- datetime_precision reporta 6 tanto para timestamptz quanto para
+-- timestamptz(6), então a comparação por lá nunca dispararia.
+
+DO $$
+DECLARE
+  col text;
+BEGIN
+  FOREACH col IN ARRAY ARRAY['resetAt', 'updatedAt']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_attribute
+      WHERE attrelid = to_regclass('public."corretor_studio_radar_pixel_rate_limits"')
+        AND attname = col
+        AND NOT attisdropped
+        AND atttypmod IS DISTINCT FROM 6
+    ) THEN
+      EXECUTE format(
+        'ALTER TABLE "public"."corretor_studio_radar_pixel_rate_limits" ALTER COLUMN %I SET DATA TYPE timestamp(6) with time zone',
+        col
+      );
+    END IF;
+  END LOOP;
+END $$;
+
+-- 3. Índices declarados no schema.prisma que nenhuma migration criou ---------
+
+CREATE INDEX IF NOT EXISTS "backoffice_bot_ai_proposals_expiresAt_idx"
+  ON public.backoffice_bot_ai_proposals USING btree ("expiresAt");
+
+CREATE INDEX IF NOT EXISTS "corretor_studio_email_templates_teamId_approvalStatus_idx"
+  ON public.corretor_studio_email_templates USING btree ("teamId", "approvalStatus");
+
+CREATE INDEX IF NOT EXISTS "corretor_studio_email_templates_teamId_isCurrentPublished_idx"
+  ON public.corretor_studio_email_templates USING btree ("teamId", "isCurrentPublished");
+
+CREATE INDEX IF NOT EXISTS "corretor_studio_health_plan_options_isActive_isDefault_idx"
+  ON public.corretor_studio_health_plan_options USING btree ("isActive", "isDefault");
+
+CREATE INDEX IF NOT EXISTS "email_team_variables_teamId_valueSource_idx"
+  ON public.email_team_variables USING btree ("teamId", "valueSource");
+
+-- ATENÇÃO: os dois índices ÚNICOS abaixo falham se o remoto tiver duplicata.
+-- Ambos já estão declarados como @@unique no schema.prisma, então a aplicação
+-- assume a unicidade — mas confirme antes de aplicar em produção:
+--   SELECT "teamId", "phoneE164", count(*) FROM public.team_whatsapp_contacts
+--   GROUP BY 1,2 HAVING count(*) > 1;
+--   SELECT "teamId", "clientMessageId", count(*) FROM public.whatsapp_messages
+--   WHERE "clientMessageId" IS NOT NULL GROUP BY 1,2 HAVING count(*) > 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "team_whatsapp_contacts_teamId_phoneE164_key"
+  ON public.team_whatsapp_contacts USING btree ("teamId", "phoneE164");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_messages_teamId_clientMessageId_key"
+  ON public.whatsapp_messages USING btree ("teamId", "clientMessageId");

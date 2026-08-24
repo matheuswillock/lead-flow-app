@@ -777,6 +777,15 @@ lost lost
     
 
 
+        subscription_cycle {
+            MONTHLY MONTHLY
+QUARTERLY QUARTERLY
+SEMIANNUALLY SEMIANNUALLY
+YEARLY YEARLY
+        }
+    
+
+
         contract_type {
             individual individual
 corporate corporate
@@ -1814,7 +1823,6 @@ completed completed
     String asaasInstallmentId "❓"
     Decimal discountPercent "❓"
     String discountStatus "❓"
-    String discountApprovedByProfileId "❓"
     DateTime discountApprovedAt "❓"
     Decimal negotiatedTotalAmount "❓"
     Int installmentCount "❓"
@@ -3581,6 +3589,14 @@ completed completed
     }
   
 
+  "corretor_studio_radar_pixel_rate_limits" {
+    String key "🗝️"
+    Int count 
+    DateTime resetAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_radar_segments" {
     String id "🗝️"
     String name 
@@ -4247,6 +4263,7 @@ completed completed
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
+    "backoffice_adhesions" }o--|o corretor_studio_profiles : "discountApprovedBy"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"

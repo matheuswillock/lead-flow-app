@@ -15,13 +15,20 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 
+import {
+  describeFilterResult,
+  filterUnmanagedStatements,
+  type FilterResult,
+} from "./db-migrate-diff-filter";
 import {
   cleanupEmptyMigrationsBySuffix,
   dedupeMigrationsBySuffix,
   findNonEmptyMigrationsBySuffix,
   isEmptyMigrationContent,
   normalizeMigrationName,
+  removeMigrationFile,
 } from "./db-migrate-utils";
 import { LOCAL_DB_URL, probeLocalPostgres } from "./lib/local-stack";
 
@@ -50,6 +57,14 @@ function run(
     stdout: result.stdout?.toString() ?? "",
     stderr: result.stderr?.toString() ?? "",
   };
+}
+
+function logFilterResult(result: FilterResult): void {
+  const lines = describeFilterResult(result);
+  if (lines.length === 0) return;
+
+  console.info(`\n▶ ${lines[0]}`);
+  for (const line of lines.slice(1)) console.info(line);
 }
 
 function assertLocalStackRunning(): void {
@@ -139,8 +154,16 @@ if (dryRun) {
     process.exit(0);
   }
 
+  const filtered = filterUnmanagedStatements(diff.stdout);
+  logFilterResult(filtered);
+
+  if (!filtered.sql.trim()) {
+    console.info("\n✅ Só havia ruído de ACL/default/policy. Nenhuma mudança de schema real.");
+    process.exit(0);
+  }
+
   console.info("\n--- SQL (preview) ---\n");
-  console.info(diff.stdout.trim());
+  console.info(filtered.sql.trim());
   console.info("\n--- fim do preview ---");
   console.info("\nPara gravar: bun run db:migrate:from-prisma --", normalizedName);
   process.exit(0);
@@ -160,6 +183,19 @@ if (!migrationPath) {
     `supabase db diff não criou supabase/migrations/*_${normalizedName}.sql com conteúdo. Revise o output acima.`,
   );
 }
+
+const filtered = filterUnmanagedStatements(readFileSync(migrationPath, "utf8"));
+logFilterResult(filtered);
+
+if (!filtered.sql.trim()) {
+  removeMigrationFile(migrationPath);
+  console.info(
+    "\n✅ Só havia ruído de ACL/default/policy. Nenhuma mudança de schema real — arquivo removido.",
+  );
+  process.exit(0);
+}
+
+writeFileSync(migrationPath, filtered.sql);
 
 console.info("\n✅ Migration criada:");
 console.info(`   ${migrationPath}`);
