@@ -95,16 +95,25 @@ export function aggregateDispatchLogCounters(
   return { acceptedCount, failedCount, queuedCount, suppressedCount }
 }
 
-type CumulativeLogTier = "queued" | "suppressed" | "failed" | "accepted"
+type CumulativeLogTier = "queued" | "failed" | "suppressed" | "accepted"
 
 /**
- * `suppressed` acima de `queued` (é terminal) e abaixo de `failed` (falha é
- * retentável e precisa continuar visível para o botão de reenvio).
+ * `suppressed` acima de `failed`, não abaixo.
+ *
+ * Parece contraintuitivo — falha é "pior" que recusa —, mas o rank tem que
+ * concordar com `selectFailedRecipientEmailsForRetry`: qualquer log
+ * `suppressed` joga o endereço em `excludedEmails` e o remove do reenvio, mesmo
+ * que exista um `failed` anterior. Se o rank mantivesse `failed`, o endereço
+ * contaria como retentável, a campanha ficaria `partially_sent` e o botão
+ * "Reenviar falhas" apareceria com zero destinatários elegíveis.
+ *
+ * Cenário concreto: o endereço falhou num disparo e, antes do retry, entrou na
+ * blocklist — o log seguinte é `suppressed` e ele nunca mais sai.
  */
 const CUMULATIVE_TIER_RANK: Record<CumulativeLogTier, number> = {
   queued: 0,
-  suppressed: 1,
-  failed: 2,
+  failed: 1,
+  suppressed: 2,
   accepted: 3,
 }
 
@@ -239,16 +248,20 @@ export function deriveDispatchCompletionKind(params: {
   }
 
   if (params.status === "completed") {
-    return params.acceptedCount > 0 && params.acceptedCount < params.totalRecipients
+    return params.acceptedCount > 0 && terminalCount < params.totalRecipients
       ? "partial"
       : params.acceptedCount === 0
         ? "failed"
         : "full"
   }
 
-  // status=failed mas todos os destinatários foram aceitos (ex.: reconciliado
-  // via webhook após o registro interno já ter marcado falha) → sucesso total.
-  if (params.acceptedCount >= params.totalRecipients && params.totalRecipients > 0) {
+  // status=failed mas a audiência inteira já está resolvida (ex.: reconciliado
+  // via webhook após o registro interno ter marcado falha) → sucesso total.
+  // Usa `terminalCount`, não só aceite: senão um dispatch coberto por aceitos +
+  // suprimidos é reportado `partial` enquanto o reconciler marca a campanha
+  // `sent`, e `resolveCampaignDispatchTerminal` prioriza o progresso, exibindo
+  // aviso de envio parcial sem nada retentável.
+  if (terminalCount >= params.totalRecipients && params.totalRecipients > 0) {
     return "full"
   }
 

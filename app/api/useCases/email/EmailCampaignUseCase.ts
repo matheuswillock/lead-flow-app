@@ -101,6 +101,7 @@ import {
 } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
+import type { IEmailLogRepository } from "@/app/api/infra/data/repositories/emailLog/IEmailLogRepository"
 import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
@@ -265,7 +266,13 @@ export class EmailCampaignUseCase {
   private creditService = new EmailCreditService()
   private repository: IEmailCampaignRepository
 
-  constructor(private readonly db: PrismaClient = prisma) {
+  constructor(
+    private readonly db: PrismaClient = prisma,
+    // Injetado pela interface, não pelo singleton concreto: dependência nova
+    // neste arquivo entra pela porta certa (DIP), mesmo com a entrada legada
+    // ainda em `dipPrismaInUseCaseAllowlist` por causa dos acessos anteriores.
+    private readonly emailLogs: IEmailLogRepository = emailLogRepository
+  ) {
     this.repository = new EmailCampaignRepository(this.db)
   }
 
@@ -318,10 +325,7 @@ export class EmailCampaignUseCase {
 
     // A agregação vive no repositório: este arquivo está em
     // `dipPrismaInUseCaseAllowlist` e a regra é encolher a exceção, não ampliá-la.
-    const aggregated = await emailLogRepository.aggregateCountersByDispatchId(
-      teamId,
-      dispatchIds
-    )
+    const aggregated = await this.emailLogs.aggregateCountersByDispatchId(teamId, dispatchIds)
     for (const [dispatchId, counters] of aggregated) {
       countersByDispatchId.set(dispatchId, counters)
     }

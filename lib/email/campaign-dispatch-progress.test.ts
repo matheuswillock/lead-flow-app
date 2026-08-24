@@ -41,6 +41,22 @@ describe("campaign-dispatch-progress helpers", () => {
     ).toBe("full")
   })
 
+  it("dispatch failed coberto por aceitos + suprimidos é full, não partial", () => {
+    // Regressão: os ramos de `status: "failed"` comparavam só `acceptedCount`.
+    // O reconciler marcava a campanha `sent` e o progresso dizia `partial` ao
+    // mesmo tempo — e `resolveCampaignDispatchTerminal` prioriza o progresso,
+    // exibindo aviso de envio parcial sem nada retentável.
+    expect(
+      deriveDispatchCompletionKind({
+        status: "failed",
+        totalRecipients: 1969,
+        acceptedCount: 1782,
+        failedCount: 0,
+        suppressedCount: 187,
+      })
+    ).toBe("full")
+  })
+
   it("suprimido não mascara falha retentável", () => {
     expect(
       deriveDispatchCompletionKind({
@@ -209,9 +225,7 @@ describe("aggregateCumulativeDispatchLogCounters", () => {
     expect(counters.suppressedCount).toBe(0)
   })
 
-  it("supressão sobrepõe queued, mas não failed", () => {
-    // `queued` é estado transitório; `failed` é retentável e precisa continuar
-    // visível para o botão de reenvio.
+  it("supressão sobrepõe queued e também failed", () => {
     const soQueued = aggregateCumulativeDispatchLogCounters([
       { recipientEmail: "a@test.com", status: "queued", sentAt: null, resendEmailId: null },
       { recipientEmail: "a@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
@@ -219,12 +233,25 @@ describe("aggregateCumulativeDispatchLogCounters", () => {
     expect(soQueued.suppressedCount).toBe(1)
     expect(soQueued.queuedCount).toBe(0)
 
+    // Falhou num disparo e, antes do retry, entrou na blocklist. O rank tem que
+    // concordar com `selectFailedRecipientEmailsForRetry`, que exclui do reenvio
+    // QUALQUER endereço com log suppressed, mesmo havendo failed anterior. Se
+    // contasse como failed, a campanha ficaria `partially_sent` e o botão
+    // "Reenviar falhas" apareceria com zero elegíveis.
     const comFailed = aggregateCumulativeDispatchLogCounters([
-      { recipientEmail: "b@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
       { recipientEmail: "b@test.com", status: "failed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "b@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
     ])
-    expect(comFailed.failedCount).toBe(1)
-    expect(comFailed.suppressedCount).toBe(0)
+    expect(comFailed.suppressedCount).toBe(1)
+    expect(comFailed.failedCount).toBe(0)
+
+    // Ordem inversa dos logs: rank não pode depender da ordem de leitura.
+    const ordemInversa = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "c@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "c@test.com", status: "failed", sentAt: null, resendEmailId: null },
+    ])
+    expect(ordemInversa.suppressedCount).toBe(1)
+    expect(ordemInversa.failedCount).toBe(0)
   })
 
   it("dedupe por e-mail: retry accepted sobrepõe failed anterior → 100/100", () => {
