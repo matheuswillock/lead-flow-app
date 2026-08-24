@@ -17,6 +17,7 @@ import {
   evaluateEmailForAudience,
 } from "@/lib/email/audience-prevalidation"
 import {
+  blockTeamEmail,
   findTeamBlocklistedEmails,
   partitionByBlocklist,
 } from "@/lib/email/email-contact-blocklist"
@@ -161,6 +162,52 @@ export class EmailContactImportUseCase {
     }
 
     return { imported, updated: updateRows.length }
+  }
+
+  /** Import para a blocklist: só recusa linha sem e-mail; o resto vira bloqueio. */
+  private collectRowsWithEmail(rows: ImportRow[]): {
+    validRows: ImportRow[]
+    skipped: number
+    skippedIssues: SkippedImportIssue[]
+  } {
+    const validRows: ImportRow[] = []
+    const skippedIssues: SkippedImportIssue[] = []
+    const seen = new Set<string>()
+
+    for (const row of rows) {
+      const email = this.normalizeEmail(row.email ?? "")
+      if (!email) {
+        skippedIssues.push({ line: row.line, email: "(vazio)", reason: "E-mail ausente na linha" })
+        continue
+      }
+      if (seen.has(email)) continue
+      seen.add(email)
+      validRows.push({ line: row.line, email, name: row.name?.trim() || undefined })
+    }
+
+    return {
+      validRows,
+      skipped: skippedIssues.length,
+      skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT),
+    }
+  }
+
+  /** Cada linha vira um bloqueio por time: sai das outras listas, entra na blocklist. */
+  private async blockContactsBatch(
+    teamId: string,
+    createdBy: string,
+    batch: ImportRow[]
+  ): Promise<void> {
+    for (const row of batch) {
+      await this.db.$transaction(async (tx) => {
+        await blockTeamEmail(tx, {
+          teamId,
+          email: row.email,
+          name: row.name ?? null,
+          createdBy,
+        })
+      })
+    }
   }
 
   /**
@@ -505,7 +552,7 @@ export class EmailContactImportUseCase {
 
       const list = await this.db.emailContactList.findFirst({
         where: { id: claimed.listId, teamId: claimed.teamId },
-        select: { id: true, isSystemDefault: true },
+        select: { id: true, isSystemDefault: true, isBlocklist: true },
       })
       if (!list) {
         await this.db.emailImportJob.update({
@@ -521,11 +568,16 @@ export class EmailContactImportUseCase {
       } as TeamContext
 
       const allRows = await this.parseStoredRows(claimed.sourceFormat, claimed.storagePath)
+      // Import cujo destino é a blocklist não passa pelas portas de descarte:
+      // typo de domínio, provedor morto e bounce anterior são exatamente o que
+      // se quer bloquear. Só linhas sem e-mail são recusadas.
       const {
         validRows,
         skipped: initialSkipped,
         skippedIssues: initialSkippedIssues,
-      } = await this.validateRows(allRows, claimed.teamId)
+      } = list.isBlocklist
+        ? this.collectRowsWithEmail(allRows)
+        : await this.validateRows(allRows, claimed.teamId)
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
@@ -569,6 +621,17 @@ export class EmailContactImportUseCase {
         const batch = validRows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
 
         try {
+          if (list.isBlocklist) {
+            await this.blockContactsBatch(claimed.teamId, claimed.requestedBy, batch)
+            importedCount += batch.length
+            processedRows += batch.length
+            console.info(
+              `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${batch.length} bloqueio(s) — sucesso`
+            )
+            batchIndex += 1
+            continue
+          }
+
           const batchResult = await this.upsertContactsBatch(claimed.listId, batch)
           importedCount += batchResult.imported
           updatedCount += batchResult.updated
