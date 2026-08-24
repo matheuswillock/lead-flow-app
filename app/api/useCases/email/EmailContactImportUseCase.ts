@@ -710,11 +710,6 @@ export class EmailContactImportUseCase {
             const { allowed, skippedIssues: batchSkipped } =
               await this.partitionBatchBySuppression(batch, claimed.teamId)
 
-            if (batchSkipped.length > 0) {
-              suppressedSkippedCount += batchSkipped.length
-              skippedIssues.push(...batchSkipped)
-            }
-
             const batchResult = await this.importContactsBatch({
               listId: claimed.listId,
               teamId: claimed.teamId,
@@ -724,6 +719,13 @@ export class EmailContactImportUseCase {
               fanOutToDefaultList: !list.isSystemDefault,
               ctx,
             })
+            // Só contabiliza DEPOIS da escrita: se `importContactsBatch` lança,
+            // o lote é repartitionado na tentativa seguinte e as mesmas recusas
+            // entrariam de novo — 3 tentativas contariam 1 recusa como 3.
+            if (batchSkipped.length > 0) {
+              suppressedSkippedCount += batchSkipped.length
+              skippedIssues.push(...batchSkipped)
+            }
             importedCount += batchResult.imported
             updatedCount += batchResult.updated
             // Avança pelo tamanho do LOTE, não pelo dos permitidos: o offset

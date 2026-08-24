@@ -228,6 +228,54 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     )
   })
 
+  it("lote que falha e é retentado não conta a mesma recusa duas vezes", async () => {
+    // Regressão: `suppressedSkippedCount` era incrementado ANTES da escrita.
+    // Se `importContactsBatch` lançava, o lote era repartitionado na tentativa
+    // seguinte e a mesma recusa entrava de novo — 3 tentativas = 1 endereço
+    // recusado contado 3x, tanto no contador quanto na lista de exemplos.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "bloqueado@example.com", name: "Bloqueado" },
+          { email: "livre@example.com", name: "Livre" },
+        ],
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.list?.isBlocklist) return [{ email: "bloqueado@example.com" }]
+      return []
+    })
+
+    // Falha nas duas primeiras tentativas, sucesso na terceira.
+    let createManyAttempts = 0
+    emailContactCreateManyMock.mockImplementation(async () => {
+      createManyAttempts += 1
+      if (createManyAttempts <= 2) throw new Error("erro transitório de escrita")
+      return { count: 1 }
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    expect(createManyAttempts).toBeGreaterThanOrEqual(3)
+
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { skippedCount?: number; skippedIssues?: { email: string }[] } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.skippedCount !== undefined)
+
+    // Um endereço recusado, contado uma vez — não uma vez por tentativa.
+    expect(progressUpdate?.data?.skippedCount).toBe(1)
+    expect(progressUpdate?.data?.skippedIssues).toHaveLength(1)
+  })
+
   it("não importa e-mail bloqueado no time, nem na lista alvo nem no fan-out padrão", async () => {
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({
