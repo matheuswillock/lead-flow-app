@@ -3,9 +3,11 @@ import {
   aggregateCumulativeDispatchLogCounters,
   aggregateDispatchLogCounters,
   buildCampaignDispatchProgress,
+  buildCampaignDispatchProgressSummary,
   buildCumulativeCampaignDispatchProgress,
   deriveDispatchCompletionKind,
   formatCampaignDispatchProgressLabel,
+  type CampaignDispatchProgress,
 } from "./campaign-dispatch-progress"
 
 describe("campaign-dispatch-progress helpers", () => {
@@ -18,7 +20,70 @@ describe("campaign-dispatch-progress helpers", () => {
       { status: "opened", sentAt: new Date(), resendEmailId: "re_3" },
       { status: "bounced", sentAt: new Date(), resendEmailId: "re_4" },
     ])
-    expect(counters).toEqual({ acceptedCount: 4, failedCount: 1, queuedCount: 1 })
+    expect(counters).toEqual({
+      acceptedCount: 4,
+      failedCount: 1,
+      queuedCount: 1,
+      suppressedCount: 0,
+    })
+  })
+
+  it("completionKind full quando aceitos + suprimidos fecham o total", () => {
+    // Regressão: `suppressedCount` passou a ser coletado mas não chegava aqui,
+    // então um dispatch concluído com aceitos + suprimidos ficava "partial" e a
+    // UI exibia aviso de envio parcial sem nada retentável.
+    expect(
+      deriveDispatchCompletionKind({
+        status: "completed",
+        totalRecipients: 1969,
+        acceptedCount: 1782,
+        failedCount: 0,
+        suppressedCount: 187,
+      })
+    ).toBe("full")
+  })
+
+  it("dispatch failed coberto por aceitos + suprimidos é full, não partial", () => {
+    // Regressão: os ramos de `status: "failed"` comparavam só `acceptedCount`.
+    // O reconciler marcava a campanha `sent` e o progresso dizia `partial` ao
+    // mesmo tempo — e `resolveCampaignDispatchTerminal` prioriza o progresso,
+    // exibindo aviso de envio parcial sem nada retentável.
+    expect(
+      deriveDispatchCompletionKind({
+        status: "failed",
+        totalRecipients: 1969,
+        acceptedCount: 1782,
+        failedCount: 0,
+        suppressedCount: 187,
+      })
+    ).toBe("full")
+  })
+
+  it("suprimido não mascara falha retentável", () => {
+    expect(
+      deriveDispatchCompletionKind({
+        status: "completed",
+        totalRecipients: 100,
+        acceptedCount: 80,
+        failedCount: 10,
+        suppressedCount: 10,
+      })
+    ).toBe("partial")
+  })
+
+  it("acceptedCount continua sendo só o aceite, para o rótulo de progresso", () => {
+    // O total terminal serve para decidir conclusão; o número exibido ao
+    // usuário continua sendo quantos e-mails realmente saíram.
+    expect(
+      formatCampaignDispatchProgressLabel({
+        status: "sending",
+        completionKind: "pending",
+        acceptedCount: 1782,
+        totalRecipients: 1969,
+        retryFailedOnly: false,
+        errorMessage: null,
+      })
+    ).toBe("Enviando 1782/1969")
   })
 
   it("completionKind partial sem status partially_completed", () => {
@@ -124,7 +189,7 @@ describe("campaign-dispatch-progress helpers", () => {
         errorMessage: null,
         updatedAt: new Date("2026-01-01T00:00:00.000Z"),
       },
-      { acceptedCount: 3, failedCount: 0, queuedCount: 0 }
+      { acceptedCount: 3, failedCount: 0, queuedCount: 0, suppressedCount: 0 }
     )
     expect(progress.status).toBe("completed")
     expect(progress.completionKind).toBe("full")
@@ -132,6 +197,65 @@ describe("campaign-dispatch-progress helpers", () => {
 })
 
 describe("aggregateCumulativeDispatchLogCounters", () => {
+  it("conta `suppressed` em vez de descartar do total", () => {
+    // Regressão: `suppressed` não caía em nenhum tier, então sumia da agregação.
+    // O reconciler comparava `acceptedCount >= totalRecipients` e, no caso real
+    // (1782 aceitos + 187 suprimidos de 1998), recalculava `partially_sent` e
+    // regravava por cima do `sent` — devolvendo o botão de reenviar falhas para
+    // endereços que a nossa própria pré-validação recusa de forma determinística.
+    const counters = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "ok@test.com", status: "delivered", sentAt: new Date(), resendEmailId: "re_1" },
+      { recipientEmail: "typo@gmial.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "role@empresa.com", status: "suppressed", sentAt: null, resendEmailId: null },
+    ])
+
+    expect(counters).toEqual({
+      acceptedCount: 1,
+      failedCount: 0,
+      queuedCount: 0,
+      suppressedCount: 2,
+    })
+  })
+
+  it("aceite sobrepõe supressão anterior do mesmo endereço", () => {
+    // Se o endereço foi recusado num disparo e aceito noutro, vale o aceite.
+    const counters = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "A@Test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "a@test.com", status: "sent", sentAt: new Date(), resendEmailId: "re_1" },
+    ])
+    expect(counters.acceptedCount).toBe(1)
+    expect(counters.suppressedCount).toBe(0)
+  })
+
+  it("supressão sobrepõe queued e também failed", () => {
+    const soQueued = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "a@test.com", status: "queued", sentAt: null, resendEmailId: null },
+      { recipientEmail: "a@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+    ])
+    expect(soQueued.suppressedCount).toBe(1)
+    expect(soQueued.queuedCount).toBe(0)
+
+    // Falhou num disparo e, antes do retry, entrou na blocklist. O rank tem que
+    // concordar com `selectFailedRecipientEmailsForRetry`, que exclui do reenvio
+    // QUALQUER endereço com log suppressed, mesmo havendo failed anterior. Se
+    // contasse como failed, a campanha ficaria `partially_sent` e o botão
+    // "Reenviar falhas" apareceria com zero elegíveis.
+    const comFailed = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "b@test.com", status: "failed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "b@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+    ])
+    expect(comFailed.suppressedCount).toBe(1)
+    expect(comFailed.failedCount).toBe(0)
+
+    // Ordem inversa dos logs: rank não pode depender da ordem de leitura.
+    const ordemInversa = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "c@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "c@test.com", status: "failed", sentAt: null, resendEmailId: null },
+    ])
+    expect(ordemInversa.suppressedCount).toBe(1)
+    expect(ordemInversa.failedCount).toBe(0)
+  })
+
   it("dedupe por e-mail: retry accepted sobrepõe failed anterior → 100/100", () => {
     const firstWave = Array.from({ length: 80 }, (_, i) => ({
       recipientEmail: `ok${i}@test.com`,
@@ -158,7 +282,12 @@ describe("aggregateCumulativeDispatchLogCounters", () => {
       ...retryAccepted,
     ])
 
-    expect(counters).toEqual({ acceptedCount: 100, failedCount: 0, queuedCount: 0 })
+    expect(counters).toEqual({
+      acceptedCount: 100,
+      failedCount: 0,
+      queuedCount: 0,
+      suppressedCount: 0,
+    })
   })
 
   it("precedência accepted > failed > queued no mesmo endereço", () => {
@@ -173,7 +302,7 @@ describe("aggregateCumulativeDispatchLogCounters", () => {
           resendEmailId: "re_1",
         },
       ])
-    ).toEqual({ acceptedCount: 1, failedCount: 0, queuedCount: 0 })
+    ).toEqual({ acceptedCount: 1, failedCount: 0, queuedCount: 0, suppressedCount: 0 })
   })
 })
 
@@ -191,12 +320,13 @@ describe("buildCumulativeCampaignDispatchProgress", () => {
         acceptedCount: 5,
         failedCount: 0,
         queuedCount: 15,
+        suppressedCount: 0,
         retryFailedOnly: true,
         errorMessage: null,
         updatedAt: "2026-01-02T00:00:00.000Z",
       },
       latestDispatch: null,
-      counters: { acceptedCount: 85, failedCount: 0, queuedCount: 15 },
+      counters: { acceptedCount: 85, failedCount: 0, queuedCount: 15, suppressedCount: 0 },
     })
     expect(progress).toMatchObject({
       status: "sending",
@@ -206,5 +336,48 @@ describe("buildCumulativeCampaignDispatchProgress", () => {
       totalRecipients: 100,
       retryFailedOnly: true,
     })
+  })
+})
+
+describe("buildCampaignDispatchProgressSummary — supressão no agregado do pai", () => {
+  function terminalProgress(over: Partial<CampaignDispatchProgress> = {}): CampaignDispatchProgress {
+    return {
+      dispatchId: "d1",
+      dispatchNumber: 1,
+      status: "completed",
+      completionKind: "full",
+      totalRecipients: 100,
+      acceptedCount: 80,
+      failedCount: 0,
+      queuedCount: 0,
+      suppressedCount: 20,
+      retryFailedOnly: false,
+      errorMessage: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      ...over,
+    }
+  }
+
+  it("pai com filho 80 aceitos + 20 suprimidos de 100 fecha como `full`", () => {
+    // Regressão: os builders de folha já resolviam isso, mas o agregado do pai
+    // avaliava `acceptedCount < totalRecipients` antes e devolvia `partial` —
+    // aviso de parcial na lista/detalhe sem nenhum destinatário retentável.
+    const summary = buildCampaignDispatchProgressSummary([terminalProgress()])
+    expect(summary?.completionKind).toBe("full")
+  })
+
+  it("supressão não mascara destinatário que nunca virou log", () => {
+    // 80 + 10 = 90 de 100: sobraram 10 sem log nenhum. Continua parcial.
+    const summary = buildCampaignDispatchProgressSummary([
+      terminalProgress({ suppressedCount: 10, completionKind: "partial" }),
+    ])
+    expect(summary?.completionKind).toBe("partial")
+  })
+
+  it("supressão não mascara falha retentável", () => {
+    const summary = buildCampaignDispatchProgressSummary([
+      terminalProgress({ acceptedCount: 70, failedCount: 10, suppressedCount: 20 }),
+    ])
+    expect(summary?.completionKind).toBe("partial")
   })
 })

@@ -11,6 +11,14 @@ export type CampaignDispatchProgress = {
   acceptedCount: number
   failedCount: number
   queuedCount: number
+  /**
+   * Recusados pela pré-validação. Precisa viajar no progresso, não só ser
+   * consumido na derivação do `completionKind`: o agregado do pai
+   * (`buildCampaignDispatchProgressSummary`) soma os contadores dos filhos e,
+   * sem este campo, recalculava `acceptedCount < totalRecipients` e mostrava
+   * aviso de parcial num disparo sem nada retentável.
+   */
+  suppressedCount: number
   retryFailedOnly: boolean
   errorMessage: string | null
   updatedAt: string
@@ -31,6 +39,12 @@ export type DispatchLogCounters = {
   acceptedCount: number
   failedCount: number
   queuedCount: number
+  /**
+   * Recusados pela nossa pré-validação, antes de tocar o provedor. Terminais e
+   * NÃO retentáveis — reenviar submete o mesmo endereço à mesma regra
+   * determinística. Contam para fechar a campanha, mas nunca para `totalSent`.
+   */
+  suppressedCount: number
 }
 
 export type DispatchProgressSource = {
@@ -41,6 +55,11 @@ export type DispatchProgressSource = {
   retryFailedOnly: boolean
   errorMessage: string | null
   updatedAt: Date | string
+}
+
+/** Zero em todos os tiers — usado como default antes de agregar. */
+export function emptyDispatchLogCounters(): DispatchLogCounters {
+  return { acceptedCount: 0, failedCount: 0, queuedCount: 0, suppressedCount: 0 }
 }
 
 /** Aceite pelo provedor: monotônico; não usa status=`sent`. */
@@ -61,6 +80,7 @@ export function aggregateDispatchLogCounters(
   let acceptedCount = 0
   let failedCount = 0
   let queuedCount = 0
+  let suppressedCount = 0
 
   for (const log of logs) {
     if (isDispatchLogAccepted(log)) {
@@ -71,20 +91,38 @@ export function aggregateDispatchLogCounters(
       failedCount += 1
       continue
     }
+    if (log.status === "suppressed") {
+      suppressedCount += 1
+      continue
+    }
     if (log.status === "queued") {
       queuedCount += 1
     }
   }
 
-  return { acceptedCount, failedCount, queuedCount }
+  return { acceptedCount, failedCount, queuedCount, suppressedCount }
 }
 
-type CumulativeLogTier = "queued" | "failed" | "accepted"
+type CumulativeLogTier = "queued" | "failed" | "suppressed" | "accepted"
 
+/**
+ * `suppressed` acima de `failed`, não abaixo.
+ *
+ * Parece contraintuitivo — falha é "pior" que recusa —, mas o rank tem que
+ * concordar com `selectFailedRecipientEmailsForRetry`: qualquer log
+ * `suppressed` joga o endereço em `excludedEmails` e o remove do reenvio, mesmo
+ * que exista um `failed` anterior. Se o rank mantivesse `failed`, o endereço
+ * contaria como retentável, a campanha ficaria `partially_sent` e o botão
+ * "Reenviar falhas" apareceria com zero destinatários elegíveis.
+ *
+ * Cenário concreto: o endereço falhou num disparo e, antes do retry, entrou na
+ * blocklist — o log seguinte é `suppressed` e ele nunca mais sai.
+ */
 const CUMULATIVE_TIER_RANK: Record<CumulativeLogTier, number> = {
   queued: 0,
   failed: 1,
-  accepted: 2,
+  suppressed: 2,
+  accepted: 3,
 }
 
 /**
@@ -111,6 +149,8 @@ export function aggregateCumulativeDispatchLogCounters(
       tier = "accepted"
     } else if (log.status === "failed") {
       tier = "failed"
+    } else if (log.status === "suppressed") {
+      tier = "suppressed"
     } else if (log.status === "queued") {
       tier = "queued"
     }
@@ -125,13 +165,15 @@ export function aggregateCumulativeDispatchLogCounters(
   let acceptedCount = 0
   let failedCount = 0
   let queuedCount = 0
+  let suppressedCount = 0
   for (const tier of byEmail.values()) {
     if (tier === "accepted") acceptedCount += 1
     else if (tier === "failed") failedCount += 1
+    else if (tier === "suppressed") suppressedCount += 1
     else queuedCount += 1
   }
 
-  return { acceptedCount, failedCount, queuedCount }
+  return { acceptedCount, failedCount, queuedCount, suppressedCount }
 }
 
 /**
@@ -154,6 +196,7 @@ export function buildCumulativeCampaignDispatchProgress(params: {
       acceptedCount: counters.acceptedCount,
       failedCount: counters.failedCount,
       queuedCount: counters.queuedCount,
+      suppressedCount: counters.suppressedCount,
       completionKind: "pending",
     }
   }
@@ -169,11 +212,13 @@ export function buildCumulativeCampaignDispatchProgress(params: {
       totalRecipients,
       acceptedCount: counters.acceptedCount,
       failedCount: counters.failedCount,
+      suppressedCount: counters.suppressedCount,
     }),
     totalRecipients,
     acceptedCount: counters.acceptedCount,
     failedCount: counters.failedCount,
     queuedCount: counters.queuedCount,
+    suppressedCount: counters.suppressedCount,
     retryFailedOnly: base?.retryFailedOnly ?? false,
     errorMessage: base?.errorMessage ?? null,
     updatedAt: base?.updatedAt ?? new Date(0).toISOString(),
@@ -185,6 +230,12 @@ export function deriveDispatchCompletionKind(params: {
   totalRecipients: number
   acceptedCount: number
   failedCount: number
+  /**
+   * Recusados pela pré-validação. Fecham o disparo junto com os aceitos, mas
+   * NUNCA entram em `acceptedCount` — o rótulo de progresso mostra quantos
+   * e-mails saíram de verdade, e suprimido não saiu.
+   */
+  suppressedCount?: number
 }): CampaignDispatchCompletionKind {
   if (params.status === "sending") return "pending"
 
@@ -192,28 +243,35 @@ export function deriveDispatchCompletionKind(params: {
     return "failed"
   }
 
+  // Terminal = nada mais pode sair para este destinatário.
+  const terminalCount = params.acceptedCount + (params.suppressedCount ?? 0)
+
   if (
     params.acceptedCount > 0 &&
-    (params.failedCount > 0 || params.acceptedCount < params.totalRecipients)
+    (params.failedCount > 0 || terminalCount < params.totalRecipients)
   ) {
     return "partial"
   }
 
-  if (params.status === "completed" && params.acceptedCount >= params.totalRecipients) {
+  if (params.status === "completed" && terminalCount >= params.totalRecipients) {
     return "full"
   }
 
   if (params.status === "completed") {
-    return params.acceptedCount > 0 && params.acceptedCount < params.totalRecipients
+    return params.acceptedCount > 0 && terminalCount < params.totalRecipients
       ? "partial"
       : params.acceptedCount === 0
         ? "failed"
         : "full"
   }
 
-  // status=failed mas todos os destinatários foram aceitos (ex.: reconciliado
-  // via webhook após o registro interno já ter marcado falha) → sucesso total.
-  if (params.acceptedCount >= params.totalRecipients && params.totalRecipients > 0) {
+  // status=failed mas a audiência inteira já está resolvida (ex.: reconciliado
+  // via webhook após o registro interno ter marcado falha) → sucesso total.
+  // Usa `terminalCount`, não só aceite: senão um dispatch coberto por aceitos +
+  // suprimidos é reportado `partial` enquanto o reconciler marca a campanha
+  // `sent`, e `resolveCampaignDispatchTerminal` prioriza o progresso, exibindo
+  // aviso de envio parcial sem nada retentável.
+  if (terminalCount >= params.totalRecipients && params.totalRecipients > 0) {
     return "full"
   }
 
@@ -239,11 +297,13 @@ export function buildCampaignDispatchProgress(
       totalRecipients: dispatch.totalRecipients,
       acceptedCount: counters.acceptedCount,
       failedCount: counters.failedCount,
+      suppressedCount: counters.suppressedCount,
     }),
     totalRecipients: dispatch.totalRecipients,
     acceptedCount: counters.acceptedCount,
     failedCount: counters.failedCount,
     queuedCount: counters.queuedCount,
+    suppressedCount: counters.suppressedCount,
     retryFailedOnly: dispatch.retryFailedOnly,
     errorMessage: dispatch.errorMessage,
     updatedAt,
@@ -262,6 +322,13 @@ export function buildCampaignDispatchProgressSummary(
   const acceptedCount = progresses.reduce((sum, p) => sum + p.acceptedCount, 0)
   const failedCount = progresses.reduce((sum, p) => sum + p.failedCount, 0)
   const queuedCount = progresses.reduce((sum, p) => sum + p.queuedCount, 0)
+  const suppressedCount = progresses.reduce((sum, p) => sum + p.suppressedCount, 0)
+
+  // Recusado na pré-validação FECHA o destinatário: é terminal e não retentável.
+  // Comparar `acceptedCount` cru contra `totalRecipients` marcava como parcial um
+  // pai cujos filhos não têm nada a reenviar — mesma regra já aplicada nos
+  // builders de folha e em `resolveReconciledCampaignStatus`.
+  const terminalCount = acceptedCount + suppressedCount
 
   let completionKind: CampaignDispatchCompletionKind = "pending"
   if (active.length > 0) {
@@ -270,10 +337,10 @@ export function buildCampaignDispatchProgressSummary(
     completionKind = "failed"
   } else if (
     acceptedCount > 0 &&
-    (failedCount > 0 || acceptedCount < totalRecipients || terminal.some((p) => p.completionKind === "partial"))
+    (failedCount > 0 || terminalCount < totalRecipients || terminal.some((p) => p.completionKind === "partial"))
   ) {
     completionKind = "partial"
-  } else if (acceptedCount >= totalRecipients && totalRecipients > 0) {
+  } else if (terminalCount >= totalRecipients && totalRecipients > 0) {
     completionKind = "full"
   } else if (terminal.every((p) => p.completionKind === "full")) {
     completionKind = "full"

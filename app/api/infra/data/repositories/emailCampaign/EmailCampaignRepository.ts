@@ -44,6 +44,8 @@ export type DispatchLogCounterRow = {
   acceptedCount: number
   failedCount: number
   queuedCount: number
+  /** Recusados pela pré-validação — terminais e não retentáveis. */
+  suppressedCount: number
 }
 
 export type EmailCampaignCreateData = Prisma.EmailCampaignUncheckedCreateInput
@@ -219,6 +221,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
         acceptedCount: number | bigint
         failedCount: number | bigint
         queuedCount: number | bigint
+        suppressedCount: number | bigint
       }>
     >`
       SELECT
@@ -235,7 +238,15 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
           WHERE status = 'queued'::"email_log_status"
             AND "sentAt" IS NULL
             AND "resendEmailId" IS NULL
-        )::int AS "queuedCount"
+        )::int AS "queuedCount",
+        -- Recusados pela pré-validação, antes de tocar o provedor. Sem esta
+        -- coluna eles não entram em contador nenhum e a barra de progresso fica
+        -- travada abaixo de 100% num disparo que já terminou.
+        COUNT(*) FILTER (
+          WHERE status = 'suppressed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "suppressedCount"
       FROM "corretor_studio_email_logs"
       WHERE "teamId" = ${teamId}::uuid
         AND "dispatchId" = ANY(${dispatchIds}::uuid[])
@@ -249,6 +260,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
         acceptedCount: Number(row.acceptedCount),
         failedCount: Number(row.failedCount),
         queuedCount: Number(row.queuedCount),
+        suppressedCount: Number(row.suppressedCount),
       }))
   }
 

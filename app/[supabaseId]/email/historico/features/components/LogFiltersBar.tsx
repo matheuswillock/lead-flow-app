@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useHistoricoContext } from "../context/HistoricoContext"
+import { EMAIL_LOG_STATUS_FILTER_OPTIONS } from "@/lib/email/email-log-status-badge"
 
 export function LogFiltersBar() {
   const {
@@ -56,14 +57,16 @@ export function LogFiltersBar() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__all">Todos os status</SelectItem>
-          <SelectItem value="queued">Na fila</SelectItem>
-          <SelectItem value="sent">Enviado</SelectItem>
-          <SelectItem value="delivered">Entregue</SelectItem>
-          <SelectItem value="opened">Aberto</SelectItem>
-          <SelectItem value="clicked">Clicado</SelectItem>
-          <SelectItem value="bounced">Bounce</SelectItem>
-          <SelectItem value="complained">Reclamação</SelectItem>
-          <SelectItem value="failed">Falhou</SelectItem>
+          {/*
+            Derivado da mesma fonte dos badges: a lista escrita à mão aqui não
+            acompanhou o status `suppressed`, então a tabela renderizava a linha
+            "Recusado" e o usuário não tinha como isolá-la por filtro nenhum.
+          */}
+          {EMAIL_LOG_STATUS_FILTER_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 
