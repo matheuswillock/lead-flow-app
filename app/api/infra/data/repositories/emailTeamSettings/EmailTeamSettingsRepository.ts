@@ -264,12 +264,17 @@ export class EmailTeamSettingsRepository implements IEmailTeamSettingsRepository
       data: { isDefault: false },
     })
 
-    if (!defaultSender.isDefault) {
-      await tx.emailTeamSender.update({
-        where: { id: defaultSender.id },
-        data: { isDefault: true },
-      })
-    }
+    // Promoção INCONDICIONAL. Condicionar a `defaultSender.isDefault` usaria a
+    // leitura feita no início desta transação: se outra requisição promover
+    // outro remetente e commitar nesse meio-tempo, ela rebaixa o eleito, o
+    // `updateMany` acima rebaixa o dela, e o `if` pula a repromoção por
+    // acreditar numa leitura já obsoleta — o time termina com ZERO defaults.
+    // Gravar `true` em linha que já é `true` é no-op; a condição só economizava
+    // um UPDATE e custava a corretude.
+    await tx.emailTeamSender.update({
+      where: { id: defaultSender.id },
+      data: { isDefault: true },
+    })
 
     await this.syncLegacySenderFields(tx, teamId, {
       name: defaultSender.name,
@@ -476,12 +481,13 @@ export class EmailTeamSettingsRepository implements IEmailTeamSettingsRepository
           data: { isDefault: false },
         })
 
-        if (!sender.isDefault) {
-          await tx.emailTeamSender.update({
-            where: { id: senderId },
-            data: { isDefault: true },
-          })
-        }
+        // Incondicional pelo mesmo motivo de `ensureSingleDefaultSender`: o
+        // `sender.isDefault` foi lido no topo desta transação e pode já ter sido
+        // rebaixado por uma promoção concorrente que commitou nesse intervalo.
+        await tx.emailTeamSender.update({
+          where: { id: senderId },
+          data: { isDefault: true },
+        })
 
         await this.syncLegacySenderFields(tx, teamId, {
           name: sender.name,
