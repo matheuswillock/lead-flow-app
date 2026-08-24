@@ -10,7 +10,12 @@ const emailContactFindManyMock = mock(
     where?: { list?: { isBlocklist?: boolean } }
   }) => [] as { id?: string; email?: string }[]
 )
-const emailContactCreateManyMock = mock(async () => ({ count: 0 }))
+// Devolve o número de linhas do lote, como o Prisma faz quando nenhuma delas
+// colide. Cravar `count: 0` fazia o mock mentir: `blockedCount` agora vem de
+// `created.count`, e um zero fixo esconderia regressão real de contagem.
+const emailContactCreateManyMock = mock(
+  async (args?: { data?: unknown[] }) => ({ count: args?.data?.length ?? 0 })
+)
 const emailContactUpdateMock = mock(async () => ({}))
 const emailContactCountMock = mock(async () => 0)
 const emailContactListFindFirstMock = mock(async () => null as null | {
@@ -200,7 +205,9 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     emailContactFindManyMock.mockClear()
     emailContactFindManyMock.mockImplementation(async (_args?) => [])
     emailContactCreateManyMock.mockClear()
-    emailContactCreateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailContactCreateManyMock.mockImplementation(
+      async (args?: { data?: unknown[] }) => ({ count: args?.data?.length ?? 0 })
+    )
     emailContactUpdateMock.mockClear()
     emailContactCountMock.mockClear()
     emailContactCountMock.mockImplementation(async () => 0)

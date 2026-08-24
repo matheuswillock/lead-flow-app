@@ -5,7 +5,8 @@ import {
   getResendDomainDispatchWarnings,
   isResendDomainSendCapable,
   isResendDomainTrackingCapable,
-  RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+  RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
+  RESEND_DOMAIN_METRICS_DISABLED_MESSAGE,
   resolveCampaignStatusAfterDispatch,
 } from "./campaign-dispatch-guards"
 
@@ -60,7 +61,7 @@ describe("assertResendDomainTrackingReady", () => {
     expect(assertResendDomainTrackingReady({ domainName: "   " })).toEqual({ ok: true })
   })
 
-  it("bloqueia quando métricas estão desligadas", () => {
+  it("métricas desligadas com DNS verificado → mensagem de MÉTRICAS", () => {
     expect(
       assertResendDomainTrackingReady({
         domainName: "example.com",
@@ -68,10 +69,13 @@ describe("assertResendDomainTrackingReady", () => {
         openTracking: false,
         clickTracking: false,
       })
-    ).toEqual({ ok: false, message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE })
+    ).toEqual({ ok: false, message: RESEND_DOMAIN_METRICS_DISABLED_MESSAGE })
   })
 
-  it("bloqueia partially_failed e partially_verified mesmo com métricas ligadas", () => {
+  it("partially_failed/partially_verified → mensagem de DNS, mesmo com métricas ligadas", () => {
+    // A causa reportada precisa ser o DNS: mandar "habilite as métricas" aqui
+    // aponta para um toggle que não destrava nada, porque o gate exige
+    // `verified` exato.
     const base = {
       domainName: "example.com",
       openTracking: true,
@@ -79,12 +83,23 @@ describe("assertResendDomainTrackingReady", () => {
     }
     expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_failed" })).toEqual({
       ok: false,
-      message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+      message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
     })
     expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_verified" })).toEqual({
       ok: false,
-      message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+      message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
     })
+  })
+
+  it("DNS não verificado E métricas desligadas → DNS tem precedência", () => {
+    expect(
+      assertResendDomainTrackingReady({
+        domainName: "example.com",
+        domainStatus: "partially_failed",
+        openTracking: false,
+        clickTracking: false,
+      })
+    ).toEqual({ ok: false, message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE })
   })
 
   it("permite verified com pelo menos uma métrica ligada", () => {
@@ -116,7 +131,7 @@ describe("getResendDomainDispatchWarnings", () => {
         openTracking: true,
         clickTracking: true,
       })
-    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    ).toEqual([RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE])
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
@@ -124,7 +139,7 @@ describe("getResendDomainDispatchWarnings", () => {
         openTracking: true,
         clickTracking: true,
       })
-    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    ).toEqual([RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE])
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
@@ -132,7 +147,7 @@ describe("getResendDomainDispatchWarnings", () => {
         openTracking: false,
         clickTracking: false,
       })
-    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    ).toEqual([RESEND_DOMAIN_METRICS_DISABLED_MESSAGE])
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
