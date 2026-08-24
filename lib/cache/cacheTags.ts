@@ -51,5 +51,7 @@ export const cacheTags = {
     `team-filter-presets:${teamId}:${profileId}:${scope}`,
   notifications: (recipientProfileId: string) => `notifications:${recipientProfileId}`,
   radarSegments: (teamId: string) => `radar-segments:${teamId}`,
+  /** Numeros institucionais da home. Sem escopo: valem para a conta inteira. */
+  landingPublicStats: () => "landing-public-stats",
 } as const;
 

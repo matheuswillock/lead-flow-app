@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { connection } from "next/server"
 import { LandingHeader } from "@/components/landing/landingHeader"
 import { LandingHero } from "@/components/landing/LandingHero"
 import { OperatorsMarquee } from "@/components/landing/OperatorsMarquee"
@@ -30,8 +29,6 @@ export const metadata: Metadata = createPublicPageMetadata({
 })
 
 export default async function HomePage() {
-  await connection()
-
   const websiteUrl = getAbsoluteUrl("/")
   const logoUrl = getAbsoluteUrl("/corretor-studio-icon.svg")
   const landingStats = await getLandingStats()
