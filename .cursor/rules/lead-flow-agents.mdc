@@ -287,6 +287,61 @@ reportar a tarefa como concluída. Reler o próprio código, reexecutar
 `typecheck`/`lint` ou reinspecionar o diff **MUST NOT** ser tratado como
 substituto de olhar a tela.
 
+#### Receita de setup (o que faz a tela abrir)
+
+Cada item abaixo já custou horas de diagnóstico. A falha típica não é a tela
+quebrada — é o ambiente falhar e o agente ler isso como bug da aplicação, ou
+pior, como "verificado".
+
+1. **`.env.test` precisa existir.** `playwright.config.ts` só o carrega se
+   estiver lá; sem ele a spec morre com `E2E_JWT_SECRET não configurado` ou
+   `[e2e] DATABASE_URL is required`. Copie de `.env.test.example`.
+2. **`bun run test:e2e:local` NÃO sobe o Next.** Ele seta `E2E_REUSE_SERVER=1`,
+   que remove o bloco `webServer`. Ou suba o dev server antes exportando
+   `APP_ENV=test` e `E2E_TEST_MODE=true`, ou use `bun run test:e2e`.
+3. **Sessão entra por cookie assinado**, não por login: `injectE2eAuthCookie`
+   (`e2e/fixtures/auth.ts`) recebe o `context`, não a `page`.
+4. **Marque o "what's new" como visto** antes de navegar
+   (`localStorage['whats-new:seen:v1:<supabaseId>'] = 'true'`), senão um modal
+   cobre a tela e o assert falha por elemento interceptado.
+5. **Espere CONDIÇÃO, nunca tempo fixo.** Em dev o Next compila sob demanda e a
+   primeira renderização varia de segundos a dezenas de segundos. `sleep` fixo
+   produz screenshot de estado vazio que parece bug de dados. Faça poll de um
+   seletor ou contador até aparecer.
+6. **Isole dado da UI antes de acusar a tela.** Se a tela vier vazia, chame a
+   API pela própria página e compare. API com dado + tela vazia é timing ou
+   render; API vazia é seed.
+
+Para `browser-harness` em Linux o Chrome precisa ser iniciado com
+`--remote-debugging-port`. Não existe toggle na UI para habilitar depois — se
+`browser-harness --doctor` disser `active browser connections — 0` com o Chrome
+aberto, suba uma instância separada com a flag e um `--user-data-dir` próprio e
+conecte via `BU_CDP_URL`, sem tocar a sessão do dono.
+
+A verificação **MUST** ser medida, não julgada: leia valores do DOM
+(`scrollWidth`, `getComputedStyle`, texto da célula) em vez de descrever o
+screenshot.
+
+### Teste que não sabe falhar não é verificação (MUST)
+
+Vale para teste automatizado e para script de medição.
+
+- Ao criar um teste que trava comportamento crítico — ordem de efeito colateral,
+  atomicidade, shape de resposta — o agente **MUST** executar um **controle
+  negativo**: quebrar de propósito o comportamento no código de produção,
+  confirmar que o teste fica vermelho, e restaurar conferindo por `git diff` que
+  o arquivo voltou idêntico. Teste verde sem esse passo não é evidência.
+- O teste **MUST** exercitar o código real. Reproduzir o padrão dentro dos
+  próprios mocks passa sempre e não protege de nada.
+- O teste **MUST NOT** depender de variável de ambiente que exista só na máquina
+  do agente. Um `getFullUrl()` dentro de um `try` faz o caminho feliz cair no
+  `catch` num runner sem `NEXT_PUBLIC_APP_URL` — e a falha aparece como
+  regressão de código na CI. Neutralize com `mock.module`.
+- Comando cujo resultado o agente vai reportar **MUST NOT** ter o exit code
+  mascarado por pipe. `bun run typecheck 2>&1 | head -20` esconde OOM: o
+  processo morre, nada é impresso, e o silêncio parece sucesso. Rode, capture o
+  `EXIT`, e só então filtre a saída.
+
 ## Landing Page Method (MUST)
 
 Aplica-se a toda página pública de marketing/aquisição (`app/page.tsx` e
