@@ -9,30 +9,51 @@ const state: {
   upserts: Array<{ listId: string; email: string }>
 } = { lists: [], contacts: [], totals: {}, upserts: [] }
 
+type ContactWhere = {
+  email: { in: string[] }
+  list: { teamId: string; isArchived: boolean; isBlocklist?: boolean }
+}
+
+/** O código de produção filtra por `email: { in: [...] }`; o mock espelha isso. */
+function matchesWhere(contact: ContactRow, where: ContactWhere): boolean {
+  if (!where.email.in.includes(contact.email)) return false
+  const list = state.lists.find((item) => item.id === contact.listId)
+  if (!list || list.teamId !== where.list.teamId || list.isArchived) return false
+  if (where.list.isBlocklist === false) return !list.isBlocklist
+  return true
+}
+
 const tx = {
   emailContact: {
-    findMany: mock(async (args: { where: { email: string; list: { teamId: string; isArchived: boolean; isBlocklist?: boolean } }; select: unknown }) =>
-      state.contacts
-        .filter((contact) => contact.email === args.where.email)
-        .filter((contact) => {
-          const list = state.lists.find((item) => item.id === contact.listId)
-          if (!list || list.teamId !== args.where.list.teamId || list.isArchived) return false
-          if (args.where.list.isBlocklist === false) return !list.isBlocklist
-          return true
-        })
+    findMany: mock(async (args: { where: ContactWhere; distinct?: string[] }) => {
+      const rows = state.contacts
+        .filter((contact) => matchesWhere(contact, args.where))
         .map((contact) => ({ listId: contact.listId }))
-    ),
-    deleteMany: mock(async (args: { where: { email: string; list: { teamId: string; isArchived: boolean; isBlocklist?: boolean } } }) => {
+      if (!args.distinct?.includes("listId")) return rows
+      return [...new Map(rows.map((row) => [row.listId, row])).values()]
+    }),
+    deleteMany: mock(async (args: { where: ContactWhere }) => {
       const before = state.contacts.length
-      state.contacts = state.contacts.filter((contact) => {
-        if (contact.email !== args.where.email) return true
-        const list = state.lists.find((item) => item.id === contact.listId)
-        if (!list || list.teamId !== args.where.list.teamId || list.isArchived) return true
-        if (args.where.list.isBlocklist === false && list.isBlocklist) return true
-        return false
-      })
+      state.contacts = state.contacts.filter((contact) => !matchesWhere(contact, args.where))
       return { count: before - state.contacts.length }
     }),
+    createMany: mock(async (args: {
+      data: Array<{ listId: string; email: string; name: string | null }>
+      skipDuplicates?: boolean
+    }) => {
+      let count = 0
+      for (const row of args.data) {
+        const exists = state.contacts.some(
+          (contact) => contact.listId === row.listId && contact.email === row.email
+        )
+        if (exists && args.skipDuplicates) continue
+        state.upserts.push({ listId: row.listId, email: row.email })
+        state.contacts.push({ listId: row.listId, email: row.email, name: row.name })
+        count += 1
+      }
+      return { count }
+    }),
+    updateMany: mock(async () => ({ count: 0 })),
     count: mock(async (args: { where: { listId: string } }) =>
       state.contacts.filter((contact) => contact.listId === args.where.listId).length
     ),
@@ -75,7 +96,91 @@ const tx = {
 
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: tx, default: tx }))
 
-const { blockTeamEmail } = await import("./email-contact-blocklist")
+const { blockTeamEmail, blockTeamEmailsBulk } = await import("./email-contact-blocklist")
+
+function resetState() {
+  state.lists = [
+    { id: "blocklist", teamId: "team-1", isArchived: false, isBlocklist: true, isSystemDefault: false },
+    { id: "padrao", teamId: "team-1", isArchived: false, isBlocklist: false, isSystemDefault: true },
+    { id: "fria", teamId: "team-1", isArchived: false, isBlocklist: false, isSystemDefault: false },
+    { id: "outro-time", teamId: "team-2", isArchived: false, isBlocklist: false, isSystemDefault: false },
+  ]
+  state.contacts = [
+    { listId: "padrao", email: "alvo@example.com", name: "Alvo" },
+    { listId: "fria", email: "alvo@example.com", name: "Alvo" },
+    { listId: "outro-time", email: "alvo@example.com", name: "Alvo" },
+    { listId: "fria", email: "outro@example.com", name: "Outro" },
+  ]
+  state.totals = {}
+  state.upserts = []
+}
+
+describe("blockTeamEmailsBulk", () => {
+  beforeEach(resetState)
+
+  it("bloqueia o lote inteiro sem custo proporcional ao número de endereços", async () => {
+    tx.emailContact.deleteMany.mockClear()
+    tx.emailContact.createMany.mockClear()
+
+    const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
+      teamId: "team-1",
+      createdBy: "profile-1",
+      contacts: Array.from({ length: 40 }, (_, i) => ({
+        email: `bulk${i}@example.com`,
+        name: `Bulk ${i}`,
+      })),
+    })
+
+    expect(blockedCount).toBe(40)
+    // Um deleteMany e um createMany para as 40 linhas — não 40 de cada.
+    expect(tx.emailContact.deleteMany.mock.calls.length).toBeLessThanOrEqual(1)
+    expect(tx.emailContact.createMany.mock.calls.length).toBe(1)
+  })
+
+  it("deduplica por e-mail normalizado dentro do lote", async () => {
+    const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
+      teamId: "team-1",
+      createdBy: "profile-1",
+      contacts: [
+        { email: "Repetido@Example.com", name: "A" },
+        { email: " repetido@example.com ", name: "B" },
+        { email: "unico@example.com", name: "C" },
+      ],
+    })
+
+    expect(blockedCount).toBe(2)
+    const naBlocklist = state.contacts
+      .filter((contact) => contact.listId === "blocklist")
+      .map((contact) => contact.email)
+      .sort()
+    expect(naBlocklist).toEqual(["repetido@example.com", "unico@example.com"])
+  })
+
+  it("tira do time todas as listas, preservando lista de outro time", async () => {
+    await blockTeamEmailsBulk(tx as never, {
+      teamId: "team-1",
+      createdBy: "profile-1",
+      contacts: [{ email: "alvo@example.com", name: null }],
+    })
+
+    const listasComAlvo = state.contacts
+      .filter((contact) => contact.email === "alvo@example.com")
+      .map((contact) => contact.listId)
+      .sort()
+    expect(listasComAlvo).toEqual(["blocklist", "outro-time"])
+    expect(state.totals["padrao"]).toBe(0)
+    expect(state.totals["blocklist"]).toBe(1)
+  })
+
+  it("ignora linhas sem e-mail sem quebrar o lote", async () => {
+    const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
+      teamId: "team-1",
+      createdBy: "profile-1",
+      contacts: [{ email: "   ", name: null }, { email: "valido@example.com", name: null }],
+    })
+    expect(blockedCount).toBe(1)
+  })
+})
 
 describe("blockTeamEmail", () => {
   beforeEach(() => {

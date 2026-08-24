@@ -6,6 +6,7 @@ import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
   blockTeamEmail,
+  blockTeamEmailsBulk,
   EMAIL_BLOCKLIST_NAME,
   ensureTeamEmailBlocklist,
   findTeamBlocklistedEmails,
@@ -580,8 +581,7 @@ export class EmailContactListUseCase {
     ctx: TeamContext
   ): Promise<Output> {
     const issues: Array<{ line?: number; email?: string; reason: string }> = []
-    const seen = new Set<string>()
-    let blocked = 0
+    const contacts: Array<{ email: string; name: string | null }> = []
 
     for (const row of rows) {
       const normalizedEmail = this.normalizeEmail(row.email ?? "")
@@ -589,19 +589,17 @@ export class EmailContactListUseCase {
         issues.push({ line: row.line, email: "(vazio)", reason: "E-mail ausente na linha" })
         continue
       }
-      if (seen.has(normalizedEmail)) continue
-      seen.add(normalizedEmail)
-
-      await prisma.$transaction(async (tx) => {
-        await blockTeamEmail(tx, {
-          teamId: ctx.teamId,
-          email: normalizedEmail,
-          name: row.name?.trim() || null,
-          createdBy: ctx.profileId,
-        })
-      })
-      blocked += 1
+      contacts.push({ email: normalizedEmail, name: row.name?.trim() || null })
     }
+
+    // Uma transação para o import inteiro — `blockTeamEmailsBulk` já deduplica.
+    const { blockedCount: blocked } = await prisma.$transaction(async (tx) =>
+      blockTeamEmailsBulk(tx, {
+        teamId: ctx.teamId,
+        createdBy: ctx.profileId,
+        contacts,
+      })
+    )
 
     if (blocked === 0) {
       return new Output(false, [], ["Nenhum e-mail válido encontrado para bloquear"], {

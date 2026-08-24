@@ -109,69 +109,137 @@ export async function blockTeamEmail(
 ): Promise<{ blocklistId: string }> {
   const normalizedEmail = params.email.trim().toLowerCase()
 
-  const affectedContacts = await tx.emailContact.findMany({
-    where: {
-      email: normalizedEmail,
-      list: { teamId: params.teamId, isArchived: false, isBlocklist: false },
-    },
-    select: { listId: true },
-  })
-  const affectedListIds = Array.from(new Set(affectedContacts.map((item) => item.listId)))
-
-  await tx.emailContact.deleteMany({
-    where: {
-      email: normalizedEmail,
-      list: { teamId: params.teamId, isArchived: false, isBlocklist: false },
-    },
-  })
-
-  for (const listId of affectedListIds) {
-    const totalCount = await tx.emailContact.count({ where: { listId } })
-    await tx.emailContactList.update({
-      where: { id: listId },
-      data: { totalContacts: totalCount },
-    })
-  }
-
-  let blocklist = await tx.emailContactList.findFirst({
-    where: { teamId: params.teamId, isArchived: false, isBlocklist: true },
-    select: { id: true },
-  })
-
-  if (!blocklist) {
-    blocklist = await tx.emailContactList.create({
-      data: {
-        id: randomUUID(),
-        teamId: params.teamId,
-        createdBy: params.createdBy,
-        name: EMAIL_BLOCKLIST_NAME,
-        isBlocklist: true,
-        isSystemDefault: false,
-      },
-      select: { id: true },
-    })
-  }
+  await removeEmailsFromTeamLists(tx, params.teamId, [normalizedEmail])
+  const blocklistId = await ensureBlocklistId(tx, params.teamId, params.createdBy)
 
   await tx.emailContact.upsert({
-    where: { listId_email: { listId: blocklist.id, email: normalizedEmail } },
+    where: { listId_email: { listId: blocklistId, email: normalizedEmail } },
     update: {
       name: params.name ?? undefined,
       ...(params.markUnsubscribed ? { isUnsubscribed: true } : {}),
     },
     create: {
       id: randomUUID(),
-      listId: blocklist.id,
+      listId: blocklistId,
       email: normalizedEmail,
       name: params.name ?? null,
       isUnsubscribed: params.markUnsubscribed ?? false,
     },
   })
 
-  const blocklistTotal = await tx.emailContact.count({ where: { listId: blocklist.id } })
-  await tx.emailContactList.update({
-    where: { id: blocklist.id },
-    data: { totalContacts: blocklistTotal },
+  await refreshListTotal(tx, blocklistId)
+  return { blocklistId }
+}
+
+/**
+ * Versão em lote, para import. Custo por lote é constante — não proporcional ao
+ * número de endereços.
+ *
+ * Motivo: `blockTeamEmail` gasta ~9 queries e o worker de import chamava uma
+ * transação por linha. Um lote de 500 virava 500 transações e ~4.500 round-trips
+ * seriais, dentro de um cron com `maxDuration = 60` cujo guard de tempo só é
+ * checado ENTRE lotes — o job morria no meio do lote, sem checkpoint, e
+ * reiniciava do zero indefinidamente.
+ */
+export async function blockTeamEmailsBulk(
+  tx: BlocklistWriter,
+  params: {
+    teamId: string
+    createdBy: string
+    contacts: Array<{ email: string; name?: string | null }>
+    markUnsubscribed?: boolean
+  }
+): Promise<{ blocklistId: string; blockedCount: number }> {
+  const byEmail = new Map<string, { email: string; name?: string | null }>()
+  for (const contact of params.contacts) {
+    const normalizedEmail = contact.email.trim().toLowerCase()
+    if (!normalizedEmail || byEmail.has(normalizedEmail)) continue
+    byEmail.set(normalizedEmail, { email: normalizedEmail, name: contact.name ?? null })
+  }
+
+  const blocklistId = await ensureBlocklistId(tx, params.teamId, params.createdBy)
+  if (byEmail.size === 0) return { blocklistId, blockedCount: 0 }
+
+  const emails = [...byEmail.keys()]
+  await removeEmailsFromTeamLists(tx, params.teamId, emails)
+
+  // skipDuplicates: quem já estava bloqueado permanece, sem P2002 derrubar o lote.
+  await tx.emailContact.createMany({
+    data: [...byEmail.values()].map((contact) => ({
+      id: randomUUID(),
+      listId: blocklistId,
+      email: contact.email,
+      name: contact.name ?? null,
+      isUnsubscribed: params.markUnsubscribed ?? false,
+    })),
+    skipDuplicates: true,
   })
 
-  return { blocklistId: blocklist.id }
+  if (params.markUnsubscribed) {
+    await tx.emailContact.updateMany({
+      where: { listId: blocklistId, email: { in: emails } },
+      data: { isUnsubscribed: true },
+    })
+  }
+
+  await refreshListTotal(tx, blocklistId)
+  return { blocklistId, blockedCount: byEmail.size }
+}
+
+/** Tira os endereços de todas as listas não arquivadas do time, menos a blocklist. */
+async function removeEmailsFromTeamLists(
+  tx: BlocklistWriter,
+  teamId: string,
+  normalizedEmails: string[]
+): Promise<void> {
+  if (normalizedEmails.length === 0) return
+
+  const where = {
+    email: { in: normalizedEmails },
+    list: { teamId, isArchived: false, isBlocklist: false },
+  }
+
+  const affectedContacts = await tx.emailContact.findMany({
+    where,
+    select: { listId: true },
+    distinct: ["listId"],
+  })
+  if (affectedContacts.length === 0) return
+
+  await tx.emailContact.deleteMany({ where })
+
+  // Uma atualização por LISTA afetada, não por endereço.
+  for (const { listId } of affectedContacts) {
+    await refreshListTotal(tx, listId)
+  }
+}
+
+async function ensureBlocklistId(
+  tx: BlocklistWriter,
+  teamId: string,
+  createdBy: string
+): Promise<string> {
+  const existing = await tx.emailContactList.findFirst({
+    where: { teamId, isArchived: false, isBlocklist: true },
+    select: { id: true },
+  })
+  if (existing) return existing.id
+
+  const created = await tx.emailContactList.create({
+    data: {
+      id: randomUUID(),
+      teamId,
+      createdBy,
+      name: EMAIL_BLOCKLIST_NAME,
+      isBlocklist: true,
+      isSystemDefault: false,
+    },
+    select: { id: true },
+  })
+  return created.id
+}
+
+async function refreshListTotal(tx: BlocklistWriter, listId: string): Promise<void> {
+  const totalContacts = await tx.emailContact.count({ where: { listId } })
+  await tx.emailContactList.update({ where: { id: listId }, data: { totalContacts } })
 }
