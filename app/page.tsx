@@ -21,7 +21,7 @@ import { buildStatsData, hasPublishableStats } from "@/lib/landing/stats-data"
 
 const homeTitle = "Corretor Studio | CRM, Radar e Campanhas para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas. Solicite uma demonstração gratuita e aumente sua conversão."
+  "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas de conversão. Solicite uma demonstração gratuita."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,

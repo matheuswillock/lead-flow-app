@@ -1025,6 +1025,28 @@ class PrismaProfileRepository implements IProfileRepository {
     });
   }
 
+  async findTimezoneBySupabaseId(supabaseId: string) {
+    return await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, timezone: true },
+    });
+  }
+
+  async findAuthContactBySupabaseId(supabaseId: string) {
+    return await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, email: true },
+    });
+  }
+
+  async updateTimezoneBySupabaseId(supabaseId: string, timezone: string) {
+    return await prisma.profile.update({
+      where: { supabaseId },
+      data: { timezone },
+      select: { id: true },
+    });
+  }
+
   async findFirstActiveMasterManager() {
     return await prisma.profile.findFirst({
       where: {
