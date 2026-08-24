@@ -131,6 +131,34 @@ describe("escopo da supressão por bounce (decisão de produto)", () => {
       source.indexOf('if (eventType === "complained")'),
     )
 
-    expect(bouncedBranch).toContain('mode: "insensitive"')
+    expect(bouncedBranch).toContain("lower(")
+  })
+
+  it("o stamp NÃO usa mode: insensitive — o Prisma traduz para ILIKE e abre curinga", async () => {
+    // Medido com Prisma 6.19.3 contra o Postgres local: o filtro
+    // `{ equals: <email>, mode: "insensitive" }` gera
+    // `WHERE "email" ILIKE $1` com o valor CRU, sem escape. Em Postgres, `_`
+    // casa um caractere e `%` casa N — então um bounce em
+    // `maria_silva@gmail.com` carimbava também `maria.silva@gmail.com` e
+    // `maria-silva@gmail.com`. Como este stamp é global (sem teamId), o falso
+    // positivo atravessava todos os times, e `isBounced` exclui de todo
+    // disparo. `nome_sobrenome` vs `nome.sobrenome` é justamente a colisão
+    // mais comum em base importada.
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+    // Sem as linhas de comentário — elas citam ILIKE justamente para explicar
+    // por que ele não pode aparecer no código.
+    const code = bouncedBranch
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n")
+
+    expect(code).not.toContain('mode: "insensitive"')
+    expect(code.toUpperCase()).not.toContain("ILIKE")
   })
 })

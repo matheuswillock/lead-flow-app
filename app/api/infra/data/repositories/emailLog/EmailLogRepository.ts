@@ -178,17 +178,31 @@ export class EmailLogRepository implements IEmailLogRepository {
           // caixa cheia não carimbam.
           if (eventType === "bounced") {
             if (shouldStampIsBouncedFromEventMetadata(metadata)) {
-              await tx.emailContact.updateMany({
-                // Case-insensitive, não `toLowerCase()`: os leitores comparam
-                // em lowercase, mas `EmailContact.email` é gravado como veio
-                // (`createContacts` não normaliza). Forçar lowercase no filtro
-                // deixaria de casar as linhas salvas com maiúsculas; comparar
-                // insensitive pega os dois formatos.
-                where: {
-                  email: { equals: log.recipientEmail.trim(), mode: "insensitive" },
-                },
-                data: { isBounced: true },
-              })
+              // Comparação case-insensitive é necessária — os leitores comparam
+              // em lowercase, mas `EmailContact.email` é gravado como veio
+              // (`createContacts` não normaliza), então há linhas em caixa
+              // mista que um filtro `toLowerCase()` deixaria de casar.
+              //
+              // MAS não via `mode: "insensitive"`: medido com Prisma 6.19.3,
+              // esse filtro vira `WHERE "email" ILIKE $1` com o valor CRU. Em
+              // Postgres `_` casa um caractere e `%` casa N, e o Prisma não
+              // escapa nem emite ESCAPE. Um bounce em `maria_silva@gmail.com`
+              // carimbava `maria.silva@gmail.com` e `maria-silva@gmail.com`
+              // junto — e como este stamp é global, o falso positivo suprimia
+              // o endereço em todos os times, sem trilha (o EmailEvent aponta
+              // só para o destinatário original).
+              //
+              // SQL raw porque `lower(coluna) = lower(param)` não tem
+              // equivalente no Prisma Client sem cair de novo em ILIKE. Nome
+              // físico conferido em prisma/schema.prisma: model EmailContact
+              // ⇒ @@map("corretor_studio_email_contacts"). Template tag do
+              // Prisma ⇒ valor parametrizado, sem interpolação.
+              await tx.$executeRaw`
+                UPDATE "public"."corretor_studio_email_contacts"
+                   SET "isBounced" = true, "updatedAt" = now()
+                 WHERE lower("email") = lower(${log.recipientEmail.trim()})
+                   AND "isBounced" = false
+              `
             }
           }
           if (eventType === "complained") {
