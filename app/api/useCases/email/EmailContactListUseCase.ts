@@ -5,6 +5,8 @@ import { EmailContactListService } from "@/app/api/services/EmailContactList/Ema
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
+  blockTeamEmail,
+  blockTeamEmailsBulk,
   EMAIL_BLOCKLIST_NAME,
   ensureTeamEmailBlocklist,
   findTeamBlocklistedEmails,
@@ -569,6 +571,55 @@ export class EmailContactListUseCase {
     }
   }
 
+  /**
+   * Import cujo destino é a blocklist: cada linha vira um bloqueio, não uma
+   * inserção. Sem pré-validação de audiência — endereço com typo de domínio é
+   * exatamente o que se quer bloquear.
+   */
+  private async importIntoBlocklist(
+    rows: Array<{ line?: number; email: string; name?: string }>,
+    ctx: TeamContext
+  ): Promise<Output> {
+    const issues: Array<{ line?: number; email?: string; reason: string }> = []
+    const contacts: Array<{ email: string; name: string | null }> = []
+
+    for (const row of rows) {
+      const normalizedEmail = this.normalizeEmail(row.email ?? "")
+      if (!normalizedEmail) {
+        issues.push({ line: row.line, email: "(vazio)", reason: "E-mail ausente na linha" })
+        continue
+      }
+      contacts.push({ email: normalizedEmail, name: row.name?.trim() || null })
+    }
+
+    // Uma transação para o import inteiro — `blockTeamEmailsBulk` já deduplica.
+    const { blockedCount: blocked } = await prisma.$transaction(async (tx) =>
+      blockTeamEmailsBulk(tx, {
+        teamId: ctx.teamId,
+        createdBy: ctx.profileId,
+        contacts,
+      })
+    )
+
+    if (blocked === 0) {
+      return new Output(false, [], ["Nenhum e-mail válido encontrado para bloquear"], {
+        imported: 0,
+        updated: 0,
+        skipped: issues.length,
+        total: 0,
+        issues,
+      })
+    }
+
+    return new Output(true, [`${blocked} e-mail(s) bloqueado(s) com sucesso`], [], {
+      imported: blocked,
+      updated: 0,
+      skipped: issues.length,
+      total: blocked,
+      issues,
+    })
+  }
+
   async addContact(listId: string, email: string, name: string | null, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailContactList.findFirst({
@@ -579,8 +630,25 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista não encontrada"], null)
       }
 
+      // Na blocklist, "adicionar" significa bloquear: sai de todas as listas do
+      // time e entra aqui com o motivo. Pré-validação de audiência não se aplica
+      // — um endereço com typo de domínio é justamente o que se quer bloquear.
       if (existing.isBlocklist) {
-        return new Output(false, [], ["Não é possível adicionar contatos à lista de bloqueados"], null)
+        const blockedEmail = this.normalizeEmail(email)
+        if (!blockedEmail) {
+          return new Output(false, [], ["Email é obrigatório"], null)
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await blockTeamEmail(tx, {
+            teamId: ctx.teamId,
+            email: blockedEmail,
+            name,
+            createdBy: ctx.profileId,
+          })
+        })
+
+        return new Output(true, ["Contato bloqueado com sucesso"], [], { email: blockedEmail })
       }
 
       const emailValidation = evaluateEmailForAudience(email)
@@ -813,7 +881,7 @@ export class EmailContactListUseCase {
       }
 
       if (existing.isBlocklist) {
-        return new Output(false, [], ["Não é possível importar contatos para a lista de bloqueados"], null)
+        return this.importIntoBlocklist(rows, ctx)
       }
 
       const issues: Array<{ line?: number; email?: string; name?: string; reason: string }> = []
@@ -957,6 +1025,10 @@ export class EmailContactListUseCase {
 
       if (contacts.length === 0) {
         return new Output(false, [], ["Nenhum contato válido encontrado no CSV"], null)
+      }
+
+      if (existing.isBlocklist) {
+        return this.importIntoBlocklist(contacts, ctx)
       }
 
       // Antes do upsert e do fan-out para a lista padrão: quem o time bloqueou
@@ -1153,16 +1225,25 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista não encontrada"], null)
       }
 
-      if (list.isBlocklist) {
-        return new Output(false, [], ["Contatos bloqueados não podem ser removidos"], null)
-      }
-
       const contact = await prisma.emailContact.findFirst({
         where: { id: contactId, listId },
       })
 
       if (!contact) {
         return new Output(false, [], ["Contato não encontrado"], null)
+      }
+
+      // Na blocklist, remover é desbloquear: o endereço volta a ser importável e
+      // a receber campanhas. Typo de domínio e endereço genérico geram falso
+      // positivo, então o desbloqueio precisa existir — a confirmação fica na UI.
+      if (list.isBlocklist) {
+        await prisma.emailContact.delete({ where: { id: contactId } })
+        const blocklistTotal = await prisma.emailContact.count({ where: { listId } })
+        await prisma.emailContactList.update({
+          where: { id: listId },
+          data: { totalContacts: blocklistTotal },
+        })
+        return new Output(true, ["Contato desbloqueado com sucesso"], [], null)
       }
 
       if (list.isSystemDefault) {

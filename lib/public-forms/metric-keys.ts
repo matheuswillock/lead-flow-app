@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { buildAttributionEventKeySuffix } from "@/lib/public-forms/origin"
 
 export type PublicFormCompletionMetricType =
   | "form_completed"
@@ -11,12 +12,21 @@ export function buildPublicFormSubmitRequestKey(visitorSessionId: string): strin
   return `${visitorSessionId}:submit`
 }
 
-/** Stable metric event key so upserts collapse duplicate submits in the same session. */
+/**
+ * Stable metric event key so upserts collapse duplicate submits in the same session.
+ *
+ * `emailLogId` escopa a chave por atribuição de campanha. Sem ele, um
+ * destinatário que já tivesse enviado o formulário antes manteria a linha
+ * antiga — o upsert é first-write-wins — e a conversão de uma nova campanha
+ * seria descartada ou creditada à campanha anterior. Ver
+ * `buildAttributionEventKeySuffix`.
+ */
 export function buildPublicFormMetricEventKey(
   visitorSessionId: string,
   eventType: PublicFormCompletionMetricType,
+  emailLogId?: string | null,
 ): string {
-  return `${visitorSessionId}:${eventType}`
+  return `${visitorSessionId}:${eventType}${buildAttributionEventKeySuffix(emailLogId)}`
 }
 
 /** Funil e Radar usam a mesma chave: `{session}:question_answered:{questionId}`. */

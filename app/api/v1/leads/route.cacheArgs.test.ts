@@ -36,6 +36,14 @@ const getCachedTeamLeadsMock = mock(async (_args: Record<string, unknown>) => ({
 // dependências, então a rota exercita a lógica real de roteamento.
 mock.module("@/app/api/useCases/leads/getCachedTeamLeads", () => ({
   getCachedTeamLeads: getCachedTeamLeadsMock,
+  // A rota faz `instanceof` nesta classe para distinguir falha de listagem de
+  // erro inesperado, entao o mock precisa expor o mesmo simbolo.
+  CachedTeamLeadsUnavailableError: class CachedTeamLeadsUnavailableError extends Error {
+    constructor(readonly errorMessages: string[]) {
+      super(errorMessages[0] ?? "Erro interno do servidor");
+      this.name = "CachedTeamLeadsUnavailableError";
+    }
+  },
 }));
 
 const getAllLeadsByUserRoleWithCtxMock = mock(

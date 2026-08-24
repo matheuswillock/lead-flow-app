@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 import type { Lead } from "@prisma/client"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
@@ -23,7 +24,15 @@ export type ResolveEmailCampaignFormAttributionInput = {
   eventType: "form_viewed" | "form_started" | "form_completed"
   origin: Record<string, unknown>
   visitorSessionId: string
+  occurredAt?: string | null
 }
+
+/**
+ * Marca em `EmailEvent.metadata` que o clique veio do carimbo `cs_el` na URL do
+ * formulário, e não do redirecionador do Resend. Serve para auditar a origem da
+ * métrica durante e depois da transição.
+ */
+export const FIRST_PARTY_CLICK_SOURCE = "public_form_attribution"
 
 export type ResolveEmailCampaignFormAttributionResult = {
   leadId: string | null
@@ -71,6 +80,21 @@ class ResolveEmailCampaignFormAttributionUseCase {
       enrichedOrigin.recipientEmail = log.recipientEmail
       if (log.campaignId) enrichedOrigin.campaignId = log.campaignId
       if (log.dispatchId) enrichedOrigin.dispatchId = log.dispatchId
+
+      // O `form_viewed` é o primeiro sinal de que o destinatário abriu o link do
+      // e-mail, então é ele que repõe o clique quando o click tracking do Resend
+      // está desligado. Fire-and-forget: falha ao gravar clique nunca pode
+      // derrubar o registro da métrica do formulário.
+      if (input.eventType === "form_viewed") {
+        void this.recordFirstPartyClick({
+          teamId: input.teamId,
+          emailLogId: log.id,
+          formPublicId: input.formPublicId,
+          occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+        }).catch((error) => {
+          console.error("[ResolveEmailCampaignFormAttributionUseCase][recordFirstPartyClick]", error)
+        })
+      }
 
       const phone = await this.resolveRecipientPhone(input.teamId, log.recipientEmail, log.campaignId)
       const name = resolveAttributionDisplayName(log.recipientName, log.recipientEmail)
@@ -130,6 +154,37 @@ class ResolveEmailCampaignFormAttributionUseCase {
         error instanceof Error ? error.message : "Erro ao resolver atribuição e-mail→formulário"
       return new Output(false, [], [message], null)
     }
+  }
+
+  /**
+   * Repõe `EmailLog.clickedAt` / `EmailCampaign.totalClicked` sem redirecionador,
+   * reaproveitando o mesmo caminho do webhook do Resend — assim toda a leitura de
+   * analytics continua idêntica.
+   *
+   * O guard em `clickedAt` torna a gravação exatamente-uma-vez por destinatário,
+   * que é a mesma semântica de `totalClicked` (só o primeiro clique conta). É
+   * também o que torna seguro rodar isto com o click tracking do Resend ainda
+   * ligado: quem chegar primeiro grava, o outro vira no-op no contador.
+   */
+  private async recordFirstPartyClick(params: {
+    teamId: string
+    emailLogId: string
+    formPublicId: string
+    occurredAt: Date
+  }): Promise<void> {
+    const record = await emailLogRepository.findCampaignWebhookRecordById(
+      params.teamId,
+      params.emailLogId
+    )
+    if (!record || record.clickedAt) return
+
+    await emailLogRepository.applyWebhookEvent({
+      log: record,
+      eventType: "clicked",
+      occurredAt: params.occurredAt,
+      metadata: { source: FIRST_PARTY_CLICK_SOURCE, formPublicId: params.formPublicId },
+      eventId: randomUUID(),
+    })
   }
 
   private async resolveRecipientPhone(
