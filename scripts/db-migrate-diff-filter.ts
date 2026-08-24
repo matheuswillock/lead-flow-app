@@ -19,10 +19,12 @@
  *      pelo Prisma (SQL raw, PostgREST, trigger, seed).
  *
  *      O filtro consulta o `prisma/schema.prisma` coluna a coluna e **só**
- *      descarta esses casos. Um `DROP DEFAULT` de coluna sem default
- *      client-side é remoção intencional e passa direto — do contrário, tirar
- *      um `@default(...)` do schema viraria uma mudança que o gerador engole em
- *      silêncio e reporta como "nenhuma diferença".
+ *      descarta esses casos. Um `DROP DEFAULT` de coluna que tem default físico
+ *      é remoção intencional e passa direto — do contrário, tirar um
+ *      `@default(...)` do schema viraria uma mudança que o gerador engole em
+ *      silêncio e reporta como "nenhuma diferença". Atenção ao caso
+ *      `@default(now()) @updatedAt`: o `@updatedAt` sozinho é client-side, mas
+ *      com `@default(now())` junto o banco fica com `CURRENT_TIMESTAMP`.
  *
  *   3. CREATE/DROP/ALTER POLICY e ENABLE/DISABLE ROW LEVEL SECURITY — RLS não é
  *      expressável no schema.prisma (ver o cabeçalho de `prisma/schema.prisma`).
@@ -43,7 +45,7 @@ export type FilterResult = {
 
 export const FILTER_CATEGORY_LABELS: Record<FilteredCategory, string> = {
   acl: "GRANT/REVOKE (pg_default_acl do shadow database)",
-  "column-default": "ALTER COLUMN … DROP DEFAULT (só em @default(uuid())/@updatedAt)",
+  "column-default": "ALTER COLUMN … DROP DEFAULT (só em coluna sem default físico)",
   "rls-policy": "POLICY / ROW LEVEL SECURITY (RLS não vive no schema.prisma)",
 };
 
@@ -168,13 +170,33 @@ export function classifyStatement(
   return null;
 }
 
+/** Geradores que o Prisma Client resolve em memória, sem default no banco. */
+const CLIENT_GENERATOR = /@default\(\s*(?:uuid|cuid|ulid|nanoid)\s*\(/;
+const HAS_DEFAULT = /@default\(/;
+const IS_UPDATED_AT = /@updatedAt\b/;
+
+/**
+ * Um campo só é "client-side" quando o banco NÃO fica com default físico.
+ *
+ * `@updatedAt` sozinho é client-side. Mas `@default(now()) @updatedAt` — que
+ * este schema usa em 5 campos — vira `DEFAULT CURRENT_TIMESTAMP` no banco:
+ * remover só o `@default(now())` produz um `DROP DEFAULT` intencional, que não
+ * pode ser filtrado. Como um campo tem no máximo um `@default`, basta olhar
+ * qual é: gerador de client → filtra; qualquer outro (now(), literal,
+ * dbgenerated, autoincrement) → default físico, não filtra.
+ */
+function isClientSideDefault(fieldLine: string): boolean {
+  if (CLIENT_GENERATOR.test(fieldLine)) return true;
+  if (HAS_DEFAULT.test(fieldLine)) return false;
+  return IS_UPDATED_AT.test(fieldLine);
+}
+
 /**
  * Lê `prisma/schema.prisma` e devolve as colunas com default resolvido no
  * Prisma Client. Só essas podem ter o `DROP DEFAULT` descartado: nas demais, a
  * remoção do default é intencional e precisa chegar na migration.
  */
 export function readClientSideDefaults(schemaSource: string): Set<string> {
-  const CLIENT_SIDE = /@updatedAt\b|@default\(\s*(?:uuid|cuid|ulid|nanoid)\s*\(/;
   const result = new Set<string>();
 
   for (const model of schemaSource.matchAll(/model\s+\w+\s*\{([\s\S]*?)\n\}/g)) {
@@ -186,7 +208,7 @@ export function readClientSideDefaults(schemaSource: string): Set<string> {
     for (const line of body.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("@@")) continue;
-      if (!CLIENT_SIDE.test(trimmed)) continue;
+      if (!isClientSideDefault(trimmed)) continue;
 
       const field = trimmed.match(/^(\w+)\s+\S+/);
       if (!field) continue;

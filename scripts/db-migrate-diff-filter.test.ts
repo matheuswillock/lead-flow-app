@@ -160,6 +160,17 @@ model SemMap {
   id    String @id @default(cuid())
   score Int    @default(0)
 }
+
+model ComDefaultNoBanco {
+  id        String   @id @default(uuid())
+  // now() vira DEFAULT CURRENT_TIMESTAMP: o banco fica com default físico,
+  // mesmo o campo tendo @updatedAt.
+  updatedAt DateTime @default(now()) @updatedAt
+  expiraEm  DateTime @default(dbgenerated("(now() + '30 days'::interval)"))
+  seq       Int      @default(autoincrement())
+
+  @@map("com_default_no_banco")
+}
 `;
 
   const defaults = readClientSideDefaults(schema);
@@ -186,6 +197,21 @@ model SemMap {
     expect(defaults.has("corretor_studio_leads.legacy_ref")).toBe(false);
   });
 
+  test("@updatedAt combinado com @default(now()) NÃO é client-side", () => {
+    // O banco fica com DEFAULT CURRENT_TIMESTAMP; remover o @default(now())
+    // é um DROP DEFAULT intencional e não pode ser filtrado.
+    expect(defaults.has("com_default_no_banco.updatedAt")).toBe(false);
+  });
+
+  test("dbgenerated e autoincrement não são client-side", () => {
+    expect(defaults.has("com_default_no_banco.expiraEm")).toBe(false);
+    expect(defaults.has("com_default_no_banco.seq")).toBe(false);
+  });
+
+  test("@default(uuid()) continua client-side no mesmo model", () => {
+    expect(defaults.has("com_default_no_banco.id")).toBe(true);
+  });
+
   test("o schema real do projeto marca id e updatedAt de corretor_studio_leads", () => {
     const real = readClientSideDefaults(readFileSync("prisma/schema.prisma", "utf8"));
     expect(real.has("corretor_studio_leads.id")).toBe(true);
@@ -195,6 +221,20 @@ model SemMap {
     expect(real.has("whatsapp_messages.rawPayload")).toBe(false);
     expect(real.has("corretor_studio_team_radar_pixel_configs.allowedOrigins")).toBe(false);
     expect(real.has("corretor_studio_lead_document_requests.expiresAt")).toBe(false);
+  });
+
+  test("os 5 campos reais com @default(now()) @updatedAt ficam fora da allowlist", () => {
+    const real = readClientSideDefaults(readFileSync("prisma/schema.prisma", "utf8"));
+
+    for (const column of [
+      "backoffice_product_payment_rules.updatedAt",
+      "corretor_studio_profile_subscriptions.updatedAt",
+      "corretor_studio_profile_subscription_capacities.updatedAt",
+      "profile_user_types.updatedAt",
+      "profile_user_type_assignments.updatedAt",
+    ]) {
+      expect(real.has(column)).toBe(false);
+    }
   });
 });
 

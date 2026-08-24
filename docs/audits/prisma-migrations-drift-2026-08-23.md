@@ -208,9 +208,27 @@ descartava todo `ALTER COLUMN … DROP DEFAULT`, o que engoliria em silêncio a
 remoção *intencional* de um default — tirar um `@default(...)` do schema viraria
 "nenhuma diferença" e o banco ficaria com o default antigo. `readClientSideDefaults()`
 lê o `prisma/schema.prisma`, resolve `@@map`/`@map` para nomes físicos e monta o
-conjunto de colunas com default resolvido no client (`@default(uuid()/cuid()/
-ulid()/nanoid())` e `@updatedAt`). Só essas são filtradas: 155 das 159. As outras
-4 tinham default físico que o schema não declarava, e foram declaradas (§7.6).
+conjunto de colunas cujo default o Prisma resolve no client. Só essas são
+filtradas: 155 das 159. As outras 4 tinham default físico que o schema não
+declarava, e foram declaradas (§7.6).
+
+O critério é "o banco fica com default físico?", não "o campo parece
+client-side?". Como um campo tem no máximo um `@default`, basta olhar qual é:
+
+| declaração | default no banco | filtra? |
+|---|---|---|
+| `@default(uuid()/cuid()/ulid()/nanoid())` | não | sim |
+| `@updatedAt` sozinho | não | sim |
+| `@default(now()) @updatedAt` | `CURRENT_TIMESTAMP` | **não** |
+| `@default(dbgenerated(…))`, literal, `autoincrement()` | sim | não |
+
+A terceira linha é a armadilha: `@updatedAt` está lá, mas o `@default(now())`
+junto deixa default físico no banco. Este schema tem **5** campos assim
+(`backoffice_product_payment_rules`, `corretor_studio_profile_subscriptions`,
+`corretor_studio_profile_subscription_capacities`, `profile_user_types`,
+`profile_user_type_assignments` — todos `updatedAt`). Um regex que só procurasse
+`@updatedAt` os classificaria como client-side e engoliria a remoção do
+`@default(now())`.
 
 ### 7.2 Drift real fechado no `prisma/schema.prisma`
 
