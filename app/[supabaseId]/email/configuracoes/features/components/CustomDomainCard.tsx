@@ -57,6 +57,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
+import { PLATFORM_FROM_EMAIL } from "@/lib/email/resolve-campaign-from"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { DomainRecord, ResendDomainStatus } from "../context/EmailSettingsTypes"
 import { DomainEventsTimeline } from "./DomainEventsTimeline"
@@ -214,7 +215,10 @@ export function CustomDomainCard() {
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false)
   const [trackingSubdomainInput, setTrackingSubdomainInput] = useState(DEFAULT_TRACKING_SUBDOMAIN)
   const [openTrackingDraft, setOpenTrackingDraft] = useState(true)
-  const [clickTrackingDraft, setClickTrackingDraft] = useState(true)
+  // Cliques desligados por padrão: ligar reescreve todo href do template para o
+  // subdomínio de tracking, e esse redirecionador é sinalizado como suspeito
+  // pelo Safe Browsing. O clique é medido no first-party pelo `cs_el`.
+  const [clickTrackingDraft, setClickTrackingDraft] = useState(false)
 
   useEffect(() => {
     if (domainName && domainRecords.length === 0) {
@@ -232,7 +236,7 @@ export function CustomDomainCard() {
   function openTrackingDialog() {
     setTrackingSubdomainInput(domainTrackingSubdomain?.trim() || DEFAULT_TRACKING_SUBDOMAIN)
     setOpenTrackingDraft(hasTrackingConfigured ? domainOpenTracking : true)
-    setClickTrackingDraft(hasTrackingConfigured ? domainClickTracking : true)
+    setClickTrackingDraft(hasTrackingConfigured ? domainClickTracking : false)
     setTrackingDialogOpen(true)
   }
 
@@ -323,8 +327,8 @@ export function CustomDomainCard() {
                         <AlertDialogTitle>Deletar domínio</AlertDialogTitle>
                         <AlertDialogDescription>
                           Tem certeza que deseja remover o domínio <strong>{domainName}</strong>? Esta ação
-                          remove o domínio no Resend e os disparos voltarão a usar
-                          deliveryby@corretorstudio.com.
+                          remove o domínio no Resend e os disparos voltarão a usar{" "}
+                          {PLATFORM_FROM_EMAIL}.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>

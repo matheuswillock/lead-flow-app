@@ -3,20 +3,29 @@
  *
  * Regras:
  * - Com remetente padrão → usar nome/e-mail do remetente
- * - Sem remetente + domínio do time → deliveryby@[domínio]
- * - Sem remetente + sem domínio → deliveryby@corretorstudio.com
+ * - Sem remetente + domínio do time → contato@[domínio]
+ * - Sem remetente + sem domínio → contato@corretorstudio.com
  */
 
 import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
 
 export const PLATFORM_FROM_DOMAIN = "corretorstudio.com"
-export const DELIVERY_LOCAL_PART = "deliveryby"
+export const DELIVERY_LOCAL_PART = "contato"
 export const PLATFORM_FROM_NAME = "Corretor Studio"
 export const PLATFORM_FROM_EMAIL = `${DELIVERY_LOCAL_PART}@${PLATFORM_FROM_DOMAIN}`
 
-/** Defaults legados ainda presentes em rows antigas */
+/**
+ * Defaults legados ainda presentes em rows antigas.
+ *
+ * `deliveryby@corretorstudio.com` foi o default da plataforma até a troca para
+ * `contato@` e é o `@default` de `EmailTeamSettings.fromEmail`, então continua
+ * gravado em rows existentes. Precisa estar listado como literal: sem ele,
+ * `resolveCampaignFrom` passaria a tratar o endereço antigo como remetente
+ * próprio do time e o preservaria no disparo.
+ */
 const LEGACY_PLATFORM_FROM_EMAILS = new Set([
   PLATFORM_FROM_EMAIL.toLowerCase(),
+  "deliveryby@corretorstudio.com",
   "no-reply@corretorstudio.com",
 ])
 

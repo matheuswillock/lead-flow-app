@@ -52,9 +52,52 @@ const createLead = mock(
 
 const syncLeadExecute = mock(async () => ({ isValid: true }))
 
+type WebhookRecord = {
+  id: string
+  teamId: string
+  status: string
+  recipientEmail: string
+  recipientName: string | null
+  campaignId: string | null
+  dispatchId: string | null
+  deliveredAt: Date | null
+  openedAt: Date | null
+  clickedAt: Date | null
+  bouncedAt: Date | null
+  complainedAt: Date | null
+}
+
+function makeWebhookRecord(overrides: Partial<WebhookRecord> = {}): WebhookRecord {
+  return {
+    id: EMAIL_LOG_ID,
+    teamId: TEAM_ID,
+    status: "delivered",
+    recipientEmail: "destinatario@exemplo.com",
+    recipientName: "Destinatário",
+    campaignId: "campaign-1",
+    dispatchId: "dispatch-1",
+    deliveredAt: new Date("2026-08-20T10:00:00.000Z"),
+    openedAt: null,
+    clickedAt: null,
+    bouncedAt: null,
+    complainedAt: null,
+    ...overrides,
+  }
+}
+
+const findCampaignWebhookRecordById = mock(
+  async (_teamId: string, _emailLogId: string): Promise<WebhookRecord | null> => makeWebhookRecord()
+)
+const applyWebhookEvent = mock(async (_input: unknown) => undefined)
+
+/** Deixa o fire-and-forget do clique first-party resolver antes das asserções. */
+const flushPendingClick = () => new Promise((resolve) => setTimeout(resolve, 0))
+
 mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
   emailLogRepository: {
     findCampaignLogForAttribution,
+    findCampaignWebhookRecordById,
+    applyWebhookEvent,
   },
 }))
 
@@ -122,7 +165,11 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
     findCampaignContactListIds.mockReset()
     findEmailContactCustomFields.mockReset()
     findRadarPhoneByEmail.mockReset()
+    findCampaignWebhookRecordById.mockReset()
+    applyWebhookEvent.mockReset()
 
+    findCampaignWebhookRecordById.mockImplementation(async () => makeWebhookRecord())
+    applyWebhookEvent.mockImplementation(async () => undefined)
     findCampaignLogForAttribution.mockImplementation(async () => ({
       id: EMAIL_LOG_ID,
       campaignId: "campaign-1",
@@ -172,6 +219,50 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
         campaignId: "campaign-1",
       }),
     })
+  })
+
+  it("form_viewed atribuído → grava EmailEvent clicked (repõe a métrica sem redirecionador)", async () => {
+    await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+      occurredAt: "2026-08-22T13:45:00.000Z",
+    })
+    await flushPendingClick()
+
+    expect(applyWebhookEvent).toHaveBeenCalledTimes(1)
+    const [call] = applyWebhookEvent.mock.calls[0] as [
+      { eventType: string; occurredAt: Date; metadata: Record<string, unknown>; log: WebhookRecord },
+    ]
+    expect(call.eventType).toBe("clicked")
+    expect(call.occurredAt).toEqual(new Date("2026-08-22T13:45:00.000Z"))
+    expect(call.log.id).toBe(EMAIL_LOG_ID)
+    expect(call.metadata).toMatchObject({
+      source: "public_form_attribution",
+      formPublicId: "pub-form-1",
+    })
+  })
+
+  it("form_viewed repetido (clickedAt já gravado) → não conta clique de novo", async () => {
+    findCampaignWebhookRecordById.mockImplementation(async () =>
+      makeWebhookRecord({ clickedAt: new Date("2026-08-22T13:45:00.000Z"), status: "clicked" })
+    )
+
+    await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+    })
+    await flushPendingClick()
+
+    expect(applyWebhookEvent).not.toHaveBeenCalled()
+  })
+
+  it("form_started / form_completed não geram clique — só form_viewed é o proxy do clique", async () => {
+    for (const eventType of ["form_started", "form_completed"] as const) {
+      await resolveEmailCampaignFormAttributionUseCase.execute({ ...baseInput, eventType })
+    }
+    await flushPendingClick()
+
+    expect(applyWebhookEvent).not.toHaveBeenCalled()
   })
 
   it("form_completed após form_viewed (mesmo emailLogId) → não cria Lead na atribuição", async () => {

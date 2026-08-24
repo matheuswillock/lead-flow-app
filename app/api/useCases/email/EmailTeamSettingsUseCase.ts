@@ -614,7 +614,7 @@ export class EmailTeamSettingsUseCase {
         region: DEFAULT_DOMAIN_REGION,
         customReturnPath: "bounce",
         openTracking: true,
-        clickTracking: true,
+        clickTracking: false,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
       if (error || !data) {
@@ -627,12 +627,35 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      await resend.domains.update({
+      // Click tracking fica desligado: ele reescreve todo href do template para
+      // o subdomínio de tracking, e esse redirecionador é penalizado pelo Safe
+      // Browsing ("link parece perigoso" no Gmail). O clique é medido no
+      // first-party, pelo `cs_el` carimbado na URL do formulário. O
+      // `trackingSubdomain` continua sendo criado porque o open tracking usa o
+      // mesmo CNAME.
+      //
+      // O `create` acima já nasce com `clickTracking: false` — não há janela em
+      // que o redirecionador exista. Este update é reforço, e o erro dele é
+      // verificado: sem isso, uma falha aqui deixaria o provedor divergente do
+      // que gravamos no banco e a operação ainda reportaria sucesso.
+      const { error: trackingError } = await resend.domains.update({
         id: data.id,
         openTracking: true,
-        clickTracking: true,
+        clickTracking: false,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
+      if (trackingError) {
+        console.error(
+          "[EmailTeamSettingsUseCase][connectDomain] Resend tracking error",
+          trackingError
+        )
+        return new Output(
+          false,
+          [],
+          [mapResendDomainError(trackingError.message, "connect", domainName.trim())],
+          null
+        )
+      }
 
       const connectedAt = new Date()
       const senderCount = await prisma.emailTeamSender.count({ where: { teamId: ctx.teamId } })
@@ -650,7 +673,7 @@ export class EmailTeamSettingsUseCase {
           resendDomainRegion: DEFAULT_DOMAIN_REGION,
           resendDomainConnectedAt: connectedAt,
           resendOpenTracking: true,
-          resendClickTracking: true,
+          resendClickTracking: false,
           dispatchAllowedRoles: DEFAULTS.dispatchAllowedRoles,
           templateCreateRoles: DEFAULTS.templateCreateRoles,
           templateApprovalRequired: DEFAULTS.templateApprovalRequired,
@@ -664,7 +687,7 @@ export class EmailTeamSettingsUseCase {
           resendDomainRegion: DEFAULT_DOMAIN_REGION,
           resendDomainConnectedAt: connectedAt,
           resendOpenTracking: true,
-          resendClickTracking: true,
+          resendClickTracking: false,
           ...(senderCount === 0
             ? {
                 fromEmail: deliveryFromEmail,
