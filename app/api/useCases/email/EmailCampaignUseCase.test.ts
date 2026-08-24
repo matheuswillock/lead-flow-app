@@ -359,9 +359,8 @@ mock.module("pg", () => ({
 const { EmailCampaignUseCase, EMAIL_CAMPAIGN_FAILURE_MESSAGES } = await import(
   "./EmailCampaignUseCase"
 )
-const { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } = await import(
-  "@/lib/email/campaign-dispatch-guards"
-)
+const { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE, RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE } =
+  await import("@/lib/email/campaign-dispatch-guards")
 const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
   "@/lib/email/resolve-campaign-from"
 )
@@ -1747,7 +1746,8 @@ describe("EmailCampaignUseCase.send", () => {
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    // Causa é o DNS, não as métricas: elas estão ligadas neste cenário.
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
@@ -1774,7 +1774,8 @@ describe("EmailCampaignUseCase.send", () => {
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    // Causa é o DNS, não as métricas: elas estão ligadas neste cenário.
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })

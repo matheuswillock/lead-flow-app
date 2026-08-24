@@ -12,6 +12,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
 import {
   getTeamAccess,
   hasDelegatedUserCreationAccess,
@@ -407,14 +408,19 @@ export async function POST(
       return NextResponse.json(output, { status: 403 });
     }
 
+    // Guarda de e-mail já cadastrado. Sem `escapeLikePattern` o
+    // `mode: "insensitive"` vira `ILIKE` com o valor cru e o `_` do endereço
+    // digitado casa a conta de outra pessoa — aqui o falso positivo BLOQUEIA um
+    // cadastro legítimo, e a consulta é global (sem escopo de time).
+    const emailPattern = escapeLikePattern(email)
     const [existingProfile, existingPendingOperator, existingPendingAction, billingOwner] = await Promise.all([
       prisma.profile.findFirst({
-        where: { email: { equals: email, mode: "insensitive" } },
+        where: { email: { equals: emailPattern, mode: "insensitive" } },
         select: { id: true },
       }),
       prisma.pendingOperator.findFirst({
         where: {
-          email: { equals: email, mode: "insensitive" },
+          email: { equals: emailPattern, mode: "insensitive" },
           operatorCreated: false,
         },
         select: { id: true },
@@ -638,13 +644,16 @@ export async function GET(
 
     if (emailToCheck) {
       const normalizedEmail = normalizeEmail(emailToCheck);
+      // Ver o comentário na guarda equivalente do POST: sem escape o `_` do
+      // endereço digitado casa a conta de outra pessoa e bloqueia o cadastro.
+      const emailPattern = escapeLikePattern(normalizedEmail);
 
       const existingProfile = await prisma.profile.findFirst({
-        where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+        where: { email: { equals: emailPattern, mode: "insensitive" } },
         select: { id: true },
       });
       const existingPending = await prisma.pendingOperator.findFirst({
-        where: { email: { equals: normalizedEmail, mode: "insensitive" }, operatorCreated: false },
+        where: { email: { equals: emailPattern, mode: "insensitive" }, operatorCreated: false },
         select: { id: true },
       });
       const existingPendingAction = await prisma.pendingAction.findFirst({
