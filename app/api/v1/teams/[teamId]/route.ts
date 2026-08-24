@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
+import {
+  teamManagementUseCase,
+  TEAM_MANAGEMENT_ERRORS,
+} from "@/app/api/useCases/teamManagement/TeamManagementUseCase";
+import { invalidatePublicFormBootstrapCache } from "@/lib/cache/invalidation";
 import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import {
@@ -74,118 +78,32 @@ export async function PATCH(
       );
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const existingTeam = await tx.team.findFirst({
-        where: {
-          id: teamId,
-          masterId: teamAccess.access.managerId,
-        },
-        select: { id: true, name: true, isDefault: true },
-      });
-
-      if (!existingTeam) {
-        throw new Error("TEAM_NOT_FOUND");
-      }
-
-      if (payload.isDefault === false) {
-        const otherDefaultTeam = await tx.team.findFirst({
-          where: {
-            masterId: teamAccess.access.managerId,
-            isDefault: true,
-            NOT: { id: teamId },
-          },
-          select: { id: true },
-        });
-
-        if (!otherDefaultTeam) {
-          throw new Error("CANNOT_UNSET_ONLY_DEFAULT");
-        }
-      }
-
-      const teamUpdateData: { name?: string; isDefault?: boolean } = {};
-      if (payload.name !== undefined) {
-        teamUpdateData.name = payload.name.trim();
-      }
-
-      if (payload.isDefault === true) {
-        await tx.team.updateMany({
-          where: { masterId: teamAccess.access.managerId },
-          data: { isDefault: false },
-        });
-        teamUpdateData.isDefault = true;
-      } else if (payload.isDefault === false) {
-        teamUpdateData.isDefault = false;
-      }
-
-      const team = await tx.team.update({
-        where: { id: teamId },
-        data: teamUpdateData,
-        select: { id: true, name: true, isDefault: true },
-      });
-
-      if (payload.transferTargetTeamIds) {
-        const validTargets = await tx.team.findMany({
-          where: {
-            id: { in: payload.transferTargetTeamIds },
-            masterId: teamAccess.access.managerId,
-            NOT: { id: teamId },
-          },
-          select: { id: true },
-        });
-
-        const validTargetIds = validTargets.map((item) => item.id);
-
-        await tx.teamTransferRoute.deleteMany({
-          where: { sourceTeamId: teamId },
-        });
-
-        if (validTargetIds.length > 0) {
-          await tx.teamTransferRoute.createMany({
-            data: validTargetIds.map((targetTeamId) => ({
-              sourceTeamId: teamId,
-              targetTeamId,
-              createdBy: teamAccess.access.profileId,
-            })),
-            skipDuplicates: true,
-          });
-        }
-      }
-
-      return { before: existingTeam, after: team };
-    });
-
-    await auditLogWriter.logAudit({
-      entityType: "TEAM",
-      entityId: teamId,
-      action: "UPDATE",
+    const output = await teamManagementUseCase.updateTeam({
+      teamId,
+      masterId: teamAccess.access.managerId,
       actorProfileId: teamAccess.access.profileId,
-      before: updated.before,
-      after: updated.after,
-      metadata: { teamId },
+      name: payload.name,
+      isDefault: payload.isDefault,
+      transferTargetTeamIds: payload.transferTargetTeamIds,
     });
 
-    return NextResponse.json(
-      new Output(true, ["Time atualizado com sucesso"], [], updated.after),
-      { status: 200 }
-    );
+    if (!output.isValid) {
+      const firstError = output.errorMessages[0] ?? "";
+      const status =
+        firstError === TEAM_MANAGEMENT_ERRORS.NOT_FOUND
+          ? 404
+          : firstError === TEAM_MANAGEMENT_ERRORS.ONLY_DEFAULT
+            ? 400
+            : 500;
+      return NextResponse.json(output, { status });
+    }
+
+    // Nome do time e rotas de transferência aparecem no bootstrap do form público.
+    invalidatePublicFormBootstrapCache({ teamId });
+
+    return NextResponse.json(output, { status: 200 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
-    if (error instanceof Error) {
-      if (error.message === "TEAM_NOT_FOUND") {
-        return NextResponse.json(new Output(false, [], ["Time não encontrado"], null), { status: 404 });
-      }
-      if (error.message === "CANNOT_UNSET_ONLY_DEFAULT") {
-        return NextResponse.json(
-          new Output(
-            false,
-            [],
-            ["Selecione outro time como padrão antes de remover"],
-            null
-          ),
-          { status: 400 }
-        );
-      }
-    }
     console.error("Erro ao atualizar time:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao atualizar time"], null),
@@ -239,38 +157,19 @@ export async function DELETE(
       );
     }
 
-    const [requester, billingOwner] = await Promise.all([
-      prisma.profile.findUnique({
-        where: { supabaseId },
-        select: { id: true, email: true },
-      }),
-      prisma.profile.findUnique({
-        where: { id: teamAccess.access.managerId },
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          cpfCnpj: true,
-          phone: true,
-          postalCode: true,
-          address: true,
-          addressNumber: true,
-          neighborhood: true,
-          complement: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
-          subscriptionNextDueDate: true,
-          subscriptionCycle: true,
-          hasPermanentSubscription: true,
-          timezone: true,
-        },
-      }),
-    ]);
-
-    if (!requester || !billingOwner) {
-      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
+    const actorsOutput = await teamManagementUseCase.findDeletionActors(
+      supabaseId,
+      teamAccess.access.managerId
+    );
+    if (!actorsOutput.isValid) {
+      return NextResponse.json(actorsOutput, { status: 404 });
     }
+
+    const { requesterId, requesterEmail, billingOwnerId } = actorsOutput.result as {
+      requesterId: string;
+      requesterEmail: string;
+      billingOwnerId: string;
+    };
 
     const supabaseAdmin = createSupabaseAdminClient();
     if (!supabaseAdmin) {
@@ -281,7 +180,7 @@ export async function DELETE(
     }
 
     const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
-      email: requester.email,
+      email: requesterEmail,
       password: payload.password,
     });
 
@@ -289,32 +188,14 @@ export async function DELETE(
       return NextResponse.json(new Output(false, [], ["Senha incorreta"], null), { status: 401 });
     }
 
-    const teamSnapshot = await prisma.team.findUnique({
-      where: { id: teamId },
-      select: { id: true, name: true, masterId: true, isDefault: true },
-    });
+    const output = await teamManagementUseCase.deleteTeam(teamId, requesterId);
+    if (!output.isValid) {
+      return NextResponse.json(output, { status: 500 });
+    }
 
-    await prisma.team.delete({ where: { id: teamId } });
+    await memberProBillingUseCase.syncBillingAfterUsageChange(billingOwnerId, "remove_team");
 
-    await auditLogWriter.logAudit({
-      entityType: "TEAM",
-      entityId: teamId,
-      action: "DELETE",
-      actorProfileId: requester.id,
-      before: teamSnapshot,
-      after: null,
-      metadata: { teamId },
-    });
-
-    await memberProBillingUseCase.syncBillingAfterUsageChange(
-      billingOwner.id,
-      "remove_team"
-    );
-
-    return NextResponse.json(
-      new Output(true, ["Time deletado com sucesso"], [], { teamId }),
-      { status: 200 }
-    );
+    return NextResponse.json(output, { status: 200 });
   } catch (error: any) {
     console.error("Erro ao deletar time:", error);
     return NextResponse.json(

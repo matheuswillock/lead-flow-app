@@ -3392,6 +3392,10 @@ model EmailLog {
 
   @@index([teamId, status])
   @@index([teamId, campaignId])
+  // Permite agregar o progresso de disparo no banco sem ordenar: o GROUP BY por
+  // (campaignId, recipientEmail) passa a ler em ordem de indice. Ver a migration
+  // 20260823234849_email-logs-campaign-recipient-index.
+  @@index([teamId, campaignId, recipientEmail], map: "corretor_studio_email_logs_team_campaign_recipient_idx")
   @@index([campaignId, dispatchId])
   @@index([teamId, dispatchId, status], map: "corretor_studio_email_logs_team_dispatch_status_idx")
   @@index([dispatchId])
