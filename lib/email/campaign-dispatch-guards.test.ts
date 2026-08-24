@@ -7,6 +7,8 @@ import {
   isResendDomainTrackingCapable,
   RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
   RESEND_DOMAIN_METRICS_DISABLED_MESSAGE,
+  RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+  resolveReconciledCampaignStatus,
   resolveCampaignStatusAfterDispatch,
 } from "./campaign-dispatch-guards"
 
@@ -248,5 +250,62 @@ describe("resolveCampaignStatusAfterDispatch", () => {
   it("total nao fechado sem falha real nao segura a campanha em partially_sent", () => {
     // Era o bug: 1969 < 1998 mantinha reenvio disponivel para sempre.
     expect(resolveCampaignStatusAfterDispatch(1969, null, 1998, 0).campaignStatus).toBe("sent")
+  })
+})
+
+/**
+ * Regra irma da de cima, aplicada na releitura da lista. As duas precisam
+ * concordar: quando divergiram, o reconciler regravou `partially_sent` por cima
+ * do `sent` que o disparo tinha acabado de persistir, e o botao de reenviar
+ * falhas voltou sozinho na proxima leitura.
+ */
+describe("resolveReconciledCampaignStatus", () => {
+  it("caso real Homens v2: 1782 aceitos + 187 suprimidos de 1998 fecha como sent", () => {
+    // 1782 + 187 = 1969, NAO 1998. Os 29 restantes nunca viraram log — foram
+    // descartados na materializacao. Comparar contagem de log com o total da
+    // audiencia devolve `partially_sent` para sempre, que e exatamente o bug
+    // que o teste acima ja documentava para o outro lado da regra.
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 1782, failedCount: 0, queuedCount: 0, suppressedCount: 187 }
+      )
+    ).toBe("sent")
+  })
+
+  it("falha retentavel mantem partially_sent", () => {
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 900, failedCount: 100, queuedCount: 0, suppressedCount: 0 }
+      )
+    ).toBe("partially_sent")
+  })
+
+  it("log ainda na fila mantem partially_sent", () => {
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 900, failedCount: 0, queuedCount: 100, suppressedCount: 0 }
+      )
+    ).toBe("partially_sent")
+  })
+
+  it("nenhum aceite e failed", () => {
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 0, failedCount: 50, queuedCount: 0, suppressedCount: 10 }
+      )
+    ).toBe("failed")
+  })
+
+  it("suprimido sozinho, sem nada retentavel, fecha como sent", () => {
+    // Nao ha `totalRecipients` na assinatura de proposito: comparar contagem de
+    // log com o total da audiencia foi exatamente o bug.
+    expect(
+      resolveReconciledCampaignStatus({
+        acceptedCount: 10,
+        failedCount: 0,
+        queuedCount: 0,
+        suppressedCount: 990,
+      })
+    ).toBe("sent")
   })
 })
