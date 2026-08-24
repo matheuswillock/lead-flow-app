@@ -422,7 +422,10 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
               event: "INSERT",
               schema: "public",
               table: "corretor_studio_notifications",
-              filter: `recipient_profile_id=eq.${user.id}`,
+              // A coluna fisica e camelCase (`recipientProfileId`), como todo o
+              // schema. Com `recipient_profile_id` o filtro apontava para uma
+              // coluna que nao existe.
+              filter: `recipientProfileId=eq.${user.id}`,
             },
             (payload) => {
               const row = normalizeRealtimeRow(payload.new as Partial<NotificationRealtimeRow>);
@@ -457,7 +460,10 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
               event: "UPDATE",
               schema: "public",
               table: "corretor_studio_notifications",
-              filter: `recipient_profile_id=eq.${user.id}`,
+              // A coluna fisica e camelCase (`recipientProfileId`), como todo o
+              // schema. Com `recipient_profile_id` o filtro apontava para uma
+              // coluna que nao existe.
+              filter: `recipientProfileId=eq.${user.id}`,
             },
             (payload) => {
               const oldRow = normalizeRealtimeRow(payload.old as Partial<NotificationRealtimeRow>);

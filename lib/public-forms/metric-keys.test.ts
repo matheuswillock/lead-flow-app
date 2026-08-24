@@ -14,6 +14,31 @@ describe("public form metric keys", () => {
     )
   })
 
+  it("escopa o requestKey por atribuição — segunda campanha não bate no curto-circuito", () => {
+    const campanhaA = "e231d889-da04-4273-afb2-c2e82fa9a04e"
+    const campanhaB = "3fc5f0a2-1111-4222-8333-444455556666"
+
+    expect(buildPublicFormSubmitRequestKey("session-a", campanhaA)).toBe(
+      `session-a:submit:el:${campanhaA}`,
+    )
+
+    // requestKey é @unique e o accept() devolve "Respostas já recebidas" quando
+    // acha submissão completa com a mesma chave. Sem escopo, a conversão da
+    // segunda campanha nunca nasce e nenhuma métrica é gerada.
+    expect(buildPublicFormSubmitRequestKey("session-a", campanhaB)).not.toBe(
+      buildPublicFormSubmitRequestKey("session-a", campanhaA),
+    )
+
+    // Reenviar pelo MESMO link continua idempotente.
+    expect(buildPublicFormSubmitRequestKey("session-a", campanhaA)).toBe(
+      buildPublicFormSubmitRequestKey("session-a", campanhaA),
+    )
+
+    // Visita direta mantém a chave antiga; valor forjado é ignorado.
+    expect(buildPublicFormSubmitRequestKey("session-a", null)).toBe("session-a:submit")
+    expect(buildPublicFormSubmitRequestKey("session-a", "nao-e-uuid")).toBe("session-a:submit")
+  })
+
   it("gera eventKey estável por sessão e tipo", () => {
     expect(buildPublicFormMetricEventKey("session-a", "form_completed")).toBe(
       "session-a:form_completed",

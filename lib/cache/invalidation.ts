@@ -57,6 +57,11 @@ export function invalidateLeadFullCache(input: {
 export function invalidateTeamCalendarCache(input: { teamId: string; leadId?: string | null }) {
   revalidateDefinedTags([
     cacheTags.teamCalendar(input.teamId),
+    // Agendar/reagendar grava `meetingDate` na propria linha do Lead, que a
+    // variante de board do cache de listagem serve. A simetria com
+    // `invalidateLeadCache` (que ja derruba teamCalendar) tem que valer nos
+    // dois sentidos, senao o board mostra horario velho ate o TTL.
+    cacheTags.teamLeads(input.teamId),
     cacheTags.teamDashboard(input.teamId),
     cacheTags.teamPerformance(input.teamId),
     input.leadId ? cacheTags.lead(input.leadId) : null,

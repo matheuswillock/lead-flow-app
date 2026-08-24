@@ -6,7 +6,10 @@ import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
-import { getCachedTeamLeads } from "@/app/api/useCases/leads/getCachedTeamLeads";
+import {
+  getCachedTeamLeads,
+  CachedTeamLeadsUnavailableError,
+} from "@/app/api/useCases/leads/getCachedTeamLeads";
 import { isBoundedLeadsQuery } from "@/app/api/useCases/leads/boundedLeadsQuery";
 import {
   canonicalizeCustomFieldFilters,
@@ -131,24 +134,41 @@ export async function GET(request: NextRequest) {
 
     // Só a fatia limitada entra no cache — ver isBoundedLeadsQuery.
     if (isBoundedLeadsQuery({ search, startDate, endDate, limit, customFieldFiltersJSON })) {
-      const payload = await getCachedTeamLeads({
-        teamId: access.teamId,
-        // Papel do TeamAccess, nunca o `?role=` da query: o use case ignora o param.
-        role: access.teamMember.role,
-        // Manager-like enxerga o time inteiro, então todos colapsam na mesma entrada.
-        scopeProfileId: isManagerLikeRole(access.teamMember.role) ? "" : access.profileId,
-        status: status ?? "",
-        assignedTo: assignedTo ?? "",
-        onlyTransfer,
-        calendarWindowStartISO: calendarWindowStart ?? "",
-        calendarWindowEndISO: calendarWindowEnd ?? "",
-        customFieldFiltersJSON,
-        customFieldSortJSON,
-      });
+      try {
+        const payload = await getCachedTeamLeads({
+          teamId: access.teamId,
+          // Papel do TeamAccess, nunca o `?role=` da query: o use case ignora o param.
+          role: access.teamMember.role,
+          // Manager-like enxerga o time inteiro, então todos colapsam na mesma entrada.
+          scopeProfileId: isManagerLikeRole(access.teamMember.role) ? "" : access.profileId,
+          status: status ?? "",
+          assignedTo: assignedTo ?? "",
+          onlyTransfer,
+          calendarWindowStartISO: calendarWindowStart ?? "",
+          calendarWindowEndISO: calendarWindowEnd ?? "",
+          customFieldFiltersJSON,
+          customFieldSortJSON,
+        });
 
-      return NextResponse.json(
-        new Output(payload.isValid, payload.successMessages, payload.errorMessages, payload.result)
-      );
+        return NextResponse.json(
+          new Output(payload.isValid, payload.successMessages, payload.errorMessages, payload.result)
+        );
+      } catch (cacheError) {
+        rethrowIfPrerenderInterrupted(cacheError);
+        // A funcao cacheada lanca quando a listagem falha, justamente para o
+        // Next nao gravar o erro. `getCachedTeamLeads` e o wrapper NAO cacheado
+        // que reetiqueta essa falha depois da fronteira do `"use cache"`, onde o
+        // Next ja trocou a excecao original por um Error generico com digest —
+        // e por isso que este `instanceof` casa em producao.
+        if (cacheError instanceof CachedTeamLeadsUnavailableError) {
+          console.error('[LeadsRoute][GET] listagem indisponivel:', cacheError.errorMessages);
+          return NextResponse.json(
+            new Output(false, [], cacheError.errorMessages, null),
+            { status: 500 }
+          );
+        }
+        throw cacheError;
+      }
     }
 
     const options = {

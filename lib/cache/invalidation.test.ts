@@ -71,12 +71,25 @@ describe("invalidateLeadFullCache", () => {
 });
 
 describe("invalidateTeamCalendarCache", () => {
-  it("derruba calendario, dashboard e performance do time", () => {
+  it("derruba calendario, board, dashboard e performance do time", () => {
     invalidateTeamCalendarCache({ teamId: "team-1" });
 
     expect(new Set(revalidatedTags)).toEqual(
-      new Set(["team-calendar:team-1", "team-dashboard:team-1", "team-performance:team-1"])
+      new Set([
+        "team-calendar:team-1",
+        "team-leads:team-1",
+        "team-dashboard:team-1",
+        "team-performance:team-1",
+      ])
     );
+  });
+
+  it("inclui team-leads porque agendar grava meetingDate na propria Lead", () => {
+    // Simetria com invalidateLeadCache, que ja derruba team-calendar. Sem isto
+    // o board mostrava horario de reuniao velho ate o TTL.
+    invalidateTeamCalendarCache({ teamId: "team-1" });
+
+    expect(revalidatedTags).toContain("team-leads:team-1");
   });
 
   it("inclui as tags do lead quando leadId e informado", () => {

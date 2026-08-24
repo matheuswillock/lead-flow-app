@@ -13,6 +13,7 @@ import {
   validateAnswer,
 } from "@/lib/public-forms/engine"
 import { buildLeadSyncAlerts, formatLeadSyncAlerts } from "@/lib/public-forms/lead-sync-alerts"
+import { invalidateLeadCache } from "@/lib/cache/invalidation"
 import type {
   PublicFormAnswerInput,
   PublicFormSnapshot,
@@ -28,7 +29,10 @@ import {
   findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
-import { FORM_COMPLETE_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
+import {
+  FORM_COMPLETE_ACTIVITY_BODY,
+  parseEmailLogIdFromOrigin,
+} from "@/lib/public-forms/email-campaign-attribution"
 import { buildPublicFormMetricEventKey } from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
@@ -98,6 +102,18 @@ export class PublicFormSubmissionUseCase {
       })
     }
 
+    // Atribuição da requisição atual. O `accept()` tem TRÊS curto-circuitos de
+    // "Respostas já recebidas" — requestKey, sessão resolvida pela publicação, e
+    // sessão na publicação corrente — e todos precisam concordar em o que conta
+    // como "a mesma conversão". O cookie de sessão vive 30 dias, então o mesmo
+    // navegador pode converter por campanhas diferentes; sem comparar a
+    // atribuição, a segunda é engolida por um dos gates e não gera métrica
+    // nenhuma. Basta um deles ficar de fora para o buraco continuar aberto.
+    const currentAttribution = parseEmailLogIdFromOrigin(input.origin ?? {})
+    const isSameConversion = (submissionOrigin: unknown): boolean =>
+      parseEmailLogIdFromOrigin((submissionOrigin as Record<string, unknown> | null) ?? {}) ===
+      currentAttribution
+
     let publicationId = current.publicationId
     let snapshot = current.snapshot
 
@@ -114,7 +130,14 @@ export class PublicFormSubmissionUseCase {
         visitorSessionId: input.visitorSessionId,
         questionIds: input.answers.map((answer) => answer.questionId),
       })
-      if (resolved.sessionSubmission?.status === "completed") {
+      // Este gate roda ANTES do de baixo e usa a última submissão da sessão no
+      // form inteiro, não só na publicação corrente. Sem a checagem de
+      // atribuição aqui, o `requestKey` escopado não adianta nada: a campanha
+      // nova não casa nenhum requestKey, cai neste `else`, e sai por aqui.
+      if (
+        resolved.sessionSubmission?.status === "completed" &&
+        isSameConversion(resolved.sessionSubmission.origin)
+      ) {
         return new Output(true, ["Respostas já recebidas"], [], {
           submissionId: resolved.sessionSubmission.id,
           alreadyProcessed: true,
@@ -129,7 +152,10 @@ export class PublicFormSubmissionUseCase {
         publicationId,
         input.visitorSessionId,
       )
-      if (completedBySession) {
+      // Mesma regra do gate acima: só é a MESMA conversão quando a atribuição
+      // bate. Preserva a idempotência real — recarregar ou reenviar pelo MESMO
+      // link continua barrado — e libera o que de fato é conversão distinta.
+      if (completedBySession && isSameConversion(completedBySession.origin)) {
         return new Output(true, ["Respostas já recebidas"], [], {
           submissionId: completedBySession.id,
           alreadyProcessed: true,
@@ -392,6 +418,15 @@ export class PublicFormSubmissionUseCase {
 
       if (lead || attributionResult?.leadId) {
         const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
+
+        // O lead do formulario publico nasce aqui, no processamento em
+        // background — nao na rota de submissao, que so enfileira. Sem esta
+        // invalidacao ele ficava invisivel no board ate o TTL do cache de
+        // listagem, mesma classe do bug do webhook do Meta.
+        if (resolvedLeadId && form.teamId) {
+          invalidateLeadCache({ leadId: resolvedLeadId, teamId: form.teamId })
+        }
+
         metricEvents.push({
           formId: job.snapshot.formId,
           publicationId: job.publicationId,
