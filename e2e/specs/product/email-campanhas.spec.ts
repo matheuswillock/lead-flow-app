@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto"
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page, type Request } from "@playwright/test"
 import { formatPermanentBounceAlert } from "@/lib/email/campaign-audience-copy"
 import {
   CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
@@ -211,5 +211,52 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
       await prisma.emailContactList.delete({ where: { id: listId } }).catch(() => {})
       await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
     }
+  })
+
+  /**
+   * Cadência do polling de progresso de disparo.
+   *
+   * O provider vive no layout autenticado, então o intervalo roda em qualquer
+   * rota. Estes testes contam requisições reais em vez de julgar o código: é a
+   * única forma de provar que o caso ocioso caiu sem estragar o caso de disparo.
+   */
+  test.describe("cadência do polling de dispatch", () => {
+    /** Conta hits em /email/campaigns durante uma janela. */
+    async function countCampaignPolls(page: Page, windowMs: number): Promise<number> {
+      let hits = 0
+      const onRequest = (request: Request) => {
+        if (request.url().includes("/email/campaigns")) hits += 1
+      }
+      page.on("request", onRequest)
+      await page.waitForTimeout(windowMs)
+      page.off("request", onRequest)
+      return hits
+    }
+
+    test("aba oculta não dispara polling", async ({ page }) => {
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/board`, { waitUntil: "domcontentloaded" })
+      await page.waitForTimeout(2_000)
+
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "hidden",
+        })
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+
+      const hits = await countCampaignPolls(page, 10_000)
+      expect(hits, "aba oculta não deve consultar campanhas").toBe(0)
+    })
+
+    test("fora do módulo de e-mail e sem disparo, a cadência é baixa", async ({ page }) => {
+      // /board não tem relação com e-mail; antes desta mudança o intervalo de 4s
+      // rodava aqui do mesmo jeito, gerando ~15 requisições por minuto.
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/board`, { waitUntil: "domcontentloaded" })
+      await page.waitForTimeout(3_000)
+
+      const hits = await countCampaignPolls(page, 12_000)
+      expect(hits, `esperado no máximo 1 hit em 12s, veio ${hits}`).toBeLessThanOrEqual(1)
+    })
   })
 })
