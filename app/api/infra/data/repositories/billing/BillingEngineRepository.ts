@@ -71,7 +71,11 @@ class BillingEngineRepository {
 
   async updateAdhesionDiscount(
     adhesionId: string,
-    data: Prisma.BackofficeAdhesionUpdateInput
+    // Aceita as duas formas, como o próprio prisma.update: `discountApprovedByProfileId`
+    // é FK de relação (discountApprovedBy), então só existe na variante Unchecked.
+    data:
+      | Prisma.BackofficeAdhesionUpdateInput
+      | Prisma.BackofficeAdhesionUncheckedUpdateInput
   ) {
     return prisma.backofficeAdhesion.update({
       where: { id: adhesionId },
