@@ -43,6 +43,7 @@ import {
   getResendDomainDispatchWarnings,
   resendDomainTrackingInputFromSettings,
   resolveCampaignStatusAfterDispatch,
+  resolveReconciledCampaignStatus,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import {
@@ -100,6 +101,8 @@ import {
   type SuppressedAudienceCounts,
 } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
+import type { IEmailLogRepository } from "@/app/api/infra/data/repositories/emailLog/IEmailLogRepository"
 import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
@@ -115,6 +118,7 @@ import {
 import { suggestUnsubscribeTokenHint } from "@/lib/email/unsubscribe-link-embed"
 import {
   aggregateCumulativeDispatchLogCounters,
+  emptyDispatchLogCounters,
   buildCampaignDispatchProgress,
   buildCampaignDispatchProgressSummary,
   buildCumulativeCampaignDispatchProgress,
@@ -356,7 +360,13 @@ export class EmailCampaignUseCase {
   private creditService = new EmailCreditService()
   private repository: IEmailCampaignRepository
 
-  constructor(private readonly db: PrismaClient = prisma) {
+  constructor(
+    private readonly db: PrismaClient = prisma,
+    // Injetado pela interface, não pelo singleton concreto: dependência nova
+    // neste arquivo entra pela porta certa (DIP), mesmo com a entrada legada
+    // ainda em `dipPrismaInUseCaseAllowlist` por causa dos acessos anteriores.
+    private readonly emailLogs: IEmailLogRepository = emailLogRepository
+  ) {
     this.repository = new EmailCampaignRepository(this.db)
   }
 
@@ -404,11 +414,7 @@ export class EmailCampaignUseCase {
     if (dispatchIds.length === 0) return countersByDispatchId
 
     for (const dispatchId of dispatchIds) {
-      countersByDispatchId.set(dispatchId, {
-        acceptedCount: 0,
-        failedCount: 0,
-        queuedCount: 0,
-      })
+      countersByDispatchId.set(dispatchId, emptyDispatchLogCounters())
     }
 
     // Agregação roda no Postgres (não carrega N logs na app) — ver
@@ -420,6 +426,7 @@ export class EmailCampaignUseCase {
         acceptedCount: row.acceptedCount,
         failedCount: row.failedCount,
         queuedCount: row.queuedCount,
+        suppressedCount: row.suppressedCount,
       })
     }
 
@@ -441,11 +448,10 @@ export class EmailCampaignUseCase {
     for (const dispatch of dispatches) {
       progressByDispatchId.set(
         dispatch.id,
-        buildCampaignDispatchProgress(dispatch, countersByDispatchId.get(dispatch.id) ?? {
-          acceptedCount: 0,
-          failedCount: 0,
-          queuedCount: 0,
-        })
+        buildCampaignDispatchProgress(
+          dispatch,
+          countersByDispatchId.get(dispatch.id) ?? emptyDispatchLogCounters()
+        )
       )
     }
 
@@ -563,7 +569,7 @@ export class EmailCampaignUseCase {
   ): Promise<Map<string, DispatchLogCounters>> {
     const result = new Map<string, DispatchLogCounters>()
     for (const campaignId of campaignIds) {
-      result.set(campaignId, { acceptedCount: 0, failedCount: 0, queuedCount: 0 })
+      result.set(campaignId, emptyDispatchLogCounters())
     }
     if (campaignIds.length === 0) return result
 
@@ -663,13 +669,13 @@ export class EmailCampaignUseCase {
       // preserva o status persistido em vez de presumir falha.
       if (!campaignLogs || campaignLogs.length === 0) continue
 
-      const { acceptedCount } = aggregateCumulativeDispatchLogCounters(campaignLogs)
-      const correctStatus: EmailCampaignStatus =
-        acceptedCount >= campaign.totalRecipients
-          ? "sent"
-          : acceptedCount === 0
-            ? "failed"
-            : "partially_sent"
+      const counters = aggregateCumulativeDispatchLogCounters(campaignLogs)
+      const { acceptedCount } = counters
+
+      // Regra única, ao lado da irmã do disparo em `campaign-dispatch-guards`.
+      // Divergirem é o que fazia o reconciler regravar `partially_sent` por cima
+      // do `sent` recém-persistido, na primeira releitura da lista.
+      const correctStatus: EmailCampaignStatus = resolveReconciledCampaignStatus(counters)
 
       if (correctStatus === campaign.status) continue
 
@@ -1511,11 +1517,8 @@ export class EmailCampaignUseCase {
                     totalRecipients: child.totalRecipients ?? 0,
                     activeDispatch: entry?.activeDispatch ?? null,
                     latestDispatch: entry?.latestDispatch ?? null,
-                    counters: cumulativeByCampaignId.get(child.id) ?? {
-                      acceptedCount: 0,
-                      failedCount: 0,
-                      queuedCount: 0,
-                    },
+                    counters:
+                      cumulativeByCampaignId.get(child.id) ?? emptyDispatchLogCounters(),
                   })
                 })
               : []
@@ -1751,11 +1754,7 @@ export class EmailCampaignUseCase {
               totalRecipients: sub.totalRecipients ?? 0,
               activeDispatch: entry?.activeDispatch ?? null,
               latestDispatch: entry?.latestDispatch ?? null,
-              counters: cumulativeByCampaignId.get(sub.id) ?? {
-                acceptedCount: 0,
-                failedCount: 0,
-                queuedCount: 0,
-              },
+              counters: cumulativeByCampaignId.get(sub.id) ?? emptyDispatchLogCounters(),
             })
           })
         : []

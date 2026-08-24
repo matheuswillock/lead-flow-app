@@ -33,8 +33,21 @@
 --
 -- Idempotente: cada bloco só roda se a definição atual ainda for a antiga.
 
-SET LOCAL lock_timeout = '5s';
-
+-- LOCK e DDL no MESMO bloco DO, de proposito.
+--
+-- O `supabase db push` NAO roda o arquivo dentro de um bloco de transacao —
+-- confirmado no log do run 32752152486: `WARNING (25P01): SET LOCAL can only be
+-- used in transaction blocks`. Duas consequencias que invalidaram as tentativas
+-- anteriores:
+--
+--   1. Um `SET LOCAL lock_timeout` no nivel do arquivo nao tem efeito nenhum. O
+--      timeout ficava no default (0 = esperar para sempre).
+--   2. Cada statement vira sua propria transacao. Um bloco DO so para travar
+--      as tabelas LIBERA tudo ao terminar, antes de o DDL comecar.
+--
+-- Por isso o lock e o DDL vivem num unico bloco: um bloco DO e um statement, e
+-- um statement e uma transacao implicita. Os locks ficam retidos ate o fim.
+--
 -- Trava tudo de uma vez, em ordem de dependencia de FK, ANTES de qualquer DDL.
 --
 -- Esta migration falhou em producao com deadlock (SQLSTATE 40P01, run
@@ -49,22 +62,64 @@ SET LOCAL lock_timeout = '5s';
 -- deste lote, intercaladas com as filhas). Bastava uma transacao da aplicacao
 -- segurando a pai e querendo a filha para fechar o ciclo.
 --
--- Travando tudo antes, a migration nao segura lock nenhum enquanto faz DDL: ou
--- adquire o conjunto inteiro, ou aborta em 5s por lock_timeout — que e
--- reaplicavel, porque cada bloco abaixo e idempotente.
---
 -- A ordem e a TOPOLOGICA do grafo de FK — pai antes de filha — e MUST ser a
 -- mesma em todos os lotes desta serie. Ordem alfabetica NAO serve: ela alinha
--- os lotes entre si mas nao com a aplicacao, que escreve pai-antes-de-filha, e
--- um par invertido basta para o deadlock voltar.
+-- os lotes entre si mas nao com a aplicacao.
+--
+-- Ordem sozinha tambem nao basta, e isso foi medido: reproduzi o deadlock
+-- localmente com uma sessao concorrente lendo `corretor_studio_teams` e depois
+-- `corretor_studio_profiles` — direcao filha->pai, que qualquer "carrega o time
+-- e depois o master" faz. Nao da para ordenar de forma a concordar com todos os
+-- caminhos da aplicacao ao mesmo tempo.
+--
+-- Por isso o `lock_timeout` de 500ms, abaixo do `deadlock_timeout` (1s por
+-- padrao): sob contencao a migration aborta com 55P03 ANTES de o detector de
+-- deadlock escolher uma vitima. Isso importa porque a vitima e arbitraria — na
+-- reproducao local quem morreu foi a sessao da aplicacao, nao a migration. Com
+-- o timeout curto quem cede e sempre a migration, e o trafego nao e afetado.
+-- Abortar e seguro: cada bloco abaixo e idempotente, basta re-rodar o pipeline.
 -- O LOCK e condicional pelo mesmo motivo que os guards abaixo usam
 -- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
 -- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
 -- o `db:migrate:reset:local`.
+-- RETRY (adicionado depois do run 32752152486)
+--
+-- O pre-lock em ordem topologica NAO resolveu: o run 32752152486, ja com ele,
+-- falhou com o MESMO deadlock nas MESMAS relacoes (154462 / 154398) do run
+-- anterior. Ordenar locks so previne deadlock se TODAS as partes seguirem a
+-- ordem — e a contraparte aqui pede `AccessShareLock`, ou seja, e um SELECT de
+-- producao. Nao ha como impor ordem de lock ao planner do app.
+--
+-- O `lock_timeout` de 500ms tambem nao salva: ele limita quanto ESTE processo
+-- espera, mas nao impede o processo do app de detectar o ciclo primeiro (seu
+-- `deadlock_timeout` de 1s) e escolher esta transacao como vitima. Por isso o
+-- erro observado e 40P01 (deadlock) e nao 55P03 (timeout) — a corrida entre os
+-- 500ms e o detector do outro lado nao e vencida de forma confiavel.
+--
+-- Deadlock e TRANSITORIO por definicao: o Postgres mata um lado e o outro
+-- segue. Reexecutar e o conserto que ataca a natureza real do problema.
+--
+-- O bloco EXCEPTION cria um savepoint; ao abortar, os locks adquiridos dentro
+-- dele sao liberados junto, entao o sleep do backoff NAO segura a fila.
+-- Backoff com jitter de proposito: retry em intervalo fixo tende a recolidir
+-- com o mesmo padrao de trafego.
 DO $$
 DECLARE
   target text;
+  attempt int := 0;
+  max_attempts constant int := 5;
 BEGIN
+  LOOP
+    attempt := attempt + 1;
+    BEGIN
+  -- Indentacao do corpo mantida de proposito: reindentar ~140 linhas so para
+  -- acomodar o wrapper esconderia a mudanca real num diff gigante.
+
+  -- `true` = local a transacao. Um `SET LOCAL` no nivel do arquivo nao funciona
+  -- aqui, porque o runner nao abre bloco de transacao; dentro do bloco DO,
+  -- funciona. 500ms fica abaixo do deadlock_timeout de propósito.
+  PERFORM set_config('lock_timeout', '500ms', true);
+
   -- Ordem topologica do grafo de FK: PAI antes de FILHA. Nao alfabetica.
   -- A aplicacao escreve pai-antes-de-filha (atualiza o time, depois as linhas
   -- que apontam para ele; cascata de delete tambem desce nessa direcao). Travar
@@ -86,10 +141,7 @@ BEGIN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);
     END IF;
   END LOOP;
-END $$;
 
-DO $$
-BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'corretor_studio_radar_identities_profileId_fkey'
@@ -207,4 +259,21 @@ BEGIN
     ALTER TABLE "public"."corretor_studio_team_radar_pixel_hit_logs" DROP CONSTRAINT "corretor_studio_team_radar_pixel_hit_logs_teamId_fkey";
     ALTER TABLE "public"."corretor_studio_team_radar_pixel_hit_logs" ADD CONSTRAINT "corretor_studio_team_radar_pixel_hit_logs_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES corretor_studio_teams(id) ON UPDATE CASCADE ON DELETE CASCADE NOT VALID;
   END IF;
+
+      EXIT;
+    EXCEPTION
+      -- 40P01 deadlock_detected e 55P03 lock_not_available (o proprio
+      -- lock_timeout). Os dois sao contencao passageira, nao erro de schema:
+      -- reexecutar e correto. Qualquer outra excecao sobe sem retry — se a FK
+      -- ou a tabela estiverem erradas, insistir so mascara o defeito.
+      WHEN deadlock_detected OR lock_not_available THEN
+        IF attempt >= max_attempts THEN
+          RAISE NOTICE 'FK align: % tentativas esgotadas', max_attempts;
+          RAISE;
+        END IF;
+        RAISE NOTICE 'FK align: contencao na tentativa %/% (%), repetindo',
+          attempt, max_attempts, SQLSTATE;
+        PERFORM pg_sleep(attempt * 0.5 + random() * 0.5);
+    END;
+  END LOOP;
 END $$;
