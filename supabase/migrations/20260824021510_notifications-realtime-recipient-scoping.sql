@@ -26,9 +26,17 @@
 --
 -- MUDANCA
 --
--- A policy passa a exigir que o leitor seja o destinatario. A checagem de time
--- e mantida como defesa adicional, para que um `recipientProfileId` de outra
--- conta nunca case mesmo em caso de dado inconsistente.
+-- A policy passa a exigir que o leitor seja o destinatario — e SOMENTE isso.
+--
+-- Uma versao anterior deste arquivo exigia tambem que o destinatario ainda
+-- fosse membro do time, como defesa adicional. Isso quebrava justamente a
+-- notificacao de remocao: `TeamMembersUseCase.removeMember` cria a notificacao
+-- TEAM_MEMBER_REMOVED e SO DEPOIS apaga a linha de team_members. Com o
+-- predicado de membresia, essa notificacao passaria a falhar a RLS no instante
+-- seguinte — e, como o Realtime avalia autorizacao de forma assincrona, o
+-- evento poderia ser descartado antes da entrega, deixando a pessoa sem o aviso
+-- de que foi removida. Ser o destinatario ja e autorizacao suficiente e correta
+-- para uma notificacao.
 --
 -- O `(SELECT auth.uid())` em subselect e proposital: a policy e avaliada pelo
 -- realtime.apply_rls a cada linha do WAL, por subscriber, e o subselect faz o
@@ -49,11 +57,5 @@ CREATE POLICY notifications_select ON public.corretor_studio_notifications
       FROM public.corretor_studio_profiles p
       WHERE p.id = corretor_studio_notifications."recipientProfileId"
         AND (p."supabaseId" = (SELECT auth.uid()) OR p.id = (SELECT auth.uid()))
-    )
-    AND EXISTS (
-      SELECT 1
-      FROM public.corretor_studio_team_members tm
-      WHERE tm."teamId" = corretor_studio_notifications."teamId"
-        AND tm."profileId" = corretor_studio_notifications."recipientProfileId"
     )
   );
