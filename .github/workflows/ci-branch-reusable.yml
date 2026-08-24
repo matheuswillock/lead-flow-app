@@ -121,6 +121,10 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # O resultado do JOB não distingue "tsc reprovou" de "checkout/setup quebrou
+    # antes do tsc rodar". O gate precisa do veredito do PASSO.
+    outputs:
+      check-result: ${{ steps.resolve-typecheck.outputs.result }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,9 +133,21 @@ jobs:
         uses: ./.github/actions/setup-bun-deps
 
       - name: Typecheck
+        id: typecheck
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max-old-space-size=5120"
         run: bun run typecheck
+
+      - name: Resolve Typecheck
+        id: resolve-typecheck
+        if: always()
+        run: |
+          outcome="${{ steps.typecheck.outcome }}"
+          echo "result=${outcome}" >> "$GITHUB_OUTPUT"
+          # O job continua vermelho quando o check reprova — o `continue-on-error`
+          # existe só para o veredito chegar ao output antes de o job cair.
+          [[ "$outcome" == "success" ]] || exit 1
 
   build:
     name: Build
@@ -148,6 +164,9 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Idem typecheck: separa "build reprovou" de "cache/setup quebrou antes".
+    outputs:
+      check-result: ${{ steps.resolve-build.outputs.result }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -172,6 +191,8 @@ jobs:
         run: bun run prisma:generate
 
       - name: Build
+        id: build
+        continue-on-error: true
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
@@ -181,7 +202,29 @@ jobs:
         run: bun run build
 
       - name: Validar saida do build
+        id: validate-build
+        continue-on-error: true
+        if: ${{ steps.build.outcome == 'success' }}
         uses: ./.github/actions/validate-build-output
+
+      - name: Resolve Build
+        id: resolve-build
+        if: always()
+        run: |
+          build_outcome="${{ steps.build.outcome }}"
+          validate_outcome="${{ steps.validate-build.outcome }}"
+          if [[ "$build_outcome" != "success" ]]; then
+            echo "result=${build_outcome}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          # Build verde mas artefato inválido conta como reprovação do check —
+          # foi assim que um deploy "verde" publicou nada em 20/08.
+          if [[ "$validate_outcome" != "success" ]]; then
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "::error::Build compilou mas a validação da saída reprovou (validate-build-output=${validate_outcome})."
+            exit 1
+          fi
+          echo "result=success" >> "$GITHUB_OUTPUT"
 
   e2e:
     name: E2E (Playwright)
@@ -193,6 +236,11 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Aqui a distinção é a mais crítica dos três: o upload do relatório roda
+    # DEPOIS do teste. Um upload que falha deixa o job vermelho com o E2E tendo
+    # passado, e ler só `needs.e2e.result` reportaria "E2E reprovou".
+    outputs:
+      check-result: ${{ steps.resolve-e2e.outputs.result }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -206,10 +254,20 @@ jobs:
         uses: ./.github/actions/setup-bun-deps
 
       - name: Playwright E2E
+        id: playwright
+        continue-on-error: true
         uses: ./.github/actions/run-e2e-playwright
         with:
           include-slow: 'false'
           asaas-sandbox-api-key: ${{ secrets.ASAAS_SANDBOX_API_KEY }}
+
+      - name: Resolve E2E
+        id: resolve-e2e
+        if: always()
+        run: |
+          outcome="${{ steps.playwright.outcome }}"
+          echo "result=${outcome}" >> "$GITHUB_OUTPUT"
+          [[ "$outcome" == "success" ]] || exit 1
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
@@ -254,6 +312,9 @@ jobs:
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
+          TYPECHECK_CHECK: ${{ needs.typecheck.outputs['check-result'] }}
+          BUILD_CHECK: ${{ needs.build.outputs['check-result'] }}
+          E2E_CHECK: ${{ needs.e2e.outputs['check-result'] }}
           CI_LIGHT_PASSED: ${{ needs.ci-light.outputs.passed }}
           CI_LIGHT_TESTS: ${{ needs.ci-light.outputs['tests-result'] }}
           CI_LIGHT_SPELLCHECK: ${{ needs.ci-light.outputs['spellcheck-result'] }}
@@ -338,10 +399,43 @@ jobs:
               ;;
           esac
 
-          assert_job "Typecheck" "$TYPECHECK_RESULT" || failed=1
+          # Para typecheck/build/e2e o veredito vem do PASSO, não do job. O
+          # resultado do job é `failure` tanto quando o check reprova quanto
+          # quando checkout, setup, cache ou upload de artefato quebram — e no
+          # e2e o upload roda DEPOIS do teste, então o job pode ficar vermelho
+          # com o Playwright verde. Reportar tudo isso como "REPROVOU" seria o
+          # mesmo diagnóstico enganoso que este job existe para eliminar.
+          assert_job_check() {
+            local nome="$1" job_result="$2" check_outcome="$3" skip_ok="${4:-nao}"
+
+            if [[ "$job_result" == "skipped" && "$skip_ok" == "sim" ]]; then
+              return 0
+            fi
+
+            case "$check_outcome" in
+              success)
+                if [[ "$job_result" == "success" ]]; then return 0; fi
+                echo "::error::${nome}: o CHECK PASSOU, mas o job terminou em '${job_result}'. A falha está em um passo de infraestrutura (setup, cache ou upload de artefato), não no código verificado."
+                return 1 ;;
+              failure)
+                echo "::error::${nome}: REPROVOU. Veja o log do passo correspondente."
+                return 1 ;;
+              skipped)
+                echo "::error::${nome}: NÃO RODOU — o passo foi pulado porque algo antes dele falhou (job: '${job_result}'). Trate como NÃO VERIFICADO."
+                return 1 ;;
+              "")
+                echo "::error::${nome}: SEM RESULTADO (job: '${job_result:-vazio}'). O job não chegou a publicar o veredito do check. Trate como NÃO VERIFICADO, não como reprovação."
+                return 1 ;;
+              *)
+                echo "::error::${nome}: veredito inesperado ('${check_outcome}', job: '${job_result}'). Trate como NÃO VERIFICADO."
+                return 1 ;;
+            esac
+          }
+
+          assert_job_check "Typecheck" "$TYPECHECK_RESULT" "$TYPECHECK_CHECK" || failed=1
           # Build é pulado de propósito em rebase pela UI do GitHub.
-          assert_job "Build" "$BUILD_RESULT" "sim" || failed=1
-          assert_job "E2E (Playwright)" "$E2E_RESULT" || failed=1
+          assert_job_check "Build" "$BUILD_RESULT" "$BUILD_CHECK" "sim" || failed=1
+          assert_job_check "E2E (Playwright)" "$E2E_RESULT" "$E2E_CHECK" || failed=1
 
           exit "$failed"
 
