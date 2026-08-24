@@ -276,6 +276,47 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     expect(progressUpdate?.data?.skippedIssues).toHaveLength(1)
   })
 
+  it("lote que esgota as tentativas ainda contabiliza as recusas apuradas", async () => {
+    // Regressao da minha propria correcao anterior: ao mover a contabilizacao
+    // para depois da escrita, o lote que falha nas 3 tentativas passou a avancar
+    // `processedRows` no catch SEM registrar as recusas — ninguem mais reapura
+    // aquele lote, entao a recusa sumia silenciosamente.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "bloqueado@example.com", name: "Bloqueado" },
+          { email: "livre@example.com", name: "Livre" },
+        ],
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.list?.isBlocklist) return [{ email: "bloqueado@example.com" }]
+      return []
+    })
+    // Falha em todas as tentativas.
+    emailContactCreateManyMock.mockImplementation(async () => {
+      throw new Error("erro permanente de escrita")
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { skippedCount?: number; failedBatches?: unknown[] } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.skippedCount !== undefined)
+
+    // O lote foi para failedBatches, mas a recusa nao se perdeu.
+    expect(progressUpdate?.data?.skippedCount).toBe(1)
+  })
+
   it("não importa e-mail bloqueado no time, nem na lista alvo nem no fan-out padrão", async () => {
     claimedJob = makeJob()
     emailContactListFindFirstMock.mockImplementation(async () => ({

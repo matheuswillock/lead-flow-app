@@ -18,7 +18,7 @@ import {
 } from "@/lib/email/audience-prevalidation"
 import {
   blockTeamEmailsBulk,
-  findTeamBlocklistedEmails,
+  findBlocklistedEmailsAmong,
   partitionByBlocklist,
 } from "@/lib/email/email-contact-blocklist"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
@@ -323,7 +323,12 @@ export class EmailContactImportUseCase {
       notBouncedRows.push(row)
     }
 
-    const blocklistedEmails = await findTeamBlocklistedEmails(teamId)
+    // Escopado aos endereços DESTE lote: a versão sem predicado traz a blocklist
+    // inteira do time, e rodando uma vez por lote custaria O(lotes × blocklist).
+    const blocklistedEmails = await findBlocklistedEmailsAmong(
+      teamId,
+      notBouncedRows.map((row) => row.email)
+    )
     const { allowed, blocked } = partitionByBlocklist(notBouncedRows, blocklistedEmails)
     for (const row of blocked) {
       skippedIssues.push({
@@ -497,6 +502,25 @@ export class EmailContactImportUseCase {
     return value as Record<string, number>
   }
 
+  private parseSkippedIssues(value: Prisma.JsonValue | null): SkippedImportIssue[] {
+    if (!value || !Array.isArray(value)) return []
+    return (value as SkippedImportIssue[]).filter(
+      (issue) => issue && typeof issue.email === "string" && typeof issue.reason === "string"
+    )
+  }
+
+  /** Une amostras preservando a ordem e sem repetir o par (e-mail, motivo). */
+  private mergeSkippedIssues(...groups: SkippedImportIssue[][]): SkippedImportIssue[] {
+    const byKey = new Map<string, SkippedImportIssue>()
+    for (const group of groups) {
+      for (const issue of group) {
+        const key = `${this.normalizeEmail(issue.email)}|${issue.reason}`
+        if (!byKey.has(key)) byKey.set(key, issue)
+      }
+    }
+    return [...byKey.values()]
+  }
+
   private async finalizeJob(
     job: {
       id: string
@@ -648,7 +672,14 @@ export class EmailContactImportUseCase {
       // estável. Como a parcela estável é idêntica em todo claim, a subtração
       // devolve exatamente o volátil acumulado até aqui.
       let suppressedSkippedCount = Math.max(0, claimed.skippedCount - initialSkipped)
-      const skippedIssues = [...initialSkippedIssues]
+      // Parte das amostras persistidas: as recusas voláteis de claims anteriores
+      // não são recomputáveis (o lote já passou), e descartá-las fazia a
+      // notificação de conclusão perder justamente os exemplos que explicam o
+      // contador. As estáveis são reconciliadas por chave para não duplicar.
+      const skippedIssues = this.mergeSkippedIssues(
+        this.parseSkippedIssues(claimed.skippedIssues),
+        initialSkippedIssues
+      )
       const failedBatches = this.parseFailedBatches(claimed.failedBatches)
       const attemptsByBatch = this.parseAttemptsByBatch(claimed.attemptsByBatch)
 
@@ -687,6 +718,19 @@ export class EmailContactImportUseCase {
         const currentAttempts = attemptsByBatch[batchKey] ?? 0
         const batch = validRows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
 
+        // Recusas do lote ficam em stage: só entram no acumulado quando o lote
+        // AVANÇA — por sucesso ou por esgotar as tentativas. Contabilizar antes
+        // da escrita repetia a mesma recusa a cada retry; contabilizar só no
+        // sucesso perdia as recusas do lote que morre no retry, cujo
+        // `processedRows` avança do mesmo jeito no catch.
+        let stagedSkipped: SkippedImportIssue[] = []
+        const commitStagedSkipped = () => {
+          if (stagedSkipped.length === 0) return
+          suppressedSkippedCount += stagedSkipped.length
+          skippedIssues.push(...stagedSkipped)
+          stagedSkipped = []
+        }
+
         try {
           // Nenhum ramo pode sair do laço por `continue`: o checkpoint de
           // progresso está depois do try/catch, e pulá-lo deixa
@@ -709,6 +753,7 @@ export class EmailContactImportUseCase {
             // enxerga bloqueios feitos durante o import.
             const { allowed, skippedIssues: batchSkipped } =
               await this.partitionBatchBySuppression(batch, claimed.teamId)
+            stagedSkipped = batchSkipped
 
             const batchResult = await this.importContactsBatch({
               listId: claimed.listId,
@@ -719,13 +764,7 @@ export class EmailContactImportUseCase {
               fanOutToDefaultList: !list.isSystemDefault,
               ctx,
             })
-            // Só contabiliza DEPOIS da escrita: se `importContactsBatch` lança,
-            // o lote é repartitionado na tentativa seguinte e as mesmas recusas
-            // entrariam de novo — 3 tentativas contariam 1 recusa como 3.
-            if (batchSkipped.length > 0) {
-              suppressedSkippedCount += batchSkipped.length
-              skippedIssues.push(...batchSkipped)
-            }
+            commitStagedSkipped()
             importedCount += batchResult.imported
             updatedCount += batchResult.updated
             // Avança pelo tamanho do LOTE, não pelo dos permitidos: o offset
@@ -752,6 +791,9 @@ export class EmailContactImportUseCase {
               attempts: nextAttempt,
               lastError: reason,
             })
+            // O lote avança em definitivo aqui; as recusas já apuradas nele não
+            // serão reapuradas por ninguém.
+            commitStagedSkipped()
             processedRows += batch.length
             batchIndex += 1
           }
