@@ -114,8 +114,16 @@ export class MetricsUseCase implements IMetricsUseCase {
         endDate = dates.endDate;
       }
 
-      const resolvedStart = startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const resolvedEnd = endDate ?? new Date();
+      // As datas viram argumento de `getCachedDashboardMetrics`, ou seja, chave
+      // de cache. Um `new Date()` cru traria precisao de milissegundo e daria
+      // uma chave nova a cada request — o cache nunca daria hit e ainda
+      // gravaria uma entrada por chamada. Arredondar para a fronteira do dia no
+      // fuso do usuario mantem a chave estavel ao longo do dia.
+      const timezone = ctx.userTimezone ?? DEFAULT_TZ;
+      const now = new Date();
+      const resolvedStart =
+        startDate ?? startOfDayInTz(addDaysInTz(now, -30, timezone), timezone);
+      const resolvedEnd = endDate ?? endOfDayInTz(now, timezone);
       // Ordenado porque o array faz parte da chave de cache de getCachedDashboardMetrics:
       // sem isso [a,b] e [b,a] gerariam duas entradas para a mesma consulta.
       const teamIds = [...(filters.teamIds?.length ? filters.teamIds : [filters.teamId])].sort();
