@@ -2281,9 +2281,32 @@ export class RadarRepository {
     })
   }
 
-  async findLeadPhoneByEmail(teamId: string, normalizedEmail: string) {
+  /**
+   * Recebe o endereço CRU, não o normalizado: a comparação é por igualdade
+   * sobre as variantes literais, e a forma original é uma delas.
+   *
+   * `mode: "insensitive"` não serve. Medido com Prisma 6.19.3 contra o Postgres
+   * local, o filtro vira `WHERE "teamId" = $1 AND "email" ILIKE $2` com o valor
+   * cru, sem escape e sem cláusula ESCAPE. Em Postgres `_` casa um caractere e
+   * `%` casa N, então buscar `maria_silva@…` devolvia o telefone de
+   * `maria.silva@…` ou `maria-silva@…` — vazamento de PII entre leads do mesmo
+   * time. ILIKE ainda descarta o `@@unique([teamId, email])`, deixando a
+   * consulta presa ao `@@index([teamId])` com filtro linha a linha.
+   *
+   * Duas variantes bastam: o endereço como chegou no evento e sua forma
+   * minúscula. `Lead.email` é gravado como veio — nem `LeadRepository.create`
+   * nem `RadarLeadGateUnitOfWork.createOrUpdateFromRadarProfile` normalizam —
+   * então a variante minúscula é o que cobre o lead salvo normalizado. O que
+   * deixa de casar é caixa mista arbitrária divergente entre o cadastro e o
+   * evento; nesse caso o perfil resolve por e-mail em vez de telefone, que é um
+   * vínculo mais fraco, não um vínculo errado.
+   */
+  async findLeadPhoneByEmail(teamId: string, email: string) {
+    const address = email.trim()
+    if (!address) return null
+
     const lead = await this.db.lead.findFirst({
-      where: { teamId, email: { equals: normalizedEmail, mode: "insensitive" } },
+      where: { teamId, email: { in: [...new Set([address, address.toLowerCase()])] } },
       select: { phone: true },
     })
     return lead?.phone ? { phone: lead.phone } : null

@@ -55,8 +55,22 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       profile.normalizedPhone ?? profile.displayPhone ?? "",
     )
     const phoneSuffix = normalizedPhone.slice(-11)
-    const normalizedEmail =
-      profile.normalizedPrimaryEmail ?? profile.primaryEmail?.toLowerCase() ?? null
+
+    // Igualdade sobre variantes literais, nunca `mode: "insensitive"`. Medido
+    // com Prisma 6.19.3 contra o Postgres local: o filtro insensitive vira
+    // `"email" ILIKE $1` com o valor cru, sem escape nem ESCAPE — e em Postgres
+    // `_` casa um caractere e `%` casa N. Aqui isso é pior que uma leitura
+    // errada: `emailMatch` vira `existingLeadId` em
+    // CreateCrmLeadFromRadarFormGateUseCase, e `createOrUpdateFromRadarProfile`
+    // então grava nome, telefone e e-mail do perfil POR CIMA do lead casado.
+    // Um perfil com `maria_silva@…` sobrescrevia o cadastro de `maria.silva@…`.
+    const emailVariants = [
+      ...new Set(
+        [profile.primaryEmail?.trim(), profile.normalizedPrimaryEmail?.trim()]
+          .filter((value): value is string => Boolean(value))
+          .flatMap((value) => [value, value.toLowerCase()]),
+      ),
+    ]
 
     const [leadIdMatch, phoneMatch, emailMatch] = await Promise.all([
       profile.leadId
@@ -80,12 +94,12 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
             orderBy: { createdAt: "asc" },
           })
         : null,
-      normalizedEmail
+      emailVariants.length > 0
         ? this.transaction.lead.findFirst({
             where: {
               teamId: profile.teamId,
               deletedAt: null,
-              email: { equals: normalizedEmail, mode: "insensitive" },
+              email: { in: emailVariants },
             },
             select: { id: true },
             orderBy: { createdAt: "asc" },
