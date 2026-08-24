@@ -33,8 +33,13 @@
 --
 -- Idempotente: cada bloco só roda se a definição atual ainda for a antiga.
 
-SET LOCAL lock_timeout = '5s';
-
+-- LOCK e DDL no MESMO bloco DO. O `supabase db push` NAO roda o arquivo dentro
+-- de um bloco de transacao (confirmado no run 32752152486: `WARNING (25P01):
+-- SET LOCAL can only be used in transaction blocks`), entao um `SET LOCAL` de
+-- arquivo nao tem efeito e cada statement vira sua propria transacao — um bloco
+-- DO so de lock liberaria tudo antes de o DDL comecar. Ver o lote 3 para o
+-- registro completo.
+--
 -- Trava tudo de uma vez, em ordem de dependencia de FK, ANTES de qualquer DDL.
 -- Mesma correcao do lote 3, que falhou em producao com deadlock (SQLSTATE
 -- 40P01, run 32745879206): `lock_timeout` limita espera, nao evita deadlock —
@@ -49,6 +54,12 @@ DO $$
 DECLARE
   target text;
 BEGIN
+  -- 500ms fica abaixo do deadlock_timeout (1s) de proposito: sob contencao a
+  -- migration aborta com 55P03 antes de o detector escolher uma vitima. A
+  -- vitima e arbitraria, e na reproducao local quem morreu foi a sessao da
+  -- aplicacao. Com o timeout curto quem cede e sempre a migration.
+  PERFORM set_config('lock_timeout', '500ms', true);
+
   -- Ordem topologica do grafo de FK: PAI antes de FILHA. Nao alfabetica.
   -- Aqui a inversao alfabetica era grosseira: `whatsapp_message_*` viria antes
   -- de `whatsapp_messages`, que e a tabela pai de todas elas.
@@ -72,10 +83,7 @@ BEGIN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);
     END IF;
   END LOOP;
-END $$;
 
-DO $$
-BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'whatsapp_contact_identities_teamId_fkey'

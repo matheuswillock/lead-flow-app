@@ -33,8 +33,21 @@
 --
 -- Idempotente: cada bloco só roda se a definição atual ainda for a antiga.
 
-SET LOCAL lock_timeout = '5s';
-
+-- LOCK e DDL no MESMO bloco DO, de proposito.
+--
+-- O `supabase db push` NAO roda o arquivo dentro de um bloco de transacao —
+-- confirmado no log do run 32752152486: `WARNING (25P01): SET LOCAL can only be
+-- used in transaction blocks`. Duas consequencias que invalidaram as tentativas
+-- anteriores:
+--
+--   1. Um `SET LOCAL lock_timeout` no nivel do arquivo nao tem efeito nenhum. O
+--      timeout ficava no default (0 = esperar para sempre).
+--   2. Cada statement vira sua propria transacao. Um bloco DO so para travar
+--      as tabelas LIBERA tudo ao terminar, antes de o DDL comecar.
+--
+-- Por isso o lock e o DDL vivem num unico bloco: um bloco DO e um statement, e
+-- um statement e uma transacao implicita. Os locks ficam retidos ate o fim.
+--
 -- Trava tudo de uma vez, em ordem de dependencia de FK, ANTES de qualquer DDL.
 --
 -- Esta migration falhou em producao com deadlock (SQLSTATE 40P01, run
@@ -49,14 +62,22 @@ SET LOCAL lock_timeout = '5s';
 -- deste lote, intercaladas com as filhas). Bastava uma transacao da aplicacao
 -- segurando a pai e querendo a filha para fechar o ciclo.
 --
--- Travando tudo antes, a migration nao segura lock nenhum enquanto faz DDL: ou
--- adquire o conjunto inteiro, ou aborta em 5s por lock_timeout — que e
--- reaplicavel, porque cada bloco abaixo e idempotente.
---
 -- A ordem e a TOPOLOGICA do grafo de FK — pai antes de filha — e MUST ser a
 -- mesma em todos os lotes desta serie. Ordem alfabetica NAO serve: ela alinha
--- os lotes entre si mas nao com a aplicacao, que escreve pai-antes-de-filha, e
--- um par invertido basta para o deadlock voltar.
+-- os lotes entre si mas nao com a aplicacao.
+--
+-- Ordem sozinha tambem nao basta, e isso foi medido: reproduzi o deadlock
+-- localmente com uma sessao concorrente lendo `corretor_studio_teams` e depois
+-- `corretor_studio_profiles` — direcao filha->pai, que qualquer "carrega o time
+-- e depois o master" faz. Nao da para ordenar de forma a concordar com todos os
+-- caminhos da aplicacao ao mesmo tempo.
+--
+-- Por isso o `lock_timeout` de 500ms, abaixo do `deadlock_timeout` (1s por
+-- padrao): sob contencao a migration aborta com 55P03 ANTES de o detector de
+-- deadlock escolher uma vitima. Isso importa porque a vitima e arbitraria — na
+-- reproducao local quem morreu foi a sessao da aplicacao, nao a migration. Com
+-- o timeout curto quem cede e sempre a migration, e o trafego nao e afetado.
+-- Abortar e seguro: cada bloco abaixo e idempotente, basta re-rodar o pipeline.
 -- O LOCK e condicional pelo mesmo motivo que os guards abaixo usam
 -- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
 -- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
@@ -65,6 +86,11 @@ DO $$
 DECLARE
   target text;
 BEGIN
+  -- `true` = local a transacao. Um `SET LOCAL` no nivel do arquivo nao funciona
+  -- aqui, porque o runner nao abre bloco de transacao; dentro do bloco DO,
+  -- funciona. 500ms fica abaixo do deadlock_timeout de propósito.
+  PERFORM set_config('lock_timeout', '500ms', true);
+
   -- Ordem topologica do grafo de FK: PAI antes de FILHA. Nao alfabetica.
   -- A aplicacao escreve pai-antes-de-filha (atualiza o time, depois as linhas
   -- que apontam para ele; cascata de delete tambem desce nessa direcao). Travar
@@ -86,10 +112,7 @@ BEGIN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);
     END IF;
   END LOOP;
-END $$;
 
-DO $$
-BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'corretor_studio_radar_identities_profileId_fkey'
