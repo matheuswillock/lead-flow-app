@@ -3718,16 +3718,16 @@ export class EmailCampaignUseCase {
     let resumed = 0
     for (const dispatch of orphanDispatches) {
       try {
-        const queuedLogs = await this.db.emailLog.findMany({
-          where: { dispatchId: dispatch.id, status: "queued" },
-          select: {
-            id: true,
-            recipientEmail: true,
-            recipientName: true,
-          },
-        })
+        // `count` em vez de `findMany`: as duas unicas leituras deste valor sao
+        // o `=== 0` logo abaixo e o `queued:` do log mais adiante — o CONTEUDO
+        // das linhas nunca e usado. O `findMany` anterior nao tinha `take` e
+        // carregava id, recipientEmail e recipientName de TODOS os logs `queued`
+        // do dispatch, num metodo que roda no cron de 5 em 5 minutos
+        // (vercel.json). Para um dispatch grande, era a lista inteira de
+        // destinatarios trafegada e desserializada so para produzir um numero.
+        const queuedCount = await this.repository.countQueuedEmailLogsForDispatch(dispatch.id)
 
-        if (queuedLogs.length === 0) {
+        if (queuedCount === 0) {
           const existingLogCount = await this.db.emailLog.count({
             where: { dispatchId: dispatch.id },
           })
@@ -3835,7 +3835,7 @@ export class EmailCampaignUseCase {
         // consumer `processDispatchQueueBatch`, em lotes limitados.
         console.info("[EmailCampaignUseCase][resumeOrphanSendingDispatches] retomando via fila", {
           dispatchId: dispatch.id,
-          queued: queuedLogs.length,
+          queued: queuedCount,
         })
         await this.publishDispatchWake({
           dispatchId: dispatch.id,
