@@ -2102,24 +2102,34 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
         hasCampaignsBetaAccess: false,
       },
     ])
-    // 1ª chamada (resumeOrphanSendingDispatches lendo o lote órfão) e 2ª chamada
-    // (1ª iteração do while de failDispatchOnDomainGuard) ainda veem o log
-    // "queued"; da 3ª em diante ele já foi resolvido (markTeamEmailLogFailed)
-    // e o while precisa parar — sem isso o loop nunca termina.
-    let queuedLogFetches = 0
-    emailLogFindManyMock.mockImplementation(async () => {
-      queuedLogFetches += 1
-      if (queuedLogFetches <= 2) {
-        return [
-          {
-            id: "log-q",
-            recipientEmail: "r0@test.com",
-            recipientName: "R0",
-            status: "queued",
-          },
-        ]
-      }
-      return []
+    // O dispatch órfão começa com 1 log "queued"; ele deixa de existir quando
+    // `markTeamEmailLogFailed` o resolve, que é o que faz o while de
+    // `failDispatchOnDomainGuard` parar — sem isso o loop nunca termina.
+    //
+    // A causalidade é modelada pelo próprio efeito, não por contagem de
+    // chamadas. A versão anterior contava `findMany` ("as 2 primeiras veem o
+    // log"), o que amarrava o teste ao número exato de leituras: quando
+    // `resumeOrphanSendingDispatches` trocou o `findMany` inicial por um
+    // `count`, o contador deslocou e o teste passou a exercitar outro caminho.
+    let logQueuedResolvido = false
+    markTeamEmailLogFailedMock.mockImplementation(async () => {
+      logQueuedResolvido = true
+    })
+
+    const logQueued = {
+      id: "log-q",
+      recipientEmail: "r0@test.com",
+      recipientName: "R0",
+      status: "queued",
+    }
+
+    emailLogFindManyMock.mockImplementation(async () =>
+      logQueuedResolvido ? [] : [logQueued]
+    )
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { status?: unknown } })?.where
+      if (where?.status === "queued") return logQueuedResolvido ? 0 : 1
+      return queuedLogCountImpl(args)
     })
     emailTeamSenderFindFirstMock.mockImplementation(async () => ({
       name: "Vendas",
@@ -2175,7 +2185,11 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     // (o envio real já saiu, só faltou consolidar o estado da campanha).
     emailLogFindManyMock.mockImplementation(async () => [])
     emailLogCountMock.mockImplementation(async (args: unknown) => {
-      const where = (args as { where?: { sentAt?: unknown } })?.where
+      const where = (args as { where?: { sentAt?: unknown; status?: unknown } })?.where
+      // `status: "queued"` é a leitura que `resumeOrphanSendingDispatches` faz
+      // para decidir se ainda há o que retomar. Tem que ser 0 aqui, senão o
+      // teste contradiz a própria premissa declarada acima.
+      if (where?.status === "queued") return 0
       if (where?.sentAt) return 269
       return 287
     })
