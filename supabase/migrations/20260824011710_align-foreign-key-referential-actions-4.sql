@@ -35,6 +35,40 @@
 
 SET LOCAL lock_timeout = '5s';
 
+-- Trava tudo de uma vez, em ordem alfabetica, ANTES de qualquer DDL.
+-- Mesma correcao do lote 3, que falhou em producao com deadlock (SQLSTATE
+-- 40P01, run 32745879206): `lock_timeout` limita espera, nao evita deadlock —
+-- o `deadlock_timeout` (1s) aborta antes. A aquisicao incremental de lock
+-- dentro do bloco DO era a causa. A ordem alfabetica MUST ser a mesma em todos
+-- os lotes desta serie, para que dois lotes nunca peguem as mesmas tabelas em
+-- ordens opostas.
+-- O LOCK e condicional pelo mesmo motivo que os guards abaixo usam
+-- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
+-- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
+-- o `db:migrate:reset:local`.
+DO $$
+DECLARE
+  target text;
+BEGIN
+  FOREACH target IN ARRAY ARRAY[
+    'public.corretor_studio_profiles',
+    'public.corretor_studio_team_transfer_routes',
+    'public.corretor_studio_teams',
+    'public.email_team_senders',
+    'public.google_oauth_connections',
+    'public.team_whatsapp_configs',
+    'public.team_whatsapp_contacts',
+    'public.whatsapp_audit_events',
+    'public.whatsapp_auto_response_logs',
+    'public.whatsapp_auto_response_rules',
+    'public.whatsapp_conversations'
+  ] LOOP
+    IF to_regclass(target) IS NOT NULL THEN
+      EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);
+    END IF;
+  END LOOP;
+END $$;
+
 DO $$
 BEGIN
   IF EXISTS (

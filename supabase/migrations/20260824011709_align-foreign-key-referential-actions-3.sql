@@ -35,6 +35,52 @@
 
 SET LOCAL lock_timeout = '5s';
 
+-- Trava tudo de uma vez, em ordem alfabetica, ANTES de qualquer DDL.
+--
+-- Esta migration falhou em producao com deadlock (SQLSTATE 40P01, run
+-- 32745879206). O `lock_timeout` acima nao evita isso: ele limita ESPERA,
+-- enquanto o deadlock e detectado pelo `deadlock_timeout` (1s por padrao) e
+-- aborta antes de os 5s serem alcancados — na execucao que falhou o erro veio
+-- 1,7s depois do inicio.
+--
+-- A causa era a aquisicao incremental: o bloco DO pegava ACCESS EXCLUSIVE numa
+-- tabela filha, fazia o DDL, e so entao precisava da tabela pai
+-- (`corretor_studio_teams` e `corretor_studio_profiles` aparecem em varias FKs
+-- deste lote, intercaladas com as filhas). Bastava uma transacao da aplicacao
+-- segurando a pai e querendo a filha para fechar o ciclo.
+--
+-- Travando tudo antes, a migration nao segura lock nenhum enquanto faz DDL: ou
+-- adquire o conjunto inteiro, ou aborta em 5s por lock_timeout — que e
+-- reaplicavel, porque cada bloco abaixo e idempotente. A ordem alfabetica e
+-- deliberada e MUST ser a mesma em todos os lotes desta serie, para que dois
+-- lotes nunca peguem as mesmas tabelas em ordens opostas.
+-- O LOCK e condicional pelo mesmo motivo que os guards abaixo usam
+-- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
+-- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
+-- o `db:migrate:reset:local`.
+DO $$
+DECLARE
+  target text;
+BEGIN
+  FOREACH target IN ARRAY ARRAY[
+    'public.corretor_studio_email_campaigns',
+    'public.corretor_studio_profiles',
+    'public.corretor_studio_radar_identities',
+    'public.corretor_studio_radar_profiles',
+    'public.corretor_studio_radar_segments',
+    'public.corretor_studio_radar_source_links',
+    'public.corretor_studio_subscription_change_logs',
+    'public.corretor_studio_team_email_campaign_limit_grants',
+    'public.corretor_studio_team_radar_pixel_configs',
+    'public.corretor_studio_team_radar_pixel_hit_logs',
+    'public.corretor_studio_teams'
+  ] LOOP
+    IF to_regclass(target) IS NOT NULL THEN
+      EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);
+    END IF;
+  END LOOP;
+END $$;
+
 DO $$
 BEGIN
   IF EXISTS (
