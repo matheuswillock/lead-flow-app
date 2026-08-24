@@ -40,6 +40,7 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 import { isManagerLikeRole } from "@/lib/roles";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isLostStatus } from "@/lib/leadImport/normalizers";
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
 import { isPreScheduleSlotAvailable } from "../../services/preSchedule/PreScheduleSlotService";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
@@ -2168,7 +2169,11 @@ export class LeadUseCase implements ILeadUseCase {
   ): Promise<{ ok: true; sanitizations: TransferToTeamSanitization[] } | { ok: false; output: Output }> {
     const conflictFilters: Prisma.LeadWhereInput[] = [];
     if (lead.email) {
-      conflictFilters.push({ email: { equals: lead.email, mode: "insensitive" } });
+      // `escapeLikePattern`: a decisão abaixo já reconfere com `toLowerCase()`
+      // exato, então o curinga não muda o veredito — mas sem escape um e-mail
+      // com `%` faz `findTransferConflictsInTeam` (sem `take`) trazer o time
+      // destino inteiro.
+      conflictFilters.push({ email: { equals: escapeLikePattern(lead.email), mode: "insensitive" } });
     }
     const normalizedCnpj = lead.cnpj?.trim();
     if (normalizedCnpj) {
