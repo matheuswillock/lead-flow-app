@@ -82,10 +82,39 @@
 -- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
 -- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
 -- o `db:migrate:reset:local`.
+-- RETRY (adicionado depois do run 32752152486)
+--
+-- O pre-lock em ordem topologica NAO resolveu: o run 32752152486, ja com ele,
+-- falhou com o MESMO deadlock nas MESMAS relacoes (154462 / 154398) do run
+-- anterior. Ordenar locks so previne deadlock se TODAS as partes seguirem a
+-- ordem — e a contraparte aqui pede `AccessShareLock`, ou seja, e um SELECT de
+-- producao. Nao ha como impor ordem de lock ao planner do app.
+--
+-- O `lock_timeout` de 500ms tambem nao salva: ele limita quanto ESTE processo
+-- espera, mas nao impede o processo do app de detectar o ciclo primeiro (seu
+-- `deadlock_timeout` de 1s) e escolher esta transacao como vitima. Por isso o
+-- erro observado e 40P01 (deadlock) e nao 55P03 (timeout) — a corrida entre os
+-- 500ms e o detector do outro lado nao e vencida de forma confiavel.
+--
+-- Deadlock e TRANSITORIO por definicao: o Postgres mata um lado e o outro
+-- segue. Reexecutar e o conserto que ataca a natureza real do problema.
+--
+-- O bloco EXCEPTION cria um savepoint; ao abortar, os locks adquiridos dentro
+-- dele sao liberados junto, entao o sleep do backoff NAO segura a fila.
+-- Backoff com jitter de proposito: retry em intervalo fixo tende a recolidir
+-- com o mesmo padrao de trafego.
 DO $$
 DECLARE
   target text;
+  attempt int := 0;
+  max_attempts constant int := 5;
 BEGIN
+  LOOP
+    attempt := attempt + 1;
+    BEGIN
+  -- Indentacao do corpo mantida de proposito: reindentar ~140 linhas so para
+  -- acomodar o wrapper esconderia a mudanca real num diff gigante.
+
   -- `true` = local a transacao. Um `SET LOCAL` no nivel do arquivo nao funciona
   -- aqui, porque o runner nao abre bloco de transacao; dentro do bloco DO,
   -- funciona. 500ms fica abaixo do deadlock_timeout de propósito.
@@ -230,4 +259,21 @@ BEGIN
     ALTER TABLE "public"."corretor_studio_team_radar_pixel_hit_logs" DROP CONSTRAINT "corretor_studio_team_radar_pixel_hit_logs_teamId_fkey";
     ALTER TABLE "public"."corretor_studio_team_radar_pixel_hit_logs" ADD CONSTRAINT "corretor_studio_team_radar_pixel_hit_logs_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES corretor_studio_teams(id) ON UPDATE CASCADE ON DELETE CASCADE NOT VALID;
   END IF;
+
+      EXIT;
+    EXCEPTION
+      -- 40P01 deadlock_detected e 55P03 lock_not_available (o proprio
+      -- lock_timeout). Os dois sao contencao passageira, nao erro de schema:
+      -- reexecutar e correto. Qualquer outra excecao sobe sem retry — se a FK
+      -- ou a tabela estiverem erradas, insistir so mascara o defeito.
+      WHEN deadlock_detected OR lock_not_available THEN
+        IF attempt >= max_attempts THEN
+          RAISE NOTICE 'FK align: % tentativas esgotadas', max_attempts;
+          RAISE;
+        END IF;
+        RAISE NOTICE 'FK align: contencao na tentativa %/% (%), repetindo',
+          attempt, max_attempts, SQLSTATE;
+        PERFORM pg_sleep(attempt * 0.5 + random() * 0.5);
+    END;
+  END LOOP;
 END $$;
