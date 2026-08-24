@@ -11,12 +11,18 @@
  *      GRANT explícito no SQL vira ruído. Medido em 2026-08-23: 1.092 de 1.853
  *      statements, 47,7% do arquivo.
  *
- *   2. ALTER COLUMN ... DROP DEFAULT — `@default(uuid())` e `@updatedAt` são
- *      resolvidos no Prisma Client, não no banco. O `prisma db push` derruba o
- *      default físico da coluna, e o diff propõe replicar isso na migration.
- *      Aplicar em produção deixaria 153 colunas `id`/`updatedAt` sem default
- *      para qualquer INSERT que não passe pelo Prisma (SQL raw, PostgREST,
- *      trigger, seed).
+ *   2. ALTER COLUMN ... DROP DEFAULT **em coluna cujo default o Prisma resolve
+ *      no client** — `@default(uuid())`, `@default(cuid())` e `@updatedAt` não
+ *      viram default físico, então o `prisma db push` derruba o que a migration
+ *      criou e o diff propõe replicar isso. Aplicar em produção deixaria 155
+ *      colunas `id`/`updatedAt` sem default para qualquer INSERT que não passe
+ *      pelo Prisma (SQL raw, PostgREST, trigger, seed).
+ *
+ *      O filtro consulta o `prisma/schema.prisma` coluna a coluna e **só**
+ *      descarta esses casos. Um `DROP DEFAULT` de coluna sem default
+ *      client-side é remoção intencional e passa direto — do contrário, tirar
+ *      um `@default(...)` do schema viraria uma mudança que o gerador engole em
+ *      silêncio e reporta como "nenhuma diferença".
  *
  *   3. CREATE/DROP/ALTER POLICY e ENABLE/DISABLE ROW LEVEL SECURITY — RLS não é
  *      expressável no schema.prisma (ver o cabeçalho de `prisma/schema.prisma`).
@@ -37,7 +43,7 @@ export type FilterResult = {
 
 export const FILTER_CATEGORY_LABELS: Record<FilteredCategory, string> = {
   acl: "GRANT/REVOKE (pg_default_acl do shadow database)",
-  "column-default": "ALTER COLUMN … DROP DEFAULT (default físico da coluna)",
+  "column-default": "ALTER COLUMN … DROP DEFAULT (só em @default(uuid())/@updatedAt)",
   "rls-policy": "POLICY / ROW LEVEL SECURITY (RLS não vive no schema.prisma)",
 };
 
@@ -123,16 +129,27 @@ function skipDollarQuoted(sql: string, openIndex: number): number | null {
   return close === -1 ? sql.length : close + tag.length;
 }
 
-function normalize(statement: string): string {
-  return statement
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/--[^\n]*/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+function stripComments(statement: string): string {
+  return statement.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
 }
 
-export function classifyStatement(statement: string): FilteredCategory | null {
+function normalize(statement: string): string {
+  return stripComments(statement).replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+const DROP_DEFAULT_CI =
+  /^alter\s+table\s+(?:"?public"?\.)?"?([\w]+)"?\s+alter\s+column\s+"?([\w]+)"?\s+drop\s+default\s*;?$/i;
+
+/**
+ * Colunas cujo default o Prisma resolve no client — a chave é `tabela.coluna`
+ * em nomes FÍSICOS (já resolvidos por `@@map`/`@map`).
+ */
+export type ClientSideDefaults = ReadonlySet<string>;
+
+export function classifyStatement(
+  statement: string,
+  clientSideDefaults: ClientSideDefaults = new Set(),
+): FilteredCategory | null {
   const text = normalize(statement);
 
   if (/^(grant|revoke)\s/.test(text)) return "acl";
@@ -140,11 +157,46 @@ export function classifyStatement(statement: string): FilteredCategory | null {
   if (/^alter\s+table\s+.+\s+(enable|disable|force|no\s+force)\s+row\s+level\s+security\s*;?$/.test(text)) {
     return "rls-policy";
   }
-  if (/^alter\s+table\s+.+\s+alter\s+column\s+.+\s+drop\s+default\s*;?$/.test(text)) {
-    return "column-default";
+
+  // `normalize()` rebaixa para minúsculas e o schema usa camelCase, então o
+  // nome da coluna precisa sair do texto original — preservando a caixa.
+  const dropDefault = stripComments(statement).replace(/\s+/g, " ").trim().match(DROP_DEFAULT_CI);
+  if (dropDefault) {
+    return clientSideDefaults.has(`${dropDefault[1]}.${dropDefault[2]}`) ? "column-default" : null;
   }
 
   return null;
+}
+
+/**
+ * Lê `prisma/schema.prisma` e devolve as colunas com default resolvido no
+ * Prisma Client. Só essas podem ter o `DROP DEFAULT` descartado: nas demais, a
+ * remoção do default é intencional e precisa chegar na migration.
+ */
+export function readClientSideDefaults(schemaSource: string): Set<string> {
+  const CLIENT_SIDE = /@updatedAt\b|@default\(\s*(?:uuid|cuid|ulid|nanoid)\s*\(/;
+  const result = new Set<string>();
+
+  for (const model of schemaSource.matchAll(/model\s+\w+\s*\{([\s\S]*?)\n\}/g)) {
+    const body = model[1];
+    const tableMap = body.match(/@@map\("([^"]+)"\)/);
+    const modelName = /model\s+(\w+)/.exec(model[0])?.[1] ?? "";
+    const table = tableMap ? tableMap[1] : modelName;
+
+    for (const line of body.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("@@")) continue;
+      if (!CLIENT_SIDE.test(trimmed)) continue;
+
+      const field = trimmed.match(/^(\w+)\s+\S+/);
+      if (!field) continue;
+
+      const columnMap = trimmed.match(/@map\("([^"]+)"\)/);
+      result.add(`${table}.${columnMap ? columnMap[1] : field[1]}`);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -169,7 +221,10 @@ export function unwrapDiffOutput(raw: string): string {
 }
 
 /** Remove do SQL as categorias que o Prisma nunca gerencia. */
-export function filterUnmanagedStatements(input: string): FilterResult {
+export function filterUnmanagedStatements(
+  input: string,
+  clientSideDefaults: ClientSideDefaults = new Set(),
+): FilterResult {
   const sql = unwrapDiffOutput(input);
 
   const removed: Record<FilteredCategory, number> = {
@@ -181,7 +236,7 @@ export function filterUnmanagedStatements(input: string): FilterResult {
   const kept: string[] = [];
 
   for (const raw of splitSqlStatements(sql)) {
-    const category = classifyStatement(raw);
+    const category = classifyStatement(raw, clientSideDefaults);
     if (category) {
       removed[category]++;
       continue;

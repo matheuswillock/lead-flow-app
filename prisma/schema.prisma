@@ -2704,7 +2704,7 @@ model TeamRadarPixelConfig {
   id                 String    @id @default(uuid()) @db.Uuid
   teamId             String    @unique @db.Uuid
   publicToken        String    @unique @db.Text
-  allowedOrigins     String[]  @db.Text
+  allowedOrigins     String[]  @default([]) @db.Text
   lastUsedAt         DateTime? @db.Timestamptz(6)
   updatedByProfileId String    @db.Uuid
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
@@ -4384,7 +4384,7 @@ model WhatsAppMessage {
   isAutoResponse          Boolean                  @default(false)
   autoResponseRuleId      String?                  @db.Uuid
   providerTimestamp       BigInt?
-  rawPayload              Json
+  rawPayload              Json                     @default("{}")
   storagePath             String?                  @db.Text
   mediaSha256             String?                  @db.Text
   mediaSizeBytes          Int?
@@ -5990,7 +5990,7 @@ enum BackofficeCompanyType {
 model BackofficeLeadExtraction {
   id         String                         @id @default(uuid()) @db.Uuid
   profileId  String                         @db.Uuid
-  filters    Json
+  filters    Json                           @default("{}")
   totalCount Int                            @default(0)
   status     BackofficeLeadExtractionStatus @default(PENDING)
   createdAt  DateTime                       @default(now()) @db.Timestamptz(6)
@@ -6125,7 +6125,9 @@ model LeadDocumentRequest {
   message            String?                   @db.Text
   status             LeadDocumentRequestStatus @default(pending)
   lastEmailSentAt    DateTime?                 @db.Timestamptz(6)
-  expiresAt          DateTime                  @db.Timestamptz(6)
+  /// O default físico vem de 20260721234500_lead-document-requests.sql; o
+  /// Prisma não expressa `now() + interval` sem `dbgenerated`.
+  expiresAt          DateTime                  @default(dbgenerated("(now() + '30 days'::interval)")) @db.Timestamptz(6)
   completedAt        DateTime?                 @db.Timestamptz(6)
   createdAt          DateTime                  @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime                  @updatedAt @db.Timestamptz(6)

@@ -16,10 +16,12 @@
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   describeFilterResult,
   filterUnmanagedStatements,
+  readClientSideDefaults,
   type FilterResult,
 } from "./db-migrate-diff-filter";
 import {
@@ -58,6 +60,14 @@ function run(
     stderr: result.stderr?.toString() ?? "",
   };
 }
+
+/**
+ * Colunas com default resolvido no Prisma Client. Só nelas o `DROP DEFAULT` é
+ * ruído — em qualquer outra coluna a remoção é intencional e tem que aparecer.
+ */
+const clientSideDefaults = readClientSideDefaults(
+  readFileSync(join("prisma", "schema.prisma"), "utf8"),
+);
 
 function logFilterResult(result: FilterResult): void {
   const lines = describeFilterResult(result);
@@ -154,7 +164,7 @@ if (dryRun) {
     process.exit(0);
   }
 
-  const filtered = filterUnmanagedStatements(diff.stdout);
+  const filtered = filterUnmanagedStatements(diff.stdout, clientSideDefaults);
   logFilterResult(filtered);
 
   if (!filtered.sql.trim()) {
@@ -184,7 +194,10 @@ if (!migrationPath) {
   );
 }
 
-const filtered = filterUnmanagedStatements(readFileSync(migrationPath, "utf8"));
+const filtered = filterUnmanagedStatements(
+  readFileSync(migrationPath, "utf8"),
+  clientSideDefaults,
+);
 logFilterResult(filtered);
 
 if (!filtered.sql.trim()) {

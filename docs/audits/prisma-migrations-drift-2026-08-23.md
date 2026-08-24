@@ -200,8 +200,17 @@ categorias que o Prisma nunca gerencia, e loga a contagem por categoria:
 O splitter respeita literais, identificadores entre aspas, dollar-quoting
 (`$$…$$`) e comentários — um `split(";")` ingênuo cortaria corpo de função ao
 meio. Também desembrulha o envelope JSON que o CLI emite quando stdout não é TTY.
-Coberto por `scripts/db-migrate-diff-filter.test.ts` (18 testes), incluindo a
-lista de statements que **devem** sobreviver ao filtro.
+Coberto por `scripts/db-migrate-diff-filter.test.ts`, incluindo a lista de
+statements que **devem** sobreviver ao filtro.
+
+**O filtro de `DROP DEFAULT` é por coluna, não por categoria.** A primeira versão
+descartava todo `ALTER COLUMN … DROP DEFAULT`, o que engoliria em silêncio a
+remoção *intencional* de um default — tirar um `@default(...)` do schema viraria
+"nenhuma diferença" e o banco ficaria com o default antigo. `readClientSideDefaults()`
+lê o `prisma/schema.prisma`, resolve `@@map`/`@map` para nomes físicos e monta o
+conjunto de colunas com default resolvido no client (`@default(uuid()/cuid()/
+ulid()/nanoid())` e `@updatedAt`). Só essas são filtradas: 155 das 159. As outras
+4 tinham default físico que o schema não declarava, e foram declaradas (§7.6).
 
 ### 7.2 Drift real fechado no `prisma/schema.prisma`
 
@@ -321,6 +330,21 @@ constraints, delta de definição contra o `schema.prisma` de 98 → **0**, e
   único que a migration `20260618223151_whatsapp-module.sql` já criava
 - 2 `ALTER COLUMN` de precisão em `corretor_studio_radar_pixel_rate_limits`
   (`TIMESTAMPTZ` typmod −1 → `timestamptz(6)`)
+- 1 `SET DEFAULT ARRAY[]::text[]` em
+  `corretor_studio_team_radar_pixel_configs.allowedOrigins`: a migration escreveu
+  `'{}'::text[]` e o Prisma emite `ARRAY[]::text[]` para `@default([])`. Mesmo
+  valor, texto diferente em `pg_attrdef` — normalizar é no-op de comportamento
+
+Quatro colunas tinham default físico que o `schema.prisma` não declarava, o que
+fazia o `db push` derrubá-las. Declaradas agora, para que o filtro de §7.1 possa
+ser restrito a defaults client-side sem perder essas:
+
+| coluna | default no banco | declaração |
+|---|---|---|
+| `backoffice_lead_extractions.filters` | `'{}'::jsonb` | `@default("{}")` |
+| `whatsapp_messages.rawPayload` | `'{}'::jsonb` | `@default("{}")` |
+| `corretor_studio_team_radar_pixel_configs.allowedOrigins` | `'{}'::text[]` | `@default([])` |
+| `corretor_studio_lead_document_requests.expiresAt` | `now() + '30 days'` | `@default(dbgenerated(…))` |
 
 Além disso, `backoffice_adhesions_discount_approved_by_fkey` foi trazida para o
 `schema.prisma` como `@relation("BackofficeAdhesionDiscountApprover", …, map: …)` —

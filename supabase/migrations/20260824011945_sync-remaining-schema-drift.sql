@@ -84,6 +84,15 @@ BEGIN
   END LOOP;
 END $$;
 
+-- 2b. Normaliza a expressão do default de allowedOrigins ---------------------
+-- A migration original escreveu `'{}'::text[]`; o Prisma emite
+-- `ARRAY[]::text[]` para `@default([])`. O valor é o mesmo (array vazio), mas o
+-- texto guardado em pg_attrdef difere, e o diff reporta a diferença para sempre.
+-- Alinhar o banco com o que o Prisma gera é um no-op de comportamento.
+
+ALTER TABLE "public"."corretor_studio_team_radar_pixel_configs"
+  ALTER COLUMN "allowedOrigins" SET DEFAULT ARRAY[]::text[];
+
 -- 3. Índices declarados no schema.prisma que nenhuma migration criou ---------
 
 CREATE INDEX IF NOT EXISTS "backoffice_bot_ai_proposals_expiresAt_idx"
