@@ -1,0 +1,50 @@
+-- Índice que permite agregar o progresso de disparo no banco em vez de puxar
+-- dezenas de milhares de linhas para a aplicação.
+--
+-- Contexto medido em produção (pg_stat_statements, janela de 11 dias):
+-- a família de consultas
+--   SELECT id, campaignId, recipientEmail, status, sentAt, resendEmailId
+--   FROM corretor_studio_email_logs WHERE teamId = $1 AND campaignId IN (...)
+-- soma 1.146 segundos de tempo de banco, devolvendo de 26 mil a 102 mil linhas
+-- por chamada. A aplicação então deduplica por e-mail e conta por tier em JS
+-- (aggregateCumulativeDispatchLogCounters).
+--
+-- Sem este índice, mover a agregação para SQL PIORA a CPU do banco: medido no
+-- maior time (243.067 linhas, 34 campanhas), 157ms na consulta atual contra
+-- 508-837ms na agregada, porque o GROUP BY por (campaignId, recipientEmail)
+-- precisa ordenar. O índice existente `teamId_campaignId` só dá ordenação
+-- parcial, e o plano cai em Incremental Sort.
+--
+-- Com a terceira coluna, o agrupamento passa a ler em ordem e a ordenação
+-- desaparece.
+--
+-- Verificado com hypopg (índice hipotético, sem escrita em produção), mesma
+-- consulta com o índice ligado e desligado:
+--
+--   sem índice   custo 54.280   com nó `Incremental Sort`
+--   com índice   custo 42.417   sem nó de ordenação
+--
+-- Ou seja, 22% menos custo estimado. Ressalva honesta: hypopg dá custo
+-- estimado pelo planner, não tempo medido — a confirmação real só vem depois
+-- de aplicar. O que está provado é o efeito estrutural (a ordenação sai do
+-- plano), não a magnitude exata do ganho.
+--
+-- Custo do índice, medido:
+--   heap da tabela        180 MB
+--   índices já existentes 142 MB (10 índices)
+--   este índice           ~38 MB estimados
+--   linhas                538.644
+--
+-- A tabela é de escrita alta (992.370 inserts+updates acumulados), e cada
+-- escrita passa a manter mais um índice. O ganho de leitura foi medido; o custo
+-- de escrita não. Se o volume de disparo crescer muito, vale re-medir.
+--
+-- IF NOT EXISTS para ser idempotente em replay local.
+--
+-- ATENÇÃO ao aplicar no remoto: CREATE INDEX toma lock de escrita até concluir.
+-- Migrations do Supabase CLI rodam dentro de transação, o que impede
+-- CONCURRENTLY; se a janela de lock for inaceitável para 538 mil linhas, criar
+-- o índice manualmente com CREATE INDEX CONCURRENTLY fora da transação e
+-- registrar esta migration como aplicada.
+CREATE INDEX IF NOT EXISTS "corretor_studio_email_logs_team_campaign_recipient_idx"
+  ON public.corretor_studio_email_logs ("teamId", "campaignId", "recipientEmail");
