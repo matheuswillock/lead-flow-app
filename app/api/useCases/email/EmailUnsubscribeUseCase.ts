@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
-import { EMAIL_BLOCKLIST_NAME } from "@/lib/email/email-contact-blocklist"
+import { blockTeamEmail } from "@/lib/email/email-contact-blocklist"
 import { parseEmailUnsubscribeToken, maskEmailForUnsubscribe } from "@/lib/email/unsubscribe-token"
 import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 
@@ -130,70 +130,12 @@ export class EmailUnsubscribeUseCase {
       }
 
       if (scope === "all") {
-        const affectedContacts = await tx.emailContact.findMany({
-          where: {
-            email: normalizedEmail,
-            list: { teamId: parsed.teamId, isArchived: false },
-          },
-          select: { listId: true },
-        })
-        const affectedListIds = Array.from(new Set(affectedContacts.map((item) => item.listId)))
-
-        await tx.emailContact.deleteMany({
-          where: {
-            email: normalizedEmail,
-            list: { teamId: parsed.teamId, isArchived: false },
-          },
-        })
-
-        for (const listId of affectedListIds) {
-          const totalCount = await tx.emailContact.count({ where: { listId } })
-          await tx.emailContactList.update({
-            where: { id: listId },
-            data: { totalContacts: totalCount },
-          })
-        }
-
-        const createdBy = campaign?.createdBy ?? contact.list.createdBy
-        let blocklist = await tx.emailContactList.findFirst({
-          where: {
-            teamId: parsed.teamId,
-            isArchived: false,
-            isBlocklist: true,
-          },
-          select: { id: true },
-        })
-
-        if (!blocklist) {
-          blocklist = await tx.emailContactList.create({
-            data: {
-              id: randomUUID(),
-              teamId: parsed.teamId,
-              createdBy,
-              name: EMAIL_BLOCKLIST_NAME,
-              isBlocklist: true,
-              isSystemDefault: false,
-            },
-            select: { id: true },
-          })
-        }
-
-        await tx.emailContact.upsert({
-          where: { listId_email: { listId: blocklist.id, email: normalizedEmail } },
-          update: { isUnsubscribed: true, name: contact.name },
-          create: {
-            id: randomUUID(),
-            listId: blocklist.id,
-            email: normalizedEmail,
-            name: contact.name,
-            isUnsubscribed: true,
-          },
-        })
-
-        const blocklistTotal = await tx.emailContact.count({ where: { listId: blocklist.id } })
-        await tx.emailContactList.update({
-          where: { id: blocklist.id },
-          data: { totalContacts: blocklistTotal },
+        await blockTeamEmail(tx, {
+          teamId: parsed.teamId,
+          email: normalizedEmail,
+          name: contact.name,
+          createdBy: campaign?.createdBy ?? contact.list.createdBy,
+          markUnsubscribed: true,
         })
       }
 

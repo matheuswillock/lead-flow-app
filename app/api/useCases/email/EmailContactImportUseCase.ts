@@ -17,6 +17,7 @@ import {
   evaluateEmailForAudience,
 } from "@/lib/email/audience-prevalidation"
 import {
+  blockTeamEmailsBulk,
   findTeamBlocklistedEmails,
   partitionByBlocklist,
 } from "@/lib/email/email-contact-blocklist"
@@ -161,6 +162,93 @@ export class EmailContactImportUseCase {
     }
 
     return { imported, updated: updateRows.length }
+  }
+
+  /** Import para a blocklist: só recusa linha sem e-mail; o resto vira bloqueio. */
+  private collectRowsWithEmail(rows: ImportRow[]): {
+    validRows: ImportRow[]
+    skipped: number
+    skippedIssues: SkippedImportIssue[]
+  } {
+    const validRows: ImportRow[] = []
+    const skippedIssues: SkippedImportIssue[] = []
+    const seen = new Set<string>()
+
+    for (const row of rows) {
+      const email = this.normalizeEmail(row.email ?? "")
+      if (!email) {
+        skippedIssues.push({ line: row.line, email: "(vazio)", reason: "E-mail ausente na linha" })
+        continue
+      }
+      if (seen.has(email)) continue
+      seen.add(email)
+      validRows.push({ line: row.line, email, name: row.name?.trim() || undefined })
+    }
+
+    return {
+      validRows,
+      skipped: skippedIssues.length,
+      skippedIssues: skippedIssues.slice(0, SKIPPED_ISSUES_PERSIST_LIMIT),
+    }
+  }
+
+  /** Lote de lista comum: grava, enfileira Radar e replica na lista padrão. */
+  private async importContactsBatch(params: {
+    listId: string
+    teamId: string
+    importJobId: string
+    batch: ImportRow[]
+    hasRadarFeature: boolean
+    fanOutToDefaultList: boolean
+    ctx: TeamContext
+  }): Promise<{ imported: number; updated: number }> {
+    const batchResult = await this.upsertContactsBatch(params.listId, params.batch)
+
+    if (params.hasRadarFeature) {
+      const batchContacts = await this.db.emailContact.findMany({
+        where: {
+          listId: params.listId,
+          email: { in: params.batch.map((row) => row.email) },
+        },
+        select: { id: true },
+      })
+
+      if (batchContacts.length > 0) {
+        await emailContactRadarSyncOutboxRepository.upsertPendingForContacts(
+          batchContacts.map((batchContact) => ({
+            emailContactId: batchContact.id,
+            teamId: params.teamId,
+            emailImportJobId: params.importJobId,
+          }))
+        )
+      }
+    }
+
+    if (params.fanOutToDefaultList) {
+      const defaultList = await this.ensureDefaultList(params.ctx)
+      await this.upsertContactsBatch(defaultList.id, params.batch)
+    }
+
+    return batchResult
+  }
+
+  /**
+   * O lote inteiro vira bloqueio numa transação só. Uma transação por linha
+   * estourava o `maxDuration = 60` do cron antes do primeiro checkpoint.
+   */
+  private async blockContactsBatch(
+    teamId: string,
+    createdBy: string,
+    batch: ImportRow[]
+  ): Promise<number> {
+    const result = await this.db.$transaction(async (tx) =>
+      blockTeamEmailsBulk(tx, {
+        teamId,
+        createdBy,
+        contacts: batch.map((row) => ({ email: row.email, name: row.name ?? null })),
+      })
+    )
+    return result.blockedCount
   }
 
   /**
@@ -505,7 +593,7 @@ export class EmailContactImportUseCase {
 
       const list = await this.db.emailContactList.findFirst({
         where: { id: claimed.listId, teamId: claimed.teamId },
-        select: { id: true, isSystemDefault: true },
+        select: { id: true, isSystemDefault: true, isBlocklist: true },
       })
       if (!list) {
         await this.db.emailImportJob.update({
@@ -521,11 +609,16 @@ export class EmailContactImportUseCase {
       } as TeamContext
 
       const allRows = await this.parseStoredRows(claimed.sourceFormat, claimed.storagePath)
+      // Import cujo destino é a blocklist não passa pelas portas de descarte:
+      // typo de domínio, provedor morto e bounce anterior são exatamente o que
+      // se quer bloquear. Só linhas sem e-mail são recusadas.
       const {
         validRows,
         skipped: initialSkipped,
         skippedIssues: initialSkippedIssues,
-      } = await this.validateRows(allRows, claimed.teamId)
+      } = list.isBlocklist
+        ? this.collectRowsWithEmail(allRows)
+        : await this.validateRows(allRows, claimed.teamId)
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
@@ -569,37 +662,38 @@ export class EmailContactImportUseCase {
         const batch = validRows.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
 
         try {
-          const batchResult = await this.upsertContactsBatch(claimed.listId, batch)
-          importedCount += batchResult.imported
-          updatedCount += batchResult.updated
-
-          if (hasRadarFeature) {
-            const batchContacts = await this.db.emailContact.findMany({
-              where: { listId: claimed.listId, email: { in: batch.map((row) => row.email) } },
-              select: { id: true },
+          // Nenhum ramo pode sair do laço por `continue`: o checkpoint de
+          // progresso está depois do try/catch, e pulá-lo deixa
+          // processedRows/importedCount parados — um job interrompido reprocessa
+          // lotes já concluídos.
+          if (list.isBlocklist) {
+            const blocked = await this.blockContactsBatch(
+              claimed.teamId,
+              claimed.requestedBy,
+              batch
+            )
+            importedCount += blocked
+            processedRows += batch.length
+            console.info(
+              `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${blocked} bloqueio(s) — sucesso`
+            )
+          } else {
+            const batchResult = await this.importContactsBatch({
+              listId: claimed.listId,
+              teamId: claimed.teamId,
+              importJobId: claimed.id,
+              batch,
+              hasRadarFeature,
+              fanOutToDefaultList: !list.isSystemDefault,
+              ctx,
             })
-
-            if (batchContacts.length > 0) {
-              await emailContactRadarSyncOutboxRepository.upsertPendingForContacts(
-                batchContacts.map((batchContact) => ({
-                  emailContactId: batchContact.id,
-                  teamId: claimed.teamId,
-                  emailImportJobId: claimed.id,
-                }))
-              )
-            }
+            importedCount += batchResult.imported
+            updatedCount += batchResult.updated
+            processedRows += batch.length
+            console.info(
+              `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${batch.length} contatos — sucesso`
+            )
           }
-
-          processedRows += batch.length
-
-          if (!list.isSystemDefault) {
-            const defaultList = await this.ensureDefaultList(ctx)
-            await this.upsertContactsBatch(defaultList.id, batch)
-          }
-
-          console.info(
-            `[EmailContactImport][${claimed.importId}] Lote ${batchIndex + 1}/${totalBatches} — ${batch.length} contatos — sucesso`
-          )
 
           batchIndex += 1
         } catch (error) {
