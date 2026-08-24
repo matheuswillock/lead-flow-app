@@ -2,15 +2,15 @@ import { describe, expect, it } from "bun:test"
 import { containsPrismaDataAccess } from "./ai-governance"
 
 describe("containsPrismaDataAccess", () => {
-  it("detecta o client compartilhado exportado como prisma", async () => {
+  it("detecta o client compartilhado exportado como prisma", () => {
     const source = `
       import { prisma } from "@/app/api/infra/data/prisma"
       const leads = await prisma.lead.findMany({ where: { teamId } })
     `
-    expect(await containsPrismaDataAccess(source)).toBe(true)
+    expect(containsPrismaDataAccess(source)).toBe(true)
   })
 
-  it("detecta client injetado no construtor com outro nome (this.db.)", async () => {
+  it("detecta client injetado no construtor com outro nome (this.db.)", () => {
     const source = `
       import type { PrismaClient } from "@prisma/client"
       class EmailCampaignUseCase {
@@ -20,19 +20,28 @@ describe("containsPrismaDataAccess", () => {
         }
       }
     `
-    expect(await containsPrismaDataAccess(source)).toBe(true)
+    expect(containsPrismaDataAccess(source)).toBe(true)
   })
 
-  it("detecta transaction client recebido como parametro", async () => {
+  it("detecta transaction client recebido como parametro", () => {
     const source = `
       async function persist(tx: Prisma.TransactionClient) {
         await tx.lead.update({ where: { id }, data: { status } })
       }
     `
-    expect(await containsPrismaDataAccess(source)).toBe(true)
+    expect(containsPrismaDataAccess(source)).toBe(true)
   })
 
-  it("detecta $queryRaw em client injetado", async () => {
+  it("detecta client vindo de factory sem anotacao de tipo", () => {
+    const source = `
+      import { getEmailCronPrisma } from "@/app/api/infra/data/prisma"
+      const db = getEmailCronPrisma()
+      const logs = await db.emailLog.findMany({ where: { dispatchId } })
+    `
+    expect(containsPrismaDataAccess(source)).toBe(true)
+  })
+
+  it("detecta $queryRaw em client injetado", () => {
     const source = `
       class ImportUseCase {
         constructor(private readonly database: PrismaClient) {}
@@ -41,10 +50,10 @@ describe("containsPrismaDataAccess", () => {
         }
       }
     `
-    expect(await containsPrismaDataAccess(source)).toBe(true)
+    expect(containsPrismaDataAccess(source)).toBe(true)
   })
 
-  it("nao acusa UseCase que so depende de Repository", async () => {
+  it("nao acusa UseCase que so depende de Repository", () => {
     const source = `
       import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
       class LeadUseCase {
@@ -53,22 +62,31 @@ describe("containsPrismaDataAccess", () => {
         }
       }
     `
-    expect(await containsPrismaDataAccess(source)).toBe(false)
+    expect(containsPrismaDataAccess(source)).toBe(false)
   })
 
-  it("nao acusa import de tipo do @prisma/client sem acesso ao banco", async () => {
+  it("nao acusa import de tipo do @prisma/client sem acesso ao banco", () => {
     const source = `
       import type { LeadStatus, PrismaClient } from "@prisma/client"
       export type LeadDto = { status: LeadStatus }
     `
-    expect(await containsPrismaDataAccess(source)).toBe(false)
+    expect(containsPrismaDataAccess(source)).toBe(false)
   })
 
-  it("nao acusa objeto de dominio com propriedade lead", async () => {
+  it("nao acusa objeto que tem propriedade com nome de model", () => {
+    const source = `
+      const cache = buildCache()
+      const total = cache.lead.count()
+      store.team.update({ name })
+    `
+    expect(containsPrismaDataAccess(source)).toBe(false)
+  })
+
+  it("nao acusa objeto de dominio com propriedade lead", () => {
     const source = `
       const payload = { lead: { name: "Ana" } }
       console.info(payload.lead.name)
     `
-    expect(await containsPrismaDataAccess(source)).toBe(false)
+    expect(containsPrismaDataAccess(source)).toBe(false)
   })
 })

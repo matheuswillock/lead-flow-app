@@ -180,27 +180,6 @@ const CLIENT_API_MASKING_EXCLUDED_PATH_PREFIXES = [
   "lib/route-map/",
 ];
 
-const PRISMA_SCHEMA_PATH = path.join(ROOT, "prisma", "schema.prisma");
-const PRISMA_SCHEMA_MODEL_REGEX = /^model\s+([A-Za-z_][A-Za-z0-9_]*)/gm;
-/** Delegate methods that only exist on a Prisma model delegate. */
-const PRISMA_DELEGATE_METHODS = [
-  "findMany",
-  "findFirst",
-  "findFirstOrThrow",
-  "findUnique",
-  "findUniqueOrThrow",
-  "create",
-  "createMany",
-  "createManyAndReturn",
-  "update",
-  "updateMany",
-  "upsert",
-  "delete",
-  "deleteMany",
-  "count",
-  "aggregate",
-  "groupBy",
-].join("|");
 /** `<receiver>.$queryRaw` / `$executeRaw` / `$transaction` — client-level API. */
 const PRISMA_CLIENT_API_REGEX =
   /[\w$)\]]\s*\.\s*\$(?:queryRaw|executeRaw|transaction)/;
@@ -209,44 +188,16 @@ const PRISMA_LITERAL_ACCESS_REGEX = /\bprisma\s*\./;
 /** Identifiers annotated with a Prisma client/transaction type. */
 const PRISMA_TYPED_IDENTIFIER_REGEX =
   /\b([A-Za-z_$][\w$]*)\s*[?!]?\s*:\s*(?:Omit<\s*)?(?:PrismaClient|PrismaTransactionClient|Prisma\.TransactionClient|TransactionClient)\b/g;
-/** Identifiers aliasing the shared client (`const db = prisma`, `this.db = prisma`). */
+/**
+ * Identifiers holding the client without a type annotation: aliases of the
+ * shared export (`const db = prisma`) and factory calls
+ * (`const db = getEmailCronPrisma()`).
+ */
 const PRISMA_ALIAS_IDENTIFIER_REGEX =
-  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*prisma\b|\bthis\.([A-Za-z_$][\w$]*)\s*=\s*prisma\b/g;
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*(?:prisma\b|[\w.]*[Pp]risma[\w]*\s*\()|\bthis\.([A-Za-z_$][\w$]*)\s*=\s*(?:prisma\b|[\w.]*[Pp]risma[\w]*\s*\()/g;
 /** Transaction callback parameter (`$transaction(async (tx) => ...)`). */
 const PRISMA_TRANSACTION_PARAM_REGEX =
   /\$transaction\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>/g;
-
-let cachedPrismaDelegateRegex: RegExp | null = null;
-
-/**
- * Builds `<receiver>.<model>.<delegateMethod>(` from the models declared in
- * `prisma/schema.prisma`, so data access is detected regardless of how the
- * client is named (`prisma`, `this.db`, `tx`, ...).
- */
-async function loadPrismaDelegateRegex(): Promise<RegExp | null> {
-  if (cachedPrismaDelegateRegex) {
-    return cachedPrismaDelegateRegex;
-  }
-
-  if (!(await pathExists(PRISMA_SCHEMA_PATH))) {
-    return null;
-  }
-
-  const schema = await fs.readFile(PRISMA_SCHEMA_PATH, "utf8");
-  const delegates = Array.from(schema.matchAll(PRISMA_SCHEMA_MODEL_REGEX)).map(
-    (match) => match[1].charAt(0).toLowerCase() + match[1].slice(1),
-  );
-
-  if (delegates.length === 0) {
-    return null;
-  }
-
-  cachedPrismaDelegateRegex = new RegExp(
-    `[\\w$)\\]]\\s*\\.\\s*(?:${delegates.join("|")})\\s*\\.\\s*(?:${PRISMA_DELEGATE_METHODS})\\s*[(<]`,
-  );
-
-  return cachedPrismaDelegateRegex;
-}
 
 /** Prisma client identifiers other than the literal `prisma` export. */
 function collectInjectedPrismaIdentifiers(fileContent: string): Set<string> {
@@ -273,11 +224,16 @@ function collectInjectedPrismaIdentifiers(fileContent: string): Set<string> {
   return identifiers;
 }
 
+/**
+ * Property access on an identifier already established as a Prisma client
+ * (`this.db.`, `db.`, `deps.db.`), so the receiver is never inferred from the
+ * property name — `cache.lead.count()` is not database access.
+ */
 function accessesInjectedPrismaClient(fileContent: string): boolean {
   for (const identifier of collectInjectedPrismaIdentifiers(fileContent)) {
     const escaped = identifier.replaceAll("$", "\\$");
     const accessRegex = new RegExp(
-      `(?:\\bthis\\.${escaped}|(?<![.\\w$])${escaped})\\s*\\.\\s*[A-Za-z_$]`,
+      `(?<![\\w$])(?:[A-Za-z_$][\\w$]*\\s*\\.\\s*)?${escaped}\\s*\\.\\s*[A-Za-z_$]`,
     );
 
     if (accessRegex.test(fileContent)) {
@@ -293,18 +249,11 @@ function accessesInjectedPrismaClient(fileContent: string): boolean {
  * a client injected in the constructor (`this.db.`), a transaction client
  * (`tx.`), or any identifier typed as `PrismaClient`.
  */
-export async function containsPrismaDataAccess(
-  fileContent: string,
-): Promise<boolean> {
+export function containsPrismaDataAccess(fileContent: string): boolean {
   if (
     PRISMA_LITERAL_ACCESS_REGEX.test(fileContent) ||
     PRISMA_CLIENT_API_REGEX.test(fileContent)
   ) {
-    return true;
-  }
-
-  const delegateRegex = await loadPrismaDelegateRegex();
-  if (delegateRegex?.test(fileContent)) {
     return true;
   }
 
@@ -706,7 +655,7 @@ async function validateNoPrismaInUseCase(
 
     const usesPrisma =
       /\$queryRaw|\$executeRaw/.test(fileContent) ||
-      (await containsPrismaDataAccess(fileContent));
+      containsPrismaDataAccess(fileContent);
 
     if (!usesPrisma) {
       continue;
@@ -761,7 +710,7 @@ async function validatePrismaIncludeUsage(
       continue;
     }
 
-    if (!(await containsPrismaDataAccess(fileContent))) {
+    if (!containsPrismaDataAccess(fileContent)) {
       continue;
     }
 
@@ -1079,7 +1028,7 @@ async function validateNonRepositoryDatabaseAccess(
     }
 
     const fileContent = await fs.readFile(apiFile, "utf8");
-    if (!(await containsPrismaDataAccess(fileContent))) {
+    if (!containsPrismaDataAccess(fileContent)) {
       continue;
     }
 
