@@ -16,10 +16,17 @@ import type {
   IManagerAccountUserRepository,
 } from "@/app/api/infra/data/repositories/managerAccountUser/IManagerAccountUserRepository";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import type { IIncrementalBillingService } from "@/app/api/services/billing/IIncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import type {
+  AccountUserBillingCapacityPort,
+  AccountUserNotificationPort,
+  MemberProBillingPort,
+} from "./IManagerAccountUsersUseCase";
 import type {
   AssociateAccountUserParams,
   CreateAccountUserInput,
@@ -69,7 +76,17 @@ function resolveDelegatedPermissions(
 }
 
 export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
-  constructor(private readonly repository: IManagerAccountUserRepository) {}
+  // Dependências injetadas por interface, com o singleton concreto só como
+  // default — mantém os chamadores existentes intactos e torna o use case
+  // substituível em teste, que era o ponto do DIP.
+  constructor(
+    private readonly repository: IManagerAccountUserRepository,
+    private readonly profiles: IProfileRepository = profileRepository,
+    private readonly billing: IIncrementalBillingService = incrementalBillingService,
+    private readonly capacity: AccountUserBillingCapacityPort = subscriptionCreditService,
+    private readonly notifications: AccountUserNotificationPort = notificationService,
+    private readonly memberProBilling: MemberProBillingPort = memberProBillingUseCase
+  ) {}
 
   private async getTeamName(teamId: string) {
     const team = await this.repository.findTeamNameById(teamId);
@@ -140,7 +157,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       });
 
       try {
-        await notificationService.createTeamMembershipNotification({
+        await this.notifications.createTeamMembershipNotification({
           teamId: args.teamId,
           actorProfileId: args.requesterProfileId,
           actorName: args.actorName,
@@ -293,7 +310,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       };
     }
 
-    if (await memberProBillingUseCase.shouldBypassIncrementalCharge(managerId)) {
+    if (await this.memberProBilling.shouldBypassIncrementalCharge(managerId)) {
       const { profile, teamMemberRecord } = await this.repository.createAccountUserRecords(recordsParams);
       const createdUser = await this.finalizeUserCreation({
         teamId,
@@ -307,7 +324,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         teamMemberRecord,
       });
 
-      await memberProBillingUseCase.syncUsageToSubscription(managerId, "add_user");
+      await this.memberProBilling.syncUsageToSubscription(managerId, "add_user");
 
       return {
         output: new Output(true, ["Usuário criado com sucesso"], [], createdUser),
@@ -315,14 +332,14 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       };
     }
 
-    const projectedBilling = await incrementalBillingService.projectBilling(managerId, {
+    const projectedBilling = await this.billing.projectBilling(managerId, {
       additionalUsers: 1,
     });
 
     if (projectedBilling.billingDelta <= 0) {
       // Transaction contains only fast DB ops — no external API calls
       const { profile, teamMemberRecord } = await this.repository.runInTransaction(async (tx) => {
-        await subscriptionCreditService.assertCapacityAvailable(tx, managerId, { users: 1 });
+        await this.capacity.assertCapacityAvailable(tx, managerId, { users: 1 });
         return this.repository.createAccountUserRecords(recordsParams, tx);
       });
 
@@ -369,7 +386,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       payload,
     });
 
-    const proportionalData = await incrementalBillingService.calculateProportionalAmount(managerId, "user");
+    const proportionalData = await this.billing.calculateProportionalAmount(managerId, "user");
     const totalCharge = proportionalData.totalCharge ?? projectedBilling.billingDelta;
 
     await this.repository.updatePendingActionPayload(pendingAction.id, {
@@ -589,7 +606,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     });
 
     try {
-      await notificationService.createTeamMembershipNotification({
+      await this.notifications.createTeamMembershipNotification({
         teamId,
         actorProfileId: profileId,
         actorName,
@@ -633,7 +650,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     }
 
     try {
-      await notificationService.createTeamMembershipNotification({
+      await this.notifications.createTeamMembershipNotification({
         teamId,
         actorProfileId: profileId,
         actorName,
@@ -722,7 +739,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       validatedData.name ||
       validatedData.email
     ) {
-      await profileRepository.updateProfileById(validatedData.id, {
+      await this.profiles.updateProfileById(validatedData.id, {
         ...(validatedData.name ? { fullName: validatedData.name } : {}),
         ...(validatedData.email ? { email: normalizeEmail(validatedData.email) } : {}),
       });
@@ -866,7 +883,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     }
 
     try {
-      await notificationService.createTeamMembershipNotification({
+      await this.notifications.createTeamMembershipNotification({
         teamId,
         actorProfileId: profileId,
         actorName,
@@ -880,7 +897,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
 
     await this.repository.deleteTeamMember(teamId, userId);
 
-    await memberProBillingUseCase.syncBillingAfterUsageChange(managerId, "remove_user");
+    await this.memberProBilling.syncBillingAfterUsageChange(managerId, "remove_user");
 
     return {
       output: new Output(true, ["Usuário removido do time com sucesso"], [], null),

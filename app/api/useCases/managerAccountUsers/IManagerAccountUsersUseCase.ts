@@ -1,4 +1,42 @@
+import type { NotificationType, Prisma } from "@prisma/client";
 import type { Output } from "@/lib/output";
+import type { MemberProBypassOptions } from "@/app/api/shared/billing/memberProBillingTypes";
+
+/**
+ * Portas para as dependências que ainda não têm interface própria.
+ *
+ * Deliberadamente enxutas: declaram só o que ESTE consumidor chama, não a
+ * superfície inteira do serviço concreto. É interface segregada por quem usa,
+ * que é o ponto do ISP — um mock de teste implementa um ou dois métodos, não a
+ * classe inteira.
+ */
+export interface AccountUserBillingCapacityPort {
+  assertCapacityAvailable(
+    tx: Prisma.TransactionClient,
+    masterId: string,
+    input: { users?: number; teams?: number }
+  ): Promise<unknown>;
+}
+
+export interface AccountUserNotificationPort {
+  createTeamMembershipNotification(input: {
+    type: NotificationType;
+    recipientProfileId: string;
+    actorProfileId: string;
+    actorName: string;
+    teamId: string;
+    teamName: string;
+  }): Promise<unknown>;
+}
+
+export interface MemberProBillingPort {
+  shouldBypassIncrementalCharge(
+    masterId: string,
+    options?: MemberProBypassOptions
+  ): Promise<boolean>;
+  syncUsageToSubscription(masterId: string, reason: string): Promise<void>;
+  syncBillingAfterUsageChange(masterId: string, reason: string): Promise<void>;
+}
 
 export interface ManagerAccountUsersResult {
   output: Output;
