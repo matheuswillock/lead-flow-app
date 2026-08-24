@@ -8,6 +8,7 @@ import type {
   RadarLeadGatePromotionResult,
 } from "@/app/api/infra/data/repositories/radar/IRadarLeadGateUnitOfWork"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 
 class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   constructor(private readonly transaction: Prisma.TransactionClient) {}
@@ -55,8 +56,20 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       profile.normalizedPhone ?? profile.displayPhone ?? "",
     )
     const phoneSuffix = normalizedPhone.slice(-11)
-    const normalizedEmail =
-      profile.normalizedPrimaryEmail ?? profile.primaryEmail?.toLowerCase() ?? null
+
+    // O `escapeLikePattern` é obrigatório: sem ele o `mode: "insensitive"` vira
+    // `ILIKE` com o valor cru e o `_` do e-mail do perfil casa o lead de outra
+    // pessoa. Aqui isso é pior que uma leitura errada — `emailMatch` vira
+    // `existingLeadId` em CreateCrmLeadFromRadarFormGateUseCase, e
+    // `createOrUpdateFromRadarProfile` então grava nome, telefone e e-mail do
+    // perfil POR CIMA do lead casado. Um perfil com `maria_silva@…`
+    // sobrescrevia o cadastro de `maria.silva@…`.
+    //
+    // Escapar, e não comparar variantes literais, porque `Lead.email` é gravado
+    // como veio: caixa mista divergente entre cadastro e perfil precisa
+    // continuar casando, senão o gate cria um lead duplicado só por diferença
+    // de caixa. Ver `lib/prisma/escape-like-pattern.ts`.
+    const emailToMatch = (profile.normalizedPrimaryEmail ?? profile.primaryEmail)?.trim() || null
 
     const [leadIdMatch, phoneMatch, emailMatch] = await Promise.all([
       profile.leadId
@@ -80,12 +93,12 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
             orderBy: { createdAt: "asc" },
           })
         : null,
-      normalizedEmail
+      emailToMatch
         ? this.transaction.lead.findFirst({
             where: {
               teamId: profile.teamId,
               deletedAt: null,
-              email: { equals: normalizedEmail, mode: "insensitive" },
+              email: { equals: escapeLikePattern(emailToMatch), mode: "insensitive" },
             },
             select: { id: true },
             orderBy: { createdAt: "asc" },

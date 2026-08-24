@@ -143,7 +143,7 @@ async function resolveProfileIdForCandidate(
 
   const normalizedEmail = normalizeRadarEmail(candidate.recipientEmail)
   const lead = candidate.recipientName
-    ? await radarRepository.findLeadPhoneByEmail(candidate.teamId, normalizedEmail)
+    ? await radarRepository.findLeadPhoneByEmail(candidate.teamId, candidate.recipientEmail)
     : null
 
   const hasValidPhone = Boolean(

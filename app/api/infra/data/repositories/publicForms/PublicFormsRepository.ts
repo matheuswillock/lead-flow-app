@@ -1,6 +1,7 @@
 import { ActivityType, Prisma } from "@prisma/client"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
 import { isThankYouRuleTarget, normalizeThankYouPages } from "@/lib/public-forms/thank-you-pages"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
@@ -1258,12 +1259,22 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  /**
+   * `escapeLikePattern` no e-mail: sem ele o `mode: "insensitive"` vira ILIKE
+   * com o valor cru, e `_`/`%` do endereço injetam no pool candidatos que não
+   * casam por e-mail nenhum. `findMatchingLead` decide no último critério por
+   * `byName.length === 1`, então o lixo do curinga faz uma resposta de
+   * formulário público ser gravada por cima do lead errado — ou empata o
+   * `byName` em 2 e perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
+   */
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {
         teamId,
         OR: [
-          ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
+          ...(email
+            ? [{ email: { equals: escapeLikePattern(email), mode: "insensitive" as const } }]
+            : []),
           ...(phone ? [{ phone }, { phone: normalizedPhone }] : []),
         ],
       },

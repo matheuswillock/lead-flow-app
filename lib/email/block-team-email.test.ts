@@ -172,6 +172,37 @@ describe("blockTeamEmailsBulk", () => {
     expect(state.totals["blocklist"]).toBe(1)
   })
 
+  it("não conta quem já estava bloqueado — blockedCount é o que de fato foi inserido", async () => {
+    state.contacts.push({ listId: "blocklist", email: "javablocked@example.com", name: "Ja" })
+
+    const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
+      teamId: "team-1",
+      createdBy: "profile-1",
+      contacts: [
+        { email: "javablocked@example.com", name: "Ja" },
+        { email: "novo@example.com", name: "Novo" },
+      ],
+    })
+
+    // 2 endereços únicos no input, mas só 1 vira linha nova: `skipDuplicates`
+    // pula o preexistente. Devolver `byEmail.size` reportaria 2 e inflaria o
+    // importedCount a cada reprocessamento do mesmo lote.
+    expect(blockedCount).toBe(1)
+  })
+
+  it("lote inteiro já bloqueado → blockedCount 0", async () => {
+    state.contacts.push({ listId: "blocklist", email: "a@example.com", name: null })
+    state.contacts.push({ listId: "blocklist", email: "b@example.com", name: null })
+
+    const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
+      teamId: "team-1",
+      createdBy: "profile-1",
+      contacts: [{ email: "a@example.com", name: null }, { email: "b@example.com", name: null }],
+    })
+
+    expect(blockedCount).toBe(0)
+  })
+
   it("ignora linhas sem e-mail sem quebrar o lote", async () => {
     const { blockedCount } = await blockTeamEmailsBulk(tx as never, {
       teamId: "team-1",
