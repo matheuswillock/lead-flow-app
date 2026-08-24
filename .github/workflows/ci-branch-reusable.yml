@@ -237,39 +237,112 @@ jobs:
       - build
       - e2e
     steps:
+      # Distingue TRÊS estados, não dois. "Check reprovou" e "check não rodou"
+      # exigem ações opostas — corrigir código vs. investigar infraestrutura — e
+      # antes eram reportados com a mesma mensagem.
+      #
+      # Incidente de referência: em 23/08 o `bun install` do job CI Light abortou
+      # com "Fail extracting tarball for mermaid". O job morreu antes de emitir
+      # qualquer output, e este gate imprimiu "Lint and/or governance checks
+      # failed", "Tests failed" e "Spellcheck PT-BR failed" — três mensagens
+      # apontando para código que estava íntegro. Mesma família do deploy verde
+      # sem `pipefail` que custou três dias.
       - name: Enforce Quality Checks
         env:
           RUN_SPELLCHECK: ${{ inputs.run-spellcheck }}
+          CI_LIGHT_RESULT: ${{ needs.ci-light.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          CI_LIGHT_PASSED: ${{ needs.ci-light.outputs.passed }}
+          CI_LIGHT_TESTS: ${{ needs.ci-light.outputs['tests-result'] }}
+          CI_LIGHT_SPELLCHECK: ${{ needs.ci-light.outputs['spellcheck-result'] }}
+          CI_LIGHT_GOV_SYNC: ${{ needs.ci-light.outputs['governance-sync'] }}
+          CI_LIGHT_GOV_CHECK: ${{ needs.ci-light.outputs['governance-check'] }}
+          CI_LIGHT_API_MASKING: ${{ needs.ci-light.outputs['api-masking-check'] }}
+          CI_LIGHT_LINT: ${{ needs.ci-light.outputs.lint }}
         run: |
+          set -uo pipefail
           failed=0
-          if [[ "${{ needs.ci-light.outputs.passed }}" != "true" ]]; then
-            echo "::error::Lint and/or governance checks failed."
-            echo "governance:sync=${{ needs.ci-light.outputs['governance-sync'] }}"
-            echo "governance:check=${{ needs.ci-light.outputs['governance-check'] }}"
-            echo "governance:check-api-masking=${{ needs.ci-light.outputs['api-masking-check'] }}"
-            echo "lint=${{ needs.ci-light.outputs.lint }}"
-            failed=1
-          fi
-          if [[ "${{ needs.typecheck.result }}" != "success" ]]; then
-            echo "::error::Typecheck failed."
-            failed=1
-          fi
-          if [[ "${{ needs.ci-light.outputs['tests-result'] }}" != "success" ]]; then
-            echo "::error::Tests failed."
-            failed=1
-          fi
-          if [[ "$RUN_SPELLCHECK" == "true" && "${{ needs.ci-light.outputs['spellcheck-result'] }}" != "success" ]]; then
-            echo "::error::Spellcheck PT-BR failed."
-            failed=1
-          fi
-          if [[ "${{ needs.build.result }}" != "success" && "${{ needs.build.result }}" != "skipped" ]]; then
-            echo "::error::Build failed."
-            failed=1
-          fi
-          if [[ "${{ needs.e2e.result }}" != "success" ]]; then
-            echo "::error::E2E tests failed."
-            failed=1
-          fi
+
+          # Resultado de JOB: sempre preenchido pelo Actions. `skipped` só é
+          # aceitável onde a ausência do job é decisão de pipeline (build em
+          # rebase), e nunca por omissão.
+          assert_job() {
+            local nome="$1" resultado="$2" skip_ok="${3:-nao}"
+            case "$resultado" in
+              success) return 0 ;;
+              skipped)
+                if [[ "$skip_ok" == "sim" ]]; then return 0; fi
+                echo "::error::${nome}: PULADO, mas é obrigatório. Nenhum check deste job foi executado."
+                return 1 ;;
+              cancelled)
+                echo "::error::${nome}: CANCELADO — não chegou ao fim. NÃO é reprovação de check: nada foi verificado. Investigue o runner ou uma execução concorrente."
+                return 1 ;;
+              failure)
+                echo "::error::${nome}: REPROVOU. Veja o log do job para a causa."
+                return 1 ;;
+              *)
+                echo "::error::${nome}: estado inesperado ('${resultado:-vazio}'). Trate como NÃO VERIFICADO."
+                return 1 ;;
+            esac
+          }
+
+          # Resultado de CHECK, lido de output. Output vazio com job bem-sucedido
+          # é contrato quebrado — o gate não pode ler isso como reprovação.
+          assert_check() {
+            local nome="$1" valor="$2" esperado="$3"
+            if [[ -z "$valor" ]]; then
+              echo "::error::${nome}: SEM RESULTADO. O job CI Light terminou sem emitir este output — contrato quebrado. Trate como NÃO VERIFICADO, não como reprovação."
+              return 1
+            fi
+            if [[ "$valor" != "$esperado" ]]; then
+              echo "::error::${nome}: REPROVOU (resultado: '${valor}')."
+              return 1
+            fi
+            return 0
+          }
+
+          # `failure` no job CI Light NÃO quer dizer que nenhum check rodou: os
+          # passos de check usam `continue-on-error` e gravam o veredito em
+          # output, mas o passo "Resolve Tests" encerra o job com exit 1 quando
+          # um teste reprova — com os outputs anteriores já gravados. Por isso os
+          # outputs seguem sendo a fonte de verdade POR CHECK, e o resultado do
+          # job só decide se vale inspecioná-los.
+          case "$CI_LIGHT_RESULT" in
+            success|failure)
+              assert_check "Lint + governança" "$CI_LIGHT_PASSED" "true" || {
+                failed=1
+                echo "governance:sync=${CI_LIGHT_GOV_SYNC:-<sem resultado>}"
+                echo "governance:check=${CI_LIGHT_GOV_CHECK:-<sem resultado>}"
+                echo "governance:check-api-masking=${CI_LIGHT_API_MASKING:-<sem resultado>}"
+                echo "lint=${CI_LIGHT_LINT:-<sem resultado>}"
+              }
+              assert_check "Testes unitários" "$CI_LIGHT_TESTS" "success" || failed=1
+              if [[ "$RUN_SPELLCHECK" == "true" ]]; then
+                assert_check "Spellcheck PT-BR" "$CI_LIGHT_SPELLCHECK" "success" || failed=1
+              fi
+              # Um job reprovado nunca passa no gate, mesmo que todo output lido
+              # esteja verde — pode ter morrido depois do último output.
+              if [[ "$CI_LIGHT_RESULT" == "failure" ]]; then
+                echo "::error::CI Light (VPS): job terminou em falha. Se todos os checks acima aparecem verdes, ele morreu em um passo posterior — comece pelo log do job."
+                failed=1
+              fi
+              ;;
+            *)
+              # cancelled / skipped / vazio: o job não chegou a produzir veredito
+              # nenhum. Reportar cada output individualmente aqui só geraria
+              # ruído apontando para código íntegro.
+              assert_job "CI Light (VPS)" "$CI_LIGHT_RESULT" || failed=1
+              echo "::notice::Os checks de lint, governança, testes e spellcheck NÃO foram executados. Não há reprovação de código a corrigir aqui — comece pelo log do job CI Light (VPS)."
+              ;;
+          esac
+
+          assert_job "Typecheck" "$TYPECHECK_RESULT" || failed=1
+          # Build é pulado de propósito em rebase pela UI do GitHub.
+          assert_job "Build" "$BUILD_RESULT" "sim" || failed=1
+          assert_job "E2E (Playwright)" "$E2E_RESULT" || failed=1
+
           exit "$failed"
 
   auto-pr:
