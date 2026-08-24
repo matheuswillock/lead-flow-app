@@ -36,7 +36,20 @@ import { LOCAL_DB_URL, probeLocalPostgres } from "./lib/local-stack";
 
 const rawArgs = process.argv.slice(2);
 const dryRun = rawArgs.includes("--dry-run");
-const migrationName = rawArgs.find((arg) => arg !== "--dry-run");
+
+/**
+ * Traz os `ALTER COLUMN … DROP DEFAULT` para a migration em vez de filtrá-los.
+ *
+ * Existe porque intenção não é inferível do schema: uma coluna que sempre foi
+ * `@updatedAt` puro e uma da qual acabaram de remover `@default(now())` geram a
+ * mesma linha, e o default no banco é o mesmo (`CURRENT_TIMESTAMP`) nos dois
+ * casos. A comparação com `HEAD` cobre a edição ainda não commitada, mas não é
+ * garantia. Quando a remoção for deliberada, use esta flag.
+ */
+const includeDropDefault = rawArgs.includes("--include-drop-default");
+
+const FLAGS = new Set(["--dry-run", "--include-drop-default"]);
+const migrationName = rawArgs.find((arg) => !FLAGS.has(arg));
 
 function fail(message: string): never {
   console.error(`\n❌ ${message}`);
@@ -77,10 +90,9 @@ function readCommittedSchema(): string | undefined {
  * Colunas com default resolvido no Prisma Client. Só nelas o `DROP DEFAULT` é
  * ruído — em qualquer outra coluna a remoção é intencional e tem que aparecer.
  */
-const clientSideDefaults = readClientSideDefaults(
-  readFileSync(SCHEMA_PATH, "utf8"),
-  readCommittedSchema(),
-);
+const clientSideDefaults = includeDropDefault
+  ? new Set<string>()
+  : readClientSideDefaults(readFileSync(SCHEMA_PATH, "utf8"), readCommittedSchema());
 
 function logFilterResult(result: FilterResult): void {
   const lines = describeFilterResult(result);
@@ -104,6 +116,13 @@ if (!migrationName) {
   console.error("Exemplos:");
   console.error("  bun run db:migrate:from-prisma -- add_require_closer_gate");
   console.error("  bun run db:migrate:from-prisma -- --dry-run add_require_closer_gate");
+  console.error("");
+  console.error("Flags:");
+  console.error("  --dry-run                mostra o SQL sem gravar arquivo");
+  console.error(
+    "  --include-drop-default   não filtra ALTER COLUMN … DROP DEFAULT (use quando",
+  );
+  console.error("                           a remoção do @default for deliberada)");
   console.error("");
   console.error("Para SQL manual (RLS, seeds): bun run db:migrate:new <name>");
   process.exit(1);

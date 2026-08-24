@@ -364,6 +364,18 @@ describe("filterUnmanagedStatements", () => {
     expect(result.sql.trim()).toBe(`drop table "public"."t";`);
   });
 
+  test("allowlist vazia = nenhum DROP DEFAULT filtrado (equivale a --include-drop-default)", () => {
+    const sql = [
+      `grant select on table "public"."t" to "anon";`,
+      `alter table "public"."t" alter column "id" drop default;`,
+    ].join("\n\n");
+
+    const result = filterUnmanagedStatements(sql, new Set());
+
+    expect(result.removed).toEqual({ acl: 1, "column-default": 0, "rls-policy": 0 });
+    expect(result.sql).toContain("drop default");
+  });
+
   test("não remove nada de um diff limpo", () => {
     const sql = `create index "t_c_idx" on public.t using btree ("c");`;
     const result = filterUnmanagedStatements(sql);

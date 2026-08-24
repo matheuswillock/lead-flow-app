@@ -320,6 +320,12 @@ export function describeFilterResult(result: FilterResult): string[] {
   >) {
     if (count > 0) lines.push(`   ${count.toString().padStart(5)}  ${FILTER_CATEGORY_LABELS[category]}`);
   }
+  if (result.removed["column-default"] > 0) {
+    lines.push(
+      "   Removeu um @default de propósito? Rode com --include-drop-default para",
+      "   trazer o DROP DEFAULT para a migration — o filtro não infere intenção.",
+    );
+  }
   lines.push("   Detalhes: docs/audits/prisma-migrations-drift-2026-08-23.md");
 
   return lines;
