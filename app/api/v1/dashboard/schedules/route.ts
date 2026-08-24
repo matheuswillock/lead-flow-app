@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse, connection } from "next/server";
-import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { dashboardSchedulesUseCase } from "@/app/api/useCases/dashboardSchedules/DashboardSchedulesUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import {
   getDashboardTeamScopeFromRequest,
   resolveDashboardTeamScope,
 } from "@/app/api/v1/utils/dashboardTeamScope";
-
-function resolveTeamFilter(teamIds: string[]) {
-  return teamIds.length === 1 ? { teamId: teamIds[0] } : { teamId: { in: teamIds } };
-}
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -33,116 +29,17 @@ export async function GET(request: NextRequest) {
     }
 
     const { teamIds } = scopeResult;
-    const teamFilter = resolveTeamFilter(teamIds);
 
-    // Data de hoje (início e fim do dia)
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-    // Construir where clause baseado na role
-    let whereClause: object;
-
-    if (isManagerLikeRole(teamAccess.access.teamMember.role)) {
-      whereClause = {
-        lead: teamFilter,
-        date: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      };
-    } else {
-      whereClause = {
-        lead: {
-          ...teamFilter,
-          OR: [
-            { assignedTo: teamAccess.access.profileId },
-            { createdBy: teamAccess.access.profileId },
-          ],
-        },
-        date: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      };
-    }
-
-    const schedules = await prisma.leadsSchedule.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        leadId: true,
-        date: true,
-        meetingTitle: true,
-        notes: true,
-        meetingLink: true,
-        createdAt: true,
-        updatedAt: true,
-        lead: {
-          select: {
-            name: true,
-            email: true,
-            phone: true,
-            meetingHeald: true,
-            meetingPresenceConfirmed: true,
-            assignedTo: true,
-            assignee: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-              },
-            },
-            manager: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-              },
-            },
-            closer: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-              },
-            },
-            team: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        date: 'asc',
-      },
+    const output = await dashboardSchedulesUseCase.listDayAgenda({
+      teamIds,
+      // Papéis manager-like enxergam o time inteiro; os demais só o que atendem.
+      restrictToProfileId: isManagerLikeRole(teamAccess.access.teamMember.role)
+        ? null
+        : teamAccess.access.profileId,
+      reference: new Date(),
     });
 
-    const formattedSchedules = schedules.map((schedule) => ({
-      id: schedule.id,
-      date: schedule.date,
-      leadName: schedule.lead.name,
-      leadEmail: schedule.lead.email || '',
-      leadPhone: schedule.lead.phone || '',
-      responsible: schedule.lead.assignee?.fullName || schedule.lead.manager?.fullName || 'Não atribuído',
-      responsibleEmail: schedule.lead.assignee?.email || schedule.lead.manager?.email || '',
-      closerName: schedule.lead.closer?.fullName || 'Não atribuído',
-      closerEmail: schedule.lead.closer?.email || '',
-      meetingHeald: schedule.lead.meetingHeald,
-      meetingPresenceConfirmed: schedule.lead.meetingPresenceConfirmed === true,
-      teamName: schedule.lead.team?.name ?? '',
-      teamId: schedule.lead.team?.id ?? '',
-      meetingTitle: schedule.meetingTitle,
-      notes: schedule.notes,
-      meetingLink: schedule.meetingLink,
-      leadId: schedule.leadId,
-    }));
-
-    const output = new Output(true, [], [], formattedSchedules);
-    return NextResponse.json(output, { status: 200 });
+    return NextResponse.json(output, { status: output.isValid ? 200 : 500 });
 
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

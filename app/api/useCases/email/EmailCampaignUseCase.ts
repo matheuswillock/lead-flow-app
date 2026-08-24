@@ -45,6 +45,7 @@ import {
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import {
+  countRetriableFailedDispatchLogs,
   countSuccessfulDispatchLogs,
   persistDispatchTerminalFallback,
   withDispatchTerminalCommitRetry,
@@ -3132,15 +3133,33 @@ export class EmailCampaignUseCase {
           globalDefaults: job.globalDefaults,
           templateVariables: job.templateVariables,
         })
+        // Ver comentario equivalente em processDispatchQueueBatch: pre-validacao
+        // vira `suppressed` (terminal), recusa do provedor fica `failed`.
+        const suppressedEmails = new Set(
+          invalidRecipients.map((recipient) => recipient.email.trim().toLowerCase())
+        )
+        let failedLogCount = 0
         await withConcurrencyLimit(
           job.recipients.filter((recipient) => !dispatchedEmails.has(recipient.email)),
           EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
           async (recipient) => {
-            const logId = logIdsByEmail.get(recipient.email)
+            const normalizedEmail = recipient.email.trim().toLowerCase()
+            const logId = logIdsByEmail.get(normalizedEmail) ?? logIdsByEmail.get(recipient.email)
             if (!logId) return
+            const reason =
+              failureReasonByEmail.get(normalizedEmail) ??
+              failureReasonByEmail.get(recipient.email)
+            if (suppressedEmails.has(normalizedEmail)) {
+              await teamEmailDispatchLogger.markTeamEmailLogSuppressed(
+                logId,
+                reason ?? "Endereço recusado na pré-validação"
+              )
+              return
+            }
+            failedLogCount += 1
             await teamEmailDispatchLogger.markTeamEmailLogFailed(
               logId,
-              failureReasonByEmail.get(recipient.email) ?? "Falha no envio via Resend"
+              reason ?? "Falha no envio via Resend"
             )
           }
         )
@@ -3149,7 +3168,8 @@ export class EmailCampaignUseCase {
         const terminal = resolveCampaignStatusAfterDispatch(
           dispatchResult.sent,
           failureDetail,
-          job.totalRecipients
+          job.totalRecipients,
+          failedLogCount
         )
         const totalFailed = job.recipients.length - dispatchResult.sent
 
@@ -3404,7 +3424,12 @@ export class EmailCampaignUseCase {
       return null
     }
 
-    const terminal = resolveCampaignStatusAfterDispatch(sentCount, null, job.totalRecipients)
+    const terminal = resolveCampaignStatusAfterDispatch(
+      sentCount,
+      null,
+      job.totalRecipients,
+      await countRetriableFailedDispatchLogs(job.dispatchId)
+    )
 
     try {
       const updatedCampaign = await this.commitDispatchTerminalState({
@@ -3716,7 +3741,8 @@ export class EmailCampaignUseCase {
           const terminal = resolveCampaignStatusAfterDispatch(
             sentCount,
             null,
-            dispatch.totalRecipients
+            dispatch.totalRecipients,
+            await countRetriableFailedDispatchLogs(dispatch.id)
           )
           // lock order: campaign then dispatch (must match EmailLogRepository.applyWebhookEvent)
           const updatedCampaign = await this.commitDispatchTerminalState({
@@ -4157,15 +4183,32 @@ export class EmailCampaignUseCase {
       globalDefaults,
       templateVariables,
     })
+    // Recusa da nossa pre-validacao vira `suppressed` (terminal); recusa do
+    // provedor continua `failed` (retentavel). E essa separacao que impede a UI
+    // de oferecer reenvio para endereco que vai reprovar na mesma regra.
+    const suppressedEmails = new Set(
+      invalidRecipients.map((recipient) => recipient.email.trim().toLowerCase())
+    )
     await withConcurrencyLimit(
       recipients.filter((recipient) => !dispatchedEmails.has(recipient.email)),
       EMAIL_LOG_WRITE_CONCURRENCY_LIMIT,
       async (recipient) => {
-        const logId = logIdsByEmail.get(recipient.email)
+        const normalizedEmail = recipient.email.trim().toLowerCase()
+        const logId = logIdsByEmail.get(normalizedEmail)
         if (!logId) return
+        const reason =
+          failureReasonByEmail.get(normalizedEmail) ??
+          failureReasonByEmail.get(recipient.email)
+        if (suppressedEmails.has(normalizedEmail)) {
+          await teamEmailDispatchLogger.markTeamEmailLogSuppressed(
+            logId,
+            reason ?? "Endereço recusado na pré-validação"
+          )
+          return
+        }
         await teamEmailDispatchLogger.markTeamEmailLogFailed(
           logId,
-          failureReasonByEmail.get(recipient.email) ?? "Falha no envio via Resend"
+          reason ?? "Falha no envio via Resend"
         )
       }
     )
@@ -4240,7 +4283,8 @@ export class EmailCampaignUseCase {
     const terminal = resolveCampaignStatusAfterDispatch(
       sentCount,
       failureDetail,
-      dispatch.totalRecipients
+      dispatch.totalRecipients,
+      await countRetriableFailedDispatchLogs(dispatch.id)
     )
 
     const updatedCampaign = await this.commitDispatchTerminalState({

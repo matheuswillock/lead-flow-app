@@ -32,6 +32,9 @@ export default [
       'skills/**',
       'e2e/**',
       'deploy/openwa-gateway/**',
+      // Scripts de diagnostico descartavel (_tmp_*). Sao investigacoes pontuais
+      // rodadas na mao, nunca commitadas — nao devem travar lint nem push.
+      'scripts/_tmp_*.ts',
     ],
   },
   // Regras base TypeScript (sem type-aware para manter velocidade)

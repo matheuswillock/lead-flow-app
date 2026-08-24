@@ -67,4 +67,6 @@ export interface IEmailLogRepository {
   markSent(logId: string, resendEmailId: string, sentAt: Date): Promise<void>
   markManySent(entries: MarkSentEntry[], sentAt: Date): Promise<void>
   markFailed(logId: string, eventId: string, errorMessage: string, occurredAt: Date): Promise<void>
+  /** Recusa da pré-validação interna (terminal), distinta de falha do provedor (retentável). */
+  markSuppressed(logId: string, eventId: string, reason: string, occurredAt: Date): Promise<void>
 }

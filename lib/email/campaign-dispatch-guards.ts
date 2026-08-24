@@ -128,11 +128,34 @@ export function checkDispatchWindow(
   return { blocked: false }
 }
 
-/** Campanha só é `sent` quando todos os destinatários saíram; parcial fica `partially_sent`. */
+/**
+ * `partially_sent` significa "sobrou alguém que vale retentar" — não "a conta
+ * não fechou".
+ *
+ * A regra antiga comparava `sentCount` com `totalRecipients` e marcava
+ * `partially_sent` em qualquer diferença. Isso é frágil porque `totalRecipients`
+ * é a contagem da audiência no momento em que o disparo nasce, e nem todo
+ * destinatário chega a virar `EmailLog`: a materialização ainda descarta
+ * endereços por pré-validação e blocklist. Caso real (Homens v2 1/4,
+ * 22/08/2026): 1998 na audiência, 1969 logs criados, 1782 enviados, 187
+ * suprimidos — os 29 restantes sumiram antes de existir log, e a campanha ficava
+ * eternamente `partially_sent` oferecendo reenvio de gente que não existe.
+ *
+ * `failedCount` (logs `failed`) é o critério direto: são as recusas do provedor
+ * — rate limit, cota, erro transitório — as únicas que um reenvio pode resolver.
+ * Já `suppressed` vem da nossa pré-validação (typo de domínio, provedor morto,
+ * endereço genérico, bounce anterior) e reprovaria de novo na mesma regra
+ * determinística; e bounce posterior à entrega já contou como enviado, porque
+ * `countSuccessfulDispatchLogs` usa `sentAt != null`.
+ *
+ * `totalRecipients` continua na assinatura por compatibilidade com os
+ * chamadores, mas não decide mais o status.
+ */
 export function resolveCampaignStatusAfterDispatch(
   sentCount: number,
   failureDetail?: string | null,
-  totalRecipients?: number
+  totalRecipients?: number,
+  failedCount = 0
 ): {
   campaignStatus: "sent" | "failed" | "partially_sent"
   dispatchStatus: "completed" | "failed"
@@ -146,9 +169,7 @@ export function resolveCampaignStatusAfterDispatch(
     }
   }
 
-  const hasUnsentRecipients =
-    typeof totalRecipients === "number" && totalRecipients > sentCount
-  if (hasUnsentRecipients) {
+  if (failedCount > 0) {
     return {
       campaignStatus: "partially_sent",
       dispatchStatus: "completed",
