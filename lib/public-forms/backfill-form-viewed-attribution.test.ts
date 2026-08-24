@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import {
+  applyEmailLogAttribution,
+  collectUnattributedEmailLogIds,
   FORM_VIEWED_BACKFILL_MARKER,
   planFormViewedAttributionBackfill,
+  type EmailLogAttribution,
   type MetricEventRow,
 } from "./backfill-form-viewed-attribution"
 
@@ -142,6 +145,36 @@ describe("planFormViewedAttributionBackfill", () => {
     expect(plan.rows).toHaveLength(0)
   })
 
+  it("aceita question_viewed como doador — mas sem campaignId, que vem do EmailLog", () => {
+    // question_viewed passa pelo track() do cliente com o cs_el da URL, mas
+    // nunca recebe o enriquecimento do servidor. Regressão do dry-run de
+    // produção 2026-08-24, onde 6 de 20 linhas nasciam com campaignId undefined.
+    const questionViewed = doador({
+      eventKey: `${SESSION}:question_viewed:q-1:el:${EMAIL_LOG}`,
+      eventType: "question_viewed",
+      origin: { emailLogId: EMAIL_LOG, source: "email_campaign" },
+    })
+    const [synthesized] = planFormViewedAttributionBackfill([row(), questionViewed]).rows
+
+    expect(synthesized.donorEventType).toBe("question_viewed")
+    expect(synthesized.origin.campaignId).toBeUndefined()
+    expect(collectUnattributedEmailLogIds([synthesized])).toEqual([EMAIL_LOG])
+  })
+
+  it("prefere doador do funil a question_viewed", () => {
+    const questionViewed = doador({
+      eventKey: `${SESSION}:question_viewed:q-1:el:${EMAIL_LOG}`,
+      eventType: "question_viewed",
+      origin: { emailLogId: EMAIL_LOG },
+    })
+    const [synthesized] = planFormViewedAttributionBackfill([
+      row(),
+      questionViewed,
+      doador(),
+    ]).rows
+    expect(synthesized.donorEventType).toBe("form_started")
+  })
+
   it("tolera origin nulo, array ou string sem quebrar", () => {
     for (const origin of [null, undefined, [], "texto", 42]) {
       expect(() =>
@@ -149,5 +182,67 @@ describe("planFormViewedAttributionBackfill", () => {
       ).not.toThrow()
     }
     expect(planFormViewedAttributionBackfill([row({ origin: null }), doador()]).rows).toHaveLength(1)
+  })
+})
+
+describe("applyEmailLogAttribution", () => {
+  const base = {
+    eventKey: `${SESSION}:form_viewed:form:el:${EMAIL_LOG}`,
+    visitorSessionId: SESSION,
+    formId: FORM,
+    publicationId: PUBLICATION,
+    occurredAt: VISITA_CAMPANHA,
+    createdAt: VISITA_CAMPANHA,
+    donorEventKey: "k",
+    donorEventType: "question_viewed",
+    emailLogId: EMAIL_LOG,
+  }
+
+  const semCampanha = { ...base, origin: { emailLogId: EMAIL_LOG } }
+  const comCampanha = { ...base, origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN } }
+
+  function mapa(entry: Partial<EmailLogAttribution> = {}) {
+    return new Map<string, EmailLogAttribution>([
+      [
+        EMAIL_LOG,
+        { campaignId: CAMPAIGN, dispatchId: "disp-1", recipientEmail: "d@e.com", ...entry },
+      ],
+    ])
+  }
+
+  it("resolve campaignId, dispatchId e recipientEmail a partir do EmailLog", () => {
+    const { rows, droppedEmailLogIds } = applyEmailLogAttribution([semCampanha], mapa())
+    expect(droppedEmailLogIds).toHaveLength(0)
+    expect(rows[0].origin).toMatchObject({
+      campaignId: CAMPAIGN,
+      dispatchId: "disp-1",
+      recipientEmail: "d@e.com",
+    })
+  })
+
+  it("descarta quando o EmailLog nao existe", () => {
+    const { rows, droppedEmailLogIds } = applyEmailLogAttribution([semCampanha], new Map())
+    expect(rows).toHaveLength(0)
+    expect(droppedEmailLogIds).toEqual([EMAIL_LOG])
+  })
+
+  it("descarta quando o EmailLog nao tem campanha (transacional)", () => {
+    const { rows, droppedEmailLogIds } = applyEmailLogAttribution(
+      [semCampanha],
+      mapa({ campaignId: null }),
+    )
+    expect(rows).toHaveLength(0)
+    expect(droppedEmailLogIds).toEqual([EMAIL_LOG])
+  })
+
+  it("nao mexe em linha que ja tem campaignId", () => {
+    const { rows } = applyEmailLogAttribution([comCampanha], new Map())
+    expect(rows).toHaveLength(1)
+    expect(rows[0].origin.campaignId).toBe(CAMPAIGN)
+  })
+
+  it("collectUnattributedEmailLogIds so lista o que falta e sem repetir", () => {
+    expect(collectUnattributedEmailLogIds([comCampanha])).toEqual([])
+    expect(collectUnattributedEmailLogIds([semCampanha, semCampanha])).toEqual([EMAIL_LOG])
   })
 })

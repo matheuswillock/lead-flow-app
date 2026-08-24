@@ -66,6 +66,79 @@ export type FormViewedBackfillPlan = {
 /** Doadores mais próximos do view primeiro: quem inicia acabou de visualizar. */
 const DONOR_PRIORITY = ["form_started", "form_completed", "lead_created", "lead_attached"]
 
+/**
+ * Atribuição resolvida a partir do `EmailLog`, para as linhas cujo doador
+ * carrega `emailLogId` mas não `campaignId`.
+ *
+ * Isso não é caso de borda: só `form_viewed`, `form_started` e `form_completed`
+ * passam pelo enriquecimento do servidor. Eventos como `question_viewed` chegam
+ * pelo `track()` do cliente com o `cs_el` da URL e ficam sem `campaignId`. Como
+ * o analytics filtra justamente por `origin.campaignId`, sintetizar a partir
+ * desses doadores sem resolver o `EmailLog` produziria linha inerte — gravada e
+ * nunca contada.
+ */
+export type EmailLogAttribution = {
+  campaignId: string | null
+  dispatchId: string | null
+  recipientEmail: string | null
+}
+
+export type AttributionResolution = {
+  rows: SynthesizedFormViewedRow[]
+  /** `emailLogId` sem EmailLog correspondente ou sem campanha — linha descartada. */
+  droppedEmailLogIds: string[]
+}
+
+/** `emailLogId` das linhas que ainda precisam do `campaignId` resolvido. */
+export function collectUnattributedEmailLogIds(
+  rows: SynthesizedFormViewedRow[]
+): string[] {
+  return [
+    ...new Set(
+      rows
+        .filter((row) => typeof row.origin.campaignId !== "string")
+        .map((row) => row.emailLogId)
+    ),
+  ]
+}
+
+/**
+ * Preenche `campaignId`/`dispatchId`/`recipientEmail` a partir do `EmailLog` e
+ * descarta o que não for atribuível. Função pura: o script faz a consulta.
+ */
+export function applyEmailLogAttribution(
+  rows: SynthesizedFormViewedRow[],
+  byEmailLogId: Map<string, EmailLogAttribution>
+): AttributionResolution {
+  const resolved: SynthesizedFormViewedRow[] = []
+  const dropped = new Set<string>()
+
+  for (const row of rows) {
+    if (typeof row.origin.campaignId === "string") {
+      resolved.push(row)
+      continue
+    }
+
+    const attribution = byEmailLogId.get(row.emailLogId)
+    if (!attribution?.campaignId) {
+      dropped.add(row.emailLogId)
+      continue
+    }
+
+    resolved.push({
+      ...row,
+      origin: {
+        ...row.origin,
+        campaignId: attribution.campaignId,
+        ...(attribution.dispatchId ? { dispatchId: attribution.dispatchId } : {}),
+        ...(attribution.recipientEmail ? { recipientEmail: attribution.recipientEmail } : {}),
+      },
+    })
+  }
+
+  return { rows: resolved, droppedEmailLogIds: [...dropped] }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null
   return value as Record<string, unknown>

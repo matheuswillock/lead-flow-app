@@ -26,8 +26,11 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
+  applyEmailLogAttribution,
+  collectUnattributedEmailLogIds,
   FORM_VIEWED_BACKFILL_MARKER,
   planFormViewedAttributionBackfill,
+  type EmailLogAttribution,
   type MetricEventRow,
 } from "@/lib/public-forms/backfill-form-viewed-attribution"
 
@@ -140,13 +143,41 @@ async function main() {
 
   const plan = planFormViewedAttributionBackfill(rows)
 
+  // 3. Doadores como `question_viewed` carregam `emailLogId` (veio do cs_el na
+  // URL) mas não `campaignId` — só os três eventos de funil passam pelo
+  // enriquecimento do servidor. Resolver aqui, senão a linha nasce inerte:
+  // o analytics filtra exatamente por `origin.campaignId`.
+  const pendingEmailLogIds = collectUnattributedEmailLogIds(plan.rows)
+  const attributionByEmailLogId = new Map<string, EmailLogAttribution>()
+
+  for (const ids of chunk(pendingEmailLogIds, SESSION_CHUNK)) {
+    const logs = await prisma.emailLog.findMany({
+      where: { id: { in: ids }, category: "campaign" },
+      select: { id: true, campaignId: true, dispatchId: true, recipientEmail: true },
+    })
+    for (const log of logs) {
+      attributionByEmailLogId.set(log.id, {
+        campaignId: log.campaignId,
+        dispatchId: log.dispatchId,
+        recipientEmail: log.recipientEmail,
+      })
+    }
+  }
+
+  const { rows: plannedRows, droppedEmailLogIds } = applyEmailLogAttribution(
+    plan.rows,
+    attributionByEmailLogId
+  )
+
   console.info("[backfill-form-viewed-attribution] Plano", {
-    linhasASintetizar: plan.rows.length,
+    linhasASintetizar: plannedRows.length,
+    campaignIdResolvidoViaEmailLog: pendingEmailLogIds.length - droppedEmailLogIds.length,
+    descartadasSemCampanha: droppedEmailLogIds.length,
     sessoesJaAtribuidas: new Set(plan.sessionsAlreadyAttributed).size,
     sessoesSemViewOrfa: new Set(plan.sessionsWithoutOrphanView).size,
   })
 
-  for (const item of plan.rows.slice(0, 20)) {
+  for (const item of plannedRows.slice(0, 20)) {
     console.info("  +", {
       eventKey: item.eventKey,
       doador: `${item.donorEventType} (${item.donorEventKey})`,
@@ -154,8 +185,15 @@ async function main() {
       createdAt: item.createdAt.toISOString(),
     })
   }
-  if (plan.rows.length > 20) {
-    console.info(`  … e mais ${plan.rows.length - 20} linha(s)`)
+  if (plannedRows.length > 20) {
+    console.info(`  … e mais ${plannedRows.length - 20} linha(s)`)
+  }
+
+  if (droppedEmailLogIds.length > 0) {
+    console.info(
+      "[backfill-form-viewed-attribution] Aviso: emailLogId sem EmailLog de campanha correspondente — linhas descartadas",
+      { total: droppedEmailLogIds.length, exemplos: droppedEmailLogIds.slice(0, 5) }
+    )
   }
 
   if (plan.sessionsWithoutOrphanView.length > 0) {
@@ -172,7 +210,7 @@ async function main() {
     return
   }
 
-  if (plan.rows.length === 0) {
+  if (plannedRows.length === 0) {
     console.info("[backfill-form-viewed-attribution] Nada a gravar.")
     return
   }
@@ -180,7 +218,7 @@ async function main() {
   // `skipDuplicates` cobre a corrida com o tráfego real: se a linha atribuída
   // nascer entre o plano e a escrita, o eventKey @unique resolve sem erro.
   const created = await prisma.publicFormMetricEvent.createMany({
-    data: plan.rows.map((item) => ({
+    data: plannedRows.map((item) => ({
       formId: item.formId,
       publicationId: item.publicationId,
       questionId: null,
@@ -196,9 +234,9 @@ async function main() {
   })
 
   console.info("[backfill-form-viewed-attribution] Concluído", {
-    planejadas: plan.rows.length,
+    planejadas: plannedRows.length,
     criadas: created.count,
-    ignoradasPorDuplicidade: plan.rows.length - created.count,
+    ignoradasPorDuplicidade: plannedRows.length - created.count,
   })
   console.info(
     `[backfill-form-viewed-attribution] Reverter: deleteMany em publicFormMetricEvent com origin.backfill = "${FORM_VIEWED_BACKFILL_MARKER}"`
