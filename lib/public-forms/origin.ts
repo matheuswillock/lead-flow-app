@@ -17,6 +17,34 @@ const UUID_RE =
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/**
+ * Sufixo que escopa o `eventKey` por atribuição de campanha.
+ *
+ * Sem ele, o `eventKey` do `form_viewed` é `{session}:form_viewed:form` — e
+ * `session` vem de um cookie de 30 dias. Como `form_viewed` dispara em todo
+ * carregamento da página, qualquer visita anterior (link direto, teste do time,
+ * disparo antigo) já criou a linha com `origin` sem `campaignId`. O upsert de
+ * métrica é first-write-wins (`update: {}`), então o clique vindo da campanha
+ * vira no-op e a atribuição nunca entra — a campanha exibe `form_viewed: 0`
+ * mesmo com `form_started` e `form_completed` em 1.
+ *
+ * `form_started`/`form_completed` escapavam por sorte: exigem interação, então
+ * quase sempre nascem na visita da campanha. Um destinatário que já tivesse
+ * iniciado o formulário antes veria o mesmo sumiço.
+ *
+ * Escopar por `emailLogId` dá à visita atribuída uma linha própria, com
+ * `createdAt` dentro da janela do disparo e `origin` correto, sem deixar de
+ * colapsar recarregamentos do mesmo clique (o `emailLogId` é estável por
+ * destinatário/disparo).
+ */
+export function buildAttributionEventKeySuffix(
+  emailLogId: string | null | undefined
+): string {
+  const id = emailLogId?.trim()
+  if (!id || !UUID_RE.test(id)) return ""
+  return `:el:${id}`
+}
+
 export function isEmailCampaignFormOrigin(origin: Record<string, unknown> | null | undefined): boolean {
   if (!origin || typeof origin !== "object") return false
   if (origin.source === "email_campaign" || origin.attribution === "email_campaign") return true
