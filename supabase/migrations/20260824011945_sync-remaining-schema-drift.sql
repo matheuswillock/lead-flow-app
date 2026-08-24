@@ -141,13 +141,74 @@ CREATE INDEX IF NOT EXISTS "corretor_studio_health_plan_options_isActive_isDefau
 CREATE INDEX IF NOT EXISTS "email_team_variables_teamId_valueSource_idx"
   ON public.email_team_variables USING btree ("teamId", "valueSource");
 
--- ATENÇÃO: os dois índices ÚNICOS abaixo falham se o remoto tiver duplicata.
--- Ambos já estão declarados como @@unique no schema.prisma, então a aplicação
--- assume a unicidade — mas confirme antes de aplicar em produção:
---   SELECT "teamId", "phoneE164", count(*) FROM public.team_whatsapp_contacts
---   GROUP BY 1,2 HAVING count(*) > 1;
---   SELECT "teamId", "clientMessageId", count(*) FROM public.whatsapp_messages
---   WHERE "clientMessageId" IS NOT NULL GROUP BY 1,2 HAVING count(*) > 1;
+-- 3b. Reconciliação antes dos índices ÚNICOS ----------------------------------
+-- `CREATE UNIQUE INDEX` aborta a migration se houver duplicata. Conferir antes
+-- por fora não basta: `WhatsAppContactRepository.findOrCreateCanonical` faz
+-- `findFirst` e depois `create` sem upsert, e enquanto a constraint não existe
+-- no banco duas requisições concorrentes podem inserir o mesmo par. A janela
+-- fica aberta até esta migration rodar, então a reconciliação tem que estar
+-- aqui dentro.
+--
+-- Medido em produção em 24/08/2026: 0 duplicatas nos dois casos. Os blocos
+-- abaixo são no-op nesse cenário — existem para o caso de aparecer uma entre a
+-- medição e a aplicação.
+
+-- team_whatsapp_contacts: mantém o registro mais antigo e reaponta os
+-- dependentes (whatsapp_conversations.contactId, whatsapp_contact_identities.contactId).
+DO $$
+DECLARE
+  grupo record;
+BEGIN
+  FOR grupo IN
+    SELECT "teamId",
+           "phoneE164",
+           (array_agg(id ORDER BY "createdAt", id))[1] AS manter,
+           array_agg(id ORDER BY "createdAt", id)      AS todos
+    FROM public.team_whatsapp_contacts
+    WHERE "phoneE164" IS NOT NULL
+    GROUP BY "teamId", "phoneE164"
+    HAVING count(*) > 1
+  LOOP
+    UPDATE public.whatsapp_conversations
+       SET "contactId" = grupo.manter
+     WHERE "contactId" = ANY(grupo.todos) AND "contactId" <> grupo.manter;
+
+    UPDATE public.whatsapp_contact_identities
+       SET "contactId" = grupo.manter
+     WHERE "contactId" = ANY(grupo.todos) AND "contactId" <> grupo.manter;
+
+    DELETE FROM public.team_whatsapp_contacts
+     WHERE id = ANY(grupo.todos) AND id <> grupo.manter;
+
+    RAISE NOTICE 'team_whatsapp_contacts: % duplicata(s) consolidada(s) em %',
+      array_length(grupo.todos, 1) - 1, grupo.manter;
+  END LOOP;
+END $$;
+
+-- whatsapp_messages: `clientMessageId` é chave de idempotência do client e é
+-- anulável. Zerar nas duplicatas resolve o conflito sem apagar mensagem — o
+-- índice é NULLS DISTINCT, então as anuladas deixam de colidir.
+DO $$
+DECLARE
+  afetadas bigint;
+BEGIN
+  WITH ranqueadas AS (
+    SELECT id, row_number() OVER (
+             PARTITION BY "teamId", "clientMessageId" ORDER BY "createdAt", id
+           ) AS posicao
+    FROM public.whatsapp_messages
+    WHERE "clientMessageId" IS NOT NULL
+  )
+  UPDATE public.whatsapp_messages m
+     SET "clientMessageId" = NULL
+    FROM ranqueadas r
+   WHERE m.id = r.id AND r.posicao > 1;
+
+  GET DIAGNOSTICS afetadas = ROW_COUNT;
+  IF afetadas > 0 THEN
+    RAISE NOTICE 'whatsapp_messages: % clientMessageId duplicado(s) anulado(s)', afetadas;
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "team_whatsapp_contacts_teamId_phoneE164_key"
   ON public.team_whatsapp_contacts USING btree ("teamId", "phoneE164");

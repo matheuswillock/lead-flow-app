@@ -199,14 +199,11 @@ function isClientSideDefault(fieldLine: string): boolean {
   return IS_UPDATED_AT.test(fieldLine);
 }
 
-/**
- * Lê `prisma/schema.prisma` e devolve as colunas com default resolvido no
- * Prisma Client. Só essas podem ter o `DROP DEFAULT` descartado: nas demais, a
- * remoção do default é intencional e precisa chegar na migration.
- */
-export function readClientSideDefaults(schemaSource: string): Set<string> {
-  const result = new Set<string>();
-
+/** Percorre os campos de cada model resolvendo o nome físico de tabela/coluna. */
+function forEachField(
+  schemaSource: string,
+  visit: (column: string, fieldLine: string) => void,
+): void {
   for (const model of schemaSource.matchAll(/model\s+\w+\s*\{([\s\S]*?)\n\}/g)) {
     const body = model[1];
     const tableMap = body.match(/@@map\("([^"]+)"\)/);
@@ -216,15 +213,44 @@ export function readClientSideDefaults(schemaSource: string): Set<string> {
     for (const line of body.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("@@")) continue;
-      if (!isClientSideDefault(trimmed)) continue;
 
       const field = trimmed.match(/^(\w+)\s+\S+/);
       if (!field) continue;
 
       const columnMap = trimmed.match(/@map\("([^"]+)"\)/);
-      result.add(`${table}.${columnMap ? columnMap[1] : field[1]}`);
+      visit(`${table}.${columnMap ? columnMap[1] : field[1]}`, trimmed);
     }
   }
+}
+
+/**
+ * Lê `prisma/schema.prisma` e devolve as colunas com default resolvido no
+ * Prisma Client. Só essas podem ter o `DROP DEFAULT` descartado: nas demais, a
+ * remoção do default é intencional e precisa chegar na migration.
+ *
+ * `previousSchemaSource` (tipicamente `git show HEAD:prisma/schema.prisma`)
+ * fecha um buraco que a análise do schema atual sozinha não consegue ver:
+ * `@default(now()) @updatedAt` e `@updatedAt` puro produzem a MESMA linha
+ * depois que alguém remove o `@default(now())`. Sem o estado anterior, essa
+ * remoção intencional seria classificada como client-side e filtrada. Com ele,
+ * a coluna que tinha `@default` antes e não tem agora fica de fora da
+ * allowlist, e o `DROP DEFAULT` chega na migration.
+ */
+export function readClientSideDefaults(
+  schemaSource: string,
+  previousSchemaSource?: string,
+): Set<string> {
+  const result = new Set<string>();
+  forEachField(schemaSource, (column, line) => {
+    if (isClientSideDefault(line)) result.add(column);
+  });
+
+  if (!previousSchemaSource) return result;
+
+  forEachField(previousSchemaSource, (column, line) => {
+    // Tinha default físico antes e não tem mais: remoção deliberada.
+    if (HAS_DEFAULT.test(line) && !CLIENT_GENERATOR.test(line)) result.delete(column);
+  });
 
   return result;
 }

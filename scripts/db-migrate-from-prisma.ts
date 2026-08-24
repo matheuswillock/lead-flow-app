@@ -61,12 +61,25 @@ function run(
   };
 }
 
+const SCHEMA_PATH = join("prisma", "schema.prisma");
+
+/**
+ * Versão do schema em HEAD, para distinguir "coluna nunca teve default físico"
+ * de "o default acabou de ser removido". As duas produzem a mesma linha quando
+ * sobra só `@updatedAt`. Best-effort: fora de um repo git, segue sem ela.
+ */
+function readCommittedSchema(): string | undefined {
+  const result = run("git", ["show", `HEAD:${SCHEMA_PATH}`]);
+  return result.status === 0 && result.stdout.trim() ? result.stdout : undefined;
+}
+
 /**
  * Colunas com default resolvido no Prisma Client. Só nelas o `DROP DEFAULT` é
  * ruído — em qualquer outra coluna a remoção é intencional e tem que aparecer.
  */
 const clientSideDefaults = readClientSideDefaults(
-  readFileSync(join("prisma", "schema.prisma"), "utf8"),
+  readFileSync(SCHEMA_PATH, "utf8"),
+  readCommittedSchema(),
 );
 
 function logFilterResult(result: FilterResult): void {

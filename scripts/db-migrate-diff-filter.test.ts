@@ -246,6 +246,45 @@ model ComDefaultNoBanco {
     expect(real.has("corretor_studio_lead_document_requests.expiresAt")).toBe(false);
   });
 
+  test("remoção intencional de @default(now()) sai da allowlist", () => {
+    const antes = `
+model Assinatura {
+  updatedAt DateTime @default(now()) @updatedAt
+  @@map("assinaturas")
+}
+`;
+    const depois = `
+model Assinatura {
+  updatedAt DateTime @updatedAt
+  @@map("assinaturas")
+}
+`;
+    // Sem o schema anterior a linha é indistinguível de um @updatedAt puro.
+    expect(readClientSideDefaults(depois).has("assinaturas.updatedAt")).toBe(true);
+    // Com ele, a remoção é reconhecida e o DROP DEFAULT precisa passar.
+    expect(readClientSideDefaults(depois, antes).has("assinaturas.updatedAt")).toBe(false);
+  });
+
+  test("coluna que sempre foi @updatedAt puro continua filtrada", () => {
+    const schema = `
+model Lead {
+  updatedAt DateTime @updatedAt
+  @@map("leads")
+}
+`;
+    expect(readClientSideDefaults(schema, schema).has("leads.updatedAt")).toBe(true);
+  });
+
+  test("@default(uuid()) não é confundido com default físico removido", () => {
+    const schema = `
+model Lead {
+  id String @id @default(uuid())
+  @@map("leads")
+}
+`;
+    expect(readClientSideDefaults(schema, schema).has("leads.id")).toBe(true);
+  });
+
   test("os 5 campos reais com @default(now()) @updatedAt ficam fora da allowlist", () => {
     const real = readClientSideDefaults(readFileSync("prisma/schema.prisma", "utf8"));
 
