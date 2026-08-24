@@ -354,6 +354,12 @@ export class PublicFormSubmissionUseCase {
       }
 
       const visitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
+      // Escopa a chave da métrica pela atribuição: sem isso, um destinatário que
+      // já enviou o formulário antes mantém a linha antiga (upsert é
+      // first-write-wins) e a conversão da campanha nova some ou fica creditada
+      // à campanha anterior.
+      const attributionEmailLogId =
+        typeof origin.emailLogId === "string" ? origin.emailLogId : null
       const metricOrigin = origin as Prisma.InputJsonValue
       const formCompletedOrigin = withFormCompletedScoreOrigin(
         origin,
@@ -374,7 +380,11 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId,
           eventType: "form_completed",
-          eventKey: buildPublicFormMetricEventKey(visitorSessionId, "form_completed"),
+          eventKey: buildPublicFormMetricEventKey(
+            visitorSessionId,
+            "form_completed",
+            attributionEmailLogId
+          ),
           origin: formCompletedOrigin,
           radarOrigin: withFormCompletedScoreOrigin(origin, job.score, job.scoreBandLabel),
         },
@@ -387,7 +397,11 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId,
           eventType,
-          eventKey: buildPublicFormMetricEventKey(visitorSessionId, eventType),
+          eventKey: buildPublicFormMetricEventKey(
+            visitorSessionId,
+            eventType,
+            attributionEmailLogId
+          ),
           origin: metricOrigin,
         })
       }
@@ -398,7 +412,11 @@ export class PublicFormSubmissionUseCase {
           publicationId: job.publicationId,
           visitorSessionId,
           eventType: "meeting_scheduled",
-          eventKey: buildPublicFormMetricEventKey(visitorSessionId, "meeting_scheduled"),
+          eventKey: buildPublicFormMetricEventKey(
+            visitorSessionId,
+            "meeting_scheduled",
+            attributionEmailLogId
+          ),
           origin: metricOrigin,
         })
       }

@@ -465,6 +465,7 @@ export class PublicFormsService implements IPublicFormsService {
         eventType: input.eventType,
         origin,
         visitorSessionId: input.visitorSessionId,
+        occurredAt: input.occurredAt ?? null,
       })
       if (attribution.isValid && attribution.result) {
         const result = attribution.result as {
