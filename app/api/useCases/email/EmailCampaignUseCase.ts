@@ -4,6 +4,7 @@ import { Prisma, type EmailCampaignStatus, type PrismaClient } from "@prisma/cli
 import { Output } from "@/lib/output"
 import {
   EmailCampaignRepository,
+  type CreateCampaignPlanInput,
   type IEmailCampaignRepository,
 } from "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
 import { prisma, getEmailCronPrisma } from "@/app/api/infra/data/prisma"
@@ -317,43 +318,15 @@ export class EmailCampaignUseCase {
       })
     }
 
-    // Agrega no Postgres (não carrega N logs na app). Contrato = accepted por
-    // sentAt|resendEmailId; queued/failed só sem aceite.
-    const rows = await this.db.$queryRaw<
-      Array<{
-        dispatchId: string
-        acceptedCount: number | bigint
-        failedCount: number | bigint
-        queuedCount: number | bigint
-      }>
-    >`
-      SELECT
-        "dispatchId",
-        COUNT(*) FILTER (
-          WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL
-        )::int AS "acceptedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'failed'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "failedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'queued'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "queuedCount"
-      FROM "corretor_studio_email_logs"
-      WHERE "teamId" = ${teamId}::uuid
-        AND "dispatchId" = ANY(${dispatchIds}::uuid[])
-      GROUP BY "dispatchId"
-    `
+    // Agregação roda no Postgres (não carrega N logs na app) — ver
+    // EmailCampaignRepository.aggregateDispatchLogCounters.
+    const rows = await this.repository.aggregateDispatchLogCounters(teamId, dispatchIds)
 
     for (const row of rows) {
-      if (!row.dispatchId) continue
       countersByDispatchId.set(row.dispatchId, {
-        acceptedCount: Number(row.acceptedCount),
-        failedCount: Number(row.failedCount),
-        queuedCount: Number(row.queuedCount),
+        acceptedCount: row.acceptedCount,
+        failedCount: row.failedCount,
+        queuedCount: row.queuedCount,
       })
     }
 
@@ -1843,11 +1816,14 @@ export class EmailCampaignUseCase {
           ? effectiveRadarSlug.slice(CUSTOM_RADAR_SEGMENT_PREFIX.length)
           : null
 
-        const createCombinedInDb = async (db: Prisma.TransactionClient | typeof prisma) => {
+        const buildCombinedPlanRows = (): Pick<
+          CreateCampaignPlanInput,
+          "single" | "parent" | "children"
+        > => {
           if (!plan.isParentCampaign) {
             const single = plan.subCampaigns[0]
-            return db.emailCampaign.create({
-              data: {
+            return {
+              single: {
                 id: randomUUID(),
                 teamId: ctx.teamId,
                 createdBy: ctx.profileId,
@@ -1864,7 +1840,9 @@ export class EmailCampaignUseCase {
                 scheduledAt: single?.scheduledAt ? new Date(single.scheduledAt) : null,
                 totalRecipients: plan.totalRecipients,
               },
-            })
+              parent: null,
+              children: [],
+            }
           }
 
           const parentId = randomUUID()
@@ -1872,8 +1850,9 @@ export class EmailCampaignUseCase {
             ? "scheduled"
             : "draft"
 
-          const parent = await db.emailCampaign.create({
-            data: {
+          return {
+            single: null,
+            parent: {
               id: parentId,
               teamId: ctx.teamId,
               createdBy: ctx.profileId,
@@ -1887,51 +1866,38 @@ export class EmailCampaignUseCase {
               scheduledAt: null,
               totalRecipients: plan.totalRecipients,
             },
-          })
-
-          const subCampaigns = []
-          for (const sub of plan.subCampaigns) {
-            const child = await db.emailCampaign.create({
-              data: {
-                id: randomUUID(),
-                teamId: ctx.teamId,
-                createdBy: ctx.profileId,
-                name: sub.name,
-                description: data.description?.trim() ? data.description.trim() : null,
-                templateId: data.templateId,
-                contactListId: sub.contactListId ?? null,
-                parentCampaignId: parentId,
-                subCampaignIndex: sub.index,
-                audienceContactIds: sub.audienceContactIds ?? [],
-                status: sub.scheduledAt ? "scheduled" : "draft",
-                scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
-                totalRecipients: sub.totalRecipients,
-              },
-              select: {
-                id: true,
-                name: true,
-                description: true,
-                subCampaignIndex: true,
-                scheduledAt: true,
-                totalRecipients: true,
-                status: true,
-              },
-            })
-            subCampaigns.push(child)
+            children: plan.subCampaigns.map((sub) => ({
+              id: randomUUID(),
+              teamId: ctx.teamId,
+              createdBy: ctx.profileId,
+              name: sub.name,
+              description: data.description?.trim() ? data.description.trim() : null,
+              templateId: data.templateId,
+              contactListId: sub.contactListId ?? null,
+              parentCampaignId: parentId,
+              subCampaignIndex: sub.index,
+              audienceContactIds: sub.audienceContactIds ?? [],
+              status: sub.scheduledAt ? "scheduled" : "draft",
+              scheduledAt: sub.scheduledAt ? new Date(sub.scheduledAt) : null,
+              totalRecipients: sub.totalRecipients,
+            })),
           }
-
-          return { ...parent, subCampaigns, subCampaignCount: subCampaigns.length, isParentCampaign: true }
-        }
-
-        const createCombined = async () => {
-          if (!plan.isParentCampaign) {
-            return createCombinedInDb(prisma)
-          }
-          return this.db.$transaction(async (tx) => createCombinedInDb(tx))
         }
 
         if (!customSegmentId) {
-          const result = await createCombined()
+          const result = await this.repository.createCampaignPlan({
+            ...buildCombinedPlanRows(),
+            radarSegmentLock: null,
+          })
+          // `createCampaignPlan` só devolve null no ramo com `radarSegmentLock`
+          // (segmento ficou inativo). Sem lock isso é inalcançável hoje, mas a
+          // assinatura declara `| null` incondicionalmente — sem esta guarda,
+          // um null aqui viraria Output(true, ["Campanha criada"], [], null):
+          // sucesso falso, sem erro em lugar nenhum.
+          if (!result) {
+            console.error("[EmailCampaignUseCase][create] createCampaignPlan devolveu null sem lock")
+            return new Output(false, [], ["Erro ao criar campanha"], null)
+          }
           const message = plan.isParentCampaign
             ? "Campanha criada com sub-campanhas"
             : "Campanha criada com sucesso"
@@ -1939,13 +1905,13 @@ export class EmailCampaignUseCase {
         }
 
         // Mantém o advisory lock até a campanha existir (evita remoção concorrente do segmento)
-        const created = await this.db.$transaction(async (tx) => {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
-          const stillActive = await tx.teamRadarSegment.findFirst({
-            where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
-          })
-          if (!stillActive) return null
-          return createCombinedInDb(tx)
+        const created = await this.repository.createCampaignPlan({
+          ...buildCombinedPlanRows(),
+          radarSegmentLock: {
+            teamId: ctx.teamId,
+            segmentId: customSegmentId,
+            lockKey: radarSegmentLockKey(ctx.teamId, customSegmentId),
+          },
         })
         if (!created) {
           return new Output(false, [], ["Segmento Radar inválido"], null)
@@ -1997,19 +1963,29 @@ export class EmailCampaignUseCase {
           : null
 
         if (!customSegmentId) {
-          const campaign = await this.db.emailCampaign.create({ data: campaignData })
+          const campaign = await this.repository.createCampaignPlan({
+            single: campaignData,
+            parent: null,
+            children: [],
+            radarSegmentLock: null,
+          })
+          // Mesma razão da guarda do caminho combinado acima.
+          if (!campaign) {
+            console.error("[EmailCampaignUseCase][create] createCampaignPlan devolveu null sem lock")
+            return new Output(false, [], ["Erro ao criar campanha"], null)
+          }
           return new Output(true, ["Campanha criada com sucesso"], [], campaign)
         }
 
-        const campaign = await this.db.$transaction(async (tx) => {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${radarSegmentLockKey(ctx.teamId, customSegmentId)}))`
-
-          const stillActive = await tx.teamRadarSegment.findFirst({
-            where: { id: customSegmentId, teamId: ctx.teamId, isActive: true },
-          })
-          if (!stillActive) return null
-
-          return tx.emailCampaign.create({ data: campaignData })
+        const campaign = await this.repository.createCampaignPlan({
+          single: campaignData,
+          parent: null,
+          children: [],
+          radarSegmentLock: {
+            teamId: ctx.teamId,
+            segmentId: customSegmentId,
+            lockKey: radarSegmentLockKey(ctx.teamId, customSegmentId),
+          },
         })
 
         if (!campaign) {
