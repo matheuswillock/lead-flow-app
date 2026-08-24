@@ -22,6 +22,19 @@ export type CachedTeamLeadsPayload = {
 };
 
 /**
+ * Sinaliza que a listagem falhou e que nada deve ser gravado no cache.
+ *
+ * Lancar e proposital: o Next so grava entrada quando a funcao `"use cache"`
+ * retorna. Devolver o Output invalido congelaria o erro pelo TTL inteiro.
+ */
+export class CachedTeamLeadsUnavailableError extends Error {
+  constructor(readonly errorMessages: string[]) {
+    super(errorMessages[0] ?? "Erro interno do servidor");
+    this.name = "CachedTeamLeadsUnavailableError";
+  }
+}
+
+/**
  * Reconstrói o `TeamAccess` a partir de primitivos.
  *
  * `getAllLeadsByUserRoleWithCtx` lê apenas `teamId`, `profileId` e
@@ -87,6 +100,21 @@ async function getCachedTeamLeadsPayload(
       }),
     }
   );
+
+  // NAO gravar falha no cache.
+  //
+  // `getAllLeadsByUserRoleWithCtx` engole a excecao e devolve um Output
+  // invalido em vez de lancar (LeadUseCase.ts, catch de
+  // getAllLeadsByUserRoleWithCtx). Retornar esse payload daqui faria o Next
+  // gravar a entrada — uma queda momentanea do banco viraria board com erro
+  // para o time inteiro por ate `expire`, sem mutacao nenhuma para disparar
+  // revalidateTag e limpar.
+  //
+  // Lancando, o Next nao grava entrada e o caller decide o fallback. Mesmo
+  // desenho de getCachedLandingStats/getLandingStats.
+  if (!output.isValid) {
+    throw new CachedTeamLeadsUnavailableError(output.errorMessages);
+  }
 
   return {
     isValid: output.isValid,
