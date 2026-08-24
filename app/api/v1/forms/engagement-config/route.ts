@@ -16,9 +16,14 @@ export async function GET(request: NextRequest) {
     const output = await getFormsEngagementConfigUseCase.execute()
     const response = NextResponse.json(output, { status: output.isValid ? 200 : 400 })
     if (output.isValid) {
+      // `private`, nao `public`: esta rota passa por getTeamAccess e o proxy
+      // anexa cookie de sessao na resposta (rewriteWithSession ->
+      // copySessionCookies). Com `public`, um cache compartilhado poderia
+      // guardar essa resposta com o Set-Cookie de um usuario e servi-la a
+      // outro. O corpo em si e configuracao global, mas o cabecalho nao e.
       response.headers.set(
         "Cache-Control",
-        "public, max-age=300, stale-while-revalidate=60"
+        "private, max-age=300, stale-while-revalidate=60"
       )
     }
     return response

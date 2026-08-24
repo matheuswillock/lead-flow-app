@@ -15,19 +15,41 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
+import {
+  describeFilterResult,
+  filterUnmanagedStatements,
+  readClientSideDefaults,
+  type FilterResult,
+} from "./db-migrate-diff-filter";
 import {
   cleanupEmptyMigrationsBySuffix,
   dedupeMigrationsBySuffix,
   findNonEmptyMigrationsBySuffix,
   isEmptyMigrationContent,
   normalizeMigrationName,
+  removeMigrationFile,
 } from "./db-migrate-utils";
 import { LOCAL_DB_URL, probeLocalPostgres } from "./lib/local-stack";
 
 const rawArgs = process.argv.slice(2);
 const dryRun = rawArgs.includes("--dry-run");
-const migrationName = rawArgs.find((arg) => arg !== "--dry-run");
+
+/**
+ * Traz os `ALTER COLUMN … DROP DEFAULT` para a migration em vez de filtrá-los.
+ *
+ * Existe porque intenção não é inferível do schema: uma coluna que sempre foi
+ * `@updatedAt` puro e uma da qual acabaram de remover `@default(now())` geram a
+ * mesma linha, e o default no banco é o mesmo (`CURRENT_TIMESTAMP`) nos dois
+ * casos. A comparação com `HEAD` cobre a edição ainda não commitada, mas não é
+ * garantia. Quando a remoção for deliberada, use esta flag.
+ */
+const includeDropDefault = rawArgs.includes("--include-drop-default");
+
+const FLAGS = new Set(["--dry-run", "--include-drop-default"]);
+const migrationName = rawArgs.find((arg) => !FLAGS.has(arg));
 
 function fail(message: string): never {
   console.error(`\n❌ ${message}`);
@@ -52,6 +74,34 @@ function run(
   };
 }
 
+const SCHEMA_PATH = join("prisma", "schema.prisma");
+
+/**
+ * Versão do schema em HEAD, para distinguir "coluna nunca teve default físico"
+ * de "o default acabou de ser removido". As duas produzem a mesma linha quando
+ * sobra só `@updatedAt`. Best-effort: fora de um repo git, segue sem ela.
+ */
+function readCommittedSchema(): string | undefined {
+  const result = run("git", ["show", `HEAD:${SCHEMA_PATH}`]);
+  return result.status === 0 && result.stdout.trim() ? result.stdout : undefined;
+}
+
+/**
+ * Colunas com default resolvido no Prisma Client. Só nelas o `DROP DEFAULT` é
+ * ruído — em qualquer outra coluna a remoção é intencional e tem que aparecer.
+ */
+const clientSideDefaults = includeDropDefault
+  ? new Set<string>()
+  : readClientSideDefaults(readFileSync(SCHEMA_PATH, "utf8"), readCommittedSchema());
+
+function logFilterResult(result: FilterResult): void {
+  const lines = describeFilterResult(result);
+  if (lines.length === 0) return;
+
+  console.info(`\n▶ ${lines[0]}`);
+  for (const line of lines.slice(1)) console.info(line);
+}
+
 function assertLocalStackRunning(): void {
   if (!probeLocalPostgres()) {
     fail(
@@ -66,6 +116,13 @@ if (!migrationName) {
   console.error("Exemplos:");
   console.error("  bun run db:migrate:from-prisma -- add_require_closer_gate");
   console.error("  bun run db:migrate:from-prisma -- --dry-run add_require_closer_gate");
+  console.error("");
+  console.error("Flags:");
+  console.error("  --dry-run                mostra o SQL sem gravar arquivo");
+  console.error(
+    "  --include-drop-default   não filtra ALTER COLUMN … DROP DEFAULT (use quando",
+  );
+  console.error("                           a remoção do @default for deliberada)");
   console.error("");
   console.error("Para SQL manual (RLS, seeds): bun run db:migrate:new <name>");
   process.exit(1);
@@ -139,8 +196,16 @@ if (dryRun) {
     process.exit(0);
   }
 
+  const filtered = filterUnmanagedStatements(diff.stdout, clientSideDefaults);
+  logFilterResult(filtered);
+
+  if (!filtered.sql.trim()) {
+    console.info("\n✅ Só havia ruído de ACL/default/policy. Nenhuma mudança de schema real.");
+    process.exit(0);
+  }
+
   console.info("\n--- SQL (preview) ---\n");
-  console.info(diff.stdout.trim());
+  console.info(filtered.sql.trim());
   console.info("\n--- fim do preview ---");
   console.info("\nPara gravar: bun run db:migrate:from-prisma --", normalizedName);
   process.exit(0);
@@ -160,6 +225,22 @@ if (!migrationPath) {
     `supabase db diff não criou supabase/migrations/*_${normalizedName}.sql com conteúdo. Revise o output acima.`,
   );
 }
+
+const filtered = filterUnmanagedStatements(
+  readFileSync(migrationPath, "utf8"),
+  clientSideDefaults,
+);
+logFilterResult(filtered);
+
+if (!filtered.sql.trim()) {
+  removeMigrationFile(migrationPath);
+  console.info(
+    "\n✅ Só havia ruído de ACL/default/policy. Nenhuma mudança de schema real — arquivo removido.",
+  );
+  process.exit(0);
+}
+
+writeFileSync(migrationPath, filtered.sql);
 
 console.info("\n✅ Migration criada:");
 console.info(`   ${migrationPath}`);

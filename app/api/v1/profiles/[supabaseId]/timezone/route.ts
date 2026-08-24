@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { profileTimezoneUseCase } from "@/app/api/useCases/profileTimezone/ProfileTimezoneUseCase"
+import { assertProfileOwnership } from "@/app/api/v1/profiles/utils/assertProfileOwnership"
 import { invalidatePublicFormBootstrapCache } from "@/lib/cache/invalidation"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -9,13 +10,19 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
  * Returns the timezone for a profile.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   await connection();
 
   try {
     const { supabaseId } = await params
+
+    const access = await assertProfileOwnership(request, supabaseId)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
+    }
+
     const output = await profileTimezoneUseCase.getTimezone(supabaseId)
     const status = output.isValid ? 200 : output.errorMessages.includes("Perfil não encontrado") ? 404 : 500
     return NextResponse.json(output, { status })
@@ -36,6 +43,12 @@ export async function PATCH(
 ) {
   try {
     const { supabaseId } = await params
+
+    const access = await assertProfileOwnership(request, supabaseId)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
+    }
+
     const body = await request.json()
 
     const output = await profileTimezoneUseCase.updateTimezone(supabaseId, body?.timezone)
