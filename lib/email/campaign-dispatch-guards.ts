@@ -179,3 +179,34 @@ export function resolveCampaignStatusAfterDispatch(
 
   return { campaignStatus: "sent", dispatchStatus: "completed", errorMessage: null }
 }
+
+/**
+ * Mesma regra da função acima, aplicada na releitura da lista a partir dos
+ * contadores cumulativos de log. Vive aqui, ao lado da irmã, porque foi
+ * justamente a divergência entre as duas que causou o bug: o disparo persistia
+ * `sent`, o reconciler recalculava por outro critério e regravava
+ * `partially_sent`, devolvendo o botão de reenviar falhas sozinho.
+ *
+ * NÃO recebe `totalRecipients` de propósito. Comparar contagem de log com o
+ * total da audiência parece razoável e não é: destinatários podem ser
+ * descartados na materialização e nunca virar log — no caso real da Homens v2,
+ * 1782 aceitos + 187 suprimidos = 1969, contra `totalRecipients` 1998. Os 29 de
+ * diferença deixariam a campanha presa em `partially_sent` para sempre.
+ *
+ * Disparo interrompido no meio da materialização é problema do finalizador, que
+ * compara `materializedLogCount` com o total do dispatch e republica o wake —
+ * ver `recoverStuckSendingCampaigns` e `resumeOrphanSendingDispatches`. Aqui só
+ * há log, e log não distingue "nunca materializou" de "audiência encolheu".
+ */
+export function resolveReconciledCampaignStatus(counters: {
+  acceptedCount: number
+  failedCount: number
+  queuedCount: number
+  suppressedCount: number
+}): "sent" | "failed" | "partially_sent" {
+  if (counters.acceptedCount === 0) return "failed"
+  // Só o que ainda pode sair segura a campanha: falha é retentável, fila é
+  // transitória. Recusado na pré-validação é terminal e fecha.
+  if (counters.failedCount > 0 || counters.queuedCount > 0) return "partially_sent"
+  return "sent"
+}

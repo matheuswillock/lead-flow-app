@@ -194,6 +194,7 @@ export function buildCumulativeCampaignDispatchProgress(params: {
       totalRecipients,
       acceptedCount: counters.acceptedCount,
       failedCount: counters.failedCount,
+      suppressedCount: counters.suppressedCount,
     }),
     totalRecipients,
     acceptedCount: counters.acceptedCount,
@@ -210,6 +211,12 @@ export function deriveDispatchCompletionKind(params: {
   totalRecipients: number
   acceptedCount: number
   failedCount: number
+  /**
+   * Recusados pela pré-validação. Fecham o disparo junto com os aceitos, mas
+   * NUNCA entram em `acceptedCount` — o rótulo de progresso mostra quantos
+   * e-mails saíram de verdade, e suprimido não saiu.
+   */
+  suppressedCount?: number
 }): CampaignDispatchCompletionKind {
   if (params.status === "sending") return "pending"
 
@@ -217,14 +224,17 @@ export function deriveDispatchCompletionKind(params: {
     return "failed"
   }
 
+  // Terminal = nada mais pode sair para este destinatário.
+  const terminalCount = params.acceptedCount + (params.suppressedCount ?? 0)
+
   if (
     params.acceptedCount > 0 &&
-    (params.failedCount > 0 || params.acceptedCount < params.totalRecipients)
+    (params.failedCount > 0 || terminalCount < params.totalRecipients)
   ) {
     return "partial"
   }
 
-  if (params.status === "completed" && params.acceptedCount >= params.totalRecipients) {
+  if (params.status === "completed" && terminalCount >= params.totalRecipients) {
     return "full"
   }
 
@@ -264,6 +274,7 @@ export function buildCampaignDispatchProgress(
       totalRecipients: dispatch.totalRecipients,
       acceptedCount: counters.acceptedCount,
       failedCount: counters.failedCount,
+      suppressedCount: counters.suppressedCount,
     }),
     totalRecipients: dispatch.totalRecipients,
     acceptedCount: counters.acceptedCount,

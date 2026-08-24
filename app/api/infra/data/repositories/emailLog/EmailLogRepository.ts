@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 import type {
   ApplyEmailLogWebhookInput,
   CreateTeamEmailLogInput,
+  DispatchLogCountersRecord,
   IEmailLogRepository,
   MarkSentEntry,
 } from "./IEmailLogRepository"
@@ -385,6 +386,69 @@ export class EmailLogRepository implements IEmailLogRepository {
         },
       })
     })
+  }
+
+  async aggregateCountersByDispatchId(
+    teamId: string,
+    dispatchIds: string[]
+  ): Promise<Map<string, DispatchLogCountersRecord>> {
+    const byDispatchId = new Map<string, DispatchLogCountersRecord>()
+    if (dispatchIds.length === 0) return byDispatchId
+
+    // Agrega no Postgres em vez de carregar N logs na aplicação. Contrato:
+    // `accepted` = evidência de aceite (`sentAt` ou `resendEmailId`); os demais
+    // tiers só contam quando NÃO houve aceite, senão um log entregue que depois
+    // sofreu bounce apareceria em dois tiers.
+    //
+    // Nomes físicos conferidos em prisma/schema.prisma: model EmailLog
+    // ⇒ @@map("corretor_studio_email_logs"); enum EmailLogStatus
+    // ⇒ @@map("email_log_status").
+    const rows = await prisma.$queryRaw<
+      Array<{
+        dispatchId: string
+        acceptedCount: number | bigint
+        failedCount: number | bigint
+        queuedCount: number | bigint
+        suppressedCount: number | bigint
+      }>
+    >`
+      SELECT
+        "dispatchId",
+        COUNT(*) FILTER (
+          WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL
+        )::int AS "acceptedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'failed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "failedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'queued'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "queuedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'suppressed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "suppressedCount"
+      FROM "corretor_studio_email_logs"
+      WHERE "teamId" = ${teamId}::uuid
+        AND "dispatchId" = ANY(${dispatchIds}::uuid[])
+      GROUP BY "dispatchId"
+    `
+
+    for (const row of rows) {
+      if (!row.dispatchId) continue
+      byDispatchId.set(row.dispatchId, {
+        acceptedCount: Number(row.acceptedCount),
+        failedCount: Number(row.failedCount),
+        queuedCount: Number(row.queuedCount),
+        suppressedCount: Number(row.suppressedCount),
+      })
+    }
+
+    return byDispatchId
   }
 }
 

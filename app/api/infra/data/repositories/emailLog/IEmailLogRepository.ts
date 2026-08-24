@@ -1,5 +1,13 @@
 import type { EmailEventType, EmailLogCategory } from "@prisma/client"
 
+/** Mesma forma de `DispatchLogCounters` em lib/email/campaign-dispatch-progress. */
+export type DispatchLogCountersRecord = {
+  acceptedCount: number
+  failedCount: number
+  queuedCount: number
+  suppressedCount: number
+}
+
 export type EmailLogWebhookRecord = {
   id: string
   teamId: string
@@ -69,4 +77,13 @@ export interface IEmailLogRepository {
   markFailed(logId: string, eventId: string, errorMessage: string, occurredAt: Date): Promise<void>
   /** Recusa da pré-validação interna (terminal), distinta de falha do provedor (retentável). */
   markSuppressed(logId: string, eventId: string, reason: string, occurredAt: Date): Promise<void>
+  /**
+   * Contadores de log por dispatch, agregados no banco (não carrega N logs na
+   * aplicação). `accepted` é evidência de aceite pelo provedor — `sentAt` ou
+   * `resendEmailId` —, e os demais tiers só contam quando não houve aceite.
+   */
+  aggregateCountersByDispatchId(
+    teamId: string,
+    dispatchIds: string[]
+  ): Promise<Map<string, DispatchLogCountersRecord>>
 }

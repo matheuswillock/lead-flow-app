@@ -26,6 +26,48 @@ describe("campaign-dispatch-progress helpers", () => {
     })
   })
 
+  it("completionKind full quando aceitos + suprimidos fecham o total", () => {
+    // Regressão: `suppressedCount` passou a ser coletado mas não chegava aqui,
+    // então um dispatch concluído com aceitos + suprimidos ficava "partial" e a
+    // UI exibia aviso de envio parcial sem nada retentável.
+    expect(
+      deriveDispatchCompletionKind({
+        status: "completed",
+        totalRecipients: 1969,
+        acceptedCount: 1782,
+        failedCount: 0,
+        suppressedCount: 187,
+      })
+    ).toBe("full")
+  })
+
+  it("suprimido não mascara falha retentável", () => {
+    expect(
+      deriveDispatchCompletionKind({
+        status: "completed",
+        totalRecipients: 100,
+        acceptedCount: 80,
+        failedCount: 10,
+        suppressedCount: 10,
+      })
+    ).toBe("partial")
+  })
+
+  it("acceptedCount continua sendo só o aceite, para o rótulo de progresso", () => {
+    // O total terminal serve para decidir conclusão; o número exibido ao
+    // usuário continua sendo quantos e-mails realmente saíram.
+    expect(
+      formatCampaignDispatchProgressLabel({
+        status: "sending",
+        completionKind: "pending",
+        acceptedCount: 1782,
+        totalRecipients: 1969,
+        retryFailedOnly: false,
+        errorMessage: null,
+      })
+    ).toBe("Enviando 1782/1969")
+  })
+
   it("completionKind partial sem status partially_completed", () => {
     expect(
       deriveDispatchCompletionKind({

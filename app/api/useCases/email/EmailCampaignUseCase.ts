@@ -42,6 +42,7 @@ import {
   getResendDomainDispatchWarnings,
   resendDomainTrackingInputFromSettings,
   resolveCampaignStatusAfterDispatch,
+  resolveReconciledCampaignStatus,
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import {
@@ -99,6 +100,7 @@ import {
   type SuppressedAudienceCounts,
 } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
 import { teamRadarSegmentService } from "@/app/api/services/radar/TeamRadarSegmentService"
 import { parseRadarSegmentRules } from "@/lib/radar/segment-dsl"
@@ -314,51 +316,14 @@ export class EmailCampaignUseCase {
       countersByDispatchId.set(dispatchId, emptyDispatchLogCounters())
     }
 
-    // Agrega no Postgres (não carrega N logs na app). Contrato = accepted por
-    // sentAt|resendEmailId; queued/failed só sem aceite.
-    const rows = await this.db.$queryRaw<
-      Array<{
-        dispatchId: string
-        acceptedCount: number | bigint
-        failedCount: number | bigint
-        queuedCount: number | bigint
-        suppressedCount: number | bigint
-      }>
-    >`
-      SELECT
-        "dispatchId",
-        COUNT(*) FILTER (
-          WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL
-        )::int AS "acceptedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'failed'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "failedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'queued'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "queuedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'suppressed'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "suppressedCount"
-      FROM "corretor_studio_email_logs"
-      WHERE "teamId" = ${teamId}::uuid
-        AND "dispatchId" = ANY(${dispatchIds}::uuid[])
-      GROUP BY "dispatchId"
-    `
-
-    for (const row of rows) {
-      if (!row.dispatchId) continue
-      countersByDispatchId.set(row.dispatchId, {
-        acceptedCount: Number(row.acceptedCount),
-        failedCount: Number(row.failedCount),
-        queuedCount: Number(row.queuedCount),
-        suppressedCount: Number(row.suppressedCount),
-      })
+    // A agregação vive no repositório: este arquivo está em
+    // `dipPrismaInUseCaseAllowlist` e a regra é encolher a exceção, não ampliá-la.
+    const aggregated = await emailLogRepository.aggregateCountersByDispatchId(
+      teamId,
+      dispatchIds
+    )
+    for (const [dispatchId, counters] of aggregated) {
+      countersByDispatchId.set(dispatchId, counters)
     }
 
     return countersByDispatchId
@@ -600,30 +565,13 @@ export class EmailCampaignUseCase {
       // preserva o status persistido em vez de presumir falha.
       if (!campaignLogs || campaignLogs.length === 0) continue
 
-      const { acceptedCount, failedCount, queuedCount, suppressedCount } =
-        aggregateCumulativeDispatchLogCounters(campaignLogs)
+      const counters = aggregateCumulativeDispatchLogCounters(campaignLogs)
+      const { acceptedCount } = counters
 
-      // Mesma regra de `resolveCampaignStatusAfterDispatch`: `sent` quando não
-      // sobrou nada que pudesse ter saído. Recusado na pré-validação fecha a
-      // campanha — reenviar submete o mesmo endereço à mesma regra
-      // determinística, queimando reputação de domínio sem ganho.
-      //
-      // Antes o reconciler comparava só `acceptedCount >= totalRecipients` e,
-      // ignorando os suprimidos, regravava `partially_sent` por cima do `sent`
-      // que o disparo tinha acabado de persistir — devolvendo o botão de
-      // reenviar falhas na próxima leitura da lista.
-      //
-      // `terminalCount < totalRecipients` continua sendo `partially_sent`: são
-      // destinatários que nunca viraram log (disparo morto no meio da
-      // materialização), e esse é o único indício visível de que não terminou.
-      const terminalCount = acceptedCount + suppressedCount
-      const hasPendingOrRetriable = failedCount > 0 || queuedCount > 0
-      const correctStatus: EmailCampaignStatus =
-        acceptedCount === 0
-          ? "failed"
-          : hasPendingOrRetriable || terminalCount < campaign.totalRecipients
-            ? "partially_sent"
-            : "sent"
+      // Regra única, ao lado da irmã do disparo em `campaign-dispatch-guards`.
+      // Divergirem é o que fazia o reconciler regravar `partially_sent` por cima
+      // do `sent` recém-persistido, na primeira releitura da lista.
+      const correctStatus: EmailCampaignStatus = resolveReconciledCampaignStatus(counters)
 
       if (correctStatus === campaign.status) continue
 
