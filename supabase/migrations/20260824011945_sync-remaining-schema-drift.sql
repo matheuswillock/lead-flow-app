@@ -94,22 +94,40 @@ END $$;
 -- datetime_precision reporta 6 tanto para timestamptz quanto para
 -- timestamptz(6), então a comparação por lá nunca dispararia.
 
+-- `backoffice_cnaes` entra junto: o schema declarava os timestamps sem `@db`,
+-- o que dava `timestamp(3) without time zone` no Prisma contra `TIMESTAMPTZ` na
+-- migration — divergência de verdade, não só de precisão. Ao declarar
+-- `@db.Timestamptz(6)` sobra o mesmo ajuste de typmod das outras.
+--
+-- NOTA: existem ~136 outras colunas `TIMESTAMPTZ` (typmod -1) que um
+-- `prisma db push` em base vazia criaria como `timestamptz(6)`. Não estão aqui
+-- de propósito: em Postgres `timestamptz` JÁ é precisão 6, então não há
+-- diferença de comportamento, e o `supabase db diff` não as reporta porque os
+-- dois lados da comparação concordam. Reescrever 136 colunas em produção por
+-- cosmético não se paga.
+
 DO $$
 DECLARE
-  col text;
+  alvo record;
 BEGIN
-  FOREACH col IN ARRAY ARRAY['resetAt', 'updatedAt']
+  FOR alvo IN
+    SELECT * FROM (VALUES
+      ('corretor_studio_radar_pixel_rate_limits', 'resetAt'),
+      ('corretor_studio_radar_pixel_rate_limits', 'updatedAt'),
+      ('backoffice_cnaes', 'createdAt'),
+      ('backoffice_cnaes', 'updatedAt')
+    ) AS v(tabela, coluna)
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_attribute
-      WHERE attrelid = to_regclass('public."corretor_studio_radar_pixel_rate_limits"')
-        AND attname = col
+      WHERE attrelid = to_regclass(format('public.%I', alvo.tabela))
+        AND attname = alvo.coluna
         AND NOT attisdropped
         AND atttypmod IS DISTINCT FROM 6
     ) THEN
       EXECUTE format(
-        'ALTER TABLE "public"."corretor_studio_radar_pixel_rate_limits" ALTER COLUMN %I SET DATA TYPE timestamp(6) with time zone',
-        col
+        'ALTER TABLE "public".%I ALTER COLUMN %I SET DATA TYPE timestamp(6) with time zone',
+        alvo.tabela, alvo.coluna
       );
     END IF;
   END LOOP;
