@@ -37,6 +37,7 @@ import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { EmailSender } from "../context/EmailSettingsTypes"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
+import { buildDeliveryFromEmail } from "@/lib/email/resolve-campaign-from"
 
 function getInitials(name: string) {
   return name
@@ -105,7 +106,7 @@ function SenderForm({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               disabled={loading || lockEmail}
-              placeholder="Ex: deliveryby@mail.suaempresa.com.br"
+              placeholder="Ex: contato@mail.suaempresa.com.br"
             />
             {lockEmail ? (
               <FieldDescription>
@@ -282,15 +283,13 @@ export function SenderCard() {
     [defaultSenderId, senders]
   )
 
-  const fallbackFromHint = domainName
-    ? `deliveryby@${domainName}`
-    : "deliveryby@corretorstudio.com"
+  const fallbackFromHint = buildDeliveryFromEmail(domainName)
 
   return (
     <EmailSettingsSectionCard
       icon={Mail}
       title="Remetentes"
-      description="Gerencie os remetentes usados nas campanhas. Sem remetente cadastrado, o sistema usa o endereço deliveryby do domínio (ou da plataforma)."
+      description="Gerencie os remetentes usados nas campanhas. Sem remetente cadastrado, o sistema usa o endereço contato do domínio (ou da plataforma)."
       contentClassName="flex flex-col gap-5"
     >
       {loading ? (
