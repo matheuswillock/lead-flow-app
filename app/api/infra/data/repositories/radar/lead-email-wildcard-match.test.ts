@@ -1,5 +1,6 @@
 import { describe, expect, it, mock } from "bun:test"
 import type { PrismaClient } from "@prisma/client"
+import { matchesEmail, type EmailFilter } from "@/test/postgres-like-matcher"
 
 /**
  * Trava do curinga de ILIKE nos dois lugares que casam `Lead.email` a partir de
@@ -39,34 +40,6 @@ type LeadRow = {
   phone: string | null
   deletedAt: Date | null
   createdAt: Date
-}
-
-/** Tradução de um padrão LIKE do Postgres para regex: `_` -> `.`, `%` -> `.*`. */
-function ilike(value: string, pattern: string): boolean {
-  const asRegex = pattern
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/_/g, ".")
-    .replace(/%/g, ".*")
-  return new RegExp(`^${asRegex}$`, "i").test(value)
-}
-
-type EmailFilter = string | { equals?: string; in?: string[]; mode?: string }
-
-function matchesEmail(email: string | null, filter: EmailFilter | undefined): boolean {
-  if (filter === undefined) return true
-  if (email === null) return false
-  if (typeof filter === "string") return email === filter
-  if (Array.isArray(filter.in)) {
-    return filter.mode === "insensitive"
-      ? filter.in.some((pattern) => ilike(email, pattern))
-      : filter.in.includes(email)
-  }
-  if (typeof filter.equals === "string") {
-    return filter.mode === "insensitive"
-      ? ilike(email, filter.equals)
-      : email === filter.equals
-  }
-  throw new Error(`filtro de e-mail não previsto por este fake: ${JSON.stringify(filter)}`)
 }
 
 /**
@@ -137,9 +110,6 @@ describe("RadarRepository.findLeadPhoneByEmail — curinga de ILIKE", () => {
   })
 
   it("casa o lead gravado em minúsculas mesmo quando o endereço chega em caixa mista", async () => {
-    // `Lead.email` é gravado como veio (nem `LeadRepository.create` nem o gate
-    // do Radar normalizam), então a comparação não pode virar igualdade só na
-    // forma original — precisa cobrir também a forma minúscula.
     const { repo } = makeRadarRepository([
       { ...OUTRA_PESSOA, id: "lead-maria", email: "maria.silva@example.com", phone: "11977776666" },
     ])
@@ -149,14 +119,29 @@ describe("RadarRepository.findLeadPhoneByEmail — curinga de ILIKE", () => {
     expect(encontrado).toEqual({ phone: "11977776666" })
   })
 
-  it("casa o lead gravado em caixa mista quando o endereço chega igual", async () => {
+  it("casa o lead gravado em caixa mista quando o endereço chega em minúsculas", async () => {
+    // Codex apontou este caso (PR #993): `Lead.email` é gravado como veio, mas
+    // os contatos e logs de e-mail chegam em minúsculas. Comparar por variantes
+    // literais (`in: [endereço, minúsculas]`) perdia esta linha e fragmentava o
+    // perfil; escapar mantém a insensibilidade de verdade.
     const { repo } = makeRadarRepository([
       { ...OUTRA_PESSOA, id: "lead-maria", email: "Maria.Silva@Example.com", phone: "11966665555" },
     ])
 
-    const encontrado = await repo.findLeadPhoneByEmail(TEAM, "Maria.Silva@Example.com")
+    const encontrado = await repo.findLeadPhoneByEmail(TEAM, "maria.silva@example.com")
 
     expect(encontrado).toEqual({ phone: "11966665555" })
+  })
+
+  it("casa o lead cujo e-mail tem `_` de verdade, sem tratá-lo como curinga", async () => {
+    const { repo } = makeRadarRepository([
+      OUTRA_PESSOA,
+      { ...OUTRA_PESSOA, id: "lead-maria", email: "maria_silva@example.com", phone: "11944443333" },
+    ])
+
+    const encontrado = await repo.findLeadPhoneByEmail(TEAM, "MARIA_SILVA@EXAMPLE.COM")
+
+    expect(encontrado).toEqual({ phone: "11944443333" })
   })
 
   it("não consulta o banco quando o endereço é vazio", async () => {
@@ -238,7 +223,10 @@ describe("RadarLeadGateUnitOfWork.findIdentityMatches — curinga de ILIKE", () 
     expect(matches.emailMatch).toBe("lead-maria")
   })
 
-  it("casa o lead gravado em caixa mista quando o perfil traz a mesma caixa", async () => {
+  // Codex, PR #993: sem este caso o gate cria um lead duplicado só por
+  // diferença de caixa — o cadastro existente ficou como o corretor digitou e o
+  // perfil chega normalizado pela lista de contatos.
+  it("casa o lead gravado em caixa mista quando o perfil chega normalizado", async () => {
     const gate = makeGate([
       { ...OUTRA_PESSOA, id: "lead-maria", email: "Maria.Silva@Example.com" },
     ])
