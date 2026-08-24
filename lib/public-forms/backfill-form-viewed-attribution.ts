@@ -45,14 +45,40 @@ export const BACKFILL_MARKER_BY_TARGET: Record<BackfillTarget, string> = {
  * diferença é semântica, não de preferência:
  *
  * - `form_viewed`: qualquer evento atribuído prova que houve visualização —
- *   não se responde pergunta nem se conclui formulário sem tê-lo aberto.
- * - `form_started`: só conclusão prova início. `form_viewed` e `question_viewed`
- *   NÃO entram: abrir o formulário, ou até ver uma pergunta, não significa que a
- *   pessoa clicou em iniciar. Usá-los inflaria `form_started` com quem só olhou.
+ *   nenhum outro evento do formulário acontece sem tê-lo aberto.
+ * - `form_started`: só entra o que o `PublicFormRenderer` emite **atrás de um
+ *   guard explícito de `started`**, mais os eventos de conversão.
+ *
+ * `form_viewed` NÃO é doador de `form_started`: ele dispara em todo
+ * carregamento (`if (session) track("form_viewed")`, sem guard), então abrir o
+ * formulário não prova que a pessoa clicou em iniciar.
+ *
+ * Já `question_viewed`, `page_viewed` e `form_exit_intent` provam: os três têm
+ * `if (!started) return` no efeito que os dispara — as perguntas nem renderizam
+ * antes do start.
+ *
+ * Restringir a lista só a conclusão parece conservador, mas distorce o funil:
+ * repararia `form_started` apenas de quem converteu, apagando exatamente quem
+ * iniciou e abandonou — o segmento que a métrica existe para medir.
+ *
+ * Só entram eventos com guard verificável no código. `question_skipped`,
+ * `page_advanced` e `form_submit_attempted` também implicam início pela árvore
+ * de renderização, mas não têm guard explícito; ficam de fora para a regra
+ * continuar sendo checável por leitura, não por inferência.
  */
 const DONOR_TYPES_BY_TARGET: Record<BackfillTarget, readonly string[] | null> = {
   form_viewed: null, // null = qualquer evento atribuído serve
-  form_started: ["form_completed", "lead_created", "lead_attached", "meeting_scheduled"],
+  form_started: [
+    // Gated por `started` no renderer.
+    "question_viewed",
+    "page_viewed",
+    "form_exit_intent",
+    // Conversão implica início.
+    "form_completed",
+    "lead_created",
+    "lead_attached",
+    "meeting_scheduled",
+  ],
 }
 
 export type MetricEventRow = {

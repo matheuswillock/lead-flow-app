@@ -272,7 +272,8 @@ describe("planFormViewedAttributionBackfill — alvo form_started", () => {
   })
 
   it("NAO aceita form_viewed como doador de form_started", () => {
-    // Visualizar nao implica iniciar. Aceitar inflaria o funil com quem so olhou.
+    // form_viewed dispara em TODO carregamento, sem guard de `started`
+    // (PublicFormRenderer:361). Abrir o formulario nao prova que iniciou.
     const viewedAtribuido = row({
       eventKey: `${SESSION}:form_viewed:form:el:${EMAIL_LOG}`,
       eventType: "form_viewed",
@@ -285,17 +286,40 @@ describe("planFormViewedAttributionBackfill — alvo form_started", () => {
     expect(plan.rows).toHaveLength(0)
   })
 
-  it("NAO aceita question_viewed como doador de form_started", () => {
+  it.each(["question_viewed", "page_viewed", "form_exit_intent"])(
+    "aceita %s: o renderer so o emite atras de `if (!started) return`",
+    (eventType) => {
+      // Sem estes, o backfill repararia form_started apenas de quem converteu,
+      // apagando quem iniciou e abandonou — o segmento que a metrica mede.
+      const doadorGated = row({
+        eventKey: `${SESSION}:${eventType}:q-1:el:${EMAIL_LOG}`,
+        eventType,
+        occurredAt: VISITA_CAMPANHA,
+        createdAt: VISITA_CAMPANHA,
+        origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN },
+      })
+      const plan = planFormViewedAttributionBackfill(
+        [orfaStarted(), doadorGated],
+        "form_started",
+      )
+      expect(plan.rows).toHaveLength(1)
+      expect(plan.rows[0].donorEventType).toBe(eventType)
+      expect(plan.rows[0].eventKey).toBe(`${SESSION}:form_started:form:el:${EMAIL_LOG}`)
+    },
+  )
+
+  it("prefere conversao a evento de interacao quando ha os dois", () => {
     const questionViewed = row({
       eventKey: `${SESSION}:question_viewed:q-1:el:${EMAIL_LOG}`,
       eventType: "question_viewed",
       origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN },
     })
     const plan = planFormViewedAttributionBackfill(
-      [orfaStarted(), questionViewed],
+      [orfaStarted(), questionViewed, completedAtribuido()],
       "form_started",
     )
-    expect(plan.rows).toHaveLength(0)
+    expect(plan.rows).toHaveLength(1)
+    expect(plan.rows[0].donorEventType).toBe("form_completed")
   })
 
   it("exige orfa do proprio alvo: sessao so com form_viewed orfao nao conta", () => {
