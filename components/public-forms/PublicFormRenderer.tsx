@@ -33,7 +33,7 @@ import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/
 import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
-import { buildAttributionEventKeySuffix } from "@/lib/public-forms/origin"
+import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
@@ -328,17 +328,20 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     ) => {
       if (preview || !publicId || !session) return
       const origin = getOrigin()
-      const scope = questionId ?? "form"
-      const suffix = journey?.eventKeySuffix ? `:${journey.eventKeySuffix}` : ""
-      // Escopa a chave por atribuição: sem isso o `form_viewed` da campanha
-      // colide com o de uma visita anterior na mesma sessão de 30 dias e é
-      // descartado pelo upsert first-write-wins.
-      const attribution = buildAttributionEventKeySuffix(origin.emailLogId)
       const body = {
         visitorSessionId: session,
         eventType,
         questionId,
-        eventKey: `${session}:${eventType}:${scope}${suffix}${attribution}`,
+        // A chave é escopada por atribuição: sem isso o `form_viewed` da
+        // campanha colide com o de uma visita anterior na mesma sessão de 30
+        // dias e é descartado pelo upsert first-write-wins.
+        eventKey: buildPublicFormTrackEventKey({
+          visitorSessionId: session,
+          eventType,
+          scope: questionId,
+          suffix: journey?.eventKeySuffix,
+          emailLogId: origin.emailLogId,
+        }),
         origin,
         schemaVersion: 1,
         occurredAt: new Date().toISOString(),

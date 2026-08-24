@@ -45,6 +45,24 @@ export function buildAttributionEventKeySuffix(
   return `:el:${id}`
 }
 
+/**
+ * Chave dos eventos que o navegador emite via `track()`. Fica aqui — e não em
+ * `metric-keys.ts`, que importa `node:crypto` e não pode ir para o bundle do
+ * cliente — para que o renderer e o backfill derivem a chave da mesma fonte e
+ * não divirjam.
+ */
+export function buildPublicFormTrackEventKey(input: {
+  visitorSessionId: string
+  eventType: string
+  scope?: string | null
+  suffix?: string | null
+  emailLogId?: string | null
+}): string {
+  const scope = input.scope?.trim() || "form"
+  const suffix = input.suffix?.trim() ? `:${input.suffix.trim()}` : ""
+  return `${input.visitorSessionId}:${input.eventType}:${scope}${suffix}${buildAttributionEventKeySuffix(input.emailLogId)}`
+}
+
 export function isEmailCampaignFormOrigin(origin: Record<string, unknown> | null | undefined): boolean {
   if (!origin || typeof origin !== "object") return false
   if (origin.source === "email_campaign" || origin.attribution === "email_campaign") return true
