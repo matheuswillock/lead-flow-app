@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { isEmailCampaignFormOrigin, sanitizePublicFormOrigin } from "./origin"
+import {
+  buildAttributionEventKeySuffix,
+  isEmailCampaignFormOrigin,
+  sanitizePublicFormOrigin,
+} from "./origin"
 
 describe("sanitizePublicFormOrigin", () => {
   it("remove query strings, fragmentos e tokens com possível PII", () => {
@@ -36,6 +40,22 @@ describe("sanitizePublicFormOrigin", () => {
 
   it("ignora URLs inválidas", () => {
     expect(sanitizePublicFormOrigin({ landingUrl: "não é url" })).toEqual({})
+  })
+
+  it("escopa o eventKey por emailLogId — só com UUID válido", () => {
+    const emailLogId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    expect(buildAttributionEventKeySuffix(emailLogId)).toBe(`:el:${emailLogId}`)
+    expect(buildAttributionEventKeySuffix(` ${emailLogId} `)).toBe(`:el:${emailLogId}`)
+
+    // Visita direta mantém a chave antiga — não recria histórico à toa.
+    expect(buildAttributionEventKeySuffix(null)).toBe("")
+    expect(buildAttributionEventKeySuffix(undefined)).toBe("")
+    expect(buildAttributionEventKeySuffix("")).toBe("")
+    expect(buildAttributionEventKeySuffix("   ")).toBe("")
+
+    // Valor forjado não entra na chave: o cs_el vem da URL, é entrada de usuário.
+    expect(buildAttributionEventKeySuffix("../../etc/passwd")).toBe("")
+    expect(buildAttributionEventKeySuffix("nao-e-uuid")).toBe("")
   })
 
   it("detecta origem de campanha de e-mail", () => {
