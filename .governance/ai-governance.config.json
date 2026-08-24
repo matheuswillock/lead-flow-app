@@ -90,7 +90,6 @@
       "app/api/services/leadSchedule/LeadScheduleService.ts",
       "app/api/services/notifications/NotificationService.ts",
       "app/api/services/Portfolio/PortfolioService.ts",
-      "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
       "app/api/useCases/pendingActions/PendingActionUseCase.ts",
@@ -110,7 +109,6 @@
       "app/api/v1/teams/route.ts"
     ],
     "dipPrismaInUseCaseAllowlist": [
-      "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailContactListUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/email/EmailTeamSettingsUseCase.ts",
@@ -296,7 +294,6 @@
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/services/EmailCredit/EmailCreditService.ts",
-      "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailContactListUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/email/EmailTemplateUseCase.ts",
