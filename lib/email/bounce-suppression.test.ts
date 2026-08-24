@@ -131,7 +131,30 @@ describe("escopo da supressão por bounce (decisão de produto)", () => {
       source.indexOf('if (eventType === "complained")'),
     )
 
-    expect(bouncedBranch).toContain("lower(")
+    expect(bouncedBranch).toContain("toLowerCase()")
+  })
+
+  it("o stamp compara por igualdade indexável, sem função sobre a coluna", async () => {
+    // `lower("email") = lower($1)` corrige o curinga mas mantém o Seq Scan:
+    // função sobre a coluna não usa o `@@index([email])`. Medido em 200k
+    // linhas: Index Scan 0,036 ms (4 buffers) vs Seq Scan 161,7 ms (1666
+    // buffers). Isso roda dentro da transação do webhook que segura o lock da
+    // campanha, com `maxConcurrency: 12` na fila do Resend — uma rajada de
+    // bounce vira 12 varreduras completas simultâneas.
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+    const code = bouncedBranch
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n")
+
+    expect(code).not.toContain("lower(")
+    expect(code).toContain("email: { in:")
   })
 
   it("o stamp NÃO usa mode: insensitive — o Prisma traduz para ILIKE e abre curinga", async () => {
