@@ -444,6 +444,21 @@ export class EmailTeamSettingsUseCase {
           "[EmailTeamSettingsUseCase][connectDomain] Resend tracking error",
           trackingError
         )
+        // Remove o domínio recém-criado antes de devolver o erro. Sem isso o
+        // `create` acima deixa um domínio órfão no Resend que nós nunca
+        // persistimos: a retentativa tenta criar o mesmo nome e trava para
+        // sempre num erro de domínio já existente, sem caminho de saída pela
+        // UI. Preferimos desfazer a deixar estado pendurado no provedor.
+        const { error: cleanupError } = await resend.domains.remove(data.id)
+        if (cleanupError) {
+          // Aqui o órfão ficou mesmo. Logar o id é o que permite limpeza
+          // manual no painel — sem ele, o domínio some do nosso alcance.
+          console.error(
+            "[EmailTeamSettingsUseCase][connectDomain] Falha ao remover domínio órfão no Resend",
+            { domainId: data.id, domainName: data.name, cleanupError }
+          )
+        }
+
         return new Output(
           false,
           [],

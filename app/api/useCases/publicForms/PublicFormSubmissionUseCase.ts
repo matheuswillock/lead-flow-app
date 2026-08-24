@@ -28,7 +28,10 @@ import {
   findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
-import { FORM_COMPLETE_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
+import {
+  FORM_COMPLETE_ACTIVITY_BODY,
+  parseEmailLogIdFromOrigin,
+} from "@/lib/public-forms/email-campaign-attribution"
 import { buildPublicFormMetricEventKey } from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
@@ -129,7 +132,20 @@ export class PublicFormSubmissionUseCase {
         publicationId,
         input.visitorSessionId,
       )
-      if (completedBySession) {
+      // Só é a MESMA conversão quando a atribuição também bate. O cookie de
+      // sessão vive 30 dias, então o mesmo navegador convertendo por uma
+      // segunda campanha cairia aqui e receberia "Respostas já recebidas" —
+      // sem submissão nova e, por consequência, sem nenhuma métrica. A
+      // conversão da campanha nova sumiria ou ficaria creditada à anterior.
+      //
+      // Comparar a atribuição preserva a idempotência real (recarregar ou
+      // reenviar pelo MESMO link continua barrado) e libera o que de fato é
+      // uma conversão distinta.
+      const currentAttribution = parseEmailLogIdFromOrigin(input.origin ?? {})
+      const completedAttribution = parseEmailLogIdFromOrigin(
+        (completedBySession?.origin as Record<string, unknown> | null) ?? {},
+      )
+      if (completedBySession && currentAttribution === completedAttribution) {
         return new Output(true, ["Respostas já recebidas"], [], {
           submissionId: completedBySession.id,
           alreadyProcessed: true,
