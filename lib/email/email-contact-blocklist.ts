@@ -164,7 +164,7 @@ export async function blockTeamEmailsBulk(
   await removeEmailsFromTeamLists(tx, params.teamId, emails)
 
   // skipDuplicates: quem já estava bloqueado permanece, sem P2002 derrubar o lote.
-  await tx.emailContact.createMany({
+  const created = await tx.emailContact.createMany({
     data: [...byEmail.values()].map((contact) => ({
       id: randomUUID(),
       listId: blocklistId,
@@ -183,7 +183,11 @@ export async function blockTeamEmailsBulk(
   }
 
   await refreshListTotal(tx, blocklistId)
-  return { blocklistId, blockedCount: byEmail.size }
+  // `created.count`, não `byEmail.size`: com `skipDuplicates`, quem já estava na
+  // blocklist não gera linha nova. Devolver o total do input faria a importação
+  // e a UI reportarem endereços preexistentes como recém-bloqueados, e inflaria
+  // o `importedCount` a cada reprocessamento do mesmo lote.
+  return { blocklistId, blockedCount: created.count }
 }
 
 /** Tira os endereços de todas as listas não arquivadas do time, menos a blocklist. */

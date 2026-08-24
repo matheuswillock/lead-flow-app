@@ -5,7 +5,6 @@ import { useParams } from "next/navigation"
 import { AlertTriangle, Settings } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 
 type TrackingDegradedAlertProps = {
   warnings?: string[] | null
@@ -22,8 +21,14 @@ export function TrackingDegradedAlert({ warnings }: TrackingDegradedAlertProps) 
       <AlertTriangle data-icon="inline-start" className="text-semantic-warning" />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <AlertTitle>Habilite as métricas de tracking</AlertTitle>
-          <AlertDescription>{RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE}</AlertDescription>
+          <AlertTitle>Disparo bloqueado</AlertTitle>
+          {/* Renderiza o warning recebido, não uma constante fixa: o gate tem
+              duas causas (DNS não verificado e métricas desligadas) e antes a
+              tela mandava "habilite as métricas" mesmo quando o bloqueio era o
+              DNS — botão que não destrava nada. */}
+          {warnings.map((warning) => (
+            <AlertDescription key={warning}>{warning}</AlertDescription>
+          ))}
         </div>
         {supabaseId ? (
           <Button asChild variant="outline" size="sm" className="shrink-0">
