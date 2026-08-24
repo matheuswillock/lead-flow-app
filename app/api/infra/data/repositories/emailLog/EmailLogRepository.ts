@@ -178,14 +178,35 @@ export class EmailLogRepository implements IEmailLogRepository {
           // caixa cheia não carimbam.
           if (eventType === "bounced") {
             if (shouldStampIsBouncedFromEventMetadata(metadata)) {
+              // Igualdade sobre a coluna, nunca padrão nem função.
+              //
+              // `mode: "insensitive"` não serve: medido com Prisma 6.19.3, ele
+              // vira `WHERE "email" ILIKE $1` com o valor CRU, sem escape nem
+              // ESCAPE. Em Postgres `_` casa um caractere e `%` casa N, então
+              // um bounce em `maria_silva@…` carimbava `maria.silva@…` e
+              // `maria-silva@…` junto. Como este stamp é global, o falso
+              // positivo suprimia o endereço em todos os times, sem trilha.
+              // ILIKE também descarta o `@@index([email])`: medido em 200k
+              // linhas, Index Scan 0,036 ms vira Seq Scan 161,7 ms — dentro da
+              // transação do webhook que segura o lock da campanha, com
+              // `maxConcurrency: 12` na fila do Resend.
+              //
+              // `lower("email") = lower($1)` resolveria o curinga mas mantém o
+              // Seq Scan, porque a função sobre a coluna também não usa o
+              // btree. Sem índice funcional, a única forma indexável é comparar
+              // com as variantes literais.
+              //
+              // Duas variantes bastam: o endereço como saiu no envio e sua
+              // forma minúscula. Não cobre caixa mista arbitrária divergente do
+              // que foi enviado — mas essa linha já é invisível para os
+              // leitores, que normalizam a entrada e comparam com `in`
+              // case-sensitive (EmailContactListRepository.findBouncedEmails),
+              // então carimbá-la não mudaria nenhum comportamento hoje.
+              const bouncedAddress = log.recipientEmail.trim()
               await tx.emailContact.updateMany({
-                // Case-insensitive, não `toLowerCase()`: os leitores comparam
-                // em lowercase, mas `EmailContact.email` é gravado como veio
-                // (`createContacts` não normaliza). Forçar lowercase no filtro
-                // deixaria de casar as linhas salvas com maiúsculas; comparar
-                // insensitive pega os dois formatos.
                 where: {
-                  email: { equals: log.recipientEmail.trim(), mode: "insensitive" },
+                  email: { in: [...new Set([bouncedAddress, bouncedAddress.toLowerCase()])] },
+                  isBounced: false,
                 },
                 data: { isBounced: true },
               })
