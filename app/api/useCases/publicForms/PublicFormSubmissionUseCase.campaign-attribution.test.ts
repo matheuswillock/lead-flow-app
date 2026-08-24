@@ -87,8 +87,18 @@ const getPublic = mock(async () => ({
 }))
 const findSubmissionByRequestKey = mock(async () => null as CompletedSubmission | null)
 const findCompletedSubmissionBySession = mock(async () => null as CompletedSubmission | null)
-const findPublicationById = mock(async () => null)
-const findLatestSessionSubmissionOnForm = mock(async () => null)
+// O resolver só devolve `sessionSubmission` se ESTE lookup também resolver
+// (resolve-form-publication.ts:26-36). Devolver `null` aqui fazia o gate 3 cair
+// no fallback e nunca disparar — mock incompleto que dava falso verde.
+const findPublicationById = mock(async () => ({
+  publicationId: PUBLICATION_ID,
+  snapshot: makeSnapshot() as unknown,
+}))
+// Gate 3: `resolvePublicFormPublicationForVisitor` usa este repositório e tem
+// early return próprio, ANTES do gate por publicação. Mockar sempre como `null`
+// foi o buraco da primeira versão deste arquivo: o gate nunca disparava e o
+// teste dava verde com o bug vivo.
+const findLatestSessionSubmissionOnForm = mock(async () => null as CompletedSubmission | null)
 const findPublicationContainingQuestions = mock(async () => null)
 const claimSubmissionForRetry = mock(async () => false)
 const persistSubmissionAnswers = mock(async () => {})
@@ -192,8 +202,33 @@ describe("PublicFormSubmissionUseCase.accept — gate de sessão por atribuiçã
     findSubmissionByRequestKey.mockResolvedValue(null)
     findCompletedSubmissionBySession.mockReset()
     findCompletedSubmissionBySession.mockResolvedValue(null)
+    findLatestSessionSubmissionOnForm.mockReset()
+    findLatestSessionSubmissionOnForm.mockResolvedValue(null)
     createSubmission.mockClear()
     createSubmission.mockResolvedValue({ id: "sub-nova" })
+  })
+
+  describe("gate 3 — sessão resolvida pela publicação (roda antes dos outros)", () => {
+    it("campanha DIFERENTE não é bloqueada pelo early return do resolver", async () => {
+      findLatestSessionSubmissionOnForm.mockResolvedValueOnce(completedFrom(EMAIL_LOG_A))
+
+      const output = await useCase.accept(PUBLIC_ID, submit(EMAIL_LOG_B, "req:el:b"))
+
+      expect(output.isValid).toBe(true)
+      expect((output.result as { alreadyProcessed?: boolean }).alreadyProcessed).toBe(false)
+      expect(createSubmission).toHaveBeenCalledTimes(1)
+    })
+
+    it("MESMA campanha continua bloqueada nesse gate", async () => {
+      findLatestSessionSubmissionOnForm.mockResolvedValueOnce(completedFrom(EMAIL_LOG_A))
+
+      const output = await useCase.accept(PUBLIC_ID, submit(EMAIL_LOG_A, "req:el:a"))
+
+      const result = output.result as { alreadyProcessed?: boolean; submissionId?: string }
+      expect(result.alreadyProcessed).toBe(true)
+      expect(result.submissionId).toBe("sub-anterior")
+      expect(createSubmission).not.toHaveBeenCalled()
+    })
   })
 
   it("mesma sessão, campanha DIFERENTE → não bloqueia, cria submissão nova", async () => {
