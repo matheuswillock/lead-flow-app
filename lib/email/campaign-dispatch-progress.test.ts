@@ -18,7 +18,12 @@ describe("campaign-dispatch-progress helpers", () => {
       { status: "opened", sentAt: new Date(), resendEmailId: "re_3" },
       { status: "bounced", sentAt: new Date(), resendEmailId: "re_4" },
     ])
-    expect(counters).toEqual({ acceptedCount: 4, failedCount: 1, queuedCount: 1 })
+    expect(counters).toEqual({
+      acceptedCount: 4,
+      failedCount: 1,
+      queuedCount: 1,
+      suppressedCount: 0,
+    })
   })
 
   it("completionKind partial sem status partially_completed", () => {
@@ -124,7 +129,7 @@ describe("campaign-dispatch-progress helpers", () => {
         errorMessage: null,
         updatedAt: new Date("2026-01-01T00:00:00.000Z"),
       },
-      { acceptedCount: 3, failedCount: 0, queuedCount: 0 }
+      { acceptedCount: 3, failedCount: 0, queuedCount: 0, suppressedCount: 0 }
     )
     expect(progress.status).toBe("completed")
     expect(progress.completionKind).toBe("full")
@@ -132,6 +137,54 @@ describe("campaign-dispatch-progress helpers", () => {
 })
 
 describe("aggregateCumulativeDispatchLogCounters", () => {
+  it("conta `suppressed` em vez de descartar do total", () => {
+    // Regressão: `suppressed` não caía em nenhum tier, então sumia da agregação.
+    // O reconciler comparava `acceptedCount >= totalRecipients` e, no caso real
+    // (1782 aceitos + 187 suprimidos de 1998), recalculava `partially_sent` e
+    // regravava por cima do `sent` — devolvendo o botão de reenviar falhas para
+    // endereços que a nossa própria pré-validação recusa de forma determinística.
+    const counters = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "ok@test.com", status: "delivered", sentAt: new Date(), resendEmailId: "re_1" },
+      { recipientEmail: "typo@gmial.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "role@empresa.com", status: "suppressed", sentAt: null, resendEmailId: null },
+    ])
+
+    expect(counters).toEqual({
+      acceptedCount: 1,
+      failedCount: 0,
+      queuedCount: 0,
+      suppressedCount: 2,
+    })
+  })
+
+  it("aceite sobrepõe supressão anterior do mesmo endereço", () => {
+    // Se o endereço foi recusado num disparo e aceito noutro, vale o aceite.
+    const counters = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "A@Test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "a@test.com", status: "sent", sentAt: new Date(), resendEmailId: "re_1" },
+    ])
+    expect(counters.acceptedCount).toBe(1)
+    expect(counters.suppressedCount).toBe(0)
+  })
+
+  it("supressão sobrepõe queued, mas não failed", () => {
+    // `queued` é estado transitório; `failed` é retentável e precisa continuar
+    // visível para o botão de reenvio.
+    const soQueued = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "a@test.com", status: "queued", sentAt: null, resendEmailId: null },
+      { recipientEmail: "a@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+    ])
+    expect(soQueued.suppressedCount).toBe(1)
+    expect(soQueued.queuedCount).toBe(0)
+
+    const comFailed = aggregateCumulativeDispatchLogCounters([
+      { recipientEmail: "b@test.com", status: "suppressed", sentAt: null, resendEmailId: null },
+      { recipientEmail: "b@test.com", status: "failed", sentAt: null, resendEmailId: null },
+    ])
+    expect(comFailed.failedCount).toBe(1)
+    expect(comFailed.suppressedCount).toBe(0)
+  })
+
   it("dedupe por e-mail: retry accepted sobrepõe failed anterior → 100/100", () => {
     const firstWave = Array.from({ length: 80 }, (_, i) => ({
       recipientEmail: `ok${i}@test.com`,
@@ -158,7 +211,12 @@ describe("aggregateCumulativeDispatchLogCounters", () => {
       ...retryAccepted,
     ])
 
-    expect(counters).toEqual({ acceptedCount: 100, failedCount: 0, queuedCount: 0 })
+    expect(counters).toEqual({
+      acceptedCount: 100,
+      failedCount: 0,
+      queuedCount: 0,
+      suppressedCount: 0,
+    })
   })
 
   it("precedência accepted > failed > queued no mesmo endereço", () => {
@@ -173,7 +231,7 @@ describe("aggregateCumulativeDispatchLogCounters", () => {
           resendEmailId: "re_1",
         },
       ])
-    ).toEqual({ acceptedCount: 1, failedCount: 0, queuedCount: 0 })
+    ).toEqual({ acceptedCount: 1, failedCount: 0, queuedCount: 0, suppressedCount: 0 })
   })
 })
 
@@ -196,7 +254,7 @@ describe("buildCumulativeCampaignDispatchProgress", () => {
         updatedAt: "2026-01-02T00:00:00.000Z",
       },
       latestDispatch: null,
-      counters: { acceptedCount: 85, failedCount: 0, queuedCount: 15 },
+      counters: { acceptedCount: 85, failedCount: 0, queuedCount: 15, suppressedCount: 0 },
     })
     expect(progress).toMatchObject({
       status: "sending",

@@ -31,6 +31,12 @@ export type DispatchLogCounters = {
   acceptedCount: number
   failedCount: number
   queuedCount: number
+  /**
+   * Recusados pela nossa pré-validação, antes de tocar o provedor. Terminais e
+   * NÃO retentáveis — reenviar submete o mesmo endereço à mesma regra
+   * determinística. Contam para fechar a campanha, mas nunca para `totalSent`.
+   */
+  suppressedCount: number
 }
 
 export type DispatchProgressSource = {
@@ -41,6 +47,11 @@ export type DispatchProgressSource = {
   retryFailedOnly: boolean
   errorMessage: string | null
   updatedAt: Date | string
+}
+
+/** Zero em todos os tiers — usado como default antes de agregar. */
+export function emptyDispatchLogCounters(): DispatchLogCounters {
+  return { acceptedCount: 0, failedCount: 0, queuedCount: 0, suppressedCount: 0 }
 }
 
 /** Aceite pelo provedor: monotônico; não usa status=`sent`. */
@@ -61,6 +72,7 @@ export function aggregateDispatchLogCounters(
   let acceptedCount = 0
   let failedCount = 0
   let queuedCount = 0
+  let suppressedCount = 0
 
   for (const log of logs) {
     if (isDispatchLogAccepted(log)) {
@@ -71,20 +83,29 @@ export function aggregateDispatchLogCounters(
       failedCount += 1
       continue
     }
+    if (log.status === "suppressed") {
+      suppressedCount += 1
+      continue
+    }
     if (log.status === "queued") {
       queuedCount += 1
     }
   }
 
-  return { acceptedCount, failedCount, queuedCount }
+  return { acceptedCount, failedCount, queuedCount, suppressedCount }
 }
 
-type CumulativeLogTier = "queued" | "failed" | "accepted"
+type CumulativeLogTier = "queued" | "suppressed" | "failed" | "accepted"
 
+/**
+ * `suppressed` acima de `queued` (é terminal) e abaixo de `failed` (falha é
+ * retentável e precisa continuar visível para o botão de reenvio).
+ */
 const CUMULATIVE_TIER_RANK: Record<CumulativeLogTier, number> = {
   queued: 0,
-  failed: 1,
-  accepted: 2,
+  suppressed: 1,
+  failed: 2,
+  accepted: 3,
 }
 
 /**
@@ -111,6 +132,8 @@ export function aggregateCumulativeDispatchLogCounters(
       tier = "accepted"
     } else if (log.status === "failed") {
       tier = "failed"
+    } else if (log.status === "suppressed") {
+      tier = "suppressed"
     } else if (log.status === "queued") {
       tier = "queued"
     }
@@ -125,13 +148,15 @@ export function aggregateCumulativeDispatchLogCounters(
   let acceptedCount = 0
   let failedCount = 0
   let queuedCount = 0
+  let suppressedCount = 0
   for (const tier of byEmail.values()) {
     if (tier === "accepted") acceptedCount += 1
     else if (tier === "failed") failedCount += 1
+    else if (tier === "suppressed") suppressedCount += 1
     else queuedCount += 1
   }
 
-  return { acceptedCount, failedCount, queuedCount }
+  return { acceptedCount, failedCount, queuedCount, suppressedCount }
 }
 
 /**

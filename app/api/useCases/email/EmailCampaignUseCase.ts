@@ -114,6 +114,7 @@ import {
 import { suggestUnsubscribeTokenHint } from "@/lib/email/unsubscribe-link-embed"
 import {
   aggregateCumulativeDispatchLogCounters,
+  emptyDispatchLogCounters,
   buildCampaignDispatchProgress,
   buildCampaignDispatchProgressSummary,
   buildCumulativeCampaignDispatchProgress,
@@ -310,11 +311,7 @@ export class EmailCampaignUseCase {
     if (dispatchIds.length === 0) return countersByDispatchId
 
     for (const dispatchId of dispatchIds) {
-      countersByDispatchId.set(dispatchId, {
-        acceptedCount: 0,
-        failedCount: 0,
-        queuedCount: 0,
-      })
+      countersByDispatchId.set(dispatchId, emptyDispatchLogCounters())
     }
 
     // Agrega no Postgres (não carrega N logs na app). Contrato = accepted por
@@ -325,6 +322,7 @@ export class EmailCampaignUseCase {
         acceptedCount: number | bigint
         failedCount: number | bigint
         queuedCount: number | bigint
+        suppressedCount: number | bigint
       }>
     >`
       SELECT
@@ -341,7 +339,12 @@ export class EmailCampaignUseCase {
           WHERE status = 'queued'::"email_log_status"
             AND "sentAt" IS NULL
             AND "resendEmailId" IS NULL
-        )::int AS "queuedCount"
+        )::int AS "queuedCount",
+        COUNT(*) FILTER (
+          WHERE status = 'suppressed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL
+        )::int AS "suppressedCount"
       FROM "corretor_studio_email_logs"
       WHERE "teamId" = ${teamId}::uuid
         AND "dispatchId" = ANY(${dispatchIds}::uuid[])
@@ -354,6 +357,7 @@ export class EmailCampaignUseCase {
         acceptedCount: Number(row.acceptedCount),
         failedCount: Number(row.failedCount),
         queuedCount: Number(row.queuedCount),
+        suppressedCount: Number(row.suppressedCount),
       })
     }
 
@@ -375,11 +379,10 @@ export class EmailCampaignUseCase {
     for (const dispatch of dispatches) {
       progressByDispatchId.set(
         dispatch.id,
-        buildCampaignDispatchProgress(dispatch, countersByDispatchId.get(dispatch.id) ?? {
-          acceptedCount: 0,
-          failedCount: 0,
-          queuedCount: 0,
-        })
+        buildCampaignDispatchProgress(
+          dispatch,
+          countersByDispatchId.get(dispatch.id) ?? emptyDispatchLogCounters()
+        )
       )
     }
 
@@ -497,7 +500,7 @@ export class EmailCampaignUseCase {
   ): Promise<Map<string, DispatchLogCounters>> {
     const result = new Map<string, DispatchLogCounters>()
     for (const campaignId of campaignIds) {
-      result.set(campaignId, { acceptedCount: 0, failedCount: 0, queuedCount: 0 })
+      result.set(campaignId, emptyDispatchLogCounters())
     }
     if (campaignIds.length === 0) return result
 
@@ -597,13 +600,30 @@ export class EmailCampaignUseCase {
       // preserva o status persistido em vez de presumir falha.
       if (!campaignLogs || campaignLogs.length === 0) continue
 
-      const { acceptedCount } = aggregateCumulativeDispatchLogCounters(campaignLogs)
+      const { acceptedCount, failedCount, queuedCount, suppressedCount } =
+        aggregateCumulativeDispatchLogCounters(campaignLogs)
+
+      // Mesma regra de `resolveCampaignStatusAfterDispatch`: `sent` quando não
+      // sobrou nada que pudesse ter saído. Recusado na pré-validação fecha a
+      // campanha — reenviar submete o mesmo endereço à mesma regra
+      // determinística, queimando reputação de domínio sem ganho.
+      //
+      // Antes o reconciler comparava só `acceptedCount >= totalRecipients` e,
+      // ignorando os suprimidos, regravava `partially_sent` por cima do `sent`
+      // que o disparo tinha acabado de persistir — devolvendo o botão de
+      // reenviar falhas na próxima leitura da lista.
+      //
+      // `terminalCount < totalRecipients` continua sendo `partially_sent`: são
+      // destinatários que nunca viraram log (disparo morto no meio da
+      // materialização), e esse é o único indício visível de que não terminou.
+      const terminalCount = acceptedCount + suppressedCount
+      const hasPendingOrRetriable = failedCount > 0 || queuedCount > 0
       const correctStatus: EmailCampaignStatus =
-        acceptedCount >= campaign.totalRecipients
-          ? "sent"
-          : acceptedCount === 0
-            ? "failed"
-            : "partially_sent"
+        acceptedCount === 0
+          ? "failed"
+          : hasPendingOrRetriable || terminalCount < campaign.totalRecipients
+            ? "partially_sent"
+            : "sent"
 
       if (correctStatus === campaign.status) continue
 
@@ -1445,11 +1465,8 @@ export class EmailCampaignUseCase {
                     totalRecipients: child.totalRecipients ?? 0,
                     activeDispatch: entry?.activeDispatch ?? null,
                     latestDispatch: entry?.latestDispatch ?? null,
-                    counters: cumulativeByCampaignId.get(child.id) ?? {
-                      acceptedCount: 0,
-                      failedCount: 0,
-                      queuedCount: 0,
-                    },
+                    counters:
+                      cumulativeByCampaignId.get(child.id) ?? emptyDispatchLogCounters(),
                   })
                 })
               : []
@@ -1685,11 +1702,7 @@ export class EmailCampaignUseCase {
               totalRecipients: sub.totalRecipients ?? 0,
               activeDispatch: entry?.activeDispatch ?? null,
               latestDispatch: entry?.latestDispatch ?? null,
-              counters: cumulativeByCampaignId.get(sub.id) ?? {
-                acceptedCount: 0,
-                failedCount: 0,
-                queuedCount: 0,
-              },
+              counters: cumulativeByCampaignId.get(sub.id) ?? emptyDispatchLogCounters(),
             })
           })
         : []

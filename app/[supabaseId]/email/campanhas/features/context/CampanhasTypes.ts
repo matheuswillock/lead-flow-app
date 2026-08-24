@@ -154,6 +154,8 @@ export type CampaignLogStatus =
   | "bounced"
   | "complained"
   | "failed"
+  // Recusado pela pré-validação de audiência, antes de tocar o provedor.
+  | "suppressed"
 
 export type CampaignEmailLog = {
   id: string
