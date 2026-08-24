@@ -35,7 +35,7 @@
 
 SET LOCAL lock_timeout = '5s';
 
--- Trava tudo de uma vez, em ordem alfabetica, ANTES de qualquer DDL.
+-- Trava tudo de uma vez, em ordem de dependencia de FK, ANTES de qualquer DDL.
 --
 -- Esta migration falhou em producao com deadlock (SQLSTATE 40P01, run
 -- 32745879206). O `lock_timeout` acima nao evita isso: ele limita ESPERA,
@@ -51,9 +51,12 @@ SET LOCAL lock_timeout = '5s';
 --
 -- Travando tudo antes, a migration nao segura lock nenhum enquanto faz DDL: ou
 -- adquire o conjunto inteiro, ou aborta em 5s por lock_timeout — que e
--- reaplicavel, porque cada bloco abaixo e idempotente. A ordem alfabetica e
--- deliberada e MUST ser a mesma em todos os lotes desta serie, para que dois
--- lotes nunca peguem as mesmas tabelas em ordens opostas.
+-- reaplicavel, porque cada bloco abaixo e idempotente.
+--
+-- A ordem e a TOPOLOGICA do grafo de FK — pai antes de filha — e MUST ser a
+-- mesma em todos os lotes desta serie. Ordem alfabetica NAO serve: ela alinha
+-- os lotes entre si mas nao com a aplicacao, que escreve pai-antes-de-filha, e
+-- um par invertido basta para o deadlock voltar.
 -- O LOCK e condicional pelo mesmo motivo que os guards abaixo usam
 -- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
 -- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
@@ -62,18 +65,22 @@ DO $$
 DECLARE
   target text;
 BEGIN
+  -- Ordem topologica do grafo de FK: PAI antes de FILHA. Nao alfabetica.
+  -- A aplicacao escreve pai-antes-de-filha (atualiza o time, depois as linhas
+  -- que apontam para ele; cascata de delete tambem desce nessa direcao). Travar
+  -- em ordem alfabetica inverteria isso em varios pares e o deadlock voltaria.
   FOREACH target IN ARRAY ARRAY[
-    'public.corretor_studio_email_campaigns',
     'public.corretor_studio_profiles',
-    'public.corretor_studio_radar_identities',
+    'public.corretor_studio_subscription_change_logs',
+    'public.corretor_studio_teams',
+    'public.corretor_studio_email_campaigns',
     'public.corretor_studio_radar_profiles',
+    'public.corretor_studio_radar_identities',
     'public.corretor_studio_radar_segments',
     'public.corretor_studio_radar_source_links',
-    'public.corretor_studio_subscription_change_logs',
     'public.corretor_studio_team_email_campaign_limit_grants',
     'public.corretor_studio_team_radar_pixel_configs',
-    'public.corretor_studio_team_radar_pixel_hit_logs',
-    'public.corretor_studio_teams'
+    'public.corretor_studio_team_radar_pixel_hit_logs'
   ] LOOP
     IF to_regclass(target) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);

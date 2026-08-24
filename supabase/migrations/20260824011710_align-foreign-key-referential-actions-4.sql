@@ -35,13 +35,12 @@
 
 SET LOCAL lock_timeout = '5s';
 
--- Trava tudo de uma vez, em ordem alfabetica, ANTES de qualquer DDL.
+-- Trava tudo de uma vez, em ordem de dependencia de FK, ANTES de qualquer DDL.
 -- Mesma correcao do lote 3, que falhou em producao com deadlock (SQLSTATE
 -- 40P01, run 32745879206): `lock_timeout` limita espera, nao evita deadlock —
 -- o `deadlock_timeout` (1s) aborta antes. A aquisicao incremental de lock
--- dentro do bloco DO era a causa. A ordem alfabetica MUST ser a mesma em todos
--- os lotes desta serie, para que dois lotes nunca peguem as mesmas tabelas em
--- ordens opostas.
+-- dentro do bloco DO era a causa. A ordem e a TOPOLOGICA do grafo de FK — pai
+-- antes de filha — e MUST ser a mesma em todos os lotes desta serie.
 -- O LOCK e condicional pelo mesmo motivo que os guards abaixo usam
 -- `to_regclass`: nem toda tabela existe em toda base (replay local, ambiente
 -- parcial). Um `LOCK TABLE` cru aborta com "relation does not exist" e quebra
@@ -50,18 +49,26 @@ DO $$
 DECLARE
   target text;
 BEGIN
+  -- Ordem topologica do grafo de FK: PAI antes de FILHA. Nao alfabetica.
+  --
+  -- A ordem alfabetica colocava `corretor_studio_team_transfer_routes` antes de
+  -- `corretor_studio_teams` (`_` < `s`) — o INVERSO do que a aplicacao faz.
+  -- `TeamRepository.updateTeamWithTransferRoutes` escreve em
+  -- `corretor_studio_teams` (:92) e so depois em
+  -- `corretor_studio_team_transfer_routes` (:108). Com ordens opostas o
+  -- deadlock voltaria, que e exatamente o que esta migration existe para evitar.
   FOREACH target IN ARRAY ARRAY[
     'public.corretor_studio_profiles',
-    'public.corretor_studio_team_transfer_routes',
     'public.corretor_studio_teams',
+    'public.corretor_studio_team_transfer_routes',
     'public.email_team_senders',
     'public.google_oauth_connections',
     'public.team_whatsapp_configs',
     'public.team_whatsapp_contacts',
-    'public.whatsapp_audit_events',
-    'public.whatsapp_auto_response_logs',
     'public.whatsapp_auto_response_rules',
-    'public.whatsapp_conversations'
+    'public.whatsapp_conversations',
+    'public.whatsapp_audit_events',
+    'public.whatsapp_auto_response_logs'
   ] LOOP
     IF to_regclass(target) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', target);
