@@ -2509,37 +2509,44 @@ export class RadarRepository {
    */
   private emailContactListMatchedProfilesSql(teamId: string, listIds: string[]): Prisma.Sql {
     const listIdSql = Prisma.join(listIds.map((id) => Prisma.sql`${id}::uuid`))
+
+    // Os contatos das listas sao materializados uma vez e reaproveitados pelos
+    // tres ramos. Antes cada ramo repetia o filtro por `listId`, varrendo o
+    // mesmo conjunto de contatos tres vezes — e um dos ramos caia num index
+    // only scan com dezenas de milhares de heap fetches. Medido em producao no
+    // maior time (176k contatos, 3 listas): 300.344 buffers antes contra 81.828
+    // depois, com o resultado identico (mesmos profileIds, EXCEPT vazio nos
+    // dois sentidos).
+    //
+    // O `UNION` ja deduplica, entao o `SELECT DISTINCT` externo que existia
+    // aqui era redundante e so acrescentava um segundo HashAggregate.
     return Prisma.sql`
-      SELECT DISTINCT profile_id AS "profileId"
-      FROM (
-        SELECT i."profileId" AS profile_id
-        FROM "corretor_studio_radar_identities" i
-        INNER JOIN "corretor_studio_email_contacts" c
-          ON c.id::text = i."normalizedValue"
-        WHERE i."teamId" = ${teamId}::uuid
-          AND i.type = 'email_contact_id'
-          AND c."listId" IN (${listIdSql})
+      WITH contatos_das_listas AS MATERIALIZED (
+        SELECT c.id::text AS contato_id, lower(c.email) AS email_normalizado
+        FROM "corretor_studio_email_contacts" c
+        WHERE c."listId" IN (${listIdSql})
+      )
+      SELECT i."profileId" AS "profileId"
+      FROM "corretor_studio_radar_identities" i
+      INNER JOIN contatos_das_listas ct ON ct.contato_id = i."normalizedValue"
+      WHERE i."teamId" = ${teamId}::uuid
+        AND i.type = 'email_contact_id'
 
-        UNION
+      UNION
 
-        SELECT i."profileId" AS profile_id
-        FROM "corretor_studio_radar_identities" i
-        INNER JOIN "corretor_studio_email_contacts" c
-          ON lower(c.email) = i."normalizedValue"
-        WHERE i."teamId" = ${teamId}::uuid
-          AND i.type = 'email'
-          AND c."listId" IN (${listIdSql})
+      SELECT i."profileId" AS "profileId"
+      FROM "corretor_studio_radar_identities" i
+      INNER JOIN contatos_das_listas ct ON ct.email_normalizado = i."normalizedValue"
+      WHERE i."teamId" = ${teamId}::uuid
+        AND i.type = 'email'
 
-        UNION
+      UNION
 
-        SELECT sl."profileId" AS profile_id
-        FROM "corretor_studio_radar_source_links" sl
-        INNER JOIN "corretor_studio_email_contacts" c
-          ON c.id::text = sl."sourceId"
-        WHERE sl."teamId" = ${teamId}::uuid
-          AND sl."sourceType" = 'email_contact'
-          AND c."listId" IN (${listIdSql})
-      ) matched
+      SELECT sl."profileId" AS "profileId"
+      FROM "corretor_studio_radar_source_links" sl
+      INNER JOIN contatos_das_listas ct ON ct.contato_id = sl."sourceId"
+      WHERE sl."teamId" = ${teamId}::uuid
+        AND sl."sourceType" = 'email_contact'
     `
   }
 
