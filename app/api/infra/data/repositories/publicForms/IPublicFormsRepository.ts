@@ -407,7 +407,15 @@ export interface IPublicFormsRepository {
       revokedAt: Date | null
     } | null
   } | null>
+  /** Só leads vivos — casar com a lixeira vaza conversão (SPEC 40 E5/DA3). */
   findLeadCandidates(
+    teamId: string,
+    email: string,
+    phone: string,
+    normalizedPhone: string,
+  ): Promise<Lead[]>
+  /** Só a lixeira: a unique `Lead(teamId, email)` inclui soft-deletados. */
+  findDeletedLeadCandidates(
     teamId: string,
     email: string,
     phone: string,

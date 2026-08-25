@@ -45,16 +45,26 @@ function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+/** Nota do anexo em lead na lixeira (DA3) — restaurar continua sendo gesto do usuário. */
+export const DELETED_LEAD_ATTACH_NOTE =
+  "Nova resposta de formulário público recebida enquanto este lead estava na lixeira. Restaure o lead para retomar o atendimento."
+
 export async function findMatchingLead(
   teamId: string,
   data: ExtractedLeadData,
 ): Promise<Lead | undefined> {
-  const candidates = await publicFormsRepository.findLeadCandidates(
-    teamId,
-    data.email,
-    data.phone,
-    data.normalizedPhone,
+  return pickBestLeadMatch(
+    await publicFormsRepository.findLeadCandidates(
+      teamId,
+      data.email,
+      data.phone,
+      data.normalizedPhone,
+    ),
+    data,
   )
+}
+
+function pickBestLeadMatch(candidates: Lead[], data: ExtractedLeadData): Lead | undefined {
   if (candidates.length === 0) return undefined
 
   const byEmail = data.email
@@ -83,6 +93,114 @@ export {
   type UpsertLeadOutcome,
 } from "@/lib/public-forms/lead-upsert-outcome"
 
+type LeadAttachContext = {
+  form: PublicFormSubmissionContext
+  snapshot: PublicFormSnapshot
+}
+
+async function attachToLiveLead(
+  context: LeadAttachContext,
+  match: Lead,
+  extracted: ExtractedLeadData,
+): Promise<UpsertLeadOutcome> {
+  const updateReason = resolveLeadDiscardReason(extracted, { hasMatchingLead: true })
+  if (updateReason) return { outcome: "discarded", reason: updateReason }
+  const notes = mergeFormMappedLeadNotes(match.notes, context.snapshot, extracted.notes)
+  const lead = await publicFormsRepository.updateLead(match.id, {
+    ...extracted.native,
+    notes,
+    updatedBy: context.form.team.master.id,
+  })
+  for (const [key, value] of Object.entries(extracted.custom)) {
+    const definitionId = await publicFormsRepository.findCustomFieldDefinitionId(
+      context.form.teamId,
+      key,
+    )
+    if (definitionId) {
+      await publicFormsRepository.upsertLeadCustomFieldValue(
+        lead.id,
+        definitionId,
+        value as Prisma.InputJsonValue,
+      )
+    }
+  }
+  return { outcome: "updated", lead }
+}
+
+/**
+ * DA3: o único conflito é um lead na lixeira. A conversão fica rastreável — a
+ * submissão passa a apontar para ele — mas nenhum campo de identidade é
+ * sobrescrito e `deletedAt` não é tocado: restaurar é gesto do usuário, não
+ * efeito colateral de um formulário público.
+ */
+async function attachToDeletedLead(match: Lead): Promise<UpsertLeadOutcome> {
+  const previousNotes = match.notes?.trim()
+  // Idempotente (review #1042): o job pode ser reprocessado pelo drain, e a
+  // mesma frase fixa acabaria repetida em cada passagem até tomar conta das
+  // notas do lead. Já está lá, não acrescenta.
+  if (previousNotes?.includes(DELETED_LEAD_ATTACH_NOTE)) {
+    return { outcome: "updated", lead: match }
+  }
+  const notes = previousNotes
+    ? `${previousNotes}\n${DELETED_LEAD_ATTACH_NOTE}`
+    : DELETED_LEAD_ATTACH_NOTE
+  const lead = await publicFormsRepository.updateLead(match.id, { notes })
+  console.info("[publicFormLeadSync][attachToDeletedLead] submissão anexada a lead na lixeira", {
+    leadId: match.id,
+    teamId: match.teamId,
+  })
+  return { lead, created: false }
+}
+
+/**
+ * DA3: `createLead` recusou por unique. Isso é esperado numa fila
+ * at-least-once — dois eventos concorrentes, ou um candidato que
+ * `findLeadCandidates` não enxerga (a unique inclui soft-deletados). Em vez de
+ * lançar (o poison do F9, que retentava para sempre), re-resolve e anexa.
+ *
+ * São DUAS condições, e as duas precisam valer (review #1042): a recusa tem de
+ * ser de unique **e** tem de existir o lead conflitante. Só a segunda deixava
+ * um erro não relacionado — plano de saúde inválido, master sem perfil — virar
+ * sucesso silencioso sempre que houvesse um lead com o mesmo e-mail na lixeira.
+ * Só a primeira dependeria da mensagem em português, que é frágil.
+ */
+const DUPLICATE_LEAD_ERROR_MARKERS = ["ja existe um lead", "já existe um lead"]
+
+function isDuplicateLeadRejection(errorMessages: string[]): boolean {
+  const joined = errorMessages.join(" ").toLowerCase()
+  return DUPLICATE_LEAD_ERROR_MARKERS.some((marker) => joined.includes(marker))
+}
+
+async function reconcileLeadAfterFailedCreate(
+  context: LeadAttachContext,
+  extracted: ExtractedLeadData,
+): Promise<UpsertLeadOutcome | null> {
+  const teamId = context.form.teamId
+  const live = pickBestLeadMatch(
+    await publicFormsRepository.findLeadCandidates(
+      teamId,
+      extracted.email,
+      extracted.phone,
+      extracted.normalizedPhone,
+    ),
+    extracted,
+  )
+  if (live) return attachToLiveLead(context, live, extracted)
+
+  const deleted = pickBestLeadMatch(
+    await publicFormsRepository.findDeletedLeadCandidates(
+      teamId,
+      extracted.email,
+      extracted.phone,
+      extracted.normalizedPhone,
+    ),
+    extracted,
+  )
+  if (deleted) return attachToDeletedLead(deleted)
+
+  return null
+}
+
 export async function upsertLeadFromFormAnswers(input: {
   form: PublicFormSubmissionContext
   snapshot: PublicFormSnapshot
@@ -107,28 +225,7 @@ export async function upsertLeadFromFormAnswers(input: {
   const match = await findMatchingLead(input.form.teamId, extracted)
 
   if (match) {
-    const updateReason = resolveLeadDiscardReason(extracted, { hasMatchingLead: true })
-    if (updateReason) return { outcome: "discarded", reason: updateReason }
-    const notes = mergeFormMappedLeadNotes(match.notes, input.snapshot, extracted.notes)
-    const lead = await publicFormsRepository.updateLead(match.id, {
-      ...extracted.native,
-      notes,
-      updatedBy: input.form.team.master.id,
-    })
-    for (const [key, value] of Object.entries(extracted.custom)) {
-      const definitionId = await publicFormsRepository.findCustomFieldDefinitionId(
-        input.form.teamId,
-        key,
-      )
-      if (definitionId) {
-        await publicFormsRepository.upsertLeadCustomFieldValue(
-          lead.id,
-          definitionId,
-          value as Prisma.InputJsonValue,
-        )
-      }
-    }
-    return { outcome: "updated", lead }
+    return attachToLiveLead({ form: input.form, snapshot: input.snapshot }, match, extracted)
   }
 
   // A ordem importa: `allowCreate:false` é decisão de arquitetura (modo radar),
@@ -238,6 +335,15 @@ export async function upsertLeadFromFormAnswers(input: {
     },
     { autoScheduleMeeting: false },
   )
-  if (!output.isValid) throw new Error(output.errorMessages.join("; "))
+  if (!output.isValid) {
+    const reconciled = isDuplicateLeadRejection(output.errorMessages)
+      ? await reconcileLeadAfterFailedCreate(
+          { form: input.form, snapshot: input.snapshot },
+          extracted,
+        )
+      : null
+    if (reconciled) return reconciled
+    throw new Error(output.errorMessages.join("; "))
+  }
   return { outcome: "created", lead: output.result as Lead }
 }
