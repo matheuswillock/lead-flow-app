@@ -398,6 +398,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           meetingDurationMinutes: draft.meetingDurationMinutes,
           schedulingMessage: draft.schedulingMessage,
           formKind: draft.formKind ?? "standard",
+          leadCaptureDisabled: draft.leadCaptureDisabled ?? false,
         },
       })
       await replaceDraftRelations(tx, form.id, draft)
@@ -438,6 +439,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           meetingDurationMinutes: draft.meetingDurationMinutes,
           schedulingMessage: draft.schedulingMessage,
           formKind: draft.formKind ?? "standard",
+          leadCaptureDisabled: draft.leadCaptureDisabled ?? false,
           approvalStatus: "draft",
           reviewedById: null,
           reviewedAt: null,

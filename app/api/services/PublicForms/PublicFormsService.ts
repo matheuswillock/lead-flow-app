@@ -124,6 +124,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     schedulingMessage: form.schedulingMessage,
     formKind:
       form.formKind === "health_plan_simulator" ? "health_plan_simulator" : "standard",
+    leadCaptureDisabled: form.leadCaptureDisabled,
     questions: needsRebalance ? redistributeQuestionScoresEvenly(questions) : questions,
     rules: form.rules.map((rule) => ({
       id: rule.id,

@@ -5713,6 +5713,10 @@ model PublicForm {
   formKind                  String                     @default("standard") @db.VarChar(40)
   /// Aceita `cs_el` (EmailLog.id) em links de campanha e atribui abertura/preenchimento ao destinatário.
   emailCampaignTrackingEnabled Boolean                 @default(true)
+  /// SPEC 40 E4/DA4: opt-out explícito de captação. Publica sem pergunta de
+  /// contato mapeada (formulário de pesquisa) e, em troca, **suprime** as
+  /// métricas de lead do form — sem promessa de funil onde não há captação.
+  leadCaptureDisabled       Boolean                    @default(false)
   reviewComment             String?                    @db.Text
   reviewedAt                DateTime?                  @db.Timestamptz(6)
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(6)

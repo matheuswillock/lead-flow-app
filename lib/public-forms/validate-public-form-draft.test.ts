@@ -17,7 +17,7 @@ import type { PublicFormDraftInput, PublicFormQuestionInput } from "./types"
  * diante.
  */
 
-const CONTACT_ERROR = "Mapeie uma pergunta para Telefone ou E-mail"
+import { CONTACT_QUESTION_ERROR as CONTACT_ERROR } from "./validate-public-form-draft"
 
 function question(overrides: Partial<PublicFormQuestionInput>): PublicFormQuestionInput {
   return {
