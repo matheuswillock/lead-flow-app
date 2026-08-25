@@ -371,6 +371,104 @@ test.describe("app/forms/[publicId]", () => {
       .toMatchObject({ teamId })
   })
 
+  // T-F0.4 — SPEC 40 E0/DA6. As duas populações que o cron de re-despacho
+  // precisa distinguir, medidas pelo HTTP real: o envio carimba
+  // `submitRequestedAt` (o dispatcher pode resgatá-lo se o enqueue falhar); a
+  // casca do `/progress` fica sem carimbo (o dispatcher nunca a completa).
+  test("envio real carimba submitRequestedAt; casca de progresso fica sem carimbo", async ({
+    request,
+  }) => {
+    const prisma = getPrisma()
+    const suffix = String(Date.now()).slice(-6)
+    const submitSession = `e2eSubmit${suffix}0000000`
+    const progressSession = `e2eProgress${suffix}00000`
+
+    const submitResponse = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-submit-${suffix}`,
+        visitorSessionId: submitSession,
+        origin: {},
+        answers: [
+          { questionId: QUESTION_NAME_ID, value: `Maria Envio ${suffix}` },
+          { questionId: QUESTION_PHONE_ID, value: `1197777${suffix.slice(-4)}` },
+        ],
+      },
+    })
+    expect(submitResponse.status()).toBe(201)
+
+    const progressResponse = await request.post(`/api/q/public-forms/${publicId}/progress`, {
+      data: {
+        visitorSessionId: progressSession,
+        origin: {},
+        answers: [{ questionId: QUESTION_NAME_ID, value: `Maria Parcial ${suffix}` }],
+      },
+    })
+    expect(progressResponse.status()).toBe(202)
+
+    const submitted = await prisma.publicFormSubmission.findUnique({
+      where: { requestKey: `e2e-submit-${suffix}` },
+      select: { submitRequestedAt: true },
+    })
+    expect(submitted?.submitRequestedAt).not.toBeNull()
+
+    const partial = await prisma.publicFormSubmission.findFirst({
+      where: { visitorSessionId: progressSession },
+      select: { submitRequestedAt: true, status: true },
+    })
+    expect(partial, "Casca de progresso não foi criada").toBeTruthy()
+    expect(partial.submitRequestedAt).toBeNull()
+    expect(partial.status).toBe("processing")
+  })
+
+  // T-F1.4 — SPEC 40 E1. `required` é invariante do servidor: POST direto (sem
+  // UI, como um bot ou um outbox reenviando parcial) com o telefone obrigatório
+  // faltando recebe 422 com código por pergunta; com o payload completo, 201.
+  test("POST incompleto recebe 422 com código por pergunta; completo recebe 201", async ({
+    request,
+  }) => {
+    const prisma = getPrisma()
+    const suffix = String(Date.now()).slice(-6)
+
+    const incomplete = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-invalid-${suffix}`,
+        origin: {},
+        answers: [{ questionId: QUESTION_NAME_ID, value: `Maria Incompleta ${suffix}` }],
+      },
+    })
+
+    expect(incomplete.status()).toBe(422)
+    const incompleteBody = await incomplete.json()
+    expect(incompleteBody.isValid).toBe(false)
+    expect(incompleteBody.result.validation).toEqual([
+      { questionId: QUESTION_PHONE_ID, code: "required" },
+    ])
+
+    const notPersisted = await prisma.publicFormSubmission.findUnique({
+      where: { requestKey: `e2e-invalid-${suffix}` },
+      select: { id: true },
+    })
+    expect(notPersisted, "422 não pode criar submissão").toBeNull()
+
+    const complete = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-valid-${suffix}`,
+        origin: {},
+        answers: [
+          { questionId: QUESTION_NAME_ID, value: `Maria Completa ${suffix}` },
+          { questionId: QUESTION_PHONE_ID, value: `1197777${suffix.slice(-4)}` },
+        ],
+      },
+    })
+
+    expect(complete.status()).toBe(201)
+    const persisted = await prisma.publicFormSubmission.findUnique({
+      where: { requestKey: `e2e-valid-${suffix}` },
+      select: { id: true },
+    })
+    expect(persisted).not.toBeNull()
+  })
+
   test("estado de loading exibe Skeleton enquanto carrega o snapshot", async ({ page }) => {
     // page.tsx busca o snapshot no servidor (Prisma direto, não HTTP) — sem
     // carga real a query resolve rápido demais pro React chegar a emitir o

@@ -145,6 +145,8 @@ export const publicFormDraftSchema = z
     meetingDurationMinutes: z.number().int().min(5).max(480).default(30),
     schedulingMessage: text,
     formKind: z.enum(["standard", "health_plan_simulator"]).default("standard"),
+    /** SPEC 40 E4/DA4 — opt-out de captação (form de pesquisa). */
+    leadCaptureDisabled: z.boolean().default(false),
     questions: z.array(question).max(200).default([]),
     rules: z
       .array(

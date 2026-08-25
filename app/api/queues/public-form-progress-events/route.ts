@@ -9,7 +9,9 @@ import {
 } from "@/lib/queues/public-form-progress-events"
 import {
   ackAfterMaxDeliveries,
+  deadLetterInvalidPayload,
   type AckAfterMaxDeliveriesFn,
+  type DeadLetterInvalidPayloadFn,
 } from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
@@ -30,6 +32,7 @@ export async function processPublicFormProgressEventMessage(
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormProgressUseCase, "execute"> = publicFormProgressUseCase,
   ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
+  deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[PublicFormProgressEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -43,12 +46,21 @@ export async function processPublicFormProgressEventMessage(
   })
 
   if (!message?.publicId || !message?.visitorSessionId || !message?.idempotencyKey) {
-    console.error("[PublicFormProgressEventsQueueRoute][POST] invalid payload, acking", {
+    console.error("[PublicFormProgressEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       publicId: message?.publicId,
       visitorSessionId: message?.visitorSessionId,
       idempotencyKey: message?.idempotencyKey,
       eventId: message?.eventId,
+    })
+    // SPEC 40 E5, todo 11: era `return` mudo — a mensagem sumia sem deixar
+    // linha em lugar nenhum. Vai direto para a dead-letter (retentar payload
+    // malformado nunca conserta) e só então acka.
+    await deadLetter({
+      topic: PUBLIC_FORM_PROGRESS_EVENTS_TOPIC,
+      idempotencyKey: message?.idempotencyKey ?? `invalid-payload:${metadata.messageId}`,
+      payload: message ?? null,
+      reason: "Payload de progresso sem publicId, visitorSessionId ou idempotencyKey",
     })
     return
   }
