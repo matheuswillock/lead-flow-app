@@ -255,7 +255,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
             createArchiveStub({
               completion: Promise.reject(
                 new Error(
-                  "\nInvalid `prisma.lead.findMany()` invocation:\nTransaction already closed"
+                  "\n   Transaction already closed: the timeout was 120000 ms\n   at runInTransaction"
                 )
               ),
             }),
@@ -265,9 +265,27 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
       const output = await useCase.triggerCronBackup()
       expect(output.errorMessages[0]).toBe(
-        "Erro ao gerar backup: Invalid `prisma.lead.findMany()` invocation:"
+        "Erro ao gerar backup: Transaction already closed: the timeout was 120000 ms"
       )
       expect(output.errorMessages[0]).not.toContain("\n")
+    })
+
+    it("trunca causa muito longa para caber no errorSummary do cron", async () => {
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock(),
+        createExportMock({
+          createArchive: () =>
+            createArchiveStub({
+              completion: Promise.reject(new Error("z".repeat(1000))),
+            }),
+        }),
+        createDriveMock()
+      )
+
+      const output = await useCase.triggerCronBackup()
+      const summary = output.errorMessages[0]!
+      expect(summary.length).toBeLessThan(300)
+      expect(summary.endsWith("...")).toBe(true)
     })
   })
 

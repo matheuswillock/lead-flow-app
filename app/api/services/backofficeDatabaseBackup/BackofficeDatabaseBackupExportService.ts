@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto"
-import { once } from "node:events"
 import { PassThrough, Transform } from "node:stream"
 import { finished } from "node:stream/promises"
 import JSZip from "jszip"
@@ -26,12 +25,27 @@ function buildFileName(now: Date): string {
   return `backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}.zip`
 }
 
+/**
+ * Escreve respeitando contrapressão e falhando rápido se o fluxo morreu.
+ *
+ * O callback de `write` é a única via confiável de erro aqui: um stream já
+ * destruído não emite "error" de novo, então esperar só por "drain" trava a
+ * produção para sempre quando o destino falha no meio do backup.
+ */
 async function writeWithBackpressure(
   stream: PassThrough,
   text: string
 ): Promise<void> {
-  if (stream.write(text)) return
-  await once(stream, "drain")
+  await new Promise<void>((resolve, reject) => {
+    const flushed = stream.write(text, (error) => {
+      if (error) reject(error)
+      else if (flushed) resolve()
+    })
+
+    if (!flushed) {
+      stream.once("drain", resolve)
+    }
+  })
 }
 
 /**
@@ -44,6 +58,7 @@ async function writeWithBackpressure(
  */
 class ArchiveEntryWriter {
   private cursor = 0
+  private abortReason: Error | null = null
   private readonly indexByModel: Map<string, number>
 
   constructor(private readonly entries: ArchiveEntry[]) {
@@ -53,6 +68,10 @@ class ArchiveEntryWriter {
   }
 
   async write(chunk: BackupModelChunk): Promise<void> {
+    // Sem isto o produtor veria só "stream was destroyed" e o motivo real do
+    // aborto (falha de upload, por exemplo) se perderia.
+    if (this.abortReason) throw this.abortReason
+
     const index = this.indexByModel.get(chunk.modelName)
 
     if (index === undefined) {
@@ -75,6 +94,7 @@ class ArchiveEntryWriter {
   }
 
   abort(error: Error): void {
+    this.abortReason ??= error
     for (const entry of this.entries) {
       entry.stream.destroy(error)
     }
@@ -134,6 +154,14 @@ export class BackofficeDatabaseBackupExportService
 
     const writer = new ArchiveEntryWriter(entries)
 
+    // Derruba o arquivo inteiro, sem depender de o JSZip já ter começado a ler
+    // as entradas. É o que garante que um export interrompido nunca chegue ao
+    // destino como um ZIP truncado porém válido.
+    const abortArchive = (error: Error) => {
+      writer.abort(error)
+      body.destroy(error)
+    }
+
     const completion = (async (): Promise<BackupArchiveStats> => {
       let summary
       try {
@@ -143,7 +171,7 @@ export class BackofficeDatabaseBackupExportService
         writer.finish()
       } catch (error) {
         const failure = error instanceof Error ? error : new Error(String(error))
-        writer.abort(failure)
+        abortArchive(failure)
         throw failure
       }
 
@@ -163,10 +191,7 @@ export class BackofficeDatabaseBackupExportService
       fileName: buildFileName(new Date()),
       body,
       completion,
-      abort: (error: Error) => {
-        writer.abort(error)
-        body.destroy(error)
-      },
+      abort: abortArchive,
     }
   }
 }
