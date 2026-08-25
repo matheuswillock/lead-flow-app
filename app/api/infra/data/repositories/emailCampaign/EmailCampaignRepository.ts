@@ -140,12 +140,27 @@ export interface IEmailCampaignRepository {
   findCampaignCounterSnapshots(
     options: CounterReconciliationQueryOptions
   ): Promise<CounterSnapshot<CampaignCounters>[]>
-  /** Idem, por disparo. `totalRecipients` do disparo não é reconciliado (é o planejado do lote). */
+  /** Idem, por disparo. */
   findDispatchCounterSnapshots(
     options: CounterReconciliationQueryOptions
   ): Promise<CounterSnapshot<DispatchCounters>[]>
-  applyCampaignCounterFixes(fixes: CounterFix<CampaignCounters>[]): Promise<void>
-  applyDispatchCounterFixes(fixes: CounterFix<DispatchCounters>[]): Promise<void>
+  /** Devolve quantas linhas foram de fato corrigidas (ver nota de concorrência). */
+  applyCampaignCounterFixes(fixes: CounterFix<CampaignCounters>[]): Promise<number>
+  applyDispatchCounterFixes(fixes: CounterFix<DispatchCounters>[]): Promise<number>
+  /**
+   * Último disparo abortado por cota mensal desde `since`, ou `null`.
+   *
+   * A cota é da **conta** no provedor, não do time — por isso a busca é global.
+   * O registro do incidente é o próprio `errorMessage` do disparo (comparado
+   * com `quotaFailureMessage`, a constante que o escreve): não há tabela de
+   * incidente e a decisão foi não criar uma. O preço é o acoplamento à cópia —
+   * mudar a mensagem sem mudar este chamador cega a recusa, e é por isso que a
+   * constante viaja como parâmetro em vez de ser duplicada aqui.
+   */
+  findLastMonthlyQuotaIncidentAt(options: {
+    since: Date
+    quotaFailureMessage: string
+  }): Promise<Date | null>
 }
 
 export type CounterReconciliationQueryOptions = {
@@ -154,16 +169,14 @@ export type CounterReconciliationQueryOptions = {
   inFlightWatermark: Date
 }
 
-type CampaignCounterDriftRow = {
+type CounterDriftRow = {
   id: string
-  currentTotalRecipients: number
   currentTotalSent: number
   currentTotalDelivered: number
   currentTotalOpened: number
   currentTotalClicked: number
   currentTotalBounced: number
   currentTotalComplained: number
-  computedTotalRecipients: number
   computedTotalSent: number
   computedTotalDelivered: number
   computedTotalOpened: number
@@ -172,10 +185,27 @@ type CampaignCounterDriftRow = {
   computedTotalComplained: number
 }
 
-type DispatchCounterDriftRow = Omit<
-  CampaignCounterDriftRow,
-  "currentTotalRecipients" | "computedTotalRecipients"
->
+function toCounterSnapshot(row: CounterDriftRow): CounterSnapshot<CampaignCounters> {
+  return {
+    id: row.id,
+    current: {
+      totalSent: Number(row.currentTotalSent),
+      totalDelivered: Number(row.currentTotalDelivered),
+      totalOpened: Number(row.currentTotalOpened),
+      totalClicked: Number(row.currentTotalClicked),
+      totalBounced: Number(row.currentTotalBounced),
+      totalComplained: Number(row.currentTotalComplained),
+    },
+    computed: {
+      totalSent: Number(row.computedTotalSent),
+      totalDelivered: Number(row.computedTotalDelivered),
+      totalOpened: Number(row.computedTotalOpened),
+      totalClicked: Number(row.computedTotalClicked),
+      totalBounced: Number(row.computedTotalBounced),
+      totalComplained: Number(row.computedTotalComplained),
+    },
+  }
+}
 
 export class EmailCampaignRepository implements IEmailCampaignRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
@@ -265,11 +295,10 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
   async findCampaignCounterSnapshots(
     options: CounterReconciliationQueryOptions
   ): Promise<CounterSnapshot<CampaignCounters>[]> {
-    const rows = await this.db.$queryRaw<CampaignCounterDriftRow[]>`
+    const rows = await this.db.$queryRaw<CounterDriftRow[]>`
       WITH agg AS (
         SELECT
           "campaignId" AS "id",
-          COUNT(DISTINCT lower(btrim("recipientEmail")))::int AS "totalRecipients",
           COUNT(*) FILTER (WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL)::int AS "totalSent",
           COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS "totalDelivered",
           COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS "totalOpened",
@@ -282,14 +311,12 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
       )
       SELECT
         c."id",
-        c."totalRecipients" AS "currentTotalRecipients",
         c."totalSent" AS "currentTotalSent",
         c."totalDelivered" AS "currentTotalDelivered",
         c."totalOpened" AS "currentTotalOpened",
         c."totalClicked" AS "currentTotalClicked",
         c."totalBounced" AS "currentTotalBounced",
         c."totalComplained" AS "currentTotalComplained",
-        a."totalRecipients" AS "computedTotalRecipients",
         a."totalSent" AS "computedTotalSent",
         a."totalDelivered" AS "computedTotalDelivered",
         a."totalOpened" AS "computedTotalOpened",
@@ -310,8 +337,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
                 AND d."updatedAt" >= ${options.inFlightWatermark}
             )
         AND (
-              c."totalRecipients" <> a."totalRecipients"
-              OR c."totalSent" <> a."totalSent"
+              c."totalSent" <> a."totalSent"
               OR c."totalDelivered" <> a."totalDelivered"
               OR c."totalOpened" <> a."totalOpened"
               OR c."totalClicked" <> a."totalClicked"
@@ -322,33 +348,13 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
       LIMIT ${options.limit}
     `
 
-    return rows.map((row) => ({
-      id: row.id,
-      current: {
-        totalRecipients: Number(row.currentTotalRecipients),
-        totalSent: Number(row.currentTotalSent),
-        totalDelivered: Number(row.currentTotalDelivered),
-        totalOpened: Number(row.currentTotalOpened),
-        totalClicked: Number(row.currentTotalClicked),
-        totalBounced: Number(row.currentTotalBounced),
-        totalComplained: Number(row.currentTotalComplained),
-      },
-      computed: {
-        totalRecipients: Number(row.computedTotalRecipients),
-        totalSent: Number(row.computedTotalSent),
-        totalDelivered: Number(row.computedTotalDelivered),
-        totalOpened: Number(row.computedTotalOpened),
-        totalClicked: Number(row.computedTotalClicked),
-        totalBounced: Number(row.computedTotalBounced),
-        totalComplained: Number(row.computedTotalComplained),
-      },
-    }))
+    return rows.map(toCounterSnapshot)
   }
 
   async findDispatchCounterSnapshots(
     options: CounterReconciliationQueryOptions
   ): Promise<CounterSnapshot<DispatchCounters>[]> {
-    const rows = await this.db.$queryRaw<DispatchCounterDriftRow[]>`
+    const rows = await this.db.$queryRaw<CounterDriftRow[]>`
       WITH agg AS (
         SELECT
           "dispatchId" AS "id",
@@ -394,55 +400,60 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
       LIMIT ${options.limit}
     `
 
-    return rows.map((row) => ({
-      id: row.id,
-      current: {
-        totalSent: Number(row.currentTotalSent),
-        totalDelivered: Number(row.currentTotalDelivered),
-        totalOpened: Number(row.currentTotalOpened),
-        totalClicked: Number(row.currentTotalClicked),
-        totalBounced: Number(row.currentTotalBounced),
-        totalComplained: Number(row.currentTotalComplained),
-      },
-      computed: {
-        totalSent: Number(row.computedTotalSent),
-        totalDelivered: Number(row.computedTotalDelivered),
-        totalOpened: Number(row.computedTotalOpened),
-        totalClicked: Number(row.computedTotalClicked),
-        totalBounced: Number(row.computedTotalBounced),
-        totalComplained: Number(row.computedTotalComplained),
-      },
-    }))
+    return rows.map(toCounterSnapshot)
   }
 
   /**
-   * Uma transação por passe: ou a noite inteira de correção entra, ou nenhuma
-   * linha entra — meia reconciliação é pior que nenhuma para quem lê o número.
+   * Escrita com concorrência otimista: o `where` repete os valores lidos no
+   * snapshot, então a linha só é corrigida se **ninguém** a mexeu no intervalo.
+   *
+   * Sem isso, um webhook de abertura/clique que aterrissa entre a leitura e a
+   * escrita seria sobrescrito pelo valor velho e o incremento se perderia até a
+   * próxima noite. Campanha terminal recebe esses eventos por semanas, então a
+   * janela não é teórica. Perder a correção é barato (volta amanhã); perder o
+   * evento do webhook, não.
+   *
+   * Uma transação por passe: ou a noite inteira entra, ou nenhuma linha entra.
    */
-  async applyCampaignCounterFixes(fixes: CounterFix<CampaignCounters>[]): Promise<void> {
-    if (fixes.length === 0) return
-    await this.db.$transaction(
+  async applyCampaignCounterFixes(fixes: CounterFix<CampaignCounters>[]): Promise<number> {
+    if (fixes.length === 0) return 0
+    const results = await this.db.$transaction(
       fixes.map((fix) =>
-        this.db.emailCampaign.update({
-          where: { id: fix.id },
+        this.db.emailCampaign.updateMany({
+          where: { id: fix.id, ...fix.expected },
           data: fix.counters,
-          select: { id: true },
         })
       )
     )
+    return results.reduce((total, result) => total + result.count, 0)
   }
 
-  async applyDispatchCounterFixes(fixes: CounterFix<DispatchCounters>[]): Promise<void> {
-    if (fixes.length === 0) return
-    await this.db.$transaction(
+  async applyDispatchCounterFixes(fixes: CounterFix<DispatchCounters>[]): Promise<number> {
+    if (fixes.length === 0) return 0
+    const results = await this.db.$transaction(
       fixes.map((fix) =>
-        this.db.emailCampaignDispatch.update({
-          where: { id: fix.id },
+        this.db.emailCampaignDispatch.updateMany({
+          where: { id: fix.id, ...fix.expected },
           data: fix.counters,
-          select: { id: true },
         })
       )
     )
+    return results.reduce((total, result) => total + result.count, 0)
+  }
+
+  async findLastMonthlyQuotaIncidentAt(options: {
+    since: Date
+    quotaFailureMessage: string
+  }): Promise<Date | null> {
+    const incident = await this.db.emailCampaignDispatch.findFirst({
+      where: {
+        errorMessage: options.quotaFailureMessage,
+        updatedAt: { gte: options.since },
+      },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: "desc" },
+    })
+    return incident?.updatedAt ?? null
   }
 
   async createCampaignPlan(

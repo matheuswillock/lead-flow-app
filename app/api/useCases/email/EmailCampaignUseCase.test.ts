@@ -819,6 +819,48 @@ describe("EmailCampaignUseCase.send", () => {
     })
   })
 
+  /**
+   * T-C4.2 — com a cota do mês já estourada, aceitar o disparo só produziria
+   * centenas de `failed` mudos e devolveria crédito depois. A recusa acontece
+   * antes de qualquer escrita: nenhum dispatch criado, nenhum crédito
+   * reservado, nada enfileirado.
+   */
+  it("T-C4.2 — cota mensal ativa recusa o disparo na origem, sem enfileirar nada", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    // O registro consultável do incidente é o `errorMessage` do último disparo
+    // abortado por cota no mês — sem tabela nova (SPEC 20, DA4).
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-antigo",
+      updatedAt: new Date(),
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("Cota mensal")
+    expect(output.errorMessages[0]).toContain("Nenhum e-mail foi enfileirado")
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("T-C4.2b — sem incidente de cota no mês, o disparo segue normalmente", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => null as never)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+  })
+
   it("processDispatchQueueBatch materializa logs queued em lote na primeira execução", async () => {
     const recipients = makeRecipients(2)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
