@@ -52,6 +52,7 @@ const settingsSelect = {
   resendDomainConnectedAt: true,
   resendOpenTracking: true,
   resendClickTracking: true,
+  resendSendingDnsVerified: true,
 } satisfies Prisma.EmailTeamSettingsSelect
 
 const senderSelect = {
@@ -107,6 +108,11 @@ const CLEAR_DOMAIN_DATA = {
   resendDomainConnectedAt: null,
   resendOpenTracking: false,
   resendClickTracking: false,
+  // Precisa voltar a `false` junto com o resto. O gate libera disparo com este
+  // flag em `true` mesmo quando o status ainda não é `verified`; deixá-lo
+  // sobreviver a um desconectar→conectar liberaria o domínio NOVO com o DKIM do
+  // ANTIGO — o inverso exato do bug que o gate corrigiu.
+  resendSendingDnsVerified: false,
 } as const
 
 /**
@@ -526,6 +532,7 @@ export class EmailTeamSettingsRepository implements IEmailTeamSettingsRepository
         resendDomainConnectedAt: input.connectedAt,
         resendOpenTracking: input.openTracking,
         resendClickTracking: input.clickTracking,
+        resendSendingDnsVerified: false,
         dispatchAllowedRoles: CREATE_DEFAULTS.dispatchAllowedRoles,
         templateCreateRoles: CREATE_DEFAULTS.templateCreateRoles,
         templateApprovalRequired: CREATE_DEFAULTS.templateApprovalRequired,
@@ -540,6 +547,12 @@ export class EmailTeamSettingsRepository implements IEmailTeamSettingsRepository
         resendDomainConnectedAt: input.connectedAt,
         resendOpenTracking: input.openTracking,
         resendClickTracking: input.clickTracking,
+        // Domínio recém-conectado nasce `pending` e nunca está verificado.
+        // Forçar `false` aqui fecha a janela entre conectar e o primeiro sync:
+        // `connectDomain` não chama `syncFromResendDomain`, então sem isto o
+        // domínio novo herdaria o flag do anterior e o gate liberaria disparo
+        // com o DKIM ainda pendente.
+        resendSendingDnsVerified: false,
         ...(input.deliveryFrom
           ? {
               fromEmail: input.deliveryFrom.fromEmail,
