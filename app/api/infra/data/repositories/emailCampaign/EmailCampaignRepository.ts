@@ -10,6 +10,12 @@ import {
   queryDispatchLogCounters,
   type DispatchLogCounterRow,
 } from "@/app/api/infra/data/repositories/emailLog/DispatchLogCountersQuery"
+import type {
+  CampaignCounters,
+  CounterFix,
+  CounterSnapshot,
+  DispatchCounters,
+} from "@/lib/email/campaign-counter-reconciliation"
 
 export type CampaignForSegmentGeneration = {
   id: string
@@ -126,7 +132,50 @@ export interface IEmailCampaignRepository {
    * Retorna `null` quando o segmento Radar exigido pelo lock deixou de estar ativo.
    */
   createCampaignPlan(input: CreateCampaignPlanInput): Promise<CreateCampaignPlanResult | null>
+  /**
+   * Campanhas cujo contador denormalizado diverge dos logs. Exclui o que está em
+   * voo (campanha ou disparo `sending` com atividade depois do watermark) — o
+   * webhook incrementa o mesmo contador e a leitura correria com a escrita.
+   */
+  findCampaignCounterSnapshots(
+    options: CounterReconciliationQueryOptions
+  ): Promise<CounterSnapshot<CampaignCounters>[]>
+  /** Idem, por disparo. `totalRecipients` do disparo não é reconciliado (é o planejado do lote). */
+  findDispatchCounterSnapshots(
+    options: CounterReconciliationQueryOptions
+  ): Promise<CounterSnapshot<DispatchCounters>[]>
+  applyCampaignCounterFixes(fixes: CounterFix<CampaignCounters>[]): Promise<void>
+  applyDispatchCounterFixes(fixes: CounterFix<DispatchCounters>[]): Promise<void>
 }
+
+export type CounterReconciliationQueryOptions = {
+  limit: number
+  /** Linhas `sending` com `updatedAt` a partir daqui são consideradas em voo. */
+  inFlightWatermark: Date
+}
+
+type CampaignCounterDriftRow = {
+  id: string
+  currentTotalRecipients: number
+  currentTotalSent: number
+  currentTotalDelivered: number
+  currentTotalOpened: number
+  currentTotalClicked: number
+  currentTotalBounced: number
+  currentTotalComplained: number
+  computedTotalRecipients: number
+  computedTotalSent: number
+  computedTotalDelivered: number
+  computedTotalOpened: number
+  computedTotalClicked: number
+  computedTotalBounced: number
+  computedTotalComplained: number
+}
+
+type DispatchCounterDriftRow = Omit<
+  CampaignCounterDriftRow,
+  "currentTotalRecipients" | "computedTotalRecipients"
+>
 
 export class EmailCampaignRepository implements IEmailCampaignRepository {
   constructor(private readonly db: PrismaClient = prisma) {}
@@ -211,6 +260,189 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
     dispatchIds: string[]
   ): Promise<DispatchLogCounterRow[]> {
     return queryDispatchLogCounters(this.db, { teamId, dispatchIds })
+  }
+
+  async findCampaignCounterSnapshots(
+    options: CounterReconciliationQueryOptions
+  ): Promise<CounterSnapshot<CampaignCounters>[]> {
+    const rows = await this.db.$queryRaw<CampaignCounterDriftRow[]>`
+      WITH agg AS (
+        SELECT
+          "campaignId" AS "id",
+          COUNT(DISTINCT lower(btrim("recipientEmail")))::int AS "totalRecipients",
+          COUNT(*) FILTER (WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL)::int AS "totalSent",
+          COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS "totalDelivered",
+          COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS "totalOpened",
+          COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS "totalClicked",
+          COUNT(*) FILTER (WHERE "bouncedAt" IS NOT NULL)::int AS "totalBounced",
+          COUNT(*) FILTER (WHERE "complainedAt" IS NOT NULL)::int AS "totalComplained"
+        FROM "corretor_studio_email_logs"
+        WHERE "campaignId" IS NOT NULL
+        GROUP BY "campaignId"
+      )
+      SELECT
+        c."id",
+        c."totalRecipients" AS "currentTotalRecipients",
+        c."totalSent" AS "currentTotalSent",
+        c."totalDelivered" AS "currentTotalDelivered",
+        c."totalOpened" AS "currentTotalOpened",
+        c."totalClicked" AS "currentTotalClicked",
+        c."totalBounced" AS "currentTotalBounced",
+        c."totalComplained" AS "currentTotalComplained",
+        a."totalRecipients" AS "computedTotalRecipients",
+        a."totalSent" AS "computedTotalSent",
+        a."totalDelivered" AS "computedTotalDelivered",
+        a."totalOpened" AS "computedTotalOpened",
+        a."totalClicked" AS "computedTotalClicked",
+        a."totalBounced" AS "computedTotalBounced",
+        a."totalComplained" AS "computedTotalComplained"
+      FROM "corretor_studio_email_campaigns" c
+      JOIN agg a ON a."id" = c."id"
+      WHERE NOT (
+              c."status" = 'sending'::"email_campaign_status"
+              AND c."updatedAt" >= ${options.inFlightWatermark}
+            )
+        AND NOT EXISTS (
+              SELECT 1
+              FROM "corretor_studio_email_campaign_dispatches" d
+              WHERE d."campaignId" = c."id"
+                AND d."status" = 'sending'::"email_campaign_dispatch_status"
+                AND d."updatedAt" >= ${options.inFlightWatermark}
+            )
+        AND (
+              c."totalRecipients" <> a."totalRecipients"
+              OR c."totalSent" <> a."totalSent"
+              OR c."totalDelivered" <> a."totalDelivered"
+              OR c."totalOpened" <> a."totalOpened"
+              OR c."totalClicked" <> a."totalClicked"
+              OR c."totalBounced" <> a."totalBounced"
+              OR c."totalComplained" <> a."totalComplained"
+            )
+      ORDER BY c."updatedAt" ASC
+      LIMIT ${options.limit}
+    `
+
+    return rows.map((row) => ({
+      id: row.id,
+      current: {
+        totalRecipients: Number(row.currentTotalRecipients),
+        totalSent: Number(row.currentTotalSent),
+        totalDelivered: Number(row.currentTotalDelivered),
+        totalOpened: Number(row.currentTotalOpened),
+        totalClicked: Number(row.currentTotalClicked),
+        totalBounced: Number(row.currentTotalBounced),
+        totalComplained: Number(row.currentTotalComplained),
+      },
+      computed: {
+        totalRecipients: Number(row.computedTotalRecipients),
+        totalSent: Number(row.computedTotalSent),
+        totalDelivered: Number(row.computedTotalDelivered),
+        totalOpened: Number(row.computedTotalOpened),
+        totalClicked: Number(row.computedTotalClicked),
+        totalBounced: Number(row.computedTotalBounced),
+        totalComplained: Number(row.computedTotalComplained),
+      },
+    }))
+  }
+
+  async findDispatchCounterSnapshots(
+    options: CounterReconciliationQueryOptions
+  ): Promise<CounterSnapshot<DispatchCounters>[]> {
+    const rows = await this.db.$queryRaw<DispatchCounterDriftRow[]>`
+      WITH agg AS (
+        SELECT
+          "dispatchId" AS "id",
+          COUNT(*) FILTER (WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL)::int AS "totalSent",
+          COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS "totalDelivered",
+          COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS "totalOpened",
+          COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS "totalClicked",
+          COUNT(*) FILTER (WHERE "bouncedAt" IS NOT NULL)::int AS "totalBounced",
+          COUNT(*) FILTER (WHERE "complainedAt" IS NOT NULL)::int AS "totalComplained"
+        FROM "corretor_studio_email_logs"
+        WHERE "dispatchId" IS NOT NULL
+        GROUP BY "dispatchId"
+      )
+      SELECT
+        d."id",
+        d."totalSent" AS "currentTotalSent",
+        d."totalDelivered" AS "currentTotalDelivered",
+        d."totalOpened" AS "currentTotalOpened",
+        d."totalClicked" AS "currentTotalClicked",
+        d."totalBounced" AS "currentTotalBounced",
+        d."totalComplained" AS "currentTotalComplained",
+        a."totalSent" AS "computedTotalSent",
+        a."totalDelivered" AS "computedTotalDelivered",
+        a."totalOpened" AS "computedTotalOpened",
+        a."totalClicked" AS "computedTotalClicked",
+        a."totalBounced" AS "computedTotalBounced",
+        a."totalComplained" AS "computedTotalComplained"
+      FROM "corretor_studio_email_campaign_dispatches" d
+      JOIN agg a ON a."id" = d."id"
+      WHERE NOT (
+              d."status" = 'sending'::"email_campaign_dispatch_status"
+              AND d."updatedAt" >= ${options.inFlightWatermark}
+            )
+        AND (
+              d."totalSent" <> a."totalSent"
+              OR d."totalDelivered" <> a."totalDelivered"
+              OR d."totalOpened" <> a."totalOpened"
+              OR d."totalClicked" <> a."totalClicked"
+              OR d."totalBounced" <> a."totalBounced"
+              OR d."totalComplained" <> a."totalComplained"
+            )
+      ORDER BY d."updatedAt" ASC
+      LIMIT ${options.limit}
+    `
+
+    return rows.map((row) => ({
+      id: row.id,
+      current: {
+        totalSent: Number(row.currentTotalSent),
+        totalDelivered: Number(row.currentTotalDelivered),
+        totalOpened: Number(row.currentTotalOpened),
+        totalClicked: Number(row.currentTotalClicked),
+        totalBounced: Number(row.currentTotalBounced),
+        totalComplained: Number(row.currentTotalComplained),
+      },
+      computed: {
+        totalSent: Number(row.computedTotalSent),
+        totalDelivered: Number(row.computedTotalDelivered),
+        totalOpened: Number(row.computedTotalOpened),
+        totalClicked: Number(row.computedTotalClicked),
+        totalBounced: Number(row.computedTotalBounced),
+        totalComplained: Number(row.computedTotalComplained),
+      },
+    }))
+  }
+
+  /**
+   * Uma transação por passe: ou a noite inteira de correção entra, ou nenhuma
+   * linha entra — meia reconciliação é pior que nenhuma para quem lê o número.
+   */
+  async applyCampaignCounterFixes(fixes: CounterFix<CampaignCounters>[]): Promise<void> {
+    if (fixes.length === 0) return
+    await this.db.$transaction(
+      fixes.map((fix) =>
+        this.db.emailCampaign.update({
+          where: { id: fix.id },
+          data: fix.counters,
+          select: { id: true },
+        })
+      )
+    )
+  }
+
+  async applyDispatchCounterFixes(fixes: CounterFix<DispatchCounters>[]): Promise<void> {
+    if (fixes.length === 0) return
+    await this.db.$transaction(
+      fixes.map((fix) =>
+        this.db.emailCampaignDispatch.update({
+          where: { id: fix.id },
+          data: fix.counters,
+          select: { id: true },
+        })
+      )
+    )
   }
 
   async createCampaignPlan(
