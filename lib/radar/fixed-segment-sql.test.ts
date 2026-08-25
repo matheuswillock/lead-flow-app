@@ -6,6 +6,7 @@ import {
   buildFixedSegmentProfileIdsSql,
 } from "./fixed-segment-sql"
 import { RADAR_SEGMENT_SLUGS } from "./segment-config"
+import { RADAR_EXPORT_MAX_ROWS } from "./exportRadarProfiles"
 
 const TEAM_ID = "11111111-1111-1111-1111-111111111111"
 const THRESHOLD = new Date("2026-06-25T00:00:00.000Z")
@@ -190,7 +191,19 @@ describe("LIMIT/OFFSET nunca recebem valor que o Postgres rejeita", () => {
       take: 10_000,
     })
 
-    expect(query.values).toContain(1000)
+    expect(query.values).toContain(RADAR_EXPORT_MAX_ROWS)
     expect(query.values).not.toContain(10_000)
+  })
+
+  // O teto nao pode ficar abaixo do maior consumidor legitimo: o export pede
+  // RADAR_EXPORT_MAX_ROWS de uma vez, e um LIMIT menor cortaria em silencio —
+  // com `truncated` derivado do total ainda dizendo que nao cortou.
+  it("nao corta o take do export de segmento", () => {
+    const query = buildFixedSegmentProfileIdsSql("crm_clients", TEAM_ID, THRESHOLD, {
+      skip: 0,
+      take: RADAR_EXPORT_MAX_ROWS,
+    })
+
+    expect(query.values).toContain(RADAR_EXPORT_MAX_ROWS)
   })
 })

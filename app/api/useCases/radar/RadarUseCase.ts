@@ -307,7 +307,10 @@ export class RadarUseCase {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const truncated = page.total > RADAR_EXPORT_MAX_ROWS
+    // Derivado do que a página REALMENTE trouxe, não do total: qualquer teto
+    // aplicado abaixo desta camada (LIMIT do builder, por exemplo) precisa
+    // aparecer aqui em vez de sair como export silenciosamente cortado.
+    const truncated = page.ids.length < page.total
     const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, page.ids)
     const rows = buildRadarExportRows(mapProfilesToExportInput(items))
     const messages = truncated
