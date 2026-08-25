@@ -5870,6 +5870,10 @@ model PublicFormSubmission {
   origin         Json?
   errorMessage   String?                    @db.Text
   submittedAt    DateTime?                  @db.Timestamptz(6)
+  /// SPEC 40 E0/DA6: marcador positivo de aceite, gravado no POST de envio antes
+  /// do enqueue. O cron de re-despacho só reivindica submissão com este carimbo —
+  /// casca criada pelo `/progress` nunca entra no despacho.
+  submitRequestedAt  DateTime?               @db.Timestamptz(6)
   dispatchAcceptedAt DateTime?               @db.Timestamptz(6)
   dispatchAttemptCount Int                    @default(0)
   nextDispatchAt DateTime?                    @db.Timestamptz(6)
