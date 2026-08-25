@@ -9,6 +9,7 @@ import {
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import { resendWebhookService } from "@/app/api/services/resend/ResendWebhookService"
 import { radarService } from "@/app/api/services/radar/RadarService"
+import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 import type { ResendWebhookRadarEventPayload } from "@/lib/queues/resend-webhook-radar-events"
 
 const RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG =
@@ -142,8 +143,9 @@ export class EmailOrphanEventService {
 
   /**
    * Aplica o evento órfão ao `EmailLog` pelo mesmo caminho do webhook normal,
-   * com os mesmos side effects de Radar. É o que faz um `email.complained`
-   * recuperado valer tanto quanto um que chegou com o log já existindo.
+   * com os mesmos side effects — Radar **e** poda de audiência. É o que faz um
+   * `email.complained` recuperado valer tanto quanto um que chegou com o log já
+   * existindo.
    */
   private async applyEventToLog(log: ExistingEmailLog, event: ClaimedOrphanEvent): Promise<void> {
     const eventType = resendWebhookService.mapEventType(event.resendEventType)
@@ -157,6 +159,15 @@ export class EmailOrphanEventService {
       resendEventType: event.resendEventType,
       svixId: null,
     })
+
+    // Espelha o ResendWebhookUseCase: sem isto, uma reclamação que chegou antes
+    // do EmailLog aplicava o evento mas deixava o destinatário nas audiências
+    // já materializadas — ele voltaria a receber envio depois de reclamar.
+    if (eventType === "bounced") {
+      emailCampaignAudiencePruneUseCase.queuePruneForSuppressedEmail(log.recipientEmail)
+    } else if (eventType === "complained") {
+      emailCampaignAudiencePruneUseCase.queuePruneForComplaint(log.recipientEmail)
+    }
 
     // Mesmos side effects Radar do fluxo normal (ResendWebhookUseCase), para opens/clicks/bounces recuperados.
     try {

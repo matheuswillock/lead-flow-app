@@ -19,6 +19,8 @@ const mapEventTypeMock = mock((type: string) => {
   return map[type] ?? null
 })
 const handleEmailWebhookEventMock = mock(async () => {})
+const queuePruneForSuppressedEmailMock = mock((_email: string) => {})
+const queuePruneForComplaintMock = mock((_email: string) => {})
 const publishResendWebhookRadarEventMock = mock(async () => ({ messageId: "mid-1" }))
 
 mock.module("@/app/api/infra/data/prisma", () => ({
@@ -113,6 +115,13 @@ mock.module("@/app/api/services/resend/ResendWebhookService", () => {
 mock.module("@/app/api/services/radar/RadarService", () => ({
   radarService: {
     handleEmailWebhookEvent: handleEmailWebhookEventMock,
+  },
+}))
+
+mock.module("@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase", () => ({
+  emailCampaignAudiencePruneUseCase: {
+    queuePruneForSuppressedEmail: queuePruneForSuppressedEmailMock,
+    queuePruneForComplaint: queuePruneForComplaintMock,
   },
 }))
 
@@ -250,6 +259,8 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     handleEmailWebhookEventMock.mockClear()
     publishResendWebhookRadarEventMock.mockClear()
     publishResendWebhookRadarEventMock.mockResolvedValue({ messageId: "mid-1" })
+    queuePruneForSuppressedEmailMock.mockClear()
+    queuePruneForComplaintMock.mockClear()
   })
 
   it("processa órfão quando enrichment resolve logId", async () => {
@@ -476,6 +487,114 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     expect(publishResendWebhookRadarEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ logId: "log-novo", eventType: "complained" })
     )
+  })
+
+  /**
+   * Review PR #1057. O caminho órfão aplicava o evento e disparava o Radar, mas
+   * não a poda de audiência que o `ResendWebhookUseCase` dispara para
+   * `bounced`/`complained`. Resultado: quem reclamou antes do EmailLog existir
+   * continuava nas audiências já materializadas e voltava a receber envio.
+   */
+  it("reclamação recuperada também poda as audiências de campanha", async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-prune",
+        resendEmailId: "re_prune",
+        resendEventType: "email.complained",
+        occurredAt: new Date("2026-08-24T16:00:00.000Z"),
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-existente",
+      teamId: "team-1",
+      status: "sent",
+      recipientEmail: "reclamante@test.com",
+      recipientName: "Reclamante",
+      campaignId: "camp-1",
+    })
+
+    const service = new EmailOrphanEventService(
+      {
+        fetchEmailMetadata: async () => null,
+        createOrphanTeamEmailLogFromResendEmail: async () => null,
+      },
+      publishResendWebhookRadarEventMock
+    )
+
+    await service.processPendingBatch()
+
+    expect(queuePruneForComplaintMock).toHaveBeenCalledWith("reclamante@test.com")
+    expect(queuePruneForSuppressedEmailMock).not.toHaveBeenCalled()
+  })
+
+  it("bounce recuperado poda por supressão, não por reclamação", async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-bounce",
+        resendEmailId: "re_bounce",
+        resendEventType: "email.bounced",
+        occurredAt: new Date("2026-08-24T16:05:00.000Z"),
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-bounce",
+      teamId: "team-1",
+      status: "sent",
+      recipientEmail: "invalido@test.com",
+      recipientName: null,
+      campaignId: null,
+    })
+
+    const service = new EmailOrphanEventService(
+      {
+        fetchEmailMetadata: async () => null,
+        createOrphanTeamEmailLogFromResendEmail: async () => null,
+      },
+      publishResendWebhookRadarEventMock
+    )
+
+    await service.processPendingBatch()
+
+    expect(queuePruneForSuppressedEmailMock).toHaveBeenCalledWith("invalido@test.com")
+    expect(queuePruneForComplaintMock).not.toHaveBeenCalled()
+  })
+
+  it("evento sem impacto em audiência não dispara poda", async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-opened",
+        resendEmailId: "re_opened",
+        resendEventType: "email.opened",
+        occurredAt: new Date("2026-08-24T16:10:00.000Z"),
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-opened",
+      teamId: "team-1",
+      status: "delivered",
+      recipientEmail: "leitor@test.com",
+      recipientName: null,
+      campaignId: null,
+    })
+
+    const service = new EmailOrphanEventService(
+      {
+        fetchEmailMetadata: async () => null,
+        createOrphanTeamEmailLogFromResendEmail: async () => null,
+      },
+      publishResendWebhookRadarEventMock
+    )
+
+    await service.processPendingBatch()
+
+    expect(queuePruneForComplaintMock).not.toHaveBeenCalled()
+    expect(queuePruneForSuppressedEmailMock).not.toHaveBeenCalled()
   })
 
   /**
