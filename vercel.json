@@ -292,6 +292,10 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/v1/email/cron/expire-stale-queued-logs",
+      "schedule": "20 * * * *"
+    },
+    {
       "path": "/api/v1/public-forms/cron/retry-queue-event-failures",
       "schedule": "*/5 * * * *"
     },

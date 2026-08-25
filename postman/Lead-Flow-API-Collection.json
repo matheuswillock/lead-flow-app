@@ -16766,6 +16766,28 @@
               "response": []
             },
             {
+              "name": "Expirar Logs Queued Parados",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/expire-stale-queued-logs",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "expire-stale-queued-logs"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Fecha log queued sem disparo ativo parado ha mais de 48h, marcando failed com errorMessage queued_expired no evento (SPEC 20 E2 / DA2). NUNCA reenvia: reenviar e-mail de trinta dias atras e dano, nao recuperacao — a decisao de reenvio e do usuario. Disparo sending e intocavel a qualquer idade."
+              },
+              "response": []
+            },
+            {
               "name": "Digest Reuniões Pendentes (+3 dias)",
               "request": {
                 "method": "GET",
