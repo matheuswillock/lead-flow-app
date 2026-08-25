@@ -1,7 +1,11 @@
 import { describe, expect, it, mock } from "bun:test"
-import type { BackofficeCronExecution } from "@prisma/client"
+import type { BackofficeCronExecution, Prisma } from "@prisma/client"
 import type { IBackofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/IBackofficeCronExecutionRepository"
 import { withCronAudit } from "./withCronAudit"
+import {
+  buildSkippedCronOutput,
+  CRON_SKIP_REASON_FEATURE_DISABLED,
+} from "./cronSkippedOutput"
 
 function makeExecution(id = "exec-1"): BackofficeCronExecution {
   return {
@@ -124,5 +128,45 @@ describe("withCronAudit", () => {
     expect(markSuccess).not.toHaveBeenCalled()
     expect(markFailed).toHaveBeenCalledTimes(1)
     expect(onFailure).toHaveBeenCalledTimes(1)
+  })
+
+  it("T-Q5.1 — gate off: registra execução success com {skipped:'feature_disabled'}", async () => {
+    const markSuccess = mock(
+      async (_id: string, _durationMs: number, _metadata?: Prisma.InputJsonValue) =>
+        makeExecution(),
+    )
+    const markFailed = mock(async () => makeExecution())
+    const onFailure = mock(async () => undefined)
+
+    const repository: IBackofficeCronExecutionRepository = {
+      create: async () => makeExecution("exec-skipped"),
+      findMany: async () => [],
+      markSuccess,
+      markFailed,
+    }
+
+    const result = await withCronAudit(
+      { cronKey: "ingest-media", cronPath: "/api/v1/whatsapp/cron/ingest-media" },
+      async () => buildSkippedCronOutput(CRON_SKIP_REASON_FEATURE_DISABLED),
+      { repository, onFailure }
+    )
+
+    expect(result.isValid).toBe(true)
+    expect(result.result).toEqual({ skipped: "feature_disabled" })
+    expect(markFailed).not.toHaveBeenCalled()
+    expect(onFailure).not.toHaveBeenCalled()
+    expect(markSuccess).toHaveBeenCalledTimes(1)
+    expect(markSuccess.mock.calls[0]?.[2]).toEqual({ skipped: "feature_disabled" })
+  })
+})
+
+describe("buildSkippedCronOutput", () => {
+  it("é um Output válido que carrega o motivo do skip no result", () => {
+    const output = buildSkippedCronOutput(CRON_SKIP_REASON_FEATURE_DISABLED)
+
+    expect(output.isValid).toBe(true)
+    expect(output.errorMessages).toEqual([])
+    expect(output.result).toEqual({ skipped: "feature_disabled" })
+    expect(output.successMessages).toEqual(["Execução ignorada: feature_disabled"])
   })
 })
