@@ -299,21 +299,24 @@ export class RadarUseCase {
    */
   async exportSegmentProfiles(teamId: string, ctx: TeamContext, segment: string) {
     const scope = this.scope(teamId, ctx)
-    const ids = await this.resolveSegmentProfileIds(scope, segment)
-    if (ids === null) {
+    const page = await this.resolveSegmentProfileIdsPage(scope, segment, {
+      skip: 0,
+      take: RADAR_EXPORT_MAX_ROWS,
+    })
+    if (page === null) {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const truncated = ids.length > RADAR_EXPORT_MAX_ROWS
-    const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
+    const truncated = page.total > RADAR_EXPORT_MAX_ROWS
+    const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, page.ids)
     const rows = buildRadarExportRows(mapProfilesToExportInput(items))
     const messages = truncated
-      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${ids.length} membros no segmento).`]
+      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${page.total} membros no segmento).`]
       : []
 
     return new Output(true, messages, [], {
       rows,
-      total: ids.length,
+      total: page.total,
       exported: rows.length,
       truncated,
       maxRows: RADAR_EXPORT_MAX_ROWS,
@@ -583,21 +586,22 @@ export class RadarUseCase {
     pageSize: number
   ) {
     const scope = this.scope(teamId, ctx)
-    const ids = await this.resolveSegmentProfileIds(scope, segment)
-    if (ids === null) {
+    const skip = (page - 1) * pageSize
+    const resolved = await this.resolveSegmentProfileIdsPage(scope, segment, {
+      skip,
+      take: pageSize,
+    })
+    if (resolved === null) {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const skip = (page - 1) * pageSize
-    const pageIds = ids.slice(skip, skip + pageSize)
-
     const items = await Promise.all(
-      pageIds.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
+      resolved.ids.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
     )
 
     return new Output(true, [], [], {
       items: items.filter(Boolean),
-      total: ids.length,
+      total: resolved.total,
       page,
       pageSize,
       segment,
@@ -886,12 +890,25 @@ export class RadarUseCase {
    * Resolve IDs de perfil para slug de sistema ou `campaign:{uuid}`.
    * Retorna `null` quando a audiência é inválida / não pertence ao time.
    */
-  private async resolveSegmentProfileIds(
+  /**
+   * Resolve uma página do segmento — de sistema ou audiência `campaign:{id}`.
+   *
+   * Segmento de sistema pagina no banco pelo mesmo predicado que alimenta o
+   * card (R6/DA4). Audiência de campanha ainda resolve a lista inteira e fatia
+   * aqui: é um recorte por `campaignId`, com ordem de magnitude menor que a
+   * base do time, e sai do escopo desta SPEC.
+   */
+  private async resolveSegmentProfileIdsPage(
     scope: RadarTeamScope,
-    segment: string
-  ): Promise<string[] | null> {
+    segment: string,
+    pagination: { skip: number; take: number }
+  ): Promise<{ ids: string[]; total: number } | null> {
     if (isRadarSegmentSlug(segment)) {
-      return this.service.listSegmentProfileIds(scope, segment)
+      const [ids, total] = await Promise.all([
+        this.service.listSegmentProfileIds(scope, segment, pagination),
+        this.service.countSegmentProfiles(scope, segment),
+      ])
+      return { ids, total }
     }
 
     const campaignId = parseCampaignRadarSegmentSlug(segment)
@@ -900,7 +917,11 @@ export class RadarUseCase {
     const campaignName = await radarRepository.findEmailCampaignName(scope.teamId, campaignId)
     if (!campaignName) return null
 
-    return this.service.listCampaignSegmentProfileIds(scope, campaignId)
+    const campaignIds = await this.service.listCampaignSegmentProfileIds(scope, campaignId)
+    return {
+      ids: campaignIds.slice(pagination.skip, pagination.skip + pagination.take),
+      total: campaignIds.length,
+    }
   }
 }
 

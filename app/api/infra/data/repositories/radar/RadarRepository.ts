@@ -27,6 +27,12 @@ import {
   publishRadarEngagementScoreUpdate,
   RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/radar-engagement-score-updates"
+import {
+  buildFixedSegmentCountSql,
+  buildFixedSegmentCountsSql,
+  buildFixedSegmentProfileIdsSql,
+} from "@/lib/radar/fixed-segment-sql"
+import { RADAR_SEGMENT_SLUGS, type RadarSegmentSlug } from "@/lib/radar/segment-config"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
@@ -3238,206 +3244,72 @@ export class RadarRepository {
   }
 
   /**
-   * Fase 2: calcula as 9 contagens de segmentos fixos do Radar com agregação
-   * SQL nativa (Postgres) usando CTEs, substituindo varredura em memória.
-   * Retorna Map<slug, count> para preservar compatibilidade com o fluxo existente.
+   * Calcula as 9 contagens de segmentos de sistema numa varredura só.
+   *
+   * Os predicados vêm de `lib/radar/fixed-segment-sql` — os MESMOS que a
+   * listagem consome. Antes esta query era uma implementação independente do
+   * matcher em memória que servia a lista: duas verdades que divergiam sozinhas
+   * (auditoria CDP §4 R6). `COUNT(*) FILTER` preserva a passada única sobre os
+   * perfis do time que a versão com CTEs tinha.
    */
   async countFixedSegmentsSQL(
     teamId: string,
     recentWindowDays: number = 30,
   ): Promise<Map<string, number>> {
-    const recentWindowMs = recentWindowDays * 24 * 60 * 60 * 1000
-    const recentThreshold = new Date(Date.now() - recentWindowMs)
+    const recentThreshold = resolveRecentSegmentThreshold(recentWindowDays)
 
-    const result = await this.db.$queryRaw<
-      Array<{
-        email_marketable: bigint
-        email_blocked: bigint
-        opened_not_clicked: bigint
-        clicked_not_closed: bigint
-        engaged_no_lead: bigint
-        portfolio_renewal_due: bigint
-        inactive_recent_campaign: bigint
-        portfolio_clients: bigint
-        crm_clients: bigint
-      }>
-    >`
-      WITH profile_base AS (
-        SELECT
-          p.id,
-          p."normalizedPrimaryEmail",
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
-              AND c."channel" = 'email' AND c."status" = 'blocked'
-          ) AS has_blocked_consent,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
-              AND c."channel" = 'email' AND c."status" = 'allowed'
-          ) AS has_allowed_consent,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_source_links" sl
-            WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
-              AND sl."sourceType" = 'portfolio'
-          ) AS has_portfolio,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_identities" i
-            WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
-              AND i."type" = 'lead_id'
-          ) AS has_lead_id,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_events" e
-            WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
-              AND e."eventType" = 'email.sent'
-              AND e."occurredAt" >= ${recentThreshold}
-          ) AS has_recent_sent
-        FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}::uuid
-      ),
-      email_events AS (
-        SELECT
-          e."profileId",
-          e."eventType",
-          e."occurredAt",
-          e."metadata"
-        FROM "corretor_studio_radar_events" e
-        WHERE e."teamId" = ${teamId}::uuid
-          AND e."eventType" IN ('email.opened', 'email.clicked')
-          AND e."occurredAt" >= ${recentThreshold}
-      ),
-      campaign_opens AS (
-        SELECT DISTINCT
-          ee."profileId",
-          ee."metadata"->>'campaignId' AS campaign_id
-        FROM email_events ee
-        WHERE ee."eventType" = 'email.opened'
-          AND ee."metadata"->>'campaignId' IS NOT NULL
-      ),
-      campaign_clicks AS (
-        SELECT DISTINCT
-          ee."profileId",
-          ee."metadata"->>'campaignId' AS campaign_id
-        FROM email_events ee
-        WHERE ee."eventType" = 'email.clicked'
-          AND ee."metadata"->>'campaignId' IS NOT NULL
-      ),
-      opened_not_clicked_profiles AS (
-        SELECT DISTINCT co."profileId"
-        FROM campaign_opens co
-        LEFT JOIN campaign_clicks cc
-          ON co."profileId" = cc."profileId"
-          AND co.campaign_id = cc.campaign_id
-        WHERE cc."profileId" IS NULL
-      ),
-      clicked_profiles AS (
-        SELECT DISTINCT ee."profileId"
-        FROM email_events ee
-        WHERE ee."eventType" = 'email.clicked'
-          AND ee."metadata"->>'campaignId' IS NOT NULL
-      ),
-      closed_profiles AS (
-        SELECT p.id
-        FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}::uuid
-          AND (
-            EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_source_links" sl
-              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
-                AND sl."sourceType" = 'portfolio'
-            )
-            OR EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_identities" i
-              INNER JOIN "corretor_studio_leads" l ON i."normalizedValue" = l.id::text
-              WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
-                AND i."type" = 'lead_id'
-                AND l."teamId" = ${teamId}::uuid
-                AND l."status" IN ('contract_finalized')
-            )
-          )
-      ),
-      clicked_not_closed_profiles AS (
-        SELECT cp."profileId"
-        FROM clicked_profiles cp
-        LEFT JOIN closed_profiles clp ON cp."profileId" = clp.id
-        WHERE clp.id IS NULL
-      ),
-      renewal_due_profiles AS (
-        SELECT DISTINCT p.id
-        FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}::uuid
-          AND (
-            EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_events" e
-              WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
-                AND e."eventType" = 'portfolio.renewal_due'
-            )
-            OR EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_source_links" sl
-              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
-                AND sl."sourceType" = 'portfolio'
-                AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
-            )
-          )
-      ),
-      engaged_no_lead_profiles AS (
-        SELECT DISTINCT pb.id AS "profileId"
-        FROM profile_base pb
-        WHERE NOT pb.has_lead_id
-          AND (
-            EXISTS (SELECT 1 FROM email_events ee WHERE ee."profileId" = pb.id)
-            OR EXISTS (
-              SELECT 1 FROM "corretor_studio_radar_events" e
-              WHERE e."profileId" = pb.id
-                AND e."teamId" = ${teamId}::uuid
-                AND e."eventType" IN ('form.viewed', 'form.started')
-                AND e."occurredAt" >= ${recentThreshold}
-            )
-          )
-      )
-      SELECT
-        COUNT(*) FILTER (
-          WHERE pb."normalizedPrimaryEmail" IS NOT NULL
-            AND pb."normalizedPrimaryEmail" != ''
-            AND (NOT pb.has_blocked_consent)
-            AND (pb.has_allowed_consent OR NOT EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-              WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}::uuid
-                AND c."channel" = 'email'
-            ))
-        ) AS email_marketable,
-        COUNT(*) FILTER (WHERE pb.has_blocked_consent) AS email_blocked,
-        COUNT(oncp."profileId") AS opened_not_clicked,
-        COUNT(cncp."profileId") AS clicked_not_closed,
-        COUNT(enlp."profileId") AS engaged_no_lead,
-        COUNT(rdp.id) AS portfolio_renewal_due,
-        COUNT(*) FILTER (WHERE NOT pb.has_recent_sent) AS inactive_recent_campaign,
-        COUNT(*) FILTER (WHERE pb.has_portfolio) AS portfolio_clients,
-        COUNT(*) FILTER (WHERE pb.has_lead_id) AS crm_clients
-      FROM profile_base pb
-      LEFT JOIN opened_not_clicked_profiles oncp ON pb.id = oncp."profileId"
-      LEFT JOIN clicked_not_closed_profiles cncp ON pb.id = cncp."profileId"
-      LEFT JOIN engaged_no_lead_profiles enlp ON pb.id = enlp."profileId"
-      LEFT JOIN renewal_due_profiles rdp ON pb.id = rdp.id
-    `
+    const result = await this.db.$queryRaw<Array<Record<RadarSegmentSlug, bigint>>>(
+      buildFixedSegmentCountsSql(teamId, recentThreshold)
+    )
 
     const row = result[0]
     if (!row) {
       return new Map()
     }
 
-    return new Map([
-      ["email_marketable", Number(row.email_marketable)],
-      ["email_blocked", Number(row.email_blocked)],
-      ["opened_not_clicked", Number(row.opened_not_clicked)],
-      ["clicked_not_closed", Number(row.clicked_not_closed)],
-      ["engaged_no_lead", Number(row.engaged_no_lead)],
-      ["portfolio_renewal_due", Number(row.portfolio_renewal_due)],
-      ["inactive_recent_campaign", Number(row.inactive_recent_campaign)],
-      ["portfolio_clients", Number(row.portfolio_clients)],
-      ["crm_clients", Number(row.crm_clients)],
-    ])
+    return new Map(RADAR_SEGMENT_SLUGS.map((slug) => [slug, Number(row[slug])]))
   }
+
+  /** Contagem de um único segmento de sistema — mesmo predicado da listagem. */
+  async countFixedSegmentSQL(
+    teamId: string,
+    slug: RadarSegmentSlug,
+    recentWindowDays: number = 30,
+  ): Promise<number> {
+    const recentThreshold = resolveRecentSegmentThreshold(recentWindowDays)
+
+    const result = await this.db.$queryRaw<Array<{ count: bigint }>>(
+      buildFixedSegmentCountSql(slug, teamId, recentThreshold)
+    )
+
+    return Number(result[0]?.count ?? 0)
+  }
+
+  /**
+   * Página de ids do segmento de sistema, filtrada e paginada NO BANCO.
+   *
+   * Substitui o caminho que carregava todos os perfis do time em memória só
+   * para dar `slice` na página — o mesmo caminho que estourava P2035 (32.768
+   * bind vars) na rota de perfis de segmento com base grande.
+   */
+  async listFixedSegmentProfileIdsSQL(
+    teamId: string,
+    slug: RadarSegmentSlug,
+    pagination: { skip: number; take: number },
+    recentWindowDays: number = 30,
+  ): Promise<string[]> {
+    const recentThreshold = resolveRecentSegmentThreshold(recentWindowDays)
+
+    const rows = await this.db.$queryRaw<Array<{ id: string }>>(
+      buildFixedSegmentProfileIdsSql(slug, teamId, recentThreshold, pagination)
+    )
+
+    return rows.map((row) => row.id)
+  }
+}
+
+function resolveRecentSegmentThreshold(recentWindowDays: number): Date {
+  return new Date(Date.now() - recentWindowDays * 24 * 60 * 60 * 1000)
 }
 
 function genderSourceWriteWhere(incoming: RadarGenderSource): Prisma.RadarProfileWhereInput {
