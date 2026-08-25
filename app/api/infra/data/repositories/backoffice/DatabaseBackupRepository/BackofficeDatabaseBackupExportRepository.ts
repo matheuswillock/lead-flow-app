@@ -159,8 +159,8 @@ class NdjsonChunkBuffer {
  * Consequência prática numa restauração: registros criados **durante** a janela
  * do backup podem aparecer com referências pendentes, então a carga precisa
  * tolerar FK adiada/desabilitada. Este export não é um ponto-no-tempo do banco.
- * Para snapshot realmente consistente, a ferramenta é `pg_dump`
- * (`deploy/hostinger/backup-supabase.sh`), não este job.
+ * Para snapshot realmente consistente, a ferramenta é `pg_dump` — via
+ * `bun run db:backup -- <pasta>`, não este job.
  */
 export class BackofficeDatabaseBackupExportRepository
   implements IBackofficeDatabaseBackupExportRepository
