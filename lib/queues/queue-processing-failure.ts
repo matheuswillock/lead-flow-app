@@ -38,6 +38,14 @@ export type AckAfterMaxDeliveriesInput = {
 export type AckAfterMaxDeliveriesOptions = {
   sleep?: (ms: number) => Promise<void>
   logError?: (message: string, context: Record<string, unknown>) => void
+  /**
+   * Chamado só quando o caller vai ackar (retorno `true`), para distinguir os
+   * dois motivos possíveis sem quebrar o contrato `Promise<boolean>` de
+   * `AckAfterMaxDeliveriesFn` usado pelos 14 consumers: `true` = escrita no
+   * outbox teve sucesso (payload será reprocessado); `false` = corte duro sem
+   * outbox (payload só existe no log emitido por esta função).
+   */
+  onOutboxOutcome?: (persistedToOutbox: boolean) => void
 }
 
 export type AckAfterMaxDeliveriesFn = (input: AckAfterMaxDeliveriesInput) => Promise<boolean>
@@ -137,6 +145,7 @@ export async function ackAfterMaxDeliveries(
 
   const outboxError = await writeToOutboxWithRetry(input, writer, sleep)
   if (!outboxError) {
+    options.onOutboxOutcome?.(true)
     return true
   }
 
@@ -157,5 +166,25 @@ export async function ackAfterMaxDeliveries(
     payload: ackedWithoutOutbox ? toJsonPayload(input.payload) : undefined,
   })
 
+  if (ackedWithoutOutbox) {
+    options.onOutboxOutcome?.(false)
+  }
+
   return ackedWithoutOutbox
 }
+
+export type AckAfterMaxDeliveriesWithOutcomeFn = (
+  input: AckAfterMaxDeliveriesInput,
+  onOutboxOutcome: (persistedToOutbox: boolean) => void,
+) => Promise<boolean>
+
+/**
+ * Mesmo contrato de ack de {@link ackAfterMaxDeliveries}, mas expõe se o ack
+ * veio de uma escrita no outbox bem-sucedida ou do corte duro sem outbox —
+ * sem alterar `AckAfterMaxDeliveriesFn` (`Promise<boolean>`), que os outros
+ * consumers e seus testes continuam usando sem mudança nenhuma.
+ */
+export const ackAfterMaxDeliveriesWithOutcome: AckAfterMaxDeliveriesWithOutcomeFn = (
+  input,
+  onOutboxOutcome,
+) => ackAfterMaxDeliveries(input, undefined, { onOutboxOutcome })

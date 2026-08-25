@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from "bun:test"
 import {
   ackAfterMaxDeliveries,
+  ackAfterMaxDeliveriesWithOutcome,
   DEAD_LETTER_WRITE_FAILED_TAG,
   DEFAULT_QUEUE_HARD_MAX_DELIVERY_COUNT,
   DEFAULT_QUEUE_MAX_DELIVERY_COUNT,
@@ -225,6 +226,90 @@ describe("ackAfterMaxDeliveries", () => {
         ackedWithoutOutbox: false,
       }),
     )
+  })
+
+  it("onOutboxOutcome(true) quando a escrita no outbox tem sucesso", async () => {
+    const upsertFromProcessingFailure = mock(async () => {})
+    const onOutboxOutcome = mock((_persisted: boolean) => {})
+
+    await ackAfterMaxDeliveries(
+      {
+        deliveryCount: DEFAULT_QUEUE_MAX_DELIVERY_COUNT,
+        topic: "public-form-metric-events",
+        idempotencyKey: "evt-1",
+        payload: { eventKey: "evt-1" },
+        lastError: new Error("P2003"),
+      },
+      { upsertFromProcessingFailure },
+      { onOutboxOutcome },
+    )
+
+    expect(onOutboxOutcome).toHaveBeenCalledTimes(1)
+    expect(onOutboxOutcome).toHaveBeenCalledWith(true)
+  })
+
+  it("onOutboxOutcome(false) só quando o corte duro acka sem outbox", async () => {
+    const upsertFromProcessingFailure = mock(async () => {
+      throw new Error("outbox indisponível")
+    })
+    const onOutboxOutcome = mock((_persisted: boolean) => {})
+
+    await ackAfterMaxDeliveries(
+      {
+        deliveryCount: DEFAULT_QUEUE_HARD_MAX_DELIVERY_COUNT,
+        topic: "public-form-metric-events",
+        idempotencyKey: "evt-1",
+        payload: { eventKey: "evt-1" },
+        lastError: new Error("P2003"),
+      },
+      { upsertFromProcessingFailure },
+      { sleep: async () => {}, onOutboxOutcome },
+    )
+
+    expect(onOutboxOutcome).toHaveBeenCalledTimes(1)
+    expect(onOutboxOutcome).toHaveBeenCalledWith(false)
+  })
+
+  it("onOutboxOutcome não é chamado quando o caller ainda vai relançar (não ackou)", async () => {
+    const upsertFromProcessingFailure = mock(async () => {
+      throw new Error("outbox indisponível")
+    })
+    const onOutboxOutcome = mock((_persisted: boolean) => {})
+
+    const acked = await ackAfterMaxDeliveries(
+      {
+        deliveryCount: DEFAULT_QUEUE_HARD_MAX_DELIVERY_COUNT - 1,
+        topic: "public-form-metric-events",
+        idempotencyKey: "evt-1",
+        payload: { eventKey: "evt-1" },
+        lastError: new Error("P2003"),
+      },
+      { upsertFromProcessingFailure },
+      { sleep: async () => {}, onOutboxOutcome },
+    )
+
+    expect(acked).toBe(false)
+    expect(onOutboxOutcome).not.toHaveBeenCalled()
+  })
+})
+
+describe("ackAfterMaxDeliveriesWithOutcome", () => {
+  it("repassa o outcome sem exigir que o caller injete um writer", async () => {
+    const onOutboxOutcome = mock((_persisted: boolean) => {})
+
+    const acked = await ackAfterMaxDeliveriesWithOutcome(
+      {
+        deliveryCount: 2,
+        topic: "t",
+        idempotencyKey: "k",
+        payload: {},
+        lastError: "x",
+      },
+      onOutboxOutcome,
+    )
+
+    expect(acked).toBe(false)
+    expect(onOutboxOutcome).not.toHaveBeenCalled()
   })
 })
 

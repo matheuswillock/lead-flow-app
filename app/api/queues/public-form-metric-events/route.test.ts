@@ -106,6 +106,7 @@ describe("processPublicFormMetricQueueMessage", () => {
         idempotencyKey: "session_abcdefghij:form_viewed:form",
         deliveryCount: 2,
       }),
+      expect.any(Function),
     )
   })
 
@@ -129,7 +130,36 @@ describe("processPublicFormMetricQueueMessage", () => {
         idempotencyKey: "session_abcdefghij:form_viewed:form",
         deliveryCount: 25,
       }),
+      expect.any(Function),
     )
+  })
+
+  it("deliveryCount excedeu o limite sem outbox: loga sem afirmar que persistiu", async () => {
+    const ackDeadLetter = mock(async (_input: unknown, onOutboxOutcome: (persisted: boolean) => void) => {
+      onOutboxOutcome(false)
+      return true
+    })
+    const errorSpy = mock((_message?: unknown, _context?: unknown) => {})
+    const originalConsoleError = console.error
+    console.error = errorSpy as unknown as typeof console.error
+    persistQueuedMetric.mockRejectedValueOnce(new Error("Foreign key constraint violated"))
+
+    try {
+      await processPublicFormMetricQueueMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 100 },
+        undefined,
+        ackDeadLetter,
+      )
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    const ackLogCall = errorSpy.mock.calls.find((call) =>
+      String(call[0]).includes("deliveryCount excedeu o limite"),
+    )
+    expect(ackLogCall?.[0]).not.toContain("movido para outbox")
+    expect(ackLogCall?.[1]).toEqual(expect.objectContaining({ persistedToOutbox: false }))
   })
 
   it("payload inválido: ack sem chamar persistQueuedMetric", async () => {
