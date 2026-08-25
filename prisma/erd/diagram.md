@@ -3955,7 +3955,6 @@ completed completed
     String schedulingMessage "❓"
     String formKind 
     Boolean emailCampaignTrackingEnabled 
-    Boolean leadCaptureDisabled 
     String reviewComment "❓"
     DateTime reviewedAt "❓"
     DateTime createdAt 

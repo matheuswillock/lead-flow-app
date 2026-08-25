@@ -359,7 +359,16 @@ export class PublicFormSubmissionUseCase {
         lead = upserted?.lead ?? null
       }
 
-      const resolvedLeadId = lead?.id ?? attributionResult?.leadId ?? null
+      // SPEC 40 E4/DA4 (review #1043): a atribuição de campanha resolve um lead
+      // pelo `cs_el` mesmo sem nenhuma resposta de identidade, e esse id
+      // vazava para `lead_attached`, para o `leadId` da submissão e para a
+      // activity — apesar do `upsertLeadFromFormAnswers` já sair mais cedo. A
+      // atribuição continua rodando (o funil de campanha depende dela); o que
+      // ela não faz mais é ligar lead num formulário de pesquisa.
+      const leadCaptureEnabled = !job.snapshot.leadCaptureDisabled
+      const resolvedLeadId = leadCaptureEnabled
+        ? (lead?.id ?? attributionResult?.leadId ?? null)
+        : null
 
       let scheduled = false
       if (lead && job.scheduling) {
@@ -416,7 +425,7 @@ export class PublicFormSubmissionUseCase {
         },
       ]
 
-      if (lead || attributionResult?.leadId) {
+      if (resolvedLeadId) {
         const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
 
         // O lead do formulario publico nasce aqui, no processamento em

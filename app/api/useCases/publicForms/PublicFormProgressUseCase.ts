@@ -121,7 +121,12 @@ export class PublicFormProgressUseCase {
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
     let sessionLeadId: string | null = resolved.sessionSubmission?.leadId ?? null
     const leadGateMode = this.resolveLeadGateMode(form.teamId)
-    if (leadGateMode !== "radar") {
+    // SPEC 40 E4/DA4 (review #1043): o guard dentro do sync de lead sozinho não
+    // bastava. Aqui há um segundo caminho que produz lead — o criador legado do
+    // progresso — e um terceiro, o `createCrmLead` que arma o gate C do Radar
+    // mais abaixo. Formulário de pesquisa não promove por nenhum deles.
+    const leadCaptureEnabled = !snapshot.leadCaptureDisabled
+    if (leadGateMode !== "radar" && leadCaptureEnabled) {
       const legacyLead = await this.legacyLeadCreator.createOrUpdate({
         form,
         snapshot,
@@ -194,7 +199,7 @@ export class PublicFormProgressUseCase {
         origin: origin as Record<string, unknown>,
         answerMappingKey: mappingKey,
         answerValue,
-        createCrmLead: isIdentityAnswer && Boolean(identityAnswerValue),
+        createCrmLead: leadCaptureEnabled && isIdentityAnswer && Boolean(identityAnswerValue),
       }
       const queued = await publishServerPublicFormMetricEvent(
         buildPublicFormMetricQueuePayload(form.publicId, metricInput),
