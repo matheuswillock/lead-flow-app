@@ -26,10 +26,12 @@ export function isPendingLeadIdentity(normalizedValue: string | null | undefined
 /**
  * Predicado único de "esta identidade é vínculo real com o CRM".
  *
- * Existe para não haver uma quarta cópia da regra espalhada: o predicado SQL, o
- * gate do UseCase, o matcher em memória dos segmentos e o gate da UI precisam
- * todos concordar. Divergir aqui é como o perfil acabava contado em
- * `crm_clients` e fora de `engaged_no_lead` por causa de uma reserva.
+ * Existe para não haver mais uma cópia da regra espalhada. Os consumidores que
+ * precisam concordar são: o predicado SQL dos segmentos, o gate do UseCase de
+ * promoção, o matcher em memória (audiência de campanha), o gate da UI e o
+ * `RadarLeadGateUnitOfWork` do formulário público. Divergir é como o perfil
+ * acabava contado em `crm_clients` e fora de `engaged_no_lead` por causa de uma
+ * reserva — ou recusado com "já vinculado a outro lead" que nem lead tinha.
  */
 export function isRealLeadIdentity(identity: {
   type?: string | null

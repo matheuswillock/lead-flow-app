@@ -9,6 +9,10 @@ import type {
 } from "@/app/api/infra/data/repositories/radar/IRadarLeadGateUnitOfWork"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
+import {
+  isPendingLeadIdentity,
+  PENDING_LEAD_IDENTITY_PREFIX,
+} from "@/lib/radar/lead-identity"
 
 class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   constructor(private readonly transaction: Prisma.TransactionClient) {}
@@ -29,7 +33,12 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
         primaryEmail: true,
         normalizedPrimaryEmail: true,
         identities: {
-          where: { type: "lead_id" },
+          // A reserva provisória da promoção também é `lead_id`, mas não é
+          // vínculo — sem este filtro o `leadId` do gate viraria `pending:…`.
+          where: {
+            type: "lead_id",
+            NOT: { normalizedValue: { startsWith: PENDING_LEAD_IDENTITY_PREFIX } },
+          },
           select: { value: true, normalizedValue: true },
           take: 1,
         },
@@ -203,10 +212,18 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   }): Promise<void> {
     const existing = await this.transaction.radarIdentity.findFirst({
       where: { teamId: input.teamId, profileId: input.radarProfileId, type: "lead_id" },
-      select: { normalizedValue: true },
+      select: { id: true, normalizedValue: true },
     })
     if (existing?.normalizedValue === input.leadId) return
-    if (existing) throw new Error("Perfil Radar já está vinculado a outro lead")
+
+    // Reserva provisória da promoção manual não é vínculo: tratá-la como tal
+    // faria o gate do formulário recusar o perfil ("já vinculado a outro lead")
+    // por causa de uma linha que nem lead tem. O gate assume a linha.
+    if (existing && isPendingLeadIdentity(existing.normalizedValue)) {
+      await this.transaction.radarIdentity.delete({ where: { id: existing.id } })
+    } else if (existing) {
+      throw new Error("Perfil Radar já está vinculado a outro lead")
+    }
 
     await this.transaction.radarIdentity.create({
       data: {
