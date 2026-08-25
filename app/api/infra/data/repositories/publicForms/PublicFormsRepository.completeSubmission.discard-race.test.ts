@@ -127,4 +127,28 @@ describe("completeSubmission — descarte × corrida do gate C", () => {
     expect(submissionFindFirst).not.toHaveBeenCalled()
     expect(persistedEventTypes()).toEqual(["form_completed"])
   })
+
+  /**
+   * Review #1058, achado do Cursor: a transação derrubava o descarte, mas o
+   * use case enfileirava o lote **original** — o consumer regravava por fora o
+   * evento que a transação tinha acabado de recusar. Devolver o lote persistido
+   * é o que fecha esse desvio: quem publica não tem como divergir de quem
+   * gravou.
+   */
+  it("devolve o lote persistido, para o caller enfileirar só o que gravou", async () => {
+    submissionFindFirst.mockImplementation(async () => ({ id: "sub-1" }))
+
+    const persisted = await new PublicFormsRepository().completeSubmission(completeInput())
+
+    expect(persisted.map((event) => event.eventType)).toEqual(["form_completed"])
+  })
+
+  it("devolve o lote inteiro quando nada foi derrubado", async () => {
+    const persisted = await new PublicFormsRepository().completeSubmission(completeInput())
+
+    expect(persisted.map((event) => event.eventType)).toEqual([
+      "form_completed",
+      "lead_discarded",
+    ])
+  })
 })

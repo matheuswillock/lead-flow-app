@@ -26,6 +26,7 @@ import {
   type IPublicFormsRepository,
   type PendingPublicFormSubmissionDispatch,
   type PublicFormCompleteSubmissionInput,
+  type PublicFormCompletedMetricEvent,
   type PublicFormDetailRecord,
   type PublicFormListItemRecord,
   type PublicFormPublishedOption,
@@ -1150,21 +1151,81 @@ export class PublicFormsRepository implements IPublicFormsRepository {
    * #1058). Escopo idêntico ao do `attachLeadToPendingSubmissions` do gate C —
    * form + sessão — para que os dois lados falem do mesmo conjunto de linhas.
    *
-   * Aceita `client` para ser consultado **dentro** da transação de
-   * `completeSubmission`: ali o `update` da submissão já segurou a linha, então
-   * a leitura enxerga o que o gate comitou ou o bloqueia até comitar. Fora de
-   * transação (fila, cron) roda no client compartilhado.
+   * Só existe dentro de transação, e o `client` é obrigatório de propósito: a
+   * leitura só vale alguma coisa se alguém já estiver segurando as linhas. Em
+   * `completeSubmission` quem segura é o `update` da submissão; solta, esta
+   * consulta seria check-then-act e a corrida voltaria pela janela seguinte.
    */
-  async hasLeadAttachedToSession(
+  private async hasLeadAttachedToSession(
     formId: string,
     visitorSessionId: string,
-    client: Prisma.TransactionClient = prisma,
+    client: Prisma.TransactionClient,
   ): Promise<boolean> {
     const attached = await client.publicFormSubmission.findFirst({
       where: { formId, visitorSessionId, leadId: { not: null } },
       select: { id: true },
     })
     return Boolean(attached)
+  }
+
+  /**
+   * Grava o descarte **se, e somente se**, a sessão continuar sem lead — as duas
+   * coisas na mesma transação (review #1058, achado do Cursor).
+   *
+   * Ler o fato e depois gravar em chamadas separadas é check-then-act: entre a
+   * leitura e o upsert o gate C anexa o lead e roda a compensação dele, e o
+   * upsert recria a linha que acabou de ser apagada. Aí não sobra ninguém para
+   * apagar de novo.
+   *
+   * O `FOR UPDATE` sobre as submissões da sessão é o que serializa os dois
+   * lados: `attachLeadToPendingSubmissions` faz `updateMany` **nas mesmas
+   * linhas**, então ou este consumer segura o lock e o gate espera (e a
+   * compensação dele apaga o que gravamos), ou o gate comita primeiro e nós
+   * lemos o lead e não gravamos. Nunca os dois perdem.
+   *
+   * SQL cru porque o Prisma não expõe `FOR UPDATE`. Nomes físicos conferidos em
+   * `prisma/schema.prisma`: `@@map("corretor_studio_public_form_submissions")`,
+   * colunas sem `@map`.
+   */
+  async upsertDiscardMetricEventWhenSessionHasNoLead(input: {
+    formId: string
+    publicationId: string
+    visitorSessionId: string
+    eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
+    origin: Prisma.InputJsonValue
+  }): Promise<boolean> {
+    return prisma.$transaction(async (tx) => {
+      const submissions = await tx.$queryRaw<Array<{ leadId: string | null }>>`
+        SELECT "leadId"
+        FROM "public"."corretor_studio_public_form_submissions"
+        WHERE "formId" = ${input.formId}::uuid
+          AND "visitorSessionId" = ${input.visitorSessionId}
+        FOR UPDATE
+      `
+      if (submissions.some((submission) => submission.leadId !== null)) return false
+
+      await tx.publicFormMetricEvent.upsert({
+        where: { eventKey: input.eventKey },
+        create: {
+          formId: input.formId,
+          publicationId: input.publicationId,
+          questionId: null,
+          questionSnapshot: Prisma.JsonNull,
+          visitorSessionId: input.visitorSessionId,
+          eventType: "lead_discarded",
+          eventKey: input.eventKey,
+          eventId: input.eventId,
+          schemaVersion: input.schemaVersion,
+          occurredAt: input.occurredAt,
+          origin: input.origin,
+        },
+        update: {},
+      })
+      return true
+    })
   }
 
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
@@ -1686,10 +1747,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
    * intactos, porque o que a corrida invalidou foi a conclusão de identidade,
    * não o fato de a submissão ter completado.
    */
-  private async dropDiscardWhenLeadAttached(
+  private async dropDiscardWhenLeadAttached<TMetricEvent extends PublicFormCompletedMetricEvent>(
     tx: Prisma.TransactionClient,
-    input: PublicFormCompleteSubmissionInput,
-  ) {
+    input: PublicFormCompleteSubmissionInput<TMetricEvent>,
+  ): Promise<TMetricEvent[]> {
     const discard = input.metricEvents.find((event) => event.eventType === "lead_discarded")
     if (!discard) return input.metricEvents
 
@@ -1708,8 +1769,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return input.metricEvents.filter((event) => event.eventType !== "lead_discarded")
   }
 
-  async completeSubmission(input: PublicFormCompleteSubmissionInput) {
-    await prisma.$transaction(async (tx) => {
+  async completeSubmission<TMetricEvent extends PublicFormCompletedMetricEvent>(
+    input: PublicFormCompleteSubmissionInput<TMetricEvent>,
+  ): Promise<TMetricEvent[]> {
+    return prisma.$transaction(async (tx) => {
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
@@ -1771,6 +1834,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           })
         }
       }
+      return metricEvents
     })
   }
 

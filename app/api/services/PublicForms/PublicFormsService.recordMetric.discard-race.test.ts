@@ -3,17 +3,18 @@ import { Output } from "@/lib/output"
 import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
 
 /**
- * SPEC 40 E2 × modo radar — review #1058 (P1), terceira janela.
+ * SPEC 40 E2 × modo radar — review #1058, última janela.
  *
- * O descarte é gravado duas vezes por caminhos independentes: na transação de
- * `completeSubmission` e, depois, pela mensagem publicada na fila de métricas —
+ * O descarte é gravado por dois caminhos independentes: a transação de
+ * `completeSubmission` e, depois, a mensagem publicada na fila de métricas —
  * consumida noutro processo, sem ordem garantida contra o gate C. Guardar só a
  * transação deixava a mensagem em voo **ressuscitar** a linha que a compensação
- * do gate tinha acabado de apagar: o descarte reaparecia minutos depois, agora
- * sem nenhum lado para apagá-lo de novo.
+ * do gate tinha acabado de apagar.
  *
- * Mesmo fato dos outros dois pontos de escrita — sessão com lead anexado — para
- * que os três convirjam em vez de cada um decidir por conta.
+ * Aqui o serviço não confere-e-grava: delega ao repositório, que faz as duas
+ * coisas na mesma transação com `FOR UPDATE`. Conferir aqui e gravar lá seria
+ * check-then-act, e o gate cabe na fresta entre as duas chamadas — foi
+ * exatamente o que o review apontou na primeira tentativa desta correção.
  */
 
 const FORM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -27,14 +28,14 @@ const findPublishedByPublicId = mock(async () => ({
 }))
 const findAvailabilityTeamContext = mock(async () => null)
 const upsertMetricEvent = mock(async () => {})
-const hasLeadAttachedToSession = mock(async () => false)
+const upsertDiscardWhenNoLead = mock(async (..._args: unknown[]) => true)
 
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
     findPublishedByPublicId,
     findAvailabilityTeamContext,
     upsertMetricEvent,
-    hasLeadAttachedToSession,
+    upsertDiscardMetricEventWhenSessionHasNoLead: upsertDiscardWhenNoLead,
   },
 }))
 
@@ -60,12 +61,12 @@ describe("recordMetric — descarte × corrida do gate C", () => {
 
   beforeEach(() => {
     upsertMetricEvent.mockClear()
-    hasLeadAttachedToSession.mockClear()
-    hasLeadAttachedToSession.mockImplementation(async () => false)
+    upsertDiscardWhenNoLead.mockClear()
+    upsertDiscardWhenNoLead.mockImplementation(async () => true)
   })
 
-  it("não persiste lead_discarded da fila quando a sessão já tem lead", async () => {
-    hasLeadAttachedToSession.mockImplementation(async () => true)
+  it("acka sem erro quando o repositório recusa o descarte por lead anexado", async () => {
+    upsertDiscardWhenNoLead.mockImplementation(async () => false)
 
     const accepted = await service.recordMetric(PUBLIC_ID, metric("lead_discarded"), {
       radarMode: "skip",
@@ -74,28 +75,34 @@ describe("recordMetric — descarte × corrida do gate C", () => {
     // `true`, não `false`: o evento ficou obsoleto, não é erro. `false` faria o
     // consumer logar "formulário indisponível" e mascarar o motivo real.
     expect(accepted).toBe(true)
-    expect(upsertMetricEvent).not.toHaveBeenCalled()
   })
 
-  it("persiste lead_discarded quando a sessão de fato não converteu", async () => {
-    const accepted = await service.recordMetric(PUBLIC_ID, metric("lead_discarded"), {
-      radarMode: "skip",
-    })
-
-    expect(accepted).toBe(true)
-    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
-  })
-
-  it("não consulta o lead para eventos que não são descarte", async () => {
-    await service.recordMetric(PUBLIC_ID, metric("form_completed"), { radarMode: "skip" })
-
-    expect(hasLeadAttachedToSession).not.toHaveBeenCalled()
-    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
-  })
-
-  it("consulta pelo mesmo escopo do gate — form e sessão", async () => {
+  it("descarte nunca passa pelo upsert solto — só pelo caminho transacional", async () => {
     await service.recordMetric(PUBLIC_ID, metric("lead_discarded"), { radarMode: "skip" })
 
-    expect(hasLeadAttachedToSession).toHaveBeenCalledWith(FORM_ID, SESSION)
+    // `upsertMetricEvent` grava sem travar as submissões da sessão. Um descarte
+    // por ali seria check-then-act de novo, com a corrida de volta.
+    expect(upsertMetricEvent).not.toHaveBeenCalled()
+    expect(upsertDiscardWhenNoLead).toHaveBeenCalledTimes(1)
+  })
+
+  it("os outros eventos continuam pelo upsert comum", async () => {
+    await service.recordMetric(PUBLIC_ID, metric("form_completed"), { radarMode: "skip" })
+
+    expect(upsertDiscardWhenNoLead).not.toHaveBeenCalled()
+    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it("delega com o escopo que o gate usa para anexar — form e sessão", async () => {
+    await service.recordMetric(PUBLIC_ID, metric("lead_discarded"), { radarMode: "skip" })
+
+    const args = upsertDiscardWhenNoLead.mock.calls[0]?.[0] as unknown as {
+      formId: string
+      visitorSessionId: string
+      eventKey: string
+    }
+    expect(args.formId).toBe(FORM_ID)
+    expect(args.visitorSessionId).toBe(SESSION)
+    expect(args.eventKey).toBe(`${SESSION}:lead_discarded`)
   })
 })

@@ -597,7 +597,7 @@ export class PublicFormSubmissionUseCase {
         })
       }
 
-      await publicFormsRepository.completeSubmission({
+      const persistedEvents = await publicFormsRepository.completeSubmission({
         submissionId: job.submissionId,
         leadId: resolvedLeadId,
         processingAlerts: formatLeadSyncAlerts(alerts),
@@ -623,7 +623,12 @@ export class PublicFormSubmissionUseCase {
         metricEvents,
       })
 
-      for (const event of metricEvents) {
+      // Enfileira o que a transação **persistiu**, não o que ela recebeu (review
+      // #1058). Os dois lotes divergem quando o gate C anexa o lead no meio da
+      // corrida: `completeSubmission` derruba o `lead_discarded`, e publicar o
+      // lote original faria o consumer regravá-lo por fora — desfazendo, pela
+      // fila, a decisão que a transação acabou de tomar.
+      for (const event of persistedEvents) {
         const published = await publishServerPublicFormMetricEvent(
           buildPublicFormMetricQueuePayload(form.publicId, {
             visitorSessionId: event.visitorSessionId,
