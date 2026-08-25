@@ -111,7 +111,9 @@ describe("upsertLeadFromFormAnswers com captação desligada", () => {
 
     const result = await upsert(true)
 
-    expect(result).toBeNull()
+    // `skipped`, não `discarded`: decisão de produto, não julgamento de
+    // identidade — e é o que impede o descarte de ser emitido no completamento.
+    expect(result).toEqual({ outcome: "skipped" })
     expect(findLeadCandidates).not.toHaveBeenCalled()
     expect(createLead).not.toHaveBeenCalled()
   })
@@ -122,7 +124,7 @@ describe("upsertLeadFromFormAnswers com captação desligada", () => {
 
     const result = await upsert(false)
 
-    expect(result?.created).toBe(true)
+    expect(result.outcome).toBe("created")
     expect(createLead).toHaveBeenCalledTimes(1)
   })
 })

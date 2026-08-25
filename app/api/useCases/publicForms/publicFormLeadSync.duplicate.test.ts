@@ -145,6 +145,9 @@ mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () 
 
 const { upsertLeadFromFormAnswers, DELETED_LEAD_ATTACH_NOTE } =
   await import("./publicFormLeadSync")
+// Do módulo puro: o mock acima troca `publicFormLeadSync` em outros testes, mas
+// aqui é o módulo real — mesmo assim o helper vem da fonte, não do re-export.
+const { leadFromUpsertOutcome } = await import("@/lib/public-forms/lead-upsert-outcome")
 
 const FORM_CONTEXT = {
   id: FORM_ID,
@@ -187,9 +190,8 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
 
     const result = await callUpsert()
 
-    expect(result).not.toBeNull()
-    expect(result?.lead.id).toBe("lead-vivo")
-    expect(result?.created).toBe(false)
+    expect(result.outcome).toBe("updated")
+    expect(leadFromUpsertOutcome(result)?.id).toBe("lead-vivo")
   })
 
   // T-F5.2
@@ -199,7 +201,7 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
 
     const result = await callUpsert()
 
-    expect(result?.lead.id).toBe("lead-lixeira")
+    expect(leadFromUpsertOutcome(result)?.id).toBe("lead-lixeira")
     expect(updateLead).toHaveBeenCalledTimes(1)
     const [leadId, data] = updateLead.mock.calls[0] as unknown as [
       string,
@@ -225,7 +227,7 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
 
     const result = await callUpsert()
 
-    expect(result?.created).toBe(true)
+    expect(result.outcome).toBe("created")
     expect(updateLead).not.toHaveBeenCalled()
   })
 
@@ -247,9 +249,12 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
 
     const [first, second] = await Promise.all([callUpsert(), callUpsert()])
 
-    expect(first?.lead.id).toBe("lead-vivo")
-    expect(second?.lead.id).toBe("lead-vivo")
-    expect([first?.created, second?.created].filter(Boolean)).toHaveLength(1)
+    expect(leadFromUpsertOutcome(first)?.id).toBe("lead-vivo")
+    expect(leadFromUpsertOutcome(second)?.id).toBe("lead-vivo")
+    // Um cria, o outro reconcilia: exatamente um `created`.
+    expect([first.outcome, second.outcome].filter((outcome) => outcome === "created")).toHaveLength(
+      1,
+    )
   })
 
   it("erro que não é duplicata continua lançando", async () => {
@@ -294,7 +299,7 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
 
     const result = await callUpsert()
 
-    expect(result?.lead.id).toBe("lead-lixeira")
+    expect(leadFromUpsertOutcome(result)?.id).toBe("lead-lixeira")
     expect(updateLead).not.toHaveBeenCalled()
   })
 })

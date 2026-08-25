@@ -393,7 +393,18 @@ export class PublicFormsService implements IPublicFormsService {
   async recordMetric(
     publicId: string,
     input: PublicFormMetricEventInput,
-    options?: { radarMode?: "inline" | "after" | "skip" },
+    options?: {
+      radarMode?: "inline" | "after" | "skip"
+      /**
+       * Publicação já fixada pelo caller (review #1030). `getPublic` devolve
+       * sempre a **vigente**; quem já resolveu a publicação da submissão —
+       * `accept()`, que pina o snapshot por `requestKey` ou por sessão — precisa
+       * gravar o evento naquela, senão a recusa validada contra o snapshot
+       * antigo é contada no funil da publicação nova e some do filtro da que o
+       * visitante realmente viu.
+       */
+      publicationId?: string
+    },
   ) {
     const current = (await this.getPublic(publicId)) as {
       publicationId: string
@@ -401,7 +412,7 @@ export class PublicFormsService implements IPublicFormsService {
     } | null
     if (!current) return false
 
-    let publicationId = current.publicationId
+    let publicationId = options?.publicationId ?? current.publicationId
     let snapshot = current.snapshot
     let matchedQuestion = input.questionId
       ? snapshot.questions.find((item) => item.id === input.questionId)

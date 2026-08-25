@@ -198,6 +198,8 @@ export class PublicFormSubmissionUseCase {
       await this.recordServerValidationFailure({
         publicId,
         formId: snapshot.formId,
+        // A publicação já pinada acima — a mesma contra a qual o 422 validou.
+        publicationId,
         visitorSessionId: input.visitorSessionId ?? input.requestKey,
         origin: input.origin ?? {},
         issues: issues.map(({ questionId, code }) => ({ questionId, code })),
@@ -337,15 +339,20 @@ export class PublicFormSubmissionUseCase {
    * incompleto e o servidor devolveu 422".
    *
    * Vai pelo `recordMetric` do serviço, não direto no repositório (review
-   * #1030): é ele que resolve a publicação, alimenta a projeção de jornada e
-   * faz o bridging para o Radar. Escrever direto no repositório deixava o
-   * evento fora dos três, e um erro transitório de banco o perdia de vez.
+   * #1030): é ele que alimenta a projeção de jornada e faz o bridging para o
+   * Radar. Escrever direto no repositório deixava o evento fora dos dois.
+   *
+   * O `publicationId` é passado explicitamente porque `recordMetric` resolveria
+   * pela publicação **vigente**, e o 422 foi validado contra a publicação
+   * pinada da submissão — sem isso a recusa aparece no funil da publicação
+   * errada.
    *
    * Nunca derruba o 422: métrica que falha vira log, não erro de resposta.
    */
   private async recordServerValidationFailure(input: {
     publicId: string
     formId: string
+    publicationId: string
     visitorSessionId: string
     origin: Record<string, unknown>
     issues: Array<{ questionId: string; code: string }>
@@ -353,18 +360,22 @@ export class PublicFormSubmissionUseCase {
     const visitorSessionId = input.visitorSessionId.slice(0, 100)
     const emailLogId = parseEmailLogIdFromOrigin(input.origin)
     try {
-      await publicFormsService.recordMetric(input.publicId, {
-        visitorSessionId,
-        eventType: "form_validation_failed",
-        eventKey: buildPublicFormServerValidationFailedEventKey(
-          input.formId,
+      await publicFormsService.recordMetric(
+        input.publicId,
+        {
           visitorSessionId,
-          emailLogId,
-        ),
-        origin: { ...sanitizePublicFormOrigin(input.origin), source: "server" },
-        // Só id e código — nunca o valor recusado (contrato do campo).
-        validationCodes: input.issues,
-      })
+          eventType: "form_validation_failed",
+          eventKey: buildPublicFormServerValidationFailedEventKey(
+            input.formId,
+            visitorSessionId,
+            emailLogId,
+          ),
+          origin: { ...sanitizePublicFormOrigin(input.origin), source: "server" },
+          // Só id e código — nunca o valor recusado (contrato do campo).
+          validationCodes: input.issues,
+        },
+        { publicationId: input.publicationId },
+      )
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao registrar recusa"
       console.error("[PublicFormSubmissionUseCase][recordServerValidationFailure]", message)

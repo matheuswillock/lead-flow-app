@@ -224,9 +224,10 @@ export async function upsertLeadFromFormAnswers(input: {
   }
   // DA4: `leadCaptureDisabled` é declaração do dono do form — este é um
   // formulário de pesquisa. Sai antes de qualquer busca de lead: não cria, não
-  // atualiza, e por consequência não gera métrica de lead nenhuma. Sem
-  // captação, sem promessa de funil.
-  if (input.snapshot.leadCaptureDisabled) return null
+  // atualiza. Sai como `skipped`, não `discarded`: não houve julgamento de
+  // identidade, houve decisão de produto — e é `skipped` que o
+  // `processInBackground` lê para não emitir descarte (união E2 × E4).
+  if (input.snapshot.leadCaptureDisabled) return { outcome: "skipped" }
 
   const match = await findMatchingLead(input.form.teamId, extracted)
 
