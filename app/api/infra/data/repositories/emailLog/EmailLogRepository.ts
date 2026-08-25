@@ -1,8 +1,10 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Prisma } from "@prisma/client"
+import { randomUUID } from "crypto"
 import type {
   ApplyEmailLogWebhookInput,
   CreateTeamEmailLogInput,
+  ExpireStaleQueuedLogsOptions,
   IEmailLogRepository,
   MarkSentEntry,
 } from "./IEmailLogRepository"
@@ -408,6 +410,54 @@ export class EmailLogRepository implements IEmailLogRepository {
     })
   }
 
+  /**
+   * Log `queued` sem disparo ativo e parado além do prazo vira `failed` — em
+   * lote, porque o backlog medido em produção era de 13.936 linhas e um
+   * `markFailed` por linha significaria 13.936 transações.
+   *
+   * O disparo `sending` é intocável a qualquer idade: ali o log ainda é
+   * trabalho em andamento, e `reclaimCompletedDispatchesWithQueuedLogs` pode
+   * estar prestes a drená-lo.
+   */
+  async expireStaleQueuedLogs(options: ExpireStaleQueuedLogsOptions): Promise<number> {
+    const staleLogs = await prisma.emailLog.findMany({
+      where: {
+        status: "queued",
+        sentAt: null,
+        resendEmailId: null,
+        createdAt: { lt: options.olderThan },
+        OR: [{ dispatchId: null }, { dispatch: { status: { not: "sending" } } }],
+      },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: options.limit,
+    })
+    if (staleLogs.length === 0) return 0
+
+    const occurredAt = new Date()
+    const logIds = staleLogs.map((log) => log.id)
+
+    await prisma.$transaction([
+      prisma.emailLog.updateMany({
+        where: { id: { in: logIds }, status: "queued" },
+        data: { status: "failed" },
+      }),
+      prisma.emailEvent.createMany({
+        data: logIds.map((logId) => ({
+          id: randomUUID(),
+          logId,
+          type: "failed" as const,
+          occurredAt,
+          metadata: { errorMessage: options.errorMessage },
+        })),
+        // Reexecução do mesmo lote no mesmo instante não pode explodir por
+        // `@@unique([logId, type, occurredAt])`.
+        skipDuplicates: true,
+      }),
+    ])
+
+    return logIds.length
+  }
 }
 
 export const emailLogRepository = new EmailLogRepository()

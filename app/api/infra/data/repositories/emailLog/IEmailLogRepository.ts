@@ -69,4 +69,16 @@ export interface IEmailLogRepository {
   markFailed(logId: string, eventId: string, errorMessage: string, occurredAt: Date): Promise<void>
   /** Recusa da pré-validação interna (terminal), distinta de falha do provedor (retentável). */
   markSuppressed(logId: string, eventId: string, reason: string, occurredAt: Date): Promise<void>
+  /**
+   * Fecha logs `queued` parados: sem disparo, ou com disparo que já não está
+   * `sending`, e criados antes de `olderThan`. Devolve quantos foram fechados.
+   * Nunca reenvia — só marca `failed` e registra `errorMessage` no evento.
+   */
+  expireStaleQueuedLogs(options: ExpireStaleQueuedLogsOptions): Promise<number>
+}
+
+export type ExpireStaleQueuedLogsOptions = {
+  olderThan: Date
+  limit: number
+  errorMessage: string
 }
