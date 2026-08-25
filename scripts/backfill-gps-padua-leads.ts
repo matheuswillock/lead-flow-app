@@ -69,13 +69,9 @@ function montarRequest(
     phone: candidato.telefone,
     cnpj: candidato.cnpj,
     status: LeadStatus.new_opportunity,
-    // Notas e atividade são superfícies visíveis ao cliente final: linguagem de
-    // produto, nunca jargão de investigação/backfill. O contexto interno
-    // (tag, evidência) vive só no originMetadata (JSON não exibido como texto).
-    notes: [
-      `Razão social: ${candidato.razaoSocial}`,
-      `Origem: campanha de e-mail "Juridico SP Capital" — formulário "${form.name}".`,
-    ].join("\n"),
+    // Decisão do dono (24/08): nenhum texto nosso em superfície visível ao
+    // cliente — sem notes e sem atividade de criação. O contexto interno
+    // (tag, evidência, razão social) vive só no originMetadata (JSON).
     confirmDuplicate: false,
     originChannel: "email_campaign",
     originMetadata: {
@@ -86,6 +82,7 @@ function montarRequest(
       campaignName: "Juridico SP Capital",
       backfill: BACKFILL_TAG,
       motivo: candidato.evidencia,
+      razaoSocial: candidato.razaoSocial,
     },
     // Mesmo padrão de PromoteRadarProfileToLeadUseCase: o tipo inferido do Zod
     // exige as chaves opcionais-undefined; o subset preenchido é validado pelo
@@ -140,17 +137,7 @@ async function main(): Promise<void> {
       team.master.supabaseId,
       request,
       GPS_TEAM_ID,
-      {
-        authorAsStudio: true,
-        body: `Lead identificado a partir da campanha de e-mail "Juridico SP Capital" (formulário "${form.name}").`,
-        payload: {
-          kind: "lead_creation",
-          channel: "email_campaign_backfill",
-          formId: GPS_FORM_ID,
-          backfill: BACKFILL_TAG,
-          motivo: candidato.evidencia,
-        },
-      },
+      undefined,
       { autoScheduleMeeting: false },
     )
 
