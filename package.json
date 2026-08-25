@@ -81,6 +81,7 @@
     "db:migrate:push:dry-run": "supabase db push --linked --dry-run",
     "db:migrate:status": "supabase migration list",
     "db:migrate:reset:local": "PGSSLMODE=disable supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:55322/postgres --no-seed --yes",
+    "db:backup": "bunx tsx scripts/backup-database.ts",
     "db:clone:remote": "tsx scripts/clone-remote-to-local.ts",
     "db:sync:backoffice-catalog": "bunx tsx scripts/db-sync-backoffice-catalog.ts",
     "db:diff": "supabase db diff --schema public",
