@@ -1,35 +1,42 @@
 #!/usr/bin/env tsx
 /**
- * Backfill: recupera a atribuição de campanha das linhas de `form_viewed`
- * perdidas pelo bug do `eventKey` (corrigido em 2026-08-24).
+ * Backfill: recupera a atribuição de campanha das linhas de métrica perdidas
+ * pelo bug do `eventKey` (corrigido em 2026-08-24).
  *
  * Sintoma que isso corrige: campanhas exibindo `Form. Visualizado = 0` com
  * `Form. Iniciado` e `Form. Finalizado` maiores que zero — funil logicamente
  * impossível. Ver `lib/public-forms/backfill-form-viewed-attribution.ts` para a
  * causa-raiz e o porquê de sintetizar a linha em vez de mutar a órfã.
  *
- * O script NÃO altera nenhuma linha existente: só insere as linhas de
- * `form_viewed` que o upsert first-write-wins impediu de nascer. Cada linha
- * criada leva `origin.backfill = "form_viewed_attribution"`, então a reversão é
- * um `deleteMany` por esse marcador.
+ * `--event-type` escolhe o alvo. Os dois sofrem a mesma colisão de chave, mas
+ * a regra de doador difere por semântica, não por preferência — ver
+ * `DONOR_TYPES_BY_TARGET` na lib:
+ *   form_viewed  (padrão) — qualquer evento atribuído prova visualização
+ *   form_started           — só conclusão prova início
+ *
+ * O script NÃO altera nenhuma linha existente: só insere as que o upsert
+ * first-write-wins impediu de nascer. Cada linha criada leva
+ * `origin.backfill` com o marcador do alvo, então a reversão é um `deleteMany`
+ * por esse campo.
  *
  * Dry-run é o padrão. `--apply` grava no banco apontado por DATABASE_URL e só
  * deve rodar com autorização explícita do owner — nunca contra o remoto sem ele.
  *
  * Uso:
  *   bun run backfill:form-viewed-attribution
+ *   bun run backfill:form-viewed-attribution -- --event-type form_started
  *   bun run backfill:form-viewed-attribution -- --team-id <uuid>
- *   bun run backfill:form-viewed-attribution -- --since 2026-06-01
- *   bun run backfill:form-viewed-attribution -- --apply
+ *   bun run backfill:form-viewed-attribution -- --since 2026-06-01 --apply
  */
 
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   applyEmailLogAttribution,
+  BACKFILL_MARKER_BY_TARGET,
   collectUnattributedEmailLogIds,
-  FORM_VIEWED_BACKFILL_MARKER,
   planFormViewedAttributionBackfill,
+  type BackfillTarget,
   type EmailLogAttribution,
   type MetricEventRow,
 } from "@/lib/public-forms/backfill-form-viewed-attribution"
@@ -42,6 +49,14 @@ function readFlag(name: string): string | null {
   const index = process.argv.indexOf(`--${name}`)
   if (index === -1) return null
   return process.argv[index + 1] ?? null
+}
+
+function resolveTarget(): BackfillTarget {
+  const raw = readFlag("event-type")?.trim()
+  if (!raw || raw === "form_viewed") return "form_viewed"
+  if (raw === "form_started") return "form_started"
+  console.error(`Erro: --event-type inválido ("${raw}"). Use form_viewed ou form_started.`)
+  process.exit(1)
 }
 
 function resolveSince(): Date {
@@ -86,18 +101,20 @@ async function resolveFormIds(teamId: string | null): Promise<string[] | null> {
 async function main() {
   const since = resolveSince()
   const teamId = readFlag("team-id")
+  const target = resolveTarget()
   const formIds = await resolveFormIds(teamId)
 
   console.info("[backfill-form-viewed-attribution] Iniciando", {
     modo: APPLY ? "APPLY (grava no banco)" : "dry-run",
+    alvo: target,
     desde: since.toISOString(),
     escopo: teamId ? `time ${teamId} (${formIds?.length} formulário(s))` : "todos os times",
   })
 
-  // 1. Sessões com form_viewed sem atribuição — as candidatas.
+  // 1. Sessões com o evento alvo sem atribuição — as candidatas.
   const orphanViews = await prisma.publicFormMetricEvent.findMany({
     where: {
-      eventType: "form_viewed",
+      eventType: target,
       createdAt: { gte: since },
       ...(formIds ? { formId: { in: formIds } } : {}),
     },
@@ -113,8 +130,8 @@ async function main() {
   ]
 
   console.info("[backfill-form-viewed-attribution] Candidatas", {
-    formViewedNoPeriodo: orphanViews.length,
-    sessoesComViewSemAtribuicao: candidateSessions.length,
+    eventosNoPeriodo: orphanViews.length,
+    sessoesComEventoSemAtribuicao: candidateSessions.length,
   })
 
   if (candidateSessions.length === 0) {
@@ -141,7 +158,7 @@ async function main() {
     rows.push(...batch)
   }
 
-  const plan = planFormViewedAttributionBackfill(rows)
+  const plan = planFormViewedAttributionBackfill(rows, target)
 
   // 3. Doadores como `question_viewed` carregam `emailLogId` (veio do cs_el na
   // URL) mas não `campaignId` — só os três eventos de funil passam pelo
@@ -198,7 +215,7 @@ async function main() {
 
   if (plan.sessionsWithoutOrphanView.length > 0) {
     console.info(
-      "[backfill-form-viewed-attribution] Aviso: sessões com evento atribuído mas sem nenhum form_viewed — não sintetizadas por precaução",
+      "[backfill-form-viewed-attribution] Aviso: sessões com evento atribuído mas sem nenhum evento alvo órfão — não sintetizadas por precaução",
       { total: new Set(plan.sessionsWithoutOrphanView).size }
     )
   }
@@ -224,7 +241,7 @@ async function main() {
       questionId: null,
       questionSnapshot: Prisma.JsonNull,
       visitorSessionId: item.visitorSessionId,
-      eventType: "form_viewed" as const,
+      eventType: target,
       eventKey: item.eventKey,
       occurredAt: item.occurredAt,
       createdAt: item.createdAt,
@@ -239,7 +256,7 @@ async function main() {
     ignoradasPorDuplicidade: plannedRows.length - created.count,
   })
   console.info(
-    `[backfill-form-viewed-attribution] Reverter: deleteMany em publicFormMetricEvent com origin.backfill = "${FORM_VIEWED_BACKFILL_MARKER}"`
+    `[backfill-form-viewed-attribution] Reverter: deleteMany em publicFormMetricEvent com origin.backfill = "${BACKFILL_MARKER_BY_TARGET[target]}"`
   )
 }
 
