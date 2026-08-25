@@ -85,8 +85,69 @@ describe("deriveSendingDnsVerified", () => {
   it("não sabe responder quando nenhum item traz rótulo", () => {
     // O payload do webhook `domain.updated` nem sempre traz `record`. Responder
     // `false` aqui gravaria "DNS quebrado" a cada evento enxuto do provedor e
-    // re-bloquearia o time que este código destrava.
+    // re-bloquearia os times que este código destrava.
     expect(deriveSendingDnsVerified([{ status: "verified" }, { status: "failed" }])).toBeUndefined()
+  })
+
+  describe("snapshot parcial não conclui nada", () => {
+    // Sem exigir os dois propósitos, o filtro descartava o item incompleto e o
+    // registro restante respondia sozinho. Medido antes da correção: os três
+    // casos abaixo devolviam `true` e liberavam disparo.
+
+    it("DKIM verificado com SPF sem rótulo não libera", () => {
+      expect(
+        deriveSendingDnsVerified([{ record: "DKIM", status: "verified" }, { status: "pending" }])
+      ).toBeUndefined()
+    })
+
+    it("DKIM verificado com SPF omitido não libera", () => {
+      expect(deriveSendingDnsVerified([{ record: "DKIM", status: "verified" }])).toBeUndefined()
+    })
+
+    it("SPF verificado sem DKIM nenhum não libera", () => {
+      // O pior dos três: liberaria e-mail saindo sem assinatura.
+      expect(deriveSendingDnsVerified([{ record: "SPF", status: "verified" }])).toBeUndefined()
+    })
+
+    it("quebra conhecida bloqueia mesmo em snapshot incompleto", () => {
+      // Contrapeso da regra acima. Exigir os dois propósitos ANTES de olhar o
+      // status transformaria estes casos em `undefined`, e `undefined` preserva
+      // o valor antigo: um DKIM quebrado deixaria de derrubar um domínio já
+      // liberado. Quebra vista é conclusiva; ausência é que não é.
+      expect(deriveSendingDnsVerified([{ record: "DKIM", status: "failed" }])).toBe(false)
+      expect(deriveSendingDnsVerified([{ record: "SPF", status: "failed" }])).toBe(false)
+      expect(
+        deriveSendingDnsVerified([{ record: "DKIM", status: "failed" }, { status: "verified" }])
+      ).toBe(false)
+    })
+
+    it("com os dois presentes volta a decidir normalmente", () => {
+      expect(
+        deriveSendingDnsVerified([
+          { record: "DKIM", status: "verified" },
+          { record: "SPF", status: "pending" },
+        ])
+      ).toBe(false)
+    })
+  })
+
+  describe("domínios reais bloqueados hoje continuam destravados", () => {
+    // Consultados na API do Resend. Se algum dia estes dois casos deixarem de
+    // devolver `true`, a correção que causou isso re-bloqueou dois clientes.
+    const tracking = { record: "Tracking", status: "failed" }
+    const dkimESpfOk = [
+      { record: "DKIM", status: "verified" },
+      { record: "SPF", status: "verified" },
+      { record: "SPF", status: "verified" },
+    ]
+
+    it("mail.libercorretora.com.br", () => {
+      expect(deriveSendingDnsVerified([...dkimESpfOk, tracking])).toBe(true)
+    })
+
+    it("perttoconsultoria.com.br", () => {
+      expect(deriveSendingDnsVerified([...dkimESpfOk, tracking])).toBe(true)
+    })
   })
 
   it("não sabe responder quando só há tracking ou recebimento", () => {

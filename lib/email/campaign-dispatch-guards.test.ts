@@ -183,6 +183,22 @@ describe("getResendDomainDispatchWarnings", () => {
     ).toEqual([RESEND_DOMAIN_METRICS_DISABLED_MESSAGE])
   })
 
+  it("abertura desligada com clique ligado ainda avisa sobre a abertura", () => {
+    // O aviso fala de TAXA DE ABERTURA, e só o pixel de abertura a produz.
+    // A versão anterior aceitava `openTracking || clickTracking` e devolvia []
+    // aqui: domínio `verified`, nenhum `email.opened` chegando nunca, e a tela
+    // sem explicar por quê. Estado gravável até c0bf043d (dialog com os dois
+    // toggles) e ainda espelhável do Resend por `syncFromResendDomain`.
+    expect(
+      getResendDomainDispatchWarnings({
+        domainName: "example.com",
+        domainStatus: "verified",
+        openTracking: false,
+        clickTracking: true,
+      })
+    ).toEqual([RESEND_DOMAIN_METRICS_DISABLED_MESSAGE])
+  })
+
   it("time sem domínio próprio não recebe aviso", () => {
     expect(getResendDomainDispatchWarnings({})).toEqual([])
   })

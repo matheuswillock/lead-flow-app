@@ -20,9 +20,23 @@ function hasHardcodedWhatsappAction(draft: PublicFormDraftInput): boolean {
   return fromSuccess || fromPages
 }
 
-/** SPEC 40 E4/DA4 — mensagem acionável: diz o que mapear e como abrir exceção. */
+/**
+ * SPEC 40 E4/DA4 — a exigência é **telefone**, não "telefone ou e-mail".
+ *
+ * A DA4, escrita em 24/08, dizia "pelo menos um de telefone/e-mail". Mas quem
+ * de fato cria lead é `canCreateLeadFromExtracted`: nome de pessoa **+ telefone
+ * brasileiro válido**. E-mail sozinho só permite *atualizar* lead já existente
+ * (`canUpdateLeadFromExtracted`). Um formulário de captação com nome+e-mail
+ * publicava e depois descartava todo respondente novo com `sem_telefone` —
+ * exatamente o "estruturalmente incapaz de converter" que este estágio existe
+ * para impedir (review #1051).
+ *
+ * A DA4 pressupunha o **D2b** (lead por e-mail identificado), que segue em
+ * aberto. Quando D2b for aprovado, esta regra volta a aceitar e-mail — e o gate
+ * muda junto, no mesmo PR, senão a inconsistência volta.
+ */
 export const CONTACT_QUESTION_ERROR =
-  "Mapeie uma pergunta para Telefone ou E-mail — sem canal de contato o formulário não gera lead. Se for um formulário de pesquisa, desative a captação de leads."
+  "Mapeie uma pergunta para Telefone — o lead só nasce com nome e telefone brasileiro válido, então sem esse campo o formulário não capta ninguém novo. Se for um formulário de pesquisa, desative a captação de leads."
 
 /**
  * SPEC 40 E4/DA4 — combinação impossível, achada no review do PR unificado.
@@ -40,9 +54,7 @@ export const SURVEY_WITH_SCHEDULING_ERROR =
 
 function hasMappedContactQuestion(draft: PublicFormDraftInput): boolean {
   return draft.questions.some(
-    (question) =>
-      question.mappingTarget === "native_field" &&
-      (question.mappingKey === "phone" || question.mappingKey === "email"),
+    (question) => question.mappingTarget === "native_field" && question.mappingKey === "phone",
   )
 }
 
