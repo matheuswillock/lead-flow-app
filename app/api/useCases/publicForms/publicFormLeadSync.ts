@@ -149,7 +149,7 @@ async function attachToDeletedLead(match: Lead): Promise<UpsertLeadOutcome> {
     leadId: match.id,
     teamId: match.teamId,
   })
-  return { lead, created: false }
+  return { outcome: "updated", lead }
 }
 
 /**
@@ -222,6 +222,12 @@ export async function upsertLeadFromFormAnswers(input: {
   if (input.extraNotes?.length) {
     extracted.notes.push(...input.extraNotes)
   }
+  // DA4: `leadCaptureDisabled` é declaração do dono do form — este é um
+  // formulário de pesquisa. Sai antes de qualquer busca de lead: não cria, não
+  // atualiza, e por consequência não gera métrica de lead nenhuma. Sem
+  // captação, sem promessa de funil.
+  if (input.snapshot.leadCaptureDisabled) return null
+
   const match = await findMatchingLead(input.form.teamId, extracted)
 
   if (match) {

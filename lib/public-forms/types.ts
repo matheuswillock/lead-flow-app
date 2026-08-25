@@ -114,6 +114,12 @@ export type PublicFormDraftInput = {
   meetingDurationMinutes: number
   schedulingMessage?: string | null
   formKind?: "standard" | "health_plan_simulator"
+  /**
+   * SPEC 40 E4/DA4. Opt-out de captação: publica sem pergunta de contato
+   * mapeada e suprime as métricas de lead do formulário. Não é "desligar
+   * validação" — é declarar que este form é pesquisa, não aquisição.
+   */
+  leadCaptureDisabled?: boolean
   questions: PublicFormQuestionInput[]
   rules: PublicFormRuleInput[]
   scoreBands: PublicFormScoreBandInput[]

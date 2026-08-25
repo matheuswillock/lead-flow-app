@@ -43,6 +43,7 @@ export const publicFormDetailSelect = {
   meetingDurationMinutes: true,
   schedulingMessage: true,
   formKind: true,
+  leadCaptureDisabled: true,
   emailCampaignTrackingEnabled: true,
   reviewComment: true,
   reviewedAt: true,

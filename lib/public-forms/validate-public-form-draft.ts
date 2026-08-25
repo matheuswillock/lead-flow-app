@@ -20,6 +20,18 @@ function hasHardcodedWhatsappAction(draft: PublicFormDraftInput): boolean {
   return fromSuccess || fromPages
 }
 
+/** SPEC 40 E4/DA4 — mensagem acionável: diz o que mapear e como abrir exceção. */
+export const CONTACT_QUESTION_ERROR =
+  "Mapeie uma pergunta para Telefone ou E-mail — sem canal de contato o formulário não gera lead. Se for um formulário de pesquisa, desative a captação de leads."
+
+function hasMappedContactQuestion(draft: PublicFormDraftInput): boolean {
+  return draft.questions.some(
+    (question) =>
+      question.mappingTarget === "native_field" &&
+      (question.mappingKey === "phone" || question.mappingKey === "email"),
+  )
+}
+
 export function validatePublicFormDraft(
   draft: PublicFormDraftInput,
   options: ValidatePublicFormDraftOptions = {},
@@ -45,6 +57,13 @@ export function validatePublicFormDraft(
   }
 
   if (mode === "form") {
+    // DA4: nome sozinho não gera lead pela regra vigente (nome + telefone BR).
+    // Um form de captação sem NENHUM canal de contato mapeado é estruturalmente
+    // incapaz de converter — e publicava assim mesmo (F5). `leadCaptureDisabled`
+    // é a saída explícita para pesquisa, e desliga o funil de lead junto.
+    if (!draft.leadCaptureDisabled && !hasMappedContactQuestion(draft)) {
+      errors.push(CONTACT_QUESTION_ERROR)
+    }
     if (draft.schedulingEnabled && draft.eligibleCloserIds.length === 0) {
       errors.push("Selecione ao menos um closer para o agendamento")
     }

@@ -436,7 +436,16 @@ export class PublicFormSubmissionUseCase {
       })
       lead = leadFromUpsertOutcome(upserted) ?? lead
 
-      const resolvedLeadId = lead?.id ?? attributionResult?.leadId ?? null
+      // SPEC 40 E4/DA4 (review #1043): a atribuição de campanha resolve um lead
+      // pelo `cs_el` mesmo sem nenhuma resposta de identidade, e esse id
+      // vazava para `lead_attached`, para o `leadId` da submissão e para a
+      // activity — apesar do `upsertLeadFromFormAnswers` já sair mais cedo. A
+      // atribuição continua rodando (o funil de campanha depende dela); o que
+      // ela não faz mais é ligar lead num formulário de pesquisa.
+      const leadCaptureEnabled = !job.snapshot.leadCaptureDisabled
+      const resolvedLeadId = leadCaptureEnabled
+        ? (lead?.id ?? attributionResult?.leadId ?? null)
+        : null
 
       let scheduled = false
       if (lead && job.scheduling) {
@@ -498,7 +507,10 @@ export class PublicFormSubmissionUseCase {
         },
       ]
 
-      if (lead || attributionResult?.leadId) {
+      // `resolvedLeadId` (E4/#1043) e `outcome` (E2/#1040): a condição é "sobrou
+      // lead", que já respeita `leadCaptureDisabled`, e o tipo do evento vem do
+      // desfecho nomeado do upsert.
+      if (resolvedLeadId) {
         const eventType =
           upserted?.outcome === "created" ? ("lead_created" as const) : ("lead_attached" as const)
 
@@ -536,7 +548,12 @@ export class PublicFormSubmissionUseCase {
       // mesma conclusão valer por dois desfechos; (b) no modo radar o upsert sai
       // como `skipped` (quem promove é o gate C), e checar só o outcome deixava
       // toda submissão de time canário sem par no funil.
-      if (!resolvedLeadId) {
+      // `leadCaptureEnabled` entra aqui na união do E2 com o E4: com a captação
+      // desligada não há lead **por decisão do dono do form**, e chamar isso de
+      // descarte encheria o funil de um formulário de pesquisa com o evento que
+      // o opt-out promete não gerar. Sem captação, sem par — nem lead, nem
+      // descarte.
+      if (leadCaptureEnabled && !resolvedLeadId) {
         const reason =
           upserted?.outcome === "discarded"
             ? upserted.reason
