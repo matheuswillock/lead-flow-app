@@ -39,6 +39,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "dispatch-scheduled": 60,
   "document-request-reminders": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "email-import": 60,
+  "email-orphan-events-drain": 300,
   "email-resend-domain-status-reconcile": 60,
   "email-resend-webhook-retry": 60,
   "engagement-backfill": 300,
