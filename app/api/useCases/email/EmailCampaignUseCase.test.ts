@@ -1780,7 +1780,10 @@ describe("EmailCampaignUseCase.send", () => {
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 
-  it("domínio verified com métricas desligadas → bloqueia disparo", async () => {
+  it("domínio verified com métricas desligadas → dispara mesmo assim", async () => {
+    // Invertido de propósito: antes bloqueava. O gate protege a capacidade de
+    // entregar, não a de medir — sem abertura a campanha sai, só não reporta a
+    // taxa. O aviso continua, via getResendDomainDispatchWarnings.
     const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
@@ -1801,9 +1804,64 @@ describe("EmailCampaignUseCase.send", () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
+    expect(output.isValid).toBe(true)
+    expect(reserveCreditsMock).toHaveBeenCalled()
+  })
+
+  it("caso Liber: só o CNAME de tracking falhou → dispara", async () => {
+    // `partially_failed` com DKIM e SPF verificados. Era o cenário que travava
+    // todo disparo do time, indefinidamente e sem saída pela UI.
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "mail.example.com",
+      resendDomainStatus: "partially_failed",
+      resendOpenTracking: false,
+      resendClickTracking: false,
+      resendSendingDnsVerified: true,
+      fromName: "Test",
+      fromEmail: "test@mail.example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(reserveCreditsMock).toHaveBeenCalled()
+  })
+
+  it("caso inverso: DNS de envio quebrado continua bloqueando", async () => {
+    // O que separa a correção de um afrouxamento cego — `partially_failed`
+    // também aparece quando o DKIM falha, e aí o e-mail sairia sem assinatura.
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "mail.example.com",
+      resendDomainStatus: "partially_failed",
+      resendOpenTracking: true,
+      resendClickTracking: false,
+      resendSendingDnsVerified: false,
+      fromName: "Test",
+      fromEmail: "test@mail.example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
-    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 

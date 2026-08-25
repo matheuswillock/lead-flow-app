@@ -45,6 +45,8 @@ export type AnalyticsData = {
   }
   dispatches?: DispatchAnalyticsItem[]
   resendDomainTrackingCapable?: boolean
+  /** Decidido no servidor pelo gate. `trackingWarnings` também existe sem bloqueio. */
+  trackingDispatchBlocked?: boolean
   trackingWarnings?: string[]
 }
 
@@ -111,6 +113,8 @@ export type CompareCampaignsData = {
   period: { from: string; to: string }
   previousPeriod: { from: string; to: string }
   resendDomainTrackingCapable?: boolean
+  /** Decidido no servidor pelo gate. `trackingWarnings` também existe sem bloqueio. */
+  trackingDispatchBlocked?: boolean
   trackingWarnings?: string[]
   campaigns: CompareCampaignItem[]
 }

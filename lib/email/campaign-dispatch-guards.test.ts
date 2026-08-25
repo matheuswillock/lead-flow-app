@@ -63,7 +63,10 @@ describe("assertResendDomainTrackingReady", () => {
     expect(assertResendDomainTrackingReady({ domainName: "   " })).toEqual({ ok: true })
   })
 
-  it("métricas desligadas com DNS verificado → mensagem de MÉTRICAS", () => {
+  it("métricas desligadas NÃO bloqueiam — o gate protege a entrega, não a medição", () => {
+    // Regra invertida de propósito. A versão antiga bloqueava aqui, e perder a
+    // taxa de abertura é recuperável a qualquer momento; não conseguir enviar,
+    // não. O aviso continua existindo — em getResendDomainDispatchWarnings.
     expect(
       assertResendDomainTrackingReady({
         domainName: "example.com",
@@ -71,77 +74,105 @@ describe("assertResendDomainTrackingReady", () => {
         openTracking: false,
         clickTracking: false,
       })
-    ).toEqual({ ok: false, message: RESEND_DOMAIN_METRICS_DISABLED_MESSAGE })
+    ).toEqual({ ok: true })
   })
 
-  it("partially_failed/partially_verified → mensagem de DNS, mesmo com métricas ligadas", () => {
-    // A causa reportada precisa ser o DNS: mandar "habilite as métricas" aqui
-    // aponta para um toggle que não destrava nada, porque o gate exige
-    // `verified` exato.
-    const base = {
-      domainName: "example.com",
-      openTracking: true,
-      clickTracking: true,
-    }
-    expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_failed" })).toEqual({
-      ok: false,
-      message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
-    })
-    expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_verified" })).toEqual({
-      ok: false,
-      message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
-    })
+  it("caso Liber: DKIM/SPF ok e só o CNAME de tracking falhou → dispara", () => {
+    // O motivo do gate ter mudado. `partially_failed` com envio íntegro travava
+    // todo disparo do time, indefinidamente e sem saída pela UI.
+    expect(
+      assertResendDomainTrackingReady({
+        domainName: "mail.example.com",
+        domainStatus: "partially_failed",
+        openTracking: false,
+        clickTracking: false,
+        sendingDnsVerified: true,
+      })
+    ).toEqual({ ok: true })
   })
 
-  it("DNS não verificado E métricas desligadas → DNS tem precedência", () => {
+  it("DNS de envio quebrado bloqueia, mesmo com o tracking verificado", () => {
+    // O caso que "aceitar partially_failed em bloco" deixaria passar: o e-mail
+    // sairia sem assinatura. É o que separa a correção de um afrouxamento cego.
     expect(
       assertResendDomainTrackingReady({
         domainName: "example.com",
         domainStatus: "partially_failed",
-        openTracking: false,
+        openTracking: true,
         clickTracking: false,
+        sendingDnsVerified: false,
       })
     ).toEqual({ ok: false, message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE })
   })
 
-  it("permite verified com pelo menos uma métrica ligada", () => {
+  it("verified sem a coluna populada ainda passa — fallback da transição", () => {
+    // `resendSendingDnsVerified` nasce `false` para todo mundo e só é populada
+    // quando o cron de 6h roda ou alguém clica "Verificar DNS". Sem o fallback,
+    // subir esta mudança bloquearia na hora quem hoje dispara normalmente.
     expect(
       assertResendDomainTrackingReady({
         domainName: "example.com",
         domainStatus: "verified",
         openTracking: true,
         clickTracking: false,
+        sendingDnsVerified: false,
       })
     ).toEqual({ ok: true })
+  })
+
+  it("pending sem envio verificado bloqueia", () => {
     expect(
       assertResendDomainTrackingReady({
         domainName: "example.com",
-        domainStatus: "verified",
-        openTracking: false,
-        clickTracking: true,
+        domainStatus: "pending",
+        openTracking: true,
+        clickTracking: false,
       })
-    ).toEqual({ ok: true })
+    ).toEqual({ ok: false, message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE })
   })
 })
 
 describe("getResendDomainDispatchWarnings", () => {
-  it("avisa quando o gate de tracking bloqueia o disparo", () => {
+  it("avisa com a mensagem de DNS quando o envio está bloqueado", () => {
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
         domainStatus: "partially_failed",
         openTracking: true,
-        clickTracking: true,
+        clickTracking: false,
+        sendingDnsVerified: false,
       })
     ).toEqual([RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE])
+  })
+
+  it("dispara sem medir → avisa sobre a métrica, e o gate não bloqueia", () => {
+    const liber = {
+      domainName: "mail.example.com",
+      domainStatus: "partially_failed",
+      openTracking: false,
+      clickTracking: false,
+      sendingDnsVerified: true,
+    }
+    expect(getResendDomainDispatchWarnings(liber)).toEqual([
+      RESEND_DOMAIN_METRICS_DISABLED_MESSAGE,
+    ])
+    // O par que importa: existe aviso E o disparo está liberado. É a diferença
+    // entre "degradado" e "travado", que a versão anterior não sabia expressar.
+    expect(assertResendDomainTrackingReady(liber)).toEqual({ ok: true })
+  })
+
+  it("verified com abertura ligada não avisa nada", () => {
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
-        domainStatus: "partially_verified",
+        domainStatus: "verified",
         openTracking: true,
-        clickTracking: true,
+        clickTracking: false,
       })
-    ).toEqual([RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE])
+    ).toEqual([])
+  })
+
+  it("verified sem métrica ligada avisa sobre a métrica", () => {
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
@@ -150,14 +181,9 @@ describe("getResendDomainDispatchWarnings", () => {
         clickTracking: false,
       })
     ).toEqual([RESEND_DOMAIN_METRICS_DISABLED_MESSAGE])
-    expect(
-      getResendDomainDispatchWarnings({
-        domainName: "example.com",
-        domainStatus: "verified",
-        openTracking: true,
-        clickTracking: true,
-      })
-    ).toEqual([])
+  })
+
+  it("time sem domínio próprio não recebe aviso", () => {
     expect(getResendDomainDispatchWarnings({})).toEqual([])
   })
 })

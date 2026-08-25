@@ -3174,6 +3174,7 @@ completed completed
     DateTime resendDomainConnectedAt "❓"
     Boolean resendOpenTracking 
     Boolean resendClickTracking 
+    Boolean resendSendingDnsVerified 
     DateTime createdAt 
     DateTime updatedAt 
     }

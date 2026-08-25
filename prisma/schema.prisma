@@ -3968,6 +3968,12 @@ model EmailTeamSettings {
   resendOpenTracking      Boolean   @default(false)
   resendClickTracking     Boolean   @default(false)
 
+  /// DKIM e SPF verificados, ignorando o CNAME de tracking. `resendDomainStatus`
+  /// colapsa tudo num rótulo: um domínio com envio íntegro e tracking pendente
+  /// fica `partially_failed`, indistinguível de um com DKIM quebrado. Derivado
+  /// registro a registro em `syncFromResendDomain`.
+  resendSendingDnsVerified Boolean  @default(false)
+
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
