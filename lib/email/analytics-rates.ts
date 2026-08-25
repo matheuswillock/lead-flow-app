@@ -47,7 +47,21 @@ export function buildRates(totals: {
 
   return {
     deliverabilityRate: safeRate(totals.delivered, totals.sent),
-    openRate: safeRate(totals.opened, totals.sent),
+    /**
+     * Denominador é `delivered`, padrão do mercado e do painel do Resend (D6).
+     *
+     * Com `/sent` os dois nunca fechavam: quem comparasse as telas lado a lado
+     * via números diferentes para o mesmo fato e precisava de explicação toda
+     * vez. A troca move a série histórica para cima — na campanha "Agro - sul",
+     * 22,40% → 25,86% sem nada ter mudado no mundo real.
+     */
+    openRate: safeRate(totals.opened, totals.delivered),
+    /**
+     * A base antiga, exposta em paralelo pelos 30 dias de transição para a
+     * mudança ser conferível em vez de aparecer como salto inexplicado. Sai
+     * quando a UI e os relatórios tiverem migrado.
+     */
+    openRateOnSent: safeRate(totals.opened, totals.sent),
     clickRate: safeRate(totals.clicked, totals.sent),
     bounceRate: safeRate(totals.bounced, totals.sent),
     complainRate: safeRate(totals.complained, totals.sent),

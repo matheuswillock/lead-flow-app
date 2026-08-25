@@ -35,6 +35,21 @@ import {
  */
 export const CAMPAIGN_FUNNEL_NOT_FOUND_MESSAGE = "Campanha não encontrada"
 
+/**
+ * Relógio declarado na resposta (D5 — Proposta A).
+ *
+ * `event` significa que cada métrica conta no timestamp do próprio fato:
+ * "aberturas OCORRIDAS no período", não "aberturas dos e-mails enviados no
+ * período". O campo existe para que nenhum número saia da API sem dizer de que
+ * relógio veio — foi essa ambiguidade que deixou três âncoras conviverem na
+ * mesma tela (auditoria M2/H7).
+ *
+ * `cohort` fica reservado: se um dia alguma resposta voltar a ancorar tudo em
+ * `sentAt`, ela declara isso em vez de parecer a mesma coisa.
+ */
+export type AnalyticsAnchor = "event" | "cohort"
+export const ANALYTICS_ANCHOR: AnalyticsAnchor = "event"
+
 type PeriodSlice = {
   period: { from: Date; to: Date }
   totals: AnalyticsTotalsForDelta
@@ -155,6 +170,9 @@ export class EmailAnalyticsUseCase {
   private withDeltas(current: PeriodSlice, previous: PeriodSlice) {
     return {
       period: current.period,
+      // Todo recorte de período sai daqui, então é aqui que o relógio é
+      // declarado: nenhuma resposta com `period` chega ao frontend sem `anchor`.
+      anchor: ANALYTICS_ANCHOR,
       totals: current.totals,
       rates: current.rates,
       previous: {
@@ -375,6 +393,7 @@ export class EmailAnalyticsUseCase {
 
       return new Output(true, [], [], {
         period: { from: options.from, to: options.to },
+        anchor: ANALYTICS_ANCHOR,
         previousPeriod: prev,
         ...trackingMeta,
         campaigns,
@@ -420,6 +439,10 @@ export class EmailAnalyticsUseCase {
 
       return new Output(true, [], [], {
         period: { from: options.from, to: options.to },
+        // Ranking de template agrega disparos, cujo relógio é `dispatchedAt` —
+        // ainda assim declara a âncora, porque a regra é "nenhum número sem
+        // relógio", não "quase nenhum".
+        anchor: ANALYTICS_ANCHOR,
         ...ranking,
       })
     } catch (error) {
