@@ -10,7 +10,7 @@ import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import {
   calculatePublicFormScorePercent,
   resolveVisibleQuestionIds,
-  validateAnswer,
+  validateAnswerIssue,
 } from "@/lib/public-forms/engine"
 import { buildLeadSyncAlerts, formatLeadSyncAlerts } from "@/lib/public-forms/lead-sync-alerts"
 import { invalidateLeadCache } from "@/lib/cache/invalidation"
@@ -33,7 +33,10 @@ import {
   FORM_COMPLETE_ACTIVITY_BODY,
   parseEmailLogIdFromOrigin,
 } from "@/lib/public-forms/email-campaign-attribution"
-import { buildPublicFormMetricEventKey } from "@/lib/public-forms/metric-keys"
+import {
+  buildPublicFormMetricEventKey,
+  buildPublicFormServerValidationFailedEventKey,
+} from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
 import {
@@ -163,15 +166,41 @@ export class PublicFormSubmissionUseCase {
       }
     }
 
+    // E1/DA1: a obrigatoriedade é invariante do servidor. Roda sobre o snapshot
+    // da publicação DESTA submissão (nunca o rascunho atual), com o mesmo motor
+    // do cliente — a regra é uma só. `answerMap` só tem as respostas visíveis,
+    // então pergunta ausente entra como `undefined` e cai no código `required`.
     const visible = new Set(resolveVisibleQuestionIds(snapshot, input.answers))
     const visibleAnswers = input.answers.filter((answer) => visible.has(answer.questionId))
     const answerMap = new Map(visibleAnswers.map((answer) => [answer.questionId, answer.value]))
-    const errors = snapshot.questions.flatMap((question) => {
+    const issues = snapshot.questions.flatMap((question) => {
       if (!visible.has(question.id)) return []
-      const error = validateAnswer(question, answerMap.get(question.id))
-      return error ? [`${question.title}: ${error}`] : []
+      const issue = validateAnswerIssue(question, answerMap.get(question.id))
+      if (!issue) return []
+      return [
+        {
+          questionId: question.id,
+          code: issue.code,
+          message: `${question.title}: ${issue.message}`,
+        },
+      ]
     })
-    if (errors.length > 0) return new Output(false, [], errors, null)
+    if (issues.length > 0) {
+      await this.recordServerValidationFailure({
+        formId: snapshot.formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId ?? input.requestKey,
+        origin: input.origin ?? {},
+      })
+      return new Output(
+        false,
+        [],
+        issues.map((issue) => issue.message),
+        {
+          validation: issues.map(({ questionId, code }) => ({ questionId, code })),
+        },
+      )
+    }
 
     const score = calculatePublicFormScorePercent(snapshot, visibleAnswers)
     const band = snapshot.scoreBands.find(
@@ -279,6 +308,37 @@ export class PublicFormSubmissionUseCase {
       alreadyProcessed: false,
       background,
     })
+  }
+
+  /**
+   * E1: a recusa do servidor vira linha de funil. `origin.source = "server"`
+   * separa esta métrica do `form_validation_failed` do renderer — sem isso o
+   * funil não distingue "o cliente barrou antes de postar" de "o cliente postou
+   * incompleto e o servidor devolveu 422".
+   *
+   * Nunca derruba o 422: métrica que falha vira log, não erro de resposta.
+   */
+  private async recordServerValidationFailure(input: {
+    formId: string
+    publicationId: string
+    visitorSessionId: string
+    origin: Record<string, unknown>
+  }): Promise<void> {
+    const visitorSessionId = input.visitorSessionId.slice(0, 100)
+    const emailLogId = parseEmailLogIdFromOrigin(input.origin)
+    try {
+      await publicFormsRepository.upsertMetricEvent({
+        formId: input.formId,
+        publicationId: input.publicationId,
+        visitorSessionId,
+        eventType: "form_validation_failed",
+        eventKey: buildPublicFormServerValidationFailedEventKey(visitorSessionId, emailLogId),
+        origin: json({ ...sanitizePublicFormOrigin(input.origin), source: "server" }),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao registrar recusa"
+      console.error("[PublicFormSubmissionUseCase][recordServerValidationFailure]", message)
+    }
   }
 
   async processInBackground(job: PublicFormSubmissionBackgroundJob): Promise<void> {

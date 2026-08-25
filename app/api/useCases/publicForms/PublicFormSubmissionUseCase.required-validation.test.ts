@@ -225,7 +225,16 @@ describe("PublicFormSubmissionUseCase.accept validação de obrigatórias", () =
     expect(createSubmission).toHaveBeenCalledTimes(1)
   })
 
-  // T-F1.3
+  /**
+   * T-F1.3 — `""` e `[]` contam como ausente, conforme a SPEC.
+   *
+   * Observação medida e deixada de fora do estágio: `"   "` (só espaço) numa
+   * pergunta obrigatória **sem** `mappingKey: "name"` continua passando — o
+   * `empty` do motor não faz trim. Fechar isso mudaria a mensagem do campo
+   * nome, que tem contrato de UX próprio (`engine.test.ts:430` e a spec E2E
+   * "bloqueia Continuar quando o nome tem só espaços"). Fica registrado para
+   * decisão do dono em vez de mudado por conta.
+   */
   it("trata string vazia e lista vazia como resposta ausente", async () => {
     const withTags = makeSnapshot([
       { id: Q_NAME, type: "text", required: true, title: "Qual o seu nome?" },
@@ -242,7 +251,7 @@ describe("PublicFormSubmissionUseCase.accept validação de obrigatórias", () =
     const output = await useCase.accept(PUBLIC_ID, {
       requestKey: "req-required-3",
       answers: [
-        { questionId: Q_NAME, value: "   " },
+        { questionId: Q_NAME, value: "" },
         { questionId: Q_TAGS, value: [] },
       ],
       origin: {},
@@ -250,7 +259,7 @@ describe("PublicFormSubmissionUseCase.accept validação de obrigatórias", () =
 
     expect(output.isValid).toBe(false)
     expect(issuesOf(output.result)).toEqual([
-      { questionId: Q_NAME, code: "name_too_short" },
+      { questionId: Q_NAME, code: "required" },
       { questionId: Q_TAGS, code: "required" },
     ])
   })

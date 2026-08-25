@@ -43,6 +43,23 @@ export function buildPublicFormMetricEventKey(
   return `${visitorSessionId}:${eventType}${buildAttributionEventKeySuffix(emailLogId)}`
 }
 
+/**
+ * Recusa de validação medida no servidor (SPEC 40 E1). O sufixo `:server`
+ * separa esta linha do `form_validation_failed` que o renderer emite, para o
+ * funil distinguir "o cliente barrou" de "o servidor recusou o POST". Chave
+ * estável por sessão: o upsert é first-write-wins, então N tentativas inválidas
+ * da mesma sessão contam como uma sessão recusada — e um bot martelando o
+ * endpoint não infla a série.
+ */
+export function buildPublicFormServerValidationFailedEventKey(
+  visitorSessionId: string,
+  emailLogId?: string | null,
+): string {
+  return `${visitorSessionId}:form_validation_failed:server${buildAttributionEventKeySuffix(
+    emailLogId,
+  )}`
+}
+
 /** Funil e Radar usam a mesma chave: `{session}:question_answered:{questionId}`. */
 export function buildPublicFormQuestionAnsweredEventKey(
   visitorSessionId: string,
