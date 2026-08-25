@@ -1145,6 +1145,13 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return submission?.lead ?? null
   }
 
+  async findSubmissionAcceptedAt(submissionId: string) {
+    return prisma.publicFormSubmission.findUnique({
+      where: { id: submissionId },
+      select: { createdAt: true, dispatchAcceptedAt: true },
+    })
+  }
+
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: {
@@ -1690,6 +1697,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           visitorSessionId: event.visitorSessionId,
           eventType: event.eventType,
           eventKey: event.eventKey,
+          // Relógio do aceite. Sem ele a linha nasce com `occurredAt` NULL e o
+          // analytics data a conversão pelo `createdAt` — o dia do drain.
+          occurredAt: event.occurredAt ?? null,
           origin: event.origin,
         })
         try {

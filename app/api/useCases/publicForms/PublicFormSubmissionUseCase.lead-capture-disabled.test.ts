@@ -74,6 +74,10 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
       team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
     })),
     findLeadForSubmission: mock(async () => null),
+    findSubmissionAcceptedAt: mock(async () => ({
+      createdAt: new Date("2026-08-20T22:10:31.000Z"),
+      dispatchAcceptedAt: null as Date | null,
+    })),
     completeSubmission,
     markSubmissionFailed: mock(async () => {}),
   },

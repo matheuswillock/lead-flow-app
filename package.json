@@ -98,6 +98,7 @@
     "reprocess:public-form-submissions": "bunx tsx scripts/reprocess-public-form-submissions.ts",
     "backfill:public-form-leads-ac": "bunx tsx scripts/backfill-public-form-leads-ac.ts",
     "backfill:form-viewed-attribution": "bunx tsx scripts/backfill-form-viewed-attribution.ts",
+    "backfill:form-completed-occurred-at": "bunx tsx scripts/backfill-form-completed-occurred-at.ts",
     "recover:campaign-attribution-leads": "bunx tsx scripts/recover-campaign-attribution-leads.ts",
     "diagnose:stuck-campaign-dispatches": "bunx tsx scripts/diagnose-stuck-campaign-dispatches.ts",
     "recover:stuck-campaign-dispatches": "bunx tsx scripts/recover-stuck-campaign-dispatches.ts",

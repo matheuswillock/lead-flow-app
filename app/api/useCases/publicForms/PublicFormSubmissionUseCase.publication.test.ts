@@ -100,6 +100,10 @@ const findFormSubmissionContext = mock(async () => ({
   team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
 }))
 const findLeadForSubmission = mock(async () => null)
+const findSubmissionAcceptedAt = mock(async () => ({
+  createdAt: new Date("2026-08-20T22:10:31.000Z"),
+  dispatchAcceptedAt: null as Date | null,
+}))
 const completeSubmission = mock(async () => {})
 const markSubmissionFailed = mock(async () => {})
 const findMatchingLead = mock(async () => null)
@@ -124,6 +128,7 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
     createSubmission,
     findFormSubmissionContext,
     findLeadForSubmission,
+    findSubmissionAcceptedAt,
     completeSubmission,
     markSubmissionFailed,
     finalizeProgressSubmission: mock(async () => ({ id: "sub-progress" })),
