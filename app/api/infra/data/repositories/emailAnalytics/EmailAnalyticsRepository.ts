@@ -241,8 +241,32 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       attributed AS (
         SELECT e."eventType", e."visitorSessionId"
         FROM "corretor_studio_public_form_metric_events" e
-        WHERE e.origin->>'emailLogId' IN (SELECT id::text FROM logs)
-           OR e.origin->>'campaignId' = ANY(${campaignIds}::text[])
+        WHERE
+          -- Caminho principal, verificado no servidor: o log pertence ao time e
+          -- a campanha, e ja esta recortado pelo periodo no CTE acima.
+          e.origin->>'emailLogId' IN (SELECT id::text FROM logs)
+          OR (
+            -- Reserva, para o evento cujo link perdeu o cs_el. Ela precisa de
+            -- tres amarras que faltavam:
+            -- (a) so quando nao ha emailLogId utilizavel — senao o ramo
+            --     principal ja decidiu, e este passaria por cima dele;
+            -- (b) o mesmo periodo — origin.campaignId nao esta correlacionado
+            --     com o CTE logs, entao sem isto o funil descrevia o recorte
+            --     nos degraus de e-mail e a vida inteira da campanha nos de
+            --     formulario, chegando a taxas acima de 100%;
+            -- (c) o formulario tem de ser do time — origin vem do POST publico
+            --     e sanitizePublicFormOrigin preserva qualquer campaignId com
+            --     cara de UUID, entao sem esta amarra qualquer um que conheca
+            --     o UUID de uma campanha injeta evento no funil dela.
+            COALESCE(NULLIF(btrim(e.origin->>'emailLogId'), ''), NULL) IS NULL
+            AND e.origin->>'campaignId' = ANY(${campaignIds}::text[])
+            AND EXISTS (
+              SELECT 1 FROM "corretor_studio_public_forms" f
+              WHERE f.id = e."formId" AND f."teamId" = ${options.teamId}::uuid
+            )
+            ${options.from ? Prisma.sql`AND e."createdAt" >= ${options.from}` : Prisma.empty}
+            ${options.to ? Prisma.sql`AND e."createdAt" <= ${options.to}` : Prisma.empty}
+          )
       )
       SELECT
         (SELECT COUNT(*) FROM logs WHERE "sentAt" IS NOT NULL)::int AS "sent",

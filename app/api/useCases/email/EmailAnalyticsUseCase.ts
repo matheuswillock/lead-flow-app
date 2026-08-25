@@ -25,6 +25,15 @@ import {
   isResendDomainTrackingCapable,
 } from "@/lib/email/campaign-dispatch-guards"
 
+/**
+ * Distingue "campanha não existe" de "a consulta explodiu".
+ *
+ * O contrato `Output` colapsa as duas em `isValid: false`, e a rota mapeava tudo
+ * para 404 — uma falha de banco respondia "campanha não encontrada" e o handler
+ * de 500 nunca era alcançado. A rota compara com esta constante para separar.
+ */
+export const CAMPAIGN_FUNNEL_NOT_FOUND_MESSAGE = "Campanha não encontrada"
+
 type PeriodSlice = {
   period: { from: Date; to: Date }
   totals: AnalyticsTotalsForDelta
@@ -242,7 +251,7 @@ export class EmailAnalyticsUseCase {
     try {
       const funnel = await this.repository.findCampaignFunnel(options)
       if (!funnel) {
-        return new Output(false, [], ["Campanha não encontrada"], null)
+        return new Output(false, [], [CAMPAIGN_FUNNEL_NOT_FOUND_MESSAGE], null)
       }
 
       return new Output(true, [], [], {
