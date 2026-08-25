@@ -42,7 +42,13 @@ export async function POST(
   }
   const output = await publicFormSubmissionUseCase.accept(publicId, parsed.data)
   if (!output.isValid) {
-    return NextResponse.json(output, { status: 400 })
+    // E1: 422 quando o payload é bem-formado mas as respostas não satisfazem as
+    // perguntas obrigatórias visíveis — o renderer precisa distinguir isso de
+    // um 400 de contrato para marcar o campo em vez de mostrar erro genérico.
+    const hasValidationIssues = Boolean(
+      (output.result as { validation?: unknown[] } | null)?.validation?.length,
+    )
+    return NextResponse.json(output, { status: hasValidationIssues ? 422 : 400 })
   }
 
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)
