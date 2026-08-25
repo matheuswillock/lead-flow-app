@@ -25,6 +25,7 @@ import {
 import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
 import {
   buildMetricEventWhereSql,
+  isFabricatedByDispatcher,
   QUESTION_IDENTITY_KEY_SQL,
   type MetricEventAggregationFilter,
 } from "./MetricEventAggregationSql"
@@ -887,6 +888,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         formId: true,
         eventType: true,
         visitorSessionId: true,
+        origin: true,
       },
     })
 
@@ -905,6 +907,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     for (const row of rows) {
       const entry = byForm.get(row.formId)
       if (!entry) continue
+      // Mesmo corte de `buildMetricEventWhereSql` (SPEC 40, todo 23): este é o
+      // ranking "top convertendo", e sem o filtro ele premiava justamente os
+      // formulários que o cron mais completou sozinho.
+      if (isFabricatedByDispatcher(row.origin)) continue
       if (row.eventType === "form_viewed") entry.viewedSessions.add(row.visitorSessionId)
       if (row.eventType === "form_completed") entry.completedSessions.add(row.visitorSessionId)
     }
