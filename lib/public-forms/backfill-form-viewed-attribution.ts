@@ -30,6 +30,56 @@ import {
  */
 
 export const FORM_VIEWED_BACKFILL_MARKER = "form_viewed_attribution"
+export const FORM_STARTED_BACKFILL_MARKER = "form_started_attribution"
+
+/** Eventos que o mesmo bug de colisão de chave atinge. */
+export type BackfillTarget = "form_viewed" | "form_started"
+
+export const BACKFILL_MARKER_BY_TARGET: Record<BackfillTarget, string> = {
+  form_viewed: FORM_VIEWED_BACKFILL_MARKER,
+  form_started: FORM_STARTED_BACKFILL_MARKER,
+}
+
+/**
+ * Quais eventos servem de prova para cada alvo. Não é a mesma lista, e a
+ * diferença é semântica, não de preferência:
+ *
+ * - `form_viewed`: qualquer evento atribuído prova que houve visualização —
+ *   nenhum outro evento do formulário acontece sem tê-lo aberto.
+ * - `form_started`: só entra o que o `PublicFormRenderer` emite **atrás de um
+ *   guard explícito de `started`**, mais os eventos de conversão.
+ *
+ * `form_viewed` NÃO é doador de `form_started`: ele dispara em todo
+ * carregamento (`if (session) track("form_viewed")`, sem guard), então abrir o
+ * formulário não prova que a pessoa clicou em iniciar.
+ *
+ * Já `question_viewed`, `page_viewed` e `form_exit_intent` provam: os três têm
+ * `if (!started) return` no efeito que os dispara — as perguntas nem renderizam
+ * antes do start.
+ *
+ * Restringir a lista só a conclusão parece conservador, mas distorce o funil:
+ * repararia `form_started` apenas de quem converteu, apagando exatamente quem
+ * iniciou e abandonou — o segmento que a métrica existe para medir.
+ *
+ * Só entram eventos com guard verificável no código. `question_skipped`,
+ * `page_advanced` e `form_submit_attempted` também implicam início pela árvore
+ * de renderização, mas não têm guard explícito; ficam de fora para a regra
+ * continuar sendo checável por leitura, não por inferência.
+ */
+const DONOR_TYPES_BY_TARGET: Record<BackfillTarget, readonly string[] | null> = {
+  form_viewed: null, // null = qualquer evento atribuído serve
+  form_started: [
+    // Gated por `started` no renderer.
+    "question_viewed",
+    "page_viewed",
+    "form_exit_intent",
+    // Conversão implica início.
+    "form_completed",
+    "lead_created",
+    "lead_attached",
+    "meeting_scheduled",
+  ],
+}
 
 export type MetricEventRow = {
   eventKey: string
@@ -165,8 +215,11 @@ function donorRank(eventType: string): number {
  * é reportada em `sessionsAlreadyAttributed` e nada é planejado.
  */
 export function planFormViewedAttributionBackfill(
-  rows: MetricEventRow[]
+  rows: MetricEventRow[],
+  target: BackfillTarget = "form_viewed"
 ): FormViewedBackfillPlan {
+  const allowedDonors = DONOR_TYPES_BY_TARGET[target]
+  const marker = BACKFILL_MARKER_BY_TARGET[target]
   const bySession = new Map<string, MetricEventRow[]>()
   for (const row of rows) {
     const list = bySession.get(row.visitorSessionId)
@@ -186,10 +239,11 @@ export function planFormViewedAttributionBackfill(
       .filter((item): item is { row: MetricEventRow; emailLogId: string } =>
         Boolean(item.emailLogId)
       )
+      .filter((item) => !allowedDonors || allowedDonors.includes(item.row.eventType))
     if (donors.length === 0) continue
 
     const hasOrphanView = sessionRows.some(
-      (row) => row.eventType === "form_viewed" && !readEmailLogId(row.origin)
+      (row) => row.eventType === target && !readEmailLogId(row.origin)
     )
 
     // Um doador por emailLogId: duas campanhas para o mesmo destinatário geram
@@ -205,7 +259,7 @@ export function planFormViewedAttributionBackfill(
     for (const [emailLogId, donor] of bestByEmailLog) {
       const eventKey = buildPublicFormTrackEventKey({
         visitorSessionId,
-        eventType: "form_viewed",
+        eventType: target,
         emailLogId,
       })
 
@@ -224,9 +278,9 @@ export function planFormViewedAttributionBackfill(
         visitorSessionId,
         formId: donor.row.formId,
         publicationId: donor.row.publicationId,
-        origin: { ...donorOrigin, backfill: FORM_VIEWED_BACKFILL_MARKER },
-        // Carimbos do doador: a visualização aconteceu imediatamente antes da
-        // interação, e é isso que põe a linha dentro da janela do disparo.
+        origin: { ...donorOrigin, backfill: marker },
+        // Carimbos do doador: o evento sintetizado aconteceu imediatamente antes
+        // dele, e é isso que põe a linha dentro da janela do disparo.
         occurredAt: donor.row.occurredAt,
         createdAt: donor.row.createdAt,
         donorEventKey: donor.row.eventKey,
