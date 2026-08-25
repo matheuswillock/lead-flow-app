@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { deriveSendingDnsVerified } from "@/lib/email/resend-domain-records"
 
 export type EmailTeamDomainEventType =
   | "domain_added"
@@ -20,7 +21,8 @@ export type ResendDomainSnapshot = {
   name?: string
   status?: string
   region?: string
-  records?: Array<{ status?: string }>
+  /** `record` é o propósito (`DKIM`, `SPF`, `Tracking`, `TrackingCAA`, `Receiving`). */
+  records?: Array<{ status?: string; record?: string }>
   open_tracking?: boolean
   click_tracking?: boolean
   openTracking?: boolean
@@ -37,6 +39,7 @@ export type ConnectedResendDomainRow = {
   resendDomainRegion: string | null
   resendOpenTracking: boolean
   resendClickTracking: boolean
+  resendSendingDnsVerified: boolean
 }
 
 export interface IEmailTeamDomainEventRepository {
@@ -130,6 +133,12 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
       region: string | null
       openTracking: boolean
       clickTracking: boolean
+      /**
+       * Omitido quando a origem não traz `records` — nesse caso o valor atual é
+       * preservado. Gravar `false` por ausência de dado bloquearia disparo de
+       * quem está com o DNS de envio íntegro.
+       */
+      sendingDnsVerified?: boolean
     }
   ): Promise<void> {
     await prisma.emailTeamSettings.update({
@@ -139,6 +148,9 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainRegion: data.region,
         resendOpenTracking: data.openTracking,
         resendClickTracking: data.clickTracking,
+        ...(data.sendingDnsVerified === undefined
+          ? {}
+          : { resendSendingDnsVerified: data.sendingDnsVerified }),
       },
     })
   }
@@ -154,6 +166,10 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainConnectedAt: null,
         resendOpenTracking: false,
         resendClickTracking: false,
+        // Espelha CLEAR_DOMAIN_DATA em EmailTeamSettingsRepository: o flag não
+        // pode sobreviver à desconexão, senão o próximo domínio herda a
+        // verificação de DNS do anterior.
+        resendSendingDnsVerified: false,
       },
     })
   }
@@ -168,9 +184,21 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
       domain.tracking_subdomain?.trim() ||
       null
 
-    await this.updateDomainTracking(teamId, { status, region, openTracking, clickTracking })
-
     const records = domain.records ?? []
+
+    // `undefined` quando a resposta não permite concluir (sem registros, ou
+    // nenhum com rótulo de envio). Preserva o valor gravado em vez de rebaixá-lo
+    // por falta de informação — ver `deriveSendingDnsVerified`.
+    const sendingDnsVerified = deriveSendingDnsVerified(records)
+
+    await this.updateDomainTracking(teamId, {
+      status,
+      region,
+      openTracking,
+      clickTracking,
+      sendingDnsVerified,
+    })
+
     const allRecordsVerified =
       records.length > 0 && records.every((record) => record.status === "verified")
 
@@ -210,6 +238,7 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainRegion: true,
         resendOpenTracking: true,
         resendClickTracking: true,
+        resendSendingDnsVerified: true,
       },
     })
 
@@ -224,6 +253,7 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
           resendDomainRegion: row.resendDomainRegion,
           resendOpenTracking: row.resendOpenTracking,
           resendClickTracking: row.resendClickTracking,
+          resendSendingDnsVerified: row.resendSendingDnsVerified,
         },
       ]
     })

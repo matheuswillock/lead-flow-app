@@ -489,19 +489,57 @@ export class PublicFormsService implements IPublicFormsService {
       }
     }
 
-    await publicFormsRepository.upsertMetricEvent({
-      formId: current.snapshot.formId,
-      publicationId,
-      questionId: liveQuestionId,
-      questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
-      visitorSessionId: input.visitorSessionId,
-      eventType: input.eventType,
-      eventKey: input.eventKey,
-      eventId: input.eventId ?? null,
-      schemaVersion: input.schemaVersion ?? null,
-      occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
-      origin: json(origin),
-    })
+    // SPEC 40 E2 × modo radar (review #1058). Último ponto de escrita do
+    // descarte: a mensagem da fila é publicada **depois** de
+    // `completeSubmission` e consumida noutro processo, então sobrevive à
+    // compensação do gate C e recriaria a linha que ele acabou de apagar.
+    //
+    // Conferir antes e gravar depois, em duas chamadas, seria check-then-act: o
+    // gate cabe na fresta entre as duas. O repositório faz as duas coisas na
+    // mesma transação, com `FOR UPDATE` nas submissões da sessão — as mesmas
+    // linhas que `attachLeadToPendingSubmissions` atualiza, o que serializa os
+    // dois lados.
+    //
+    // O retorno é `true` mesmo quando não grava: o evento não é erro, é
+    // conclusão que ficou obsoleta. `false` faria o consumer logar "formulário
+    // indisponível" e mascarar o motivo.
+    if (input.eventType === "lead_discarded") {
+      const persisted = await publicFormsRepository.upsertDiscardMetricEventWhenSessionHasNoLead({
+        formId: current.snapshot.formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+      if (!persisted) {
+        console.info(
+          "[PublicFormsService][recordMetric] lead anexado na corrida, descarte ignorado",
+          {
+            formId: current.snapshot.formId,
+            visitorSessionId: input.visitorSessionId,
+            eventKey: input.eventKey,
+          },
+        )
+        return true
+      }
+    } else {
+      await publicFormsRepository.upsertMetricEvent({
+        formId: current.snapshot.formId,
+        publicationId,
+        questionId: liveQuestionId,
+        questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+    }
 
     // Fire-and-forget: journey tracking must never block metric recording.
     // DB connection contention from the advisory lock would exhaust the pool
