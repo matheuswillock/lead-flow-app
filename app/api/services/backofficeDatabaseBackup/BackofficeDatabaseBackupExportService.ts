@@ -28,22 +28,57 @@ function buildFileName(now: Date): string {
 /**
  * Escreve respeitando contrapressão e falhando rápido se o fluxo morreu.
  *
- * O callback de `write` é a única via confiável de erro aqui: um stream já
- * destruído não emite "error" de novo, então esperar só por "drain" trava a
- * produção para sempre quando o destino falha no meio do backup.
+ * `destroy(error)` — o que `abort()` faz quando o upload ao Drive falha — não
+ * libera nenhuma das duas vias normais de conclusão de um write pendente, e por
+ * isso a Promise precisa escutar "error"/"close" nos **dois** ramos:
+ *
+ * - Quando `write` devolve `false`, só "drain" resolveria, e `destroy` não emite
+ *   "drain".
+ * - Quando `write` devolve `true`, só o callback resolveria — mas num Transform
+ *   (`PassThrough`) o lado writable aceita o pedaço enquanto o lado readable já
+ *   está cheio, e aí o `_write` guarda o callback em `Transform[kCallback]` para
+ *   chamar quando o consumidor voltar a ler. `destroy` **não** invoca esse
+ *   callback guardado (medido em Node v22.23.2, o mesmo runtime da Vercel).
+ *
+ * O segundo caso é o que acontece de fato aqui: com o JSZip parado por
+ * contrapressão do corpo, o primeiro write logo após um "drain" volta `true` e
+ * fica órfão. Sem isto a Promise nunca resolvia, o cron de backup só morria no
+ * teto de `maxDuration` e nem gravava `failed` nem alertava.
+ *
+ * Os listeners são removidos no settle para não vazar em export de milhares de
+ * chunks.
  */
 async function writeWithBackpressure(
   stream: PassThrough,
   text: string
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const flushed = stream.write(text, (error) => {
+    let done = false
+    const onDrain = () => settle(null)
+    const onError = (error: Error) => settle(error)
+    const onClose = () =>
+      settle(new Error("Fluxo do backup foi encerrado antes de drenar a escrita"))
+
+    function settle(error: Error | null): void {
+      if (done) return
+      done = true
+      stream.off("drain", onDrain)
+      stream.off("error", onError)
+      stream.off("close", onClose)
       if (error) reject(error)
-      else if (flushed) resolve()
+      else resolve()
+    }
+
+    stream.once("error", onError)
+    stream.once("close", onClose)
+
+    const flushed = stream.write(text, (error) => {
+      if (error) settle(error)
+      else if (flushed) settle(null)
     })
 
-    if (!flushed) {
-      stream.once("drain", resolve)
+    if (!done && !flushed) {
+      stream.once("drain", onDrain)
     }
   })
 }

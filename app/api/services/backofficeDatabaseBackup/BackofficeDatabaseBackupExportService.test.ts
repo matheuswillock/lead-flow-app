@@ -45,6 +45,33 @@ function createRepository(
   }
 }
 
+/**
+ * Espera a produção parar de avançar — o sinal observável de que um `write`
+ * ficou pendente por contrapressão. Esperar tempo fixo aqui deixaria o teste
+ * passar de graça no caminho trivial (abortar antes da primeira escrita), que é
+ * justamente o que o teste precisa evitar.
+ */
+async function aguardarProducaoTravada(estado: {
+  escritos: number
+  terminou: boolean
+}): Promise<void> {
+  let anterior = -1
+
+  for (let tentativa = 0; tentativa < 200; tentativa += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    if (estado.terminou) {
+      throw new Error(
+        "A produção terminou sem travar: aumente o fixture para estourar os buffers"
+      )
+    }
+    if (estado.escritos > 0 && estado.escritos === anterior) return
+    anterior = estado.escritos
+  }
+
+  throw new Error("A produção nunca ficou presa em contrapressão")
+}
+
 async function readAll(archive: BackupArchive): Promise<Buffer> {
   const parts: Buffer[] = []
   for await (const chunk of archive.body) {
@@ -163,5 +190,59 @@ describe("BackofficeDatabaseBackupExportService", () => {
     archive.abort(new Error("socket hang up"))
 
     await expect(archive.completion).rejects.toThrow("socket hang up")
+  })
+
+  /**
+   * Review PR #1057. O teste acima aborta antes de qualquer escrita, então nunca
+   * exercitou o caminho de contrapressão e passava mesmo com o bug.
+   *
+   * Com ninguém consumindo o corpo, o JSZip para de puxar as entradas e o
+   * `write` do produtor fica pendente. `destroy(error)` — o que `abort()` faz
+   * quando o upload ao Drive falha — não emite "drain" nem invoca o callback do
+   * write pendente, inclusive quando o `write` devolveu `true` e o pedaço ficou
+   * parado no `Transform[kCallback]`. A Promise nunca resolvia: o cron de backup
+   * só morria no teto de `maxDuration`, sem gravar `failed` nem alertar.
+   *
+   * Sem a correção este teste não falha por asserção — ele *trava*, e é a corrida
+   * com o marcador abaixo que transforma o travamento em falha legível.
+   */
+  it("abort no meio da escrita sob contrapressao falha rapido, sem travar", async () => {
+    const fixture: Fixture = {
+      Lead: Array.from({ length: 200_000 }, (_, index) =>
+        JSON.stringify({ id: `lead-${index}`, payload: "z".repeat(500) })
+      ),
+    }
+
+    const base = createRepository(fixture)
+    const estado = { escritos: 0, terminou: false }
+    const repository: IBackofficeDatabaseBackupExportRepository = {
+      listExportableModelNames: () => base.listExportableModelNames(),
+      exportSnapshot: async (writeChunk: BackupChunkWriter) => {
+        const summary = await base.exportSnapshot(async (chunk) => {
+          await writeChunk(chunk)
+          estado.escritos += 1
+        })
+        estado.terminou = true
+        return summary
+      },
+    }
+
+    const service = new BackofficeDatabaseBackupExportService(repository)
+    const archive = service.createArchive()
+
+    // Ninguém lê o corpo: os buffers enchem e a produção trava no meio do write.
+    await aguardarProducaoTravada(estado)
+    expect(estado.escritos).toBeGreaterThan(0)
+
+    archive.abort(new Error("upload failed"))
+
+    const desfecho = await Promise.race([
+      archive.completion
+        .then(() => "resolveu")
+        .catch((error: Error) => `rejeitou: ${error.message}`),
+      new Promise<string>((resolve) => setTimeout(() => resolve("travou"), 3_000)),
+    ])
+
+    expect(desfecho).toBe("rejeitou: upload failed")
   })
 })
