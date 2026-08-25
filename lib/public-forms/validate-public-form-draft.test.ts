@@ -17,7 +17,10 @@ import type { PublicFormDraftInput, PublicFormQuestionInput } from "./types"
  * diante.
  */
 
-import { CONTACT_QUESTION_ERROR as CONTACT_ERROR } from "./validate-public-form-draft"
+import {
+  CONTACT_QUESTION_ERROR as CONTACT_ERROR,
+  SURVEY_WITH_SCHEDULING_ERROR,
+} from "./validate-public-form-draft"
 
 function question(overrides: Partial<PublicFormQuestionInput>): PublicFormQuestionInput {
   return {
@@ -134,5 +137,54 @@ describe("validatePublicFormDraft — pergunta de contato (DA4)", () => {
     const errors = validatePublicFormDraft(draft(), { mode: "catalog-template" })
 
     expect(errors).not.toContain(CONTACT_ERROR)
+  })
+})
+
+/**
+ * Review do #1048 (P1). O agendamento nasce preso ao lead: `processInBackground`
+ * só chama `scheduleMeeting` quando há lead resolvido. Com a captação desligada
+ * nunca há — então o visitante escolheria o horário, veria a tela de
+ * agradecimento, e nenhuma reunião existiria. Promessa quebrada com uma pessoa
+ * real, em silêncio.
+ */
+describe("validatePublicFormDraft — pesquisa × agenda", () => {
+  const SCHEDULING_QUESTION = question({
+    id: "11111111-1111-4111-8111-111111111105",
+    type: "scheduling",
+    title: "Escolha o horário",
+  })
+  const CLOSER_ID = "33333333-3333-4333-8333-333333333333"
+
+  it("recusa formulário de pesquisa com agenda ligada", () => {
+    const errors = validatePublicFormDraft(
+      draft({
+        leadCaptureDisabled: true,
+        schedulingEnabled: true,
+        eligibleCloserIds: [CLOSER_ID],
+        questions: [NAME_QUESTION, SCHEDULING_QUESTION],
+      }),
+      { mode: "form" },
+    )
+
+    expect(errors).toContain(SURVEY_WITH_SCHEDULING_ERROR)
+  })
+
+  it("agenda com captação ligada continua permitida", () => {
+    const errors = validatePublicFormDraft(
+      draft({
+        schedulingEnabled: true,
+        eligibleCloserIds: [CLOSER_ID],
+        questions: [NAME_QUESTION, PHONE_QUESTION, SCHEDULING_QUESTION],
+      }),
+      { mode: "form" },
+    )
+
+    expect(errors).not.toContain(SURVEY_WITH_SCHEDULING_ERROR)
+  })
+
+  it("pesquisa sem agenda continua publicando", () => {
+    const errors = validatePublicFormDraft(draft({ leadCaptureDisabled: true }), { mode: "form" })
+
+    expect(errors).not.toContain(SURVEY_WITH_SCHEDULING_ERROR)
   })
 })

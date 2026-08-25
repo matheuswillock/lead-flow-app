@@ -24,6 +24,20 @@ function hasHardcodedWhatsappAction(draft: PublicFormDraftInput): boolean {
 export const CONTACT_QUESTION_ERROR =
   "Mapeie uma pergunta para Telefone ou E-mail — sem canal de contato o formulário não gera lead. Se for um formulário de pesquisa, desative a captação de leads."
 
+/**
+ * SPEC 40 E4/DA4 — combinação impossível, achada no review do PR unificado.
+ *
+ * O agendamento nasce preso ao lead: `processInBackground` só chama
+ * `scheduleMeeting` quando há lead resolvido. Com a captação desligada nunca há
+ * — então o visitante escolheria o horário, veria a tela de agradecimento, e
+ * nenhuma reunião existiria. Promessa quebrada com uma pessoa real, em silêncio.
+ *
+ * Recusar na publicação em vez de desligar a agenda sozinho: apagar
+ * configuração do dono do form sem avisar é pior que barrar com o motivo.
+ */
+export const SURVEY_WITH_SCHEDULING_ERROR =
+  "Agenda e captação de leads desligada não combinam: sem lead o formulário não cria a reunião que o visitante escolher. Ative a captação de leads ou remova a agenda."
+
 function hasMappedContactQuestion(draft: PublicFormDraftInput): boolean {
   return draft.questions.some(
     (question) =>
@@ -63,6 +77,9 @@ export function validatePublicFormDraft(
     // é a saída explícita para pesquisa, e desliga o funil de lead junto.
     if (!draft.leadCaptureDisabled && !hasMappedContactQuestion(draft)) {
       errors.push(CONTACT_QUESTION_ERROR)
+    }
+    if (draft.leadCaptureDisabled && draft.schedulingEnabled) {
+      errors.push(SURVEY_WITH_SCHEDULING_ERROR)
     }
     if (draft.schedulingEnabled && draft.eligibleCloserIds.length === 0) {
       errors.push("Selecione ao menos um closer para o agendamento")

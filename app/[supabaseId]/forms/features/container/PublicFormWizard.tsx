@@ -2816,6 +2816,14 @@ function Review({
             text: "Closer selecionado para agenda",
             step: 2,
           },
+          // A reunião nasce presa ao lead: sem captação, o visitante escolhe o
+          // horário e nenhuma reunião é criada. O servidor recusa a publicação —
+          // o check antecipa isso aqui, onde ainda dá para consertar.
+          {
+            ok: !(d.leadCaptureDisabled && d.schedulingEnabled),
+            text: "Agenda compatível com a captação de leads",
+            step: 2,
+          },
         ]),
     {
       ok: questionErrors.length === 0,
@@ -2853,7 +2861,7 @@ function Review({
             <p className="font-medium">Formulário de pesquisa (não capta leads)</p>
             <p className="text-sm text-muted-foreground">
               Publica sem telefone nem e-mail mapeado. Em troca, este formulário não cria leads no
-              CRM e some do funil de leads.
+              CRM, some do funil de leads e não pode usar a agenda — a reunião nasce presa ao lead.
             </p>
           </div>
           <Switch
