@@ -367,6 +367,7 @@ export class PublicFormSubmissionUseCase {
           eventType: "form_validation_failed",
           eventKey: buildPublicFormServerValidationFailedEventKey(
             input.formId,
+            input.publicationId,
             visitorSessionId,
             emailLogId,
           ),

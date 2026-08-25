@@ -2787,10 +2787,11 @@ function Review({
   const questionErrors = getQuestionStepErrors(d, {
     mode: isCatalogTemplate ? "catalog-template" : "form",
   })
+  // Telefone, não "telefone ou e-mail": quem cria o lead é
+  // `canCreateLeadFromExtracted`, que exige telefone brasileiro válido. Ver o
+  // comentário de `CONTACT_QUESTION_ERROR` em `validate-public-form-draft.ts`.
   const hasMappedContactQuestion = d.questions.some(
-    (question) =>
-      question.mappingTarget === "native_field" &&
-      (question.mappingKey === "phone" || question.mappingKey === "email"),
+    (question) => question.mappingTarget === "native_field" && question.mappingKey === "phone",
   )
   const checks = [
     { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
@@ -2805,7 +2806,7 @@ function Review({
     // abaixo, senão o formulário de pesquisa fica bloqueado sem alternativa.
     {
       ok: Boolean(d.leadCaptureDisabled) || hasMappedContactQuestion,
-      text: "Telefone ou e-mail mapeado",
+      text: "Telefone mapeado",
       step: 2,
     },
     ...(isCatalogTemplate
