@@ -133,7 +133,6 @@ sync_deploy_dir() {
 
   mkdir -p "${DEPLOY_DIR}/deploy/hostinger"
   cp -a "${REPO_DIR}/deploy/hostinger/studio-bot-ops" "${DEPLOY_DIR}/deploy/hostinger/" 2>/dev/null || true
-  cp "${REPO_DIR}/deploy/hostinger/backup-supabase.sh" "${DEPLOY_DIR}/deploy/hostinger/" 2>/dev/null || true
   cp "${REPO_DIR}/deploy/hostinger/.env.ops.example" "${DEPLOY_DIR}/deploy/hostinger/" 2>/dev/null || true
 
   chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${DEPLOY_DIR}" 2>/dev/null || true
