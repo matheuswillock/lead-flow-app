@@ -90,7 +90,8 @@ describe("BackofficeDatabaseBackupExportRepository", () => {
   })
 
   it("pagina alem do tamanho de pagina sem perder nem duplicar registros", async () => {
-    const total = 5_001
+    // Acima de PAGE_SIZE (10.000) para exercitar mais de uma pagina.
+    const total = 10_001
     tables.set(
       delegateNameOf(firstModel!),
       Array.from({ length: total }, (_, index) => ({ id: `row-${index}` }))

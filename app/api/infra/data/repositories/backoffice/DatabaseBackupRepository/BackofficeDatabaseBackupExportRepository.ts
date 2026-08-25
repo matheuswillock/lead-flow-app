@@ -6,7 +6,14 @@ import type {
   IBackofficeDatabaseBackupExportRepository,
 } from "./IBackofficeDatabaseBackupExportRepository"
 
-const PAGE_SIZE = 2_000
+/**
+ * Mantido em 10.000 de propósito. A paginação por `skip` custa O(n²) — o
+ * Postgres varre e descarta `skip` linhas a cada página — então diminuir a
+ * página multiplica o custo de leitura, justamente o recurso escasso deste job
+ * (`maxDuration = 300`). O consumo de memória não depende daqui: quem limita é
+ * `CHUNK_FLUSH_BYTES`, e apenas uma página fica viva por vez.
+ */
+const PAGE_SIZE = 10_000
 
 /**
  * Teto de bytes acumulados antes de entregar um pedaço ao consumidor.
