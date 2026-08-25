@@ -68,7 +68,10 @@ function makeSnapshot(): PublicFormSnapshot {
   }
 }
 
-const completeSubmission = mock(async (_input: unknown) => {})
+// Devolve o lote recebido — é o que a transação real faz quando nada é
+// derrubado. O caller enfileira o RETORNO, não o input (review #1058), então um
+// fake que devolvesse `undefined` quebraria o publish e esconderia o contrato.
+const completeSubmission = mock(async (input: { metricEvents: unknown[] }) => input.metricEvents)
 const findSubmissionAcceptedAt = mock(async (_id: string) => ({
   createdAt: ACEITE,
   dispatchAcceptedAt: null as Date | null,

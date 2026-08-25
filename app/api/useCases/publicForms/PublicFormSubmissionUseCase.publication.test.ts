@@ -104,7 +104,9 @@ const findSubmissionAcceptedAt = mock(async () => ({
   createdAt: new Date("2026-08-20T22:10:31.000Z"),
   dispatchAcceptedAt: null as Date | null,
 }))
-const completeSubmission = mock(async () => {})
+// Devolve o lote recebido: `completeSubmission` passou a retornar o que de fato
+// persistiu, e o caller enfileira esse retorno (review #1058).
+const completeSubmission = mock(async (input: { metricEvents: unknown[] }) => input.metricEvents)
 const markSubmissionFailed = mock(async () => {})
 const findMatchingLead = mock(async () => null)
 const upsertLeadFromFormAnswers = mock(async () => null)

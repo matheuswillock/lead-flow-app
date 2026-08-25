@@ -100,9 +100,27 @@ describe("validatePublicFormDraft — pergunta de contato (DA4)", () => {
     expect(errors).not.toContain(CONTACT_ERROR)
   })
 
-  it("aceita quando há e-mail mapeado", () => {
+  /**
+   * Review #1051 (P1). E-mail sozinho **não** basta: `canCreateLeadFromExtracted`
+   * exige telefone brasileiro válido, e `canUpdateLeadFromExtracted` (que aceita
+   * e-mail) só serve para enriquecer lead que já existe. Um form nome+e-mail
+   * publicava e descartava todo respondente novo com `sem_telefone`.
+   *
+   * Este teste trava o par: se alguém afrouxar a regra de publicação sem
+   * afrouxar o gate junto (D2b), ele fica vermelho.
+   */
+  it("e-mail mapeado sem telefone não basta — o gate exige telefone", () => {
     const errors = validatePublicFormDraft(
       draft({ questions: [NAME_QUESTION, EMAIL_QUESTION] }),
+      { mode: "form" },
+    )
+
+    expect(errors).toContain(CONTACT_ERROR)
+  })
+
+  it("telefone junto com e-mail publica", () => {
+    const errors = validatePublicFormDraft(
+      draft({ questions: [NAME_QUESTION, EMAIL_QUESTION, PHONE_QUESTION] }),
       { mode: "form" },
     )
 

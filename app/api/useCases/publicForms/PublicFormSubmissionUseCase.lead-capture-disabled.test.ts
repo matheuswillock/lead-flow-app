@@ -48,7 +48,9 @@ function snapshot(leadCaptureDisabled: boolean): PublicFormSnapshot {
   } as unknown as PublicFormSnapshot
 }
 
-const completeSubmission = mock(async () => {})
+// Devolve o lote recebido: `completeSubmission` passou a retornar o que de fato
+// persistiu, e o caller enfileira esse retorno (review #1058).
+const completeSubmission = mock(async (input: { metricEvents: unknown[] }) => input.metricEvents)
 const attributionExecute = mock(
   async () =>
     ({ isValid: true, result: null }) as {
