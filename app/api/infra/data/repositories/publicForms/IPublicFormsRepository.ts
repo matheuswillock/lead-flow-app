@@ -349,6 +349,14 @@ export interface IPublicFormsRepository {
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
   findLeadForSubmission(submissionId: string): Promise<Lead | null>
+  /**
+   * Relógio do aceite da submissão. O processamento em background pode rodar
+   * horas ou dias depois (fila travada); é este par que datam os eventos de
+   * conversão, nunca o `new Date()` do worker.
+   */
+  findSubmissionAcceptedAt(
+    submissionId: string,
+  ): Promise<{ createdAt: Date; dispatchAcceptedAt: Date | null } | null>
   findCompletedSubmissionBySession(
     publicationId: string,
     visitorSessionId: string,

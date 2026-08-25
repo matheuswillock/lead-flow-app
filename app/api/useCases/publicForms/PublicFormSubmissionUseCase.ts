@@ -281,6 +281,18 @@ export class PublicFormSubmissionUseCase {
     })
   }
 
+  /**
+   * Relógio do aceite, não do processamento. `processInBackground` roda quando a
+   * fila drena: o incidente de 20–22/08 destravou dois dias depois e jogou ~105
+   * conversões no dia errado, deixando o funil de 3 dias com mais `form_completed`
+   * do que `form_viewed`. `createdAt` é o instante em que o visitante enviou;
+   * `dispatchAcceptedAt` cobre a submissão cujo `createdAt` não pôde ser lido.
+   */
+  private async resolveSubmissionAcceptedAt(submissionId: string): Promise<Date> {
+    const submission = await publicFormsRepository.findSubmissionAcceptedAt(submissionId)
+    return submission?.createdAt ?? submission?.dispatchAcceptedAt ?? new Date()
+  }
+
   async processInBackground(job: PublicFormSubmissionBackgroundJob): Promise<void> {
     const visible = new Set(job.visibleIds)
     const answers = mapAnswersForPersistence(job.snapshot, job.visibleAnswers)
@@ -288,6 +300,7 @@ export class PublicFormSubmissionUseCase {
 
     try {
       const form = await publicFormsRepository.findFormSubmissionContext(job.snapshot.formId)
+      const occurredAt = await this.resolveSubmissionAcceptedAt(job.submissionId)
       const leadGateMode = resolvePublicFormLeadGateMode(form.teamId)
       let attributionResult: {
         leadId: string | null
@@ -398,6 +411,7 @@ export class PublicFormSubmissionUseCase {
         visitorSessionId: string
         eventType: "form_completed" | "lead_created" | "lead_attached" | "meeting_scheduled"
         eventKey: string
+        occurredAt: Date
         origin: Prisma.InputJsonValue
         radarOrigin?: Record<string, unknown>
       }> = [
@@ -411,6 +425,7 @@ export class PublicFormSubmissionUseCase {
             "form_completed",
             attributionEmailLogId
           ),
+          occurredAt,
           origin: formCompletedOrigin,
           radarOrigin: withFormCompletedScoreOrigin(origin, job.score, job.scoreBandLabel),
         },
@@ -437,6 +452,7 @@ export class PublicFormSubmissionUseCase {
             eventType,
             attributionEmailLogId
           ),
+          occurredAt,
           origin: metricOrigin,
         })
       }
@@ -452,6 +468,7 @@ export class PublicFormSubmissionUseCase {
             "meeting_scheduled",
             attributionEmailLogId
           ),
+          occurredAt,
           origin: metricOrigin,
         })
       }
@@ -488,6 +505,9 @@ export class PublicFormSubmissionUseCase {
             visitorSessionId: event.visitorSessionId,
             eventType: event.eventType,
             eventKey: event.eventKey,
+            // Sem isto o payload cai no `new Date()` do builder e o evento
+            // espelhado no Radar volta a nascer no dia do drain, não no aceite.
+            occurredAt: event.occurredAt.toISOString(),
             origin: event.radarOrigin ?? origin,
           }),
           "PublicFormSubmissionUseCase",
