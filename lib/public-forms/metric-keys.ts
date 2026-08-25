@@ -46,16 +46,23 @@ export function buildPublicFormMetricEventKey(
 /**
  * Recusa de validação medida no servidor (SPEC 40 E1). O sufixo `:server`
  * separa esta linha do `form_validation_failed` que o renderer emite, para o
- * funil distinguir "o cliente barrou" de "o servidor recusou o POST". Chave
- * estável por sessão: o upsert é first-write-wins, então N tentativas inválidas
- * da mesma sessão contam como uma sessão recusada — e um bot martelando o
- * endpoint não infla a série.
+ * funil distinguir "o cliente barrou" de "o servidor recusou o POST".
+ *
+ * Chave estável por sessão **e formulário**: o upsert é first-write-wins, então
+ * N tentativas inválidas da mesma sessão no mesmo form contam como uma sessão
+ * recusada — um bot martelando o endpoint não infla a série.
+ *
+ * O `formId` entra porque `eventKey` é `@unique` global e o `visitorSessionId`
+ * do POST direto não é garantidamente exclusivo de um formulário (review
+ * #1030): sem o escopo, a recusa no form A ocupa a chave e a recusa no form B
+ * pela mesma sessão vira no-op — a métrica do B fica subcontada.
  */
 export function buildPublicFormServerValidationFailedEventKey(
+  formId: string,
   visitorSessionId: string,
   emailLogId?: string | null,
 ): string {
-  return `${visitorSessionId}:form_validation_failed:server${buildAttributionEventKeySuffix(
+  return `${visitorSessionId}:form_validation_failed:server:${formId}${buildAttributionEventKeySuffix(
     emailLogId,
   )}`
 }

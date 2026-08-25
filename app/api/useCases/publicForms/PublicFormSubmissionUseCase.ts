@@ -187,10 +187,11 @@ export class PublicFormSubmissionUseCase {
     })
     if (issues.length > 0) {
       await this.recordServerValidationFailure({
+        publicId,
         formId: snapshot.formId,
-        publicationId,
         visitorSessionId: input.visitorSessionId ?? input.requestKey,
         origin: input.origin ?? {},
+        issues: issues.map(({ questionId, code }) => ({ questionId, code })),
       })
       return new Output(
         false,
@@ -316,24 +317,34 @@ export class PublicFormSubmissionUseCase {
    * funil não distingue "o cliente barrou antes de postar" de "o cliente postou
    * incompleto e o servidor devolveu 422".
    *
+   * Vai pelo `recordMetric` do serviço, não direto no repositório (review
+   * #1030): é ele que resolve a publicação, alimenta a projeção de jornada e
+   * faz o bridging para o Radar. Escrever direto no repositório deixava o
+   * evento fora dos três, e um erro transitório de banco o perdia de vez.
+   *
    * Nunca derruba o 422: métrica que falha vira log, não erro de resposta.
    */
   private async recordServerValidationFailure(input: {
+    publicId: string
     formId: string
-    publicationId: string
     visitorSessionId: string
     origin: Record<string, unknown>
+    issues: Array<{ questionId: string; code: string }>
   }): Promise<void> {
     const visitorSessionId = input.visitorSessionId.slice(0, 100)
     const emailLogId = parseEmailLogIdFromOrigin(input.origin)
     try {
-      await publicFormsRepository.upsertMetricEvent({
-        formId: input.formId,
-        publicationId: input.publicationId,
+      await publicFormsService.recordMetric(input.publicId, {
         visitorSessionId,
         eventType: "form_validation_failed",
-        eventKey: buildPublicFormServerValidationFailedEventKey(visitorSessionId, emailLogId),
-        origin: json({ ...sanitizePublicFormOrigin(input.origin), source: "server" }),
+        eventKey: buildPublicFormServerValidationFailedEventKey(
+          input.formId,
+          visitorSessionId,
+          emailLogId,
+        ),
+        origin: { ...sanitizePublicFormOrigin(input.origin), source: "server" },
+        // Só id e código — nunca o valor recusado (contrato do campo).
+        validationCodes: input.issues,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao registrar recusa"

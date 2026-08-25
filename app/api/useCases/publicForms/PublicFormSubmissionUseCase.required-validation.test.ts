@@ -99,9 +99,10 @@ const persistSubmissionAnswers = mock(async () => {})
 const findProgressSubmission = mock(async () => null)
 const createSubmission = mock(async () => ({ id: "sub-new" }))
 const upsertMetricEvent = mock(async () => {})
+const recordMetric = mock(async () => true)
 
 mock.module("@/app/api/services/PublicForms/PublicFormsService", () => ({
-  publicFormsService: { getPublic },
+  publicFormsService: { getPublic, recordMetric },
 }))
 
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
@@ -180,6 +181,8 @@ describe("PublicFormSubmissionUseCase.accept validação de obrigatórias", () =
     createSubmission.mockResolvedValue({ id: "sub-new" })
     persistSubmissionAnswers.mockReset()
     upsertMetricEvent.mockReset()
+    recordMetric.mockReset()
+    recordMetric.mockResolvedValue(true)
   })
 
   // T-F1.1
@@ -264,8 +267,14 @@ describe("PublicFormSubmissionUseCase.accept validação de obrigatórias", () =
     ])
   })
 
-  // Todo 3
-  it("registra form_validation_failed com origin.source=server ao recusar", async () => {
+  /**
+   * Todo 3 + review #1030. A métrica vai pelo `recordMetric` do serviço, não
+   * direto no repositório: é ele que alimenta a projeção de jornada e o
+   * bridging do Radar. E o `eventKey` carrega o `formId`, porque `eventKey` é
+   * `@unique` global — sem o escopo, a recusa de um form ocupa a chave e a de
+   * outro pela mesma sessão vira no-op.
+   */
+  it("registra form_validation_failed pelo pipeline de métrica, escopado por form", async () => {
     await useCase.accept(PUBLIC_ID, {
       requestKey: "req-required-4",
       answers: [{ questionId: Q_NAME, value: "Maria Silva" }],
@@ -273,13 +282,26 @@ describe("PublicFormSubmissionUseCase.accept validação de obrigatórias", () =
       visitorSessionId: "sessao-validacao-0001",
     })
 
-    expect(upsertMetricEvent).toHaveBeenCalledTimes(1)
-    const [call] = upsertMetricEvent.mock.calls as unknown as [
-      [{ eventType: string; visitorSessionId: string; origin: { source?: string } }],
+    expect(recordMetric).toHaveBeenCalledTimes(1)
+    expect(upsertMetricEvent).not.toHaveBeenCalled()
+    const [call] = recordMetric.mock.calls as unknown as [
+      [
+        string,
+        {
+          eventType: string
+          eventKey: string
+          visitorSessionId: string
+          origin: { source?: string }
+          validationCodes?: Array<{ questionId: string; code: string }>
+        },
+      ],
     ]
-    expect(call[0].eventType).toBe("form_validation_failed")
-    expect(call[0].visitorSessionId).toBe("sessao-validacao-0001")
-    expect(call[0].origin.source).toBe("server")
+    expect(call[0]).toBe(PUBLIC_ID)
+    expect(call[1].eventType).toBe("form_validation_failed")
+    expect(call[1].visitorSessionId).toBe("sessao-validacao-0001")
+    expect(call[1].origin.source).toBe("server")
+    expect(call[1].eventKey).toContain(FORM_ID)
+    expect(call[1].validationCodes).toEqual([{ questionId: Q_PHONE, code: "required" }])
   })
 
   // SPEC E1, passo 4: idempotência do requestKey vem antes da validação.
