@@ -16452,6 +16452,41 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Funil da Campanha (campanha → lead)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/funnel?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "funnel"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "",
+                      "description": "ISO 8601. Opcional — sem período o funil cobre a campanha inteira."
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "description": "ISO 8601. Opcional."
+                    }
+                  ]
+                },
+                "description": "Funil ponta a ponta da campanha: enviado → entregue → aberto → clicado → formulário visto/iniciado/respondido/concluído → lead. Cada etapa de formulário conta SESSÕES ÚNICAS (`unit: unique_sessions`); o período ancora no `createdAt` do log (`anchor: log_created_at`) para que a campanha que falhou antes de enviar não desapareça. `rates` mede cada salto sobre o degrau anterior, mais `sentToLeadRate` ponta a ponta. 404 quando a campanha não pertence ao time."
+              },
+              "response": []
             }
           ]
         },

@@ -3,7 +3,7 @@ import {
   emailAnalyticsRepository,
   type IEmailAnalyticsRepository,
 } from "@/app/api/infra/data/repositories/emailAnalytics/EmailAnalyticsRepository"
-import { buildRates } from "@/lib/email/analytics-rates"
+import { buildCampaignFunnelRates, buildRates } from "@/lib/email/analytics-rates"
 import {
   attachRateDeltas,
   attachTotalDeltas,
@@ -225,6 +225,38 @@ export class EmailAnalyticsUseCase {
     } catch (error) {
       console.error("[EmailAnalyticsUseCase][getAnalytics]", error)
       return new Output(false, [], ["Erro ao carregar analytics"], null)
+    }
+  }
+
+  /**
+   * Funil campanha → lead. Sai das queries artesanais da auditoria e vira
+   * contrato do produto: cada etapa de formulário em sessões únicas, com o
+   * denominador de cada salto explícito na resposta.
+   */
+  async getCampaignFunnel(options: {
+    teamId: string
+    campaignId: string
+    from?: Date
+    to?: Date
+  }): Promise<Output> {
+    try {
+      const funnel = await this.repository.findCampaignFunnel(options)
+      if (!funnel) {
+        return new Output(false, [], ["Campanha não encontrada"], null)
+      }
+
+      return new Output(true, [], [], {
+        period: { from: options.from ?? null, to: options.to ?? null },
+        /** Toda etapa de formulário conta sessão única, nunca evento bruto. */
+        unit: "unique_sessions" as const,
+        /** Relógio do período: `createdAt` do log, para a campanha que falhou antes de enviar não sumir. */
+        anchor: "log_created_at" as const,
+        ...funnel,
+        rates: buildCampaignFunnelRates(funnel),
+      })
+    } catch (error) {
+      console.error("[EmailAnalyticsUseCase][getCampaignFunnel]", error)
+      return new Output(false, [], ["Erro ao carregar funil da campanha"], null)
     }
   }
 

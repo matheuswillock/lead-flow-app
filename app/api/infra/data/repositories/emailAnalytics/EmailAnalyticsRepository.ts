@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 import { countUniqueFormMetricRecipients } from "@/lib/email/unique-form-metric-recipients"
@@ -73,8 +74,36 @@ export type CountFormEventsOptions = {
   campaignId?: string
 }
 
+/**
+ * Funil de uma campanha, do envio ao lead, em uma consulta.
+ *
+ * Cada etapa de formulário conta **sessões únicas** — a tabela artesanal da
+ * auditoria misturava unidades (contava `question_answered` em eventos brutos)
+ * e é justamente o que esta SPEC corrige.
+ */
+export type EmailCampaignFunnel = {
+  campaignId: string
+  name: string
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+  failed: number
+  formViewed: number
+  formStarted: number
+  questionAnswered: number
+  formCompleted: number
+  leadAttached: number
+}
+
 export interface IEmailAnalyticsRepository {
   countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
+  findCampaignFunnel(options: {
+    teamId: string
+    campaignId: string
+    from?: Date
+    to?: Date
+  }): Promise<EmailCampaignFunnel | null>
   listDispatches(options: {
     teamId: string
     campaignId: string
@@ -170,6 +199,75 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     return prisma.emailLog.count({
       where: { ...base, ...timestampFilter },
     })
+  }
+
+  /**
+   * Uma consulta liga campanha → e-mail → formulário → lead.
+   *
+   * A ponte é o `cs_el`: o log de e-mail viaja no link e volta em
+   * `origin.emailLogId` do evento de métrica. `origin.campaignId` entra como
+   * segunda porta porque o enriquecimento do servidor carimba a campanha em
+   * eventos cujo link perdeu o `cs_el`.
+   *
+   * Âncora do período: `createdAt` do log. `sentAt` deixaria de fora justamente
+   * a campanha que morreu antes de enviar — a que mais precisa aparecer no funil.
+   */
+  async findCampaignFunnel(options: {
+    teamId: string
+    campaignId: string
+    from?: Date
+    to?: Date
+  }): Promise<EmailCampaignFunnel | null> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: options.campaignId, teamId: options.teamId },
+      select: { id: true, name: true },
+    })
+    if (!campaign) return null
+
+    const campaignIds = await resolveCampaignIdsIncludingSubs(
+      options.teamId,
+      options.campaignId,
+    )
+
+    const query = Prisma.sql`
+      WITH logs AS (
+        SELECT id, "sentAt", "deliveredAt", "openedAt", "clickedAt", status
+        FROM "corretor_studio_email_logs"
+        WHERE "teamId" = ${options.teamId}::uuid
+          AND "campaignId" = ANY(${campaignIds}::uuid[])
+          ${options.from ? Prisma.sql`AND "createdAt" >= ${options.from}` : Prisma.empty}
+          ${options.to ? Prisma.sql`AND "createdAt" <= ${options.to}` : Prisma.empty}
+      ),
+      attributed AS (
+        SELECT e."eventType", e."visitorSessionId"
+        FROM "corretor_studio_public_form_metric_events" e
+        WHERE e.origin->>'emailLogId' IN (SELECT id::text FROM logs)
+           OR e.origin->>'campaignId' = ANY(${campaignIds}::text[])
+      )
+      SELECT
+        (SELECT COUNT(*) FROM logs WHERE "sentAt" IS NOT NULL)::int AS "sent",
+        (SELECT COUNT(*) FROM logs WHERE "deliveredAt" IS NOT NULL)::int AS "delivered",
+        (SELECT COUNT(*) FROM logs WHERE "openedAt" IS NOT NULL)::int AS "opened",
+        (SELECT COUNT(*) FROM logs WHERE "clickedAt" IS NOT NULL)::int AS "clicked",
+        (SELECT COUNT(*) FROM logs WHERE status = 'failed'::"email_log_status")::int AS "failed",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'form_viewed')::int AS "formViewed",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'form_started')::int AS "formStarted",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'question_answered')::int AS "questionAnswered",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'form_completed')::int AS "formCompleted",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" IN ('lead_created', 'lead_attached'))::int AS "leadAttached"
+    `
+
+    const rows =
+      await prisma.$queryRaw<Array<Omit<EmailCampaignFunnel, "campaignId" | "name">>>(query)
+    const totals = rows[0]
+    if (!totals) return null
+
+    return { campaignId: campaign.id, name: campaign.name, ...totals }
   }
 
   async listDispatches(options: {

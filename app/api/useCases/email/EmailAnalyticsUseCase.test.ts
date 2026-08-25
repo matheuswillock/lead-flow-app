@@ -9,6 +9,7 @@ import type { IEmailAnalyticsRepository } from "@/app/api/infra/data/repositorie
 function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAnalyticsRepository {
   return {
     countLogs: mock(async () => 0),
+    findCampaignFunnel: mock(async () => null),
     listDispatches: mock(async () => []),
     findDispatchPreview: mock(async () => null),
     listTemplateVersionMetrics: mock(async () => []),
@@ -327,6 +328,74 @@ describe("EmailAnalyticsUseCase.getTopTemplates", () => {
       }),
     )
     const output = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
+    expect(output.isValid).toBe(false)
+  })
+})
+
+describe("EmailAnalyticsUseCase.getCampaignFunnel (E5)", () => {
+  const agroSul = {
+    campaignId: "b0ccd6a2",
+    name: "Agro - sul",
+    sent: 9741,
+    delivered: 8436,
+    opened: 2182,
+    clicked: 564,
+    failed: 32913,
+    formViewed: 396,
+    formStarted: 3,
+    questionAnswered: 1,
+    formCompleted: 1,
+    leadAttached: 1,
+  }
+
+  it("T-M5.1 — funil da campanha bate com a contagem manual, etapa a etapa", async () => {
+    const findCampaignFunnel = mock(async () => agroSul)
+    const uc = new EmailAnalyticsUseCase(buildRepo({ findCampaignFunnel }))
+    const output = await uc.getCampaignFunnel({ teamId: "t1", campaignId: "b0ccd6a2" })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject(agroSul)
+    // Cada taxa mede o próprio salto, não o total enviado.
+    expect(output.result.rates.deliveryRate).toBe(86.6) // 8436/9741
+    expect(output.result.rates.formStartRate).toBe(0.76) // 3/396
+    expect(output.result.rates.leadRate).toBe(100) // 1/1
+    expect(output.result.rates.sentToLeadRate).toBe(0.01) // 1/9741
+  })
+
+  it("T-M5.2 — resposta declara unidade e relógio, e o funil vem em sessões únicas", async () => {
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({ findCampaignFunnel: mock(async () => agroSul) }),
+    )
+    const output = await uc.getCampaignFunnel({ teamId: "t1", campaignId: "b0ccd6a2" })
+
+    expect(output.result.unit).toBe("unique_sessions")
+    expect(output.result.anchor).toBe("log_created_at")
+    // A tabela do §2 da auditoria contou `question_answered` em eventos brutos
+    // (8); por sessão única é 1. O contrato do produto não reproduz a mistura.
+    expect(output.result.questionAnswered).toBe(1)
+  })
+
+  it("T-M5.3 — campanha inexistente responde 'não encontrada', não zeros", async () => {
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({ findCampaignFunnel: mock(async () => null) }),
+    )
+    const output = await uc.getCampaignFunnel({ teamId: "t1", campaignId: "fantasma" })
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toContain("Campanha não encontrada")
+    expect(output.result).toBeNull()
+  })
+
+  it("T-M5.3b — repositório lança → isValid false sem propagar", async () => {
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({
+        findCampaignFunnel: mock(async () => {
+          throw new Error("db")
+        }),
+      }),
+    )
+    const output = await uc.getCampaignFunnel({ teamId: "t1", campaignId: "c1" })
+
     expect(output.isValid).toBe(false)
   })
 })
