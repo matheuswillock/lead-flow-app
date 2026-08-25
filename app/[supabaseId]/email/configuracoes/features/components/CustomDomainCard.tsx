@@ -215,10 +215,6 @@ export function CustomDomainCard() {
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false)
   const [trackingSubdomainInput, setTrackingSubdomainInput] = useState(DEFAULT_TRACKING_SUBDOMAIN)
   const [openTrackingDraft, setOpenTrackingDraft] = useState(true)
-  // Cliques desligados por padrão: ligar reescreve todo href do template para o
-  // subdomínio de tracking, e esse redirecionador é sinalizado como suspeito
-  // pelo Safe Browsing. O clique é medido no first-party pelo `cs_el`.
-  const [clickTrackingDraft, setClickTrackingDraft] = useState(false)
 
   useEffect(() => {
     if (domainName && domainRecords.length === 0) {
@@ -236,7 +232,6 @@ export function CustomDomainCard() {
   function openTrackingDialog() {
     setTrackingSubdomainInput(domainTrackingSubdomain?.trim() || DEFAULT_TRACKING_SUBDOMAIN)
     setOpenTrackingDraft(hasTrackingConfigured ? domainOpenTracking : true)
-    setClickTrackingDraft(hasTrackingConfigured ? domainClickTracking : false)
     setTrackingDialogOpen(true)
   }
 
@@ -246,15 +241,17 @@ export function CustomDomainCard() {
       toast.error("Subdomínio inválido. Use apenas letras minúsculas, números e hífen (ex.: links).")
       return
     }
-    if (!openTrackingDraft && !clickTrackingDraft) {
-      toast.error("Habilite pelo menos abertura ou cliques.")
+    if (!openTrackingDraft) {
+      toast.error("Habilite a abertura para configurar o tracking.")
       return
     }
 
     const ok = await handleConfigureDomainTracking({
       trackingSubdomain: subdomain,
       openTracking: openTrackingDraft,
-      clickTracking: clickTrackingDraft,
+      // Sempre `false`. O backend também força — ver a rota
+      // `PATCH /email/settings/domain/tracking`.
+      clickTracking: false,
     })
     if (ok) setTrackingDialogOpen(false)
   }
@@ -273,11 +270,21 @@ export function CustomDomainCard() {
         </div>
       ) : isConnected ? (
         <>
+          {/*
+            Renderiza o motivo real vindo do servidor. Antes o título e o texto
+            eram fixos ("Habilite as métricas de tracking"), então esta tela e a
+            de Campanhas diziam coisas diferentes sobre o mesmo domínio — e a
+            orientação podia apontar para o botão errado.
+          */}
           {domainDispatchWarnings.length > 0 ? (
             <Alert className="border-semantic-warning/30 bg-semantic-warning-surface text-foreground">
               <ShieldAlert className="size-4 text-semantic-warning" />
-              <AlertTitle>Habilite as métricas de tracking</AlertTitle>
-              <AlertDescription>{RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE}</AlertDescription>
+              <AlertTitle>Atenção com o domínio</AlertTitle>
+              <AlertDescription className="flex flex-col gap-2">
+                {domainDispatchWarnings.map((warning) => (
+                  <span key={warning}>{warning}</span>
+                ))}
+              </AlertDescription>
             </Alert>
           ) : null}
           <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
@@ -552,18 +559,12 @@ export function CustomDomainCard() {
                     />
                   </Field>
 
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor="click-tracking-switch">Cliques</FieldLabel>
-                      <FieldDescription>Rastreia cliques nos links do e-mail.</FieldDescription>
-                    </FieldContent>
-                    <Switch
-                      id="click-tracking-switch"
-                      checked={clickTrackingDraft}
-                      onCheckedChange={setClickTrackingDraft}
-                      disabled={configuringDomainTracking}
-                    />
-                  </Field>
+                  <FieldDescription>
+                    Cliques não são rastreados pelo Resend de propósito: ligar isso
+                    reescreve todo link do e-mail para o subdomínio de tracking, e
+                    provedores marcam a mensagem como suspeita. Os cliques já são
+                    medidos no próprio formulário.
+                  </FieldDescription>
                 </FieldGroup>
               </div>
 
@@ -582,7 +583,7 @@ export function CustomDomainCard() {
                   disabled={
                     configuringDomainTracking ||
                     !trackingSubdomainInput.trim() ||
-                    (!openTrackingDraft && !clickTrackingDraft)
+                    !openTrackingDraft
                   }
                 >
                   {configuringDomainTracking ? (

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { hasVerifiedSendingDns } from "@/lib/email/resend-domain-records"
 
 export type EmailTeamDomainEventType =
   | "domain_added"
@@ -20,7 +21,8 @@ export type ResendDomainSnapshot = {
   name?: string
   status?: string
   region?: string
-  records?: Array<{ status?: string }>
+  /** `record` é o propósito (`DKIM`, `SPF`, `Tracking`, `TrackingCAA`, `Receiving`). */
+  records?: Array<{ status?: string; record?: string }>
   open_tracking?: boolean
   click_tracking?: boolean
   openTracking?: boolean
@@ -130,6 +132,12 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
       region: string | null
       openTracking: boolean
       clickTracking: boolean
+      /**
+       * Omitido quando a origem não traz `records` — nesse caso o valor atual é
+       * preservado. Gravar `false` por ausência de dado bloquearia disparo de
+       * quem está com o DNS de envio íntegro.
+       */
+      sendingDnsVerified?: boolean
     }
   ): Promise<void> {
     await prisma.emailTeamSettings.update({
@@ -139,6 +147,9 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainRegion: data.region,
         resendOpenTracking: data.openTracking,
         resendClickTracking: data.clickTracking,
+        ...(data.sendingDnsVerified === undefined
+          ? {}
+          : { resendSendingDnsVerified: data.sendingDnsVerified }),
       },
     })
   }
@@ -168,9 +179,21 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
       domain.tracking_subdomain?.trim() ||
       null
 
-    await this.updateDomainTracking(teamId, { status, region, openTracking, clickTracking })
-
     const records = domain.records ?? []
+
+    // Sem `records` na resposta não dá para derivar nada — passar `undefined`
+    // preserva o valor gravado em vez de rebaixá-lo por falta de informação.
+    const sendingDnsVerified =
+      records.length > 0 ? hasVerifiedSendingDns(records) : undefined
+
+    await this.updateDomainTracking(teamId, {
+      status,
+      region,
+      openTracking,
+      clickTracking,
+      sendingDnsVerified,
+    })
+
     const allRecordsVerified =
       records.length > 0 && records.every((record) => record.status === "verified")
 

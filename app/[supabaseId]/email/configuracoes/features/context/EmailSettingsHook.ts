@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
-import { getResendDomainDispatchWarnings } from "@/lib/email/campaign-dispatch-guards"
 import { EmailSettingsService } from "../services/EmailSettingsService"
 import type {
   ConfigureDomainTrackingData,
@@ -133,16 +132,17 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainOpenTracking, setDomainOpenTracking] = useState(false)
   const [domainClickTracking, setDomainClickTracking] = useState(false)
   const [domainTrackingSubdomain, setDomainTrackingSubdomain] = useState<string | null>(null)
-  const domainDispatchWarnings = useMemo(
-    () =>
-      getResendDomainDispatchWarnings({
-        domainName,
-        domainStatus,
-        openTracking: domainOpenTracking,
-        clickTracking: domainClickTracking,
-      }),
-    [domainName, domainStatus, domainOpenTracking, domainClickTracking]
-  )
+  /**
+   * Vem pronto do servidor, não é recalculado aqui.
+   *
+   * O recálculo local só enxergava `domainStatus`, e desde que o gate passou a
+   * distinguir DNS de envio de DNS de tracking isso divergia: para um domínio
+   * `partially_failed` com DKIM e SPF íntegros, o servidor responde "dispara
+   * sem medir" e o cliente respondia "disparo bloqueado". A regra depende de
+   * `resendSendingDnsVerified`, que não é exposto no DTO — e não precisa ser,
+   * porque o servidor já manda a conclusão em `resendDomainDispatchWarnings`.
+   */
+  const [domainDispatchWarnings, setDomainDispatchWarnings] = useState<string[]>([])
   const [domainEvents, setDomainEvents] = useState<DomainEvent[]>([])
   const [connectingDomain, setConnectingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
@@ -169,6 +169,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     setDomainConnectedAt(result.resendDomainConnectedAt ?? null)
     setDomainOpenTracking(result.resendOpenTracking ?? false)
     setDomainClickTracking(result.resendClickTracking ?? false)
+    setDomainDispatchWarnings(result.resendDomainDispatchWarnings ?? [])
     setDomainEvents(result.domainEvents ?? [])
     setSenders(result.senders ?? [])
     setDefaultSenderId(result.defaultSenderId ?? null)
@@ -195,6 +196,16 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   useEffect(() => {
     void fetchSettings()
+  }, [fetchSettings])
+
+  /**
+   * Refaz o GET ignorando o dedupe. Necessário depois de mexer no domínio:
+   * `resendDomainDispatchWarnings` é decidido no servidor, então mudar o
+   * tracking sem reler deixaria o aviso na tela contradizendo o estado real.
+   */
+  const reloadSettings = useCallback(async () => {
+    lastSettingsKeyRef.current = ""
+    await fetchSettings()
   }, [fetchSettings])
 
   const handleSave = useCallback(async () => {
@@ -453,13 +464,14 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainStatus(result.status)
       toast.success("Verificação iniciada. Aguarde a propagação do DNS.")
       void handleLoadDomainRecords()
+      void reloadSettings()
     } catch (err) {
       console.error("[useEmailSettings] handleVerifyDomain error", err)
       toast.error("Erro ao verificar domínio")
     } finally {
       setVerifyingDomain(false)
     }
-  }, [handleLoadDomainRecords])
+  }, [handleLoadDomainRecords, reloadSettings])
 
   const handleConfigureDomainTracking = useCallback(
     async (data: ConfigureDomainTrackingData) => {
@@ -476,6 +488,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
         toast.success(
           "Métricas configuradas. Adicione o registro DNS de Tracking e re-verifique."
         )
+        void reloadSettings()
         return true
       } catch (err) {
         console.error("[useEmailSettings] handleConfigureDomainTracking error", err)
@@ -485,7 +498,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
         setConfiguringDomainTracking(false)
       }
     },
-    [configuringDomainTracking, domainRegion]
+    [configuringDomainTracking, domainRegion, reloadSettings]
   )
 
   return {
