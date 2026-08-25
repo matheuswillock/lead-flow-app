@@ -151,3 +151,46 @@ describe("paginação no banco", () => {
     expect(list.values).toContain(50)
   })
 })
+
+describe("LIMIT/OFFSET nunca recebem valor que o Postgres rejeita", () => {
+  // A paginacao em memoria (`ids.slice`) coagia NaN/Infinity/fracionario em
+  // silencio; com LIMIT/OFFSET no banco o mesmo valor vira 500.
+  const hostile: Array<{ skip: number; take: number }> = [
+    { skip: Number.NaN, take: Number.NaN },
+    { skip: Number.POSITIVE_INFINITY, take: Number.POSITIVE_INFINITY },
+    { skip: -10, take: -5 },
+    { skip: 1.5, take: 2.7 },
+    { skip: 0, take: 0 },
+  ]
+
+  it.each(hostile)("sanitiza skip=$skip take=$take", (pagination) => {
+    const query = buildFixedSegmentProfileIdsSql("crm_clients", TEAM_ID, THRESHOLD, pagination)
+
+    const numeric = query.values.filter((value): value is number => typeof value === "number")
+    expect(numeric.length).toBeGreaterThan(0)
+    for (const value of numeric) {
+      expect(Number.isSafeInteger(value)).toBe(true)
+      expect(value).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it("mantem os valores validos intactos", () => {
+    const query = buildFixedSegmentProfileIdsSql("crm_clients", TEAM_ID, THRESHOLD, {
+      skip: 40,
+      take: 20,
+    })
+
+    expect(query.values).toContain(20)
+    expect(query.values).toContain(40)
+  })
+
+  it("limita take a um teto, para nao virar varredura acidental", () => {
+    const query = buildFixedSegmentProfileIdsSql("crm_clients", TEAM_ID, THRESHOLD, {
+      skip: 0,
+      take: 10_000,
+    })
+
+    expect(query.values).toContain(1000)
+    expect(query.values).not.toContain(10_000)
+  })
+})
