@@ -24,6 +24,21 @@ export function isPendingLeadIdentity(normalizedValue: string | null | undefined
 }
 
 /**
+ * Predicado único de "esta identidade é vínculo real com o CRM".
+ *
+ * Existe para não haver uma quarta cópia da regra espalhada: o predicado SQL, o
+ * gate do UseCase, o matcher em memória dos segmentos e o gate da UI precisam
+ * todos concordar. Divergir aqui é como o perfil acabava contado em
+ * `crm_clients` e fora de `engaged_no_lead` por causa de uma reserva.
+ */
+export function isRealLeadIdentity(identity: {
+  type?: string | null
+  normalizedValue?: string | null
+}): boolean {
+  return identity.type === "lead_id" && !isPendingLeadIdentity(identity.normalizedValue)
+}
+
+/**
  * Após esta janela, uma reserva sem Lead é considerada órfã e pode ser tomada.
  *
  * Existe porque `releaseClaim` é best-effort: um crash entre reservar e liberar
