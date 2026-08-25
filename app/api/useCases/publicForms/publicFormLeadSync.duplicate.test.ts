@@ -96,18 +96,28 @@ const DELETED_LEAD = {
 
 const findLeadCandidates = mock(async () => [] as unknown[])
 const findDeletedLeadCandidates = mock(async () => [] as unknown[])
-const updateLead = mock(async (_id: string, data: Record<string, unknown>) => ({
+const updateLead = mock(async (id: string, data: Record<string, unknown>) => ({
   ...LIVE_LEAD,
   ...data,
+  id,
 }))
 const findCustomFieldDefinitionId = mock(async () => null)
 const upsertLeadCustomFieldValue = mock(async () => {})
-const createLead = mock(async () => ({
+type CreateLeadOutput = {
+  isValid: boolean
+  errorMessages: string[]
+  successMessages: string[]
+  result: unknown
+}
+
+const DUPLICATE_OUTPUT: CreateLeadOutput = {
   isValid: false,
   errorMessages: ["Ja existe um lead com este e-mail"],
   successMessages: [],
   result: null,
-}))
+}
+
+const createLead = mock(async (): Promise<CreateLeadOutput> => DUPLICATE_OUTPUT)
 
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
@@ -164,14 +174,9 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
     findDeletedLeadCandidates.mockReset()
     findDeletedLeadCandidates.mockResolvedValue([])
     updateLead.mockReset()
-    updateLead.mockImplementation(async (_id, data) => ({ ...LIVE_LEAD, ...data }))
+    updateLead.mockImplementation(async (id, data) => ({ ...LIVE_LEAD, ...data, id }))
     createLead.mockReset()
-    createLead.mockResolvedValue({
-      isValid: false,
-      errorMessages: ["Ja existe um lead com este e-mail"],
-      successMessages: [],
-      result: null,
-    })
+    createLead.mockResolvedValue(DUPLICATE_OUTPUT)
   })
 
   // T-F5.1
@@ -221,6 +226,29 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
 
     expect(result?.created).toBe(true)
     expect(updateLead).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T-F5.3 — a corrida que gerava o poison: dois eventos de progress da mesma
+   * sessão chegam juntos, os dois passam pelo `findMatchingLead` sem achar
+   * nada, e os dois tentam criar. Um ganha a unique, o outro reconcilia. Zero
+   * throw, um lead só.
+   */
+  it("dois eventos concorrentes para o mesmo e-mail: 1 lead, 0 erro", async () => {
+    let created = false
+    createLead.mockImplementation(async () => {
+      if (created) return DUPLICATE_OUTPUT
+      created = true
+      return { isValid: true, errorMessages: [], successMessages: ["ok"], result: LIVE_LEAD }
+    })
+    // O perdedor da corrida só enxerga o vencedor na reconciliação.
+    findLeadCandidates.mockImplementation(async () => (created ? [LIVE_LEAD] : []))
+
+    const [first, second] = await Promise.all([callUpsert(), callUpsert()])
+
+    expect(first?.lead.id).toBe("lead-vivo")
+    expect(second?.lead.id).toBe("lead-vivo")
+    expect([first?.created, second?.created].filter(Boolean)).toHaveLength(1)
   })
 
   it("erro que não é duplicata continua lançando", async () => {

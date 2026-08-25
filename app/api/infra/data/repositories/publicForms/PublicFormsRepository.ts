@@ -56,6 +56,34 @@ function isPrismaUniqueConstraint(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
 }
 
+/**
+ * Critério de identidade compartilhado pelas duas buscas de candidato a lead
+ * (vivos e da lixeira) — a regra é uma só; o que muda é o `deletedAt`.
+ *
+ * `escapeLikePattern` no e-mail: sem ele o `mode: "insensitive"` vira ILIKE com
+ * o valor cru, e `_`/`%` do endereço injetam no pool candidatos que não casam
+ * por e-mail nenhum. `findMatchingLead` decide no último critério por
+ * `byName.length === 1`, então o lixo do curinga faz uma resposta de formulário
+ * público ser gravada por cima do lead errado — ou empata o `byName` em 2 e
+ * perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
+ */
+function buildLeadIdentityMatchWhere(input: {
+  teamId: string
+  email: string
+  phone: string
+  normalizedPhone: string
+}): Prisma.LeadWhereInput {
+  return {
+    teamId: input.teamId,
+    OR: [
+      ...(input.email
+        ? [{ email: { equals: escapeLikePattern(input.email), mode: "insensitive" as const } }]
+        : []),
+      ...(input.phone ? [{ phone: input.phone }, { phone: input.normalizedPhone }] : []),
+    ],
+  }
+}
+
 function isBlankProgressAnswerValue(
   value: Prisma.JsonValue | Prisma.InputJsonValue | null | undefined,
 ): boolean {
@@ -1270,13 +1298,31 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {
-        teamId,
-        OR: [
-          ...(email
-            ? [{ email: { equals: escapeLikePattern(email), mode: "insensitive" as const } }]
-            : []),
-          ...(phone ? [{ phone }, { phone: normalizedPhone }] : []),
-        ],
+        // SPEC 40 E5/DA3: sem `deletedAt: null`, uma resposta de formulário
+        // público casava com lead na lixeira e era gravada lá — conversão
+        // vazando para dentro de uma lixeira, invisível no board.
+        deletedAt: null,
+        ...buildLeadIdentityMatchWhere({ teamId, email, phone, normalizedPhone }),
+      },
+      take: 20,
+    })
+  }
+
+  /**
+   * SPEC 40 E5/DA3. A unique `Lead(teamId, email)` **inclui** soft-deletados,
+   * então o create pode colidir com um lead que `findLeadCandidates` já não
+   * enxerga. Esta busca é o outro lado da reconciliação: só a lixeira.
+   */
+  findDeletedLeadCandidates(
+    teamId: string,
+    email: string,
+    phone: string,
+    normalizedPhone: string,
+  ) {
+    return prisma.lead.findMany({
+      where: {
+        deletedAt: { not: null },
+        ...buildLeadIdentityMatchWhere({ teamId, email, phone, normalizedPhone }),
       },
       take: 20,
     })

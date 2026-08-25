@@ -19,6 +19,16 @@ export type AckAfterMaxDeliveriesInput = {
 
 export type AckAfterMaxDeliveriesFn = (input: AckAfterMaxDeliveriesInput) => Promise<boolean>
 
+export type DeadLetterInvalidPayloadInput = {
+  topic: string
+  /** `idempotencyKey` do payload; sem ele, o caller passa um derivado do `messageId`. */
+  idempotencyKey: string
+  payload: unknown
+  reason: string
+}
+
+export type DeadLetterInvalidPayloadFn = (input: DeadLetterInvalidPayloadInput) => Promise<void>
+
 export function resolveQueueMaxDeliveryCount(
   envValue = process.env.QUEUE_MAX_DELIVERY_COUNT,
 ): number {
@@ -75,5 +85,35 @@ export async function ackAfterMaxDeliveries(
       outboxError,
     })
     return false
+  }
+}
+
+/**
+ * Payload malformado vai direto para a dead-letter, sem passar pelo
+ * `deliveryCount` (SPEC 40 E5, todo 11). Retentar não conserta payload sem os
+ * campos obrigatórios — o retry só produz ruído; o que faltava era o rastro. O
+ * caller acka de qualquer jeito: se nem o outbox aceitar, o erro fica no log em
+ * vez de virar mensagem eterna.
+ */
+export async function deadLetterInvalidPayload(
+  input: DeadLetterInvalidPayloadInput,
+  writer: Pick<
+    IQueueProcessingFailureRepository,
+    "upsertFromProcessingFailure"
+  > = queueProcessingFailureRepository,
+): Promise<void> {
+  try {
+    await writer.upsertFromProcessingFailure({
+      topic: input.topic,
+      idempotencyKey: input.idempotencyKey,
+      payload: toJsonPayload(input.payload),
+      lastError: input.reason.slice(0, 2000),
+    })
+  } catch (outboxError) {
+    console.error("[deadLetterInvalidPayload] falha ao gravar no outbox", {
+      topic: input.topic,
+      idempotencyKey: input.idempotencyKey,
+      outboxError,
+    })
   }
 }
