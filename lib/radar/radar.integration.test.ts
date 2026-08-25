@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
 import { randomUUID } from "crypto"
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
@@ -34,6 +34,23 @@ let listRadarSegmentEmailRecipients: typeof import("@/lib/radar/list-segment-rec
 let parseRadarSegmentRules: typeof import("@/lib/radar/segment-dsl").parseRadarSegmentRules
 
 if (RUN_INTEGRATION) {
+  // `mock.module` é global ao processo, então precisa ficar DENTRO do guard:
+  // registrado no topo, ele valeria também quando este arquivo é apenas
+  // carregado-e-pulado, e sobrescreveria os mocks instrumentados que outros
+  // testes instalam para os mesmos módulos (public-stats, MetricsUseCase.tags).
+  //
+  // Alguém no grafo de imports puxa `server-only`, que lança fora do runtime
+  // do Next e derrubava o arquivo antes do primeiro teste rodar.
+  mock.module("server-only", () => ({}))
+
+  // `cacheTag`/`cacheLife` exigem o runtime do Next (`cacheComponents`) e
+  // lançam no bun test. Fora do Next a diretiva `"use cache"` já é inerte.
+  mock.module("next/cache", () => ({
+    cacheTag: () => undefined,
+    cacheLife: () => undefined,
+    revalidateTag: () => undefined,
+  }))
+
   ;({ prisma } = await import("@/app/api/infra/data/prisma"))
   ;({ radarService } = await import("@/app/api/services/radar/RadarService"))
   ;({ radarRepository } = await import("@/app/api/infra/data/repositories/radar/RadarRepository"))
@@ -531,6 +548,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
 
     const profilesBefore = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
 
+    const whatsappContactName = "Maria S."
     const conflictingConversation: WhatsAppConversationSelect = {
       id: randomUUID(),
       teamId: scope.teamId,
@@ -538,7 +556,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
       leadId: null,
       externalChatId: null,
       contactPhone: lead.phone!,
-      contactName: "Maria S.",
+      contactName: whatsappContactName,
       contactNameSource: "whatsapp",
       contactAvatarUrl: null,
       normalizedPhone,
@@ -567,8 +585,15 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     })
     expect(identity?.profileId).toBe(profileId)
 
+    // O push name do WhatsApp não derruba o nome curado no CRM: a conversa
+    // chega com `contactNameSource: "PUSH_NAME"`, que `resolveRadarName`
+    // (lib/radar/name-source.ts) classifica abaixo de `crm`. Entre b4942f7b
+    // (2026-08-19) e a precedência por fonte esta asserção era falsa — o nome
+    // virava "Maria S." e ia junto para o destinatário de campanha, porque
+    // `buildEmailRecipients` usa `displayName`.
     const originalProfile = await prisma.radarProfile.findUnique({ where: { id: profileId } })
     expect(originalProfile?.displayName).toBe(lead.name)
+    expect(originalProfile?.nameSource).toBe("crm")
   })
 
   it("lead só-com-e-mail sem perfil existente conta em deferred, sem criar perfil (D8, Parte 2)", async () => {
@@ -1732,7 +1757,10 @@ describe.skipIf(!RUN_INTEGRATION)("Custom segment como audiência de campanha (D
     )
 
     expect(result.isValid).toBe(false)
-    expect(result.errorMessages[0]).toContain(String(EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB))
+    // A mensagem é de UI e formata o limite em pt-BR ("2.000"), então
+    // `String(2000)` nunca casa. Segue derivado da constante — nunca hardcoded —
+    // só que na mesma representação que o corretor lê na tela.
+    expect(result.errorMessages[0]).toContain(EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR"))
 
     const campaign = await prisma.emailCampaign.findFirst({ where: { teamId, radarSegmentSlug: `custom:${oversizedSegmentId}` } })
     expect(campaign).toBeNull()

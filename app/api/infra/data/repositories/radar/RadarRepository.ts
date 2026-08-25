@@ -13,6 +13,7 @@ import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMet
 import type { RadarSyncFilters } from "@/lib/radar/sync-filters"
 import { RADAR_EXPORT_MAX_ROWS } from "@/lib/radar/exportRadarProfiles"
 import { allowedCurrentSourcesForGenderWrite, type RadarGenderSource } from "@/lib/radar/gender"
+import { resolveRadarName } from "@/lib/radar/name-source"
 import {
   DEFAULT_ENGAGEMENT_CONFIG,
   DEFAULT_FORM_ENGAGEMENT_SCORE_RULES,
@@ -511,7 +512,10 @@ export class RadarRepository {
    * não-vazio da fonte atual (mesma política de resolveProfileForDocument)
    * -- antes, este caminho nunca sobrescrevia, entao uma correcao de nome
    * digitada depois de o telefone ja ter criado o perfil era silenciosamente
-   * ignorada.
+   * ignorada. Desde a precedência por fonte, "mais recente não-vazio" passou a
+   * valer só dentro do mesmo nível de confiança: `resolveRadarName`
+   * (`lib/radar/name-source.ts`) barra fonte mais fraca, para o push name do
+   * WhatsApp parar de sobrescrever nome curado no CRM.
    */
   async resolveProfileForPhone(input: {
     teamId: string
@@ -521,6 +525,8 @@ export class RadarRepository {
     displayPhone: string
     phoneValue: string | null
     phoneSource: string
+    /** Procedência do nome. Default: a mesma do telefone. */
+    nameSource?: string
     primaryEmail?: string | null
     normalizedPrimaryEmail?: string | null
     primaryDocument?: string | null
@@ -590,8 +596,22 @@ export class RadarRepository {
             normalizedPrimaryDocument: true,
             displayName: true,
             normalizedName: true,
+            nameSource: true,
           },
         })
+
+        const nameWrite = resolveRadarName(
+          {
+            displayName: existingProfile?.displayName ?? null,
+            normalizedName: existingProfile?.normalizedName ?? null,
+            nameSource: existingProfile?.nameSource ?? null,
+          },
+          {
+            displayName: input.displayName,
+            normalizedName: input.normalizedName,
+            source: input.nameSource ?? input.phoneSource,
+          }
+        )
 
         const profile = await tx.radarProfile.update({
           where: { id: resolvedProfileId },
@@ -605,8 +625,7 @@ export class RadarRepository {
               input.normalizedPrimaryDocument ??
               existingProfile?.normalizedPrimaryDocument ??
               undefined,
-            displayName: input.displayName || existingProfile?.displayName || undefined,
-            normalizedName: input.normalizedName || existingProfile?.normalizedName || undefined,
+            ...(nameWrite ?? {}),
             lastSeenAt: input.lastSeenAt ?? new Date(),
           },
         })
@@ -677,8 +696,28 @@ export class RadarRepository {
             normalizedName: input.normalizedName,
           },
         },
-        select: { id: true },
+        select: { id: true, displayName: true, normalizedName: true, nameSource: true },
       })
+
+      // A linha encontrada aqui casa pela chave natural, que inclui
+      // `normalizedName` — então o nome normalizado já é o mesmo e a decisão
+      // recai sobre grafia (`displayName`) e procedência. Ainda assim passa
+      // pela política: sem isso, uma fonte fraca reescreveria a grafia e
+      // carimbaria `nameSource` por cima de uma forte.
+      const nameWriteByKey = existingByKey
+        ? resolveRadarName(
+            {
+              displayName: existingByKey.displayName,
+              normalizedName: existingByKey.normalizedName,
+              nameSource: existingByKey.nameSource,
+            },
+            {
+              displayName: input.displayName,
+              normalizedName: input.normalizedName,
+              source: input.nameSource ?? input.phoneSource,
+            }
+          )
+        : null
 
       const profile = await tx.radarProfile.upsert({
         where: {
@@ -692,6 +731,7 @@ export class RadarRepository {
           teamId: input.teamId,
           displayName: input.displayName,
           normalizedName: input.normalizedName,
+          nameSource: input.displayName.trim() ? (input.nameSource ?? input.phoneSource) : null,
           displayPhone: input.displayPhone,
           normalizedPhone: input.normalizedPhone,
           primaryEmail: input.primaryEmail ?? null,
@@ -701,7 +741,7 @@ export class RadarRepository {
           lastSeenAt: input.lastSeenAt ?? new Date(),
         },
         update: {
-          displayName: input.displayName || undefined,
+          ...(nameWriteByKey ?? {}),
           displayPhone: input.displayPhone || undefined,
           primaryEmail: input.primaryEmail ?? undefined,
           normalizedPrimaryEmail: input.normalizedPrimaryEmail ?? undefined,
@@ -932,6 +972,8 @@ export class RadarRepository {
     displayName: string
     normalizedName: string
     documentSource: string
+    /** Procedência do nome. Default: a mesma do documento. */
+    nameSource?: string
     lastSeenAt?: Date
   }) {
     return this.db.$transaction(async (tx) => {
@@ -953,17 +995,30 @@ export class RadarRepository {
         // Achado #7 (code review 2026-08-19): mesma política de
         // resolveProfileForPhone -- aceita o nome mais recente não-vazio,
         // nunca sobrescreve com string vazia (não derruba um nome já bom
-        // com dado ausente da fonte atual).
+        // com dado ausente da fonte atual). Desde a precedência por fonte,
+        // isso vale só dentro do mesmo nível de confiança — ver
+        // `resolveRadarName` em `lib/radar/name-source.ts`.
         const existingProfile = await tx.radarProfile.findUnique({
           where: { id: existingByIdentity.profileId },
-          select: { displayName: true, normalizedName: true },
+          select: { displayName: true, normalizedName: true, nameSource: true },
         })
+        const nameWrite = resolveRadarName(
+          {
+            displayName: existingProfile?.displayName ?? null,
+            normalizedName: existingProfile?.normalizedName ?? null,
+            nameSource: existingProfile?.nameSource ?? null,
+          },
+          {
+            displayName: input.displayName,
+            normalizedName: input.normalizedName,
+            source: input.nameSource ?? input.documentSource,
+          }
+        )
         const profile = await tx.radarProfile.update({
           where: { id: existingByIdentity.profileId },
           data: {
             lastSeenAt: input.lastSeenAt ?? new Date(),
-            displayName: input.displayName || existingProfile?.displayName || undefined,
-            normalizedName: input.normalizedName || existingProfile?.normalizedName || undefined,
+            ...(nameWrite ?? {}),
             primaryDocument: input.documentValue,
             normalizedPrimaryDocument: input.normalizedDocument,
           },
@@ -976,6 +1031,7 @@ export class RadarRepository {
           teamId: input.teamId,
           displayName: input.displayName,
           normalizedName: input.normalizedName,
+          nameSource: input.displayName.trim() ? (input.nameSource ?? input.documentSource) : null,
           normalizedPhone: null,
           displayPhone: null,
           primaryDocument: input.documentValue,
