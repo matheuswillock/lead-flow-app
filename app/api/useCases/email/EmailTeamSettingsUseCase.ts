@@ -67,10 +67,15 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const DEFAULT_DOMAIN_REGION = "sa-east-1"
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
 
+/**
+ * Sem `clickTracking` de propósito: o rastreio de cliques do Resend fica sempre
+ * desligado. Ele reescreve os links do e-mail para o subdomínio de tracking, o
+ * que faz provedores marcarem a mensagem como suspeita, e o clique já é medido
+ * no first-party do formulário. Não é uma escolha do time.
+ */
 export type ConfigureDomainTrackingInput = {
   trackingSubdomain: string
   openTracking: boolean
-  clickTracking: boolean
 }
 
 const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
@@ -519,11 +524,11 @@ export class EmailTeamSettingsUseCase {
     ctx: TeamContext
   ): Promise<Output> {
     try {
-      if (!input.openTracking && !input.clickTracking) {
+      if (!input.openTracking) {
         return new Output(
           false,
           [],
-          ["Habilite pelo menos abertura ou cliques para configurar o tracking."],
+          ["Habilite a abertura para configurar o tracking."],
           null
         )
       }
@@ -580,7 +585,7 @@ export class EmailTeamSettingsUseCase {
       } = {
         id: settings.resendDomainId,
         openTracking: input.openTracking,
-        clickTracking: input.clickTracking,
+        clickTracking: false,
       }
       if (!trackingAlreadyConfigured) {
         updatePayload.trackingSubdomain = trackingSubdomain

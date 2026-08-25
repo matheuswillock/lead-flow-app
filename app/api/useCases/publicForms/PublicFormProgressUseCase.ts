@@ -19,6 +19,7 @@ import {
   isBlankPublicFormAnswerValue,
   publicFormAnswerValueText,
 } from "./publicFormLeadSync"
+import { leadFromUpsertOutcome } from "@/lib/public-forms/lead-upsert-outcome"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
 import {
   buildPublicFormIdentityGateIdempotencyKey,
@@ -121,7 +122,12 @@ export class PublicFormProgressUseCase {
     const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
     let sessionLeadId: string | null = resolved.sessionSubmission?.leadId ?? null
     const leadGateMode = this.resolveLeadGateMode(form.teamId)
-    if (leadGateMode !== "radar") {
+    // SPEC 40 E4/DA4 (review #1043): o guard dentro do sync de lead sozinho não
+    // bastava. Aqui há um segundo caminho que produz lead — o criador legado do
+    // progresso — e um terceiro, o `createCrmLead` que arma o gate C do Radar
+    // mais abaixo. Formulário de pesquisa não promove por nenhum deles.
+    const leadCaptureEnabled = !snapshot.leadCaptureDisabled
+    if (leadGateMode !== "radar" && leadCaptureEnabled) {
       const legacyLead = await this.legacyLeadCreator.createOrUpdate({
         form,
         snapshot,
@@ -131,7 +137,13 @@ export class PublicFormProgressUseCase {
         origin,
         allowCreate: !sessionLeadId,
       })
-      sessionLeadId = legacyLead?.lead.id ?? sessionLeadId
+      // O descarte NÃO é emitido aqui de propósito (SPEC 40 E2, divergência
+      // registrada na nota): `/progress` dispara a cada blur, e a parcial que
+      // ainda não tem telefone vira lead assim que o visitante digitar. Emitir
+      // agora deixaria uma linha de descarte para uma sessão que converte —
+      // quebrando exatamente a conta de T-F2.3. O descarte nasce no
+      // completamento, junto do `form_completed`, que é onde o par é medido.
+      sessionLeadId = leadFromUpsertOutcome(legacyLead)?.id ?? sessionLeadId
     }
     const answeredAt = resolveProgressAnsweredAt(input.occurredAt)
     const incomingQuestionIds = new Set(incomingAnswers.map((answer) => answer.questionId))
@@ -194,7 +206,7 @@ export class PublicFormProgressUseCase {
         origin: origin as Record<string, unknown>,
         answerMappingKey: mappingKey,
         answerValue,
-        createCrmLead: isIdentityAnswer && Boolean(identityAnswerValue),
+        createCrmLead: leadCaptureEnabled && isIdentityAnswer && Boolean(identityAnswerValue),
       }
       const queued = await publishServerPublicFormMetricEvent(
         buildPublicFormMetricQueuePayload(form.publicId, metricInput),

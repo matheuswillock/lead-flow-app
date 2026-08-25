@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { buildPublicFormIdentityGateIdempotencyKey } from "@/lib/public-forms/metric-keys"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
-import type { UpsertLeadResult } from "./publicFormLeadSync"
+import type { UpsertLeadOutcome } from "./publicFormLeadSync"
 import {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
@@ -112,7 +112,9 @@ const findFormSubmissionContext = mock(async () => ({
 const listSubmissionAnswers = mock(async () => [] as Array<{ questionId: string; value: unknown }>)
 const upsertProgressSubmission = mock(async () => ({ id: "sub-progress" }))
 const upsertMetricEvent = mock(async () => {})
-const upsertLeadFromFormAnswers = mock(async () => null as UpsertLeadResult | null)
+const upsertLeadFromFormAnswers = mock(
+  async () => ({ outcome: "skipped" }) as UpsertLeadOutcome,
+)
 const publishServerPublicFormMetricEvent = mock(async () => true)
 const recordMetric = mock(async () => true)
 const gateExecute = mock(async () => ({ isValid: true, result: { skipped: "gate_open" as const } }))
@@ -175,7 +177,7 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
     findPublicationById.mockResolvedValue(null)
     listSubmissionAnswers.mockResolvedValue([])
-    upsertLeadFromFormAnswers.mockResolvedValue(null)
+    upsertLeadFromFormAnswers.mockResolvedValue({ outcome: "skipped" })
     upsertProgressSubmission.mockResolvedValue({ id: "sub-progress" })
     publishServerPublicFormMetricEvent.mockResolvedValue(true)
     recordMetric.mockResolvedValue(true)
@@ -369,8 +371,8 @@ describe("PublicFormProgressUseCase form agnóstico (Radar-gate)", () => {
 
   it("mantém o criador legado ativo no Progress nos modos legacy e shadow", async () => {
     upsertLeadFromFormAnswers.mockResolvedValue({
-      lead: { id: "legacy-lead" } as UpsertLeadResult["lead"],
-      created: true,
+      outcome: "created",
+      lead: { id: "legacy-lead" } as Extract<UpsertLeadOutcome, { outcome: "created" }>["lead"],
     })
     const legacyUseCase = new PublicFormProgressUseCase(
       { createOrUpdate: upsertLeadFromFormAnswers },

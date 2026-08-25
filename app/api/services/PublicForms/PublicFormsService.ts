@@ -124,6 +124,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     schedulingMessage: form.schedulingMessage,
     formKind:
       form.formKind === "health_plan_simulator" ? "health_plan_simulator" : "standard",
+    leadCaptureDisabled: form.leadCaptureDisabled,
     questions: needsRebalance ? redistributeQuestionScoresEvenly(questions) : questions,
     rules: form.rules.map((rule) => ({
       id: rule.id,
@@ -392,7 +393,18 @@ export class PublicFormsService implements IPublicFormsService {
   async recordMetric(
     publicId: string,
     input: PublicFormMetricEventInput,
-    options?: { radarMode?: "inline" | "after" | "skip" },
+    options?: {
+      radarMode?: "inline" | "after" | "skip"
+      /**
+       * Publicação já fixada pelo caller (review #1030). `getPublic` devolve
+       * sempre a **vigente**; quem já resolveu a publicação da submissão —
+       * `accept()`, que pina o snapshot por `requestKey` ou por sessão — precisa
+       * gravar o evento naquela, senão a recusa validada contra o snapshot
+       * antigo é contada no funil da publicação nova e some do filtro da que o
+       * visitante realmente viu.
+       */
+      publicationId?: string
+    },
   ) {
     const current = (await this.getPublic(publicId)) as {
       publicationId: string
@@ -400,7 +412,7 @@ export class PublicFormsService implements IPublicFormsService {
     } | null
     if (!current) return false
 
-    let publicationId = current.publicationId
+    let publicationId = options?.publicationId ?? current.publicationId
     let snapshot = current.snapshot
     let matchedQuestion = input.questionId
       ? snapshot.questions.find((item) => item.id === input.questionId)
@@ -477,19 +489,57 @@ export class PublicFormsService implements IPublicFormsService {
       }
     }
 
-    await publicFormsRepository.upsertMetricEvent({
-      formId: current.snapshot.formId,
-      publicationId,
-      questionId: liveQuestionId,
-      questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
-      visitorSessionId: input.visitorSessionId,
-      eventType: input.eventType,
-      eventKey: input.eventKey,
-      eventId: input.eventId ?? null,
-      schemaVersion: input.schemaVersion ?? null,
-      occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
-      origin: json(origin),
-    })
+    // SPEC 40 E2 × modo radar (review #1058). Último ponto de escrita do
+    // descarte: a mensagem da fila é publicada **depois** de
+    // `completeSubmission` e consumida noutro processo, então sobrevive à
+    // compensação do gate C e recriaria a linha que ele acabou de apagar.
+    //
+    // Conferir antes e gravar depois, em duas chamadas, seria check-then-act: o
+    // gate cabe na fresta entre as duas. O repositório faz as duas coisas na
+    // mesma transação, com `FOR UPDATE` nas submissões da sessão — as mesmas
+    // linhas que `attachLeadToPendingSubmissions` atualiza, o que serializa os
+    // dois lados.
+    //
+    // O retorno é `true` mesmo quando não grava: o evento não é erro, é
+    // conclusão que ficou obsoleta. `false` faria o consumer logar "formulário
+    // indisponível" e mascarar o motivo.
+    if (input.eventType === "lead_discarded") {
+      const persisted = await publicFormsRepository.upsertDiscardMetricEventWhenSessionHasNoLead({
+        formId: current.snapshot.formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+      if (!persisted) {
+        console.info(
+          "[PublicFormsService][recordMetric] lead anexado na corrida, descarte ignorado",
+          {
+            formId: current.snapshot.formId,
+            visitorSessionId: input.visitorSessionId,
+            eventKey: input.eventKey,
+          },
+        )
+        return true
+      }
+    } else {
+      await publicFormsRepository.upsertMetricEvent({
+        formId: current.snapshot.formId,
+        publicationId,
+        questionId: liveQuestionId,
+        questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+    }
 
     // Fire-and-forget: journey tracking must never block metric recording.
     // DB connection contention from the advisory lock would exhaust the pool
@@ -611,6 +661,9 @@ export class PublicFormsService implements IPublicFormsService {
       from,
       to,
     })
+    // SPEC 40 E2/DA2: sem isto o `lead_discarded` fica persistido e invisível —
+    // o funil continuaria mostrando só o lado bem-sucedido da conversão.
+    const discardedByReason = await publicFormsRepository.countDiscardedLeadsByReason(id, where)
     const originEvents = await publicFormsRepository.listFormViewOrigins({ formId: id, ...where })
     const origins = new Map<string, Set<string>>()
     for (const event of originEvents) {
@@ -648,9 +701,12 @@ export class PublicFormsService implements IPublicFormsService {
         completions: sessionsByType.form_completed ?? 0,
         leadCreatedSessions: sessionsByType.lead_created ?? 0,
         leadAttachedSessions: sessionsByType.lead_attached ?? 0,
+        leadDiscardedSessions: sessionsByType.lead_discarded ?? 0,
         meetings: sessionsByType.meeting_scheduled ?? 0,
         uniqueLeads,
       },
+      /** Descartes por motivo (`sem_nome`, `sem_telefone`, …) em sessões distintas. */
+      leadDiscardsByReason: discardedByReason,
       origins: Array.from(origins, ([source, sessions]) => ({
         source,
         sessions: sessions.size,

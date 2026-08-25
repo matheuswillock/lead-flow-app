@@ -17,6 +17,8 @@ export type UpsertQueueProcessingFailureInput = {
 
 export interface IQueueProcessingFailureRepository {
   upsertFromProcessingFailure(input: UpsertQueueProcessingFailureInput): Promise<void>
+  /** Falha terminal (`failed`): fica fora do cron de retry. SPEC 40 E5. */
+  recordTerminalFailure(input: UpsertQueueProcessingFailureInput): Promise<void>
   claimDue(limit: number): Promise<QueueProcessingFailureClaimRow[]>
   markResolved(id: string): Promise<void>
   markRetryOrFailed(

@@ -1,10 +1,63 @@
 import { describe, expect, it, mock } from "bun:test"
 import {
   ackAfterMaxDeliveries,
+  deadLetterInvalidPayload,
   DEFAULT_QUEUE_MAX_DELIVERY_COUNT,
   formatQueueProcessingError,
   resolveQueueMaxDeliveryCount,
 } from "./queue-processing-failure"
+
+/**
+ * SPEC 40 E5, todo 11 + review #1042. Payload malformado é falha **terminal**.
+ *
+ * Se entrasse como `pending`, o `RetryQueueProcessingFailuresUseCase`
+ * republicaria o mesmo payload, o consumer dead-lettaria de novo, e a linha
+ * voltaria a `pending` — ciclo fila↔outbox sem fim, o oposto do que o
+ * dead-letter existe para fazer.
+ */
+describe("deadLetterInvalidPayload", () => {
+  it("grava como falha terminal, não pelo caminho de retry", async () => {
+    const recordTerminalFailure = mock(async () => {})
+    const upsertFromProcessingFailure = mock(async () => {})
+
+    await deadLetterInvalidPayload(
+      {
+        topic: "public-form-progress-events",
+        idempotencyKey: "invalid-payload:msg-1",
+        payload: { publicId: "" },
+        reason: "Payload sem visitorSessionId",
+      },
+      { recordTerminalFailure, upsertFromProcessingFailure } as never,
+    )
+
+    expect(recordTerminalFailure).toHaveBeenCalledTimes(1)
+    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledWith({
+      topic: "public-form-progress-events",
+      idempotencyKey: "invalid-payload:msg-1",
+      payload: { publicId: "" },
+      lastError: "Payload sem visitorSessionId",
+    })
+  })
+
+  it("outbox indisponível vira log, nunca throw — o caller precisa ackar", async () => {
+    const recordTerminalFailure = mock(async () => {
+      throw new Error("db down")
+    })
+
+    await expect(
+      deadLetterInvalidPayload(
+        {
+          topic: "public-form-progress-events",
+          idempotencyKey: "invalid-payload:msg-2",
+          payload: {},
+          reason: "payload vazio",
+        },
+        { recordTerminalFailure } as never,
+      ),
+    ).resolves.toBeUndefined()
+  })
+})
 
 describe("ackAfterMaxDeliveries", () => {
   it("abaixo do limite: não persiste e retorna false", async () => {

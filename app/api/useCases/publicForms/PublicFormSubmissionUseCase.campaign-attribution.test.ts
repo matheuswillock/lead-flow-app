@@ -132,7 +132,9 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
     createSubmission,
     findFormSubmissionContext,
     findLeadForSubmission: mock(async () => null),
-    completeSubmission: mock(async () => {}),
+    // Devolve o lote recebido: o caller enfileira o retorno, não o input
+    // (review #1058).
+    completeSubmission: mock(async (input: { metricEvents: unknown[] }) => input.metricEvents),
     markSubmissionFailed: mock(async () => {}),
     finalizeProgressSubmission: mock(async () => ({ id: "sub-progress" })),
   },

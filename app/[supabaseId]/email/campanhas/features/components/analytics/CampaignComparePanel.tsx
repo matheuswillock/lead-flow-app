@@ -187,7 +187,10 @@ export function CampaignComparePanel({
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <TrackingDegradedAlert warnings={data?.trackingWarnings} />
+      <TrackingDegradedAlert
+        warnings={data?.trackingWarnings}
+        blocked={data?.trackingDispatchBlocked}
+      />
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-3">

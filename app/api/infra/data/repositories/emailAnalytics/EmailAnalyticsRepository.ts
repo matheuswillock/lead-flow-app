@@ -122,6 +122,7 @@ export interface IEmailAnalyticsRepository {
     domainStatus: string | null
     openTracking: boolean
     clickTracking: boolean
+    sendingDnsVerified: boolean
   }>
 }
 
@@ -422,6 +423,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     domainStatus: string | null
     openTracking: boolean
     clickTracking: boolean
+    sendingDnsVerified: boolean
   }> {
     const settings = await prisma.emailTeamSettings.findUnique({
       where: { teamId },
@@ -430,6 +432,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         resendDomainStatus: true,
         resendOpenTracking: true,
         resendClickTracking: true,
+        resendSendingDnsVerified: true,
       },
     })
     return {
@@ -437,6 +440,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       domainStatus: settings?.resendDomainStatus ?? null,
       openTracking: Boolean(settings?.resendOpenTracking),
       clickTracking: Boolean(settings?.resendClickTracking),
+      sendingDnsVerified: Boolean(settings?.resendSendingDnsVerified),
     }
   }
 }
