@@ -1,27 +1,30 @@
 import { describe, expect, it } from "bun:test"
-import { hasVerifiedSendingDns, isTrackingDnsRecord } from "./resend-domain-records"
+import { deriveSendingDnsVerified, isSendingDnsRecord } from "./resend-domain-records"
 
-describe("isTrackingDnsRecord", () => {
-  it("classifica os registros de métrica", () => {
-    expect(isTrackingDnsRecord("Tracking")).toBe(true)
-    expect(isTrackingDnsRecord("TrackingCAA")).toBe(true)
-    expect(isTrackingDnsRecord(" Tracking ")).toBe(true)
+describe("isSendingDnsRecord", () => {
+  it("reconhece os registros que entregam e-mail", () => {
+    expect(isSendingDnsRecord("DKIM")).toBe(true)
+    expect(isSendingDnsRecord("SPF")).toBe(true)
+    expect(isSendingDnsRecord(" DKIM ")).toBe(true)
   })
 
-  it("não classifica os registros de envio nem valores ausentes", () => {
-    expect(isTrackingDnsRecord("DKIM")).toBe(false)
-    expect(isTrackingDnsRecord("SPF")).toBe(false)
-    expect(isTrackingDnsRecord("Receiving")).toBe(false)
-    expect(isTrackingDnsRecord(null)).toBe(false)
-    expect(isTrackingDnsRecord(undefined)).toBe(false)
-    expect(isTrackingDnsRecord("")).toBe(false)
+  it("não reconhece métrica, recebimento, rótulo novo ou ausente", () => {
+    // `Receiving` é inbound e opt-in; `Tracking` alimenta o pixel de abertura.
+    // Nenhum dos dois assina o e-mail que sai.
+    expect(isSendingDnsRecord("Tracking")).toBe(false)
+    expect(isSendingDnsRecord("TrackingCAA")).toBe(false)
+    expect(isSendingDnsRecord("Receiving")).toBe(false)
+    expect(isSendingDnsRecord("AlgoQueOResendCriarDepois")).toBe(false)
+    expect(isSendingDnsRecord(null)).toBe(false)
+    expect(isSendingDnsRecord(undefined)).toBe(false)
+    expect(isSendingDnsRecord("")).toBe(false)
   })
 })
 
-describe("hasVerifiedSendingDns", () => {
+describe("deriveSendingDnsVerified", () => {
   it("caso Liber: DKIM e SPF verificados, tracking falhou → envio ok", () => {
     expect(
-      hasVerifiedSendingDns([
+      deriveSendingDnsVerified([
         { record: "DKIM", status: "verified" },
         { record: "SPF", status: "verified" },
         { record: "SPF", status: "verified" },
@@ -30,11 +33,11 @@ describe("hasVerifiedSendingDns", () => {
     ).toBe(true)
   })
 
-  it("DKIM quebrado bloqueia mesmo com tracking verificado", () => {
-    // É o caso que "aceitar partially_failed em bloco" deixaria passar, e o
+  it("DKIM quebrado bloqueia, mesmo com o tracking verificado", () => {
+    // O caso que "aceitar partially_failed em bloco" deixaria passar, e o
     // e-mail sairia sem assinatura.
     expect(
-      hasVerifiedSendingDns([
+      deriveSendingDnsVerified([
         { record: "DKIM", status: "failed" },
         { record: "SPF", status: "verified" },
         { record: "Tracking", status: "verified" },
@@ -44,29 +47,60 @@ describe("hasVerifiedSendingDns", () => {
 
   it("SPF pendente bloqueia", () => {
     expect(
-      hasVerifiedSendingDns([
+      deriveSendingDnsVerified([
         { record: "DKIM", status: "verified" },
         { record: "SPF", status: "pending" },
       ])
     ).toBe(false)
   })
 
-  it("lista vazia ou ausente não conta como verificado", () => {
-    // Ausência de registro não é prova de verificação: o Resend omite `records`
-    // enquanto não processou o domínio.
-    expect(hasVerifiedSendingDns([])).toBe(false)
-    expect(hasVerifiedSendingDns(null)).toBe(false)
-    expect(hasVerifiedSendingDns(undefined)).toBe(false)
+  it("Receiving pendente NÃO bloqueia quem tem DKIM e SPF ok", () => {
+    // Regressão do desenho anterior por denylist, em que `Receiving` entrava na
+    // conta de envio e um registro de inbound pendente travava a campanha.
+    expect(
+      deriveSendingDnsVerified([
+        { record: "DKIM", status: "verified" },
+        { record: "SPF", status: "verified" },
+        { record: "Receiving", status: "pending" },
+      ])
+    ).toBe(true)
   })
 
-  it("só tracking na lista não conta — não há registro de envio para avaliar", () => {
-    expect(hasVerifiedSendingDns([{ record: "Tracking", status: "verified" }])).toBe(false)
+  it("rótulo que o Resend venha a criar não vira pré-requisito de envio", () => {
+    expect(
+      deriveSendingDnsVerified([
+        { record: "DKIM", status: "verified" },
+        { record: "SPF", status: "verified" },
+        { record: "RotuloNovoDoFuturo", status: "failed" },
+      ])
+    ).toBe(true)
   })
 
-  it("registro sem tipo é tratado como envio, não como tracking", () => {
-    // Conservador: um registro que não sabemos classificar não pode ser
-    // descartado da conta, senão um DKIM sem rótulo viraria "ok" por omissão.
-    expect(hasVerifiedSendingDns([{ status: "failed" }])).toBe(false)
-    expect(hasVerifiedSendingDns([{ status: "verified" }])).toBe(true)
+  it("não sabe responder sem registros", () => {
+    expect(deriveSendingDnsVerified([])).toBeUndefined()
+    expect(deriveSendingDnsVerified(null)).toBeUndefined()
+    expect(deriveSendingDnsVerified(undefined)).toBeUndefined()
+  })
+
+  it("não sabe responder quando nenhum item traz rótulo", () => {
+    // O payload do webhook `domain.updated` nem sempre traz `record`. Responder
+    // `false` aqui gravaria "DNS quebrado" a cada evento enxuto do provedor e
+    // re-bloquearia o time que este código destrava.
+    expect(deriveSendingDnsVerified([{ status: "verified" }, { status: "failed" }])).toBeUndefined()
+  })
+
+  it("não sabe responder quando só há tracking ou recebimento", () => {
+    expect(
+      deriveSendingDnsVerified([
+        { record: "Tracking", status: "verified" },
+        { record: "Receiving", status: "verified" },
+      ])
+    ).toBeUndefined()
+  })
+
+  it("nenhum rótulo desconhecido consegue LIBERAR sozinho", () => {
+    // A assimetria que sustenta o desenho: ignorar o desconhecido nunca produz
+    // `true` — liberar exige DKIM/SPF explicitamente verificados.
+    expect(deriveSendingDnsVerified([{ record: "QualquerCoisa", status: "verified" }])).toBeUndefined()
   })
 })

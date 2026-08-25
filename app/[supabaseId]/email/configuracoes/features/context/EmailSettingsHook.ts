@@ -406,7 +406,10 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainRecords(result.records)
       setDomainEvents(result.events ?? [])
       setDomainInput("")
-      await fetchSettings()
+      // `reloadSettings`, não `fetchSettings`: o dedupe usa uma chave constante,
+      // então o `fetchSettings` que existia aqui era um no-op desde o primeiro
+      // load — e os avisos ficavam os do domínio anterior até um reload de página.
+      await reloadSettings()
       toast.success("Domínio conectado. Configure os registros DNS abaixo.")
     } catch (err) {
       console.error("[useEmailSettings] handleConnectDomain error", err)
@@ -414,7 +417,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     } finally {
       setConnectingDomain(false)
     }
-  }, [domainInput, fetchSettings])
+  }, [domainInput, reloadSettings])
 
   const handleDisconnectDomain = useCallback(async () => {
     setDisconnectingDomain(true)
@@ -429,6 +432,9 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainTrackingSubdomain(null)
       setDomainRecords([])
       setDomainEvents([])
+      // Sem domínio não há o que avisar. Deixar a lista anterior na tela faria o
+      // card alertar sobre um domínio que não existe mais.
+      setDomainDispatchWarnings([])
       toast.success("Domínio removido")
     } catch (err) {
       console.error("[useEmailSettings] handleDisconnectDomain error", err)
@@ -450,12 +456,16 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainClickTracking(result.clickTracking ?? domainClickTracking)
       setDomainTrackingSubdomain(result.trackingSubdomain ?? domainTrackingSubdomain)
       if (result.events) setDomainEvents(result.events)
+      // `getDomainRecords` roda `syncFromResendDomain` no servidor, então este é
+      // o ponto em que `resendSendingDnsVerified` costuma mudar. Reler mantém o
+      // aviso coerente com o que o gate passou a decidir.
+      void reloadSettings()
     } catch (err) {
       console.error("[useEmailSettings] handleLoadDomainRecords error", err)
     } finally {
       setLoadingRecords(false)
     }
-  }, [])
+  }, [reloadSettings])
 
   const handleVerifyDomain = useCallback(async () => {
     setVerifyingDomain(true)

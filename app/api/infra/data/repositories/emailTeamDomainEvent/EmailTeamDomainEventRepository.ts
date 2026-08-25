@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
-import { hasVerifiedSendingDns } from "@/lib/email/resend-domain-records"
+import { deriveSendingDnsVerified } from "@/lib/email/resend-domain-records"
 
 export type EmailTeamDomainEventType =
   | "domain_added"
@@ -39,6 +39,7 @@ export type ConnectedResendDomainRow = {
   resendDomainRegion: string | null
   resendOpenTracking: boolean
   resendClickTracking: boolean
+  resendSendingDnsVerified: boolean
 }
 
 export interface IEmailTeamDomainEventRepository {
@@ -165,6 +166,10 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainConnectedAt: null,
         resendOpenTracking: false,
         resendClickTracking: false,
+        // Espelha CLEAR_DOMAIN_DATA em EmailTeamSettingsRepository: o flag não
+        // pode sobreviver à desconexão, senão o próximo domínio herda a
+        // verificação de DNS do anterior.
+        resendSendingDnsVerified: false,
       },
     })
   }
@@ -181,10 +186,10 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
 
     const records = domain.records ?? []
 
-    // Sem `records` na resposta não dá para derivar nada — passar `undefined`
-    // preserva o valor gravado em vez de rebaixá-lo por falta de informação.
-    const sendingDnsVerified =
-      records.length > 0 ? hasVerifiedSendingDns(records) : undefined
+    // `undefined` quando a resposta não permite concluir (sem registros, ou
+    // nenhum com rótulo de envio). Preserva o valor gravado em vez de rebaixá-lo
+    // por falta de informação — ver `deriveSendingDnsVerified`.
+    const sendingDnsVerified = deriveSendingDnsVerified(records)
 
     await this.updateDomainTracking(teamId, {
       status,
@@ -233,6 +238,7 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
         resendDomainRegion: true,
         resendOpenTracking: true,
         resendClickTracking: true,
+        resendSendingDnsVerified: true,
       },
     })
 
@@ -247,6 +253,7 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
           resendDomainRegion: row.resendDomainRegion,
           resendOpenTracking: row.resendOpenTracking,
           resendClickTracking: row.resendClickTracking,
+          resendSendingDnsVerified: row.resendSendingDnsVerified,
         },
       ]
     })
