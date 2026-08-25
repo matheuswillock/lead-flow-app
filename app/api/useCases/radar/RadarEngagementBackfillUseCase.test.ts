@@ -64,21 +64,33 @@ function makeFakeRepo(total: number, msPerBatch = 0) {
   return { repo: repo satisfies IRadarEngagementBackfillRepository, state }
 }
 
-function makeCronExecutions(metadata: unknown): IBackofficeCronExecutionRepository {
+/**
+ * Fake do repositório de execuções de cron.
+ *
+ * O backfill só lê `findMany` (para achar o cursor da última execução
+ * bem-sucedida); o resto existe para satisfazer a interface — inclusive
+ * `findStaleRunningCandidates`/`claimStaleRunningAsFailed`, que são do watchdog
+ * de execuções órfãs e não passam por este use case.
+ */
+function makeCronExecutions(
+  lastSuccessMetadata?: unknown
+): IBackofficeCronExecutionRepository {
   return {
     create: mock(async () => ({}) as BackofficeCronExecution),
-    findMany: mock(async () => [{ metadata } as unknown as BackofficeCronExecution]),
+    findMany: mock(async () =>
+      lastSuccessMetadata === undefined
+        ? []
+        : [{ metadata: lastSuccessMetadata } as unknown as BackofficeCronExecution]
+    ),
     markSuccess: mock(async () => ({}) as BackofficeCronExecution),
     markFailed: mock(async () => ({}) as BackofficeCronExecution),
+    findStaleRunningCandidates: mock(async () => []),
+    claimStaleRunningAsFailed: mock(async () => false),
   }
 }
 
-const noResumePoint = (): IBackofficeCronExecutionRepository => ({
-  create: mock(async () => ({}) as BackofficeCronExecution),
-  findMany: mock(async () => []),
-  markSuccess: mock(async () => ({}) as BackofficeCronExecution),
-  markFailed: mock(async () => ({}) as BackofficeCronExecution),
-})
+/** Nenhuma execução anterior legível: a varredura começa do zero. */
+const noResumePoint = (): IBackofficeCronExecutionRepository => makeCronExecutions()
 
 const originalBudget = process.env.RADAR_BACKFILL_TIME_BUDGET_MS
 
