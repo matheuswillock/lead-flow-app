@@ -1904,10 +1904,21 @@ export class RadarRepository {
     }
 
     try {
-      await this.db.radarIdentity.updateMany({
+      const updated = await this.db.radarIdentity.updateMany({
         where: { id: identityId, teamId, type: "lead_id" },
         data: { value: leadId, normalizedValue: leadId, source },
       })
+
+      // Contagem zero = a reserva sumiu entre a leitura e agora (o gate do
+      // formulário público a assume quando está órfã). Silenciar isso deixaria
+      // a promoção reportar sucesso sem ter vinculado nada, e o sync seguinte
+      // criaria um SEGUNDO `lead_id` no perfil. Falhar aqui joga o caso para o
+      // caminho de recuperação do UseCase, que libera e delega ao sync.
+      if (updated.count === 0) {
+        throw new Error(
+          `Reserva de lead_id desapareceu antes da finalização (identityId=${identityId})`
+        )
+      }
     } catch (error) {
       // A checagem acima não é atômica: o sync pode inserir a identidade real
       // entre o `findFirst` e este `updateMany`, e aí o rename bate na unique.

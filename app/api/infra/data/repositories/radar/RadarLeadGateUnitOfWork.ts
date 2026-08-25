@@ -12,6 +12,7 @@ import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import {
   isPendingLeadIdentity,
   PENDING_LEAD_IDENTITY_PREFIX,
+  PENDING_LEAD_IDENTITY_STALE_MS,
 } from "@/lib/radar/lead-identity"
 
 class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
@@ -212,14 +213,24 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   }): Promise<void> {
     const existing = await this.transaction.radarIdentity.findFirst({
       where: { teamId: input.teamId, profileId: input.radarProfileId, type: "lead_id" },
-      select: { id: true, normalizedValue: true },
+      select: { id: true, normalizedValue: true, createdAt: true },
     })
     if (existing?.normalizedValue === input.leadId) return
 
-    // Reserva provisória da promoção manual não é vínculo: tratá-la como tal
-    // faria o gate do formulário recusar o perfil ("já vinculado a outro lead")
-    // por causa de uma linha que nem lead tem. O gate assume a linha.
     if (existing && isPendingLeadIdentity(existing.normalizedValue)) {
+      // Reserva FRESCA = promoção manual em andamento. Apagá-la aqui faria a
+      // promoção finalizar sobre uma linha que não existe mais (o `updateMany`
+      // vira no-op), e o sync dela criaria um SEGUNDO `lead_id` no perfil —
+      // dois vínculos de CRM e Lead duplicado. Recusar é o certo: a promoção
+      // termina em segundos e o gate reprocessa.
+      const ageMs = Date.now() - existing.createdAt.getTime()
+      if (ageMs < PENDING_LEAD_IDENTITY_STALE_MS) {
+        throw new Error("Perfil Radar tem promoção manual em andamento")
+      }
+
+      // Passada a janela, a reserva é órfã (a liberação é best-effort e pode
+      // ter falhado). Assumir a linha evita o perfil ficar recusado para
+      // sempre por causa de algo que nem lead é.
       await this.transaction.radarIdentity.delete({ where: { id: existing.id } })
     } else if (existing) {
       throw new Error("Perfil Radar já está vinculado a outro lead")
