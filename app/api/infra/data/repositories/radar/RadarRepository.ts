@@ -1746,16 +1746,40 @@ export class RadarRepository {
     })
   }
 
-  /** Troca o valor provisório da claim pelo id real do Lead. */
+  /**
+   * Troca o valor provisório da claim pelo id real do Lead.
+   *
+   * `createLead` dispara o sync inline, que grava a identidade `lead_id` com
+   * `upsertIdentity` — sem passar pelo advisory lock. Se ele vencer a corrida,
+   * a identidade REAL já existe quando chegamos aqui, e renomear a reserva para
+   * o mesmo `normalizedValue` violaria a unique `(teamId, type,
+   * normalizedValue)` com P2002: a promoção reportaria falha embora o Lead
+   * tivesse sido criado, e ainda deixaria a linha `pending:` bloqueando o
+   * perfil. Nesse caso a reserva apenas sai de cena — o vínculo já existe.
+   */
   async finalizeLeadIdentityClaim(
     teamId: string,
     identityId: string,
     leadId: string,
     source = "manual_promote",
   ): Promise<void> {
-    await this.db.radarIdentity.updateMany({
-      where: { id: identityId, teamId, type: "lead_id" },
-      data: { value: leadId, normalizedValue: leadId, source },
+    await this.db.$transaction(async (tx) => {
+      const alreadyReal = await tx.radarIdentity.findFirst({
+        where: { teamId, type: "lead_id", normalizedValue: leadId },
+        select: { id: true },
+      })
+
+      if (alreadyReal && alreadyReal.id !== identityId) {
+        await tx.radarIdentity.deleteMany({
+          where: { id: identityId, teamId, type: "lead_id" },
+        })
+        return
+      }
+
+      await tx.radarIdentity.updateMany({
+        where: { id: identityId, teamId, type: "lead_id" },
+        data: { value: leadId, normalizedValue: leadId, source },
+      })
     })
   }
 
