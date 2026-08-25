@@ -407,5 +407,42 @@ describe("reserva pending: nao bloqueia o perfil", () => {
     expect(releaseLeadIdentityClaim).toHaveBeenCalledWith("team-1", "identity-1")
     expect(syncLeadExecute).toHaveBeenCalledWith({ leadId: "lead-new-1", teamId: "team-1" })
     expect(output.isValid).toBe(true)
+    expect((output.result as { identityLinked: boolean }).identityLinked).toBe(true)
+  })
+
+  // Finalize E sync falhando: o Lead existe e esta SOLTO. Dizer "vinculado ao
+  // perfil Radar" aqui e o tipo de mentira que some — o usuario fecha o dialog
+  // achando que acabou.
+  it("finalize e sync falhando: reporta que o vinculo nao foi confirmado", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    finalizeLeadIdentityClaim.mockImplementation(async () => {
+      throw new Error("connection reset")
+    })
+    syncLeadExecute.mockImplementation(
+      async () => new Output(false, [], ["sync indisponivel"], null)
+    )
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+    const result = output.result as { leadId: string; identityLinked: boolean }
+
+    // `isValid` segue true: o Lead EXISTE. Reportar falha faria o usuario
+    // tentar de novo e criar um segundo Lead.
+    expect(output.isValid).toBe(true)
+    expect(result.leadId).toBe("lead-new-1")
+    expect(result.identityLinked).toBe(false)
+    expect(output.successMessages.join(" ")).toContain("não foi confirmado")
+    expect(output.successMessages.join(" ")).not.toContain("e vinculado")
+  })
+
+  it("sync falhando mas finalize OK ainda e vinculo confirmado", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    syncLeadExecute.mockImplementation(
+      async () => new Output(false, [], ["sync indisponivel"], null)
+    )
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    expect(output.isValid).toBe(true)
+    expect((output.result as { identityLinked: boolean }).identityLinked).toBe(true)
   })
 })

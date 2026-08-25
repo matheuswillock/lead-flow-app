@@ -134,6 +134,7 @@ class PromoteRadarProfileToLeadUseCase {
         return new Output(false, [], ["Erro ao criar Lead a partir do perfil Radar"], null)
       }
 
+      let identityLinked = true
       try {
         await radarRepository.finalizeLeadIdentityClaim(
           input.access.teamId,
@@ -141,6 +142,7 @@ class PromoteRadarProfileToLeadUseCase {
           createdLead.id
         )
       } catch (finalizeError) {
+        identityLinked = false
         // O Lead JÁ EXISTE neste ponto. Deixar a reserva para trás bloquearia o
         // perfil (o gate acima e a própria claim veem qualquer `lead_id`), e o
         // usuário ficaria com um Lead criado que ele não consegue revincular.
@@ -165,11 +167,30 @@ class PromoteRadarProfileToLeadUseCase {
         )
       }
 
+      // O vínculo existe se a finalização OU o sync deu certo. Falhando os
+      // dois, o Lead está criado e SOLTO — dizer "vinculado ao perfil Radar"
+      // aqui seria mentira, e é o tipo de mentira que some: o usuário fecha o
+      // dialog achando que acabou.
+      if (!identityLinked && !syncOutput.isValid) {
+        console.error(
+          `[PromoteRadarProfileToLeadUseCase][execute] Lead ${createdLead.id} criado sem vínculo com o perfil ${profile.id}`
+        )
+        // `isValid` segue true de propósito: o Lead EXISTE. Reportar falha faria
+        // o usuário tentar de novo e criar um segundo Lead — pior que o vínculo
+        // faltando, que o próximo sync do CRM resolve.
+        return new Output(
+          true,
+          ["Lead criado, mas o vínculo com o perfil Radar não foi confirmado."],
+          [],
+          { leadId: createdLead.id, radarProfileId: profile.id, identityLinked: false }
+        )
+      }
+
       return new Output(
         true,
         ["Lead criado e vinculado ao perfil Radar"],
         [],
-        { leadId: createdLead.id, radarProfileId: profile.id }
+        { leadId: createdLead.id, radarProfileId: profile.id, identityLinked: true }
       )
     } catch (error) {
       console.error("[PromoteRadarProfileToLeadUseCase][execute]", error)
