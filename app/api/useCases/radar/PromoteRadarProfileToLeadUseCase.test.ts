@@ -301,3 +301,46 @@ describe("T-R5.1 — duplicata é fluxo, não erro seco", () => {
     expect(createLead).not.toHaveBeenCalled()
   })
 })
+
+describe("T-R5.2 — sync inline vencendo a corrida nao derruba a promocao", () => {
+  beforeEach(() => {
+    getProfileForPromotionWithCtx.mockReset()
+    claimProvisionalLeadIdentity.mockReset()
+    finalizeLeadIdentityClaim.mockReset()
+    releaseLeadIdentityClaim.mockReset()
+    createLead.mockReset()
+    syncLeadExecute.mockReset()
+
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    claimProvisionalLeadIdentity.mockImplementation(async () => ({ identityId: "identity-1" }))
+    releaseLeadIdentityClaim.mockImplementation(async () => undefined)
+    createLead.mockImplementation(async () => new Output(true, [], [], { id: "lead-new-1" }))
+    syncLeadExecute.mockImplementation(async () => new Output(true, [], [], null))
+  })
+
+  // `createLead` dispara o sync inline, que grava lead_id com upsertIdentity,
+  // fora do advisory lock. Se ele chegar primeiro, a reconciliacao acontece
+  // dentro do repositorio; o use case nao pode transformar isso em erro.
+  it("promocao continua valida quando a identidade real ja existia", async () => {
+    finalizeLeadIdentityClaim.mockImplementation(async () => undefined)
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    expect(output.isValid).toBe(true)
+    expect((output.result as { leadId: string }).leadId).toBe("lead-new-1")
+    expect(releaseLeadIdentityClaim).not.toHaveBeenCalled()
+  })
+
+  it("falha ao finalizar nao apaga o Lead ja criado", async () => {
+    finalizeLeadIdentityClaim.mockImplementation(async () => {
+      throw new Error("P2002")
+    })
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    // O Lead existe. O caminho de erro pode reportar falha, mas nunca deve
+    // reintroduzir a delecao de Lead que este estagio removeu.
+    expect(output.isValid).toBe(false)
+    expect(createLead).toHaveBeenCalledTimes(1)
+  })
+})
