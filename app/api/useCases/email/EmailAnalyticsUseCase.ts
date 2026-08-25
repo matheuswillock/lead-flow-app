@@ -21,6 +21,7 @@ import {
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
 import {
+  assertResendDomainTrackingReady,
   getResendDomainDispatchWarnings,
   isResendDomainTrackingCapable,
 } from "@/lib/email/campaign-dispatch-guards"
@@ -172,6 +173,9 @@ export class EmailAnalyticsUseCase {
     const snapshot = await this.repository.findResendDomainTracking(teamId)
     return {
       resendDomainTrackingCapable: isResendDomainTrackingCapable(snapshot.domainStatus),
+      // O alerta da tela precisa saber se o gate travou de verdade. Deduzir isso
+      // de "existe aviso" ficou errado quando aviso deixou de implicar bloqueio.
+      trackingDispatchBlocked: !assertResendDomainTrackingReady(snapshot).ok,
       trackingWarnings: getResendDomainDispatchWarnings(snapshot),
     }
   }

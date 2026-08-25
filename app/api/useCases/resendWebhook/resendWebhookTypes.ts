@@ -16,7 +16,14 @@ export type ResendWebhookPayload = {
       subType?: string
       diagnosticCode?: string[]
     }
-    records?: Array<{ status?: string }>
+    /**
+     * `record` é o propósito (`DKIM`, `SPF`, `Tracking`, `TrackingCAA`,
+     * `Receiving`) e decide se o registro é pré-requisito de ENTREGA. Opcional
+     * porque o provedor nem sempre o envia — `deriveSendingDnsVerified` responde
+     * `undefined` nesse caso e a escrita preserva o valor atual, em vez de
+     * gravar "DNS de envio quebrado" por falta de rótulo.
+     */
+    records?: Array<{ status?: string; record?: string }>
     open_tracking?: boolean
     click_tracking?: boolean
   }

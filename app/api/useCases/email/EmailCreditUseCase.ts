@@ -58,6 +58,7 @@ export class EmailCreditUseCase {
         resendDomainStatus: true,
         resendOpenTracking: true,
         resendClickTracking: true,
+        resendSendingDnsVerified: true,
       },
     })
     const tracking = assertResendDomainTrackingReady({
@@ -65,6 +66,7 @@ export class EmailCreditUseCase {
       domainStatus: settings?.resendDomainStatus,
       openTracking: settings?.resendOpenTracking,
       clickTracking: settings?.resendClickTracking,
+      sendingDnsVerified: settings?.resendSendingDnsVerified,
     })
     return {
       trackingDispatchBlocked: !tracking.ok,
