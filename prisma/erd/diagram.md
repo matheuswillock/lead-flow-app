@@ -1455,6 +1455,7 @@ question_skipped question_skipped
 form_completed form_completed
 lead_created lead_created
 lead_attached lead_attached
+lead_discarded lead_discarded
 meeting_scheduled meeting_scheduled
 page_viewed page_viewed
 page_advanced page_advanced
@@ -1462,6 +1463,7 @@ page_returned page_returned
 question_focused question_focused
 form_submit_attempted form_submit_attempted
 form_validation_failed form_validation_failed
+form_submit_failed form_submit_failed
 form_exit_intent form_exit_intent
 form_abandoned form_abandoned
 form_resumed form_resumed
