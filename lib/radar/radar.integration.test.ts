@@ -69,6 +69,24 @@ if (RUN_INTEGRATION) {
   ;({ customerDataPlatformUseCase } = await import("@/app/api/useCases/radar/RadarUseCase"))
   ;({ listRadarSegmentEmailRecipients } = await import("@/lib/radar/list-segment-recipients"))
   ;({ parseRadarSegmentRules } = await import("@/lib/radar/segment-dsl"))
+
+  // Pesos de engajamento, semeados ANTES de qualquer teste.
+  //
+  // `RadarRepository` guarda pesos/config num cache de módulo com TTL, aquecido
+  // na primeira chamada. Se qualquer teste calcular score antes de a tabela
+  // existir, o cache congela pesos vazios pelo resto do arquivo — todo perfil
+  // sai com score 0 e o T-R2.3 passa por vacuidade (lote == unitário == 0).
+  // Semear aqui garante que o primeiro aquecimento já veja peso real.
+  for (const [eventType, weight] of [
+    ["email.opened", 10],
+    ["email.clicked", 25],
+  ] as const) {
+    await prisma.backofficeRadarEngagementWeight.upsert({
+      where: { eventType },
+      create: { eventType, weight, isActive: true },
+      update: { weight, isActive: true },
+    })
+  }
 }
 
   const scope = {
@@ -323,7 +341,10 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
   it("lead que perde o telefone válido e muda para status de marco também gera o marco (branch só-com-e-mail, D5 fix review PR #561)", async () => {
     const suffix = randomUUID().slice(0, 8)
     const sharedEmail = `email-only-milestone-${suffix}@example.com`
-    const phone = `1199989${String(Date.now()).slice(-6)}`
+    // DDD 21 + 9 dígitos = 11, celular BR plausível. Antes era `1199989…`, com
+    // 13 dígitos começando em "11" — que não é telefone BR em leitura nenhuma e
+    // só passava porque `normalizeRadarPhone` devolvia os dígitos crus (R4).
+    const phone = `21998${String(Date.now()).slice(-6)}`
 
     const milestoneLead = await prisma.lead.create({
       data: {
@@ -396,7 +417,8 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
 
   it("re-sync do mesmo status de marco não duplica o RadarEvent (D5)", async () => {
     const suffix = randomUUID().slice(0, 8)
-    const phone = `1199990${String(Date.now()).slice(-6)}`
+    // 11 dígitos (DDD 21). Ver nota do fixture equivalente acima.
+    const phone = `21997${String(Date.now()).slice(-6)}`
     const milestoneLead = await prisma.lead.create({
       data: {
         id: randomUUID(),
@@ -442,7 +464,8 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
 
   it("profile.first_contact é gravado exatamente uma vez quando um perfil nasce via CRM (D5)", async () => {
     const suffix = randomUUID().slice(0, 8)
-    const phone = `1199991${String(Date.now()).slice(-6)}`
+    // 11 dígitos (DDD 21). Ver nota do fixture equivalente acima.
+    const phone = `21996${String(Date.now()).slice(-6)}`
     const firstContactLead = await prisma.lead.create({
       data: {
         id: randomUUID(),
