@@ -194,8 +194,7 @@ export type RadarSegmentDeleteResult = {
  * (auditoria CDP §4 R8). Declarar `number` aqui seria mentira de contrato — o
  * valor chega nulo e o tipo promete que não.
  *
- * A renderização ainda imprime `?? 0`; trocar por "—" é a SPEC 11 E6, o par de
- * frontend deste conserto.
+ * `RadarContainer` renderiza `null`/`undefined` como "—", nunca `0`.
  */
 export type RadarMetrics = {
   totalProfiles: number

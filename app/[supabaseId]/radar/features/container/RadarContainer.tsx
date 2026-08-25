@@ -192,10 +192,13 @@ export function RadarContainer() {
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
+            // Derivados vêm `null` quando a contagem de segmentos de sistema
+            // falha: DESCONHECIDO, não zero. Imprimir `0` aqui era o
+            // "dashboard zerado" que o backend acabou de parar de cachear (R8).
             { label: "Perfis unificados", value: metrics?.totalProfiles ?? 0 },
-            { label: "Aptos para e-mail", value: metrics?.marketable ?? 0 },
-            { label: "Bloqueados", value: metrics?.blocked ?? 0 },
-            { label: "Com engajamento recente", value: metrics?.engaged ?? 0 },
+            { label: "Aptos para e-mail", value: metrics?.marketable ?? "—" },
+            { label: "Bloqueados", value: metrics?.blocked ?? "—" },
+            { label: "Com engajamento recente", value: metrics?.engaged ?? "—" },
           ].map((card) => (
             <Card key={card.label}>
               <CardHeader className="pb-2">
