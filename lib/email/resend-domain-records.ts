@@ -21,11 +21,10 @@
  * adicionar. Um registro de inbound pendente derrubaria o disparo de um domínio
  * com DKIM e SPF verificados.
  *
- * Enumerar o que entrega e ignorar o resto erra para o lado seguro: rótulo
- * desconhecido não bloqueia ninguém, e nenhum rótulo desconhecido pode
- * *liberar* — a liberação exige DKIM/SPF explicitamente verificados.
+ * É também a lista dos propósitos EXIGIDOS para liberar: os dois precisam
+ * aparecer no snapshot. Ver `deriveSendingDnsVerified`.
  */
-const SENDING_RECORD_PURPOSES = new Set(["DKIM", "SPF"])
+const SENDING_RECORD_PURPOSES = ["DKIM", "SPF"] as const
 
 export type ResendDomainRecordLike = {
   status?: string | null
@@ -34,25 +33,31 @@ export type ResendDomainRecordLike = {
 
 /** O registro é pré-requisito para ENTREGAR (assinatura e autorização de envio). */
 export function isSendingDnsRecord(record: string | null | undefined): boolean {
-  return SENDING_RECORD_PURPOSES.has(record?.trim() ?? "")
+  const purpose = record?.trim() ?? ""
+  return SENDING_RECORD_PURPOSES.some((required) => required === purpose)
 }
 
 /**
  * O DNS necessário para ENVIAR está verificado?
  *
  * Três respostas, não duas:
- * - `true`  — todo DKIM/SPF presente está verificado.
- * - `false` — existe DKIM ou SPF e algum não está verificado. Bloqueia.
- * - `undefined` — **não dá para saber**: a lista veio vazia, ou nenhum registro
- *   traz rótulo de envio reconhecível.
+ * - `true`  — DKIM **e** SPF presentes, e todos verificados.
+ * - `false` — algum registro de envio presente não está verificado. Bloqueia.
+ * - `undefined` — **não dá para saber**: nada quebrado à vista, mas falta algum
+ *   dos dois propósitos (lista vazia, snapshot parcial, ou itens sem rótulo).
  *
- * O `undefined` não é preciosismo. O payload do webhook `domain.updated` do
- * Resend nem sempre traz `record` em cada item, e sem o rótulo é impossível
- * distinguir DKIM de CNAME de tracking. Colapsar esse caso em `false`
- * significaria gravar "DNS de envio quebrado" toda vez que o provedor manda um
- * evento enxuto — re-bloqueando, pela porta dos fundos, exatamente o time que
- * este código destrava. Quem chama trata `undefined` como "preserva o valor
- * atual", a mesma regra que `updateDomainTracking` já aplica na escrita.
+ * Quem chama trata `undefined` como "preserva o valor atual", a mesma regra que
+ * `updateDomainTracking` já aplica na escrita. Isso importa porque o payload do
+ * webhook `domain.updated` nem sempre traz `record` em cada item, e sem o rótulo
+ * é impossível distinguir DKIM de CNAME de tracking. Colapsar esse caso em
+ * `false` gravaria "DNS de envio quebrado" a cada evento enxuto do provedor,
+ * re-bloqueando pela porta dos fundos exatamente os times que este código
+ * destrava.
+ *
+ * Se o Resend renomear um dos rótulos, a resposta vira `undefined` para sempre e
+ * o gate passa a depender só do fallback por `status === "verified"`. É a
+ * direção segura: deixa de destravar `partially_failed`, mas não libera nada
+ * indevidamente nem bloqueia quem já está verificado.
  */
 export function deriveSendingDnsVerified(
   records: ResendDomainRecordLike[] | null | undefined
@@ -60,6 +65,27 @@ export function deriveSendingDnsVerified(
   const sendingRecords = (records ?? []).filter((record) =>
     isSendingDnsRecord(record.record)
   )
-  if (sendingRecords.length === 0) return undefined
-  return sendingRecords.every((record) => record.status === "verified")
+
+  // A ORDEM dos dois blocos abaixo é a regra, não detalhe de implementação.
+  //
+  // Quebra vista é conclusiva: um registro de envio reprovado basta para
+  // bloquear, mesmo com o snapshot incompleto. Checar completude primeiro
+  // transformaria `[{record:"DKIM",status:"failed"}]` em `undefined`, e
+  // `undefined` preserva o valor gravado — um DKIM que caiu deixaria de derrubar
+  // um domínio já liberado.
+  if (sendingRecords.some((record) => record.status !== "verified")) return false
+
+  // Ausência não é conclusiva: para LIBERAR, os dois propósitos precisam estar
+  // presentes. Sem essa exigência, `[{record:"DKIM",status:"verified"}]` liberava
+  // sozinho — o SPF omitido ou sem rótulo era descartado pelo filtro e ninguém
+  // via a falta. Pior, `[{record:"SPF",status:"verified"}]` liberava sem DKIM
+  // nenhum, ou seja, e-mail saindo sem assinatura. Medido executando a função
+  // antes da correção: os dois devolviam `true`.
+  //
+  // Cobre também a lista vazia, que não tem propósito nenhum.
+  const purposesPresent = new Set(sendingRecords.map((record) => record.record?.trim()))
+  const snapshotIsComplete = SENDING_RECORD_PURPOSES.every((required) =>
+    purposesPresent.has(required)
+  )
+  return snapshotIsComplete ? true : undefined
 }

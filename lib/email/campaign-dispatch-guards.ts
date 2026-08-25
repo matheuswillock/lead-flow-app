@@ -123,11 +123,17 @@ export function getResendDomainDispatchWarnings(params: ResendDomainTrackingInpu
   if (!blocked.ok) return [blocked.message]
   if (!params.domainName?.trim()) return []
 
-  // Duas causas para não medir abertura: métrica desligada, ou CNAME de
+  // Duas causas para não medir abertura: o pixel desligado, ou o CNAME de
   // tracking pendente. As duas produzem o mesmo efeito e a mesma orientação.
-  const metricsEnabled = Boolean(params.openTracking || params.clickTracking)
+  //
+  // Olha `openTracking` e SÓ ele. Aceitar `|| clickTracking` silenciava o aviso
+  // num domínio com abertura desligada e cliques ligados: `email.opened` nunca
+  // chega, a taxa de abertura fica zerada, e a tela não dizia por quê. O
+  // rastreio de cliques do Resend está desligado em todo lugar de propósito,
+  // então o termo só sabia mentir sobre a métrica que a mensagem promete.
+  const openTrackingEnabled = Boolean(params.openTracking)
   const canMeasure = isResendDomainTrackingCapable(params.domainStatus)
-  if (!metricsEnabled || !canMeasure) {
+  if (!openTrackingEnabled || !canMeasure) {
     return [RESEND_DOMAIN_METRICS_DISABLED_MESSAGE]
   }
 
