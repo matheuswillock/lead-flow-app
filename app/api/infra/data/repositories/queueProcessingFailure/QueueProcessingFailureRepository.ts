@@ -55,6 +55,41 @@ export class QueueProcessingFailureRepository implements IQueueProcessingFailure
     })
   }
 
+  /**
+   * SPEC 40 E5, todo 11 (review #1042). Falha **terminal**: entra como `failed`,
+   * fora do alcance do cron de retry. `upsertFromProcessingFailure` grava
+   * `pending`, e o `RetryQueueProcessingFailuresUseCase` republicaria o mesmo
+   * payload malformado — o consumer dead-letta de novo, a linha volta a
+   * `pending`, e o ciclo não fecha. Payload sem os campos obrigatórios não
+   * melhora com o tempo: o que se quer dele é o rastro, não a retentativa.
+   */
+  async recordTerminalFailure(input: UpsertQueueProcessingFailureInput): Promise<void> {
+    const now = new Date()
+    await prisma.queueProcessingFailure.upsert({
+      where: {
+        topic_idempotencyKey: {
+          topic: input.topic,
+          idempotencyKey: input.idempotencyKey,
+        },
+      },
+      create: {
+        topic: input.topic,
+        idempotencyKey: input.idempotencyKey,
+        payload: input.payload,
+        status: "failed",
+        attemptCount: 1,
+        nextAttemptAt: now,
+        lastError: input.lastError,
+      },
+      update: {
+        payload: input.payload,
+        lastError: input.lastError,
+        status: "failed",
+        nextAttemptAt: now,
+      },
+    })
+  }
+
   private async recoverStaleProcessingClaims(now: Date): Promise<void> {
     const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS)
     const staleRows = await prisma.queueProcessingFailure.findMany({

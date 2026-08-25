@@ -7,6 +7,13 @@ const deleteManyMock = mock(async () => ({ count: 0 }))
 const countMock = mock(async () => 0)
 const updateMock = mock(async () => ({}))
 const upsertMock = mock(async () => ({}))
+/**
+ * `blockTeamEmail` lê a linha atual antes do upsert para não rebaixar o motivo
+ * nem reiniciar `blockedAt`. Null = endereço ainda não estava bloqueado.
+ */
+const findUniqueContactMock = mock(
+  async () => null as { blockReason: string | null; blockedAt: Date | null } | null
+)
 const createMock = mock(async () => ({ id: "blocklist-id" }))
 const createEventMock = mock(async () => ({}))
 const transactionMock = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -16,6 +23,7 @@ const transactionMock = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
       deleteMany: deleteManyMock,
       count: countMock,
       upsert: upsertMock,
+      findUnique: findUniqueContactMock,
     },
     emailContactList: {
       findFirst: findFirstMock,

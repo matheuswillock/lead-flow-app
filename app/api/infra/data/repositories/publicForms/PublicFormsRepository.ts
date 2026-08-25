@@ -62,6 +62,34 @@ function isPrismaUniqueConstraint(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
 }
 
+/**
+ * Critério de identidade compartilhado pelas duas buscas de candidato a lead
+ * (vivos e da lixeira) — a regra é uma só; o que muda é o `deletedAt`.
+ *
+ * `escapeLikePattern` no e-mail: sem ele o `mode: "insensitive"` vira ILIKE com
+ * o valor cru, e `_`/`%` do endereço injetam no pool candidatos que não casam
+ * por e-mail nenhum. `findMatchingLead` decide no último critério por
+ * `byName.length === 1`, então o lixo do curinga faz uma resposta de formulário
+ * público ser gravada por cima do lead errado — ou empata o `byName` em 2 e
+ * perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
+ */
+function buildLeadIdentityMatchWhere(input: {
+  teamId: string
+  email: string
+  phone: string
+  normalizedPhone: string
+}): Prisma.LeadWhereInput {
+  return {
+    teamId: input.teamId,
+    OR: [
+      ...(input.email
+        ? [{ email: { equals: escapeLikePattern(input.email), mode: "insensitive" as const } }]
+        : []),
+      ...(input.phone ? [{ phone: input.phone }, { phone: input.normalizedPhone }] : []),
+    ],
+  }
+}
+
 function isBlankProgressAnswerValue(
   value: Prisma.JsonValue | Prisma.InputJsonValue | null | undefined,
 ): boolean {
@@ -404,6 +432,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           meetingDurationMinutes: draft.meetingDurationMinutes,
           schedulingMessage: draft.schedulingMessage,
           formKind: draft.formKind ?? "standard",
+          leadCaptureDisabled: draft.leadCaptureDisabled ?? false,
         },
       })
       await replaceDraftRelations(tx, form.id, draft)
@@ -444,6 +473,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           meetingDurationMinutes: draft.meetingDurationMinutes,
           schedulingMessage: draft.schedulingMessage,
           formKind: draft.formKind ?? "standard",
+          leadCaptureDisabled: draft.leadCaptureDisabled ?? false,
           approvalStatus: "draft",
           reviewedById: null,
           reviewedAt: null,
@@ -765,6 +795,35 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     `
 
     return Object.fromEntries(rows.map((row) => [row.eventType, Number(row.uniqueSessions)]))
+  }
+
+  /**
+   * Descartes por motivo (SPEC 40 E2/DA2), em sessões distintas — a mesma
+   * unidade dos outros contadores do funil, para as séries serem comparáveis.
+   * Motivo vive em `origin.reason`; linha sem motivo entra como
+   * `desconhecido` em vez de sumir (silêncio foi exatamente o bug do F3).
+   */
+  async countDiscardedLeadsByReason(
+    formId: string,
+    where: Prisma.PublicFormMetricEventWhereInput = {},
+  ): Promise<Record<string, number>> {
+    const rows = await prisma.publicFormMetricEvent.findMany({
+      where: { formId, ...where, eventType: "lead_discarded" },
+      select: { origin: true, visitorSessionId: true },
+    })
+    const byReason = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const origin = row.origin
+      const rawReason =
+        origin && typeof origin === "object" && !Array.isArray(origin)
+          ? (origin as Record<string, unknown>).reason
+          : null
+      const reason = typeof rawReason === "string" && rawReason ? rawReason : "desconhecido"
+      const sessions = byReason.get(reason) ?? new Set<string>()
+      sessions.add(row.visitorSessionId)
+      byReason.set(reason, sessions)
+    }
+    return Object.fromEntries(Array.from(byReason, ([reason, sessions]) => [reason, sessions.size]))
   }
 
   listFormViewOrigins(where: Prisma.PublicFormMetricEventWhereInput) {
@@ -1141,6 +1200,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    submitRequestedAt: Date
   }) {
     return prisma.publicFormSubmission.create({
       data: {
@@ -1266,13 +1326,31 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {
-        teamId,
-        OR: [
-          ...(email
-            ? [{ email: { equals: escapeLikePattern(email), mode: "insensitive" as const } }]
-            : []),
-          ...(phone ? [{ phone }, { phone: normalizedPhone }] : []),
-        ],
+        // SPEC 40 E5/DA3: sem `deletedAt: null`, uma resposta de formulário
+        // público casava com lead na lixeira e era gravada lá — conversão
+        // vazando para dentro de uma lixeira, invisível no board.
+        deletedAt: null,
+        ...buildLeadIdentityMatchWhere({ teamId, email, phone, normalizedPhone }),
+      },
+      take: 20,
+    })
+  }
+
+  /**
+   * SPEC 40 E5/DA3. A unique `Lead(teamId, email)` **inclui** soft-deletados,
+   * então o create pode colidir com um lead que `findLeadCandidates` já não
+   * enxerga. Esta busca é o outro lado da reconciliação: só a lixeira.
+   */
+  findDeletedLeadCandidates(
+    teamId: string,
+    email: string,
+    phone: string,
+    normalizedPhone: string,
+  ) {
+    return prisma.lead.findMany({
+      where: {
+        deletedAt: { not: null },
+        ...buildLeadIdentityMatchWhere({ teamId, email, phone, normalizedPhone }),
       },
       take: 20,
     })
@@ -1542,6 +1620,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       visitorSessionId?: string | null
       thankYouPageId?: string | null
       scheduledMeetingStartsAt?: Date | null
+      submitRequestedAt: Date
     },
   ) {
     return prisma.publicFormSubmission.update({
@@ -1555,6 +1634,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         visitorSessionId: data.visitorSessionId,
         thankYouPageId: data.thankYouPageId,
         scheduledMeetingStartsAt: data.scheduledMeetingStartsAt,
+        submitRequestedAt: data.submitRequestedAt,
         completionStatus: "partial",
       },
       select: { id: true, eventId: true },
@@ -1633,23 +1713,25 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  async claimSubmissionForRetry(
-    submissionId: string,
-    publicationId: string,
-    staleBefore: Date,
-  ) {
+  async claimSubmissionForRetry(input: {
+    submissionId: string
+    publicationId: string
+    staleBefore: Date
+    submitRequestedAt: Date
+  }) {
     const result = await prisma.publicFormSubmission.updateMany({
       where: {
-        id: submissionId,
-        publicationId,
+        id: input.submissionId,
+        publicationId: input.publicationId,
         OR: [
           { status: "failed" },
-          { status: "processing", updatedAt: { lt: staleBefore } },
+          { status: "processing", updatedAt: { lt: input.staleBefore } },
         ],
       },
       data: {
         status: "processing",
         errorMessage: null,
+        submitRequestedAt: input.submitRequestedAt,
       },
     })
     return result.count === 1
@@ -1678,6 +1760,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  /**
+   * SPEC 40 E0/DA6: `submitRequestedAt IS NOT NULL` é o que separa as duas
+   * populações. `status = 'processing'` é o default da coluna, então toda casca
+   * criada pelo `/progress` também o satisfaz — sem o marcador de aceite este
+   * claim completava formulário com o visitante ainda digitando. Filtrar por
+   * prefixo do `requestKey` não resolveria: um envio real que resolve a
+   * submissão da sessão **herda** o `requestKey` `progress:`.
+   */
   async claimPendingSubmissionDispatches(input: {
     limit: number
     leaseUntil: Date
@@ -1687,6 +1777,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         SELECT "id"
         FROM "public"."corretor_studio_public_form_submissions"
         WHERE "status" = 'processing'
+          AND "submitRequestedAt" IS NOT NULL
           AND "dispatchAcceptedAt" IS NULL
           AND ("nextDispatchAt" IS NULL OR "nextDispatchAt" <= NOW())
         ORDER BY "nextDispatchAt" ASC NULLS FIRST, "createdAt" ASC
