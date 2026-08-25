@@ -132,6 +132,12 @@ async function attachToLiveLead(
  */
 async function attachToDeletedLead(match: Lead): Promise<UpsertLeadResult> {
   const previousNotes = match.notes?.trim()
+  // Idempotente (review #1042): o job pode ser reprocessado pelo drain, e a
+  // mesma frase fixa acabaria repetida em cada passagem até tomar conta das
+  // notas do lead. Já está lá, não acrescenta.
+  if (previousNotes?.includes(DELETED_LEAD_ATTACH_NOTE)) {
+    return { lead: match, created: false }
+  }
   const notes = previousNotes
     ? `${previousNotes}\n${DELETED_LEAD_ATTACH_NOTE}`
     : DELETED_LEAD_ATTACH_NOTE
@@ -149,9 +155,19 @@ async function attachToDeletedLead(match: Lead): Promise<UpsertLeadResult> {
  * `findLeadCandidates` não enxerga (a unique inclui soft-deletados). Em vez de
  * lançar (o poison do F9, que retentava para sempre), re-resolve e anexa.
  *
- * A decisão não sai da mensagem de erro em português, que é frágil: sai de
- * **achar ou não** o lead conflitante. Não achou nada, o erro original sobe.
+ * São DUAS condições, e as duas precisam valer (review #1042): a recusa tem de
+ * ser de unique **e** tem de existir o lead conflitante. Só a segunda deixava
+ * um erro não relacionado — plano de saúde inválido, master sem perfil — virar
+ * sucesso silencioso sempre que houvesse um lead com o mesmo e-mail na lixeira.
+ * Só a primeira dependeria da mensagem em português, que é frágil.
  */
+const DUPLICATE_LEAD_ERROR_MARKERS = ["ja existe um lead", "já existe um lead"]
+
+function isDuplicateLeadRejection(errorMessages: string[]): boolean {
+  const joined = errorMessages.join(" ").toLowerCase()
+  return DUPLICATE_LEAD_ERROR_MARKERS.some((marker) => joined.includes(marker))
+}
+
 async function reconcileLeadAfterFailedCreate(
   context: LeadAttachContext,
   extracted: ExtractedLeadData,
@@ -313,10 +329,12 @@ export async function upsertLeadFromFormAnswers(input: {
     { autoScheduleMeeting: false },
   )
   if (!output.isValid) {
-    const reconciled = await reconcileLeadAfterFailedCreate(
-      { form: input.form, snapshot: input.snapshot },
-      extracted,
-    )
+    const reconciled = isDuplicateLeadRejection(output.errorMessages)
+      ? await reconcileLeadAfterFailedCreate(
+          { form: input.form, snapshot: input.snapshot },
+          extracted,
+        )
+      : null
     if (reconciled) return reconciled
     throw new Error(output.errorMessages.join("; "))
   }

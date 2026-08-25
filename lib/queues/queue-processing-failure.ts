@@ -94,16 +94,21 @@ export async function ackAfterMaxDeliveries(
  * campos obrigatórios — o retry só produz ruído; o que faltava era o rastro. O
  * caller acka de qualquer jeito: se nem o outbox aceitar, o erro fica no log em
  * vez de virar mensagem eterna.
+ *
+ * Grava como **terminal** (`failed`), não `pending` (review #1042): `pending`
+ * entra no `RetryQueueProcessingFailuresUseCase`, que republicaria o mesmo
+ * payload malformado — o consumer dead-letta outra vez, a linha volta a
+ * `pending`, e o ciclo fila↔outbox não fecha nunca.
  */
 export async function deadLetterInvalidPayload(
   input: DeadLetterInvalidPayloadInput,
   writer: Pick<
     IQueueProcessingFailureRepository,
-    "upsertFromProcessingFailure"
+    "recordTerminalFailure"
   > = queueProcessingFailureRepository,
 ): Promise<void> {
   try {
-    await writer.upsertFromProcessingFailure({
+    await writer.recordTerminalFailure({
       topic: input.topic,
       idempotencyKey: input.idempotencyKey,
       payload: toJsonPayload(input.payload),

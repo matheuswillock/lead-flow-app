@@ -143,7 +143,8 @@ mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () 
   emailLogRepository: { findCampaignLogForAttribution: mock(async () => null) },
 }))
 
-const { upsertLeadFromFormAnswers } = await import("./publicFormLeadSync")
+const { upsertLeadFromFormAnswers, DELETED_LEAD_ATTACH_NOTE } =
+  await import("./publicFormLeadSync")
 
 const FORM_CONTEXT = {
   id: FORM_ID,
@@ -260,5 +261,40 @@ describe("upsertLeadFromFormAnswers duplicata", () => {
     })
 
     await expect(callUpsert()).rejects.toThrow("Master do time sem identificação")
+  })
+
+  /**
+   * Review #1042 (P1). O caso que a versão anterior mascarava: erro **não**
+   * relacionado a unique, mas existe um lead na lixeira com o mesmo e-mail. Só
+   * "achou lead conflitante" bastava para anexar, e a falha real de validação
+   * virava sucesso silencioso. Agora são duas condições.
+   */
+  it("erro não-duplicata com lead na lixeira ainda lança, sem anexar", async () => {
+    findDeletedLeadCandidates.mockResolvedValue([DELETED_LEAD])
+    createLead.mockResolvedValue({
+      isValid: false,
+      errorMessages: ["Plano de saúde inválido"],
+      successMessages: [],
+      result: null,
+    })
+
+    await expect(callUpsert()).rejects.toThrow("Plano de saúde inválido")
+    expect(updateLead).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Review #1042 (P2). O drain reprocessa o mesmo job; a frase fixa acabaria
+   * repetida a cada passagem até tomar conta das notas do lead.
+   */
+  it("não repete a nota quando o lead da lixeira já a tem", async () => {
+    findLeadCandidates.mockResolvedValue([])
+    findDeletedLeadCandidates.mockResolvedValue([
+      { ...DELETED_LEAD, notes: `Nota antiga\n${DELETED_LEAD_ATTACH_NOTE}` },
+    ])
+
+    const result = await callUpsert()
+
+    expect(result?.lead.id).toBe("lead-lixeira")
+    expect(updateLead).not.toHaveBeenCalled()
   })
 })
