@@ -11,6 +11,8 @@ import type {
   UserRole,
 } from "@prisma/client"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
+import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
+import type { MetricEventAggregationFilter } from "./MetricEventAggregationSql"
 
 export const publicFormDetailSelect = {
   id: true,
@@ -315,20 +317,10 @@ export interface IPublicFormsRepository {
     endedAt: Date | null
     snapshot: Prisma.JsonValue
   }> | null>
-  groupMetricEvents(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
-  ): Promise<
-    Array<{
-      eventType: PublicFormMetricType
-      publicationId: string
-      questionId: string | null
-      _count: { _all: number }
-    }>
-  >
+  /** Agregado no Postgres: cada linha já é contagem de sessões únicas. */
+  groupMetricEvents(filter: MetricEventAggregationFilter): Promise<GroupedMetricEvent[]>
   countDistinctSessionsByEventType(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
+    filter: MetricEventAggregationFilter,
   ): Promise<Record<string, number>>
   countDistinctCompletedLeads(
     formId: string,

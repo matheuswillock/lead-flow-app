@@ -1,6 +1,6 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
-import { countUniqueFormMetricRecipients } from "@/lib/email/unique-form-metric-recipients"
 
 export type EmailAnalyticsLogWhere = {
   teamId: string
@@ -312,63 +312,69 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     }))
   }
 
-  private async buildFormMetricEventWhere(options: {
+  /**
+   * Destinatários únicos, contados no Postgres.
+   *
+   * Antes o método carregava todas as linhas do período e deduplicava em JS
+   * (`Set` de chaves) — O(memória) num período que cresce sozinho. A chave é a
+   * mesma de `uniqueFormMetricRecipientKey`: e-mail do destinatário, senão o
+   * log da campanha, senão a sessão do visitante.
+   */
+  private async countUniqueFormMetricRecipientsInDatabase(options: {
     teamId: string
     from: Date
     to: Date
     eventType: FormMetricEventType
     formId?: string
     campaignId?: string
-  }) {
-    const dateFilter = { createdAt: { gte: options.from, lte: options.to } }
+  }): Promise<number> {
+    const formIds = await this.resolveFormIdsForCount(options.teamId, options.formId)
+    if (formIds.length === 0) return 0
 
-    if (options.formId) {
-      const campaignFilter = options.campaignId
-        ? await this.buildCampaignOriginFilter(options.teamId, options.campaignId)
-        : undefined
+    const campaignIds = options.campaignId
+      ? await resolveCampaignIdsIncludingSubs(options.teamId, options.campaignId)
+      : null
 
-      return {
-        formId: options.formId,
-        eventType: options.eventType,
-        ...dateFilter,
-        form: { teamId: options.teamId },
-        ...(campaignFilter && { OR: campaignFilter }),
-      }
-    }
+    const query = Prisma.sql`
+      SELECT COUNT(DISTINCT COALESCE(
+        NULLIF('email:' || lower(btrim(origin->>'recipientEmail')), 'email:'),
+        NULLIF('log:' || btrim(origin->>'emailLogId'), 'log:'),
+        'session:' || "visitorSessionId"
+      ))::int AS recipients
+      FROM "corretor_studio_public_form_metric_events"
+      WHERE "formId" = ANY(${formIds}::uuid[])
+        AND "eventType" = ${options.eventType}::"PublicFormMetricType"
+        AND "createdAt" >= ${options.from}
+        AND "createdAt" <= ${options.to}
+        ${
+          campaignIds
+            ? Prisma.sql`AND origin->>'campaignId' = ANY(${campaignIds}::text[])`
+            : Prisma.empty
+        }
+    `
 
-    const forms = await prisma.publicForm.findMany({
-      where: { teamId: options.teamId },
-      select: { id: true },
-    })
-    if (forms.length === 0) return null
-
-    const campaignFilter = options.campaignId
-      ? await this.buildCampaignOriginFilter(options.teamId, options.campaignId)
-      : undefined
-
-    return {
-      formId: { in: forms.map((form) => form.id) },
-      eventType: options.eventType,
-      ...dateFilter,
-      ...(campaignFilter && { OR: campaignFilter }),
-    }
+    const rows = await prisma.$queryRaw<Array<{ recipients: number | bigint }>>(query)
+    return Number(rows[0]?.recipients ?? 0)
   }
 
-  private async buildCampaignOriginFilter(teamId: string, campaignId: string) {
-    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId)
-    return campaignIds.map((id) => ({
-      origin: { path: ["campaignId"], equals: id },
-    }))
+  /**
+   * Sem `formId` explícito o escopo é o time inteiro. A lista sai daqui para o
+   * SQL poder filtrar por `formId = ANY(...)` sem um join só para o `teamId`.
+   */
+  private async resolveFormIdsForCount(teamId: string, formId?: string): Promise<string[]> {
+    if (formId) {
+      const form = await prisma.publicForm.findFirst({
+        where: { id: formId, teamId },
+        select: { id: true },
+      })
+      return form ? [form.id] : []
+    }
+    const forms = await prisma.publicForm.findMany({ where: { teamId }, select: { id: true } })
+    return forms.map((form) => form.id)
   }
 
   async countFormEvents(options: CountFormEventsOptions): Promise<number> {
-    const where = await this.buildFormMetricEventWhere(options)
-    if (!where) return 0
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where,
-      select: { visitorSessionId: true, origin: true },
-    })
-    return countUniqueFormMetricRecipients(rows)
+    return this.countUniqueFormMetricRecipientsInDatabase(options)
   }
 
   async countFormCompletions(options: {
@@ -378,16 +384,10 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     formId?: string
     campaignId?: string
   }): Promise<number> {
-    const where = await this.buildFormMetricEventWhere({
+    return this.countUniqueFormMetricRecipientsInDatabase({
       ...options,
       eventType: "form_completed",
     })
-    if (!where) return 0
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where,
-      select: { visitorSessionId: true, origin: true },
-    })
-    return countUniqueFormMetricRecipients(rows)
   }
 
   async findCampaignTemplateHtml(options: {
