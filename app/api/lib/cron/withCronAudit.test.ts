@@ -141,6 +141,8 @@ describe("withCronAudit", () => {
     const repository: IBackofficeCronExecutionRepository = {
       create: async () => makeExecution("exec-skipped"),
       findMany: async () => [],
+      findStaleRunningCandidates: async () => [],
+      claimStaleRunningAsFailed: async () => true,
       markSuccess,
       markFailed,
     }

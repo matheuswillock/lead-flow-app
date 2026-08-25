@@ -14,9 +14,20 @@ mock.module("@/lib/queues/asaas-webhook-events", () => ({
   ASAAS_WEBHOOK_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
-mock.module("@/lib/queues/queue-processing-failure", () => ({
-  ackAfterMaxDeliveries: mock(async () => false),
-}))
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
 
 mock.module("@/app/api/webhooks/asaas/processAsaasWebhookEvent", () => ({
   processAsaasWebhookEvent: mock(async () => {}),
@@ -110,25 +121,41 @@ describe("processAsaasWebhookEventMessage", () => {
     expect(markFailed).not.toHaveBeenCalled()
   })
 
-  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
-    const ackDeadLetter = mock(async () => true)
+  /**
+   * T-Q3.2 + review #1042. Payload malformado é falha **terminal**: se entrasse
+   * como `pending`, o cron de retry republicaria o mesmo payload e o ciclo
+   * fila↔outbox não fecharia nunca. O `reason` nomeia o campo que faltou.
+   */
+  it("T-Q3.2 — payload inválido grava dead-letter TERMINAL nomeando o campo, e acka", async () => {
+    recordTerminalFailure.mockClear()
+    upsertFromProcessingFailure.mockClear()
 
     await expect(
       processAsaasWebhookEventMessage(
         { eventId: "evt-1" } as AsaasWebhookEventPayload,
         metadata,
-        { ...deps, ackDeadLetter },
+        deps,
       ),
     ).resolves.toBeUndefined()
 
     expect(process).not.toHaveBeenCalled()
-    expect(ackDeadLetter).toHaveBeenCalledWith(
+    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
       expect.objectContaining({
         topic: "asaas-webhook-events",
         idempotencyKey: "evt-1",
-        maxDeliveryCount: 1,
-        lastError: "invalid_payload: campos obrigatórios ausentes: body",
+        lastError: "campos obrigatórios ausentes: body",
       }),
+    )
+  })
+
+  it("T-Q3.2 — sem chave no payload, a linha usa o messageId como idempotencyKey", async () => {
+    recordTerminalFailure.mockClear()
+
+    await processAsaasWebhookEventMessage({} as AsaasWebhookEventPayload, metadata, deps)
+
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "invalid-payload:msg-1" }),
     )
   })
 

@@ -9,13 +9,13 @@ import {
 } from "@/lib/queues/asaas-webhook-events"
 import {
   ackAfterMaxDeliveries,
-  type AckAfterMaxDeliveriesFn,
-} from "@/lib/queues/queue-processing-failure"
-import {
+  buildInvalidPayloadIdempotencyKey,
   deadLetterInvalidPayload,
   describeMissingRequiredFields,
   listMissingRequiredFields,
-} from "@/lib/queues/queue-invalid-payload"
+  type AckAfterMaxDeliveriesFn,
+  type DeadLetterInvalidPayloadFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -44,6 +44,7 @@ export async function processAsaasWebhookEventMessage(
     markProcessed: typeof asaasWebhookEventRepository.markProcessed
     markFailed: typeof asaasWebhookEventRepository.markFailed
     ackDeadLetter?: AckAfterMaxDeliveriesFn
+    deadLetter?: DeadLetterInvalidPayloadFn
   } = {
     process: processAsaasWebhookEvent,
     markProcessed: asaasWebhookEventRepository.markProcessed.bind(asaasWebhookEventRepository),
@@ -69,16 +70,14 @@ export async function processAsaasWebhookEventMessage(
       message,
       missingFields,
     })
-    await deadLetterInvalidPayload(
-      {
-        topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
-        idempotencyKeyCandidate: message?.eventId,
-        messageId: metadata.messageId,
-        payload: message,
-        detail: describeMissingRequiredFields(missingFields),
-      },
-      deps.ackDeadLetter ?? ackAfterMaxDeliveries,
-    )
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await (deps.deadLetter ?? deadLetterInvalidPayload)({
+      topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.eventId, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
+    })
     return
   }
 

@@ -7,13 +7,13 @@ import {
 } from "@/lib/queues/public-form-metric-events"
 import {
   ackAfterMaxDeliveriesWithOutcome,
-  type AckAfterMaxDeliveriesWithOutcomeFn,
-} from "@/lib/queues/queue-processing-failure"
-import {
+  buildInvalidPayloadIdempotencyKey,
   deadLetterInvalidPayload,
   describeMissingRequiredFields,
   listMissingRequiredFields,
-} from "@/lib/queues/queue-invalid-payload"
+  type AckAfterMaxDeliveriesWithOutcomeFn,
+  type DeadLetterInvalidPayloadFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -34,6 +34,7 @@ export async function processPublicFormMetricQueueMessage(
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormsUseCase, "persistQueuedMetric"> = publicFormsUseCase,
   ackDeadLetter: AckAfterMaxDeliveriesWithOutcomeFn = ackAfterMaxDeliveriesWithOutcome,
+  deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[PublicFormMetricEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -61,16 +62,14 @@ export async function processPublicFormMetricQueueMessage(
       eventType: message?.eventType,
       missingFields,
     })
-    await deadLetterInvalidPayload(
-      {
-        topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
-        idempotencyKeyCandidate: message?.eventKey,
-        messageId: metadata.messageId,
-        payload: message,
-        detail: describeMissingRequiredFields(missingFields),
-      },
-      ackDeadLetter,
-    )
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await deadLetter({
+      topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.eventKey, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
+    })
     return
   }
 

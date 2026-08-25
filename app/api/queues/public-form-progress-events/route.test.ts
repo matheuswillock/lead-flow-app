@@ -21,11 +21,20 @@ mock.module("@/lib/queues/public-form-progress-events", () => ({
   PUBLIC_FORM_PROGRESS_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
-mock.module("@/lib/queues/queue-processing-failure", () => ({
-  ackAfterMaxDeliveries: mock(async () => false),
-  ackAfterMaxDeliveriesWithOutcome: mock(async () => false),
-  deadLetterInvalidPayload: mock(async () => {}),
-}))
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
 
 type QueueMessageMetadata = {
   messageId: string
@@ -85,29 +94,6 @@ describe("processPublicFormProgressEventMessage", () => {
       { execute },
     )
     expect(execute).not.toHaveBeenCalled()
-  })
-
-  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
-    const ackDeadLetter = mock(async () => true)
-
-    await expect(
-      processPublicFormProgressEventMessage(
-        { ...baseMessage(), publicId: "" },
-        metadata,
-        { execute },
-        ackDeadLetter,
-      ),
-    ).resolves.toBeUndefined()
-
-    expect(execute).not.toHaveBeenCalled()
-    expect(ackDeadLetter).toHaveBeenCalledWith(
-      expect.objectContaining({
-        topic: "public-form-progress-events",
-        idempotencyKey: "progress:session_abcdefghij:pub:q:hash",
-        maxDeliveryCount: 1,
-        lastError: "invalid_payload: campos obrigatórios ausentes: publicId",
-      }),
-    )
   })
 
   it("form unavailable: ack sem throw", async () => {

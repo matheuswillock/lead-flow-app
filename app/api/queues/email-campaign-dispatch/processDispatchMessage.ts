@@ -6,13 +6,13 @@ import {
 } from "@/lib/queues/email-campaign-dispatch"
 import {
   ackAfterMaxDeliveries,
-  type AckAfterMaxDeliveriesFn,
-} from "@/lib/queues/queue-processing-failure"
-import {
+  buildInvalidPayloadIdempotencyKey,
   deadLetterInvalidPayload,
   describeMissingRequiredFields,
   listMissingRequiredFields,
-} from "@/lib/queues/queue-invalid-payload"
+  type AckAfterMaxDeliveriesFn,
+  type DeadLetterInvalidPayloadFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -39,6 +39,7 @@ export async function processEmailCampaignDispatchMessage(
   useCase?: Pick<EmailCampaignUseCase, "processDispatchQueueBatch">,
   ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
   topic: string = EMAIL_CAMPAIGN_DISPATCH_TOPIC,
+  deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[EmailCampaignDispatchQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -55,16 +56,14 @@ export async function processEmailCampaignDispatchMessage(
       message,
       missingFields,
     })
-    await deadLetterInvalidPayload(
-      {
-        topic,
-        idempotencyKeyCandidate: message?.dispatchId,
-        messageId: metadata.messageId,
-        payload: message,
-        detail: describeMissingRequiredFields(missingFields),
-      },
-      ackDeadLetter,
-    )
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await deadLetter({
+      topic,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.dispatchId, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
+    })
     return
   }
 

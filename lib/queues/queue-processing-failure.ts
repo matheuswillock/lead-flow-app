@@ -60,6 +60,39 @@ export type DeadLetterInvalidPayloadInput = {
 
 export type DeadLetterInvalidPayloadFn = (input: DeadLetterInvalidPayloadInput) => Promise<void>
 
+/** Prefixo da chave sintética usada quando o payload não traz a própria. */
+export const INVALID_PAYLOAD_KEY_PREFIX = "invalid-payload"
+
+/**
+ * Chave estável para o payload inválido. Cai no `messageId` quando o payload
+ * não traz a própria chave — parte do que o torna inválido —, para que
+ * reentregas da mesma mensagem colapsem na mesma linha do outbox em vez de
+ * multiplicá-la.
+ */
+export function buildInvalidPayloadIdempotencyKey(
+  candidate: string | null | undefined,
+  messageId: string,
+): string {
+  const trimmed = typeof candidate === "string" ? candidate.trim() : ""
+  return trimmed || `${INVALID_PAYLOAD_KEY_PREFIX}:${messageId}`
+}
+
+/** Nomes dos campos obrigatórios que chegaram vazios. */
+export function listMissingRequiredFields(fields: Record<string, unknown>): string[] {
+  return Object.entries(fields)
+    .filter(([, value]) => value === undefined || value === null || value === "")
+    .map(([name]) => name)
+}
+
+/**
+ * `reason` do dead-letter que nomeia **quais** campos faltaram. Sem a lista, a
+ * linha no outbox só diz que o payload era inválido e alguém precisa reabrir o
+ * JSON para descobrir o quê.
+ */
+export function describeMissingRequiredFields(missingFields: string[]): string {
+  return `campos obrigatórios ausentes: ${missingFields.join(", ")}`
+}
+
 export function resolveQueueMaxDeliveryCount(
   envValue = process.env.QUEUE_MAX_DELIVERY_COUNT,
 ): number {

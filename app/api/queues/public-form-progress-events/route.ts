@@ -9,6 +9,7 @@ import {
 } from "@/lib/queues/public-form-progress-events"
 import {
   ackAfterMaxDeliveriesWithOutcome,
+  buildInvalidPayloadIdempotencyKey,
   deadLetterInvalidPayload,
   type AckAfterMaxDeliveriesWithOutcomeFn,
   type DeadLetterInvalidPayloadFn,
@@ -58,7 +59,10 @@ export async function processPublicFormProgressEventMessage(
     // malformado nunca conserta) e só então acka.
     await deadLetter({
       topic: PUBLIC_FORM_PROGRESS_EVENTS_TOPIC,
-      idempotencyKey: message?.idempotencyKey ?? `invalid-payload:${metadata.messageId}`,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(
+        message?.idempotencyKey,
+        metadata.messageId,
+      ),
       payload: message ?? null,
       reason: "Payload de progresso sem publicId, visitorSessionId ou idempotencyKey",
     })
