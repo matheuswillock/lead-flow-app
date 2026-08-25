@@ -124,40 +124,91 @@ export function excludeBlocklistedEmails<T extends { email: string }>(
 /** Cliente Prisma ou cliente de transação — o bloqueio precisa rodar dentro da tx do chamador. */
 type BlocklistWriter = Prisma.TransactionClient
 
+/**
+ * Motivos de bloqueio persistidos em `EmailContact.blockReason`.
+ *
+ * Os textos são gravados no banco e replicados no backfill da migration
+ * `20260824232131_email-contact-block-reason` — mudar um lado exige mudar o
+ * outro, senão a base fica com duas grafias para o mesmo motivo.
+ */
+export const BLOCK_REASON_UNSUBSCRIBE = "Descadastro pelo destinatário"
+/**
+ * Só o backfill da migration grava este motivo. O carimbo de bounce
+ * (`EmailLogRepository`) marca `isBounced` na linha existente e **não** insere
+ * na blocklist, então nenhuma linha nova nasce com este motivo — supressão por
+ * bounce é flag, não blocklist. Mantido porque o backfill o escreve e o leitor
+ * precisa reconhecê-lo.
+ */
+export const BLOCK_REASON_BOUNCE = "Bounce reportado pelo provedor"
+export const BLOCK_REASON_MANUAL = "Bloqueio manual"
+export const BLOCK_REASON_IMPORT = "Importado na lista de bloqueados"
+
+/**
+ * Um re-bloqueio nunca rebaixa o motivo já registrado.
+ *
+ * Sem isto, alguém que descadastrou de verdade e depois foi tocado por um import
+ * apareceria como "Importado na lista de bloqueados", apagando a evidência de
+ * opt-out — que é o motivo com peso legal. A ordem espelha a precedência do
+ * backfill na migration `20260824232131`.
+ */
+const BLOCK_REASON_RANK: Record<string, number> = {
+  [BLOCK_REASON_UNSUBSCRIBE]: 3,
+  [BLOCK_REASON_BOUNCE]: 2,
+  [BLOCK_REASON_MANUAL]: 1,
+  [BLOCK_REASON_IMPORT]: 0,
+}
+
+function rankBlockReason(reason: string | null): number {
+  return reason ? (BLOCK_REASON_RANK[reason] ?? 0) : -1
+}
+
 export type BlockTeamEmailParams = {
   teamId: string
   email: string
   name?: string | null
   createdBy: string
+  /** Por que este endereço foi bloqueado — use uma das constantes BLOCK_REASON_*. */
+  reason: string
+  blockedAt?: Date
   /** Só o descadastro marca `isUnsubscribed`; bloqueio manual/import não é opt-out do destinatário. */
   markUnsubscribed?: boolean
 }
 
 /**
  * Bloqueio é por time: sai de todas as listas não arquivadas do time e entra na
- * blocklist. Extraído de EmailUnsubscribeUseCase (scope "all"), que é o
- * comportamento que o descadastro já implementava — inclusão manual e import na
- * blocklist agora reusam a mesma rotina em vez de duplicá-la.
- *
- * O motivo do bloqueio (`blockReason`/`blockedAt`) ainda NÃO é persistido: as
- * colunas dependem de uma migration que só pode ser gerada depois que o drift
- * entre `prisma/schema.prisma` e `supabase/migrations/**` for fechado. Até lá a
- * origem é inferida na leitura, como a UI da blocklist já faz hoje via
- * `resolve-contact-unsubscribe-source`.
+ * blocklist com o motivo. Extraído de EmailUnsubscribeUseCase (scope "all"), que
+ * é o comportamento que o descadastro já implementava — inclusão manual e import
+ * na blocklist reusam a mesma rotina em vez de duplicá-la.
  */
 export async function blockTeamEmail(
   tx: BlocklistWriter,
   params: BlockTeamEmailParams
 ): Promise<{ blocklistId: string }> {
   const normalizedEmail = params.email.trim().toLowerCase()
+  const blockedAt = params.blockedAt ?? new Date()
 
   await removeEmailsFromTeamLists(tx, params.teamId, [normalizedEmail])
   const blocklistId = await ensureBlocklistId(tx, params.teamId, params.createdBy)
+
+  // Precisa da linha atual para não rebaixar o motivo nem reiniciar o relógio:
+  // `blockedAt` é a PRIMEIRA entrada na blocklist, coerente com o backfill da
+  // migration, que usa o `createdAt` da própria linha. Um segundo clique no link
+  // de descadastro não pode reescrever a data original.
+  const existing = await tx.emailContact.findUnique({
+    where: { listId_email: { listId: blocklistId, email: normalizedEmail } },
+    select: { blockReason: true, blockedAt: true },
+  })
+  const keepsExistingReason =
+    existing !== null && rankBlockReason(existing.blockReason) >= rankBlockReason(params.reason)
 
   await tx.emailContact.upsert({
     where: { listId_email: { listId: blocklistId, email: normalizedEmail } },
     update: {
       name: params.name ?? undefined,
+      ...(keepsExistingReason ? {} : { blockReason: params.reason }),
+      // Só preenche quando ainda está nulo — linha bloqueada antes desta
+      // migration, que o backfill ainda não alcançou.
+      ...(existing?.blockedAt ? {} : { blockedAt }),
       ...(params.markUnsubscribed ? { isUnsubscribed: true } : {}),
     },
     create: {
@@ -165,6 +216,8 @@ export async function blockTeamEmail(
       listId: blocklistId,
       email: normalizedEmail,
       name: params.name ?? null,
+      blockReason: params.reason,
+      blockedAt,
       isUnsubscribed: params.markUnsubscribed ?? false,
     },
   })
@@ -189,6 +242,9 @@ export async function blockTeamEmailsBulk(
     teamId: string
     createdBy: string
     contacts: Array<{ email: string; name?: string | null }>
+    /** Por que o lote foi bloqueado — use uma das constantes BLOCK_REASON_*. */
+    reason: string
+    blockedAt?: Date
     markUnsubscribed?: boolean
   }
 ): Promise<{ blocklistId: string; blockedCount: number }> {
@@ -212,6 +268,8 @@ export async function blockTeamEmailsBulk(
       listId: blocklistId,
       email: contact.email,
       name: contact.name ?? null,
+      blockReason: params.reason,
+      blockedAt: params.blockedAt ?? new Date(),
       isUnsubscribed: params.markUnsubscribed ?? false,
     })),
     skipDuplicates: true,
