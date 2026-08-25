@@ -31,6 +31,26 @@ import { randomUUID } from "crypto"
 const RUN_INTEGRATION =
   process.env.MANAGER_USERS_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
 
+/**
+ * Guarda de banco local, no mesmo espírito de `assertAsaasSandbox()`.
+ *
+ * `bun test` carrega o `.env` do repo automaticamente, e o `.env` desta máquina
+ * aponta `DATABASE_URL` para o pooler de PRODUÇÃO. Sem esta guarda, esquecer de
+ * passar a URL local faz um teste que CRIA E APAGA Profile/Team rodar contra a
+ * base real. O gate de env não protege: `MANAGER_USERS_INTEGRATION_TEST=1` já
+ * vem setado pelo script `test:integration`.
+ */
+function assertLocalDatabase(): void {
+  const url = process.env.DATABASE_URL ?? ""
+  const isLocal = /@(127\.0\.0\.1|localhost|host\.docker\.internal)[:/]/.test(url)
+  if (!isLocal) {
+    throw new Error(
+      "[integration] abortado: DATABASE_URL não é local. Este teste escreve no banco — " +
+        "rode com `bun run test:integration:local` ou passe a URL de 127.0.0.1:55322."
+    )
+  }
+}
+
 // Import dinâmico pelo mesmo motivo de `radar.integration.test.ts`: import
 // estático aqui carregaria o módulo real de prisma e disputaria, fora de ordem,
 // com o `mock.module("@/app/api/infra/data/prisma", ...)` de outros arquivos
@@ -40,6 +60,8 @@ let ManagerAccountUsersUseCase: typeof import("@/app/api/useCases/managerAccount
 let managerAccountUserRepository: typeof import("@/app/api/infra/data/repositories/managerAccountUser/ManagerAccountUserRepository").managerAccountUserRepository
 
 if (RUN_INTEGRATION) {
+  assertLocalDatabase()
+
   // Os stubs precisam ser registrados ANTES do import dinâmico: o UseCase
   // resolve `createSupabaseAdmin`/`getEmailService` no carregamento do módulo,
   // então registrar em `beforeAll` chegaria tarde demais.
@@ -77,6 +99,17 @@ if (RUN_INTEGRATION) {
     createEmailService: () => emailServiceStub,
     emailService: emailServiceStub,
     EmailService: class {},
+  }))
+
+  // `getFullUrl` lê NEXT_PUBLIC_APP_URL e roda DENTRO do try de
+  // `finalizeUserCreation`, ANTES do generateLink. Num runner sem a variável ele
+  // lança, o caminho feliz cai na compensação e o teste falha por ambiente — não
+  // por regressão. Passava na minha máquina só porque `bun test` carrega o
+  // `.env` do repo, que tem a variável. É exatamente a armadilha que o próprio
+  // agents.md descreve em "Teste que não sabe falhar não é verificação".
+  mock.module("@/lib/utils/app-url", () => ({
+    getFullUrl: (path: string) => `https://example.invalid${path}`,
+    getAppUrl: () => "https://example.invalid",
   }))
 
   ;({ prisma } = await import("@/app/api/infra/data/prisma"))
@@ -208,7 +241,49 @@ describe.skipIf(!RUN_INTEGRATION)("ManagerAccountUsersUseCase — transação re
     expect(member?.role).toBe("operator")
   })
 
-  it("capacidade estourada não deixa Profile órfão — os dois writes são atômicos", async () => {
+  /**
+   * Este é o caso que discrimina a transação, e o único.
+   *
+   * A falha precisa cair ENTRE os dois writes: `assertCapacityAvailable` passa,
+   * `profile.create` já rodou, e `teamMember.create` viola a FK
+   * `corretor_studio_team_members.teamId -> corretor_studio_teams.id`. Só aí
+   * existe algo para reverter.
+   *
+   * Controle negativo executado com UMA variável (a transação, sem tocar na
+   * ordem): trocando `createAccountUserRecords(recordsParams, tx)` por
+   * `createAccountUserRecords(recordsParams)` este caso fica VERMELHO com o
+   * Profile órfão na mão, e os outros dois seguem VERDES. Esse contraste é a
+   * evidência — sem ele, "verde" aqui não significaria nada.
+   */
+  it("falha ENTRE os dois writes não deixa Profile órfão", async () => {
+    const useCase = buildUseCase({})
+    const params = buildParams(seed, "fk-orphan")
+    params.ctx.teamId = randomUUID() // time inexistente: quebra a FK do segundo write
+
+    await expect(useCase.createAccountUser(params as never)).rejects.toThrow()
+
+    // Assert só por e-mail: filtrar por `seed.teamId` daria zero por vacuidade,
+    // já que o teamId usado aqui nem existe.
+    const orphan = await prisma.profile.findFirst({
+      where: { email: emailFor("fk-orphan") },
+      select: { id: true },
+    })
+    expect(orphan).toBeNull()
+  })
+
+  /**
+   * NÃO prova atomicidade — prova ORDEM, que é outro invariante.
+   *
+   * A primeira versão deste teste se chamava "os dois writes são atômicos" e
+   * estava errada: `assertCapacityAvailable` roda ANTES de
+   * `createAccountUserRecords`, então o throw injetado aqui acontece antes de
+   * qualquer INSERT existir. Não há o que reverter, e a asserção é verdadeira
+   * por vacuidade — medido: removendo `runInTransaction` e mantendo a ordem, o
+   * teste continuava passando com o mesmo número de asserts.
+   *
+   * O que ele garante de útil: estourar capacidade não chega a tocar o banco.
+   */
+  it("capacidade estourada aborta antes de qualquer write", async () => {
     const useCase = buildUseCase({
       assertCapacityAvailable: async () => {
         throw new Error("Capacidade esgotada")
@@ -216,22 +291,13 @@ describe.skipIf(!RUN_INTEGRATION)("ManagerAccountUsersUseCase — transação re
     })
 
     await expect(
-      useCase.createAccountUser(buildParams(seed, "rollback") as never)
+      useCase.createAccountUser(buildParams(seed, "sem-write") as never)
     ).rejects.toThrow("Capacidade esgotada")
 
-    // O ponto do teste: `profile.create` roda ANTES do erro dentro da mesma
-    // transação. Sem `runInTransaction` a linha ficaria commitada e o e-mail
-    // ficaria queimado — toda tentativa seguinte cairia no 409 "Email já está
-    // em uso" para um usuário que nunca chegou a existir.
-    const orphan = await prisma.profile.findFirst({
-      where: { email: emailFor("rollback") },
+    const created = await prisma.profile.findFirst({
+      where: { email: emailFor("sem-write") },
       select: { id: true },
     })
-    expect(orphan).toBeNull()
-
-    const orphanMember = await prisma.teamMember.count({
-      where: { team: { id: seed.teamId }, profile: { email: emailFor("rollback") } },
-    })
-    expect(orphanMember).toBe(0)
+    expect(created).toBeNull()
   })
 })
