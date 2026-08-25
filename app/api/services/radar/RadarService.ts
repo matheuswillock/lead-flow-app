@@ -36,6 +36,7 @@ import {
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
 import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
+import { radarNameSourceFromWhatsapp } from "@/lib/radar/name-source"
 import { evaluateEmailForAudienceWithFlags } from "@/lib/email/audience-prevalidation"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
@@ -863,6 +864,7 @@ export class RadarService {
       normalizedPhone,
       phoneValue: input.conversation.contactPhone,
       phoneSource: "whatsapp",
+      nameSource: radarNameSourceFromWhatsapp(input.conversation.contactNameSource),
       lastSeenAt: input.message.sentAt ?? input.message.createdAt,
     })
 
@@ -933,6 +935,7 @@ export class RadarService {
       normalizedPhone,
       phoneValue: conversation.contactPhone,
       phoneSource: "whatsapp",
+      nameSource: radarNameSourceFromWhatsapp(conversation.contactNameSource),
       lastSeenAt: conversation.lastMessageAt ?? conversation.updatedAt,
     })
 

@@ -542,7 +542,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
   it("conflito de telefone: sync WhatsApp com nome divergente reusa o perfil do CRM sem migrar a identidade phone (D8)", async () => {
     const lead = await prisma.lead.findUniqueOrThrow({
       where: { id: leadId },
-      select: { phone: true },
+      select: { phone: true, name: true },
     })
     const normalizedPhone = normalizeRadarPhone(lead.phone)
 
@@ -585,16 +585,15 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     })
     expect(identity?.profileId).toBe(profileId)
 
-    // O que este teste guarda é o reuso do perfil e a não-migração da identidade
-    // `phone` — não a precedência de nome entre fontes. O nome segue a política
-    // única de sobrescrita fechada no achado #7 do code review de 2026-08-19
-    // (commit b4942f7b): `resolveProfileForPhone` aceita o valor mais recente
-    // não-vazio da fonte atual, igual a `resolveProfileForDocument`. Antes disso
-    // o caminho do telefone nunca sobrescrevia, e uma correção de nome digitada
-    // depois de o telefone já ter criado o perfil era descartada em silêncio.
-    // A política está travada em `RadarRepository.nameOverwritePolicy.test.ts`.
+    // O push name do WhatsApp não derruba o nome curado no CRM: a conversa
+    // chega com `contactNameSource: "PUSH_NAME"`, que `resolveRadarName`
+    // (lib/radar/name-source.ts) classifica abaixo de `crm`. Entre b4942f7b
+    // (2026-08-19) e a precedência por fonte esta asserção era falsa — o nome
+    // virava "Maria S." e ia junto para o destinatário de campanha, porque
+    // `buildEmailRecipients` usa `displayName`.
     const originalProfile = await prisma.radarProfile.findUnique({ where: { id: profileId } })
-    expect(originalProfile?.displayName).toBe(whatsappContactName)
+    expect(originalProfile?.displayName).toBe(lead.name)
+    expect(originalProfile?.nameSource).toBe("crm")
   })
 
   it("lead só-com-e-mail sem perfil existente conta em deferred, sem criar perfil (D8, Parte 2)", async () => {

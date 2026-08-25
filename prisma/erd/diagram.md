@@ -3529,6 +3529,7 @@ completed completed
     String id "🗝️"
     String normalizedName 
     String displayName 
+    String nameSource "❓"
     String normalizedPhone "❓"
     String displayPhone "❓"
     String primaryEmail "❓"
