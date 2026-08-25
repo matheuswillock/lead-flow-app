@@ -97,6 +97,29 @@ describe("processPublicFormSubmissionEventMessage", () => {
     expect(processInBackground).not.toHaveBeenCalled()
   })
 
+  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
+    const ackDeadLetter = mock(async () => true)
+
+    await expect(
+      processPublicFormSubmissionEventMessage(
+        { ...baseMessage(), snapshot: undefined } as unknown as PublicFormSubmissionBackgroundJob,
+        metadata,
+        { processInBackground },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(processInBackground).not.toHaveBeenCalled()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-submission-events",
+        idempotencyKey: "req-abc",
+        maxDeliveryCount: 1,
+        lastError: "invalid_payload: campos obrigatórios ausentes: snapshot",
+      }),
+    )
+  })
+
   it("erro transitório: propaga throw para retry do handleCallback", async () => {
     processInBackground.mockRejectedValueOnce(new Error("P2024"))
     await expect(

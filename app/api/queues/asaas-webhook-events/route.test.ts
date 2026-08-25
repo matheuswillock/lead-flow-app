@@ -110,6 +110,28 @@ describe("processAsaasWebhookEventMessage", () => {
     expect(markFailed).not.toHaveBeenCalled()
   })
 
+  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
+    const ackDeadLetter = mock(async () => true)
+
+    await expect(
+      processAsaasWebhookEventMessage(
+        { eventId: "evt-1" } as AsaasWebhookEventPayload,
+        metadata,
+        { ...deps, ackDeadLetter },
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(process).not.toHaveBeenCalled()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "asaas-webhook-events",
+        idempotencyKey: "evt-1",
+        maxDeliveryCount: 1,
+        lastError: "invalid_payload: campos obrigatórios ausentes: body",
+      }),
+    )
+  })
+
   it("process lança: marca failed sem 3º argumento e propaga throw para retry", async () => {
     process.mockRejectedValueOnce(new Error("persist failed"))
 

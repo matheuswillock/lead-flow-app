@@ -85,6 +85,29 @@ describe("processPublicFormProgressEventMessage", () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
+    const ackDeadLetter = mock(async () => true)
+
+    await expect(
+      processPublicFormProgressEventMessage(
+        { ...baseMessage(), publicId: "" },
+        metadata,
+        { execute },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(execute).not.toHaveBeenCalled()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-progress-events",
+        idempotencyKey: "progress:session_abcdefghij:pub:q:hash",
+        maxDeliveryCount: 1,
+        lastError: "invalid_payload: campos obrigatórios ausentes: publicId",
+      }),
+    )
+  })
+
   it("form unavailable: ack sem throw", async () => {
     execute.mockResolvedValueOnce(new Output(false, [], ["Formulário indisponível"], null))
     await expect(
