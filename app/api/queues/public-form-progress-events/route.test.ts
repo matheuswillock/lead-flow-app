@@ -23,6 +23,7 @@ mock.module("@/lib/queues/public-form-progress-events", () => ({
 
 mock.module("@/lib/queues/queue-processing-failure", () => ({
   ackAfterMaxDeliveries: mock(async () => false),
+  ackAfterMaxDeliveriesWithOutcome: mock(async () => false),
   deadLetterInvalidPayload: mock(async () => {}),
 }))
 

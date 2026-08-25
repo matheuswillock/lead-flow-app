@@ -15,6 +15,7 @@ mock.module("@/lib/queues/public-form-metric-events", () => ({
 
 mock.module("@/lib/queues/queue-processing-failure", () => ({
   ackAfterMaxDeliveries: mock(async () => false),
+  ackAfterMaxDeliveriesWithOutcome: mock(async () => false),
 }))
 
 const { processPublicFormMetricQueueMessage } = await import("./route")
