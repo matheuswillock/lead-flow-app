@@ -171,6 +171,40 @@ export function canUpdateLeadFromExtracted(data: ExtractedLeadData): boolean {
   return Boolean(data.email || data.normalizedPhone)
 }
 
+/** Motivos de descarte que o funil agrega (SPEC 40 E2/DA2). */
+export const PUBLIC_FORM_LEAD_DISCARD_REASONS = [
+  "sem_nome",
+  "nome_invalido",
+  "sem_telefone",
+  "telefone_invalido",
+  "sem_contato",
+] as const
+
+export type PublicFormLeadDiscardReason = (typeof PUBLIC_FORM_LEAD_DISCARD_REASONS)[number]
+
+/**
+ * Por que o gate recusou este lead — `null` quando não recusou.
+ *
+ * Espelha `canCreateLeadFromExtracted`/`canUpdateLeadFromExtracted` passo a
+ * passo de propósito: o motivo precisa concordar com a decisão, senão o
+ * contador de descartes conta uma população e o CRM cria outra. Vive ao lado do
+ * gate para as duas regras mudarem juntas (`lead-discard-reason.test.ts` trava
+ * o par em toda combinação de nome × telefone).
+ */
+export function resolveLeadDiscardReason(
+  data: ExtractedLeadData,
+  options: { hasMatchingLead: boolean },
+): PublicFormLeadDiscardReason | null {
+  if (options.hasMatchingLead) {
+    return canUpdateLeadFromExtracted(data) ? null : "sem_contato"
+  }
+  if (!data.name.trim()) return "sem_nome"
+  if (!isValidPersonLeadName(data.name, data.email)) return "nome_invalido"
+  if (!data.normalizedPhone) return "sem_telefone"
+  if (!isBrazilianContactPhone(data.normalizedPhone)) return "telefone_invalido"
+  return null
+}
+
 const ANONYMOUS_RADAR_DISPLAY_NAME = "Visitante Anônimo"
 
 export type RadarIdentityOverlay = {

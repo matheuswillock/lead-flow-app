@@ -11149,6 +11149,42 @@
                   }
                 },
                 {
+                  "name": "POST Public Form Submission",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"requestKey\": \"{{publicFormVisitorSessionId}}:submit\",\n  \"visitorSessionId\": \"{{publicFormVisitorSessionId}}\",\n  \"answers\": [\n    {\n      \"questionId\": \"{{publicFormQuestionId}}\",\n      \"value\": \"Maria Silva\"\n    }\n  ],\n  \"origin\": {\n    \"utm_source\": \"postman\"\n  }\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/public-forms/:publicId/submissions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "public-forms",
+                        ":publicId",
+                        "submissions"
+                      ],
+                      "variable": [
+                        {
+                          "key": "publicId",
+                          "value": "{{publicFormPublicId}}"
+                        }
+                      ]
+                    },
+                    "description": "Envia o formulário público. 201 = aceito (grava submitRequestedAt e enfileira o processamento). 422 = respostas não satisfazem as perguntas obrigatórias visíveis do snapshot da publicação, com result.validation = [{ questionId, code }] (SPEC 40 E1). 400 = payload fora do contrato. 429 = rate limit (10 por 10 min por fingerprint)."
+                  }
+                },
+                {
                   "name": "POST Public Form Metric Events",
                   "request": {
                     "method": "POST",
