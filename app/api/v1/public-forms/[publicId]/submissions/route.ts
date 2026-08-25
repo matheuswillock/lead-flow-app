@@ -9,12 +9,19 @@ import {
   consumePublicFormRateLimit,
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
+import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
+  // SPEC 40 E6/H18: mesmo guard de `/progress` e `/events`. Esta rota era a
+  // única das três sem ele — e é a que cria lead. Vem antes do rate limit para
+  // que POST forjado de terceiro nem consuma cota do visitante legítimo.
+  if (!isPublicFormRequestOriginAllowed(request)) {
+    return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
+  }
   const rate = await consumePublicFormRateLimit(
     `submission:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 10, windowMs: 10 * 60_000 },
@@ -42,7 +49,13 @@ export async function POST(
   }
   const output = await publicFormSubmissionUseCase.accept(publicId, parsed.data)
   if (!output.isValid) {
-    return NextResponse.json(output, { status: 400 })
+    // E1: 422 quando o payload é bem-formado mas as respostas não satisfazem as
+    // perguntas obrigatórias visíveis — o renderer precisa distinguir isso de
+    // um 400 de contrato para marcar o campo em vez de mostrar erro genérico.
+    const hasValidationIssues = Boolean(
+      (output.result as { validation?: unknown[] } | null)?.validation?.length,
+    )
+    return NextResponse.json(output, { status: hasValidationIssues ? 422 : 400 })
   }
 
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)
