@@ -27,7 +27,7 @@ export class BackofficeDatabaseBackupGoogleDriveService
     })
   }
 
-  async upload({ buffer, fileName }: DriveUploadInput): Promise<DriveUploadResult> {
+  async upload({ body, fileName }: DriveUploadInput): Promise<DriveUploadResult> {
     const folderId = process.env.BACKOFFICE_GOOGLE_DRIVE_BACKUP_FOLDER_ID
 
     if (!folderId) {
@@ -47,7 +47,7 @@ export class BackofficeDatabaseBackupGoogleDriveService
       },
       media: {
         mimeType: "application/zip",
-        body: Readable.from(buffer),
+        body,
       },
       fields: "id",
     })
