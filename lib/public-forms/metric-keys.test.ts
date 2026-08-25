@@ -3,6 +3,7 @@ import {
   buildPublicFormIdentityGateIdempotencyKey,
   buildPublicFormMetricEventKey,
   buildPublicFormQuestionAnsweredEventKey,
+  buildPublicFormServerValidationFailedEventKey,
   buildPublicFormSubmitRequestKey,
 } from "@/lib/public-forms/metric-keys"
 
@@ -83,6 +84,35 @@ describe("public form metric keys", () => {
     )
     expect(buildPublicFormMetricEventKey("session-a", "form_completed", "   ")).toBe(
       "session-a:form_completed",
+    )
+  })
+
+  it("escopa a recusa de servidor por formulário e publicação", () => {
+    const formA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    const formB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    const publicacao1 = "11111111-1111-4111-8111-111111111111"
+    const publicacao2 = "22222222-2222-4222-8222-222222222222"
+
+    expect(buildPublicFormServerValidationFailedEventKey(formA, publicacao1, "session-a")).toBe(
+      `session-a:form_validation_failed:server:${formA}:${publicacao1}`,
+    )
+
+    // eventKey é @unique global e o upsert é first-write-wins: sem o formId, a
+    // recusa no form A ocupa a chave e a do form B vira no-op (review #1030).
+    expect(
+      buildPublicFormServerValidationFailedEventKey(formB, publicacao1, "session-a"),
+    ).not.toBe(buildPublicFormServerValidationFailedEventKey(formA, publicacao1, "session-a"))
+
+    // Mesma sessão falhando antes e depois de uma republicação: o evento é
+    // atribuído à publicação nova, então a chave precisa mudar junto — senão o
+    // funil filtrado por publicação perde a segunda recusa (review #1051).
+    expect(
+      buildPublicFormServerValidationFailedEventKey(formA, publicacao2, "session-a"),
+    ).not.toBe(buildPublicFormServerValidationFailedEventKey(formA, publicacao1, "session-a"))
+
+    // Martelar o mesmo endpoint na mesma publicação continua contando 1 sessão.
+    expect(buildPublicFormServerValidationFailedEventKey(formA, publicacao1, "session-a")).toBe(
+      buildPublicFormServerValidationFailedEventKey(formA, publicacao1, "session-a"),
     )
   })
 

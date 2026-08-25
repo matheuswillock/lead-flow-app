@@ -925,6 +925,7 @@ failed failed
 
         email_orphan_event_status {
             pending pending
+processing processing
 processed processed
 failed failed
 skipped skipped
@@ -3173,6 +3174,7 @@ completed completed
     DateTime resendDomainConnectedAt "❓"
     Boolean resendOpenTracking 
     Boolean resendClickTracking 
+    Boolean resendSendingDnsVerified 
     DateTime createdAt 
     DateTime updatedAt 
     }

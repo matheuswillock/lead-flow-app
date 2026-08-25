@@ -16488,6 +16488,41 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Funil da Campanha (campanha → lead)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/funnel?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "funnel"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "",
+                      "description": "ISO 8601. Opcional — sem período o funil cobre a campanha inteira."
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "description": "ISO 8601. Opcional."
+                    }
+                  ]
+                },
+                "description": "Funil ponta a ponta da campanha: enviado → entregue → aberto → clicado → formulário visto/iniciado/respondido/concluído → lead. Cada etapa de formulário conta SESSÕES ÚNICAS (`unit: unique_sessions`); o período ancora no `createdAt` do log (`anchor: log_created_at`) para que a campanha que falhou antes de enviar não desapareça. `rates` mede cada salto sobre o degrau anterior, mais `sentToLeadRate` ponta a ponta. 404 quando a campanha não pertence ao time. Datas malformadas em `from`/`to` respondem 400 (nunca 200 com o histórico inteiro). 404 quando a campanha não pertence ao time; 500 em falha de infraestrutura — os dois casos são distintos na resposta."
+              },
+              "response": []
             }
           ]
         },
@@ -16643,6 +16678,28 @@
               "response": []
             },
             {
+              "name": "Drenar Eventos Orfaos do Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/drain-orphan-events",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "drain-orphan-events"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Drena email_orphan_events (evento do Resend que chegou antes do EmailLog existir) em lotes de 200, ordenados por occurredAt. Substitui a carona de 10 por execucao no fim do dispatch-scheduled."
+              },
+              "response": []
+            },
+            {
               "name": "Retry Falhas de Processamento de Fila",
               "request": {
                 "method": "GET",
@@ -16661,6 +16718,28 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Republica mensagens dead-letter (deliveryCount >= N) via mapa topic → publish."
+              },
+              "response": []
+            },
+            {
+              "name": "Watchdog de Execuções de Cron Órfãs",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/mark-stale-cron-executions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "mark-stale-cron-executions"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Marca como failed toda execução presa em running além do teto do proprio cronKey (2x maxDuration) e dispara o alerta Slack que o kill de plataforma nunca disparou."
               },
               "response": []
             },

@@ -56,13 +56,20 @@ export function buildPublicFormMetricEventKey(
  * do POST direto não é garantidamente exclusivo de um formulário (review
  * #1030): sem o escopo, a recusa no form A ocupa a chave e a recusa no form B
  * pela mesma sessão vira no-op — a métrica do B fica subcontada.
+ *
+ * O `publicationId` entra pelo mesmo motivo, um nível abaixo (review #1051): a
+ * mesma sessão que falha antes e depois de uma republicação geraria a mesma
+ * chave, e o segundo upsert — first-write-wins — vira no-op, apesar de o evento
+ * ser atribuído à publicação nova. O funil filtrado por publicação perderia a
+ * segunda recusa.
  */
 export function buildPublicFormServerValidationFailedEventKey(
   formId: string,
+  publicationId: string,
   visitorSessionId: string,
   emailLogId?: string | null,
 ): string {
-  return `${visitorSessionId}:form_validation_failed:server:${formId}${buildAttributionEventKeySuffix(
+  return `${visitorSessionId}:form_validation_failed:server:${formId}:${publicationId}${buildAttributionEventKeySuffix(
     emailLogId,
   )}`
 }

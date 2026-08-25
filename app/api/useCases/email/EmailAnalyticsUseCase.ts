@@ -3,7 +3,7 @@ import {
   emailAnalyticsRepository,
   type IEmailAnalyticsRepository,
 } from "@/app/api/infra/data/repositories/emailAnalytics/EmailAnalyticsRepository"
-import { buildRates } from "@/lib/email/analytics-rates"
+import { buildCampaignFunnelRates, buildRates } from "@/lib/email/analytics-rates"
 import {
   attachRateDeltas,
   attachTotalDeltas,
@@ -21,9 +21,19 @@ import {
 import { detectLinkedFormFromTemplateHtml } from "@/lib/email/detect-template-form"
 import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
 import {
+  assertResendDomainTrackingReady,
   getResendDomainDispatchWarnings,
   isResendDomainTrackingCapable,
 } from "@/lib/email/campaign-dispatch-guards"
+
+/**
+ * Distingue "campanha não existe" de "a consulta explodiu".
+ *
+ * O contrato `Output` colapsa as duas em `isValid: false`, e a rota mapeava tudo
+ * para 404 — uma falha de banco respondia "campanha não encontrada" e o handler
+ * de 500 nunca era alcançado. A rota compara com esta constante para separar.
+ */
+export const CAMPAIGN_FUNNEL_NOT_FOUND_MESSAGE = "Campanha não encontrada"
 
 type PeriodSlice = {
   period: { from: Date; to: Date }
@@ -91,6 +101,7 @@ export class EmailAnalyticsUseCase {
       deliveryDelayed,
       unsubscribed,
       suppressed,
+      queued,
       formCompletions,
       formViewed,
       formStarted,
@@ -105,6 +116,7 @@ export class EmailAnalyticsUseCase {
       this.repository.countLogs(logWhere, "delivery_delayed"),
       this.repository.countLogs(logWhere, "unsubscribed"),
       this.repository.countLogs(logWhere, "suppressed"),
+      this.repository.countLogs(logWhere, "queued"),
       formCountOptions
         ? this.repository.countFormCompletions(formCountOptions)
         : Promise.resolve(0),
@@ -127,6 +139,7 @@ export class EmailAnalyticsUseCase {
       deliveryDelayed,
       unsubscribed,
       suppressed,
+      queued,
       formCompletions,
       formViewed,
       formStarted,
@@ -160,6 +173,9 @@ export class EmailAnalyticsUseCase {
     const snapshot = await this.repository.findResendDomainTracking(teamId)
     return {
       resendDomainTrackingCapable: isResendDomainTrackingCapable(snapshot.domainStatus),
+      // O alerta da tela precisa saber se o gate travou de verdade. Deduzir isso
+      // de "existe aviso" ficou errado quando aviso deixou de implicar bloqueio.
+      trackingDispatchBlocked: !assertResendDomainTrackingReady(snapshot).ok,
       trackingWarnings: getResendDomainDispatchWarnings(snapshot),
     }
   }
@@ -219,12 +235,45 @@ export class EmailAnalyticsUseCase {
             clicked: dispatch.totalClicked,
             bounced: dispatch.totalBounced,
             complained: dispatch.totalComplained,
+            failed: dispatch.failedCount,
           }),
         })),
       })
     } catch (error) {
       console.error("[EmailAnalyticsUseCase][getAnalytics]", error)
       return new Output(false, [], ["Erro ao carregar analytics"], null)
+    }
+  }
+
+  /**
+   * Funil campanha → lead. Sai das queries artesanais da auditoria e vira
+   * contrato do produto: cada etapa de formulário em sessões únicas, com o
+   * denominador de cada salto explícito na resposta.
+   */
+  async getCampaignFunnel(options: {
+    teamId: string
+    campaignId: string
+    from?: Date
+    to?: Date
+  }): Promise<Output> {
+    try {
+      const funnel = await this.repository.findCampaignFunnel(options)
+      if (!funnel) {
+        return new Output(false, [], [CAMPAIGN_FUNNEL_NOT_FOUND_MESSAGE], null)
+      }
+
+      return new Output(true, [], [], {
+        period: { from: options.from ?? null, to: options.to ?? null },
+        /** Toda etapa de formulário conta sessão única, nunca evento bruto. */
+        unit: "unique_sessions" as const,
+        /** Relógio do período: `createdAt` do log, para a campanha que falhou antes de enviar não sumir. */
+        anchor: "log_created_at" as const,
+        ...funnel,
+        rates: buildCampaignFunnelRates(funnel),
+      })
+    } catch (error) {
+      console.error("[EmailAnalyticsUseCase][getCampaignFunnel]", error)
+      return new Output(false, [], ["Erro ao carregar funil da campanha"], null)
     }
   }
 

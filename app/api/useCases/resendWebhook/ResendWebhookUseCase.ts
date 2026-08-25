@@ -19,15 +19,6 @@ import {
 import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
 
-const ORPHAN_BACKFILL_EVENTS = new Set([
-  "email.sent",
-  "email.delivered",
-  "email.opened",
-  "email.clicked",
-  "email.bounced",
-  "email.suppressed",
-])
-
 const RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG =
   "resend_webhook_radar_queue_publish_failed"
 
@@ -97,7 +88,11 @@ export class ResendWebhookUseCase {
         log = await emailLogRepository.findByResendEmailId(resendEmailId)
       }
 
-      if (!log && ORPHAN_BACKFILL_EVENTS.has(event.type)) {
+      // Sem whitelist de tipo: a antiga excluía justamente os eventos de
+      // conformidade (complained/unsubscribed/delivery_delayed/failed), que
+      // sumiam sem rastro quando o EmailLog ainda não existia. O `eventType`
+      // já garante que só entra tipo que o dreno sabe aplicar.
+      if (!log) {
         const tagsHint = event.data.tags
         if (!isBackofficeResendTags(tagsHint ?? null)) {
           await emailOrphanEventService.queueOrphanEvent({

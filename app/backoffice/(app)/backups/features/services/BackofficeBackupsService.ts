@@ -67,7 +67,7 @@ export class BackofficeBackupsService implements IBackofficeBackupsService {
 
     const fileName = parseContentDispositionFileName(
       response.headers.get("Content-Disposition"),
-      `backup-${id}.sql.gz`
+      `backup-${id}.zip`
     )
 
     return {

@@ -73,7 +73,10 @@ const findFormSubmissionContext = mock(async () => ({
   team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
 }))
 const findLeadForSubmission = mock(async () => null)
-const completeSubmission = mock(async () => {})
+// Devolve o lote que recebeu — é o que a transação real faz quando nada é
+// derrubado (review #1058). Um fake que devolvesse `undefined` esconderia que o
+// caller agora enfileira o retorno, não o input.
+const completeSubmission = mock(async (input: { metricEvents: unknown[] }) => input.metricEvents)
 const markSubmissionFailed = mock(async () => {})
 const findMatchingLead = mock(async () => undefined)
 const upsertLeadFromFormAnswers = mock(
@@ -95,6 +98,10 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
   publicFormsRepository: {
     findFormSubmissionContext,
     findLeadForSubmission,
+    findSubmissionAcceptedAt: mock(async () => ({
+      createdAt: new Date("2026-08-20T22:10:31.000Z"),
+      dispatchAcceptedAt: null as Date | null,
+    })),
     completeSubmission,
     markSubmissionFailed,
   },

@@ -21,6 +21,7 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import { resolveQuestionIdentityKey } from "@/lib/public-forms/metric-event-aggregation"
 import { publicFormJourneyRepository } from "@/app/api/infra/data/repositories/publicFormJourney/PublicFormJourneyRepository"
 import { buildJourneyResumeEventKey } from "@/lib/public-forms/journey-session"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
@@ -489,19 +490,57 @@ export class PublicFormsService implements IPublicFormsService {
       }
     }
 
-    await publicFormsRepository.upsertMetricEvent({
-      formId: current.snapshot.formId,
-      publicationId,
-      questionId: liveQuestionId,
-      questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
-      visitorSessionId: input.visitorSessionId,
-      eventType: input.eventType,
-      eventKey: input.eventKey,
-      eventId: input.eventId ?? null,
-      schemaVersion: input.schemaVersion ?? null,
-      occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
-      origin: json(origin),
-    })
+    // SPEC 40 E2 × modo radar (review #1058). Último ponto de escrita do
+    // descarte: a mensagem da fila é publicada **depois** de
+    // `completeSubmission` e consumida noutro processo, então sobrevive à
+    // compensação do gate C e recriaria a linha que ele acabou de apagar.
+    //
+    // Conferir antes e gravar depois, em duas chamadas, seria check-then-act: o
+    // gate cabe na fresta entre as duas. O repositório faz as duas coisas na
+    // mesma transação, com `FOR UPDATE` nas submissões da sessão — as mesmas
+    // linhas que `attachLeadToPendingSubmissions` atualiza, o que serializa os
+    // dois lados.
+    //
+    // O retorno é `true` mesmo quando não grava: o evento não é erro, é
+    // conclusão que ficou obsoleta. `false` faria o consumer logar "formulário
+    // indisponível" e mascarar o motivo.
+    if (input.eventType === "lead_discarded") {
+      const persisted = await publicFormsRepository.upsertDiscardMetricEventWhenSessionHasNoLead({
+        formId: current.snapshot.formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+      if (!persisted) {
+        console.info(
+          "[PublicFormsService][recordMetric] lead anexado na corrida, descarte ignorado",
+          {
+            formId: current.snapshot.formId,
+            visitorSessionId: input.visitorSessionId,
+            eventKey: input.eventKey,
+          },
+        )
+        return true
+      }
+    } else {
+      await publicFormsRepository.upsertMetricEvent({
+        formId: current.snapshot.formId,
+        publicationId,
+        questionId: liveQuestionId,
+        questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+    }
 
     // Fire-and-forget: journey tracking must never block metric recording.
     // DB connection contention from the advisory lock would exhaust the pool
@@ -604,12 +643,33 @@ export class PublicFormsService implements IPublicFormsService {
   async analytics(teamId: string, id: string, from?: Date, to?: Date, publicationId?: string) {
     const publications = await publicFormsRepository.findAnalyticsPublications(teamId, id)
     if (!publications) return null
+    // Uma resposta, um relógio. Os agregados em SQL cortam por
+    // `COALESCE(occurredAt, createdAt)` (ver `buildMetricEventWhereSql`); estes
+    // dois consumidores em Prisma precisam concordar, senão a MESMA resposta
+    // mistura duas âncoras — `totals.leadDiscardedSessions` no dia do aceite e
+    // `leadDiscardsByReason` no dia do drain, com o total diferente da soma por
+    // motivo na tela. É a doença que esta SPEC existe para matar (M2).
+    //
+    // `occurredAt: null` precisa ser um ramo explícito do `OR`: um filtro de
+    // range sobre coluna nullable descarta NULL, e o histórico inteiro anterior
+    // ao E3 tem o campo vazio.
+    const periodFilter: Prisma.PublicFormMetricEventWhereInput | null =
+      from || to
+        ? {
+            OR: [
+              { occurredAt: { gte: from, lte: to } },
+              { occurredAt: null, createdAt: { gte: from, lte: to } },
+            ],
+          }
+        : null
     const where: Prisma.PublicFormMetricEventWhereInput = {
       ...(publicationId ? { publicationId } : {}),
-      ...(from || to ? { createdAt: { gte: from, lte: to } } : {}),
+      ...(periodFilter ?? {}),
     }
-    const events = await publicFormsRepository.groupMetricEvents(id, where)
-    const sessionsByType = await publicFormsRepository.countDistinctSessionsByEventType(id, where)
+    const aggregationFilter = { formId: id, publicationId, from, to }
+    const events = await publicFormsRepository.groupMetricEvents(aggregationFilter)
+    const sessionsByType =
+      await publicFormsRepository.countDistinctSessionsByEventType(aggregationFilter)
     const uniqueLeads = await publicFormsRepository.countDistinctCompletedLeads(id, {
       publicationId,
       from,
@@ -652,6 +712,13 @@ export class PublicFormsService implements IPublicFormsService {
             id: question.id,
             title: question.title,
             position: question.position,
+            // Chave de junção com `events[].questionKey`. Casar por `id` perde
+            // as respostas de pergunta deletada/recriada no builder (FK
+            // `SetNull`): elas existem, mas apareciam como "0/0" no funil.
+            questionKey: resolveQuestionIdentityKey({
+              questionId: question.id,
+              questionSnapshot: question,
+            }),
           })),
         }
       }),

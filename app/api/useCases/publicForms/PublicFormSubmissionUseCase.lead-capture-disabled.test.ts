@@ -48,7 +48,9 @@ function snapshot(leadCaptureDisabled: boolean): PublicFormSnapshot {
   } as unknown as PublicFormSnapshot
 }
 
-const completeSubmission = mock(async () => {})
+// Devolve o lote recebido: `completeSubmission` passou a retornar o que de fato
+// persistiu, e o caller enfileira esse retorno (review #1058).
+const completeSubmission = mock(async (input: { metricEvents: unknown[] }) => input.metricEvents)
 const attributionExecute = mock(
   async () =>
     ({ isValid: true, result: null }) as {
@@ -74,6 +76,10 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
       team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
     })),
     findLeadForSubmission: mock(async () => null),
+    findSubmissionAcceptedAt: mock(async () => ({
+      createdAt: new Date("2026-08-20T22:10:31.000Z"),
+      dispatchAcceptedAt: null as Date | null,
+    })),
     completeSubmission,
     markSubmissionFailed: mock(async () => {}),
   },

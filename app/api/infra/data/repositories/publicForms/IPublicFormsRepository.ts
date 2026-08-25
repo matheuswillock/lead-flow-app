@@ -11,6 +11,8 @@ import type {
   UserRole,
 } from "@prisma/client"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
+import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
+import type { MetricEventAggregationFilter } from "./MetricEventAggregationSql"
 
 export const publicFormDetailSelect = {
   id: true,
@@ -169,7 +171,23 @@ export type PublicFormSubmissionContext = {
   team: { master: { id: string; supabaseId: string | null; timezone: string | null } }
 }
 
-export type PublicFormCompleteSubmissionInput = {
+export type PublicFormCompletedMetricEvent = {
+  formId: string
+  publicationId: string
+  questionId?: string | null
+  questionSnapshot?: Prisma.InputJsonValue | null
+  visitorSessionId: string
+  eventType: PublicFormMetricType
+  eventKey: string
+  eventId?: string | null
+  schemaVersion?: number | null
+  occurredAt?: Date | null
+  origin: Prisma.InputJsonValue
+}
+
+export type PublicFormCompleteSubmissionInput<
+  TMetricEvent extends PublicFormCompletedMetricEvent = PublicFormCompletedMetricEvent,
+> = {
   submissionId: string
   leadId?: string | null
   processingAlerts?: string | null
@@ -180,19 +198,7 @@ export type PublicFormCompleteSubmissionInput = {
   }>
   activityBody?: string
   activityPayload?: Prisma.InputJsonValue
-  metricEvents: Array<{
-    formId: string
-    publicationId: string
-    questionId?: string | null
-    questionSnapshot?: Prisma.InputJsonValue | null
-    visitorSessionId: string
-    eventType: PublicFormMetricType
-    eventKey: string
-    eventId?: string | null
-    schemaVersion?: number | null
-    occurredAt?: Date | null
-    origin: Prisma.InputJsonValue
-  }>
+  metricEvents: TMetricEvent[]
 }
 
 export interface IPublicFormsRepository {
@@ -316,20 +322,10 @@ export interface IPublicFormsRepository {
     endedAt: Date | null
     snapshot: Prisma.JsonValue
   }> | null>
-  groupMetricEvents(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
-  ): Promise<
-    Array<{
-      eventType: PublicFormMetricType
-      publicationId: string
-      questionId: string | null
-      _count: { _all: number }
-    }>
-  >
+  /** Agregado no Postgres: cada linha já é contagem de sessões únicas. */
+  groupMetricEvents(filter: MetricEventAggregationFilter): Promise<GroupedMetricEvent[]>
   countDistinctSessionsByEventType(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
+    filter: MetricEventAggregationFilter,
   ): Promise<Record<string, number>>
   countDistinctCompletedLeads(
     formId: string,
@@ -355,6 +351,36 @@ export interface IPublicFormsRepository {
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
   findLeadForSubmission(submissionId: string): Promise<Lead | null>
+  /**
+   * Relógio do aceite da submissão. O processamento em background pode rodar
+   * horas ou dias depois (fila travada); é este par que datam os eventos de
+   * conversão, nunca o `new Date()` do worker.
+   */
+  findSubmissionAcceptedAt(
+    submissionId: string,
+  ): Promise<{ createdAt: Date; dispatchAcceptedAt: Date | null } | null>
+  /**
+   * SPEC 40 E2 × modo radar (review #1058). Grava `lead_discarded` **se, e
+   * somente se**, a sessão continuar sem lead — verificação e escrita na mesma
+   * transação, com `FOR UPDATE` sobre as submissões da sessão.
+   *
+   * Existe porque a compensação por `deleteMany` no gate C sozinha não fecha a
+   * corrida — ela apaga o que já está gravado, mas nada impede a gravação de
+   * chegar **depois**, e a mensagem da fila ainda pode estar em voo. Verificar
+   * antes e gravar depois, em chamadas separadas, só encurta a janela.
+   *
+   * Devolve `false` quando a sessão já converteu e o evento foi descartado.
+   */
+  upsertDiscardMetricEventWhenSessionHasNoLead(input: {
+    formId: string
+    publicationId: string
+    visitorSessionId: string
+    eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
+    origin: Prisma.InputJsonValue
+  }): Promise<boolean>
   findCompletedSubmissionBySession(
     publicationId: string,
     visitorSessionId: string,
@@ -443,7 +469,20 @@ export interface IPublicFormsRepository {
       submitRequestedAt: Date
     },
   ): Promise<{ id: string; eventId: string | null }>
-  completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>
+  /**
+   * Devolve os eventos que **de fato** foram persistidos (review #1058). O lote
+   * de entrada pode encolher: se o gate C anexou o lead no meio da corrida, o
+   * `lead_discarded` cai aqui dentro. Quem chama precisa enfileirar este
+   * retorno, não o lote original — publicar um evento que a transação recusou
+   * faria o consumer regravá-lo por fora.
+   *
+   * Genérico porque são os **mesmos objetos**, só que menos: quem passa um
+   * evento com campos a mais (`radarOrigin`, por exemplo) recebe de volta com
+   * eles intactos, sem precisar recasar por `eventKey`.
+   */
+  completeSubmission<TMetricEvent extends PublicFormCompletedMetricEvent>(
+    input: PublicFormCompleteSubmissionInput<TMetricEvent>,
+  ): Promise<TMetricEvent[]>
   persistSubmissionAnswers(
     submissionId: string,
     answers: Array<{

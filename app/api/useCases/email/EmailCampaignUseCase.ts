@@ -67,7 +67,6 @@ import type {
 } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
-import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
   assertCampaignFromIsSendable,
   formatCampaignFromHeader,
@@ -4772,6 +4771,7 @@ export class EmailCampaignUseCase {
               resendDomainStatus: true,
               resendOpenTracking: true,
               resendClickTracking: true,
+              resendSendingDnsVerified: true,
             },
           })
           .catch(() => null)
@@ -5007,17 +5007,10 @@ export class EmailCampaignUseCase {
 
     console.info(`[EmailCampaignUseCase][dispatchScheduled] ${dispatched} campanha(s) disparada(s) nesta execução`)
 
-    const orphanResult = await emailOrphanEventService.processPendingBatch().catch((error) => {
-      console.error("[EmailCampaignUseCase][dispatchScheduled][orphanEvents]", error)
-      return { processed: 0, failed: 0, skipped: 0 }
-    })
-    if (orphanResult.processed > 0 || orphanResult.failed > 0) {
-      console.info(
-        `[EmailCampaignUseCase][dispatchScheduled] órfãos: ${orphanResult.processed} processados, ${orphanResult.failed} falharam`
-      )
-    }
-
-    return new Output(true, [`${dispatched} campanhas disparadas`], [], { dispatched, orphanResult })
+    // O dreno de órfãos do Resend saiu daqui: pegava carona no fim do
+    // dispatch, 10 por execução (120/h). Agora é cron próprio,
+    // /api/v1/email/cron/drain-orphan-events, 200 a cada 5 min.
+    return new Output(true, [`${dispatched} campanhas disparadas`], [], { dispatched })
   }
 
   private async hasSiblingDailyCapConflict(params: {

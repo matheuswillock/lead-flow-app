@@ -21,9 +21,20 @@ mock.module("@/lib/queues/public-form-submission-events", () => ({
   PUBLIC_FORM_SUBMISSION_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
-mock.module("@/lib/queues/queue-processing-failure", () => ({
-  ackAfterMaxDeliveries: mock(async () => false),
-}))
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
 
 type QueueMessageMetadata = {
   messageId: string
@@ -95,6 +106,48 @@ describe("processPublicFormSubmissionEventMessage", () => {
       { processInBackground },
     )
     expect(processInBackground).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T-Q3.2 + review #1042. Payload malformado é falha **terminal**: se entrasse
+   * como `pending`, o cron de retry republicaria o mesmo payload e o ciclo
+   * fila↔outbox não fecharia nunca. O `reason` nomeia o campo que faltou.
+   */
+  it("T-Q3.2 — payload inválido grava dead-letter TERMINAL nomeando o campo, e acka", async () => {
+    recordTerminalFailure.mockClear()
+    upsertFromProcessingFailure.mockClear()
+
+    await expect(
+      processPublicFormSubmissionEventMessage(
+        { ...baseMessage(), snapshot: undefined } as unknown as PublicFormSubmissionBackgroundJob,
+        metadata,
+        { processInBackground },
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(processInBackground).not.toHaveBeenCalled()
+    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-submission-events",
+        idempotencyKey: "req-abc",
+        lastError: "campos obrigatórios ausentes: snapshot",
+      }),
+    )
+  })
+
+  it("T-Q3.2 — sem chave no payload, a linha usa o messageId como idempotencyKey", async () => {
+    recordTerminalFailure.mockClear()
+
+    await processPublicFormSubmissionEventMessage(
+      {} as unknown as PublicFormSubmissionBackgroundJob,
+      metadata,
+      { processInBackground },
+    )
+
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "invalid-payload:msg-1" }),
+    )
   })
 
   it("erro transitório: propaga throw para retry do handleCallback", async () => {
