@@ -113,6 +113,39 @@ const LOG_FILTER_CLAUSES: Record<EmailAnalyticsLogFilter, LogFilterClause> = {
   }),
 }
 
+export type EmailAnalyticsCohortFilter =
+  | "delivered"
+  | "opened"
+  | "openedOnSent"
+  | "clicked"
+  | "bounced"
+  | "complained"
+
+/**
+ * Contagens de COORTE, usadas só para as taxas.
+ *
+ * Sob a âncora de evento (D5), `opened` conta aberturas ocorridas na janela e
+ * `delivered` conta entregas ocorridas na janela — populações diferentes. A
+ * razão entre elas não é taxa de conversão: numa janela de um dia com muitas
+ * aberturas de e-mails antigos e poucas entregas novas, ela passa de 100%.
+ *
+ * Aqui numerador e denominador vivem na MESMA coorte: "dos e-mails entregues na
+ * janela, quantos foram abertos". `totals` continua respondendo "quantas
+ * aberturas aconteceram" — as duas perguntas são legítimas e diferentes, e por
+ * isso a resposta declara `rateBasis` ao lado de `anchor`.
+ */
+const COHORT_FILTER_CLAUSES: Record<EmailAnalyticsCohortFilter, LogFilterClause> = {
+  // Da coorte ENVIADA na janela, quantos chegaram.
+  delivered: (period) => ({ sentAt: period, deliveredAt: { not: null } }),
+  // D6: a base do openRate é a entrega, então a coorte é a das ENTREGAS.
+  opened: (period) => ({ deliveredAt: period, openedAt: { not: null } }),
+  // A base antiga da transição, na coorte de envio.
+  openedOnSent: (period) => ({ sentAt: period, openedAt: { not: null } }),
+  clicked: (period) => ({ sentAt: period, clickedAt: { not: null } }),
+  bounced: (period) => ({ sentAt: period, bouncedAt: { not: null } }),
+  complained: (period) => ({ sentAt: period, complainedAt: { not: null } }),
+}
+
 /** Sem filtro, a pergunta é sobre o envio — e o relógio do envio é `sentAt`. */
 const SENT_CLAUSE: LogFilterClause = (period) => ({ sentAt: period })
 
@@ -174,6 +207,10 @@ export type EmailCampaignFunnel = {
 
 export interface IEmailAnalyticsRepository {
   countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
+  countCohortLogs(
+    where: EmailAnalyticsLogWhere,
+    filter: EmailAnalyticsCohortFilter,
+  ): Promise<number>
   findCampaignFunnel(options: {
     teamId: string
     campaignId: string
@@ -261,6 +298,21 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
 
     return prisma.emailLog.count({
       where: { ...scope, ...clause({ gte: where.from, lte: where.to }) },
+    })
+  }
+
+  /** Contagem de coorte — numerador e denominador na mesma população. */
+  async countCohortLogs(
+    where: EmailAnalyticsLogWhere,
+    filter: EmailAnalyticsCohortFilter
+  ): Promise<number> {
+    const scope = await this.buildLogScope(where)
+
+    return prisma.emailLog.count({
+      where: {
+        ...scope,
+        ...COHORT_FILTER_CLAUSES[filter]({ gte: where.from, lte: where.to }),
+      },
     })
   }
 

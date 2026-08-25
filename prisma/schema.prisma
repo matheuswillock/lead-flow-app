@@ -3424,6 +3424,15 @@ model EmailLog {
   @@index([teamId, category, sentAt(sort: Desc)], map: "corretor_studio_email_logs_team_category_sent_idx")
   @@index([recipientEmail])
   @@index([sentAt(sort: Desc)])
+  // Ancora de evento (SPEC 30 — D5): o analytics deixou de contar tudo por
+  // `sentAt` e passou a fazer range no timestamp de cada fato. Sem estes
+  // indices, toda requisicao varria o historico inteiro do time cinco vezes —
+  // e o dobro disso quando os deltas carregam o periodo anterior.
+  @@index([teamId, deliveredAt], map: "corretor_studio_email_logs_team_delivered_idx")
+  @@index([teamId, openedAt], map: "corretor_studio_email_logs_team_opened_idx")
+  @@index([teamId, clickedAt], map: "corretor_studio_email_logs_team_clicked_idx")
+  @@index([teamId, bouncedAt], map: "corretor_studio_email_logs_team_bounced_idx")
+  @@index([teamId, complainedAt], map: "corretor_studio_email_logs_team_complained_idx")
   @@map("corretor_studio_email_logs")
 }
 
@@ -3439,6 +3448,10 @@ model EmailEvent {
 
   @@unique([logId, type, occurredAt])
   @@index([logId, occurredAt(sort: Desc)])
+  // `delivery_delayed` e `unsubscribed` passaram a ser contados pelo
+  // `occurredAt` do PROPRIO evento (D5). O indice existente comeca por `logId`,
+  // que a consulta nao conhece: ela filtra por tipo + janela.
+  @@index([type, occurredAt], map: "corretor_studio_email_events_type_occurred_idx")
   @@map("corretor_studio_email_events")
 }
 

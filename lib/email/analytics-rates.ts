@@ -33,10 +33,23 @@ export function buildCampaignFunnelRates(funnel: {
   }
 }
 
+/**
+ * Taxas de coorte: numerador e denominador na mesma população.
+ *
+ * Todos os campos aqui são contagens de coorte, não de evento — ver
+ * `COHORT_FILTER_CLAUSES`. Misturar os dois faz `openRate` passar de 100% numa
+ * janela com aberturas de e-mails antigos.
+ */
 export function buildRates(totals: {
   sent: number
+  /** Da coorte enviada: quantos foram entregues. */
   delivered: number
+  /** Da coorte ENTREGUE: quantos foram abertos (D6). */
   opened: number
+  /** Denominador do openRate: tamanho da coorte de entregas da janela. */
+  deliveredCohort?: number
+  /** Da coorte enviada: quantos foram abertos (base antiga, transição 30d). */
+  openedOnSent?: number
   clicked: number
   bounced: number
   complained: number
@@ -44,6 +57,10 @@ export function buildRates(totals: {
   failed?: number
 }) {
   const failed = totals.failed ?? 0
+  // Recortes sem coorte separada (disparo, ranking) reusam `delivered` nas duas
+  // pontas: ali numerador e denominador já vêm do mesmo contador acumulado.
+  const deliveredCohort = totals.deliveredCohort ?? totals.delivered
+  const openedOnSent = totals.openedOnSent ?? totals.opened
 
   return {
     deliverabilityRate: safeRate(totals.delivered, totals.sent),
@@ -55,13 +72,13 @@ export function buildRates(totals: {
      * vez. A troca move a série histórica para cima — na campanha "Agro - sul",
      * 22,40% → 25,86% sem nada ter mudado no mundo real.
      */
-    openRate: safeRate(totals.opened, totals.delivered),
+    openRate: safeRate(totals.opened, deliveredCohort),
     /**
      * A base antiga, exposta em paralelo pelos 30 dias de transição para a
      * mudança ser conferível em vez de aparecer como salto inexplicado. Sai
      * quando a UI e os relatórios tiverem migrado.
      */
-    openRateOnSent: safeRate(totals.opened, totals.sent),
+    openRateOnSent: safeRate(openedOnSent, totals.sent),
     clickRate: safeRate(totals.clicked, totals.sent),
     bounceRate: safeRate(totals.bounced, totals.sent),
     complainRate: safeRate(totals.complained, totals.sent),
