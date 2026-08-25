@@ -46,7 +46,8 @@ type CountLogsCall = [
   {
     where: {
       teamId: string
-      sentAt?: { gte: Date; lte: Date }
+      sentAt?: { gte: Date; lte: Date } | null
+      resendEmailId?: string | null
       createdAt?: { gte: Date; lte: Date }
       status?: string
     }
@@ -65,8 +66,25 @@ describe("EmailAnalyticsRepository.countLogs — âncora por status (T-M1.1)", (
 
     const call = (countLogsMock.mock.calls as unknown as CountLogsCall[])[0][0]
     expect(call.where.createdAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
-    expect(call.where.sentAt).toBeUndefined()
+    // `sentAt` não é janela aqui — é recorte de população (`null`), não âncora.
+    expect(call.where.sentAt).toBeNull()
     expect(call.where.status).toBe("failed")
+  })
+
+  it("T-M1.1-a2 — log aceito e marcado failed depois não conta como falha", async () => {
+    // `email.failed` pós-aceite promove o status sem limpar `sentAt`. Sem o
+    // recorte, o mesmo log entraria em `sent` e em `failed` e a failureRate
+    // passaria a somar mais que 100% da tentativa de envio.
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "failed")
+
+    const call = (
+      countLogsMock.mock.calls as unknown as Array<
+        [{ where: { sentAt?: unknown; resendEmailId?: unknown } }]
+      >
+    )[0][0]
+    expect(call.where.sentAt).toBeNull()
+    expect(call.where.resendEmailId).toBeNull()
   })
 
   it("T-M1.1-b — suppressed e queued também ancoram em createdAt", async () => {
@@ -76,10 +94,10 @@ describe("EmailAnalyticsRepository.countLogs — âncora por status (T-M1.1)", (
 
     const calls = countLogsMock.mock.calls as unknown as CountLogsCall[]
     expect(calls[0][0].where.createdAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
-    expect(calls[0][0].where.sentAt).toBeUndefined()
+    expect(calls[0][0].where.sentAt).toBeNull()
     expect(calls[0][0].where.status).toBe("suppressed")
     expect(calls[1][0].where.createdAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
-    expect(calls[1][0].where.sentAt).toBeUndefined()
+    expect(calls[1][0].where.sentAt).toBeNull()
     expect(calls[1][0].where.status).toBe("queued")
   })
 

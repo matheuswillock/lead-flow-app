@@ -56,9 +56,15 @@ const LOG_FILTER_CONDITIONS: Record<EmailAnalyticsLogFilter, Prisma.EmailLogWher
   clicked: { clickedAt: { not: null } },
   bounced: { bouncedAt: { not: null } },
   complained: { complainedAt: { not: null } },
-  failed: { status: "failed" },
-  suppressed: { status: "suppressed" },
-  queued: { status: "queued" },
+  // `status` sozinho não delimita a população "nunca saiu". `applyWebhookEvent`
+  // promove `email.failed` por prioridade de status e, para tipos sem timestamp
+  // próprio, só escreve o status — `sentAt` e `resendEmailId` sobrevivem. Um log
+  // aceito pelo Resend e marcado `failed` depois cairia em `sent` E em `failed`,
+  // inflando `failureRate` e divergindo de `dispatches[].failedCount`. A regra é
+  // a mesma de `queryDispatchLogCounters`, que é a fonte única da definição.
+  failed: { status: "failed", sentAt: null, resendEmailId: null },
+  suppressed: { status: "suppressed", sentAt: null, resendEmailId: null },
+  queued: { status: "queued", sentAt: null, resendEmailId: null },
   delivery_delayed: { events: { some: { type: "delivery_delayed" } } },
   unsubscribed: { events: { some: { type: "unsubscribed" } } },
 }
