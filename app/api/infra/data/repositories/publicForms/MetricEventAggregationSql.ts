@@ -40,6 +40,18 @@ export const QUESTION_IDENTITY_KEY_SQL = Prisma.sql`
         ELSE NULL
       END`
 
+/**
+ * Relógio do período: o do fato, com o do insert como reserva.
+ *
+ * `createdAt` é quando a LINHA nasceu — no evento server-side, o momento em que a
+ * fila drenou. Filtrar por ele mantinha o funil datando conversão pelo drain,
+ * que é exatamente o incidente de 20–22/08: mais `form_completed` que
+ * `form_viewed` no recorte de três dias. `occurredAt` carrega o aceite (gravado
+ * no `processInBackground` e no backfill); o `COALESCE` cobre as linhas
+ * históricas e os eventos de cliente que nunca tiveram o campo.
+ */
+const PERIOD_ANCHOR_SQL = Prisma.sql`COALESCE("occurredAt", "createdAt")`
+
 export function buildMetricEventWhereSql(filter: MetricEventAggregationFilter): Prisma.Sql {
   const conditions: Prisma.Sql[] = [Prisma.sql`"formId" = ${filter.formId}::uuid`]
 
@@ -47,10 +59,10 @@ export function buildMetricEventWhereSql(filter: MetricEventAggregationFilter): 
     conditions.push(Prisma.sql`"publicationId" = ${filter.publicationId}::uuid`)
   }
   if (filter.from) {
-    conditions.push(Prisma.sql`"createdAt" >= ${filter.from}`)
+    conditions.push(Prisma.sql`${PERIOD_ANCHOR_SQL} >= ${filter.from}`)
   }
   if (filter.to) {
-    conditions.push(Prisma.sql`"createdAt" <= ${filter.to}`)
+    conditions.push(Prisma.sql`${PERIOD_ANCHOR_SQL} <= ${filter.to}`)
   }
 
   return Prisma.join(conditions, " AND ")

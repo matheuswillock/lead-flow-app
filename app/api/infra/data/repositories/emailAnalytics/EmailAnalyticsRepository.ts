@@ -262,7 +262,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
 
     const query = Prisma.sql`
       WITH logs AS (
-        SELECT id, "sentAt", "deliveredAt", "openedAt", "clickedAt", status
+        SELECT id, "sentAt", "resendEmailId", "deliveredAt", "openedAt", "clickedAt", status
         FROM "corretor_studio_email_logs"
         WHERE "teamId" = ${options.teamId}::uuid
           AND "campaignId" = ANY(${campaignIds}::uuid[])
@@ -273,30 +273,33 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         SELECT e."eventType", e."visitorSessionId"
         FROM "corretor_studio_public_form_metric_events" e
         WHERE
-          -- Caminho principal, verificado no servidor: o log pertence ao time e
-          -- a campanha, e ja esta recortado pelo periodo no CTE acima.
-          e.origin->>'emailLogId' IN (SELECT id::text FROM logs)
-          OR (
-            -- Reserva, para o evento cujo link perdeu o cs_el. Ela precisa de
-            -- tres amarras que faltavam:
-            -- (a) so quando nao ha emailLogId utilizavel — senao o ramo
-            --     principal ja decidiu, e este passaria por cima dele;
-            -- (b) o mesmo periodo — origin.campaignId nao esta correlacionado
-            --     com o CTE logs, entao sem isto o funil descrevia o recorte
-            --     nos degraus de e-mail e a vida inteira da campanha nos de
-            --     formulario, chegando a taxas acima de 100%;
-            -- (c) o formulario tem de ser do time — origin vem do POST publico
-            --     e sanitizePublicFormOrigin preserva qualquer campaignId com
-            --     cara de UUID, entao sem esta amarra qualquer um que conheca
-            --     o UUID de uma campanha injeta evento no funil dela.
-            COALESCE(NULLIF(btrim(e.origin->>'emailLogId'), ''), NULL) IS NULL
-            AND e.origin->>'campaignId' = ANY(${campaignIds}::text[])
-            AND EXISTS (
-              SELECT 1 FROM "corretor_studio_public_forms" f
-              WHERE f.id = e."formId" AND f."teamId" = ${options.teamId}::uuid
+          -- Vale para OS DOIS ramos: o formulario do evento tem de ser do time.
+          -- O origin inteiro vem do POST publico, e o emailLogId viaja em texto
+          -- claro no cs_el de qualquer e-mail da campanha — quem tem o link tem
+          -- o id. Sem esta amarra no caminho principal, bastava POStar metrica
+          -- no formulario de OUTRO time carregando um emailLogId desta campanha
+          -- para inflar o funil dela.
+          EXISTS (
+            SELECT 1 FROM "corretor_studio_public_forms" f
+            WHERE f.id = e."formId" AND f."teamId" = ${options.teamId}::uuid
+          )
+          AND (
+            -- Caminho principal: o log pertence ao time e a campanha, e ja esta
+            -- recortado pelo periodo no CTE acima.
+            e.origin->>'emailLogId' IN (SELECT id::text FROM logs)
+            OR (
+              -- Reserva, para o evento cujo link perdeu o cs_el:
+              -- (a) so quando nao ha emailLogId utilizavel — senao o ramo
+              --     principal ja decidiu, e este passaria por cima dele;
+              -- (b) o mesmo periodo — origin.campaignId nao esta correlacionado
+              --     com o CTE logs, entao sem isto o funil descrevia o recorte
+              --     nos degraus de e-mail e a vida inteira da campanha nos de
+              --     formulario, chegando a taxas acima de 100%.
+              COALESCE(NULLIF(btrim(e.origin->>'emailLogId'), ''), NULL) IS NULL
+              AND e.origin->>'campaignId' = ANY(${campaignIds}::text[])
+              ${options.from ? Prisma.sql`AND COALESCE(e."occurredAt", e."createdAt") >= ${options.from}` : Prisma.empty}
+              ${options.to ? Prisma.sql`AND COALESCE(e."occurredAt", e."createdAt") <= ${options.to}` : Prisma.empty}
             )
-            ${options.from ? Prisma.sql`AND e."createdAt" >= ${options.from}` : Prisma.empty}
-            ${options.to ? Prisma.sql`AND e."createdAt" <= ${options.to}` : Prisma.empty}
           )
       )
       SELECT
@@ -304,7 +307,13 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         (SELECT COUNT(*) FROM logs WHERE "deliveredAt" IS NOT NULL)::int AS "delivered",
         (SELECT COUNT(*) FROM logs WHERE "openedAt" IS NOT NULL)::int AS "opened",
         (SELECT COUNT(*) FROM logs WHERE "clickedAt" IS NOT NULL)::int AS "clicked",
-        (SELECT COUNT(*) FROM logs WHERE status = 'failed'::"email_log_status")::int AS "failed",
+        -- Mesma regra de LOG_FILTER_CONDITIONS e queryDispatchLogCounters: um log
+        -- aceito e marcado failed depois (email.failed pos-aceite) conserva
+        -- sentAt/resendEmailId e cairia em sent E em failed no mesmo funil.
+        (SELECT COUNT(*) FROM logs
+          WHERE status = 'failed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL)::int AS "failed",
         (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
           WHERE "eventType" = 'form_viewed')::int AS "formViewed",
         (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
@@ -513,8 +522,10 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       FROM "corretor_studio_public_form_metric_events"
       WHERE "formId" = ANY(${formIds}::uuid[])
         AND "eventType" = ${options.eventType}::"PublicFormMetricType"
-        AND "createdAt" >= ${options.from}
-        AND "createdAt" <= ${options.to}
+        -- Mesmo relogio de buildMetricEventWhereSql: o do fato, com o do insert
+        -- como reserva. createdAt sozinho data a conversao pelo dia do drain.
+        AND COALESCE("occurredAt", "createdAt") >= ${options.from}
+        AND COALESCE("occurredAt", "createdAt") <= ${options.to}
         ${
           campaignIds
             ? Prisma.sql`AND origin->>'campaignId' = ANY(${campaignIds}::text[])`

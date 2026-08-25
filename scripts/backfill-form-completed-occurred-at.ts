@@ -29,7 +29,6 @@
  *   bun run backfill:form-completed-occurred-at -- --apply
  */
 
-import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   planFormCompletedOccurredAtBackfill,
@@ -42,11 +41,19 @@ import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metri
 const APPLY = process.argv.includes("--apply")
 const LOG = "[backfill-form-completed-occurred-at]"
 
-/** Tipos emitidos por `processInBackground` — os únicos que nascem sem relógio. */
+/**
+ * Tipos emitidos por `processInBackground` — os únicos que nascem sem relógio.
+ *
+ * `lead_discarded` entra no mesmo lote e recebe o mesmo `occurredAt` do aceite.
+ * Fora desta lista, o histórico dele ficaria no dia do drain enquanto os irmãos
+ * do lote seriam corrigidos — funil e Radar de descarte dessincronizados do
+ * resto da conversão.
+ */
 const SERVER_SIDE_EVENT_TYPES = [
   "form_completed",
   "lead_created",
   "lead_attached",
+  "lead_discarded",
   "meeting_scheduled",
 ] as const
 
@@ -121,10 +128,6 @@ function parseAttributionFromEventKey(eventKey: string): string | null {
   if (index === -1) return null
   const emailLogId = eventKey.slice(index + marker.length)
   return emailLogId.length > 0 ? emailLogId : null
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
 }
 
 function readOriginEmailLogId(origin: unknown): string | null {
@@ -217,26 +220,38 @@ async function main() {
           data: { occurredAt: update.occurredAt },
         })
 
-        try {
-          const result = await tx.radarEvent.updateMany({
-            where: {
-              sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
-              sourceId: update.eventKey,
-            },
-            data: { occurredAt: update.occurredAt },
-          })
-          radarUpdated += result.count
-        } catch (error) {
-          // Só o conflito de unicidade é benigno: já existe linha do Radar na
-          // data certa, então não há o que redatar. Qualquer outro erro sobe e
-          // desfaz a transação, mantendo o evento retentável.
-          if (!isUniqueConstraintError(error)) throw error
+        // Conflito é DETECTADO antes, não capturado depois.
+        //
+        // No Postgres, um statement que falha aborta a transação inteira:
+        // capturar o P2002 em JS não a restaura, o COMMIT falha mesmo assim, e o
+        // conflito supostamente benigno derrubaria o par junto. Por isso a
+        // duplicata é procurada com um SELECT — nenhum statement chega a errar.
+        const alreadyAtTargetDate = await tx.radarEvent.findFirst({
+          where: {
+            sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
+            sourceId: update.eventKey,
+            occurredAt: update.occurredAt,
+          },
+          select: { id: true },
+        })
+
+        if (alreadyAtTargetDate) {
           radarConflicts += 1
           console.info(`${LOG} Evento do Radar já estava na data certa`, {
             eventKey: update.eventKey,
             occurredAt: update.occurredAt.toISOString(),
           })
+          return
         }
+
+        const result = await tx.radarEvent.updateMany({
+          where: {
+            sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
+            sourceId: update.eventKey,
+          },
+          data: { occurredAt: update.occurredAt },
+        })
+        radarUpdated += result.count
       })
       metricsUpdated += 1
     } catch (error) {

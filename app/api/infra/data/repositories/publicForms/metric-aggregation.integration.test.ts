@@ -229,6 +229,46 @@ describe.skipIf(!RUN_INTEGRATION)("Agregação de métricas no banco", () => {
     expect(actual).toBe(4)
   })
 
+  it("T-M4.5 — o período filtra pelo occurredAt, não pelo dia do drain", async () => {
+    /**
+     * Regressão do achado do #1060: o UseCase e o backfill passaram a gravar
+     * `occurredAt`, mas a agregação continuava filtrando por `createdAt` — o
+     * campo era escrito e ninguém lia. Na prática o incidente 20–22/08 seguia
+     * datando a conversão pelo dia do drain mesmo depois da correção.
+     */
+    const aceite = new Date("2026-08-20T22:10:31.000Z")
+    const drain = new Date("2026-08-22T23:07:04.000Z")
+    const eventKey = `${scope.formId}:drain:occurred-at`
+
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: scope.formId } },
+        publication: { connect: { id: scope.publicationId } },
+        visitorSessionId: "s-drain",
+        eventType: "form_completed",
+        eventKey,
+        occurredAt: aceite,
+        createdAt: drain,
+      },
+    })
+
+    const janelaDoAceite = await publicFormsRepository.countDistinctSessionsByEventType({
+      formId: scope.formId,
+      from: new Date("2026-08-20T00:00:00.000Z"),
+      to: new Date("2026-08-21T00:00:00.000Z"),
+    })
+    const janelaDoDrain = await publicFormsRepository.countDistinctSessionsByEventType({
+      formId: scope.formId,
+      from: new Date("2026-08-22T00:00:00.000Z"),
+      to: new Date("2026-08-23T00:00:00.000Z"),
+    })
+
+    expect(janelaDoAceite.form_completed).toBe(1)
+    expect(janelaDoDrain.form_completed ?? 0).toBe(0)
+
+    await prisma.publicFormMetricEvent.deleteMany({ where: { eventKey } })
+  })
+
   it("T-M4.2 — 100 mil eventos: agregação responde em menos de 2s", async () => {
     const BATCH = 5_000
     const TOTAL = 100_000
