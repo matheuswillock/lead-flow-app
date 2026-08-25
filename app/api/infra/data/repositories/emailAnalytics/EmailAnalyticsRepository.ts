@@ -1,4 +1,6 @@
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { queryDispatchLogCounters } from "@/app/api/infra/data/repositories/emailLog/DispatchLogCountersQuery"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 import { countUniqueFormMetricRecipients } from "@/lib/email/unique-form-metric-recipients"
 
@@ -26,6 +28,14 @@ export type EmailAnalyticsDispatchRecord = {
   totalBounced: number
   totalComplained: number
   status: string
+  /**
+   * Contadores de log do disparo. Os totais gravados no disparo só descrevem o
+   * que saiu; sem estas três colunas um disparo que morreu por quota exibe
+   * "delivered/opened" normais e nenhum sinal do incêndio.
+   */
+  failedCount: number
+  suppressedCount: number
+  queuedCount: number
 }
 
 export type EmailAnalyticsLogFilter =
@@ -38,6 +48,31 @@ export type EmailAnalyticsLogFilter =
   | "delivery_delayed"
   | "unsubscribed"
   | "suppressed"
+  | "queued"
+
+const LOG_FILTER_CONDITIONS: Record<EmailAnalyticsLogFilter, Prisma.EmailLogWhereInput> = {
+  delivered: { deliveredAt: { not: null } },
+  opened: { openedAt: { not: null } },
+  clicked: { clickedAt: { not: null } },
+  bounced: { bouncedAt: { not: null } },
+  complained: { complainedAt: { not: null } },
+  failed: { status: "failed" },
+  suppressed: { status: "suppressed" },
+  queued: { status: "queued" },
+  delivery_delayed: { events: { some: { type: "delivery_delayed" } } },
+  unsubscribed: { events: { some: { type: "unsubscribed" } } },
+}
+
+/**
+ * Populações que nunca chegaram a sair: `sentAt` é NULL por construção. Ancorá-las
+ * na âncora padrão do analytics (`sentAt`) as apagava de qualquer período — os
+ * logs falhos eram invisíveis nos totais. `createdAt` é a única âncora que têm.
+ */
+const CREATED_AT_ANCHORED_FILTERS: ReadonlySet<EmailAnalyticsLogFilter> = new Set([
+  "failed",
+  "suppressed",
+  "queued",
+])
 
 export type EmailTemplateVersionMetricRow = {
   versionGroupId: string
@@ -132,11 +167,20 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     return campaignIds.length === 1 ? campaignIds[0] : { in: campaignIds }
   }
 
-  private async buildLogWhere(options: EmailAnalyticsLogWhere) {
+  private async buildLogWhere(
+    options: EmailAnalyticsLogWhere,
+    filter?: EmailAnalyticsLogFilter
+  ): Promise<Prisma.EmailLogWhereInput> {
     const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
+    const period = { gte: options.from, lte: options.to }
+    const anchor =
+      filter && CREATED_AT_ANCHORED_FILTERS.has(filter)
+        ? { createdAt: period }
+        : { sentAt: period }
+
     return {
       teamId: options.teamId,
-      sentAt: { gte: options.from, lte: options.to },
+      ...anchor,
       ...(campaignFilter && { campaignId: campaignFilter }),
     }
   }
@@ -145,30 +189,11 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     where: EmailAnalyticsLogWhere,
     filter?: EmailAnalyticsLogFilter
   ): Promise<number> {
-    const base = await this.buildLogWhere(where)
-    const timestampFilter =
-      filter === "delivered"
-        ? { deliveredAt: { not: null as Date | null } }
-        : filter === "opened"
-          ? { openedAt: { not: null as Date | null } }
-          : filter === "clicked"
-            ? { clickedAt: { not: null as Date | null } }
-            : filter === "bounced"
-              ? { bouncedAt: { not: null as Date | null } }
-              : filter === "complained"
-                ? { complainedAt: { not: null as Date | null } }
-                : filter === "failed"
-                  ? { status: "failed" as const }
-                  : filter === "suppressed"
-                    ? { status: "suppressed" as const }
-                    : filter === "delivery_delayed"
-                      ? { events: { some: { type: "delivery_delayed" as const } } }
-                      : filter === "unsubscribed"
-                        ? { events: { some: { type: "unsubscribed" as const } } }
-                        : {}
+    const base = await this.buildLogWhere(where, filter)
+    const condition = filter ? LOG_FILTER_CONDITIONS[filter] : {}
 
     return prisma.emailLog.count({
-      where: { ...base, ...timestampFilter },
+      where: { ...base, ...condition },
     })
   }
 
@@ -179,7 +204,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     to: Date
   }) {
     const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
-    return prisma.emailCampaignDispatch.findMany({
+    const dispatches = await prisma.emailCampaignDispatch.findMany({
       where: {
         teamId: options.teamId,
         ...(campaignFilter && { campaignId: campaignFilter }),
@@ -205,6 +230,22 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         errorMessage: true,
       },
       orderBy: { dispatchNumber: "desc" },
+    })
+
+    const counters = await queryDispatchLogCounters(prisma, {
+      teamId: options.teamId,
+      dispatchIds: dispatches.map((dispatch) => dispatch.id),
+    })
+    const countersByDispatchId = new Map(counters.map((row) => [row.dispatchId, row]))
+
+    return dispatches.map((dispatch) => {
+      const counter = countersByDispatchId.get(dispatch.id)
+      return {
+        ...dispatch,
+        failedCount: counter?.failedCount ?? 0,
+        suppressedCount: counter?.suppressedCount ?? 0,
+        queuedCount: counter?.queuedCount ?? 0,
+      }
     })
   }
 

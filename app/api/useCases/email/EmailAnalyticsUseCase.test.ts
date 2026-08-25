@@ -200,6 +200,9 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         templateSubject: "S",
         contactListName: null,
         radarSegmentSlug: null,
+        failedCount: 0,
+        suppressedCount: 0,
+        queuedCount: 0,
       },
     ])
     const repo = buildRepo({ countLogs, listDispatches })
@@ -212,6 +215,64 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
     expect(output.result.dispatches[0].rates.openRate).toBe(40)
     // deliverabilityRate do disparo: 90/100 = 90
     expect(output.result.dispatches[0].rates.deliverabilityRate).toBe(90)
+  })
+
+  it("M1-a — failureRate entra em rates e deltas junto dos totais de falha (T-M1.2)", async () => {
+    const repo = buildRepo({
+      countLogs: mock(async (_where, filter) => {
+        if (!filter) return 5031
+        if (filter === "delivered") return 4900
+        if (filter === "failed") return 32913
+        if (filter === "suppressed") return 120
+        if (filter === "queued") return 40
+        return 0
+      }),
+    })
+    const uc = new EmailAnalyticsUseCase(repo)
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.isValid).toBe(true)
+    // 32.913 / (5.031 + 32.913) — o incêndio de quota deixa de ser invisível.
+    expect(output.result.rates.failureRate).toBe(86.74)
+    expect(output.result.totals.failed).toBe(32913)
+    expect(output.result.totals.suppressed).toBe(120)
+    expect(output.result.totals.queued).toBe(40)
+    expect(output.result.deltas.rates.failureRate).toBeDefined()
+    expect(output.result.deltas.totals.queued).toBeDefined()
+  })
+
+  it("M1-b — tabela de disparos expõe failed/suppressed/queued por disparo (T-M1.3)", async () => {
+    const listDispatches = mock(async () => [
+      {
+        id: "disp-1",
+        dispatchNumber: 1,
+        dispatchedAt: new Date(),
+        totalRecipients: 37944,
+        totalSent: 5031,
+        totalDelivered: 4900,
+        totalOpened: 1200,
+        totalClicked: 300,
+        totalBounced: 50,
+        totalComplained: 2,
+        status: "failed",
+        templateName: "T",
+        templateVersionNumber: 1,
+        templateSubject: "S",
+        contactListName: null,
+        radarSegmentSlug: null,
+        failedCount: 32913,
+        suppressedCount: 0,
+        queuedCount: 0,
+      },
+    ])
+    const uc = new EmailAnalyticsUseCase(buildRepo({ listDispatches }))
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow, campaignId: "camp-1" })
+
+    const dispatch = output.result.dispatches[0]
+    expect(dispatch.failedCount).toBe(32913)
+    expect(dispatch.suppressedCount).toBe(0)
+    expect(dispatch.queuedCount).toBe(0)
+    expect(dispatch.rates.failureRate).toBe(86.74)
   })
 
   it("A10 — repository lança exceção → isValid: false sem propagar", async () => {

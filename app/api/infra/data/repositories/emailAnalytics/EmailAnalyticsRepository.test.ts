@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 const findManyEventsMock = mock(async () => [] as Array<{ visitorSessionId: string; origin: unknown }>)
 const findManyFormsMock = mock(async () => [] as Array<{ id: string }>)
 const findManyCampaignsMock = mock(async () => [] as Array<{ id: string }>)
+const countLogsMock = mock(async () => 0)
+const findManyDispatchesMock = mock(async () => [] as Array<Record<string, unknown>>)
+const queryRawMock = mock(async () => [] as Array<Record<string, unknown>>)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -15,6 +18,13 @@ mock.module("@/app/api/infra/data/prisma", () => ({
     emailCampaign: {
       findMany: findManyCampaignsMock,
     },
+    emailLog: {
+      count: countLogsMock,
+    },
+    emailCampaignDispatch: {
+      findMany: findManyDispatchesMock,
+    },
+    $queryRaw: queryRawMock,
   },
 }))
 
@@ -31,6 +41,157 @@ function eventRows(count: number, email = "user@test.com") {
     origin: { recipientEmail: email },
   }))
 }
+
+type CountLogsCall = [
+  {
+    where: {
+      teamId: string
+      sentAt?: { gte: Date; lte: Date }
+      createdAt?: { gte: Date; lte: Date }
+      status?: string
+    }
+  },
+]
+
+describe("EmailAnalyticsRepository.countLogs — âncora por status (T-M1.1)", () => {
+  beforeEach(() => {
+    countLogsMock.mockClear()
+    countLogsMock.mockImplementation(async () => 0)
+  })
+
+  it("T-M1.1-a — failed ancora em createdAt (log falho tem sentAt NULL e sumia do período)", async () => {
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "failed")
+
+    const call = (countLogsMock.mock.calls as unknown as CountLogsCall[])[0][0]
+    expect(call.where.createdAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
+    expect(call.where.sentAt).toBeUndefined()
+    expect(call.where.status).toBe("failed")
+  })
+
+  it("T-M1.1-b — suppressed e queued também ancoram em createdAt", async () => {
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "suppressed")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "queued")
+
+    const calls = countLogsMock.mock.calls as unknown as CountLogsCall[]
+    expect(calls[0][0].where.createdAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
+    expect(calls[0][0].where.sentAt).toBeUndefined()
+    expect(calls[0][0].where.status).toBe("suppressed")
+    expect(calls[1][0].where.createdAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
+    expect(calls[1][0].where.sentAt).toBeUndefined()
+    expect(calls[1][0].where.status).toBe("queued")
+  })
+
+  it("T-M1.1-c — envio e engajamento continuam ancorados em sentAt", async () => {
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange })
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "delivered")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "opened")
+
+    const calls = countLogsMock.mock.calls as unknown as CountLogsCall[]
+    for (const call of calls) {
+      expect(call[0].where.sentAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
+      expect(call[0].where.createdAt).toBeUndefined()
+    }
+  })
+
+  it("T-M1.1-d — filtro de campanha permanece aplicado na âncora de createdAt", async () => {
+    findManyCampaignsMock.mockImplementation(async () => [{ id: "sub-camp-1" }])
+
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs(
+      { teamId: "team-1", campaignId: "camp-parent", ...dateRange },
+      "failed",
+    )
+
+    const call = (
+      countLogsMock.mock.calls as unknown as Array<[{ where: { campaignId?: unknown } }]>
+    )[0][0]
+    expect(call.where.campaignId).toEqual({ in: ["camp-parent", "sub-camp-1"] })
+  })
+})
+
+describe("EmailAnalyticsRepository.listDispatches — contadores de log (T-M1.3)", () => {
+  const dispatchRow = {
+    id: "disp-1",
+    dispatchNumber: 1,
+    templateName: "T",
+    templateVersionNumber: 1,
+    templateSubject: "S",
+    contactListName: null,
+    radarSegmentSlug: null,
+    dispatchedAt: dateRange.from,
+    totalRecipients: 37944,
+    totalSent: 5031,
+    totalDelivered: 4900,
+    totalOpened: 1200,
+    totalClicked: 300,
+    totalBounced: 50,
+    totalComplained: 2,
+    status: "failed",
+    errorMessage: null,
+  }
+
+  beforeEach(() => {
+    findManyDispatchesMock.mockClear()
+    queryRawMock.mockClear()
+    findManyCampaignsMock.mockImplementation(async () => [])
+    findManyDispatchesMock.mockImplementation(async () => [dispatchRow])
+    queryRawMock.mockImplementation(async () => [])
+  })
+
+  it("T-M1.3-a — cada disparo carrega failed/suppressed/queued do log", async () => {
+    queryRawMock.mockImplementation(async () => [
+      {
+        dispatchId: "disp-1",
+        acceptedCount: 5031,
+        failedCount: 32913,
+        queuedCount: 0,
+        suppressedCount: 0,
+      },
+    ])
+
+    const repo = new EmailAnalyticsRepository()
+    const dispatches = await repo.listDispatches({
+      teamId: "team-1",
+      campaignId: "camp-1",
+      ...dateRange,
+    })
+
+    expect(dispatches).toHaveLength(1)
+    expect(dispatches[0].failedCount).toBe(32913)
+    expect(dispatches[0].suppressedCount).toBe(0)
+    expect(dispatches[0].queuedCount).toBe(0)
+  })
+
+  it("T-M1.3-b — disparo sem linha de contador reporta zero, não undefined", async () => {
+    const repo = new EmailAnalyticsRepository()
+    const dispatches = await repo.listDispatches({
+      teamId: "team-1",
+      campaignId: "camp-1",
+      ...dateRange,
+    })
+
+    expect(dispatches[0].failedCount).toBe(0)
+    expect(dispatches[0].suppressedCount).toBe(0)
+    expect(dispatches[0].queuedCount).toBe(0)
+  })
+
+  it("T-M1.3-c — sem disparos no período não consulta contadores", async () => {
+    findManyDispatchesMock.mockImplementation(async () => [])
+
+    const repo = new EmailAnalyticsRepository()
+    const dispatches = await repo.listDispatches({
+      teamId: "team-1",
+      campaignId: "camp-1",
+      ...dateRange,
+    })
+
+    expect(dispatches).toEqual([])
+    expect(queryRawMock).not.toHaveBeenCalled()
+  })
+})
 
 describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
   beforeEach(() => {

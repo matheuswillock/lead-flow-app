@@ -91,6 +91,7 @@ export class EmailAnalyticsUseCase {
       deliveryDelayed,
       unsubscribed,
       suppressed,
+      queued,
       formCompletions,
       formViewed,
       formStarted,
@@ -105,6 +106,7 @@ export class EmailAnalyticsUseCase {
       this.repository.countLogs(logWhere, "delivery_delayed"),
       this.repository.countLogs(logWhere, "unsubscribed"),
       this.repository.countLogs(logWhere, "suppressed"),
+      this.repository.countLogs(logWhere, "queued"),
       formCountOptions
         ? this.repository.countFormCompletions(formCountOptions)
         : Promise.resolve(0),
@@ -127,6 +129,7 @@ export class EmailAnalyticsUseCase {
       deliveryDelayed,
       unsubscribed,
       suppressed,
+      queued,
       formCompletions,
       formViewed,
       formStarted,
@@ -219,6 +222,7 @@ export class EmailAnalyticsUseCase {
             clicked: dispatch.totalClicked,
             bounced: dispatch.totalBounced,
             complained: dispatch.totalComplained,
+            failed: dispatch.failedCount,
           }),
         })),
       })
