@@ -1108,17 +1108,44 @@ export class RadarService {
     return this.repo.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
-  async getMetrics(scope: RadarTeamScope, precomputedSegments?: SegmentCount[]) {
+  /**
+   * Métricas do dashboard do Radar.
+   *
+   * `precomputedSegments` distingue três situações que a UI precisa saber
+   * separar (R8/DA3):
+   * - `undefined` — ninguém contou ainda; conta aqui.
+   * - `SegmentCount[]` — contagem válida; deriva os números dela.
+   * - `null` — a contagem de sistema FALHOU. Os derivados saem `null`
+   *   (desconhecido), nunca `0`. Zero aqui é o "dashboard zerado": um número
+   *   que parece medido, não é, e ainda entrava no cache.
+   */
+  async getMetrics(scope: RadarTeamScope, precomputedSegments?: SegmentCount[] | null) {
     const [totalProfiles, segments] = await Promise.all([
       this.repo.countProfiles(scope),
-      precomputedSegments ? Promise.resolve(precomputedSegments) : this.countSegments(scope),
+      precomputedSegments === undefined
+        ? this.countSegments(scope)
+        : Promise.resolve(precomputedSegments),
     ])
+
+    if (segments === null) {
+      return {
+        totalProfiles,
+        marketable: null as number | null,
+        blocked: null as number | null,
+        engaged: null as number | null,
+      }
+    }
 
     const marketable = segments.find((s) => s.slug === "email_marketable")?.count ?? 0
     const blocked = segments.find((s) => s.slug === "email_blocked")?.count ?? 0
     const engaged = segments.find((s) => s.slug === "opened_not_clicked")?.count ?? 0
 
-    return { totalProfiles, marketable, blocked, engaged }
+    return {
+      totalProfiles,
+      marketable: marketable as number | null,
+      blocked: blocked as number | null,
+      engaged: engaged as number | null,
+    }
   }
 
   async handleEmailWebhookEvent(input: {
