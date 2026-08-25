@@ -1037,71 +1037,35 @@ export class RadarService {
   }
 
   /**
-   * Contagem legada em memória — mantida temporariamente para validação
-   * comparativa. Remove após validar equivalência dos números em produção.
+   * Contagem de um único segmento de sistema.
+   *
+   * Sai do mesmo predicado SQL da listagem (`listSegmentProfileIds`), então
+   * `countSegmentProfiles === listSegmentProfileIds().length` é verdade por
+   * construção, não por sincronização manual.
    */
-  async countSegmentsLegacy(scope: RadarTeamScope): Promise<SegmentCount[]> {
-    const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
-
-    const rawLeadStatuses = await this.repo.findLeadStatuses(
-      scope.teamId,
-      profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
-    )
-    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
-
-    const counts: Record<RadarSegmentSlug, number> = {
-      email_marketable: 0,
-      email_blocked: 0,
-      opened_not_clicked: 0,
-      clicked_not_closed: 0,
-      engaged_no_lead: 0,
-      portfolio_renewal_due: 0,
-      inactive_recent_campaign: 0,
-      portfolio_clients: 0,
-      crm_clients: 0,
-    }
-
-    const now = Date.now()
-    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
-
-    for (const profile of profiles) {
-      for (const slug of Object.keys(counts) as RadarSegmentSlug[]) {
-        if (profileMatchesRadarSegment(profile, slug, leadStatuses, now, recentMs)) {
-          counts[slug] += 1
-        }
-      }
-    }
-
-    return (Object.keys(SEGMENT_META) as RadarSegmentSlug[]).map((slug) => ({
-      slug,
-      ...SEGMENT_META[slug],
-      count: counts[slug],
-    }))
+  async countSegmentProfiles(scope: RadarTeamScope, segment: RadarSegmentSlug): Promise<number> {
+    return this.repo.countFixedSegmentSQL(scope.teamId, segment, RECENT_CAMPAIGN_WINDOW_DAYS)
   }
 
-  async listSegmentProfileIds(scope: RadarTeamScope, segment: RadarSegmentSlug): Promise<string[]> {
-    const segments = await this.countSegments(scope)
-    if (!segments.find((s) => s.slug === segment)) return []
-
-    const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
-
-    const rawLeadStatuses = await this.repo.findLeadStatuses(
+  /**
+   * Página de ids do segmento de sistema — filtrada, ordenada e paginada no
+   * banco.
+   *
+   * Substitui a varredura em memória que carregava a base inteira do time e
+   * fatiava a página com `slice` (R6): duas verdades em relação ao card e a
+   * origem do P2035 na rota de perfis de segmento.
+   */
+  async listSegmentProfileIds(
+    scope: RadarTeamScope,
+    segment: RadarSegmentSlug,
+    pagination: { skip: number; take: number }
+  ): Promise<string[]> {
+    return this.repo.listFixedSegmentProfileIdsSQL(
       scope.teamId,
-      profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
+      segment,
+      pagination,
+      RECENT_CAMPAIGN_WINDOW_DAYS
     )
-    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
-
-    const now = Date.now()
-    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    const ids: string[] = []
-
-    for (const profile of profiles) {
-      if (profileMatchesRadarSegment(profile, segment, leadStatuses, now, recentMs)) {
-        ids.push(profile.id)
-      }
-    }
-
-    return ids
   }
 
   async listCampaignSegmentProfileIds(scope: RadarTeamScope, campaignId: string): Promise<string[]> {

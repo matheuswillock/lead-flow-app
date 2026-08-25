@@ -1,7 +1,21 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
 import { randomUUID } from "crypto"
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+
+// Alguém no grafo de imports puxa `server-only`, que lança fora do runtime do
+// Next e derrubava o arquivo inteiro antes do primeiro teste rodar. Mesmo
+// tratamento dos outros testes do repo (ex.: getCachedTeamLeads.failure.test.ts).
+mock.module("server-only", () => ({}))
+
+// `cacheTag`/`cacheLife` exigem o runtime do Next (`cacheComponents`) e lançam
+// no bun test. Fora do Next a diretiva `"use cache"` já é inerte, então o
+// no-op aqui apenas deixa a função rodar sem cache.
+mock.module("next/cache", () => ({
+  cacheTag: () => undefined,
+  cacheLife: () => undefined,
+  revalidateTag: () => undefined,
+}))
 
 const RUN_INTEGRATION = process.env.RADAR_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
 
@@ -2180,5 +2194,297 @@ describe.skipIf(!RUN_INTEGRATION)("C6 — regressão ponta a ponta (lead → per
 
     const recipients = await listRadarSegmentEmailRecipients(teamId, `custom:${segmentId}`)
     expect(recipients.map((recipient) => recipient.email)).toContain(profile!.normalizedPrimaryEmail!)
+  })
+})
+
+/**
+ * T-SEG.1 / T-SEG.6 — a invariante que mata a divergência card-vs-lista (R6).
+ *
+ * Antes o card contava por SQL e a lista resolvia ids com um matcher em
+ * memória. Duas implementações do mesmo conceito divergem sozinhas; o script
+ * `validate-radar-segment-counts.ts` existia justamente para vigiar isso.
+ * Agora contagem e listagem saem do mesmo predicado — aqui provamos contra
+ * banco real, e ainda conferimos contra o oráculo legado.
+ */
+describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema", () => {
+  let teamId = ""
+  let segScope: {
+    teamId: string
+    ctx: { profileId: string; teamMember: { role: string; functions: string[] } }
+  }
+
+  beforeAll(async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const owner = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-seg-${suffix}@example.com`,
+        supabaseId: randomUUID(),
+        fullName: "Radar Seg Tester",
+        isMaster: true,
+      },
+    })
+    const team = await prisma.team.create({
+      data: { id: randomUUID(), name: `Radar Seg ${suffix}`, masterId: owner.id },
+    })
+    await prisma.teamMember.create({
+      data: { id: randomUUID(), teamId: team.id, profileId: owner.id, role: "manager" },
+    })
+    teamId = team.id
+    segScope = {
+      teamId: team.id,
+      ctx: { profileId: owner.id, teamMember: { role: "manager", functions: [] } },
+    }
+
+    const now = new Date()
+    const recent = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000)
+    const campaignId = randomUUID()
+
+    // Perfis desenhados para cair em segmentos diferentes (e alguns em vários),
+    // incluindo os que devem ficar de fora.
+    const makeProfile = async (input: {
+      name: string
+      email: string | null
+      phone: string
+      lastSeenAt: Date | null
+    }) =>
+      prisma.radarProfile.create({
+        data: {
+          id: randomUUID(),
+          teamId: team.id,
+          displayName: input.name,
+          normalizedName: normalizeRadarName(input.name),
+          displayPhone: formatDisplayPhone(input.phone),
+          normalizedPhone: normalizeRadarPhone(input.phone),
+          primaryEmail: input.email,
+          normalizedPrimaryEmail: input.email ? normalizeRadarEmail(input.email) : null,
+          lastSeenAt: input.lastSeenAt,
+        },
+      })
+
+    // 1. Abriu e não clicou (mesma campanha) + marketable.
+    const opened = await makeProfile({
+      name: "Aberto Sem Clique",
+      email: `seg-open-${suffix}@example.com`,
+      phone: "5511900000001",
+      lastSeenAt: recent,
+    })
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: opened.id,
+        eventType: "email.opened",
+        sourceType: "email_campaign",
+        sourceId: `${campaignId}:open`,
+        occurredAt: recent,
+        metadata: { campaignId },
+      },
+    })
+
+    // 2. Clicou e não fechou.
+    const clicked = await makeProfile({
+      name: "Clicou Sem Fechar",
+      email: `seg-click-${suffix}@example.com`,
+      phone: "5511900000002",
+      lastSeenAt: recent,
+    })
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: clicked.id,
+        eventType: "email.clicked",
+        sourceType: "email_campaign",
+        sourceId: `${campaignId}:click`,
+        occurredAt: recent,
+        metadata: { campaignId },
+      },
+    })
+
+    // 3. Bloqueado por consentimento (sai de marketable, entra em blocked).
+    const blocked = await makeProfile({
+      name: "Bloqueado Total",
+      email: `seg-blocked-${suffix}@example.com`,
+      phone: "5511900000003",
+      lastSeenAt: recent,
+    })
+    await prisma.radarChannelConsent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: blocked.id,
+        channel: "email",
+        status: "blocked",
+        reason: "unsubscribe",
+      },
+    })
+
+    // 4. Carteira com renovação pendente (portfolio_clients + renewal_due + fechado).
+    const portfolio = await makeProfile({
+      name: "Cliente Carteira",
+      email: `seg-portfolio-${suffix}@example.com`,
+      phone: "5511900000004",
+      lastSeenAt: null,
+    })
+    await prisma.radarSourceLink.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: portfolio.id,
+        sourceType: "portfolio",
+        sourceId: randomUUID(),
+        sourceMetadata: { renewalStatus: "to_renew" },
+      },
+    })
+
+    // 5. Engajado por formulário e sem lead (fila de promoção).
+    const engaged = await makeProfile({
+      name: "Engajado Sem Lead",
+      email: `seg-engaged-${suffix}@example.com`,
+      phone: "5511900000005",
+      lastSeenAt: recent,
+    })
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: engaged.id,
+        eventType: "form.started",
+        sourceType: "public_form",
+        sourceId: randomUUID(),
+        occurredAt: recent,
+        metadata: {},
+      },
+    })
+
+    // 6. Perfil com identidade de lead (crm_clients — sai de engaged_no_lead).
+    const withLead = await makeProfile({
+      name: "Tem Lead No Crm",
+      email: `seg-lead-${suffix}@example.com`,
+      phone: "5511900000006",
+      lastSeenAt: recent,
+    })
+    await prisma.radarIdentity.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: withLead.id,
+        type: "lead_id",
+        value: randomUUID(),
+        normalizedValue: randomUUID(),
+        source: "crm_lead",
+      },
+    })
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: withLead.id,
+        eventType: "email.opened",
+        sourceType: "email_campaign",
+        sourceId: `${randomUUID()}:open`,
+        occurredAt: recent,
+        metadata: { campaignId: randomUUID() },
+      },
+    })
+
+    // 7. Recebeu campanha recente (sai de inactive_recent_campaign).
+    const active = await makeProfile({
+      name: "Recebeu Campanha",
+      email: `seg-active-${suffix}@example.com`,
+      phone: "5511900000007",
+      lastSeenAt: recent,
+    })
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: active.id,
+        eventType: "email.sent",
+        sourceType: "email_campaign",
+        sourceId: `${randomUUID()}:sent`,
+        occurredAt: recent,
+        metadata: { campaignId: randomUUID() },
+      },
+    })
+
+    // 8. Sem e-mail nenhum (fora de marketable).
+    await makeProfile({
+      name: "Sem Email",
+      email: null,
+      phone: "5511900000008",
+      lastSeenAt: null,
+    })
+  })
+
+  it("T-SEG.1 — para os 9 slugs, count do card === linhas da lista", async () => {
+    const counted = await radarService.countSegments(segScope)
+    expect(counted).toHaveLength(9)
+
+    for (const segment of counted) {
+      const ids = await radarService.listSegmentProfileIds(segScope, segment.slug, {
+        skip: 0,
+        take: 1000,
+      })
+      const singleCount = await radarService.countSegmentProfiles(segScope, segment.slug)
+
+      expect({ slug: segment.slug, count: segment.count }).toEqual({
+        slug: segment.slug,
+        count: ids.length,
+      })
+      expect(singleCount).toBe(segment.count)
+      expect(new Set(ids).size).toBe(ids.length)
+    }
+  })
+
+  it("T-SEG.1 — o segmento populado não é trivialmente vazio", async () => {
+    const counted = await radarService.countSegments(segScope)
+    const bySlug = new Map(counted.map((segment) => [segment.slug, segment.count]))
+
+    // Se todos fossem 0, o teste acima passaria por vacuidade.
+    expect(bySlug.get("email_marketable")).toBeGreaterThan(0)
+    expect(bySlug.get("email_blocked")).toBe(1)
+    expect(bySlug.get("opened_not_clicked")).toBeGreaterThan(0)
+    expect(bySlug.get("clicked_not_closed")).toBe(1)
+    expect(bySlug.get("engaged_no_lead")).toBeGreaterThan(0)
+    expect(bySlug.get("portfolio_clients")).toBe(1)
+    expect(bySlug.get("portfolio_renewal_due")).toBe(1)
+    expect(bySlug.get("crm_clients")).toBe(1)
+  })
+
+  it("T-SEG.6 — SQL novo concorda com o oráculo legado em memória", async () => {
+    const { countSegmentsLegacyInMemory } = await import("@/lib/radar/count-segments-legacy")
+
+    const sqlCounts = await radarService.countSegments(segScope)
+    const legacyCounts = await countSegmentsLegacyInMemory(radarRepository, teamId)
+
+    for (const segment of sqlCounts) {
+      expect({ slug: segment.slug, count: segment.count }).toEqual({
+        slug: segment.slug,
+        count: legacyCounts.get(segment.slug) ?? 0,
+      })
+    }
+  })
+
+  it("T-SEG.7 (base) — paginação no banco não repete nem perde perfil", async () => {
+    const all = await radarService.listSegmentProfileIds(segScope, "email_marketable", {
+      skip: 0,
+      take: 1000,
+    })
+    expect(all.length).toBeGreaterThan(2)
+
+    const firstPage = await radarService.listSegmentProfileIds(segScope, "email_marketable", {
+      skip: 0,
+      take: 2,
+    })
+    const secondPage = await radarService.listSegmentProfileIds(segScope, "email_marketable", {
+      skip: 2,
+      take: 2,
+    })
+
+    expect(firstPage).toHaveLength(2)
+    expect(firstPage.some((id) => secondPage.includes(id))).toBe(false)
+    expect([...firstPage, ...secondPage]).toEqual(all.slice(0, firstPage.length + secondPage.length))
   })
 })
