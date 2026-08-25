@@ -1340,13 +1340,102 @@ export class RadarRepository {
   async listProfilesForEngagementBackfill(params: {
     take: number
     cursorId?: string | null
+    /** Só perfis que nunca foram pontuados — a dívida do backfill. */
+    onlyMissingScore?: boolean
+    /** Recorta pela atividade recente, para a dívida ativa vir primeiro. */
+    activeSince?: Date | null
   }): Promise<Array<{ id: string; teamId: string }>> {
     return this.db.radarProfile.findMany({
-      where: params.cursorId ? { id: { gt: params.cursorId } } : undefined,
+      where: {
+        ...(params.cursorId ? { id: { gt: params.cursorId } } : {}),
+        ...(params.onlyMissingScore ? { engagementScore: null } : {}),
+        ...(params.activeSince ? { lastSeenAt: { gte: params.activeSince } } : {}),
+      },
       select: { id: true, teamId: true },
       orderBy: { id: "asc" },
       take: params.take,
     })
+  }
+
+  /** Quantos perfis ainda nunca receberam score — métrica de progresso do backfill. */
+  async countProfilesMissingEngagementScore(): Promise<number> {
+    return this.db.radarProfile.count({ where: { engagementScore: null } })
+  }
+
+  /**
+   * Recalcula score/banda de um LOTE de perfis com duas queries de leitura,
+   * não duas por perfil.
+   *
+   * O caminho anterior (`updateEngagementScore` num laço) fazia 1 `findMany` de
+   * eventos + 1 `updateMany` por perfil — até 1.000 round-trips por lote de 500
+   * (RADAR_AUDIT B4). Com o cron morrendo aos 300s, a cauda da base nunca era
+   * alcançada.
+   *
+   * Aqui os eventos do lote inteiro vêm numa query só, e a escrita agrupa os
+   * perfis que chegaram ao mesmo par (score, banda) — na prática poucas dezenas
+   * de `updateMany` no lugar de 500.
+   */
+  async updateEngagementScoresBatch(
+    profiles: Array<{ id: string; teamId: string }>
+  ): Promise<number> {
+    if (profiles.length === 0) return 0
+
+    return this.runWithTransientPrismaRetry(async () => {
+      const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
+      const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+
+      const teamIdByProfile = new Map(profiles.map((profile) => [profile.id, profile.teamId]))
+      const events = await findManyByInChunks([...teamIdByProfile.keys()], (chunk) =>
+        this.db.radarEvent.findMany({
+          where: { profileId: { in: chunk }, occurredAt: { gte: since } },
+          select: {
+            profileId: true,
+            teamId: true,
+            eventType: true,
+            occurredAt: true,
+            metadata: true,
+          },
+        })
+      )
+
+      const eventsByProfile = new Map<string, typeof events>()
+      for (const event of events) {
+        // Mantém a trava de tenant que o caminho por perfil tinha no `where`:
+        // o lote cruza times, então o filtro acontece no agrupamento.
+        if (teamIdByProfile.get(event.profileId) !== event.teamId) continue
+
+        const bucket = eventsByProfile.get(event.profileId)
+        if (bucket) bucket.push(event)
+        else eventsByProfile.set(event.profileId, [event])
+      }
+
+      const now = new Date()
+      const groups = new Map<string, { score: number; band: string; ids: string[] }>()
+      for (const profile of profiles) {
+        const { score, band } = computeEngagementScore(
+          eventsByProfile.get(profile.id) ?? [],
+          weights,
+          config,
+          now,
+          formRules
+        )
+        const key = `${score}:${band}`
+        const group = groups.get(key)
+        if (group) group.ids.push(profile.id)
+        else groups.set(key, { score, band, ids: [profile.id] })
+      }
+
+      let updated = 0
+      for (const group of groups.values()) {
+        const result = await this.db.radarProfile.updateMany({
+          where: { id: { in: group.ids } },
+          data: { engagementScore: group.score, engagementBand: group.band },
+        })
+        updated += result.count
+      }
+
+      return updated
+    }, "updateEngagementScoresBatch")
   }
 
   private async loadEngagementWeightsAndConfig(): Promise<{
