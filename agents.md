@@ -164,7 +164,9 @@ RLS policies, functions, triggers, grants, publications (`supabase_realtime`), e
 After every edit, automatically run in this order:
 
 ```bash
-bun run typecheck 2>&1 | head -20
+# Rode, capture o EXIT, só então filtre a saída — `| head` devolve o status do
+# head, não o do typecheck. Ver "Teste que não sabe falhar não é verificação".
+bun run typecheck > /tmp/lf-typecheck.log 2>&1; echo "typecheck EXIT=$?"; head -20 /tmp/lf-typecheck.log
 bun run lint
 bun run governance:check
 bun run governance:check-e2e-pages
@@ -173,6 +175,7 @@ bun run lint:pt-br
 ```
 
   Rules:
+    - O `EXIT` de cada comando **MUST** ser lido. `EXIT` diferente de 0 = tarefa não concluída. Saída vazia sem `EXIT=0` impresso **MUST NOT** ser reportada como sucesso — é o formato típico de OOM.
     - Do NOT skip these commands even for small changes.
     - Do NOT ask for confirmation to run them.
     - Do NOT report the task as done if any command fails.
@@ -238,7 +241,7 @@ Never install shadcn components with npm or yarn. Always use `bunx --bun shadcn@
 Add `bun run design:check` to the validation sequence after every UI change:
 
 ```bash
-bun run typecheck 2>&1 | head -20
+bun run typecheck > /tmp/lf-typecheck.log 2>&1; echo "typecheck EXIT=$?"; head -20 /tmp/lf-typecheck.log
 bun run lint
 bun run governance:check
 bun run governance:check-e2e-pages
@@ -284,17 +287,45 @@ Cada item abaixo já custou horas de diagnóstico. A falha típica não é a tel
 quebrada — é o ambiente falhar e o agente ler isso como bug da aplicação, ou
 pior, como "verificado".
 
-1. **`.env.test` precisa existir.** `playwright.config.ts` só o carrega se
-   estiver lá; sem ele a spec morre com `E2E_JWT_SECRET não configurado` ou
-   `[e2e] DATABASE_URL is required`. Copie de `.env.test.example`.
+1. **Localmente, copie `.env.test.example` para `.env.test`.**
+   `playwright.config.ts` só carrega o arquivo se ele existir, e com
+   `override: false` — variável já exportada no shell vence o arquivo. Sem as
+   variáveis a spec morre com `E2E_JWT_SECRET ausente` ou
+   `[e2e] DATABASE_URL is required for Prisma`. Na CI não existe arquivo:
+   `.github/actions/run-e2e-playwright/action.yml` despeja o `.env.test.example`
+   no `$GITHUB_ENV` e sobrescreve o que precisa.
 2. **`bun run test:e2e:local` NÃO sobe o Next.** Ele seta `E2E_REUSE_SERVER=1`,
-   que remove o bloco `webServer`. Ou suba o dev server antes exportando
-   `APP_ENV=test` e `E2E_TEST_MODE=true`, ou use `bun run test:e2e`.
+   que remove o bloco `webServer` — o servidor é responsabilidade sua, e ele
+   precisa do `E2E_JWT_SECRET`. **Exportar só `APP_ENV=test` e
+   `E2E_TEST_MODE=true` não basta**: `bun run dev` roda com
+   `NODE_ENV=development`, e o `@next/env` só inclui `.env.test` quando
+   `NODE_ENV=test`; `scripts/dev-local.ts` faz `import "dotenv/config"`, que lê
+   apenas `.env`. Sem o segredo no processo do servidor, o cookie assinado pelo
+   Playwright é rejeitado e a tela redireciona para o login — sintoma que parece
+   bug de aplicação.
+
+   ```bash
+   set -a; source .env.test; set +a     # o mesmo arquivo que a spec usa
+   bun run dev
+   # noutro terminal:
+   bun run test:e2e:local -- e2e/specs/<arquivo>.spec.ts
+   ```
+
+   A lista canônica do que o servidor precisa está em `playwright.config.ts`
+   (bloco `webServer.env`) — hoje `APP_ENV`, `E2E_TEST_MODE` e
+   `PUBLIC_FORM_LEAD_GATE_MODE`. Alternativa sem dev server:
+   `bun run build && bun run test:e2e` — o `webServer` roda `next start`, que
+   **exige build de produção**; sem ele o Playwright só falha depois do timeout
+   de 90s.
 3. **Sessão entra por cookie assinado**, não por login: `injectE2eAuthCookie`
    (`e2e/fixtures/auth.ts`) recebe o `context`, não a `page`.
-4. **Marque o "what's new" como visto** antes de navegar
-   (`localStorage['whats-new:seen:v1:<supabaseId>'] = 'true'`), senão um modal
-   cobre a tela e o assert falha por elemento interceptado.
+4. **Marque o "what's new" como visto** com `context.addInitScript`, não com
+   `page.evaluate`: antes do primeiro `goto` a página é `about:blank` e tocar
+   `localStorage` ali estoura `SecurityError`. A chave é
+   `whats-new:seen:${WHATS_NEW_VERSION}:${supabaseId}` — a versão vem de
+   `WHATS_NEW_VERSION` em `components/whats-new-modal.tsx`, **MUST NOT** ser
+   fixada como `v1` no teste. Sem isso um modal cobre a tela e o assert falha
+   por elemento interceptado.
 5. **Espere CONDIÇÃO, nunca tempo fixo.** Em dev o Next compila sob demanda e a
    primeira renderização varia de segundos a dezenas de segundos. `sleep` fixo
    produz screenshot de estado vazio que parece bug de dados. Faça poll de um
@@ -303,11 +334,14 @@ pior, como "verificado".
    API pela própria página e compare. API com dado + tela vazia é timing ou
    render; API vazia é seed.
 
-Para `browser-harness` em Linux o Chrome precisa ser iniciado com
-`--remote-debugging-port`. Não existe toggle na UI para habilitar depois — se
-`browser-harness --doctor` disser `active browser connections — 0` com o Chrome
-aberto, suba uma instância separada com a flag e um `--user-data-dir` próprio e
-conecte via `BU_CDP_URL`, sem tocar a sessão do dono.
+Para `browser-harness` em Linux, se `browser-harness --doctor` disser
+`active browser connections — 0` com o Chrome aberto: existe sim o toggle
+"Allow remote debugging for this browser instance" em
+`chrome://inspect/#remote-debugging`, mas ele só passa a valer depois de reabrir
+o Chrome, e não funciona se o Chrome vier do Snap/Flatpak. Quando reabrir a
+sessão do dono não for aceitável, suba uma instância separada com
+`--remote-debugging-port` e `--user-data-dir` próprio e conecte via
+`BU_CDP_URL`.
 
 A verificação **MUST** ser medida, não julgada: leia valores do DOM
 (`scrollWidth`, `getComputedStyle`, texto da célula) em vez de descrever o
@@ -492,7 +526,7 @@ Um spec **MAY** cobrir lista+detalhe via `e2ePageCoverage.coveredBy` em `.govern
 3. Arrange no banco (Prisma), Act no Playwright (`page.goto` + interações), Assert na UI **e** no banco.
 4. Cobertura mínima de página: carrega sem erro, título/heading visível, CTA principal funciona, estado vazio ou de loading com `Skeleton` (não crash).
 5. Feature de cobrança: além do mínimo, assertir produto, ciclo, valor e a **ausência do termo CDP**. Toda spec que cria customer, cobrança, checkout ou assinatura no Asaas **MUST** usar homologação (`ASAAS_ENV=sandbox`, API em `sandbox.asaas.com`) e chamar `assertAsaasSandbox()` de `e2e/support/asaas.ts` no `beforeAll`. **MUST NOT** apontar para produção (`www.asaas.com` / `ASAAS_ENV=production` / `ASAAS_API_KEY` de prod). O helper falha o teste antes de qualquer request se o ambiente não for sandbox.
-6. Rodar local: `bun run test:e2e:local -- e2e/specs/<arquivo>.spec.ts` com o Postgres `:55322` já no ar.
+6. Rodar local: `bun run test:e2e:local -- e2e/specs/<arquivo>.spec.ts` com o Postgres `:55322` **e o app** já no ar — esse script não sobe o Next (ver [Receita de setup](#receita-de-setup-o-que-faz-a-tela-abrir)).
 
 #### Página nova (MUST)
 
@@ -500,7 +534,7 @@ Todo `app/**/page.tsx` novo **MUST** ter spec no mesmo PR. Exceção só via `e2
 
 Check: `bun run governance:check-e2e-pages` (também entra em `governance:check`). Página sem spec e fora da allowlist → **falha**. Spec órfã → warning.
 
-Quando a mudança toca UI ou cobrança, a sequência de validação **MUST** incluir `bun run test:e2e` depois que o job Playwright existir.
+Quando a mudança toca UI ou cobrança, a sequência de validação **MUST** incluir `bun run build && bun run test:e2e` — o job Playwright já roda na CI (`.github/actions/run-e2e-playwright`, usado por `ci-branch-reusable`, `ci-develop` e `ci-main`).
 
 ### Visual Components (FOR NEW FEATURES)
 
