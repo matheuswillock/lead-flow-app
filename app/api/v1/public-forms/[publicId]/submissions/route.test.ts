@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test"
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import { Output } from "@/lib/output"
 
 const acceptMock = mock(async () => new Output(true, [], [], null))
@@ -55,11 +55,11 @@ const BACKGROUND_JOB = {
   thankYouPageId: null,
 }
 
-function makeRequest(body: unknown) {
+function makeRequest(body: unknown, headers: Record<string, string> = {}) {
   return new Request("http://localhost/api/v1/public-forms/pub-1/submissions", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
   })
 }
 
@@ -79,6 +79,60 @@ function resetMocks() {
   consumePublicFormRateLimitMock.mockReset()
   consumePublicFormRateLimitMock.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 })
 }
+
+/**
+ * SPEC 40 — E6, todo 13 (parte não bloqueada por D7). H18: `/submissions` era a
+ * única das três rotas públicas sem guard de origem — e é justamente a que cria
+ * lead. `/progress` e `/events` já tinham.
+ */
+describe("Public form submissions route — guard de origem (T-F6.2)", () => {
+  // O guard compara com `NEXT_PUBLIC_APP_URL`; sem ela ele falha aberto (por
+  // desenho). Fixar aqui é o que faz o teste medir o guard, não o ambiente.
+  const previousAppUrl = process.env.NEXT_PUBLIC_APP_URL
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000"
+  })
+
+  afterAll(() => {
+    if (previousAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL
+    else process.env.NEXT_PUBLIC_APP_URL = previousAppUrl
+  })
+
+  it("origem externa → 400, sem chamar o UseCase", async () => {
+    resetMocks()
+
+    const response = await POST(makeRequest(VALID_BODY, { origin: "https://site-de-terceiro.com" }), {
+      params: Promise.resolve({ publicId: "pub-1" }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(acceptMock).not.toHaveBeenCalled()
+    expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
+  })
+
+  it("Origin ausente passa — comportamento documentado do guard", async () => {
+    resetMocks()
+
+    const response = await POST(makeRequest(VALID_BODY), {
+      params: Promise.resolve({ publicId: "pub-1" }),
+    })
+
+    expect(response.status).toBe(201)
+    expect(acceptMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("origem da própria aplicação passa", async () => {
+    resetMocks()
+
+    const response = await POST(makeRequest(VALID_BODY, { origin: "http://localhost:3000" }), {
+      params: Promise.resolve({ publicId: "pub-1" }),
+    })
+
+    expect(response.status).toBe(201)
+    expect(acceptMock).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe("Public form submissions route (PR2.3)", () => {
   it("fluxo feliz: after() delega ao UseCase.queueForBackgroundProcessing", async () => {
