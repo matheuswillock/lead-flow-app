@@ -3,7 +3,7 @@ import type { BackofficeCronExecution } from "@prisma/client"
 import { RadarEngagementBackfillUseCase } from "./RadarEngagementBackfillUseCase"
 import type { IBackofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/IBackofficeCronExecutionRepository"
 
-type BackfillRepo = ConstructorParameters<typeof RadarEngagementBackfillUseCase>[0]
+import type { IRadarEngagementBackfillRepository } from "@/app/api/infra/data/repositories/radar/IRadarEngagementBackfillRepository"
 
 /**
  * Tabela de perfis em memória, com a semântica que o cursor depende: ordenação
@@ -61,7 +61,7 @@ function makeFakeRepo(total: number, msPerBatch = 0) {
     },
   }
 
-  return { repo: repo as unknown as BackfillRepo, state }
+  return { repo: repo satisfies IRadarEngagementBackfillRepository, state }
 }
 
 function makeCronExecutions(metadata: unknown): IBackofficeCronExecutionRepository {
