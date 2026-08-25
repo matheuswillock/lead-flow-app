@@ -9,12 +9,19 @@ import {
   consumePublicFormRateLimit,
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
+import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
+  // SPEC 40 E6/H18: mesmo guard de `/progress` e `/events`. Esta rota era a
+  // única das três sem ele — e é a que cria lead. Vem antes do rate limit para
+  // que POST forjado de terceiro nem consuma cota do visitante legítimo.
+  if (!isPublicFormRequestOriginAllowed(request)) {
+    return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
+  }
   const rate = await consumePublicFormRateLimit(
     `submission:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 10, windowMs: 10 * 60_000 },
