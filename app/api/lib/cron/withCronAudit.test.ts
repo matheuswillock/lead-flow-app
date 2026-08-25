@@ -31,6 +31,8 @@ describe("withCronAudit", () => {
         throw new Error("backoffice_cron_executions does not exist")
       },
       findMany: async () => [],
+      findStaleRunningCandidates: async () => [],
+      claimStaleRunningAsFailed: async () => true,
       markSuccess,
       markFailed,
     }
@@ -57,6 +59,8 @@ describe("withCronAudit", () => {
         throw new Error("db down")
       },
       findMany: async () => [],
+      findStaleRunningCandidates: async () => [],
+      claimStaleRunningAsFailed: async () => true,
       markSuccess: async () => makeExecution(),
       markFailed: async () => makeExecution(),
     }
@@ -74,6 +78,8 @@ describe("withCronAudit", () => {
     const repository: IBackofficeCronExecutionRepository = {
       create: async () => makeExecution(),
       findMany: async () => [],
+      findStaleRunningCandidates: async () => [],
+      claimStaleRunningAsFailed: async () => true,
       markSuccess,
       markFailed: async () => makeExecution(),
     }
@@ -97,6 +103,8 @@ describe("withCronAudit", () => {
     const repository: IBackofficeCronExecutionRepository = {
       create: async () => makeExecution("exec-invalid"),
       findMany: async () => [],
+      findStaleRunningCandidates: async () => [],
+      claimStaleRunningAsFailed: async () => true,
       markSuccess,
       markFailed,
     }
