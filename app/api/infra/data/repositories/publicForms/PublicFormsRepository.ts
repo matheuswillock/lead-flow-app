@@ -771,6 +771,35 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     ) as Record<string, number>
   }
 
+  /**
+   * Descartes por motivo (SPEC 40 E2/DA2), em sessões distintas — a mesma
+   * unidade dos outros contadores do funil, para as séries serem comparáveis.
+   * Motivo vive em `origin.reason`; linha sem motivo entra como
+   * `desconhecido` em vez de sumir (silêncio foi exatamente o bug do F3).
+   */
+  async countDiscardedLeadsByReason(
+    formId: string,
+    where: Prisma.PublicFormMetricEventWhereInput = {},
+  ): Promise<Record<string, number>> {
+    const rows = await prisma.publicFormMetricEvent.findMany({
+      where: { formId, ...where, eventType: "lead_discarded" },
+      select: { origin: true, visitorSessionId: true },
+    })
+    const byReason = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const origin = row.origin
+      const rawReason =
+        origin && typeof origin === "object" && !Array.isArray(origin)
+          ? (origin as Record<string, unknown>).reason
+          : null
+      const reason = typeof rawReason === "string" && rawReason ? rawReason : "desconhecido"
+      const sessions = byReason.get(reason) ?? new Set<string>()
+      sessions.add(row.visitorSessionId)
+      byReason.set(reason, sessions)
+    }
+    return Object.fromEntries(Array.from(byReason, ([reason, sessions]) => [reason, sessions.size]))
+  }
+
   listFormViewOrigins(where: Prisma.PublicFormMetricEventWhereInput) {
     return prisma.publicFormMetricEvent.findMany({
       where: { ...where, eventType: "form_viewed" },

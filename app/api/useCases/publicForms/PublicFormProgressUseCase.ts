@@ -19,6 +19,7 @@ import {
   isBlankPublicFormAnswerValue,
   publicFormAnswerValueText,
 } from "./publicFormLeadSync"
+import { leadFromUpsertOutcome } from "@/lib/public-forms/lead-upsert-outcome"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
 import {
   buildPublicFormIdentityGateIdempotencyKey,
@@ -131,7 +132,13 @@ export class PublicFormProgressUseCase {
         origin,
         allowCreate: !sessionLeadId,
       })
-      sessionLeadId = legacyLead?.lead.id ?? sessionLeadId
+      // O descarte NÃO é emitido aqui de propósito (SPEC 40 E2, divergência
+      // registrada na nota): `/progress` dispara a cada blur, e a parcial que
+      // ainda não tem telefone vira lead assim que o visitante digitar. Emitir
+      // agora deixaria uma linha de descarte para uma sessão que converte —
+      // quebrando exatamente a conta de T-F2.3. O descarte nasce no
+      // completamento, junto do `form_completed`, que é onde o par é medido.
+      sessionLeadId = leadFromUpsertOutcome(legacyLead)?.id ?? sessionLeadId
     }
     const answeredAt = resolveProgressAnsweredAt(input.occurredAt)
     const incomingQuestionIds = new Set(incomingAnswers.map((answer) => answer.questionId))

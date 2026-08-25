@@ -334,6 +334,11 @@ export interface IPublicFormsRepository {
     formId: string,
     options?: { publicationId?: string; from?: Date; to?: Date },
   ): Promise<number>
+  /** SPEC 40 E2/DA2: descartes por motivo, em sessões distintas. */
+  countDiscardedLeadsByReason(
+    formId: string,
+    where?: Prisma.PublicFormMetricEventWhereInput,
+  ): Promise<Record<string, number>>
   listFormViewOrigins(
     where: Prisma.PublicFormMetricEventWhereInput,
   ): Promise<Array<{ origin: Prisma.JsonValue | null; visitorSessionId: string }>>

@@ -29,6 +29,16 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
 
           const eligibility = this.eligibilityUseCase.evaluateProfile(profile)
           if (!eligibility.eligible) {
+            // E2/DA2: inelegível deixa de ser um `return` mudo. O gate C nunca
+            // rodou fora de shadow — sem esta linha, o descarte dele nasceria
+            // invisível no dia em que for ligado.
+            await transaction.appendGateEvent({
+              teamId: input.teamId,
+              radarProfileId: profile.id,
+              eventType: "radar.crm_lead_discarded",
+              eventId: input.eventId,
+              metadata: { reason: eligibility.reason, formId: input.formId },
+            })
             return new Output(true, [], [], {
               skipped: "not_eligible",
               reason: eligibility.reason,

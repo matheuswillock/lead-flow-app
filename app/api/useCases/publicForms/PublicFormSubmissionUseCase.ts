@@ -30,10 +30,17 @@ import {
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
 import {
+  leadFromUpsertOutcome,
+  type UpsertLeadOutcome,
+} from "@/lib/public-forms/lead-upsert-outcome"
+import {
   FORM_COMPLETE_ACTIVITY_BODY,
   parseEmailLogIdFromOrigin,
 } from "@/lib/public-forms/email-campaign-attribution"
-import { buildPublicFormMetricEventKey } from "@/lib/public-forms/metric-keys"
+import {
+  buildPublicFormLeadDiscardedEventKey,
+  buildPublicFormMetricEventKey,
+} from "@/lib/public-forms/metric-keys"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { isValidPublicFormId } from "@/lib/public-forms/validation"
 import {
@@ -294,7 +301,7 @@ export class PublicFormSubmissionUseCase {
         enrichedOrigin: Record<string, unknown>
       } | null = null
       let origin = job.origin
-      let upserted: Awaited<ReturnType<typeof upsertLeadFromFormAnswers>> = null
+      let upserted: UpsertLeadOutcome | null = null
       let lead: Lead | null = null
 
       const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
@@ -339,7 +346,7 @@ export class PublicFormSubmissionUseCase {
           extraNotes: job.bandNote,
           allowCreate: false,
         })
-        lead = enriched?.lead ?? lead
+        lead = leadFromUpsertOutcome(enriched) ?? lead
       } else {
         const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
         const match = await findMatchingLead(form.teamId, extracted)
@@ -356,7 +363,7 @@ export class PublicFormSubmissionUseCase {
           origin,
           extraNotes: job.bandNote,
         })
-        lead = upserted?.lead ?? null
+        lead = leadFromUpsertOutcome(upserted)
       }
 
       const resolvedLeadId = lead?.id ?? attributionResult?.leadId ?? null
@@ -396,7 +403,12 @@ export class PublicFormSubmissionUseCase {
         formId: string
         publicationId: string
         visitorSessionId: string
-        eventType: "form_completed" | "lead_created" | "lead_attached" | "meeting_scheduled"
+        eventType:
+          | "form_completed"
+          | "lead_created"
+          | "lead_attached"
+          | "lead_discarded"
+          | "meeting_scheduled"
         eventKey: string
         origin: Prisma.InputJsonValue
         radarOrigin?: Record<string, unknown>
@@ -417,7 +429,8 @@ export class PublicFormSubmissionUseCase {
       ]
 
       if (lead || attributionResult?.leadId) {
-        const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
+        const eventType =
+          upserted?.outcome === "created" ? ("lead_created" as const) : ("lead_attached" as const)
 
         // O lead do formulario publico nasce aqui, no processamento em
         // background — nao na rota de submissao, que so enfileira. Sem esta
@@ -438,6 +451,23 @@ export class PublicFormSubmissionUseCase {
             attributionEmailLogId
           ),
           origin: metricOrigin,
+        })
+      }
+
+      // E2/DA2: o terceiro desfecho. Sem esta linha, `form_completed` sem lead
+      // era silêncio — o motivo existia só como texto em `errorMessage`, que
+      // não agrega, não alarma e não fecha o funil. O `eventKey` sai do
+      // `requestKey` (único por submissão), então o drain reprocessando o mesmo
+      // job colide no upsert em vez de dobrar o contador.
+      if (upserted?.outcome === "discarded") {
+        metricEvents.push({
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
+          visitorSessionId,
+          eventType: "lead_discarded",
+          eventKey: buildPublicFormLeadDiscardedEventKey(job.requestKey, attributionEmailLogId),
+          origin: json({ ...origin, reason: upserted.reason }),
+          radarOrigin: { ...origin, reason: upserted.reason },
         })
       }
 

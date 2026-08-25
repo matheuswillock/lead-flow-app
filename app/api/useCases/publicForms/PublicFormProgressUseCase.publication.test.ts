@@ -117,7 +117,7 @@ const { PublicFormProgressUseCase } = await import("./PublicFormProgressUseCase"
 
 describe("PublicFormProgressUseCase publicação da sessão", () => {
   const useCase = new PublicFormProgressUseCase(
-    { createOrUpdate: mock(async () => null) },
+    { createOrUpdate: mock(async () => ({ outcome: "skipped" }) as const) },
     () => "radar",
   )
 
