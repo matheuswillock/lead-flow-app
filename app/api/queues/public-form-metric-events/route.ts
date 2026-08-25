@@ -6,8 +6,8 @@ import {
   type PublicFormMetricQueuePayload,
 } from "@/lib/queues/public-form-metric-events"
 import {
-  ackAfterMaxDeliveries,
-  type AckAfterMaxDeliveriesFn,
+  ackAfterMaxDeliveriesWithOutcome,
+  type AckAfterMaxDeliveriesWithOutcomeFn,
 } from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
@@ -28,7 +28,7 @@ export async function processPublicFormMetricQueueMessage(
   message: PublicFormMetricQueuePayload,
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormsUseCase, "persistQueuedMetric"> = publicFormsUseCase,
-  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
+  ackDeadLetter: AckAfterMaxDeliveriesWithOutcomeFn = ackAfterMaxDeliveriesWithOutcome,
 ): Promise<void> {
   console.info("[PublicFormMetricEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -94,20 +94,29 @@ export async function processPublicFormMetricQueueMessage(
       error,
     })
 
-    const acked = await ackDeadLetter({
-      deliveryCount: metadata.deliveryCount,
-      topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
-      idempotencyKey: message.eventKey,
-      payload: message,
-      lastError: error,
-    })
+    let persistedToOutbox = false
+    const acked = await ackDeadLetter(
+      {
+        deliveryCount: metadata.deliveryCount,
+        topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
+        idempotencyKey: message.eventKey,
+        payload: message,
+        lastError: error,
+      },
+      (outcome) => {
+        persistedToOutbox = outcome
+      },
+    )
     if (acked) {
       console.error(
-        "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking",
+        persistedToOutbox
+          ? "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking"
+          : "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite rígido sem outbox, payload só no log, acking",
         {
           messageId: metadata.messageId,
           deliveryCount: metadata.deliveryCount,
           eventKey: message.eventKey,
+          persistedToOutbox,
         },
       )
       return

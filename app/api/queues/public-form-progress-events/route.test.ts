@@ -162,6 +162,35 @@ describe("processPublicFormProgressEventMessage", () => {
         idempotencyKey: "progress:session_abcdefghij:pub:q:hash",
         deliveryCount: 20,
       }),
+      expect.any(Function),
     )
+  })
+
+  it("deliveryCount excedeu o limite sem outbox: loga sem afirmar que persistiu", async () => {
+    const ackDeadLetter = mock(async (_input: unknown, onOutboxOutcome: (persisted: boolean) => void) => {
+      onOutboxOutcome(false)
+      return true
+    })
+    const errorSpy = mock((_message?: unknown, _context?: unknown) => {})
+    const originalConsoleError = console.error
+    console.error = errorSpy as unknown as typeof console.error
+    execute.mockRejectedValueOnce(new Error("P2002"))
+
+    try {
+      await processPublicFormProgressEventMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 100 },
+        { execute },
+        ackDeadLetter,
+      )
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    const ackLogCall = errorSpy.mock.calls.find((call) =>
+      String(call[0]).includes("deliveryCount excedeu o limite"),
+    )
+    expect(ackLogCall?.[0]).not.toContain("movido para outbox")
+    expect(ackLogCall?.[1]).toEqual(expect.objectContaining({ persistedToOutbox: false }))
   })
 })

@@ -8,9 +8,9 @@ import {
   type PublicFormProgressQueuePayload,
 } from "@/lib/queues/public-form-progress-events"
 import {
-  ackAfterMaxDeliveries,
+  ackAfterMaxDeliveriesWithOutcome,
   deadLetterInvalidPayload,
-  type AckAfterMaxDeliveriesFn,
+  type AckAfterMaxDeliveriesWithOutcomeFn,
   type DeadLetterInvalidPayloadFn,
 } from "@/lib/queues/queue-processing-failure"
 
@@ -31,7 +31,7 @@ export async function processPublicFormProgressEventMessage(
   message: PublicFormProgressQueuePayload,
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormProgressUseCase, "execute"> = publicFormProgressUseCase,
-  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
+  ackDeadLetter: AckAfterMaxDeliveriesWithOutcomeFn = ackAfterMaxDeliveriesWithOutcome,
   deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[PublicFormProgressEventsQueueRoute][POST] message received", {
@@ -102,20 +102,29 @@ export async function processPublicFormProgressEventMessage(
       idempotencyKey: message.idempotencyKey,
       error,
     })
-    const acked = await ackDeadLetter({
-      deliveryCount: metadata.deliveryCount,
-      topic: PUBLIC_FORM_PROGRESS_EVENTS_TOPIC,
-      idempotencyKey: message.idempotencyKey,
-      payload: message,
-      lastError: error,
-    })
+    let persistedToOutbox = false
+    const acked = await ackDeadLetter(
+      {
+        deliveryCount: metadata.deliveryCount,
+        topic: PUBLIC_FORM_PROGRESS_EVENTS_TOPIC,
+        idempotencyKey: message.idempotencyKey,
+        payload: message,
+        lastError: error,
+      },
+      (outcome) => {
+        persistedToOutbox = outcome
+      },
+    )
     if (acked) {
       console.error(
-        "[PublicFormProgressEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking",
+        persistedToOutbox
+          ? "[PublicFormProgressEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking"
+          : "[PublicFormProgressEventsQueueRoute][POST] deliveryCount excedeu o limite rígido sem outbox, payload só no log, acking",
         {
           messageId: metadata.messageId,
           deliveryCount: metadata.deliveryCount,
           idempotencyKey: message.idempotencyKey,
+          persistedToOutbox,
         },
       )
       return
