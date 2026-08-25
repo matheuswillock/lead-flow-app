@@ -1763,42 +1763,44 @@ export class RadarRepository {
     leadId: string,
     source = "manual_promote",
   ): Promise<void> {
-    const dropReservation = async (tx: Prisma.TransactionClient) => {
-      await tx.radarIdentity.deleteMany({
+    // Sem `$transaction` de propósito. Não há invariante multi-statement a
+    // proteger aqui — são operações de uma linha só — e, dentro de uma
+    // transação interativa, o P2002 do `updateMany` já teria abortado a TX
+    // (25P02): o `deleteMany` de limpeza falharia junto, e a promoção voltaria
+    // a reportar erro com o Lead criado e a reserva `pending:` travando o
+    // perfil, que é exatamente o R5/H3. Fora da transação, cada statement é
+    // independente e a limpeza roda numa conexão sã.
+    const dropReservation = () =>
+      this.db.radarIdentity.deleteMany({
         where: { id: identityId, teamId, type: "lead_id" },
       })
+
+    const alreadyReal = await this.db.radarIdentity.findFirst({
+      where: { teamId, type: "lead_id", normalizedValue: leadId },
+      select: { id: true },
+    })
+
+    if (alreadyReal && alreadyReal.id !== identityId) {
+      await dropReservation()
+      return
     }
 
-    await this.db.$transaction(async (tx) => {
-      const alreadyReal = await tx.radarIdentity.findFirst({
-        where: { teamId, type: "lead_id", normalizedValue: leadId },
-        select: { id: true },
+    try {
+      await this.db.radarIdentity.updateMany({
+        where: { id: identityId, teamId, type: "lead_id" },
+        data: { value: leadId, normalizedValue: leadId, source },
       })
-
-      if (alreadyReal && alreadyReal.id !== identityId) {
-        await dropReservation(tx)
+    } catch (error) {
+      // A checagem acima não é atômica: o sync pode inserir a identidade real
+      // entre o `findFirst` e este `updateMany`, e aí o rename bate na unique.
+      // P2002 aqui significa exatamente "o vínculo já existe" — mesmo desfecho
+      // do caminho `alreadyReal`.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        await dropReservation()
         return
       }
-
-      try {
-        await tx.radarIdentity.updateMany({
-          where: { id: identityId, teamId, type: "lead_id" },
-          data: { value: leadId, normalizedValue: leadId, source },
-        })
-      } catch (error) {
-        // A checagem acima não é atômica: o sync pode inserir a identidade real
-        // entre o `findFirst` e este `updateMany`, e aí o rename bate na unique.
-        // P2002 aqui significa exatamente "o vínculo já existe" — mesmo desfecho
-        // do caminho `alreadyReal`. Deixar estourar reproduziria o R5/H3 na
-        // janela estreita: falha reportada com o Lead criado e a reserva
-        // `pending:` travando o perfil.
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          await dropReservation(tx)
-          return
-        }
-        throw error
-      }
-    })
+      throw error
+    }
   }
 
   /** Devolve o slot quando a criação do Lead não aconteceu. */
