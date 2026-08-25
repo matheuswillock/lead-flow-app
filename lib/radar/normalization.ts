@@ -23,14 +23,18 @@ export function normalizeRadarPhone(phone: string | null | undefined): string {
   if (!phone) return ""
   const digits = phone.replace(/\D/g, "")
 
+  // Sem DDI: DDD (2) + número (8 ou 9). PRECISA vir antes do ramo do DDI:
+  // 55 também é o DDD do Rio Grande do Sul, então `(55) 99999-9999` chega como
+  // `55999999999` — 11 dígitos começando com "55". Tratar o prefixo primeiro
+  // recusaria telefone real do RS e, pior, o saneamento o classificaria como
+  // artefato e apagaria o número. Mesma ordem de `lib/whatsapp/normalize-phone.ts`.
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`
+  }
+
   // Com DDI: 55 + DDD (2) + número (8 ou 9).
   if (digits.startsWith("55")) {
     return digits.length === 12 || digits.length === 13 ? digits : ""
-  }
-
-  // Sem DDI: DDD (2) + número (8 ou 9).
-  if (digits.length === 10 || digits.length === 11) {
-    return `55${digits}`
   }
 
   return ""

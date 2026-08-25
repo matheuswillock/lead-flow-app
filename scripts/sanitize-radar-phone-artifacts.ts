@@ -90,11 +90,15 @@ async function collectArtifacts(): Promise<Artifact[]> {
 }
 
 /**
- * Colisões que o apply criaria: perfis do mesmo time, mesmo nome, cujo telefone
- * passaria a ser nulo (os que já estão nulos hoje contam — a constraint é sobre
- * a população resultante).
+ * Perfis que ficariam com (time, nome, telefone nulo) repetido.
+ *
+ * NÃO é bloqueio. `@@unique([teamId, normalizedPhone, normalizedName])` é uma
+ * unique comum, e o Postgres trata NULL como distinto (NULLS DISTINCT é o
+ * padrão) — anular os dois lados não colide. Isto vai ao relatório como aviso
+ * porque a repetição é sinal de perfil duplicado que alguém vai querer olhar,
+ * não porque impeça o saneamento.
  */
-async function findUniqueCollisions(artifacts: Artifact[]) {
+async function findNullPhoneDuplicates(artifacts: Artifact[]) {
   const collisions: Array<{ teamId: string; normalizedName: string; profileIds: string[] }> = []
   const byTeamAndName = new Map<string, Artifact[]>()
 
@@ -140,21 +144,36 @@ async function main() {
     console.info(`  - ${artifactClass}: ${count}`)
   }
 
-  const collisions = await findUniqueCollisions(artifacts)
-  if (collisions.length > 0) {
-    console.error(
-      `[SanitizeRadarPhone] ❌ ${collisions.length} colisão(ões) da unique (teamId, normalizedPhone, normalizedName) apos anular:`
+  // A identidade `phone` companheira tem o mesmo valor invalido e sobreviveria
+  // a uma limpeza que so mexesse na coluna do perfil.
+  const companionIdentities = await prisma.radarIdentity.count({
+    where: {
+      type: "phone",
+      OR: artifacts.map((artifact) => ({
+        profileId: artifact.id,
+        normalizedValue: artifact.normalizedPhone,
+      })),
+    },
+  })
+  console.info(
+    `[SanitizeRadarPhone] identidades phone companheiras com o mesmo valor: ${companionIdentities} (JID vira whatsapp_contact_id; resto so recebe marca no source)`
+  )
+
+  const duplicates = await findNullPhoneDuplicates(artifacts)
+  if (duplicates.length > 0) {
+    console.warn(
+      `[SanitizeRadarPhone] ⚠️  ${duplicates.length} grupo(s) ficariam com (time, nome, telefone nulo) repetido — não bloqueia (unique é NULLS DISTINCT), mas vale revisar como possível duplicata de perfil:`
     )
-    for (const collision of collisions.slice(0, 20)) {
-      console.error(
-        `  - team=${collision.teamId} nome="${collision.normalizedName}" perfis=${collision.profileIds.join(",")}`
+    for (const duplicate of duplicates.slice(0, 20)) {
+      console.warn(
+        `  - team=${duplicate.teamId} nome="${duplicate.normalizedName}" perfis=${duplicate.profileIds.join(",")}`
       )
     }
-    if (collisions.length > 20) {
-      console.error(`  ... e mais ${collisions.length - 20}`)
+    if (duplicates.length > 20) {
+      console.warn(`  ... e mais ${duplicates.length - 20}`)
     }
   } else {
-    console.info("[SanitizeRadarPhone] ✅ nenhuma colisão da unique apos anular")
+    console.info("[SanitizeRadarPhone] ✅ nenhum perfil ficaria com nome repetido sem telefone")
   }
 
   if (!APPLY) {
@@ -163,21 +182,21 @@ async function main() {
     return
   }
 
-  if (collisions.length > 0) {
-    console.error(
-      "[SanitizeRadarPhone] apply abortado: resolva as colisões antes (o desempate é decisão de produto)."
-    )
-    await prisma.$disconnect()
-    process.exitCode = 1
-    return
-  }
-
   let updated = 0
+  let skippedByConcurrentFix = 0
   for (const artifact of artifacts) {
     const current = await prisma.radarProfile.findUnique({
       where: { id: artifact.id },
-      select: { profileData: true },
+      select: { profileData: true, normalizedPhone: true },
     })
+
+    // Releitura antes de escrever: entre a coleta e este ponto um sync pode ter
+    // substituído o artefato por um telefone de verdade. Sem esta guarda, o
+    // saneamento apagaria a correção e ainda registraria o valor velho.
+    if (!current || current.normalizedPhone !== artifact.normalizedPhone) {
+      skippedByConcurrentFix += 1
+      continue
+    }
 
     const existing =
       current?.profileData && typeof current.profileData === "object"
@@ -200,14 +219,48 @@ async function main() {
       ],
     } as Prisma.InputJsonValue
 
-    await prisma.radarProfile.update({
-      where: { id: artifact.id },
-      data: { normalizedPhone: null, profileData: nextProfileData },
+    await prisma.$transaction(async (tx) => {
+      // `updateMany` com o valor coletado no predicado: se algo mudou o campo
+      // entre a releitura e aqui, a escrita simplesmente não casa.
+      const result = await tx.radarProfile.updateMany({
+        where: { id: artifact.id, normalizedPhone: artifact.normalizedPhone },
+        data: { normalizedPhone: null, profileData: nextProfileData },
+      })
+
+      if (result.count === 0) {
+        skippedByConcurrentFix += 1
+        return
+      }
+
+      // A identidade `phone` companheira carrega o MESMO valor inválido
+      // (`resolveProfileForPhone` cria as duas). Limpar só a coluna deixaria o
+      // JID consultável e exportável como telefone, e ainda resolvendo para o
+      // perfil.
+      //
+      // JID vira `whatsapp_contact_id`, que é onde a DA6 diz que identidade
+      // WhatsApp não-telefônica deve morar — reclassificada, não apagada. Lixo
+      // sem tipo de destino óbvio fica marcado no `source` e é listado no
+      // relatório: apagar identidade é destrutivo e é decisão do dono.
+      const isJid = classify(artifact.normalizedPhone) === "whatsapp_group_jid"
+      await tx.radarIdentity.updateMany({
+        where: {
+          profileId: artifact.id,
+          teamId: artifact.teamId,
+          type: "phone",
+          normalizedValue: artifact.normalizedPhone,
+        },
+        data: isJid
+          ? { type: "whatsapp_contact_id", source: "phone_artifact_sanitized" }
+          : { source: "phone_artifact_sanitized" },
+      })
+
+      updated += 1
     })
-    updated += 1
   }
 
-  console.info(`[SanitizeRadarPhone] apply concluído — ${updated} perfis saneados.`)
+  console.info(
+    `[SanitizeRadarPhone] apply concluído — ${updated} perfis saneados, ${skippedByConcurrentFix} pulados por correção concorrente.`
+  )
   await prisma.$disconnect()
 }
 
