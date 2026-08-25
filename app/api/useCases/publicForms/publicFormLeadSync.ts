@@ -8,13 +8,13 @@ import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCa
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import {
-  canCreateLeadFromExtracted,
-  canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
   overlayRadarIdentityOnExtracted,
+  resolveLeadDiscardReason,
   type ExtractedLeadData,
   type RadarIdentityOverlay,
 } from "@/lib/public-forms/lead-identity"
+import type { UpsertLeadOutcome } from "@/lib/public-forms/lead-upsert-outcome"
 import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
 import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
@@ -33,7 +33,9 @@ export {
   overlayRadarIdentityOnExtracted,
   isBlankPublicFormAnswerValue,
   publicFormAnswerValueText,
+  resolveLeadDiscardReason,
   type ExtractedLeadData,
+  type PublicFormLeadDiscardReason,
   type RadarIdentityOverlay,
 } from "@/lib/public-forms/lead-identity"
 
@@ -76,10 +78,10 @@ export async function findMatchingLead(
   return undefined
 }
 
-export type UpsertLeadResult = {
-  lead: Lead
-  created: boolean
-}
+export {
+  leadFromUpsertOutcome,
+  type UpsertLeadOutcome,
+} from "@/lib/public-forms/lead-upsert-outcome"
 
 export async function upsertLeadFromFormAnswers(input: {
   form: PublicFormSubmissionContext
@@ -94,7 +96,7 @@ export async function upsertLeadFromFormAnswers(input: {
   extraNotes?: string[]
   allowCreate?: boolean
   identityOverlay?: RadarIdentityOverlay | null
-}): Promise<UpsertLeadResult | null> {
+}): Promise<UpsertLeadOutcome> {
   const extracted = overlayRadarIdentityOnExtracted(
     extractLeadDataFromSnapshot(input.snapshot, input.answers, input.visibleIds),
     input.identityOverlay,
@@ -105,7 +107,8 @@ export async function upsertLeadFromFormAnswers(input: {
   const match = await findMatchingLead(input.form.teamId, extracted)
 
   if (match) {
-    if (!canUpdateLeadFromExtracted(extracted)) return null
+    const updateReason = resolveLeadDiscardReason(extracted, { hasMatchingLead: true })
+    if (updateReason) return { outcome: "discarded", reason: updateReason }
     const notes = mergeFormMappedLeadNotes(match.notes, input.snapshot, extracted.notes)
     const lead = await publicFormsRepository.updateLead(match.id, {
       ...extracted.native,
@@ -125,11 +128,15 @@ export async function upsertLeadFromFormAnswers(input: {
         )
       }
     }
-    return { lead, created: false }
+    return { outcome: "updated", lead }
   }
 
-  if (!canCreateLeadFromExtracted(extracted)) return null
-  if (input.allowCreate === false) return null
+  // A ordem importa: `allowCreate:false` é decisão de arquitetura (modo radar),
+  // não julgamento de identidade. Checar o gate antes marcaria como descarte
+  // toda submissão do caminho B — inclusive as que o gate C vai promover.
+  if (input.allowCreate === false) return { outcome: "skipped" }
+  const createReason = resolveLeadDiscardReason(extracted, { hasMatchingLead: false })
+  if (createReason) return { outcome: "discarded", reason: createReason }
   if (!input.form.team.master.supabaseId) {
     throw new Error("Master do time sem identificação de autenticação")
   }
@@ -232,5 +239,5 @@ export async function upsertLeadFromFormAnswers(input: {
     { autoScheduleMeeting: false },
   )
   if (!output.isValid) throw new Error(output.errorMessages.join("; "))
-  return { lead: output.result as Lead, created: true }
+  return { outcome: "created", lead: output.result as Lead }
 }

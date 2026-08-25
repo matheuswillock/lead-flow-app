@@ -246,11 +246,14 @@ async function applyLead(
     extraNotes: [BACKFILL_NOTE],
     allowCreate: true,
   })
-  if (!upserted) {
-    throw new Error("upsertLeadFromFormAnswers retornou null")
+  if (upserted.outcome === "discarded") {
+    throw new Error(`upsertLeadFromFormAnswers descartou o lead: ${upserted.reason}`)
+  }
+  if (upserted.outcome === "skipped") {
+    throw new Error("upsertLeadFromFormAnswers não criou nem atualizou o lead")
   }
 
-  const eventType = upserted.created ? "lead_created" : "lead_attached"
+  const eventType = upserted.outcome === "created" ? "lead_created" : "lead_attached"
   const visitorSessionId = resolveBackfillMetricSessionId({
     visitorSessionId: payload.submission.visitorSessionId,
     requestKey: payload.submission.requestKey,

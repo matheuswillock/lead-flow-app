@@ -67,6 +67,20 @@ export function buildPublicFormServerValidationFailedEventKey(
   )}`
 }
 
+/**
+ * Descarte de lead (SPEC 40 E2/DA2). A chave sai do `requestKey`, não do
+ * `visitorSessionId`: `requestKey` é `@unique` em `PublicFormSubmission`, então
+ * é a única coisa que identifica **esta** submissão. O drain reprocessando o
+ * mesmo job cai no mesmo `eventKey` e o upsert absorve — sem isso, cada
+ * reentrega da fila somaria um descarte a mais no funil.
+ */
+export function buildPublicFormLeadDiscardedEventKey(
+  requestKey: string,
+  emailLogId?: string | null,
+): string {
+  return `${requestKey}:lead_discarded${buildAttributionEventKeySuffix(emailLogId)}`
+}
+
 /** Funil e Radar usam a mesma chave: `{session}:question_answered:{questionId}`. */
 export function buildPublicFormQuestionAnsweredEventKey(
   visitorSessionId: string,

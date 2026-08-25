@@ -29,11 +29,20 @@ import {
   findMatchingLead,
   upsertLeadFromFormAnswers,
 } from "./publicFormLeadSync"
+// Direto do módulo puro, não do `publicFormLeadSync`: função pura de identidade,
+// e assim os testes que trocam o módulo de sync inteiro por mock continuam
+// enxergando a regra (mesma razão de `leadFromUpsertOutcome`).
+import { resolveLeadDiscardReason } from "@/lib/public-forms/lead-identity"
+import {
+  leadFromUpsertOutcome,
+  type UpsertLeadOutcome,
+} from "@/lib/public-forms/lead-upsert-outcome"
 import {
   FORM_COMPLETE_ACTIVITY_BODY,
   parseEmailLogIdFromOrigin,
 } from "@/lib/public-forms/email-campaign-attribution"
 import {
+  buildPublicFormLeadDiscardedEventKey,
   buildPublicFormMetricEventKey,
   buildPublicFormServerValidationFailedEventKey,
 } from "@/lib/public-forms/metric-keys"
@@ -375,7 +384,7 @@ export class PublicFormSubmissionUseCase {
         enrichedOrigin: Record<string, unknown>
       } | null = null
       let origin = job.origin
-      let upserted: Awaited<ReturnType<typeof upsertLeadFromFormAnswers>> = null
+      let upserted: UpsertLeadOutcome | null = null
       let lead: Lead | null = null
 
       const attribution = await resolveEmailCampaignFormAttributionUseCase.execute({
@@ -402,43 +411,30 @@ export class PublicFormSubmissionUseCase {
         ? sanitizePublicFormOrigin(attributionResult.enrichedOrigin)
         : job.origin
 
+      // Extração e match são idênticos nos dois modos — o que muda é só
+      // `allowCreate`. Ficam aqui fora porque o motivo do descarte é decidido
+      // no fim, sobre a identidade desta submissão, valendo para os dois.
+      const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
+      const match = await findMatchingLead(form.teamId, extracted)
+      alerts.push(...buildLeadSyncAlerts(extracted, match))
+
       if (leadGateMode === "radar") {
         lead = await publicFormsRepository.findLeadForSubmission(job.submissionId)
-        const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
-        const match = await findMatchingLead(form.teamId, extracted)
-        alerts.push(...buildLeadSyncAlerts(extracted, match))
-        const enriched = await upsertLeadFromFormAnswers({
-          form,
-          snapshot: job.snapshot,
-          answers: job.visibleAnswers,
-          visibleIds: visible,
-          score: job.score,
-          scoreBandLabel: job.scoreBandLabel,
-          submissionId: job.submissionId,
-          publicationId: job.publicationId,
-          origin,
-          extraNotes: job.bandNote,
-          allowCreate: false,
-        })
-        lead = enriched?.lead ?? lead
-      } else {
-        const extracted = extractLeadDataFromSnapshot(job.snapshot, job.visibleAnswers, visible)
-        const match = await findMatchingLead(form.teamId, extracted)
-        alerts.push(...buildLeadSyncAlerts(extracted, match))
-        upserted = await upsertLeadFromFormAnswers({
-          form,
-          snapshot: job.snapshot,
-          answers: job.visibleAnswers,
-          visibleIds: visible,
-          score: job.score,
-          scoreBandLabel: job.scoreBandLabel,
-          submissionId: job.submissionId,
-          publicationId: job.publicationId,
-          origin,
-          extraNotes: job.bandNote,
-        })
-        lead = upserted?.lead ?? null
       }
+      upserted = await upsertLeadFromFormAnswers({
+        form,
+        snapshot: job.snapshot,
+        answers: job.visibleAnswers,
+        visibleIds: visible,
+        score: job.score,
+        scoreBandLabel: job.scoreBandLabel,
+        submissionId: job.submissionId,
+        publicationId: job.publicationId,
+        origin,
+        extraNotes: job.bandNote,
+        ...(leadGateMode === "radar" ? { allowCreate: false } : {}),
+      })
+      lead = leadFromUpsertOutcome(upserted) ?? lead
 
       const resolvedLeadId = lead?.id ?? attributionResult?.leadId ?? null
 
@@ -477,7 +473,12 @@ export class PublicFormSubmissionUseCase {
         formId: string
         publicationId: string
         visitorSessionId: string
-        eventType: "form_completed" | "lead_created" | "lead_attached" | "meeting_scheduled"
+        eventType:
+          | "form_completed"
+          | "lead_created"
+          | "lead_attached"
+          | "lead_discarded"
+          | "meeting_scheduled"
         eventKey: string
         origin: Prisma.InputJsonValue
         radarOrigin?: Record<string, unknown>
@@ -498,7 +499,8 @@ export class PublicFormSubmissionUseCase {
       ]
 
       if (lead || attributionResult?.leadId) {
-        const eventType = upserted?.created ? ("lead_created" as const) : ("lead_attached" as const)
+        const eventType =
+          upserted?.outcome === "created" ? ("lead_created" as const) : ("lead_attached" as const)
 
         // O lead do formulario publico nasce aqui, no processamento em
         // background — nao na rota de submissao, que so enfileira. Sem esta
@@ -519,6 +521,35 @@ export class PublicFormSubmissionUseCase {
             attributionEmailLogId
           ),
           origin: metricOrigin,
+        })
+      }
+
+      // E2/DA2: o terceiro desfecho. Sem esta linha, `form_completed` sem lead
+      // era silêncio — o motivo existia só como texto em `errorMessage`, que
+      // não agrega, não alarma e não fecha o funil. O `eventKey` sai do
+      // `requestKey` (único por submissão), então o drain reprocessando o mesmo
+      // job colide no upsert em vez de dobrar o contador.
+      //
+      // A condição é `!resolvedLeadId`, não `upserted.outcome === "discarded"`.
+      // Duas correções do review vêm daí: (a) atribuição por `cs_el` que já
+      // resolveu um lead emite `lead_attached` — contar descarte junto faria a
+      // mesma conclusão valer por dois desfechos; (b) no modo radar o upsert sai
+      // como `skipped` (quem promove é o gate C), e checar só o outcome deixava
+      // toda submissão de time canário sem par no funil.
+      if (!resolvedLeadId) {
+        const reason =
+          upserted?.outcome === "discarded"
+            ? upserted.reason
+            : resolveLeadDiscardReason(extracted, { hasMatchingLead: Boolean(match) })
+        const discardOrigin = { ...origin, reason: reason ?? "sem_contato" }
+        metricEvents.push({
+          formId: job.snapshot.formId,
+          publicationId: job.publicationId,
+          visitorSessionId,
+          eventType: "lead_discarded",
+          eventKey: buildPublicFormLeadDiscardedEventKey(job.requestKey, attributionEmailLogId),
+          origin: json(discardOrigin),
+          radarOrigin: discardOrigin,
         })
       }
 

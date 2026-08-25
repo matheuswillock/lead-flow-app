@@ -611,6 +611,9 @@ export class PublicFormsService implements IPublicFormsService {
       from,
       to,
     })
+    // SPEC 40 E2/DA2: sem isto o `lead_discarded` fica persistido e invisível —
+    // o funil continuaria mostrando só o lado bem-sucedido da conversão.
+    const discardedByReason = await publicFormsRepository.countDiscardedLeadsByReason(id, where)
     const originEvents = await publicFormsRepository.listFormViewOrigins({ formId: id, ...where })
     const origins = new Map<string, Set<string>>()
     for (const event of originEvents) {
@@ -648,9 +651,12 @@ export class PublicFormsService implements IPublicFormsService {
         completions: sessionsByType.form_completed ?? 0,
         leadCreatedSessions: sessionsByType.lead_created ?? 0,
         leadAttachedSessions: sessionsByType.lead_attached ?? 0,
+        leadDiscardedSessions: sessionsByType.lead_discarded ?? 0,
         meetings: sessionsByType.meeting_scheduled ?? 0,
         uniqueLeads,
       },
+      /** Descartes por motivo (`sem_nome`, `sem_telefone`, …) em sessões distintas. */
+      leadDiscardsByReason: discardedByReason,
       origins: Array.from(origins, ([source, sessions]) => ({
         source,
         sessions: sessions.size,
