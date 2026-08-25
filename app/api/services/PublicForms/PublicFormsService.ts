@@ -605,9 +605,28 @@ export class PublicFormsService implements IPublicFormsService {
   async analytics(teamId: string, id: string, from?: Date, to?: Date, publicationId?: string) {
     const publications = await publicFormsRepository.findAnalyticsPublications(teamId, id)
     if (!publications) return null
+    // Uma resposta, um relógio. Os agregados em SQL cortam por
+    // `COALESCE(occurredAt, createdAt)` (ver `buildMetricEventWhereSql`); estes
+    // dois consumidores em Prisma precisam concordar, senão a MESMA resposta
+    // mistura duas âncoras — `totals.leadDiscardedSessions` no dia do aceite e
+    // `leadDiscardsByReason` no dia do drain, com o total diferente da soma por
+    // motivo na tela. É a doença que esta SPEC existe para matar (M2).
+    //
+    // `occurredAt: null` precisa ser um ramo explícito do `OR`: um filtro de
+    // range sobre coluna nullable descarta NULL, e o histórico inteiro anterior
+    // ao E3 tem o campo vazio.
+    const periodFilter: Prisma.PublicFormMetricEventWhereInput | null =
+      from || to
+        ? {
+            OR: [
+              { occurredAt: { gte: from, lte: to } },
+              { occurredAt: null, createdAt: { gte: from, lte: to } },
+            ],
+          }
+        : null
     const where: Prisma.PublicFormMetricEventWhereInput = {
       ...(publicationId ? { publicationId } : {}),
-      ...(from || to ? { createdAt: { gte: from, lte: to } } : {}),
+      ...(periodFilter ?? {}),
     }
     const aggregationFilter = { formId: id, publicationId, from, to }
     const events = await publicFormsRepository.groupMetricEvents(aggregationFilter)
