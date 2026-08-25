@@ -10,6 +10,7 @@ import { sendTrackedEmailToProfileRecipients } from "@/lib/email/send-tracked-pr
 import { logResendDispatchesForRecipients } from "@/lib/email/log-profile-email-dispatches";
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags";
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger";
+import { resolveTransactionalQuotaFailure } from "@/lib/email/resend-quota-incident";
 import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from "@/lib/supabase/email-auth-link";
 
 export interface EmailTrackingMeta {
@@ -695,6 +696,14 @@ export class EmailService {
 
       if (result.error) {
         console.error("Erro ao enviar email:", result.error);
+        // Cota estourada no transacional é P0 de suporte: recuperação de senha
+        // e lembretes falham mudos enquanto o mês não vira. A tag sobe junto
+        // com o erro para o chamador poder decidir — não para ser engolida
+        // aqui, que é exatamente o que acontecia com os 159 casos medidos.
+        const quota = resolveTransactionalQuotaFailure(result.error, {
+          teamId: tracking?.teamId ?? null,
+          category: tracking?.category ?? null,
+        });
         if (teamLogId) {
           await teamEmailDispatchLogger.markTeamEmailLogFailed(
             teamLogId,
@@ -705,6 +714,7 @@ export class EmailService {
           success: false,
           error: result.error.message || "Erro ao enviar email",
           errorObject: result.error,
+          errorTag: quota.errorTag,
         };
       }
 
@@ -725,6 +735,10 @@ export class EmailService {
     } catch (error: unknown) {
       console.error("Erro ao enviar email:", error);
       const message = error instanceof Error ? error.message : "Erro ao enviar email";
+      const quota = resolveTransactionalQuotaFailure(
+        { message, name: error instanceof Error ? error.name : undefined },
+        { teamId: tracking?.teamId ?? null, category: tracking?.category ?? null }
+      );
       if (teamLogId) {
         await teamEmailDispatchLogger.markTeamEmailLogFailed(teamLogId, message);
       }
@@ -732,6 +746,7 @@ export class EmailService {
         success: false,
         error: message,
         errorObject: error,
+        errorTag: quota.errorTag,
       };
     }
   }

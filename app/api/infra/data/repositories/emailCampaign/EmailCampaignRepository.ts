@@ -126,6 +126,20 @@ export interface IEmailCampaignRepository {
    * Retorna `null` quando o segmento Radar exigido pelo lock deixou de estar ativo.
    */
   createCampaignPlan(input: CreateCampaignPlanInput): Promise<CreateCampaignPlanResult | null>
+  /**
+   * Último disparo abortado por cota mensal desde `since`, ou `null`.
+   *
+   * A cota é da **conta** no provedor, não do time — por isso a busca é global.
+   * O registro do incidente é o próprio `errorMessage` do disparo (comparado
+   * com `quotaFailureMessage`, a constante que o escreve): não há tabela de
+   * incidente e a decisão foi não criar uma. O preço é o acoplamento à cópia —
+   * mudar a mensagem sem mudar este chamador cega a recusa, e é por isso que a
+   * constante viaja como parâmetro em vez de ser duplicada aqui.
+   */
+  findLastMonthlyQuotaIncidentAt(options: {
+    since: Date
+    quotaFailureMessage: string
+  }): Promise<Date | null>
 }
 
 export class EmailCampaignRepository implements IEmailCampaignRepository {
@@ -211,6 +225,21 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
     dispatchIds: string[]
   ): Promise<DispatchLogCounterRow[]> {
     return queryDispatchLogCounters(this.db, { teamId, dispatchIds })
+  }
+
+  async findLastMonthlyQuotaIncidentAt(options: {
+    since: Date
+    quotaFailureMessage: string
+  }): Promise<Date | null> {
+    const incident = await this.db.emailCampaignDispatch.findFirst({
+      where: {
+        errorMessage: options.quotaFailureMessage,
+        updatedAt: { gte: options.since },
+      },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: "desc" },
+    })
+    return incident?.updatedAt ?? null
   }
 
   async createCampaignPlan(
