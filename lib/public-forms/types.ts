@@ -114,6 +114,12 @@ export type PublicFormDraftInput = {
   meetingDurationMinutes: number
   schedulingMessage?: string | null
   formKind?: "standard" | "health_plan_simulator"
+  /**
+   * SPEC 40 E4/DA4. Opt-out de captação: publica sem pergunta de contato
+   * mapeada e suprime as métricas de lead do formulário. Não é "desligar
+   * validação" — é declarar que este form é pesquisa, não aquisição.
+   */
+  leadCaptureDisabled?: boolean
   questions: PublicFormQuestionInput[]
   rules: PublicFormRuleInput[]
   scoreBands: PublicFormScoreBandInput[]
@@ -172,6 +178,13 @@ export const PUBLIC_FORM_SERVER_ONLY_EVENT_TYPES = [
   "question_answered",
   "lead_created",
   "lead_attached",
+  /**
+   * SPEC 40 E2/DA2. Server-only por construção: quem decide o descarte é o
+   * gate, e aceitar isto do navegador deixaria forjar o contrário de uma
+   * conversão. `form_submit_failed` (valor de enum já provisionado na mesma
+   * migration) fica de fora até a SPEC 41 definir quem emite.
+   */
+  "lead_discarded",
   "meeting_scheduled",
   "form_abandoned",
   "form_resumed",

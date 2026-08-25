@@ -23,6 +23,7 @@ mock.module("@/lib/queues/public-form-progress-events", () => ({
 
 mock.module("@/lib/queues/queue-processing-failure", () => ({
   ackAfterMaxDeliveries: mock(async () => false),
+  deadLetterInvalidPayload: mock(async () => {}),
 }))
 
 type QueueMessageMetadata = {
@@ -101,6 +102,47 @@ describe("processPublicFormProgressEventMessage", () => {
         { execute },
       ),
     ).rejects.toThrow("P2024")
+  })
+
+  /**
+   * SPEC 40 E5, todo 11. Payload inválido era `return` mudo: a mensagem sumia
+   * sem deixar linha em lugar nenhum. Retentar não adianta — payload malformado
+   * não melhora com o tempo — então vai direto para a dead-letter e acka.
+   */
+  it("payload inválido: grava dead-letter e acka sem throw", async () => {
+    const deadLetter = mock(async () => {})
+    await expect(
+      processPublicFormProgressEventMessage(
+        { ...baseMessage(), visitorSessionId: undefined } as never,
+        metadata,
+        { execute },
+        undefined,
+        deadLetter,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(execute).not.toHaveBeenCalled()
+    expect(deadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-progress-events",
+        idempotencyKey: "progress:session_abcdefghij:pub:q:hash",
+      }),
+    )
+  })
+
+  it("payload inválido sem idempotencyKey: usa o messageId como chave", async () => {
+    const deadLetter = mock(async () => {})
+    await processPublicFormProgressEventMessage(
+      {} as never,
+      metadata,
+      { execute },
+      undefined,
+      deadLetter,
+    )
+
+    expect(deadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "invalid-payload:msg-1" }),
+    )
   })
 
   it("deliveryCount excedeu o limite: helper acka sem throw", async () => {

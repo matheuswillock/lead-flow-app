@@ -1,7 +1,7 @@
 import type { PublicFormSubmissionContext } from "@/app/api/infra/data/repositories/publicForms/IPublicFormsRepository"
 import {
   upsertLeadFromFormAnswers,
-  type UpsertLeadResult,
+  type UpsertLeadOutcome,
 } from "@/app/api/useCases/publicForms/publicFormLeadSync"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 
@@ -18,7 +18,7 @@ export type LegacyPublicFormProgressLeadInput = {
 export interface ILegacyPublicFormProgressLeadService {
   createOrUpdate(
     input: LegacyPublicFormProgressLeadInput,
-  ): Promise<UpsertLeadResult | null>
+  ): Promise<UpsertLeadOutcome>
 }
 
 export class LegacyPublicFormProgressLeadService
@@ -26,7 +26,7 @@ export class LegacyPublicFormProgressLeadService
 {
   createOrUpdate(
     input: LegacyPublicFormProgressLeadInput,
-  ): Promise<UpsertLeadResult | null> {
+  ): Promise<UpsertLeadOutcome> {
     return upsertLeadFromFormAnswers(input)
   }
 }
