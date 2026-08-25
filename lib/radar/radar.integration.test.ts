@@ -2210,6 +2210,21 @@ describe.skipIf(!RUN_INTEGRATION)("T-R2.3 — lote agregado === cálculo unitár
   const profileIds: string[] = []
 
   beforeAll(async () => {
+    // Os pesos vivem numa tabela de backoffice. Sem eles todo evento vale 0,
+    // todo perfil sai com o mesmo score, e o teste passaria por vacuidade
+    // (lote == unitário == 0 para todos). O arranjo mora aqui para o teste não
+    // depender de seed global.
+    for (const [eventType, weight] of [
+      ["email.opened", 10],
+      ["email.clicked", 25],
+    ] as const) {
+      await prisma.backofficeRadarEngagementWeight.upsert({
+        where: { eventType },
+        create: { eventType, weight, isActive: true },
+        update: { weight, isActive: true },
+      })
+    }
+
     const suffix = randomUUID().slice(0, 8)
     const owner = await prisma.profile.create({
       data: {
