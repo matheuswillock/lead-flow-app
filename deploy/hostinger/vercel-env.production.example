@@ -11,11 +11,7 @@ WHATSAPP_WEBHOOK_HEADER_ENFORCE=false
 BACKOFFICE_N8N_OUTBOUND_URL=https://n8n.corretorstudio.com/webhook/bethania-outbound
 BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET=<mesmo valor de .env.n8n na VPS>
 # Token do agente Ops (após rotate no backoffice → /studio-bot/ops)
-# Também usado como fallback para backup manual/cron (BACKUP_VPS_*).
 BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN=<mesmo OPS_AGENT_TOKEN da VPS>
-# Opcional — sobrescreve defaults do backup VPS:
-# BACKUP_VPS_WEBHOOK_URL=https://ops.corretorstudio.com/backup/run
-# BACKUP_VPS_TOKEN=<mesmo OPS_AGENT_TOKEN da VPS>
 
 EVO_BETHANIA_INSTANCE=bethania
 BACKOFFICE_BETHANIA_WHATSAPP_NUMBER=5511XXXXXXXXX
