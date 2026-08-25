@@ -20,9 +20,20 @@ mock.module("@vercel/queue", () => ({
   },
 }))
 
-mock.module("@/lib/queues/queue-processing-failure", () => ({
-  ackAfterMaxDeliveries: mock(async () => false),
-}))
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
 
 const { processEmailCampaignDispatchMessage } = await import("./processDispatchMessage")
 
@@ -60,6 +71,35 @@ describe("processEmailCampaignDispatchMessage", () => {
         processDispatchQueueBatch,
       }),
     ).rejects.toThrow("P2024")
+  })
+
+  /**
+   * T-Q3.2 + review #1042. Payload malformado é falha **terminal**: se entrasse
+   * como `pending`, o cron de retry republicaria o mesmo payload e o ciclo
+   * fila↔outbox não fecharia nunca. Sem `dispatchId` no payload, a chave cai no
+   * `messageId` para que reentregas colapsem na mesma linha.
+   */
+  it("T-Q3.2 — payload inválido grava dead-letter TERMINAL nomeando o campo, e acka", async () => {
+    recordTerminalFailure.mockClear()
+    upsertFromProcessingFailure.mockClear()
+
+    await expect(
+      processEmailCampaignDispatchMessage(
+        { reason: "start" } as EmailCampaignDispatchWakePayload,
+        metadata,
+        { processDispatchQueueBatch },
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(processDispatchQueueBatch).not.toHaveBeenCalled()
+    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "email-campaign-dispatch",
+        idempotencyKey: "invalid-payload:msg-1",
+        lastError: "campos obrigatórios ausentes: dispatchId",
+      }),
+    )
   })
 
   it("deliveryCount excedeu o limite: helper acka sem throw", async () => {

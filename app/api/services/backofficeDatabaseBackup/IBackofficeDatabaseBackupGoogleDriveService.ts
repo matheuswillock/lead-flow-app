@@ -1,5 +1,11 @@
+import type { Readable } from "node:stream"
+
 export type DriveUploadInput = {
-  buffer: Buffer
+  /**
+   * Corpo em stream: o arquivo é enviado enquanto ainda está sendo gerado, sem
+   * nunca existir inteiro em memória.
+   */
+  body: Readable
   fileName: string
 }
 
