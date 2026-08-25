@@ -51,14 +51,23 @@ export function resolveQuestionIdentityKey(row: {
       ? (row.questionSnapshot as Record<string, unknown>)
       : null
 
-  const mappingKey = typeof snapshot?.mappingKey === "string" ? snapshot.mappingKey.trim() : ""
-  if (mappingKey) return `key:${mappingKey}`
-
   const title = typeof snapshot?.title === "string" ? snapshot.title.trim() : ""
   const position =
     typeof snapshot?.position === "number" && Number.isFinite(snapshot.position)
       ? String(snapshot.position)
       : ""
+
+  // `mappingKey` sozinho não identifica a pergunta: nem a validação de rascunho
+  // nem o schema impedem duas perguntas da mesma publicação de compartilharem a
+  // chave, e aí os eventos das duas cairiam no mesmo balde — uma exibiria a soma
+  // e a outra 0/0, exatamente o sintoma que este agrupamento existe para matar.
+  // O título desempata; escolhido em vez da posição porque é o que sobrevive ao
+  // caso-alvo: a pergunta deletada e recriada volta com o mesmo título e em
+  // outra posição (o builder reindexa a cada save). O custo é que renomear parte
+  // o histórico em dois — visível, e menos grave que somar perguntas distintas.
+  const mappingKey = typeof snapshot?.mappingKey === "string" ? snapshot.mappingKey.trim() : ""
+  if (mappingKey) return `key:${mappingKey}${KEY_SEPARATOR}${title}`
+
   if (title) return `title:${title}${KEY_SEPARATOR}${position}`
 
   // Sem snapshot utilizável, o id vivo ainda serve — é o caso da maioria das

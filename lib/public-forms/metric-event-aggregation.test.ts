@@ -21,8 +21,35 @@ function row(overrides: Partial<MetricEventRow> = {}): MetricEventRow {
 }
 
 describe("resolveQuestionIdentityKey", () => {
-  it("mappingKey manda quando existe", () => {
-    expect(resolveQuestionIdentityKey(row())).toBe("key:email")
+  it("mappingKey manda quando existe, com o título desempatando", () => {
+    expect(resolveQuestionIdentityKey(row())).toBe("key:email|E-mail")
+  })
+
+  it("duas perguntas com o MESMO mappingKey não caem no mesmo balde", () => {
+    // Nem o schema nem `validatePublicFormDraft` impedem `mappingKey` repetido
+    // na mesma publicação. Sem desempate, uma pergunta exibiria a soma das duas
+    // e a outra 0/0 — o sintoma que este agrupamento existe para matar.
+    const primeira = resolveQuestionIdentityKey(
+      row({ questionSnapshot: { title: "E-mail pessoal", position: 1, mappingKey: "email" } })
+    )
+    const segunda = resolveQuestionIdentityKey(
+      row({ questionSnapshot: { title: "E-mail do trabalho", position: 2, mappingKey: "email" } })
+    )
+
+    expect(primeira).not.toBe(segunda)
+  })
+
+  it("mesma pergunta recriada em outra posição continua sendo a mesma", () => {
+    // O builder reindexa as posições a cada save, então a posição não serve de
+    // desempate para o caso-alvo (delete + recriação).
+    const antes = resolveQuestionIdentityKey(
+      row({ questionId: "q-velha", questionSnapshot: { title: "E-mail", position: 1, mappingKey: "email" } })
+    )
+    const depois = resolveQuestionIdentityKey(
+      row({ questionId: "q-nova", questionSnapshot: { title: "E-mail", position: 4, mappingKey: "email" } })
+    )
+
+    expect(antes).toBe(depois)
   })
 
   it("sem mappingKey, título + posição identificam a pergunta", () => {
@@ -81,7 +108,7 @@ describe("T-M4.4 — caso Lista Fria: answers órfãs contam", () => {
 
     expect(grouped).toHaveLength(1)
     expect(grouped[0].uniqueSessions).toBe(3)
-    expect(grouped[0].questionKey).toBe("key:email")
+    expect(grouped[0].questionKey).toBe("key:email|E-mail")
     // O id vivo vence o NULL: é o que o consumidor usa para casar com a pergunta.
     expect(grouped[0].questionId).toBe("q-recriada")
   })
@@ -101,7 +128,10 @@ describe("T-M4.4 — caso Lista Fria: answers órfãs contam", () => {
     ])
 
     expect(grouped).toHaveLength(2)
-    expect(grouped.map((item) => item.questionKey).sort()).toEqual(["key:email", "key:phone"])
+    expect(grouped.map((item) => item.questionKey).sort()).toEqual([
+      "key:email|E-mail",
+      "key:phone|WhatsApp",
+    ])
   })
 
   it("11 respostas de uma pergunta órfã nunca somam zero", () => {

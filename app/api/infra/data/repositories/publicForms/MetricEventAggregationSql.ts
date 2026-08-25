@@ -24,7 +24,11 @@ export type MetricEventAggregationFilter = {
 export const QUESTION_IDENTITY_KEY_SQL = Prisma.sql`
       CASE
         WHEN NULLIF(btrim(COALESCE("questionSnapshot"->>'mappingKey', '')), '') IS NOT NULL
-          THEN 'key:' || btrim("questionSnapshot"->>'mappingKey')
+          -- Titulo desempata: duas perguntas da mesma publicacao podem
+          -- compartilhar o mesmo mappingKey (nada no schema ou na validacao
+          -- impede) e sem isso os eventos das duas cairiam no mesmo balde.
+          THEN 'key:' || btrim("questionSnapshot"->>'mappingKey') || '|' ||
+               btrim(COALESCE("questionSnapshot"->>'title', ''))
         WHEN NULLIF(btrim(COALESCE("questionSnapshot"->>'title', '')), '') IS NOT NULL
           THEN 'title:' || btrim("questionSnapshot"->>'title') || '|' ||
                CASE
