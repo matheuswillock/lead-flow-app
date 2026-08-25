@@ -16629,6 +16629,28 @@
               "response": []
             },
             {
+              "name": "Watchdog de Execuções de Cron Órfãs",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/mark-stale-cron-executions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "mark-stale-cron-executions"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Marca como failed toda execução presa em running além do teto do proprio cronKey (2x maxDuration) e dispara o alerta Slack que o kill de plataforma nunca disparou."
+              },
+              "response": []
+            },
+            {
               "name": "Reconciliar Status de Domínio Resend",
               "request": {
                 "method": "GET",

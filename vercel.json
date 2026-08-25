@@ -302,6 +302,10 @@
     {
       "path": "/api/v1/queues/cron/retry-processing-failures",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/queues/cron/mark-stale-cron-executions",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
