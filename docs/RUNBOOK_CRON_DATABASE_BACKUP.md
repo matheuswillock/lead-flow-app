@@ -70,6 +70,44 @@ longa e sem o pico de memória).
 Enquanto não houver correção, **assuma que não existe backup automático desde
 17/08** e faça o dump manualmente.
 
+## Dump manual (procedimento)
+
+O `.env` do repositório **não pode ser lido com `source`**: a linha do
+`DATABASE_URL` tem `?pgbouncer=true&connection_limit=1&...` e o `&` sem aspas
+quebra o parser do shell. O source aborta ali, `DIRECT_URL` fica vazia e o
+`pg_dump` cai silenciosamente no socket local — o erro que aparece é
+"conexão com o servidor no soquete /var/run/postgresql", que não tem nada a
+ver com a causa. Extraia só a variável:
+
+```bash
+export DIRECT_URL="$(sed -n 's/^DIRECT_URL=//p' /caminho/lead-flow-app/.env | head -1)"
+STAMP=$(date +%Y%m%d-%H%M)
+pg_dump "$DIRECT_URL" -Fc --no-owner --no-acl -v \
+  -f /mnt/Armazenamento/Backup/leadflow-$STAMP.dump \
+  2> /mnt/Armazenamento/Backup/leadflow-$STAMP.log
+```
+
+Use `DIRECT_URL` (session pooler, porta 5432), nunca `DATABASE_URL` — o
+transaction pooler da 6543 não suporta `pg_dump`. O cliente `pg_dump`
+**precisa ser ≥ 17**, a versão do servidor.
+
+Conferir integridade, não só existência:
+
+```bash
+pg_restore -l /mnt/Armazenamento/Backup/leadflow-<stamp>.dump | grep -c 'TABLE DATA'
+```
+
+Um `.dump` truncado passa no `ls -lh` e falha aqui.
+
+### Dumps manuais realizados
+
+| Data | Arquivo | Tamanho | TOC / tabelas com dados |
+|---|---|---|---|
+| 2026-08-25 01:19 | `leadflow-20260825-0119.dump` | 553 MB | 2.481 entradas / 225 tabelas, 0 erros no log |
+
+Banco de origem: PostgreSQL 17.6, 3.213 MB. Cobre a janela sem backup
+automático aberta em 18/08.
+
 ## Verificação após a correção
 
 ```sql
