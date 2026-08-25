@@ -4772,6 +4772,7 @@ export class EmailCampaignUseCase {
               resendDomainStatus: true,
               resendOpenTracking: true,
               resendClickTracking: true,
+              resendSendingDnsVerified: true,
             },
           })
           .catch(() => null)

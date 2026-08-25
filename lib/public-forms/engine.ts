@@ -296,16 +296,28 @@ export function isLeadNameQuestion(question: PublicFormQuestionInput): boolean {
 
 export const PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR = "Informe um nome de pessoa, não um e-mail"
 
-export function validateLeadNameAnswer(value: unknown): string | null {
+function validateLeadNameIssue(value: unknown): PublicFormAnswerIssue | null {
   const trimmed = String(value ?? "").trim()
   if (!trimmed || trimmed.length < PUBLIC_FORM_LEAD_NAME_MIN_LENGTH) {
-    return `Informe um nome com pelo menos ${PUBLIC_FORM_LEAD_NAME_MIN_LENGTH} caracteres`
+    return {
+      code: "name_too_short",
+      message: `Informe um nome com pelo menos ${PUBLIC_FORM_LEAD_NAME_MIN_LENGTH} caracteres`,
+    }
   }
-  if (trimmed.includes("@")) return PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR
+  if (trimmed.includes("@")) {
+    return { code: "name_is_email", message: PUBLIC_FORM_LEAD_NAME_EMAIL_ERROR }
+  }
   if (trimmed.length > PUBLIC_FORM_LEAD_NAME_MAX_LENGTH) {
-    return `Informe um nome com no máximo ${PUBLIC_FORM_LEAD_NAME_MAX_LENGTH} caracteres`
+    return {
+      code: "name_too_long",
+      message: `Informe um nome com no máximo ${PUBLIC_FORM_LEAD_NAME_MAX_LENGTH} caracteres`,
+    }
   }
   return null
+}
+
+export function validateLeadNameAnswer(value: unknown): string | null {
+  return validateLeadNameIssue(value)?.message ?? null
 }
 
 function copyNameValueToEmptyEmail(options: {
@@ -371,66 +383,112 @@ function parseCurrencyAnswer(value: unknown): {
   return { empty: false, amount, valid: true }
 }
 
-export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
+/**
+ * Código estável da recusa, para o servidor devolver por pergunta (SPEC 40 E1)
+ * sem que o cliente precise casar a mensagem em português. A mensagem continua
+ * sendo a mesma que o renderer já mostra — uma regra só, dois consumidores.
+ */
+export type PublicFormAnswerIssueCode =
+  | "required"
+  | "invalid_email"
+  | "name_too_short"
+  | "name_is_email"
+  | "name_too_long"
+  | "invalid_phone"
+  | "invalid_currency"
+  | "invalid_date"
+  | "invalid_url"
+  | "invalid_number"
+  | "invalid_option"
+  | "too_many_selections"
+  | "invalid_scheduling"
+  | "consent_required"
+
+export type PublicFormAnswerIssue = {
+  code: PublicFormAnswerIssueCode
+  message: string
+}
+
+export function validateAnswerIssue(
+  q: PublicFormQuestionInput,
+  v: unknown,
+): PublicFormAnswerIssue | null {
   if (q.type === "calculation") return null
   const empty = v == null || v === "" || (Array.isArray(v) && !v.length)
-  if (q.required && empty) return "Esta resposta é obrigatória"
+  if (q.required && empty) return { code: "required", message: "Esta resposta é obrigatória" }
   if (empty) return null
   const s = String(v)
   if (isEmailQuestion(q) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))
-    return "Informe um e-mail válido"
+    return { code: "invalid_email", message: "Informe um e-mail válido" }
   if (isLeadNameQuestion(q)) {
-    const nameError = validateLeadNameAnswer(v)
-    if (nameError) return nameError
+    const nameIssue = validateLeadNameIssue(v)
+    if (nameIssue) return nameIssue
   }
   if (q.type === "phone") {
     const digits = phoneDigitCount(s)
-    if (digits < 10 || digits > 11) return "Informe um telefone válido"
+    if (digits < 10 || digits > 11)
+      return { code: "invalid_phone", message: "Informe um telefone válido" }
   }
   if (q.type === "currency") {
     const parsed = parseCurrencyAnswer(v)
+    const invalidCurrency = { code: "invalid_currency" as const, message: "Informe um valor válido" }
     if (!q.required && parsed.empty) return null
-    if (!parsed.valid) return "Informe um valor válido"
+    if (!parsed.valid) return invalidCurrency
     if (!q.required && parsed.amount <= 0) return null
-    if (parsed.amount <= 0) return "Informe um valor válido"
+    if (parsed.amount <= 0) return invalidCurrency
   }
   if (q.type === "date") {
     const parsed = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00.000Z`) : null
     if (!parsed || Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== s) {
-      return "Informe uma data válida"
+      return { code: "invalid_date", message: "Informe uma data válida" }
     }
   }
   if (q.type === "url") {
     try {
       new URL(s)
     } catch {
-      return "Informe uma URL válida"
+      return { code: "invalid_url", message: "Informe uma URL válida" }
     }
   }
-  if (q.type === "number" && !Number.isFinite(Number(v))) return "Informe um número válido"
+  if (q.type === "number" && !Number.isFinite(Number(v)))
+    return { code: "invalid_number", message: "Informe um número válido" }
   if (["single_choice", "health_plan"].includes(q.type)) {
-    if (!q.options.some((option) => option.value === s)) return "Selecione uma opção válida"
+    if (!q.options.some((option) => option.value === s))
+      return { code: "invalid_option", message: "Selecione uma opção válida" }
   }
   if (q.type === "multiple_choice") {
     if (
       !Array.isArray(v) ||
       v.some((item) => !q.options.some((option) => option.value === String(item)))
     ) {
-      return "Selecione opções válidas"
+      return { code: "invalid_option", message: "Selecione opções válidas" }
     }
     const maxSelections = getMaxSelections(q)
     if (maxSelections != null && v.length > maxSelections) {
-      return `Selecione no máximo ${maxSelections} opções`
+      return {
+        code: "too_many_selections",
+        message: `Selecione no máximo ${maxSelections} opções`,
+      }
     }
   }
-  if (q.type === "boolean" && !["sim", "nao"].includes(s)) return "Selecione uma opção válida"
+  if (q.type === "boolean" && !["sim", "nao"].includes(s))
+    return { code: "invalid_option", message: "Selecione uma opção válida" }
   if (q.type === "scheduling") {
-    if (typeof v !== "object" || v === null) return "Selecione a data e o horário"
+    const invalidScheduling = {
+      code: "invalid_scheduling" as const,
+      message: "Selecione a data e o horário",
+    }
+    if (typeof v !== "object" || v === null) return invalidScheduling
     const scheduling = v as { startsAt?: unknown }
     if (typeof scheduling.startsAt !== "string" || !scheduling.startsAt) {
-      return "Selecione a data e o horário"
+      return invalidScheduling
     }
   }
-  if (q.type === "consent" && v !== true) return "É necessário aceitar para continuar"
+  if (q.type === "consent" && v !== true)
+    return { code: "consent_required", message: "É necessário aceitar para continuar" }
   return null
+}
+
+export function validateAnswer(q: PublicFormQuestionInput, v: unknown) {
+  return validateAnswerIssue(q, v)?.message ?? null
 }

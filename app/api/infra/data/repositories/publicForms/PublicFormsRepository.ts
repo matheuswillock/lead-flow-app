@@ -26,6 +26,7 @@ import {
   type IPublicFormsRepository,
   type PendingPublicFormSubmissionDispatch,
   type PublicFormCompleteSubmissionInput,
+  type PublicFormCompletedMetricEvent,
   type PublicFormDetailRecord,
   type PublicFormListItemRecord,
   type PublicFormPublishedOption,
@@ -54,6 +55,34 @@ function json(value: unknown): Prisma.InputJsonValue {
 
 function isPrismaUniqueConstraint(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
+
+/**
+ * Critério de identidade compartilhado pelas duas buscas de candidato a lead
+ * (vivos e da lixeira) — a regra é uma só; o que muda é o `deletedAt`.
+ *
+ * `escapeLikePattern` no e-mail: sem ele o `mode: "insensitive"` vira ILIKE com
+ * o valor cru, e `_`/`%` do endereço injetam no pool candidatos que não casam
+ * por e-mail nenhum. `findMatchingLead` decide no último critério por
+ * `byName.length === 1`, então o lixo do curinga faz uma resposta de formulário
+ * público ser gravada por cima do lead errado — ou empata o `byName` em 2 e
+ * perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
+ */
+function buildLeadIdentityMatchWhere(input: {
+  teamId: string
+  email: string
+  phone: string
+  normalizedPhone: string
+}): Prisma.LeadWhereInput {
+  return {
+    teamId: input.teamId,
+    OR: [
+      ...(input.email
+        ? [{ email: { equals: escapeLikePattern(input.email), mode: "insensitive" as const } }]
+        : []),
+      ...(input.phone ? [{ phone: input.phone }, { phone: input.normalizedPhone }] : []),
+    ],
+  }
 }
 
 function isBlankProgressAnswerValue(
@@ -398,6 +427,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           meetingDurationMinutes: draft.meetingDurationMinutes,
           schedulingMessage: draft.schedulingMessage,
           formKind: draft.formKind ?? "standard",
+          leadCaptureDisabled: draft.leadCaptureDisabled ?? false,
         },
       })
       await replaceDraftRelations(tx, form.id, draft)
@@ -438,6 +468,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           meetingDurationMinutes: draft.meetingDurationMinutes,
           schedulingMessage: draft.schedulingMessage,
           formKind: draft.formKind ?? "standard",
+          leadCaptureDisabled: draft.leadCaptureDisabled ?? false,
           approvalStatus: "draft",
           reviewedById: null,
           reviewedAt: null,
@@ -771,6 +802,35 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     ) as Record<string, number>
   }
 
+  /**
+   * Descartes por motivo (SPEC 40 E2/DA2), em sessões distintas — a mesma
+   * unidade dos outros contadores do funil, para as séries serem comparáveis.
+   * Motivo vive em `origin.reason`; linha sem motivo entra como
+   * `desconhecido` em vez de sumir (silêncio foi exatamente o bug do F3).
+   */
+  async countDiscardedLeadsByReason(
+    formId: string,
+    where: Prisma.PublicFormMetricEventWhereInput = {},
+  ): Promise<Record<string, number>> {
+    const rows = await prisma.publicFormMetricEvent.findMany({
+      where: { formId, ...where, eventType: "lead_discarded" },
+      select: { origin: true, visitorSessionId: true },
+    })
+    const byReason = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const origin = row.origin
+      const rawReason =
+        origin && typeof origin === "object" && !Array.isArray(origin)
+          ? (origin as Record<string, unknown>).reason
+          : null
+      const reason = typeof rawReason === "string" && rawReason ? rawReason : "desconhecido"
+      const sessions = byReason.get(reason) ?? new Set<string>()
+      sessions.add(row.visitorSessionId)
+      byReason.set(reason, sessions)
+    }
+    return Object.fromEntries(Array.from(byReason, ([reason, sessions]) => [reason, sessions.size]))
+  }
+
   listFormViewOrigins(where: Prisma.PublicFormMetricEventWhereInput) {
     return prisma.publicFormMetricEvent.findMany({
       where: { ...where, eventType: "form_viewed" },
@@ -1086,6 +1146,88 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return submission?.lead ?? null
   }
 
+  /**
+   * Fato que decide se `lead_discarded` pode existir para a sessão (review
+   * #1058). Escopo idêntico ao do `attachLeadToPendingSubmissions` do gate C —
+   * form + sessão — para que os dois lados falem do mesmo conjunto de linhas.
+   *
+   * Só existe dentro de transação, e o `client` é obrigatório de propósito: a
+   * leitura só vale alguma coisa se alguém já estiver segurando as linhas. Em
+   * `completeSubmission` quem segura é o `update` da submissão; solta, esta
+   * consulta seria check-then-act e a corrida voltaria pela janela seguinte.
+   */
+  private async hasLeadAttachedToSession(
+    formId: string,
+    visitorSessionId: string,
+    client: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    const attached = await client.publicFormSubmission.findFirst({
+      where: { formId, visitorSessionId, leadId: { not: null } },
+      select: { id: true },
+    })
+    return Boolean(attached)
+  }
+
+  /**
+   * Grava o descarte **se, e somente se**, a sessão continuar sem lead — as duas
+   * coisas na mesma transação (review #1058, achado do Cursor).
+   *
+   * Ler o fato e depois gravar em chamadas separadas é check-then-act: entre a
+   * leitura e o upsert o gate C anexa o lead e roda a compensação dele, e o
+   * upsert recria a linha que acabou de ser apagada. Aí não sobra ninguém para
+   * apagar de novo.
+   *
+   * O `FOR UPDATE` sobre as submissões da sessão é o que serializa os dois
+   * lados: `attachLeadToPendingSubmissions` faz `updateMany` **nas mesmas
+   * linhas**, então ou este consumer segura o lock e o gate espera (e a
+   * compensação dele apaga o que gravamos), ou o gate comita primeiro e nós
+   * lemos o lead e não gravamos. Nunca os dois perdem.
+   *
+   * SQL cru porque o Prisma não expõe `FOR UPDATE`. Nomes físicos conferidos em
+   * `prisma/schema.prisma`: `@@map("corretor_studio_public_form_submissions")`,
+   * colunas sem `@map`.
+   */
+  async upsertDiscardMetricEventWhenSessionHasNoLead(input: {
+    formId: string
+    publicationId: string
+    visitorSessionId: string
+    eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
+    origin: Prisma.InputJsonValue
+  }): Promise<boolean> {
+    return prisma.$transaction(async (tx) => {
+      const submissions = await tx.$queryRaw<Array<{ leadId: string | null }>>`
+        SELECT "leadId"
+        FROM "public"."corretor_studio_public_form_submissions"
+        WHERE "formId" = ${input.formId}::uuid
+          AND "visitorSessionId" = ${input.visitorSessionId}
+        FOR UPDATE
+      `
+      if (submissions.some((submission) => submission.leadId !== null)) return false
+
+      await tx.publicFormMetricEvent.upsert({
+        where: { eventKey: input.eventKey },
+        create: {
+          formId: input.formId,
+          publicationId: input.publicationId,
+          questionId: null,
+          questionSnapshot: Prisma.JsonNull,
+          visitorSessionId: input.visitorSessionId,
+          eventType: "lead_discarded",
+          eventKey: input.eventKey,
+          eventId: input.eventId,
+          schemaVersion: input.schemaVersion,
+          occurredAt: input.occurredAt,
+          origin: input.origin,
+        },
+        update: {},
+      })
+      return true
+    })
+  }
+
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: {
@@ -1145,6 +1287,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    submitRequestedAt: Date
   }) {
     return prisma.publicFormSubmission.create({
       data: {
@@ -1270,13 +1413,31 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {
-        teamId,
-        OR: [
-          ...(email
-            ? [{ email: { equals: escapeLikePattern(email), mode: "insensitive" as const } }]
-            : []),
-          ...(phone ? [{ phone }, { phone: normalizedPhone }] : []),
-        ],
+        // SPEC 40 E5/DA3: sem `deletedAt: null`, uma resposta de formulário
+        // público casava com lead na lixeira e era gravada lá — conversão
+        // vazando para dentro de uma lixeira, invisível no board.
+        deletedAt: null,
+        ...buildLeadIdentityMatchWhere({ teamId, email, phone, normalizedPhone }),
+      },
+      take: 20,
+    })
+  }
+
+  /**
+   * SPEC 40 E5/DA3. A unique `Lead(teamId, email)` **inclui** soft-deletados,
+   * então o create pode colidir com um lead que `findLeadCandidates` já não
+   * enxerga. Esta busca é o outro lado da reconciliação: só a lixeira.
+   */
+  findDeletedLeadCandidates(
+    teamId: string,
+    email: string,
+    phone: string,
+    normalizedPhone: string,
+  ) {
+    return prisma.lead.findMany({
+      where: {
+        deletedAt: { not: null },
+        ...buildLeadIdentityMatchWhere({ teamId, email, phone, normalizedPhone }),
       },
       take: 20,
     })
@@ -1546,6 +1707,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       visitorSessionId?: string | null
       thankYouPageId?: string | null
       scheduledMeetingStartsAt?: Date | null
+      submitRequestedAt: Date
     },
   ) {
     return prisma.publicFormSubmission.update({
@@ -1559,6 +1721,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         visitorSessionId: data.visitorSessionId,
         thankYouPageId: data.thankYouPageId,
         scheduledMeetingStartsAt: data.scheduledMeetingStartsAt,
+        submitRequestedAt: data.submitRequestedAt,
         completionStatus: "partial",
       },
       select: { id: true, eventId: true },
@@ -1578,8 +1741,38 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  async completeSubmission(input: PublicFormCompleteSubmissionInput) {
-    await prisma.$transaction(async (tx) => {
+  /**
+   * Reavalia o descarte contra o estado atual da sessão, dentro da transação.
+   * Só o `lead_discarded` sai — `form_completed` e o resto do lote continuam
+   * intactos, porque o que a corrida invalidou foi a conclusão de identidade,
+   * não o fato de a submissão ter completado.
+   */
+  private async dropDiscardWhenLeadAttached<TMetricEvent extends PublicFormCompletedMetricEvent>(
+    tx: Prisma.TransactionClient,
+    input: PublicFormCompleteSubmissionInput<TMetricEvent>,
+  ): Promise<TMetricEvent[]> {
+    const discard = input.metricEvents.find((event) => event.eventType === "lead_discarded")
+    if (!discard) return input.metricEvents
+
+    const attached = await this.hasLeadAttachedToSession(
+      discard.formId,
+      discard.visitorSessionId,
+      tx,
+    )
+    if (!attached) return input.metricEvents
+
+    console.info("[PublicFormsRepository][completeSubmission] lead anexado na corrida, descarte descartado", {
+      submissionId: input.submissionId,
+      formId: discard.formId,
+      visitorSessionId: discard.visitorSessionId,
+    })
+    return input.metricEvents.filter((event) => event.eventType !== "lead_discarded")
+  }
+
+  async completeSubmission<TMetricEvent extends PublicFormCompletedMetricEvent>(
+    input: PublicFormCompleteSubmissionInput<TMetricEvent>,
+  ): Promise<TMetricEvent[]> {
+    return prisma.$transaction(async (tx) => {
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
@@ -1591,6 +1784,20 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         },
       })
       await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
+
+      // SPEC 40 E2 × modo radar (review #1058). A decisão de emitir
+      // `lead_discarded` foi tomada lá atrás, no `processInBackground`, sobre uma
+      // leitura que já pode estar velha: o gate C promove o lead por outra fila,
+      // sem ordem garantida. Reavaliar aqui é o que fecha a corrida — o `update`
+      // acima já segurou a linha da submissão, então ou enxergamos o lead que o
+      // gate comitou, ou o gate espera atrás de nós e a compensação dele apaga o
+      // descarte depois. Um dos dois lados sempre ganha, nunca os dois perdem.
+      const metricEvents = input.metricEvents.some(
+        (event) => event.eventType === "lead_discarded",
+      )
+        ? await this.dropDiscardWhenLeadAttached(tx, input)
+        : input.metricEvents
+
       if (input.leadId && input.activityBody && input.activityPayload) {
         await tx.leadActivity.create({
           data: {
@@ -1601,7 +1808,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           },
         })
       }
-      for (const event of input.metricEvents) {
+      for (const event of metricEvents) {
         const create = (questionId: string | null | undefined) => ({
           formId: event.formId,
           publicationId: event.publicationId,
@@ -1627,6 +1834,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           })
         }
       }
+      return metricEvents
     })
   }
 
@@ -1637,23 +1845,25 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  async claimSubmissionForRetry(
-    submissionId: string,
-    publicationId: string,
-    staleBefore: Date,
-  ) {
+  async claimSubmissionForRetry(input: {
+    submissionId: string
+    publicationId: string
+    staleBefore: Date
+    submitRequestedAt: Date
+  }) {
     const result = await prisma.publicFormSubmission.updateMany({
       where: {
-        id: submissionId,
-        publicationId,
+        id: input.submissionId,
+        publicationId: input.publicationId,
         OR: [
           { status: "failed" },
-          { status: "processing", updatedAt: { lt: staleBefore } },
+          { status: "processing", updatedAt: { lt: input.staleBefore } },
         ],
       },
       data: {
         status: "processing",
         errorMessage: null,
+        submitRequestedAt: input.submitRequestedAt,
       },
     })
     return result.count === 1
@@ -1682,6 +1892,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  /**
+   * SPEC 40 E0/DA6: `submitRequestedAt IS NOT NULL` é o que separa as duas
+   * populações. `status = 'processing'` é o default da coluna, então toda casca
+   * criada pelo `/progress` também o satisfaz — sem o marcador de aceite este
+   * claim completava formulário com o visitante ainda digitando. Filtrar por
+   * prefixo do `requestKey` não resolveria: um envio real que resolve a
+   * submissão da sessão **herda** o `requestKey` `progress:`.
+   */
   async claimPendingSubmissionDispatches(input: {
     limit: number
     leaseUntil: Date
@@ -1691,6 +1909,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         SELECT "id"
         FROM "public"."corretor_studio_public_form_submissions"
         WHERE "status" = 'processing'
+          AND "submitRequestedAt" IS NOT NULL
           AND "dispatchAcceptedAt" IS NULL
           AND ("nextDispatchAt" IS NULL OR "nextDispatchAt" <= NOW())
         ORDER BY "nextDispatchAt" ASC NULLS FIRST, "createdAt" ASC

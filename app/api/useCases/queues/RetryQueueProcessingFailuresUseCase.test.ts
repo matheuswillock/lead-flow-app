@@ -34,6 +34,8 @@ const repository = {
   markRetryOrFailed: markRetryOrFailedMock,
   requeueIfProcessing: requeueIfProcessingMock,
   upsertFromProcessingFailure: mock(async () => {}),
+  /** SPEC 40 E5: dead-letter terminal — este cron nunca deve reprocessá-la. */
+  recordTerminalFailure: mock(async () => {}),
 }
 
 describe("RetryQueueProcessingFailuresUseCase", () => {
