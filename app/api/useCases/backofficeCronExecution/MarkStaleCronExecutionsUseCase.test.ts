@@ -3,6 +3,7 @@ import type { BackofficeCronExecution } from "@prisma/client"
 import type { IBackofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/IBackofficeCronExecutionRepository"
 import {
   MarkStaleCronExecutionsUseCase,
+  MAX_DURATION_MS,
   STALE_CRON_EXECUTION_ERROR_SUMMARY,
 } from "./MarkStaleCronExecutionsUseCase"
 
@@ -10,6 +11,10 @@ const NOW = new Date("2026-08-24T12:00:00.000Z")
 
 function minutesAgo(minutes: number): Date {
   return new Date(NOW.getTime() - minutes * 60 * 1000)
+}
+
+function daysAgo(days: number): Date {
+  return new Date(NOW.getTime() - days * 24 * 60 * 60 * 1000)
 }
 
 function makeRunningExecution(
@@ -177,6 +182,54 @@ describe("MarkStaleCronExecutionsUseCase", () => {
 
     expect(output.isValid).toBe(true)
     expect(claimStaleRunningAsFailed).toHaveBeenCalledTimes(2)
+    expect(output.result).toEqual(expect.objectContaining({ markedFailed: 2 }))
+  })
+
+  it("trava durationMs no teto do Postgres Int quando a execução fica presa por semanas", async () => {
+    // 30 dias em ms > MAX_DURATION_MS (teto de um Postgres Int, ~24,86 dias) — sem o
+    // clamp, o UPDATE do claim estoura o range da coluna e a execução nunca é encerrada.
+    const presaHaSemanas = makeRunningExecution({
+      id: "presa-30-dias",
+      cronKey: "dispatch-scheduled",
+      startedAt: daysAgo(30),
+    })
+    const claimStaleRunningAsFailed = mock(async () => true)
+
+    const useCase = new MarkStaleCronExecutionsUseCase(
+      makeRepository([presaHaSemanas], claimStaleRunningAsFailed),
+      mock(async () => {}),
+      () => NOW,
+    )
+
+    await useCase.execute()
+
+    expect(claimStaleRunningAsFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "presa-30-dias", durationMs: MAX_DURATION_MS }),
+    )
+  })
+
+  it("não trava a varredura quando o alerta best-effort nunca resolve", async () => {
+    // notifyStale que nunca resolve simula o Slack travado — sem o orçamento de
+    // tempo, isso consumiria os 60s da rota antes de processar as próximas candidatas.
+    const onStaleQueNuncaResolve = mock(() => new Promise<void>(() => {}))
+    const claimStaleRunningAsFailed = mock(async () => true)
+
+    const useCase = new MarkStaleCronExecutionsUseCase(
+      makeRepository(
+        [
+          makeRunningExecution({ id: "orfa-1", cronKey: "dispatch-scheduled" }),
+          makeRunningExecution({ id: "orfa-2", cronKey: "radar-import" }),
+        ],
+        claimStaleRunningAsFailed,
+      ),
+      onStaleQueNuncaResolve,
+      () => NOW,
+      20, // alertTimeoutMs — orçamento curto só para o teste não esperar 5s reais
+    )
+
+    const output = await useCase.execute()
+
+    expect(output.isValid).toBe(true)
     expect(output.result).toEqual(expect.objectContaining({ markedFailed: 2 }))
   })
 
