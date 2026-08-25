@@ -218,11 +218,12 @@ describe("PublicFormSubmissionUseCase.accept publicação da sessão", () => {
     })
 
     expect(output.isValid).toBe(true)
-    expect(claimSubmissionForRetry).toHaveBeenCalledWith(
-      "sub-existing",
-      PREVIOUS_PUBLICATION_ID,
-      expect.any(Date),
-    )
+    expect(claimSubmissionForRetry).toHaveBeenCalledWith({
+      submissionId: "sub-existing",
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      staleBefore: expect.any(Date),
+      submitRequestedAt: expect.any(Date),
+    })
     const result = output.result as { background?: { publicationId: string } }
     expect(result.background?.publicationId).toBe(PREVIOUS_PUBLICATION_ID)
   })
@@ -244,6 +245,20 @@ describe("PublicFormSubmissionUseCase.accept publicação da sessão", () => {
     expect(createSubmission).toHaveBeenCalledTimes(1)
     const createArg = createSubmission.mock.calls[0] as unknown as [{ publicationId: string }]
     expect(createArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
+  })
+
+  // T-F0.2 — DA6: "aceita" é fato gravado no POST, antes de qualquer
+  // enfileiramento. Sem este carimbo o cron de re-despacho não enxerga a linha.
+  it("grava submitRequestedAt ao criar a submissão do envio", async () => {
+    const output = await useCase.accept(PUBLIC_ID, {
+      requestKey: "req-3",
+      answers: [{ questionId: "q-new", value: "Ana" }],
+      origin: {},
+    })
+
+    expect(output.isValid).toBe(true)
+    const createArg = createSubmission.mock.calls[0] as unknown as [{ submitRequestedAt: Date }]
+    expect(createArg[0].submitRequestedAt).toBeInstanceOf(Date)
   })
 
   it("modo radar apenas enriquece o lead existente, sem permitir criação legada", async () => {

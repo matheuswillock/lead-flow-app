@@ -43,6 +43,8 @@ type LeadRow = {
   cnpj: string | null
   leadCode: string | null
   status: LeadStatus
+  /** SPEC 40 E5/DA3: `findLeadCandidates` passou a excluir a lixeira. */
+  deletedAt?: Date | null
 }
 
 const OUTRA_PESSOA: LeadRow = {
@@ -69,8 +71,15 @@ function matchesOrClause(row: LeadRow, clause: Record<string, unknown>): boolean
 /** Quantas linhas cada consulta trouxe, na ordem em que foram emitidas. */
 const linhasTrazidas: number[] = []
 
+/** `undefined` = sem filtro; `null` = só vivos; `{not:null}` = só a lixeira. */
+function matchesDeletedFilter(row: LeadRow, deletedAt: unknown): boolean {
+  if (deletedAt === undefined) return true
+  if (deletedAt === null) return !row.deletedAt
+  return Boolean(row.deletedAt)
+}
+
 function applyFindMany(rows: LeadRow[], where: Record<string, unknown>, take?: number) {
-  const { teamId, OR, NOT, ...rest } = where
+  const { teamId, OR, NOT, deletedAt, ...rest } = where
   if (Object.keys(rest).length > 0) {
     throw new Error(`filtro não previsto por este fake: ${JSON.stringify(rest)}`)
   }
@@ -80,6 +89,7 @@ function applyFindMany(rows: LeadRow[], where: Record<string, unknown>, take?: n
     (row) =>
       row.teamId === teamId &&
       row.id !== excludeId &&
+      matchesDeletedFilter(row, deletedAt) &&
       clauses.some((clause) => matchesOrClause(row, clause)),
   )
   linhasTrazidas.push(matched.length)
@@ -179,6 +189,46 @@ describe("PublicFormsRepository.findLeadCandidates — curinga de ILIKE", () => 
     )
 
     expect(candidatos.map((lead) => lead.id)).toEqual(["lead-maria"])
+  })
+})
+
+/**
+ * SPEC 40 E5/DA3 — T-F5.2. Casar com a lixeira fazia a resposta do formulário
+ * ser gravada num lead deletado: a conversão entrava, o time nunca via.
+ */
+describe("PublicFormsRepository — leads da lixeira", () => {
+  const NA_LIXEIRA: LeadRow = {
+    ...OUTRA_PESSOA,
+    id: "lead-lixeira",
+    email: "maria@example.com",
+    deletedAt: new Date("2026-08-01T00:00:00.000Z"),
+  }
+
+  it("findLeadCandidates ignora lead deletado", async () => {
+    seed([NA_LIXEIRA])
+
+    const candidatos = await publicFormsRepository.findLeadCandidates(
+      TEAM,
+      "maria@example.com",
+      "",
+      "",
+    )
+
+    expect(candidatos).toEqual([])
+  })
+
+  it("findDeletedLeadCandidates enxerga só a lixeira", async () => {
+    const vivo: LeadRow = { ...NA_LIXEIRA, id: "lead-vivo", deletedAt: null }
+    seed([NA_LIXEIRA, vivo])
+
+    const candidatos = await publicFormsRepository.findDeletedLeadCandidates(
+      TEAM,
+      "maria@example.com",
+      "",
+      "",
+    )
+
+    expect(candidatos.map((lead) => lead.id)).toEqual(["lead-lixeira"])
   })
 })
 

@@ -811,6 +811,7 @@ export function PublicFormWizard({
                 isCatalogTemplate={isCatalogTemplate}
                 onPublish={() => void publish()}
                 onGoToStep={setStep}
+                change={change}
               />
             )}
             <div className="mt-10 flex justify-between">
@@ -2774,16 +2775,23 @@ function Review({
   isCatalogTemplate = false,
   onPublish,
   onGoToStep,
+  change,
 }: {
   draft: PublicFormDraftInput
   publishing: boolean
   isCatalogTemplate?: boolean
   onPublish: () => void
   onGoToStep: (step: number) => void
+  change: (p: Partial<PublicFormDraftInput>) => void
 }) {
   const questionErrors = getQuestionStepErrors(d, {
     mode: isCatalogTemplate ? "catalog-template" : "form",
   })
+  const hasMappedContactQuestion = d.questions.some(
+    (question) =>
+      question.mappingTarget === "native_field" &&
+      (question.mappingKey === "phone" || question.mappingKey === "email"),
+  )
   const checks = [
     { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
     { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 2 },
@@ -2792,12 +2800,28 @@ function Review({
       text: "Nome do lead mapeado",
       step: 2,
     },
+    // SPEC 40 E4/DA4: nome sozinho não gera lead pela regra vigente. O check
+    // acompanha a validação do servidor — inclusive a saída pelo opt-out logo
+    // abaixo, senão o formulário de pesquisa fica bloqueado sem alternativa.
+    {
+      ok: Boolean(d.leadCaptureDisabled) || hasMappedContactQuestion,
+      text: "Telefone ou e-mail mapeado",
+      step: 2,
+    },
     ...(isCatalogTemplate
       ? []
       : [
           {
             ok: !d.schedulingEnabled || d.eligibleCloserIds.length > 0,
             text: "Closer selecionado para agenda",
+            step: 2,
+          },
+          // A reunião nasce presa ao lead: sem captação, o visitante escolhe o
+          // horário e nenhuma reunião é criada. O servidor recusa a publicação —
+          // o check antecipa isso aqui, onde ainda dá para consertar.
+          {
+            ok: !(d.leadCaptureDisabled && d.schedulingEnabled),
+            text: "Agenda compatível com a captação de leads",
             step: 2,
           },
         ]),
@@ -2831,6 +2855,21 @@ function Review({
           ))}
         </ul>
       </div>
+      {isCatalogTemplate ? null : (
+        <label className="flex items-center justify-between gap-4 rounded-lg border p-4">
+          <div>
+            <p className="font-medium">Formulário de pesquisa (não capta leads)</p>
+            <p className="text-sm text-muted-foreground">
+              Publica sem telefone nem e-mail mapeado. Em troca, este formulário não cria leads no
+              CRM, some do funil de leads e não pode usar a agenda — a reunião nasce presa ao lead.
+            </p>
+          </div>
+          <Switch
+            checked={Boolean(d.leadCaptureDisabled)}
+            onCheckedChange={(value) => change({ leadCaptureDisabled: value })}
+          />
+        </label>
+      )}
       {!ready ? (
         <Alert variant="destructive">
           <AlertDescription>Conclua os itens pendentes antes de publicar.</AlertDescription>

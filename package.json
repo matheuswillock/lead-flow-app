@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.281.2",
+  "version": "0.285.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -60,8 +60,10 @@
     "test:backoffice-deletion": "bun test --isolate app/api/useCases/backofficeDeletion app/api/useCases/backofficeDatabaseBackup",
     "test:email": "bun test --isolate app/api/services/resend lib/email app/api/services/EmailCampaignDispatch app/api/services/EmailCredit app/api/services/email app/api/useCases/email",
     "test:proxy": "bun test proxy.test.ts lib/proxy/route-access.test.ts lib/supabase/auth-sessions.test.ts lib/supabase/realtime-guard.test.ts",
-    "test:integration": "RADAR_INTEGRATION_TEST=1 bun test lib/radar/radar.integration.test.ts",
-    "test:integration:local": "bun run local:up && RADAR_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration",
+    "test:integration": "RADAR_INTEGRATION_TEST=1 MANAGER_USERS_INTEGRATION_TEST=1 bun test --isolate lib/radar/radar.integration.test.ts lib/account-users/manager-account-users.integration.test.ts",
+    "test:integration:local": "bun run local:up && RADAR_INTEGRATION_TEST=1 MANAGER_USERS_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration",
+    "test:integration:public-forms": "PUBLIC_FORMS_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/publicForms/PublicFormsRepository.dispatch-claim.integration.test.ts",
+    "test:integration:public-forms:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:public-forms",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:local": "E2E_REUSE_SERVER=1 playwright test",
