@@ -5630,6 +5630,10 @@ enum PublicFormMetricType {
   form_completed
   lead_created
   lead_attached
+  /// SPEC 40 E2/DA2: submissão completa que o gate recusou. `origin.reason`
+  /// carrega o motivo — sem esta linha o descarte só existia como string livre
+  /// em `errorMessage`, invisível ao funil.
+  lead_discarded
   meeting_scheduled
   page_viewed
   page_advanced
@@ -5637,6 +5641,10 @@ enum PublicFormMetricType {
   question_focused
   form_submit_attempted
   form_validation_failed
+  /// SPEC 41 (renderer): o catch do submit hoje só faz `setError`, então o funil
+  /// não distingue "não tentou" de "tentou e falhou". O valor entra junto de
+  /// `lead_discarded` para não gerar duas migrations de enum; quem emite é a 41.
+  form_submit_failed
   form_exit_intent
   form_abandoned
   form_resumed
@@ -5713,6 +5721,10 @@ model PublicForm {
   formKind                  String                     @default("standard") @db.VarChar(40)
   /// Aceita `cs_el` (EmailLog.id) em links de campanha e atribui abertura/preenchimento ao destinatário.
   emailCampaignTrackingEnabled Boolean                 @default(true)
+  /// SPEC 40 E4/DA4: opt-out explícito de captação. Publica sem pergunta de
+  /// contato mapeada (formulário de pesquisa) e, em troca, **suprime** as
+  /// métricas de lead do form — sem promessa de funil onde não há captação.
+  leadCaptureDisabled       Boolean                    @default(false)
   reviewComment             String?                    @db.Text
   reviewedAt                DateTime?                  @db.Timestamptz(6)
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(6)
@@ -5870,6 +5882,10 @@ model PublicFormSubmission {
   origin         Json?
   errorMessage   String?                    @db.Text
   submittedAt    DateTime?                  @db.Timestamptz(6)
+  /// SPEC 40 E0/DA6: marcador positivo de aceite, gravado no POST de envio antes
+  /// do enqueue. O cron de re-despacho só reivindica submissão com este carimbo —
+  /// casca criada pelo `/progress` nunca entra no despacho.
+  submitRequestedAt  DateTime?               @db.Timestamptz(6)
   dispatchAcceptedAt DateTime?               @db.Timestamptz(6)
   dispatchAttemptCount Int                    @default(0)
   nextDispatchAt DateTime?                    @db.Timestamptz(6)
