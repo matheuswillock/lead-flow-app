@@ -79,6 +79,7 @@ import type {
 import { publicFormsClientService } from "../services/PublicFormsService"
 import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggregation";
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -935,18 +936,17 @@ function AnalyticsDialog({
               </TabsContent>
               <TabsContent value="funnel" className="space-y-2">
                 {questions.map((question) => {
-                  // Junta por identidade de snapshot, não por FK. A FK é
-                  // `SetNull`: pergunta deletada e recriada no builder zera o
-                  // `questionId` de todo o histórico, e casar por id exibia
-                  // "0/0" para pergunta com respostas persistidas. `questionId`
-                  // continua como reserva para linhas sem snapshot utilizável.
-                  const questionEvents = events.filter((event) => {
-                    if (event.publicationId !== question.publicationId) return false
-                    if (question.questionKey && event.questionKey) {
-                      return event.questionKey === question.questionKey
-                    }
-                    return event.questionId === question.id
-                  })
+                  // Junta por identidade de snapshot COM reserva na FK — ver
+                  // `metricEventMatchesQuestion`. A FK é `SetNull`: pergunta
+                  // deletada e recriada zera o `questionId` do histórico, e casar
+                  // só por id exibia "0/0" para pergunta com respostas
+                  // persistidas. Mas a chave sozinha também não basta: quando as
+                  // duas existem e divergem, é o id que resolve.
+                  const questionEvents = events.filter(
+                    (event) =>
+                      event.publicationId === question.publicationId &&
+                      metricEventMatchesQuestion(event, question),
+                  )
                   const metric = (type: string) =>
                     questionEvents
                       .filter((event) => event.eventType === type)

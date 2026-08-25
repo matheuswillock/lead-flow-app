@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import {
   countDistinctSessionsByEventTypeInMemory,
   groupMetricEventsInMemory,
+  metricEventMatchesQuestion,
   resolveQuestionIdentityKey,
   type MetricEventRow,
 } from "@/lib/public-forms/metric-event-aggregation"
@@ -157,5 +158,45 @@ describe("countDistinctSessionsByEventTypeInMemory", () => {
       form_viewed: 2,
       form_started: 1,
     })
+  })
+})
+
+describe("metricEventMatchesQuestion — chave é atalho, id é reserva", () => {
+  const perguntaViva = { id: "q-viva", questionKey: "key:email|E-mail" }
+
+  it("chave igual casa", () => {
+    expect(
+      metricEventMatchesQuestion({ questionId: null, questionKey: "key:email|E-mail" }, perguntaViva)
+    ).toBe(true)
+  })
+
+  it("órfã com chave igual casa mesmo sem FK — caso Lista Fria", () => {
+    expect(
+      metricEventMatchesQuestion({ questionId: null, questionKey: "key:email|E-mail" }, perguntaViva)
+    ).toBe(true)
+  })
+
+  it("REGRESSÃO #1060: chaves diferentes com FK viva ainda casa pelo id", () => {
+    // Evento antigo sem `questionSnapshot`: a agregação SQL devolve `id:<uuid>`,
+    // enquanto a pergunta da publicação sempre tem título e resolve para
+    // `title:`/`key:`. As duas chaves existem e divergem — decidir só pela chave
+    // exibia 0/0 para uma pergunta com respostas reais.
+    expect(
+      metricEventMatchesQuestion({ questionId: "q-viva", questionKey: "id:q-viva" }, perguntaViva)
+    ).toBe(true)
+  })
+
+  it("pergunta de verdade diferente não casa por acidente", () => {
+    expect(
+      metricEventMatchesQuestion(
+        { questionId: "q-outra", questionKey: "key:phone|WhatsApp" },
+        perguntaViva
+      )
+    ).toBe(false)
+  })
+
+  it("sem chave dos dois lados, decide o id", () => {
+    expect(metricEventMatchesQuestion({ questionId: "q-viva", questionKey: null }, { id: "q-viva", questionKey: null })).toBe(true)
+    expect(metricEventMatchesQuestion({ questionId: "q-x", questionKey: null }, { id: "q-viva", questionKey: null })).toBe(false)
   })
 })

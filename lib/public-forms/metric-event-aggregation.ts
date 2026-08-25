@@ -128,6 +128,27 @@ export function countDistinctSessionsByEventTypeInMemory(
   )
 }
 
+/**
+ * O evento pertence a esta pergunta?
+ *
+ * Chave igual é **atalho positivo**, não critério exclusivo. Tratar como
+ * exclusivo — "se as duas têm chave, decide pela chave" — quebra o caso mais
+ * comum do histórico: evento sem `questionSnapshot` mas com FK viva recebe
+ * `id:<uuid>` da agregação SQL, enquanto a pergunta da publicação sempre tem
+ * título e resolve para `title:…`/`key:…`. As duas chaves existem, divergem, e o
+ * `questionId` — que casaria — nunca era consultado. Resultado: 0/0 para
+ * pergunta com respostas reais, regressão frente ao casamento antigo só por id.
+ */
+export function metricEventMatchesQuestion(
+  event: { questionId: string | null; questionKey: string | null },
+  question: { id: string; questionKey: string | null }
+): boolean {
+  if (question.questionKey && event.questionKey && event.questionKey === question.questionKey) {
+    return true
+  }
+  return event.questionId === question.id
+}
+
 export function sortGroupedMetricEvents(rows: GroupedMetricEvent[]): GroupedMetricEvent[] {
   return [...rows].sort((a, b) =>
     [a.eventType, a.publicationId, a.questionKey ?? ""]
