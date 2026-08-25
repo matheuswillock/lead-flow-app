@@ -64,11 +64,66 @@ A falha 3 é a que bloqueia hoje e não se resolve aumentando timeout nem
 `maxDuration`: nenhum limite de tempo faz caber uma string maior que o
 máximo do V8. O export precisa deixar de materializar o dump inteiro em
 memória — streaming por tabela / NDJSON em chunks, escrevendo direto no ZIP.
-Resolvido isso, as falhas 1 e 2 provavelmente somem junto (sem a transação
-longa e sem o pico de memória).
 
-Enquanto não houver correção, **assuma que não existe backup automático desde
-17/08** e faça o dump manualmente.
+**Correção em PR #1047** (branch `bugfix/database-backup-invalid-string-length`).
+Enquanto ela não for mergeada e um ciclo rodar verde, **assuma que não existe
+backup automático desde 17/08** e faça o dump manualmente.
+
+O PR resolve comprovadamente as falhas 1 e 3. **A falha 2 (kill de plataforma
+no teto de 300s) não está provada resolvida**: a prova de volume exercita
+serializar → zipar → subir, não a leitura do Postgres real de 3.213 MB dentro
+do orçamento da função. A paginação continua por `skip`, que é O(n²) — a
+recomendação em aberto é keyset.
+
+## Formato do artefato (a partir de 2026-08-25)
+
+ZIP com uma entrada `<Model>.ndjson` por modelo — um objeto JSON por linha,
+não mais um array JSON único por tabela. Modelos sem linhas viram entrada vazia.
+
+Inspecionar sem descompactar tudo:
+
+```bash
+unzip -l backup-AAAA-MM-DD-HH-mm.zip
+unzip -p backup-AAAA-MM-DD-HH-mm.zip Lead.ndjson | head -1 | jq .
+unzip -p backup-AAAA-MM-DD-HH-mm.zip Lead.ndjson | wc -l
+```
+
+## Garantia de consistência (leia antes de restaurar)
+
+O backup **não** é um ponto-no-tempo do banco. Cada tabela é lida na própria
+transação `RepeatableRead`: as páginas de uma mesma tabela são consistentes
+entre si, mas tabelas diferentes vêm de snapshots diferentes.
+
+Na prática: registros criados durante a janela do backup podem aparecer com
+referência pendente. Qualquer carga precisa tolerar FK adiada ou desabilitada.
+
+Para snapshot consistente de verdade, use `pg_dump` — não este job.
+
+## Não existe importador
+
+Nenhum código do repositório lê este ZIP (`JSZip.loadAsync` não aparece em
+lugar nenhum; a UI baixa o arquivo como blob opaco e nunca o parseia).
+Restaurar hoje é trabalho manual: descompactar, ler o NDJSON e montar os
+inserts. **O único caminho de restauração real do projeto é o `pg_dump`.**
+Considere isso ao decidir se este artefato satisfaz o RPO/RTO pretendido.
+
+## Diagnóstico quando falhar
+
+A causa real agora chega ao `errorSummary` do cron e ao Slack, no formato
+`Erro ao gerar backup: <causa>`. Antes era sempre o genérico — foi o que
+deixou o incidente de 13–24/08 uma semana sem diagnóstico.
+
+| Sintoma no `errorSummary` | Leitura |
+|---|---|
+| `Invalid string length` | Regressão: alguma string voltou a crescer com o número de linhas. Não é timeout. |
+| `Transaction already closed` / `timeout ... ms passed` | Uma tabela isolada não coube em `MODEL_TRANSACTION_TIMEOUT_MS` (120s). Verifique o crescimento dela e avalie `EXCLUDED_MODELS`. |
+| Execução `running` órfã, sem `errorSummary` | Kill de plataforma no teto de 300s: o `catch` não chegou a rodar. Indica leitura total acima do orçamento da função. |
+
+**Nota para quem for escrever teste de regressão:** `bun test` roda em
+JavaScriptCore (teto de string 2³¹−1 = 2.147.483.647 chars) e a produção roda
+em Node/V8 (teto 536.870.888). O runner é 4× mais permissivo e **não
+reproduz** `Invalid string length` — por isso os testes existentes passavam com
+o bug em produção. Asserte por volume medido, nunca por exceção.
 
 ## Dump manual (procedimento)
 
