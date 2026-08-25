@@ -34,6 +34,11 @@ import {
   buildFixedSegmentProfileIdsSql,
 } from "@/lib/radar/fixed-segment-sql"
 import { RADAR_SEGMENT_SLUGS, type RadarSegmentSlug } from "@/lib/radar/segment-config"
+import {
+  isPendingLeadIdentity,
+  PENDING_LEAD_IDENTITY_PREFIX,
+  PENDING_LEAD_IDENTITY_STALE_MS,
+} from "@/lib/radar/lead-identity"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
@@ -1813,11 +1818,29 @@ export class RadarRepository {
 
       const existing = await tx.radarIdentity.findFirst({
         where: { profileId, teamId, type: "lead_id" },
-        select: { id: true },
+        select: { id: true, normalizedValue: true, createdAt: true },
       })
-      if (existing) return null
 
-      const provisionalValue = `pending:${randomUUID()}`
+      if (existing) {
+        // Vínculo real com o CRM: o perfil já foi promovido, ponto final.
+        if (!isPendingLeadIdentity(existing.normalizedValue)) return null
+
+        // Reserva provisória. `releaseClaim` é best-effort, então um crash entre
+        // reservar e liberar deixaria o perfil bloqueado para sempre — "já
+        // promovido" sem Lead nenhum, que é justamente o fluxo que a promoção
+        // deveria destravar. Passada a janela, a reserva é órfã e pode ser
+        // tomada; dentro dela, ainda é promoção concorrente de verdade e o
+        // bloqueio é o comportamento certo.
+        const ageMs = Date.now() - existing.createdAt.getTime()
+        if (ageMs < PENDING_LEAD_IDENTITY_STALE_MS) return null
+
+        console.info(
+          `[RadarRepository][claimProvisionalLeadIdentity] Reserva órfã retomada (profileId=${profileId}, idadeMs=${ageMs})`
+        )
+        await tx.radarIdentity.deleteMany({ where: { id: existing.id } })
+      }
+
+      const provisionalValue = `${PENDING_LEAD_IDENTITY_PREFIX}${randomUUID()}`
       try {
         const created = await tx.radarIdentity.create({
           data: {

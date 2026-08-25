@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { RADAR_SEGMENT_SLUGS, type RadarSegmentSlug } from "./segment-config"
 import { RADAR_EXPORT_MAX_ROWS } from "./exportRadarProfiles"
+import { PENDING_LEAD_IDENTITY_SQL_PATTERN } from "./lead-identity"
 
 /**
  * Predicados SQL dos segmentos de sistema — fonte ÚNICA para card e lista.
@@ -58,11 +59,20 @@ function hasPortfolioLink(teamId: string): Prisma.Sql {
   )`
 }
 
+/**
+ * Vínculo REAL com o CRM.
+ *
+ * A reserva provisória da promoção também é `type = 'lead_id'`, mas não é Lead
+ * nenhum. Contá-la aqui colocaria o perfil em `crm_clients` e o tiraria de
+ * `engaged_no_lead` — a fila de promoção — durante a promoção inteira, e para
+ * sempre se a liberação falhar.
+ */
 function hasLeadIdentity(teamId: string): Prisma.Sql {
   return Prisma.sql`EXISTS(
     SELECT 1 FROM "corretor_studio_radar_identities" i
     WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
       AND i."type" = 'lead_id'
+      AND i."normalizedValue" NOT LIKE ${PENDING_LEAD_IDENTITY_SQL_PATTERN}
   )`
 }
 

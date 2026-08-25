@@ -207,3 +207,23 @@ describe("LIMIT/OFFSET nunca recebem valor que o Postgres rejeita", () => {
     expect(query.values).toContain(RADAR_EXPORT_MAX_ROWS)
   })
 })
+
+describe("reserva provisoria de promocao nao conta como Lead", () => {
+  // Interacao entre estagios: a reserva `pending:` que a promocao cria (E5) é
+  // `type = 'lead_id'`, mas nao e vinculo com o CRM. Conta-la poria o perfil em
+  // crm_clients e o tiraria de engaged_no_lead — a fila de promocao — durante a
+  // promocao inteira, e para sempre se a liberacao falhar.
+  it("crm_clients exclui as reservas pending:", () => {
+    const sql = buildFixedSegmentPredicateSql("crm_clients", TEAM_ID, THRESHOLD)
+
+    expect(squash(sql.sql)).toContain('i."normalizedValue" NOT LIKE ?')
+    expect(sql.values).toContain("pending:%")
+  })
+
+  it("engaged_no_lead nao perde perfil so por causa de uma reserva", () => {
+    const sql = buildFixedSegmentPredicateSql("engaged_no_lead", TEAM_ID, THRESHOLD)
+
+    expect(squash(sql.sql)).toContain('i."normalizedValue" NOT LIKE ?')
+    expect(sql.values).toContain("pending:%")
+  })
+})
