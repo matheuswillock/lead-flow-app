@@ -23,6 +23,7 @@ export type AnalyticsTotalsForDelta = {
   deliveryDelayed: number
   unsubscribed: number
   suppressed: number
+  queued: number
   formCompletions: number
   formViewed: number
   formStarted: number
@@ -65,6 +66,7 @@ export function attachRateDeltas(
     clickRate: calcMetricDelta(current.clickRate, previous.clickRate, { isRate: true }),
     bounceRate: calcMetricDelta(current.bounceRate, previous.bounceRate, { isRate: true }),
     complainRate: calcMetricDelta(current.complainRate, previous.complainRate, { isRate: true }),
+    failureRate: calcMetricDelta(current.failureRate, previous.failureRate, { isRate: true }),
   }
 }
 
@@ -83,6 +85,7 @@ export function attachTotalDeltas(
     deliveryDelayed: calcMetricDelta(current.deliveryDelayed, previous.deliveryDelayed),
     unsubscribed: calcMetricDelta(current.unsubscribed, previous.unsubscribed),
     suppressed: calcMetricDelta(current.suppressed, previous.suppressed),
+    queued: calcMetricDelta(current.queued, previous.queued),
     formCompletions: calcMetricDelta(current.formCompletions, previous.formCompletions),
     formViewed: calcMetricDelta(current.formViewed, previous.formViewed),
     formStarted: calcMetricDelta(current.formStarted, previous.formStarted),

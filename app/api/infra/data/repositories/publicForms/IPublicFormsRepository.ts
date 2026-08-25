@@ -11,6 +11,8 @@ import type {
   UserRole,
 } from "@prisma/client"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
+import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
+import type { MetricEventAggregationFilter } from "./MetricEventAggregationSql"
 
 export const publicFormDetailSelect = {
   id: true,
@@ -320,20 +322,10 @@ export interface IPublicFormsRepository {
     endedAt: Date | null
     snapshot: Prisma.JsonValue
   }> | null>
-  groupMetricEvents(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
-  ): Promise<
-    Array<{
-      eventType: PublicFormMetricType
-      publicationId: string
-      questionId: string | null
-      _count: { _all: number }
-    }>
-  >
+  /** Agregado no Postgres: cada linha já é contagem de sessões únicas. */
+  groupMetricEvents(filter: MetricEventAggregationFilter): Promise<GroupedMetricEvent[]>
   countDistinctSessionsByEventType(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
+    filter: MetricEventAggregationFilter,
   ): Promise<Record<string, number>>
   countDistinctCompletedLeads(
     formId: string,
@@ -359,6 +351,14 @@ export interface IPublicFormsRepository {
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
   findLeadForSubmission(submissionId: string): Promise<Lead | null>
+  /**
+   * Relógio do aceite da submissão. O processamento em background pode rodar
+   * horas ou dias depois (fila travada); é este par que datam os eventos de
+   * conversão, nunca o `new Date()` do worker.
+   */
+  findSubmissionAcceptedAt(
+    submissionId: string,
+  ): Promise<{ createdAt: Date; dispatchAcceptedAt: Date | null } | null>
   /**
    * SPEC 40 E2 × modo radar (review #1058). Grava `lead_discarded` **se, e
    * somente se**, a sessão continuar sem lead — verificação e escrita na mesma
