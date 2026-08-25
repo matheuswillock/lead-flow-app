@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, ShieldBan, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { BanUserDialog } from "@/app/backoffice/(app)/clients/all-users/features/components/BanUserDialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -199,7 +200,7 @@ export function BackofficeClientEditDialog({
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar dados")
+      toastUserError(err)
     } finally {
       setIsSubmitting(false)
       inFlight.current = false
@@ -218,7 +219,7 @@ export function BackofficeClientEditDialog({
       onSuccess()
     } catch (err) {
       console.error("[BackofficeClientEditDialog][handleBanUser]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao banir usuário")
+      toastUserError(err)
     } finally {
       setIsBanning(false)
     }

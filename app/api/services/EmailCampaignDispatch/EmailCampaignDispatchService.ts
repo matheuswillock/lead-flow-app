@@ -55,7 +55,8 @@ const MAX_INVALID_TO_BISECT_QUEUE = BATCH_SIZE * 2
  * da API; default documentado hoje é 10 req/s por time, mas pode variar por
  * plano). Não consome orçamento de conexão Postgres: os chunks concorrentes
  * seguem no mesmo isolate/consumer da fila `email-campaign-dispatch`
- * (`maxConcurrency: 1` em `vercel.json`), com o mesmo Prisma client.
+ * (`maxConcurrency: 4` em `vercel.json`; o mesmo `dispatchId` permanece
+ * serial via advisory lock), com o mesmo Prisma client.
  */
 function resolveDispatchChunkConcurrency(): number {
   const raw = Number(process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY ?? 1)

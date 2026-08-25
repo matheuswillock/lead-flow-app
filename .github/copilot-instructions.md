@@ -29,12 +29,19 @@ This document defines the implementation governance for AI agents in this reposi
 - Only speak when you have a question that genuinely blocks progress, or when the task is fully done.
 - When done, report only: what changed and any errors found.
 
+**Exceção — trabalho visual de superfície pública.** As regras acima **MUST NOT**
+ser usadas para pular o gate de perguntas do [Landing Page Method](#landing-page-method-must).
+Numa landing page, briefing incompleto **é** um bloqueio genuíno de progresso:
+sem público, ação única e fatos citáveis, o agente inventa. Perguntar ali é
+obrigatório, não é pedir confirmação.
+
 ## Working Style
 
 - Prefer sessions focused on one layer at a time (backend OR frontend, not both).
 - Read at most 5 files before starting implementation. Do not explore the codebase extensively without necessity.
 - Before deleting any record, check for FK constraints in the schema.
 - **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
+- **MUST NOT** refactor source code with scripts — regex, `sed`, `awk` or `python` rewriting files in bulk — without explicit authorization from the project owner. Refactors **MUST** be applied one edit at a time through the editor tooling, so every change is reviewed in context and fails loudly when the target text does not match. Bulk rewriting hides malformed output behind a substitution counter and defers type errors that a single edit surfaces immediately. Scripts remain allowed for read-only analysis (counting, searching, measuring).
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
 
 ## Clean Code & SOLID (MUST)
@@ -192,6 +199,11 @@ Before implementing any UI screen, modal, form, or component:
    Always use semantic CSS variable tokens.
 4. Never manually edit CSS regions managed by `design:sync`
    in `app/globals.css`.
+5. Read `PRODUCT.md` — brand personality, tom de voz e a lista de
+   anti-references. É fonte obrigatória para qualquer copy de UI, não opcional.
+6. Choose skills with `docs/design/ROTEAMENTO-SKILLS-DESIGN.md`.
+   Do NOT load a design skill by description match — a maioria das ~99 skills
+   instaladas contradiz `DESIGN.md`.
 
 ### shadcn MCP Workflow (MUST)
 
@@ -238,6 +250,96 @@ bun run design:check
 ```
 
 If `design:check` fails, run `bun run design:sync` and commit the result.
+
+`design:check` só compara os blocos de token de `DESIGN.md` com as regiões
+marcadas em `app/globals.css`. Ele **não** abre nenhum `.tsx`, não mede
+contraste e não olha a tela. Passar no `design:check` **MUST NOT** ser
+reportado como "aderente ao design system".
+
+### Visual Verification (MUST)
+
+Aplica-se a **toda** mudança visual — landing, app autenticado, backoffice,
+modal, formulário ou componente isolado. Nenhum comando da sequência de
+validação renderiza a tela: `design:check` compara blocos de token,
+`governance:check` não tem validador de contraste, hex ou responsividade, e a
+cobertura mínima de página E2E é funcional. Verde em todos eles **MUST NOT** ser
+tratado como evidência de que a tela está correta.
+
+Antes de reportar qualquer trabalho visual como concluído, o agente **MUST**
+observar a tela renderizada. Ordem de fallback:
+
+1. Playwright (`bun run test:e2e:local`, ou o MCP quando disponível)
+2. Preview / dev server
+3. `claude-in-chrome`
+4. Pedir um screenshot ao dono
+
+Verificar **MUST** incluir, no mínimo: a tela carrega sem erro de console, o
+conteúdo aparece no viewport pretendido, e não há overflow horizontal em 360px.
+
+Se as quatro opções falharem, o agente **MUST** declarar em texto —
+*"não verificado visualmente — apenas leitura estática"* — e **MUST NOT**
+reportar a tarefa como concluída. Reler o próprio código, reexecutar
+`typecheck`/`lint` ou reinspecionar o diff **MUST NOT** ser tratado como
+substituto de olhar a tela.
+
+## Landing Page Method (MUST)
+
+Aplica-se a toda página pública de marketing/aquisição (`app/page.tsx` e
+subárvores com `.landing-page`). Método completo em
+`docs/design/METODO-LANDING-PAGE.md`. Roteamento de skills em
+`docs/design/ROTEAMENTO-SKILLS-DESIGN.md`.
+
+### Gate de briefing (bloqueante)
+
+O agente **MUST NOT** escrever JSX de landing antes de fazer estas 8 perguntas
+numa única mensagem e receber resposta. Nenhuma tem default — **sem resposta, o
+trabalho para.**
+
+1. A página usa o tema `.landing-page` (light-only) ou herda o tema do app?
+2. Quem é o leitor e o que ele já sabe sobre o produto?
+3. Qual é a **única** ação que a página precisa provocar?
+4. Quais números podem ir ao ar, e qual a fonte de cada um?
+5. Existe depoimento real e **autorizado por escrito**? Se não, a seção não existe.
+6. Que claim é proibido? (promessa de resultado, "grátis", prazo, comparação)
+7. Quais seções, em que ordem?
+8. É **preserve** (mantém estrutura) ou **overhaul** (reescreve)?
+
+### Inventário de fatos (MUST)
+
+Produza `docs/design/landing-fatos-<slug>.md` com a tabela
+`claim | valor | fonte (arquivo:linha ou pessoa) | pode ir ao ar (S/N)`.
+
+- **Seção sem fato na tabela não existe.**
+- Fontes: `PRODUCT.md`, `PRICING_TABLE.md` (só o que está ✅ vigente vai ao ar),
+  `PRICING_MODEL.md`, `SEO-PAGE-*.md`.
+- Número sem fonte **MUST NOT** ir para a UI, nem como fallback. Quando o dado
+  real não existe, a seção **MUST** ser escondida — ver `hasPublishableStats()`
+  em `lib/landing/stats-data.ts`. Zero também não vai ao ar: "+0 corretores
+  ativos" é pior que faixa nenhuma.
+- Prova social (depoimento, nome, empresa, nota) **MUST** ter autorização por
+  escrito de quem é citado. Sem isso a seção não existe — **MUST NOT** criar
+  persona de exemplo "para preencher o layout".
+
+Precedentes já removidos deste repo, para não serem recriados: `31%` e `4,9/5`
+hardcoded na faixa de stats; um `landingStatsFallback` de 280 corretores /
+1,2M de leads que entrava silenciosamente quando a query falhava; e um
+`TestimonialsSection` com três depoimentos de pessoas inexistentes. Os três
+passavam em `typecheck`, `lint`, `governance:check` e `design:check`.
+
+### Copy aprovada antes de código (MUST)
+
+A copy de todas as seções **MUST** ser escrita em texto puro e aprovada pelo
+dono **antes** do primeiro commit em `app/` ou `components/landing/`.
+
+### Verificação medida (MUST)
+
+Além da [Visual Verification](#visual-verification-must), que vale para toda
+tela, a landing **MUST** ter asserts medidos na spec E2E — não julgamento:
+
+- contraste: nenhum par abaixo de 4.5 (texto) / 3.0 (UI)
+- alvo de toque ≥ 44×44
+- `document.documentElement.scrollWidth <= window.innerWidth + 1` em 360 e 375
+- `prefers-reduced-motion` respeitado
 
 ## Project Context Reference
 

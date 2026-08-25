@@ -1,6 +1,8 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository";
+import { leadTransferRepository } from "@/app/api/infra/data/repositories/leadTransfer/LeadTransferRepository";
+import { leadAttachmentService } from "@/app/api/services/LeadAttachment/LeadAttachmentService";
 import { ILeadUseCase } from "./ILeadUseCase";
 import type {
   LeadCreateOptions,
@@ -27,7 +29,10 @@ import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedu
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import { leadScheduleService } from "../../services/leadSchedule/LeadScheduleService";
 import { cancelCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
-import { prisma } from "../../infra/data/prisma";
+import { leadActivityRepository } from "@/app/api/infra/data/repositories/leadActivity/LeadActivityRepository";
+import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import { teamRepository } from "@/app/api/infra/data/repositories/team/TeamRepository";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 import { normalizeHealthPlanName } from "@/lib/healthPlans";
 import { getEmailService } from "@/lib/services/EmailService";
@@ -35,9 +40,8 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 import { isManagerLikeRole } from "@/lib/roles";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isLostStatus } from "@/lib/leadImport/normalizers";
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
 import { isPreScheduleSlotAvailable } from "../../services/preSchedule/PreScheduleSlotService";
-import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
-import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 import {
@@ -166,20 +170,14 @@ export class LeadUseCase implements ILeadUseCase {
         return leadOutput;
       }
 
-      const teamForSchedule = await prisma.team.findUnique({
-        where: { id: teamId },
-        select: { masterId: true },
-      });
+      const teamForSchedule = await teamRepository.findMasterRef(teamId);
       if (!teamForSchedule) {
         return leadOutput;
       }
 
       const managerId = teamForSchedule.masterId;
       const assigneeEmail = data.assignedTo
-        ? (await prisma.profile.findUnique({
-            where: { id: data.assignedTo },
-            select: { email: true },
-          }))?.email ?? null
+        ? (await profileRepository.findContactById(data.assignedTo))?.email ?? null
         : null;
 
       const resolvedMeetingTitle = data.meetingTitle?.trim() || `Estudo Plano de Saúde: ${data.name}`;
@@ -319,10 +317,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Team ID é obrigatório para criar lead"], null);
       }
 
-      const teamRecord = await prisma.team.findUnique({
-        where: { id: teamId },
-        select: { masterId: true },
-      });
+      const teamRecord = await teamRepository.findMasterRef(teamId);
 
       if (!teamRecord) {
         return new Output(false, [], ["Time não encontrado"], null);
@@ -347,9 +342,9 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       if (data.cnpj && data.cnpj.trim().length > 0) {
-        const existingLead = await prisma.lead.findFirst({
-          where: { teamId, cnpj: data.cnpj.trim() },
-          select: { id: true, leadCode: true, name: true },
+        const existingLead = await this.leadRepository.findCnpjConflictInTeam({
+          teamId,
+          cnpj: data.cnpj.trim(),
         });
         if (existingLead) {
           return new Output(
@@ -799,18 +794,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Team ID é obrigatório"], null);
       }
 
-      const membership = await prisma.teamMember.findUnique({
-        where: {
-          teamId_profileId: {
-            teamId,
-            profileId: profileInfo.id
-          }
-        },
-        select: {
-          role: true,
-          functions: true
-        }
-      });
+      const membership = await teamMembersRepository.findRoleAndFunctions(teamId, profileInfo.id);
 
       if (!membership) {
         return new Output(false, [], ["Sem acesso ao time ativo"], null);
@@ -892,10 +876,11 @@ export class LeadUseCase implements ILeadUseCase {
         !!existingLead.closerId;
       const shouldTrackCloser = data.closerId !== undefined || autoClearCloserOnTransfer;
 
-      if (shouldCheckCnpj && existingLead) {
-        const cnpjConflict = await prisma.lead.findFirst({
-          where: { teamId: existingLead.teamId!, cnpj: data.cnpj, NOT: { id } },
-          select: { id: true, leadCode: true, name: true },
+      if (shouldCheckCnpj && existingLead && data.cnpj) {
+        const cnpjConflict = await this.leadRepository.findCnpjConflictInTeam({
+          teamId: existingLead.teamId!,
+          cnpj: data.cnpj,
+          excludeLeadId: id,
         });
         if (cnpjConflict) {
           return new Output(
@@ -1133,17 +1118,15 @@ export class LeadUseCase implements ILeadUseCase {
           leadWithRelations.assignee?.email ||
           "Responsável";
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId: id,
-              type: ActivityType.note,
-              body: `Lead atribuído para ${assigneeLabel}`,
-              payload: {
-                previousAssignedTo: existingLead?.assignedTo ?? null,
-                assignedTo: data.assignedTo ?? null,
-              },
-              createdBy: profileInfo.id,
+          await leadActivityRepository.create({
+            leadId: id,
+            type: ActivityType.note,
+            body: `Lead atribuído para ${assigneeLabel}`,
+            payload: {
+              previousAssignedTo: existingLead?.assignedTo ?? null,
+              assignedTo: data.assignedTo ?? null,
             },
+            createdBy: profileInfo.id,
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de atribuição:", error);
@@ -1183,17 +1166,15 @@ export class LeadUseCase implements ILeadUseCase {
           ? (leadWithRelations.closer?.fullName || leadWithRelations.closer?.email || "Closer")
           : "Nenhum closer";
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId: id,
-              type: ActivityType.note,
-              body: `Closer alterado para ${closerLabel}`,
-              payload: {
-                previousCloserId: existingLead?.closerId ?? null,
-                closerId: resolvedCloserId,
-              },
-              createdBy: profileInfo.id,
+          await leadActivityRepository.create({
+            leadId: id,
+            type: ActivityType.note,
+            body: `Closer alterado para ${closerLabel}`,
+            payload: {
+              previousCloserId: existingLead?.closerId ?? null,
+              closerId: resolvedCloserId,
             },
+            createdBy: profileInfo.id,
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de alteração de closer:", error);
@@ -1206,17 +1187,15 @@ export class LeadUseCase implements ILeadUseCase {
         data.meetingHeald === "yes"
       ) {
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId: id,
-              type: ActivityType.note,
-              body: `Reunião marcada como realizada por ${actorLabel}`,
-              payload: {
-                previousMeetingHeald: existingLead?.meetingHeald ?? null,
-                meetingHeald: data.meetingHeald ?? null,
-              },
-              createdBy: profileInfo.id,
+          await leadActivityRepository.create({
+            leadId: id,
+            type: ActivityType.note,
+            body: `Reunião marcada como realizada por ${actorLabel}`,
+            payload: {
+              previousMeetingHeald: existingLead?.meetingHeald ?? null,
+              meetingHeald: data.meetingHeald ?? null,
             },
+            createdBy: profileInfo.id,
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de reunião realizada:", error);
@@ -1229,17 +1208,15 @@ export class LeadUseCase implements ILeadUseCase {
         data.meetingPresenceConfirmed === true
       ) {
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId: id,
-              type: ActivityType.note,
-              body: "Presença confirmada com o lead para a reunião.",
-              payload: {
-                previousMeetingPresenceConfirmed: existingLead?.meetingPresenceConfirmed ?? false,
-                meetingPresenceConfirmed: true,
-              },
-              createdBy: profileInfo.id,
+          await leadActivityRepository.create({
+            leadId: id,
+            type: ActivityType.note,
+            body: "Presença confirmada com o lead para a reunião.",
+            payload: {
+              previousMeetingPresenceConfirmed: existingLead?.meetingPresenceConfirmed ?? false,
+              meetingPresenceConfirmed: true,
             },
+            createdBy: profileInfo.id,
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de confirmação de agenda:", error);
@@ -1327,19 +1304,7 @@ export class LeadUseCase implements ILeadUseCase {
         }
 
         if (existingLead.closerId) {
-          const closerProfile = await prisma.profile.findUnique({
-            where: { id: existingLead.closerId },
-            include: {
-              googleConnection: {
-                select: {
-                  accessToken: true,
-                  refreshToken: true,
-                  tokenExpiresAt: true,
-                  revokedAt: true,
-                },
-              },
-            },
-          });
+          const closerProfile = await profileRepository.findWithGoogleConnectionById(existingLead.closerId);
           const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection);
 
           if (!closerProfile || !canUseGoogleCalendar) {
@@ -1364,16 +1329,9 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
-      await prisma.$transaction(async (tx) => {
-        if (schedule) {
-          await tx.leadsSchedule.delete({
-            where: { id: schedule.id },
-          });
-        }
-
-        await tx.lead.delete({
-          where: { id },
-        });
+      await this.leadRepository.deleteWithSchedule({
+        leadId: id,
+        scheduleId: schedule?.id ?? null,
       });
 
       const successMessages = ["Lead excluído com sucesso"];
@@ -1588,19 +1546,7 @@ export class LeadUseCase implements ILeadUseCase {
               "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar."
             );
           } else {
-            const closerProfile = await prisma.profile.findUnique({
-              where: { id: existingLead.closerId },
-              include: {
-                googleConnection: {
-                  select: {
-                    accessToken: true,
-                    refreshToken: true,
-                    tokenExpiresAt: true,
-                    revokedAt: true,
-                  },
-                },
-              },
-            });
+            const closerProfile = await profileRepository.findWithGoogleConnectionById(existingLead.closerId);
             const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection);
 
             if (!closerProfile || !canUseGoogleCalendar) {
@@ -1660,27 +1606,25 @@ export class LeadUseCase implements ILeadUseCase {
         const fromLabel = getStatusLabel(existingLead.status);
         const toLabel = getStatusLabel(status);
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId: id,
-              type: ActivityType.status_change,
-              body: `Status alterado de ${fromLabel} para ${toLabel}`,
-              payload: {
-                from: existingLead.status,
-                to: status,
-                fromLabel,
-                toLabel,
-                ...(status === LeadStatus.future_sale && {
-                  followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
-                  followUpNotes: lead.followUpNotes || null,
-                }),
-                ...((status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) && {
-                  lossReason: lead.lossReason || null,
-                  lossReasonDetails: lead.lossReasonDetails || null,
-                }),
-              },
-              createdBy: profileInfo.id,
+          await leadActivityRepository.create({
+            leadId: id,
+            type: ActivityType.status_change,
+            body: `Status alterado de ${fromLabel} para ${toLabel}`,
+            payload: {
+              from: existingLead.status,
+              to: status,
+              fromLabel,
+              toLabel,
+              ...(status === LeadStatus.future_sale && {
+                followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
+                followUpNotes: lead.followUpNotes || null,
+              }),
+              ...((status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) && {
+                lossReason: lead.lossReason || null,
+                lossReasonDetails: lead.lossReasonDetails || null,
+              }),
             },
+            createdBy: profileInfo.id,
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de status:", error);
@@ -1688,17 +1632,15 @@ export class LeadUseCase implements ILeadUseCase {
 
         if (status === LeadStatus.no_show) {
           try {
-            await prisma.leadActivity.create({
-              data: {
-                leadId: id,
-                type: ActivityType.note,
-                body: `No-show marcado por ${actorLabel}`,
-                payload: {
-                  from: existingLead.status,
-                  to: status,
-                },
-                createdBy: profileInfo.id,
+            await leadActivityRepository.create({
+              leadId: id,
+              type: ActivityType.note,
+              body: `No-show marcado por ${actorLabel}`,
+              payload: {
+                from: existingLead.status,
+                to: status,
               },
+              createdBy: profileInfo.id,
             });
           } catch (error) {
             console.warn("Não foi possível registrar atividade de no-show:", error);
@@ -1707,17 +1649,15 @@ export class LeadUseCase implements ILeadUseCase {
 
         if (status === LeadStatus.future_sale) {
           try {
-            await prisma.leadActivity.create({
-              data: {
-                leadId: id,
-                type: ActivityType.note,
-                body: `Contato futuro agendado por ${actorLabel}`,
-                payload: {
-                  followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
-                  followUpNotes: lead.followUpNotes || null,
-                },
-                createdBy: profileInfo.id,
+            await leadActivityRepository.create({
+              leadId: id,
+              type: ActivityType.note,
+              body: `Contato futuro agendado por ${actorLabel}`,
+              payload: {
+                followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
+                followUpNotes: lead.followUpNotes || null,
               },
+              createdBy: profileInfo.id,
             });
           } catch (error) {
             console.warn("Não foi possível registrar atividade de venda futura:", error);
@@ -1726,18 +1666,16 @@ export class LeadUseCase implements ILeadUseCase {
 
         if (status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) {
           try {
-            await prisma.leadActivity.create({
-              data: {
-                leadId: id,
-                type: ActivityType.note,
-                body: `Motivo registrado por ${actorLabel}: ${lead.lossReason || "Não informado"}`,
-                payload: {
-                  status,
-                  reason: lead.lossReason || null,
-                  reasonDetails: lead.lossReasonDetails || null,
-                },
-                createdBy: profileInfo.id,
+            await leadActivityRepository.create({
+              leadId: id,
+              type: ActivityType.note,
+              body: `Motivo registrado por ${actorLabel}: ${lead.lossReason || "Não informado"}`,
+              payload: {
+                status,
+                reason: lead.lossReason || null,
+                reasonDetails: lead.lossReasonDetails || null,
               },
+              createdBy: profileInfo.id,
             });
           } catch (error) {
             console.warn("Não foi possível registrar motivo do status:", error);
@@ -1845,17 +1783,15 @@ export class LeadUseCase implements ILeadUseCase {
           leadWithRelations.assignee?.email ||
           "Responsável";
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId: id,
-              type: ActivityType.note,
-              body: `Lead atribuído para ${assigneeLabel}`,
-              payload: {
-                previousAssignedTo: existingLead.assignedTo ?? null,
-                assignedTo: operatorId,
-              },
-              createdBy: profileInfo.id,
+          await leadActivityRepository.create({
+            leadId: id,
+            type: ActivityType.note,
+            body: `Lead atribuído para ${assigneeLabel}`,
+            payload: {
+              previousAssignedTo: existingLead.assignedTo ?? null,
+              assignedTo: operatorId,
             },
+            createdBy: profileInfo.id,
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de atribuição:", error);
@@ -1970,18 +1906,7 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       if (!profileInfo.isMaster) {
-        const transferMembership = await prisma.teamMember.findUnique({
-          where: {
-            teamId_profileId: {
-              teamId: callerTeamId,
-              profileId: profileInfo.id,
-            },
-          },
-          select: {
-            role: true,
-            canTransferAccountLeads: true,
-          },
-        });
+        const transferMembership = await teamMembersRepository.findTransferAuthorization(callerTeamId, profileInfo.id);
 
         const canTransfer =
           (transferMembership?.role === "manager" || transferMembership?.role === "backoffice") &&
@@ -2007,7 +1932,7 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const sourceTeam = lead.teamId
-        ? await prisma.team.findUnique({ where: { id: lead.teamId }, select: { masterId: true } })
+        ? await teamRepository.findMasterRef(lead.teamId)
         : null;
       const masterProfileId = profileInfo.isMaster
         ? profileInfo.id
@@ -2017,10 +1942,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Não foi possível identificar o master do time de origem"], null);
       }
 
-      const targetTeam = await prisma.team.findUnique({
-        where: { id: data.targetTeamId },
-        select: { id: true, masterId: true },
-      });
+      const targetTeam = await teamRepository.findMasterRef(data.targetTeamId);
       if (!targetTeam || targetTeam.masterId !== masterProfileId) {
         return new Output(false, [], ["Time destino não encontrado ou não pertence ao mesmo master"], null);
       }
@@ -2030,15 +1952,7 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const transferRoute = lead.teamId
-        ? await prisma.teamTransferRoute.findUnique({
-            where: {
-              sourceTeamId_targetTeamId: {
-                sourceTeamId: lead.teamId,
-                targetTeamId: data.targetTeamId,
-              },
-            },
-            select: { id: true },
-          })
+        ? await teamRepository.hasTransferRoute(lead.teamId, data.targetTeamId)
         : null;
 
       if (!transferRoute) {
@@ -2049,19 +1963,13 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Selecione um closer do time destino para concluir a transferência"], null);
       }
 
-      const closerMember = await prisma.teamMember.findUnique({
-        where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.closerId } },
-        select: { functions: true },
-      });
+      const closerMember = await teamMembersRepository.findRoleAndFunctions(data.targetTeamId, data.closerId);
       if (!closerMember || !closerMember.functions.includes("CLOSER")) {
         return new Output(false, [], ["O closer selecionado não pertence ao time destino ou não possui função CLOSER"], null);
       }
 
       if (data.sdrId) {
-        const sdrMember = await prisma.teamMember.findUnique({
-          where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.sdrId } },
-          select: { functions: true },
-        });
+        const sdrMember = await teamMembersRepository.findRoleAndFunctions(data.targetTeamId, data.sdrId);
         if (!sdrMember || !sdrMember.functions.includes("SDR")) {
           return new Output(false, [], ["O SDR selecionado não pertence ao time destino ou não possui função SDR"], null);
         }
@@ -2069,10 +1977,7 @@ export class LeadUseCase implements ILeadUseCase {
 
       let assigneeEmail: string | null = null;
       if (data.sdrId) {
-        const sdrProfile = await prisma.profile.findUnique({
-          where: { id: data.sdrId },
-          select: { email: true },
-        });
+        const sdrProfile = await profileRepository.findContactById(data.sdrId);
         assigneeEmail = sdrProfile?.email ?? null;
       }
 
@@ -2103,18 +2008,7 @@ export class LeadUseCase implements ILeadUseCase {
         conflictResolution.sanitizations
       );
 
-      const transferStateLead = await prisma.lead.update({
-        where: { id: transferredLead.id },
-        data: {
-          isTransfer: false,
-        },
-        include: {
-          manager: { select: { id: true, fullName: true, email: true } },
-          assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-          closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
-          _count: { select: { attachments: true } },
-        },
-      });
+      const transferStateLead = await this.leadRepository.clearTransferFlag(transferredLead.id);
 
       const deferredSchedule = resolvedTransferSchedule
         ? {
@@ -2140,19 +2034,17 @@ export class LeadUseCase implements ILeadUseCase {
           }
         : undefined;
 
-      await prisma.leadTransfer.create({
-        data: {
-          leadId: transferredLead.id,
-          fromTeamId: lead.teamId!,
-          toTeamId: data.targetTeamId,
-          transferredByProfileId: profileInfo.id,
-          receivedByProfileId: data.closerId,
-          fromManagerId: lead.managerId,
-          toManagerId: transferredLead.managerId,
-          transferTagUsed: lead.isTransfer === true,
-          preScheduledAt: lead.meetingDate ?? null,
-          scheduledAtTransfer: false,
-        },
+      await leadTransferRepository.create({
+        leadId: transferredLead.id,
+        fromTeamId: lead.teamId!,
+        toTeamId: data.targetTeamId,
+        transferredByProfileId: profileInfo.id,
+        receivedByProfileId: data.closerId,
+        fromManagerId: lead.managerId,
+        toManagerId: transferredLead.managerId,
+        transferTagUsed: lead.isTransfer === true,
+        preScheduledAt: lead.meetingDate ?? null,
+        scheduledAtTransfer: false,
       });
 
       try {
@@ -2215,19 +2107,17 @@ export class LeadUseCase implements ILeadUseCase {
     }
 
     const notifyScheduleFailure = async (errorMessage: string) => {
-      await prisma.leadActivity.create({
-        data: {
-          leadId,
-          ...buildStudioActivityData({
-            type: ActivityType.note,
-            body: `Lead transferido, mas o agendamento falhou: ${errorMessage}`,
-            payload: {
-              kind: "schedule",
-              action: "transfer_schedule_failed",
-              error: errorMessage,
-            },
-          }),
-        },
+      await leadActivityRepository.create({
+        leadId,
+        ...buildStudioActivityData({
+          type: ActivityType.note,
+          body: `Lead transferido, mas o agendamento falhou: ${errorMessage}`,
+          payload: {
+            kind: "schedule",
+            action: "transfer_schedule_failed",
+            error: errorMessage,
+          },
+        }),
       });
 
       await notificationService.createTransferScheduleFailedNotification({
@@ -2244,10 +2134,7 @@ export class LeadUseCase implements ILeadUseCase {
       const scheduleOutput = await leadScheduleService.createSchedule(deferredSchedule);
 
       if (scheduleOutput.isValid) {
-        await prisma.leadTransfer.updateMany({
-          where: { leadId, toTeamId: targetTeamId },
-          data: { scheduledAtTransfer: true },
-        });
+        await leadTransferRepository.markScheduledAtTransfer({ leadId, toTeamId: targetTeamId });
         return;
       }
 
@@ -2282,7 +2169,11 @@ export class LeadUseCase implements ILeadUseCase {
   ): Promise<{ ok: true; sanitizations: TransferToTeamSanitization[] } | { ok: false; output: Output }> {
     const conflictFilters: Prisma.LeadWhereInput[] = [];
     if (lead.email) {
-      conflictFilters.push({ email: { equals: lead.email, mode: "insensitive" } });
+      // `escapeLikePattern`: a decisão abaixo já reconfere com `toLowerCase()`
+      // exato, então o curinga não muda o veredito — mas sem escape um e-mail
+      // com `%` faz `findTransferConflictsInTeam` (sem `take`) trazer o time
+      // destino inteiro.
+      conflictFilters.push({ email: { equals: escapeLikePattern(lead.email), mode: "insensitive" } });
     }
     const normalizedCnpj = lead.cnpj?.trim();
     if (normalizedCnpj) {
@@ -2293,13 +2184,10 @@ export class LeadUseCase implements ILeadUseCase {
       return { ok: true, sanitizations: [] };
     }
 
-    const conflicts = await prisma.lead.findMany({
-      where: {
-        teamId: targetTeamId,
-        NOT: { id: lead.id },
-        OR: conflictFilters,
-      },
-      select: { id: true, email: true, cnpj: true, leadCode: true, name: true, status: true },
+    const conflicts = await this.leadRepository.findTransferConflictsInTeam({
+      targetTeamId,
+      excludeLeadId: lead.id,
+      filters: conflictFilters,
     });
 
     const sanitizationByLeadId = new Map<string, TransferToTeamSanitization>();
@@ -2615,33 +2503,10 @@ export class LeadUseCase implements ILeadUseCase {
 
     try {
       const [team, backofficeMembers, closerProfile] = await Promise.all([
-        prisma.team.findUnique({
-          where: { id: teamId },
-          select: {
-            masterId: true,
-            master: { select: { sponsorMasterId: true } },
-          },
-        }),
-        prisma.teamMember.findMany({
-          where: {
-            teamId,
-            role: "backoffice",
-          },
-          select: {
-            profileId: true,
-            profile: {
-              select: {
-                email: true,
-                fullName: true,
-              },
-            },
-          },
-        }),
+        teamRepository.findMasterWithSponsor(teamId),
+        teamMembersRepository.findNotificationRecipients({ teamId, roles: ["backoffice"] }),
         input.lead.closerId
-          ? prisma.profile.findUnique({
-              where: { id: input.lead.closerId as string },
-              select: { id: true, email: true, fullName: true },
-            })
+          ? profileRepository.findContactById(input.lead.closerId as string)
           : Promise.resolve(null),
       ]);
 
@@ -2660,10 +2525,7 @@ export class LeadUseCase implements ILeadUseCase {
         }).catch((err) => console.error("[LeadUseCase][notifyAssociateOfferSubmission]", err));
       }
 
-      const masterProfile = await prisma.profile.findUnique({
-        where: { id: team.masterId },
-        select: { id: true, email: true, fullName: true },
-      });
+      const masterProfile = await profileRepository.findContactById(team.masterId);
 
       const isAssociateAccount = Boolean(team.master?.sponsorMasterId);
 
@@ -2755,28 +2617,12 @@ export class LeadUseCase implements ILeadUseCase {
     const meetingDate = lead.meetingDate instanceof Date ? lead.meetingDate : new Date(lead.meetingDate);
     if (Number.isNaN(meetingDate.getTime())) return;
 
-    await prisma.leadsSchedule.upsert({
-      where: { leadId: lead.id },
-      create: {
-        leadId: lead.id,
-        date: meetingDate,
-        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
-        notes: lead.meetingNotes || lead.notes || null,
-        meetingLink: null,
-        meetingType: lead.meetingType || "online",
-        extraGuests: [],
-        publicShareTokenHash: null,
-        publicShareExpiresAt: null,
-      },
-      update: {
-        date: meetingDate,
-        meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
-        notes: lead.meetingNotes || lead.notes || null,
-        meetingLink: null,
-        meetingType: lead.meetingType || "online",
-        publicShareTokenHash: null,
-        publicShareExpiresAt: null,
-      },
+    await leadScheduleRepository.upsertTransferPreSchedule({
+      leadId: lead.id,
+      date: meetingDate,
+      meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
+      notes: lead.meetingNotes || lead.notes || null,
+      meetingType: lead.meetingType || "online",
     });
   }
 
@@ -2832,30 +2678,14 @@ export class LeadUseCase implements ILeadUseCase {
 
     try {
       const [team, eligibleMembers] = await Promise.all([
-        prisma.team.findUnique({
-          where: { id: teamId },
-          select: { masterId: true },
-        }),
-        prisma.teamMember.findMany({
-          where: {
-            teamId,
-            role: { in: ["manager", "backoffice"] },
-            canTransferAccountLeads: true,
-          },
-          select: {
-            profileId: true,
-            profile: { select: { email: true } },
-          },
-        }),
+        teamRepository.findMasterRef(teamId),
+        teamMembersRepository.findNotificationRecipients({ teamId, roles: ["manager", "backoffice"], onlyTransferAuthorized: true }),
       ]);
 
       if (!team) return;
 
       const masterProfile = team.masterId
-        ? await prisma.profile.findUnique({
-            where: { id: team.masterId },
-            select: { id: true, email: true },
-          })
+        ? await profileRepository.findContactById(team.masterId)
         : null;
 
       const recipientIds = Array.from(
@@ -2912,75 +2742,6 @@ export class LeadUseCase implements ILeadUseCase {
   }
 
   private async buildLeadProposalAttachments(leadId: string): Promise<Attachment[]> {
-    const leadAttachments = await prisma.leadAttachment.findMany({
-      where: { leadId },
-      select: {
-        id: true,
-        fileName: true,
-        fileType: true,
-        storagePath: true,
-        fileUrl: true,
-      },
-      orderBy: { uploadedAt: "asc" },
-    });
-
-    if (leadAttachments.length === 0) {
-      return [];
-    }
-
-    const supabaseAdmin = createSupabaseAdmin();
-
-    const downloads = await Promise.all(
-      leadAttachments.map(async (leadAttachment) => {
-        try {
-          let buffer: Buffer | null = null;
-
-          const storagePath = leadAttachment.storagePath?.trim();
-          if (supabaseAdmin && storagePath) {
-            const { data, error } = await supabaseAdmin.storage
-              .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
-              .download(storagePath);
-
-            if (error) {
-              console.error("Erro ao baixar anexo do storage para e-mail:", {
-                leadId,
-                attachmentId: leadAttachment.id,
-                storagePath,
-                error,
-              });
-            } else if (data) {
-              buffer = Buffer.from(await data.arrayBuffer());
-            }
-          }
-
-          if (!buffer && leadAttachment.fileUrl) {
-            const response = await fetch(leadAttachment.fileUrl);
-            if (!response.ok) {
-              throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
-            }
-
-            const arrayBuffer = await response.arrayBuffer();
-            buffer = Buffer.from(arrayBuffer);
-          }
-
-          if (!buffer) return null;
-
-          return {
-            filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
-            content: buffer,
-            ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
-          } as Attachment;
-        } catch (error) {
-          console.error("Erro ao preparar anexo de lead para e-mail:", {
-            leadId,
-            attachmentId: leadAttachment.id,
-            error,
-          });
-          return null;
-        }
-      })
-    );
-
-    return downloads.filter((a): a is Attachment => a !== null);
+    return await leadAttachmentService.buildProposalAttachments(leadId);
   }
 }

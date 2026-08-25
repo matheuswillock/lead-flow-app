@@ -1,3 +1,4 @@
+import type { UserRole } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type {
@@ -288,4 +289,38 @@ export class TeamMembersRepository implements ITeamMembersRepository {
       where: { teamId_profileId: { teamId, profileId } },
     });
   }
+
+  async findRoleAndFunctions(teamId: string, profileId: string) {
+    return await prisma.teamMember.findUnique({
+      where: { teamId_profileId: { teamId, profileId } },
+      select: { role: true, functions: true },
+    });
+  }
+
+  async findNotificationRecipients(input: {
+    teamId: string;
+    roles: UserRole[];
+    onlyTransferAuthorized?: boolean;
+  }) {
+    return await prisma.teamMember.findMany({
+      where: {
+        teamId: input.teamId,
+        role: input.roles.length === 1 ? input.roles[0] : { in: input.roles },
+        ...(input.onlyTransferAuthorized && { canTransferAccountLeads: true }),
+      },
+      select: {
+        profileId: true,
+        profile: { select: { email: true, fullName: true } },
+      },
+    });
+  }
+
+  async findTransferAuthorization(teamId: string, profileId: string) {
+    return await prisma.teamMember.findUnique({
+      where: { teamId_profileId: { teamId, profileId } },
+      select: { role: true, canTransferAccountLeads: true },
+    });
+  }
 }
+
+export const teamMembersRepository = new TeamMembersRepository();

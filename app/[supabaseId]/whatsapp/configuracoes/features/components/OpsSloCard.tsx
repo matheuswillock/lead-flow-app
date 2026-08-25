@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { Activity, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -64,7 +65,7 @@ export function OpsSloCard() {
       setMetrics(result)
       lastSuccessKeyRef.current = key
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar métricas")
+      setError(toUserToastMessage(err))
     } finally {
       inFlightRef.current = false
       setIsLoading(false)
@@ -85,7 +86,7 @@ export function OpsSloCard() {
       lastSuccessKeyRef.current = null
       await load(true)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível reenfileirar os eventos")
+      toastUserError(err)
     } finally {
       setIsRequeueing(false)
     }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,7 +71,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
       })
       .catch((error) => {
         if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : "Erro ao listar webhooks");
+          toastUserError(error);
         }
       })
       .finally(() => {
@@ -100,7 +101,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
       setItems((current) => current.map((row) => (row.id === item.id ? updated : row)));
       toast.success("Status atualizado");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao alterar status");
+      toastUserError(error);
     } finally {
       setTogglingId(null);
     }

@@ -21,8 +21,11 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import { publicFormJourneyRepository } from "@/app/api/infra/data/repositories/publicFormJourney/PublicFormJourneyRepository"
+import { buildJourneyResumeEventKey } from "@/lib/public-forms/journey-session"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
-import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
+import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarFactory"
+import type { SyncPublicFormMetricToRadarInput } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { instantiatePublicFormTemplateDraft } from "@/lib/public-forms/instantiate-template-draft"
 import { publicFormDraftSchema } from "@/lib/public-forms/validation"
@@ -428,6 +431,17 @@ export class PublicFormsService implements IPublicFormsService {
           : null
         : null
 
+    const trustedAnswerValue =
+      typeof input.answerValue === "string" && input.answerValue.trim() ? input.answerValue : null
+    const trustedMappingKey = matchedQuestion?.mappingKey ?? null
+    const isIdentityMapping =
+      trustedMappingKey === "name" ||
+      trustedMappingKey === "email" ||
+      trustedMappingKey === "phone"
+    if (input.eventType === "question_answered" && isIdentityMapping && !trustedAnswerValue) {
+      return true
+    }
+
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
     let leadId: string | null = null
 
@@ -451,6 +465,7 @@ export class PublicFormsService implements IPublicFormsService {
         eventType: input.eventType,
         origin,
         visitorSessionId: input.visitorSessionId,
+        occurredAt: input.occurredAt ?? null,
       })
       if (attribution.isValid && attribution.result) {
         const result = attribution.result as {
@@ -470,12 +485,24 @@ export class PublicFormsService implements IPublicFormsService {
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,
+      eventId: input.eventId ?? null,
+      schemaVersion: input.schemaVersion ?? null,
+      occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
       origin: json(origin),
+    })
+
+    // Fire-and-forget: journey tracking must never block metric recording.
+    // DB connection contention from the advisory lock would exhaust the pool
+    // and cause the rate-limit query to time-out (fail-closed → 429).
+    void this.recordJourneyProgress({
+      formId: current.snapshot.formId,
+      publicationId,
+      input,
     })
 
     const radarMode = options?.radarMode ?? "after"
     if (teamCtx?.teamId && radarMode !== "skip") {
-      const radarInput = {
+      const radarInput: SyncPublicFormMetricToRadarInput = {
         teamId: teamCtx.teamId,
         eventType: input.eventType,
         eventKey: input.eventKey,
@@ -483,10 +510,14 @@ export class PublicFormsService implements IPublicFormsService {
         formId: current.snapshot.formId,
         publicationId,
         questionId: input.questionId,
+        questionType: matchedQuestion?.type ?? null,
         leadId,
         origin,
-        answerMappingKey: input.answerMappingKey ?? null,
-        answerValue: input.answerValue ?? null,
+        answerMappingKey: trustedMappingKey,
+        answerValue: input.answerValue,
+        leadGateRequest: input.createCrmLead === true ? "identity_revision" : "none",
+        eventId: input.eventId ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)
@@ -503,6 +534,61 @@ export class PublicFormsService implements IPublicFormsService {
     return true
   }
 
+  /**
+   * Projeta o evento na sessão de jornada. `form_resumed` derivado da
+   * transição é persistido como métrica própria, com chave causal por
+   * `resumedAt`, para que o funil enxergue a retomada.
+   */
+  private async recordJourneyProgress(params: {
+    formId: string
+    publicationId: string
+    input: PublicFormMetricEventInput
+  }): Promise<void> {
+    const { formId, publicationId, input } = params
+    try {
+      const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date()
+      const result = await publicFormJourneyRepository.recordJourneyEvent({
+        formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        event: {
+          eventType: input.eventType,
+          occurredAt,
+          pageId: input.pageId ?? null,
+          pageIndex: input.pageIndex ?? null,
+        },
+      })
+
+      if (result.derivedEvent === "form_resumed" && result.projection.lastResumedAt) {
+        await publicFormsRepository.upsertMetricEvent({
+          formId,
+          publicationId,
+          questionId: null,
+          questionSnapshot: null,
+          visitorSessionId: input.visitorSessionId,
+          eventType: "form_resumed",
+          eventKey: buildJourneyResumeEventKey(
+            input.visitorSessionId,
+            result.projection.lastResumedAt,
+          ),
+          eventId: input.eventId ?? null,
+          schemaVersion: input.schemaVersion ?? null,
+          occurredAt: result.projection.lastResumedAt,
+          origin: json({ publicationId }),
+        })
+      }
+    } catch (error) {
+      console.error("[PublicFormsService][recordJourneyProgress]", {
+        formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        error,
+      })
+    }
+  }
+
   async analytics(teamId: string, id: string, from?: Date, to?: Date, publicationId?: string) {
     const publications = await publicFormsRepository.findAnalyticsPublications(teamId, id)
     if (!publications) return null
@@ -513,6 +599,14 @@ export class PublicFormsService implements IPublicFormsService {
     const events = await publicFormsRepository.groupMetricEvents(id, where)
     const sessionsByType = await publicFormsRepository.countDistinctSessionsByEventType(id, where)
     const uniqueLeads = await publicFormsRepository.countDistinctCompletedLeads(id, {
+      publicationId,
+      from,
+      to,
+    })
+    // PR 4: o funil passa a enxergar a jornada — quantos visitantes estão em
+    // andamento, quantos abandonaram e quantos concluíram.
+    const journey = await publicFormJourneyRepository.countJourneyStates({
+      formId: id,
       publicationId,
       from,
       to,
@@ -547,6 +641,7 @@ export class PublicFormsService implements IPublicFormsService {
         }
       }),
       events,
+      journey,
       totals: {
         views: sessionsByType.form_viewed ?? 0,
         starts: sessionsByType.form_started ?? 0,

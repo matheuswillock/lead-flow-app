@@ -19,6 +19,7 @@ import type {
   BackofficeEmailDispatchTarget,
 } from "./BackofficeAllUsersTypes"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 const DEFAULT_FILTERS: BackofficeAllUsersFilters = {
   query: "",
@@ -138,7 +139,7 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
     } catch (err) {
       console.error("[BackofficeAllUsersContext]", err)
       if (requestId === latestRequestId.current) {
-        setError(err instanceof Error ? err.message : "Erro ao carregar usuários")
+        setError(toUserToastMessage(err))
         setItems([])
         setPagination((prev) => ({
           ...prev,
@@ -233,7 +234,7 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
     } catch (err) {
       if (detailRequestId.current !== requestId) return
       console.error("[BackofficeAllUsersContext][openUserSheet]", err)
-      setDetailError(err instanceof Error ? err.message : "Erro ao carregar detalhes")
+      setDetailError(toUserToastMessage(err))
     } finally {
       if (detailRequestId.current === requestId) {
         setIsDetailLoading(false)

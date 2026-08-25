@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
+import { toUserToastMessage, toastUserError } from '@/lib/ui/to-user-toast-message';
 import { useTeamContext } from '@/app/context/TeamContext';
 import { carteiraService } from '../services/CarteiraService';
 import {
@@ -66,7 +67,7 @@ export function useCarteiraHook() {
         setAvailableOperadoras(result.availableOperadoras);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao buscar carteira';
+      const message = toUserToastMessage(err);
       setError(message);
     } finally {
       setIsLoading(false);
@@ -198,7 +199,7 @@ export function useCarteiraHook() {
     } catch (err) {
       lastFetchKey.current = '';
       fetchData(filters);
-      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar carteira');
+      toastUserError(err);
     }
   }, [supabaseId, activeTeamId, filters, fetchData]);
 

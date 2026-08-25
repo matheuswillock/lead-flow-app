@@ -16,6 +16,7 @@ import type {
   BackofficeAdhesionPagination,
 } from "./BackofficeAdhesionsTypes"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 const DEFAULT_FILTERS: BackofficeAdhesionFilters = {
   query: "",
@@ -102,7 +103,7 @@ export function BackofficeAdhesionsProvider({
         lastSuccessKey.current = requestKey
       } catch (err) {
         console.error("[BackofficeAdhesionsContext]", err)
-        setError(err instanceof Error ? err.message : "Erro ao carregar adesões")
+        setError(toUserToastMessage(err))
       } finally {
         inFlightKey.current = null
         setIsLoading(false)

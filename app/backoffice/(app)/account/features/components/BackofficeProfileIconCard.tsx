@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { Camera, Loader2, Upload } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -61,7 +62,7 @@ export function BackofficeProfileIconCard({ account }: Props) {
       await uploadIcon(file)
     } catch (err) {
       console.error("[BackofficeProfileIconCard][upload]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao fazer upload do ícone")
+      toastUserError(err)
       setAvatarPreview(null)
     } finally {
       setIsUploadingIcon(false)
@@ -77,7 +78,7 @@ export function BackofficeProfileIconCard({ account }: Props) {
       setAvatarPreview(null)
     } catch (err) {
       console.error("[BackofficeProfileIconCard][remove]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao remover ícone")
+      toastUserError(err)
     } finally {
       setIsUploadingIcon(false)
     }

@@ -30,6 +30,17 @@ function hasPmeSimulatorAccess(role: string, functions: string[]) {
   return functions.includes("SDR") || functions.includes("CLOSER");
 }
 
+/**
+ * Catalogo do simulador PME.
+ *
+ * A fonte sao os arrays constantes PLANS/HOSPITALS em PmePlanSimulatorService.ts —
+ * nao ha Prisma nem caminho de escrita, por isso `cacheLife("max")` e nenhum
+ * invalidador correspondente em lib/cache/invalidation.ts (seria codigo morto).
+ *
+ * A tag `pmeSimulator()` existe como alavanca de purge manual e como ponto de
+ * engate do TODO de migrar a tabela para o banco (PmePlanSimulatorService.ts).
+ * Ao migrar: criar `invalidatePmeSimulatorCache()` e chama-la no CRUD.
+ */
 async function getCachedPmeCatalog() {
   "use cache";
   cacheTag(cacheTags.pmeSimulator());

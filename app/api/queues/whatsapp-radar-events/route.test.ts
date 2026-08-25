@@ -16,6 +16,10 @@ mock.module("@/lib/queues/whatsapp-radar-events", () => ({
   buildWhatsappRadarEventIdempotencyKey: () => "key",
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 const { processWhatsappRadarEventMessage } = await import("./route")
 
 const execute = mock(async () => new Output(true, [], [], { ok: true }))
@@ -61,5 +65,24 @@ describe("processWhatsappRadarEventMessage", () => {
         { execute }
       )
     ).rejects.toThrow("falhou")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    execute.mockResolvedValue(new Output(false, [], ["falhou"], null))
+    await expect(
+      processWhatsappRadarEventMessage(
+        { source: "message", teamId: "team-1", messageId: "wa-1" },
+        { ...metadata, deliveryCount: 20 },
+        { execute },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "whatsapp-radar-events",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

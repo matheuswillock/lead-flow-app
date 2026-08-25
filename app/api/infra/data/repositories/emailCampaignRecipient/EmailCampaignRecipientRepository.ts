@@ -1,10 +1,53 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
-import type {
-  CampaignRecipientRecord,
-  IEmailCampaignRecipientRepository,
-  RecipientListPage,
+import {
+  EMPTY_SUPPRESSED_AUDIENCE_COUNTS,
+  type CampaignRecipientRecord,
+  type IEmailCampaignRecipientRepository,
+  type RecipientListPage,
+  type SuppressedAudienceCounts,
 } from "./IEmailCampaignRecipientRepository"
+
+type SuppressedCountRow = {
+  bounced: bigint
+  unsubscribed: bigint
+  complained: bigint
+}
+
+function mapSuppressedCountRow(row?: SuppressedCountRow): SuppressedAudienceCounts {
+  const bounced = Number(row?.bounced ?? 0)
+  const unsubscribed = Number(row?.unsubscribed ?? 0)
+  const complained = Number(row?.complained ?? 0)
+  return {
+    bounced,
+    unsubscribed,
+    complained,
+    total: bounced + unsubscribed + complained,
+  }
+}
+
+function suppressedBreakdownSql(whereClause: Prisma.Sql) {
+  // Reclamação no produto também marca isUnsubscribed; reclamação vem antes do descadastro.
+  return Prisma.sql`
+    SELECT
+      COUNT(*) FILTER (WHERE flags.is_bounced) AS bounced,
+      COUNT(*) FILTER (WHERE flags.is_complained AND NOT flags.is_bounced) AS complained,
+      COUNT(*) FILTER (WHERE flags.is_unsubscribed AND NOT flags.is_bounced AND NOT flags.is_complained) AS unsubscribed
+    FROM (
+      SELECT
+        BOOL_OR(c."isBounced") AS is_bounced,
+        BOOL_OR(c."isUnsubscribed") AS is_unsubscribed,
+        BOOL_OR(c."isComplained") AS is_complained
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE ${whereClause}
+        AND l."isArchived" = false
+        AND l."isBlocklist" = false
+        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
+      GROUP BY LOWER(TRIM(c.email))
+    ) flags
+  `
+}
 
 const recipientSelect = {
   id: true,
@@ -171,50 +214,40 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
     })
   }
 
-  async countSuppressedRecipientsForTeam(teamId: string): Promise<number> {
-    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
-      FROM "corretor_studio_email_contacts" c
-      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
-      WHERE l."teamId" = ${teamId}::uuid
-        AND l."isArchived" = false
-        AND l."isBlocklist" = false
-        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
-    `
-    return Number(rows[0]?.count ?? 0)
+  async countSuppressedRecipientsForTeam(teamId: string): Promise<SuppressedAudienceCounts> {
+    const rows = await prisma.$queryRaw<SuppressedCountRow[]>(
+      suppressedBreakdownSql(Prisma.sql`l."teamId" = ${teamId}::uuid`)
+    )
+    return mapSuppressedCountRow(rows[0])
   }
 
-  async countSuppressedRecipientsForLists(teamId: string, contactListIds: string[]): Promise<number> {
-    if (contactListIds.length === 0) return 0
+  async countSuppressedRecipientsForLists(
+    teamId: string,
+    contactListIds: string[]
+  ): Promise<SuppressedAudienceCounts> {
+    if (contactListIds.length === 0) return EMPTY_SUPPRESSED_AUDIENCE_COUNTS
 
-    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
-      FROM "corretor_studio_email_contacts" c
-      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
-      WHERE l."teamId" = ${teamId}::uuid
-        AND l."isArchived" = false
-        AND l."isBlocklist" = false
-        AND c."listId" = ANY(${contactListIds}::uuid[])
-        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
-    `
-    return Number(rows[0]?.count ?? 0)
+    const rows = await prisma.$queryRaw<SuppressedCountRow[]>(
+      suppressedBreakdownSql(
+        Prisma.sql`l."teamId" = ${teamId}::uuid AND c."listId" = ANY(${contactListIds}::uuid[])`
+      )
+    )
+    return mapSuppressedCountRow(rows[0])
   }
 
-  async countSuppressedRecipientsForEmails(teamId: string, emails: string[]): Promise<number> {
+  async countSuppressedRecipientsForEmails(
+    teamId: string,
+    emails: string[]
+  ): Promise<SuppressedAudienceCounts> {
     const normalized = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
-    if (normalized.length === 0) return 0
+    if (normalized.length === 0) return EMPTY_SUPPRESSED_AUDIENCE_COUNTS
 
-    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(DISTINCT LOWER(TRIM(c.email))) AS count
-      FROM "corretor_studio_email_contacts" c
-      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
-      WHERE l."teamId" = ${teamId}::uuid
-        AND l."isArchived" = false
-        AND l."isBlocklist" = false
-        AND LOWER(TRIM(c.email)) = ANY(${normalized}::text[])
-        AND (c."isUnsubscribed" = true OR c."isBounced" = true OR c."isComplained" = true)
-    `
-    return Number(rows[0]?.count ?? 0)
+    const rows = await prisma.$queryRaw<SuppressedCountRow[]>(
+      suppressedBreakdownSql(
+        Prisma.sql`l."teamId" = ${teamId}::uuid AND LOWER(TRIM(c.email)) = ANY(${normalized}::text[])`
+      )
+    )
+    return mapSuppressedCountRow(rows[0])
   }
 
   async findActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipientRecord[]> {

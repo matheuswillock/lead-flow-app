@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IPublicContractService } from "../services/IPublicContractService"
 import { PublicContractService } from "../services/PublicContractService"
 import type { PublicContractShare } from "./PublicContractTypes"
@@ -57,7 +57,7 @@ export function PublicContractProvider({
       lastSuccessKey.current = requestKey
     } catch (err) {
       console.error("[PublicContractContext][loadShare]", err)
-      setError(err instanceof Error ? err.message : "Link de contrato indisponível")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightKey.current = null
@@ -83,7 +83,7 @@ export function PublicContractProvider({
     } catch (err) {
       downloadWindow?.close()
       console.error("[PublicContractContext][downloadContract]", err)
-      toast.error(err instanceof Error ? err.message : "Não foi possível baixar o contrato")
+      toastUserError(err)
     } finally {
       setIsDownloading(false)
     }

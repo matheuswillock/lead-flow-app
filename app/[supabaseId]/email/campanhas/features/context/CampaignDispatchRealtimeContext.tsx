@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { useUser } from "@/app/context/UserContext"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { shouldSkipRealtimeSubscribe } from "@/lib/supabase/realtime-guard"
 import { API_CLIENT_BASE } from "@/lib/route-map"
@@ -15,6 +17,21 @@ import type {
 } from "./CampanhasTypes"
 
 export const CAMPAIGN_DISPATCH_TERMINAL_TTL_MS = 8_000
+
+/**
+ * Cadência do polling de progresso de disparo.
+ *
+ * Este provider vive no layout autenticado, então o intervalo rodava para todo
+ * usuário logado em qualquer rota — inclusive quem nunca abriu o módulo de
+ * e-mail, e inclusive em aba de fundo. A 4s isso dava 900 requisições por hora
+ * por aba aberta.
+ *
+ * Os 4s continuam valendo enquanto existe campanha em `sending`, que é o caso
+ * em que a barra de progresso precisa parecer fluida. Fora dele a cadência cai,
+ * e em aba oculta o intervalo nem é armado.
+ */
+const SENDING_POLL_INTERVAL_MS = 4_000
+const IDLE_POLL_INTERVAL_MS = 60_000
 
 export type SendingCampaign = {
   id: string
@@ -94,7 +111,12 @@ function mapCampaignRow(campaign: {
 export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props) {
   const { activeTeamId } = useTeamContext()
   const { user } = useUser()
+  const { hasAccess } = useFeatureAccess()
+  const canSeeEmailCampaigns = hasAccess(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [sendingCampaigns, setSendingCampaigns] = useState<SendingCampaign[]>([])
+  // Booleano em vez do array: rearma o intervalo quando entra/sai disparo,
+  // e não a cada atualização de progresso da mesma campanha.
+  const hasSendingCampaigns = sendingCampaigns.length > 0
   const [terminalCampaigns, setTerminalCampaigns] = useState<TerminalCampaign[]>([])
   const previousSendingRef = useRef<Map<string, SendingCampaign>>(new Map())
   const terminalTimersRef = useRef<Map<string, number>>(new Map())
@@ -131,7 +153,10 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
     async (prev: SendingCampaign): Promise<SendingCampaign | null> => {
       try {
         const res = await fetch(`${API_CLIENT_BASE}/email/campaigns/${prev.id}`, {
-          headers: { "x-supabase-id": supabaseId },
+          headers: {
+            "x-supabase-id": supabaseId,
+            "x-supabase-user-id": supabaseId,
+          },
           cache: "no-store",
         })
         if (!res.ok) return null
@@ -181,7 +206,10 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
     try {
       const params = new URLSearchParams({ page: "1", pageSize: "50", status: "sending" })
       const res = await fetch(`${API_CLIENT_BASE}/email/campaigns?${params}`, {
-        headers: { "x-supabase-id": supabaseId },
+        headers: {
+          "x-supabase-id": supabaseId,
+          "x-supabase-user-id": supabaseId,
+        },
         cache: "no-store",
       })
       if (!res.ok) return
@@ -236,13 +264,44 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
 
   useEffect(() => {
     if (!activeTeamId || !user?.id) return
+    // Sem acesso ao módulo de e-mail não há disparo para acompanhar.
+    if (!canSeeEmailCampaigns) return
 
-    const intervalId = window.setInterval(() => {
-      void fetchSendingCampaigns()
-    }, 4000)
+    let intervalId: number | null = null
 
-    return () => window.clearInterval(intervalId)
-  }, [activeTeamId, fetchSendingCampaigns, user?.id])
+    const clear = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId)
+        intervalId = null
+      }
+    }
+
+    const arm = () => {
+      clear()
+      // Aba oculta não desenha barra de progresso; rearmamos ao voltar.
+      if (document.visibilityState !== "visible") return
+
+      const periodMs = hasSendingCampaigns ? SENDING_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS
+      intervalId = window.setInterval(() => {
+        void fetchSendingCampaigns()
+      }, periodMs)
+    }
+
+    const handleVisibilityChange = () => {
+      // Ao voltar para a aba, busca uma vez na hora: o estado pode ter mudado
+      // enquanto o intervalo estava desarmado.
+      if (document.visibilityState === "visible") void fetchSendingCampaigns()
+      arm()
+    }
+
+    arm()
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      clear()
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [activeTeamId, canSeeEmailCampaigns, fetchSendingCampaigns, hasSendingCampaigns, user?.id])
 
   useEffect(() => {
     return () => {

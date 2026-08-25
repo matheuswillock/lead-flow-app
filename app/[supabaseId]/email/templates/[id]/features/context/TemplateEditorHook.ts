@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime";
 import type {
   Template,
@@ -137,7 +138,7 @@ export function useTemplateEditor(
       initialDraftRef.current = nextDraft;
     } catch (err) {
       if (requestIdRef.current !== requestId) return;
-      const message = err instanceof Error ? err.message : "Erro ao carregar template";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to load template", err);
       setError(message);
       toast.error("Erro ao carregar template", { description: message });
@@ -192,7 +193,7 @@ export function useTemplateEditor(
       toast.success("Rascunho salvo com sucesso");
       return saved;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao salvar template";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to save template", err);
       setError(message);
       toast.error("Erro ao salvar template", { description: message });
@@ -228,7 +229,7 @@ export function useTemplateEditor(
       toast.success("Template publicado com sucesso");
       return published;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao publicar template";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to publish template", err);
       setError(message);
       toast.error("Erro ao publicar template", { description: message });
@@ -256,7 +257,7 @@ export function useTemplateEditor(
       toast.success("Template movido para rascunho");
       return updated;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao despublicar template";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to unpublish template", err);
       setError(message);
       toast.error("Erro ao despublicar template", { description: message });
@@ -282,7 +283,7 @@ export function useTemplateEditor(
       initialDraftRef.current = updatedDraft;
       toast.success("Template enviado para aprovação");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao enviar para aprovação";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to submit for approval", err);
       setError(message);
       toast.error("Erro ao enviar para aprovação", { description: message });
@@ -303,7 +304,7 @@ export function useTemplateEditor(
       initialDraftRef.current = updatedDraft;
       toast.success("Template aprovado");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao aprovar template";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to approve template", err);
       setError(message);
       toast.error("Erro ao aprovar template", { description: message });
@@ -324,7 +325,7 @@ export function useTemplateEditor(
       initialDraftRef.current = updatedDraft;
       toast.success("Template recusado");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao recusar template";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to reject template", err);
       setError(message);
       toast.error("Erro ao recusar template", { description: message });
@@ -346,7 +347,7 @@ export function useTemplateEditor(
       await service.sendTest(supabaseId, templateId, activeTeamId, input);
       toast.success(`Email de teste enviado para ${input.to}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao enviar email de teste";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to send test email", err);
       setError(message);
       toast.error("Erro ao enviar email de teste", { description: message });
@@ -376,7 +377,7 @@ export function useTemplateEditor(
       setVersions(versionsResult.versions);
       toast.success("HTML da versão recuperado no rascunho");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao recuperar HTML da versão";
+      const message = toUserToastMessage(err);
       console.error("[useTemplateEditor] Failed to restore version", err);
       setError(message);
       toast.error("Erro ao recuperar HTML", { description: message });

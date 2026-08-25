@@ -27,6 +27,7 @@ import {
 import { GATE_TYPE_LABELS } from "@/lib/leadStatusTransitionGates";
 import { leadStatusLabels } from "@/lib/lead-status";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ALL_STATUSES = Object.keys(leadStatusLabels) as LeadStatus[];
@@ -77,7 +78,7 @@ export function BackofficeLeadStatusTransitionGatesContainer() {
       }
       setGates((data.result?.gates as BackofficeGate[]) ?? []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar gates");
+      toastUserError(error);
     } finally {
       setIsLoading(false);
     }
@@ -154,7 +155,7 @@ export function BackofficeLeadStatusTransitionGatesContainer() {
       setEditingGate(null);
       await loadGates();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar gate");
+      toastUserError(error);
     } finally {
       setIsSaving(false);
     }

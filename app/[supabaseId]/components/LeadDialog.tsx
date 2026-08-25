@@ -25,6 +25,7 @@ import { useLeadDetails } from "@/hooks/useLeadDetails";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import { ArrowRightLeft, CheckCircle, ClipboardList, Copy, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
 import { TaskFormDialog } from "@/components/task-form-dialog";
@@ -147,7 +148,7 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
       setItems(output.result ?? []);
     }).catch((fetchError) => {
       if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
-      setError(fetchError instanceof Error ? fetchError.message : "Erro ao carregar respostas");
+      setError(toUserToastMessage(fetchError));
     });
     return () => controller.abort();
   }, [leadId, teamId, supabaseId]);
@@ -1053,7 +1054,7 @@ export default function LeadDialog({
       setActivityBody(trimmed);
       setSelectedMentions(selectedMentionsSnapshot);
       console.error("Erro ao adicionar atividade:", error);
-      toast.error(error instanceof Error ? error.message : "Erro ao adicionar atividade");
+      toastUserError(error);
     } finally {
       setActivitySubmitting(false);
     }
@@ -1216,7 +1217,7 @@ export default function LeadDialog({
     } catch (error) {
       pendingOwnReactionOpsRef.current.delete(ownOpKey);
       setReactionOverrides((prev) => ({ ...prev, [activityId]: previous }));
-      toast.error(error instanceof Error ? error.message : "Erro ao reagir à atividade");
+      toastUserError(error);
     }
   };
 
@@ -1441,13 +1442,13 @@ export default function LeadDialog({
         setPendingDuplicateCreate(null);
         setDuplicateCandidates([]);
       } else {
-        toast.error(result.message || "Erro ao criar lead", {
+        toastUserError(result, {
           id: loadingToast,
           duration: 5000,
         });
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao criar lead", {
+      toastUserError(error, {
         id: loadingToast,
         duration: 5000,
       });
@@ -1582,7 +1583,7 @@ export default function LeadDialog({
         );
       }
       form.setValue("meetingHeald", previous, { shouldDirty: false });
-      toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a reunião.");
+      toast.warning(toUserToastMessage(error));
     } finally {
       setMeetingHealdSaving(false);
     }
@@ -1647,7 +1648,7 @@ export default function LeadDialog({
             } as Lead)
           : prev,
       );
-      toast.warning(error instanceof Error ? error.message : "Não foi possível confirmar a agenda.");
+      toast.warning(toUserToastMessage(error));
     } finally {
       setMeetingPresenceConfirmSaving(false);
     }
@@ -1719,12 +1720,7 @@ export default function LeadDialog({
               duration: 3000,
             });
           } catch (assigneesError) {
-            toast.error(
-              assigneesError instanceof Error
-                ? assigneesError.message
-                : "Erro ao salvar SDR/closer do lead",
-              { id: loadingToast, duration: 5000 }
-            );
+            toastUserError(assigneesError, { id: loadingToast, duration: 5000 });
           }
           return;
         }
@@ -1799,7 +1795,7 @@ export default function LeadDialog({
             await refreshLeads();
           }
         } else {
-          toast.error(result.message || "Erro ao atualizar lead", {
+          toastUserError(result, {
             id: loadingToast,
             duration: 5000,
           });
@@ -1836,30 +1832,26 @@ export default function LeadDialog({
             }
             await refreshLeads();
           } else {
-            toast.error(result.message || "Erro ao criar lead", {
+            toastUserError(result, {
               id: loadingToast,
               duration: 5000,
             });
           }
         } catch (createError) {
-          const errorMessage = createError instanceof Error ? createError.message : "Erro ao criar lead";
-          const normalizedMessage = errorMessage
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase();
+          const rawMessage = createError instanceof Error ? createError.message : "";
 
-          if (errorMessage.includes("Unique constraint") || normalizedMessage.includes("já existe")) {
+          if (rawMessage.includes("Unique constraint") || /já existe/i.test(rawMessage)) {
             toast.error("Aviso: já existe um lead com dados únicos em conflito (e-mail ou CNPJ)", {
               id: loadingToast,
               duration: 6000,
             });
-          } else if (normalizedMessage.includes("validation") || normalizedMessage.includes("inválido")) {
-            toast.error(`Aviso: dados invalidos: ${errorMessage}`, {
+          } else if (/validation|inválido/i.test(rawMessage)) {
+            toast.error("Aviso: dados inválidos. Revise os campos e tente novamente.", {
               id: loadingToast,
               duration: 5000,
             });
           } else {
-            toast.error(errorMessage, {
+            toastUserError(createError, {
               id: loadingToast,
               duration: 5000,
             });
@@ -1868,7 +1860,7 @@ export default function LeadDialog({
       }
     } catch (error) {
       console.error("Erro na submissao do formulario:", error);
-      const errorMessage = error instanceof Error ? error.message : "Erro inesperado ao processar o formulario";
+      const errorMessage = toUserToastMessage(error);
       toast.error(errorMessage, {
         duration: 5000,
       });
@@ -1891,7 +1883,7 @@ export default function LeadDialog({
       setShowFinalizeDialog(false);
       setOpen(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao finalizar contrato");
+      toastUserError(error);
       throw error;
     }
   };
@@ -1926,7 +1918,7 @@ export default function LeadDialog({
       toast.success("Lead marcado como no-show");
       setOpen(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
+      toastUserError(error);
     }
   };
 
@@ -2158,7 +2150,7 @@ export default function LeadDialog({
       toast.success("Status atualizado", { id: loadingToast });
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao atualizar status", { id: loadingToast });
+      toastUserError(error, { id: loadingToast });
       return false;
     } finally {
       setStatusUpdating(false);
@@ -2292,7 +2284,7 @@ export default function LeadDialog({
       if (shouldClearCloser && previousCloserId) {
         form.setValue("closerId", previousCloserId, { shouldDirty: false });
       }
-      toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a transferência.");
+      toast.warning(toUserToastMessage(error));
     } finally {
       setIsTransferToggling(false);
     }
@@ -2321,7 +2313,7 @@ export default function LeadDialog({
       setScheduleShareExpiresAt(result.result.expiresAt as string | null);
       setScheduleShareDialogOpen(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao gerar link de compartilhamento.");
+      toastUserError(error);
     }
   };
 
@@ -2366,7 +2358,7 @@ export default function LeadDialog({
       setStatusDialogOpen(false);
       setShowStatusTriggerDialog(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar informações de venda");
+      toastUserError(error);
     } finally {
       setSalesInfoSaving(false);
     }
@@ -2413,7 +2405,7 @@ export default function LeadDialog({
       setStatusDialogOpen(false);
       setShowStatusTriggerDialog(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar closer do lead");
+      toastUserError(error);
     } finally {
       setCloserRequirementSaving(false);
     }
@@ -2495,7 +2487,7 @@ export default function LeadDialog({
       setStatusDialogOpen(false);
       setShowStatusTriggerDialog(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar informações do lead");
+      toastUserError(error);
     } finally {
       setLeadInfoSaving(false);
     }

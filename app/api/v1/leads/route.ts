@@ -1,21 +1,23 @@
 import { after, NextRequest, NextResponse, connection } from "next/server";
-import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
-import { LeadUseCase } from "../../useCases/leads/LeadUseCase";
-import { RegisterNewUserProfile } from "../../useCases/profiles/ProfileUseCase";
+import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseInstance";
 import { CreateLeadRequestSchema } from "./DTO/requestToCreateLead";
 import { Output } from "@/lib/output";
-import { LeadStatus } from "@prisma/client";
 import { invalidateLeadCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { isManagerLikeRole } from "@/lib/roles";
 import {
+  getCachedTeamLeads,
+  CachedTeamLeadsUnavailableError,
+} from "@/app/api/useCases/leads/getCachedTeamLeads";
+import { isBoundedLeadsQuery } from "@/app/api/useCases/leads/boundedLeadsQuery";
+import {
+  canonicalizeCustomFieldFilters,
+  canonicalizeCustomFieldSort,
   parseCustomFieldFiltersQueryParam,
   parseCustomFieldSortQueryParam,
+  parseLeadStatusQueryParam,
 } from "./DTO/requestToListLeadsCustomFields";
-
-const leadRepository = new LeadRepository();
-const profileUseCase = new RegisterNewUserProfile();
-const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,7 +93,6 @@ export async function GET(request: NextRequest) {
     const { access } = teamAccess;
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
-    const status = searchParams.get('status') as LeadStatus | null;
     const assignedTo = searchParams.get('assignedTo');
     const search = searchParams.get('search');
     const startDate = searchParams.get('startDate');
@@ -108,6 +109,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
+    let status;
+    try {
+      status = parseLeadStatusQueryParam(searchParams.get('status'));
+    } catch (parseError) {
+      console.warn('[LeadsRoute][GET] status inválido:', parseError);
+      const output = new Output(false, [], ["Status de lead inválido"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
     let customFieldFilters;
     let customFieldSort;
     try {
@@ -117,6 +127,48 @@ export async function GET(request: NextRequest) {
       console.warn('[LeadsRoute][GET] customFieldFilters/customFieldSort inválido:', parseError);
       const output = new Output(false, [], ["Filtros de campos personalizados inválidos"], null);
       return NextResponse.json(output, { status: 400 });
+    }
+
+    const customFieldFiltersJSON = canonicalizeCustomFieldFilters(customFieldFilters);
+    const customFieldSortJSON = canonicalizeCustomFieldSort(customFieldSort);
+
+    // Só a fatia limitada entra no cache — ver isBoundedLeadsQuery.
+    if (isBoundedLeadsQuery({ search, startDate, endDate, limit, customFieldFiltersJSON })) {
+      try {
+        const payload = await getCachedTeamLeads({
+          teamId: access.teamId,
+          // Papel do TeamAccess, nunca o `?role=` da query: o use case ignora o param.
+          role: access.teamMember.role,
+          // Manager-like enxerga o time inteiro, então todos colapsam na mesma entrada.
+          scopeProfileId: isManagerLikeRole(access.teamMember.role) ? "" : access.profileId,
+          status: status ?? "",
+          assignedTo: assignedTo ?? "",
+          onlyTransfer,
+          calendarWindowStartISO: calendarWindowStart ?? "",
+          calendarWindowEndISO: calendarWindowEnd ?? "",
+          customFieldFiltersJSON,
+          customFieldSortJSON,
+        });
+
+        return NextResponse.json(
+          new Output(payload.isValid, payload.successMessages, payload.errorMessages, payload.result)
+        );
+      } catch (cacheError) {
+        rethrowIfPrerenderInterrupted(cacheError);
+        // A funcao cacheada lanca quando a listagem falha, justamente para o
+        // Next nao gravar o erro. `getCachedTeamLeads` e o wrapper NAO cacheado
+        // que reetiqueta essa falha depois da fronteira do `"use cache"`, onde o
+        // Next ja trocou a excecao original por um Error generico com digest —
+        // e por isso que este `instanceof` casa em producao.
+        if (cacheError instanceof CachedTeamLeadsUnavailableError) {
+          console.error('[LeadsRoute][GET] listagem indisponivel:', cacheError.errorMessages);
+          return NextResponse.json(
+            new Output(false, [], cacheError.errorMessages, null),
+            { status: 500 }
+          );
+        }
+        throw cacheError;
+      }
     }
 
     const options = {

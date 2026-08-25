@@ -777,6 +777,19 @@ enum RenewalStatus {
   @@map("renewal_status")
 }
 
+/// Criado em 20260804195207_subscription-change-log-and-cycle-enum.sql.
+/// Ainda não está ligado a nenhuma coluna — `Profile.subscriptionCycle` e
+/// `ProfileSubscription.subscriptionCycle` continuam `String? @db.Text`.
+/// Declarado aqui para o tipo não sumir do banco a cada `db:migrate:from-prisma`.
+enum SubscriptionCycle {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUALLY
+  YEARLY
+
+  @@map("subscription_cycle")
+}
+
 enum ContractType {
   individual
   corporate
@@ -1051,6 +1064,7 @@ model Profile {
   teamEmailLimitGrantsGranted    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitGrantedBy")
   teamEmailLimitGrantsRevoked    BackofficeTeamEmailLimitGrant[]    @relation("TeamEmailLimitRevokedBy")
   sponsoredAdhesions             BackofficeAdhesion[]               @relation("BackofficeAdhesionSponsorMaster")
+  discountApprovedAdhesions      BackofficeAdhesion[]               @relation("BackofficeAdhesionDiscountApprover")
 
   auditLogsAsActor AuditLog[] @relation("AuditLogActor")
 
@@ -1577,6 +1591,7 @@ model BackofficeAdhesion {
   closerBackofficeUser    BackofficeUser?    @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
   createdByBackofficeUser BackofficeUser?    @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
   sponsorMaster           Profile?           @relation("BackofficeAdhesionSponsorMaster", fields: [sponsorMasterId], references: [id], onDelete: SetNull)
+  discountApprovedBy      Profile?           @relation("BackofficeAdhesionDiscountApprover", fields: [discountApprovedByProfileId], references: [id], onDelete: SetNull, map: "backoffice_adhesions_discount_approved_by_fkey")
 
   profileSubscription ProfileSubscription?
 
@@ -1587,6 +1602,7 @@ model BackofficeAdhesion {
   @@index([sdrBackofficeUserId], map: "backoffice_adhesions_sdr_user_id_idx")
   @@index([closerBackofficeUserId], map: "backoffice_adhesions_closer_user_id_idx")
   @@index([createdProfileId, createdAt(sort: Desc)], map: "backoffice_adhesions_created_profile_id_created_at_idx")
+  @@index([sponsorMasterId], map: "backoffice_adhesions_sponsor_master_id_idx")
   @@map("backoffice_adhesions")
 }
 
@@ -2057,6 +2073,7 @@ model Lead {
   @@index([status])
   @@index([deletedAt])
   @@index([teamId, status, createdAt(sort: Desc)])
+  @@index([referrerLeadId], map: "corretor_studio_leads_referrer_lead_idx")
   @@map("corretor_studio_leads")
 }
 
@@ -2597,6 +2614,7 @@ model LeadCustomFieldValue {
 
   @@unique([leadId, definitionId])
   @@index([definitionId])
+  @@index([definitionId, value], map: "lead_custom_field_values_definition_value_idx")
   @@map("corretor_studio_lead_custom_field_values")
 }
 
@@ -2686,7 +2704,7 @@ model TeamRadarPixelConfig {
   id                 String    @id @default(uuid()) @db.Uuid
   teamId             String    @unique @db.Uuid
   publicToken        String    @unique @db.Text
-  allowedOrigins     String[]  @db.Text
+  allowedOrigins     String[]  @default([]) @db.Text
   lastUsedAt         DateTime? @db.Timestamptz(6)
   updatedByProfileId String    @db.Uuid
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
@@ -3392,6 +3410,10 @@ model EmailLog {
 
   @@index([teamId, status])
   @@index([teamId, campaignId])
+  // Permite agregar o progresso de disparo no banco sem ordenar: o GROUP BY por
+  // (campaignId, recipientEmail) passa a ler em ordem de indice. Ver a migration
+  // 20260823234849_email-logs-campaign-recipient-index.
+  @@index([teamId, campaignId, recipientEmail], map: "corretor_studio_email_logs_team_campaign_recipient_idx")
   @@index([campaignId, dispatchId])
   @@index([teamId, dispatchId, status], map: "corretor_studio_email_logs_team_dispatch_status_idx")
   @@index([dispatchId])
@@ -3427,6 +3449,7 @@ enum EmailOrphanEventStatus {
 
 enum PublicFormQueueEventKind {
   metric
+  progress
   submission
 
   @@map("public_form_queue_event_kind")
@@ -3439,6 +3462,15 @@ enum PublicFormQueueEventFailureStatus {
   failed
 
   @@map("public_form_queue_event_failure_status")
+}
+
+enum QueueProcessingFailureStatus {
+  pending
+  processing
+  resolved
+  failed
+
+  @@map("queue_processing_failure_status")
 }
 
 enum ResendWebhookProcessingFailureStatus {
@@ -3500,11 +3532,38 @@ model PublicFormQueueEventFailure {
   nextAttemptAt  DateTime                           @default(now()) @db.Timestamptz(6)
   lastError      String?                            @db.Text
   failureReason  String?                            @db.Text
+  eventId        String?                            @db.Uuid
+  schemaVersion  Int?
+  topic          String?                            @db.Text
+  failureStage   String?                            @db.Text
+  lastErrorCode  String?                            @db.Text
   createdAt      DateTime                           @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime                           @updatedAt @db.Timestamptz(6)
 
   @@index([status, nextAttemptAt])
+  @@index([eventId])
   @@map("corretor_studio_public_form_queue_event_failures")
+}
+
+/** Outbox de dead-letter das filas Vercel: o consumer persiste e dá ack
+ * após `deliveryCount >= N` (default 20). `topic` em texto (OCP) — um cron
+ * único republica via mapa topic → publish*. Asaas persiste e acka; o cron
+ * dedicado de webhook Asaas continua responsável pelo retry. */
+model QueueProcessingFailure {
+  id             String                       @id @default(uuid()) @db.Uuid
+  topic          String                       @db.Text
+  idempotencyKey String                       @db.Text
+  payload        Json
+  status         QueueProcessingFailureStatus @default(pending)
+  attemptCount   Int                          @default(1)
+  nextAttemptAt  DateTime                     @default(now()) @db.Timestamptz(6)
+  lastError      String?                      @db.Text
+  createdAt      DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                     @updatedAt @db.Timestamptz(6)
+
+  @@unique([topic, idempotencyKey])
+  @@index([status, nextAttemptAt])
+  @@map("corretor_studio_queue_processing_failures")
 }
 
 // -----------------------------
@@ -4187,6 +4246,7 @@ model WhatsAppContactIdentity {
   @@unique([teamId, configId, remoteJid])
   @@index([teamId, contactId])
   @@index([configId, identityType, lastSeenAt])
+  @@index([contactId])
   @@map("whatsapp_contact_identities")
 }
 
@@ -4205,7 +4265,7 @@ model TeamWhatsAppConfig {
   status                       WhatsAppConnectionStatus  @default(PENDING)
   qrCodeText                   String?                   @db.Text
   qrCodeImageUrl               String?                   @db.Text
-  webhookSecret                String                    @db.Text
+  webhookSecret                String                    @unique @db.Text
   lastConnectedAt              DateTime?                 @db.Timestamptz(6)
   lastDisconnectedAt           DateTime?                 @db.Timestamptz(6)
   lastSyncAt                   DateTime?                 @db.Timestamptz(6)
@@ -4236,8 +4296,9 @@ model TeamWhatsAppConfig {
 
   @@index([normalizedPhone])
   @@index([primaryConfigId])
-  @@index([webhookSecret])
   @@index([instanceName])
+  @@index([createdByProfileId])
+  @@index([updatedByProfileId])
   @@map("team_whatsapp_configs")
 }
 
@@ -4289,6 +4350,7 @@ model WhatsAppConversation {
   @@index([leadId])
   @@index([assignedProfileId])
   @@index([createdByProfileId])
+  @@index([contactId])
   @@map("whatsapp_conversations")
 }
 
@@ -4322,7 +4384,7 @@ model WhatsAppMessage {
   isAutoResponse          Boolean                  @default(false)
   autoResponseRuleId      String?                  @db.Uuid
   providerTimestamp       BigInt?
-  rawPayload              Json
+  rawPayload              Json                     @default("{}")
   storagePath             String?                  @db.Text
   mediaSha256             String?                  @db.Text
   mediaSizeBytes          Int?
@@ -4362,6 +4424,10 @@ model WhatsAppMessage {
   @@index([deletedAt])
   @@index([quotedMessageId])
   @@index([mediaStatus, mediaAttemptCount, updatedAt])
+  @@index([configId])
+  @@index([leadId])
+  @@index([deletedByProfileId])
+  @@index([autoResponseRuleId])
   @@map("whatsapp_messages")
 }
 
@@ -4383,6 +4449,7 @@ model WhatsAppMessageReaction {
 
   @@index([messageId, removedAt])
   @@index([teamId, createdAt])
+  @@index([profileId])
   @@map("whatsapp_message_reactions")
 }
 
@@ -4399,6 +4466,7 @@ model WhatsAppMessageFavorite {
 
   @@unique([messageId, profileId])
   @@index([teamId, profileId])
+  @@index([profileId])
   @@map("whatsapp_message_favorites")
 }
 
@@ -4421,6 +4489,8 @@ model WhatsAppMessagePin {
 
   @@index([conversationId, removedAt])
   @@index([messageId, removedAt])
+  @@index([pinnedByProfileId])
+  @@index([teamId])
   @@map("whatsapp_message_pins")
 }
 
@@ -4437,6 +4507,7 @@ model WhatsAppMessageVisibility {
 
   @@unique([messageId, profileId])
   @@index([teamId, profileId])
+  @@index([profileId])
   @@map("whatsapp_message_visibility")
 }
 
@@ -4463,6 +4534,7 @@ model WhatsAppMessageActionCommand {
 
   @@unique([teamId, clientActionId])
   @@index([messageId, kind, status])
+  @@index([profileId])
   @@map("whatsapp_message_action_commands")
 }
 
@@ -4487,6 +4559,8 @@ model WhatsAppOutboundCommand {
 
   @@unique([teamId, clientMessageId])
   @@index([status, updatedAt])
+  @@index([conversationId])
+  @@index([status, nextReconcileAt], map: "whatsapp_outbound_commands_reconcile_idx")
   @@map("whatsapp_outbound_commands")
 }
 
@@ -4509,6 +4583,7 @@ model WhatsAppSyncJob {
 
   @@index([status, leaseExpiresAt, createdAt])
   @@index([teamId, configId, status])
+  @@index([configId])
   @@map("whatsapp_sync_jobs")
 }
 
@@ -4533,6 +4608,8 @@ model WhatsAppWebhookEvent {
 
   @@unique([configId, providerEventId])
   @@index([status, nextAttemptAt, createdAt], map: "whatsapp_webhook_events_retry_idx")
+  @@index([teamId])
+  @@index([status, createdAt], map: "whatsapp_webhook_events_status_created_at_idx")
   @@map("whatsapp_webhook_events")
 }
 
@@ -4551,6 +4628,7 @@ model WhatsAppAuditEvent {
 
   @@index([teamId, createdAt(sort: Desc)])
   @@index([conversationId])
+  @@index([actorProfileId])
   @@map("whatsapp_audit_events")
 }
 
@@ -4631,6 +4709,7 @@ model WhatsAppAutoResponseLog {
 
   @@unique([conversationId, ruleType, inboundMessageId], map: "whatsapp_auto_response_logs_conv_rule_inbound_key")
   @@index([conversationId, ruleType, createdAt])
+  @@index([ruleId])
   @@map("whatsapp_auto_response_logs")
 }
 
@@ -4843,6 +4922,17 @@ model RadarChannelConsent {
   @@unique([profileId, channel])
   @@index([teamId, channel, status])
   @@map("corretor_studio_radar_channel_consents")
+}
+
+/// Rate limit do endpoint de hit do pixel (clone de PublicFormRateLimit).
+/// Criada em 20260803004716_radar-d8-pixel-ratelimit.sql.
+model RadarPixelRateLimit {
+  key       String   @id @db.Text
+  count     Int      @default(1)
+  resetAt   DateTime @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("corretor_studio_radar_pixel_rate_limits")
 }
 
 enum SegmentSourceType {
@@ -5537,6 +5627,23 @@ enum PublicFormMetricType {
   lead_created
   lead_attached
   meeting_scheduled
+  page_viewed
+  page_advanced
+  page_returned
+  question_focused
+  form_submit_attempted
+  form_validation_failed
+  form_exit_intent
+  form_abandoned
+  form_resumed
+}
+
+enum PublicFormJourneyState {
+  active
+  abandoned
+  completed
+
+  @@map("public_form_journey_state")
 }
 
 model PublicFormSettings {
@@ -5618,6 +5725,7 @@ model PublicForm {
   publications              PublicFormPublication[]
   submissions               PublicFormSubmission[]
   metricEvents              PublicFormMetricEvent[]
+  journeySessions           PublicFormJourneySession[]
 
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([teamId, approvalStatus, updatedAt(sort: Desc)])
@@ -5654,6 +5762,7 @@ model PublicFormQuestion {
   mappingKey    String?                  @db.Text
   createdAt     DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime                 @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime?                @db.Timestamptz(6)
   form          PublicForm               @relation(fields: [formId], references: [id], onDelete: Cascade)
   options       PublicFormOption[]
   sourceRules   PublicFormRule[]         @relation("PublicFormRuleSource")
@@ -5663,6 +5772,7 @@ model PublicFormQuestion {
 
   @@unique([formId, position])
   @@index([formId, position])
+  @@index([formId, deletedAt], map: "corretor_studio_public_form_questions_formId_deletedAt_idx")
   @@map("corretor_studio_public_form_questions")
 }
 
@@ -5734,6 +5844,7 @@ model PublicFormPublication {
   publishedBy   Profile                 @relation("PublicFormPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
   submissions   PublicFormSubmission[]
   metricEvents  PublicFormMetricEvent[]
+  journeySessions PublicFormJourneySession[]
 
   @@unique([formId, version])
   @@index([formId, endedAt, publishedAt(sort: Desc)])
@@ -5746,6 +5857,7 @@ model PublicFormSubmission {
   publicationId  String                     @db.Uuid
   leadId             String?                    @db.Uuid
   requestKey         String                     @unique @db.Text
+  eventId            String?                    @db.Uuid
   visitorSessionId   String?                    @db.Text
   completionStatus   PublicFormCompletionStatus @default(initial)
   status             PublicFormSubmissionStatus @default(processing)
@@ -5754,6 +5866,12 @@ model PublicFormSubmission {
   origin         Json?
   errorMessage   String?                    @db.Text
   submittedAt    DateTime?                  @db.Timestamptz(6)
+  dispatchAcceptedAt DateTime?               @db.Timestamptz(6)
+  dispatchAttemptCount Int                    @default(0)
+  nextDispatchAt DateTime?                    @db.Timestamptz(6)
+  lastDispatchError String?                   @db.Text
+  thankYouPageId String?                      @db.Uuid
+  scheduledMeetingStartsAt DateTime?          @db.Timestamptz(6)
   createdAt      DateTime                   @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime                   @updatedAt @db.Timestamptz(6)
   form           PublicForm                 @relation(fields: [formId], references: [id], onDelete: Restrict)
@@ -5765,6 +5883,7 @@ model PublicFormSubmission {
   @@index([publicationId, createdAt(sort: Desc)])
   @@index([leadId, submittedAt(sort: Desc)])
   @@index([publicationId, visitorSessionId])
+  @@index([status, nextDispatchAt])
   @@map("corretor_studio_public_form_submissions")
 }
 
@@ -5774,6 +5893,9 @@ model PublicFormAnswer {
   questionId       String?              @db.Uuid
   value            Json
   questionSnapshot Json
+  sourceEventId    String?              @db.Uuid
+  answeredAt       DateTime?            @db.Timestamptz(6)
+  mappingKey       String?              @db.Text
   createdAt        DateTime             @default(now()) @db.Timestamptz(6)
   submission       PublicFormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   question         PublicFormQuestion?  @relation(fields: [questionId], references: [id], onDelete: SetNull)
@@ -5793,6 +5915,9 @@ model PublicFormMetricEvent {
   visitorSessionId String                @db.Text
   eventType        PublicFormMetricType
   eventKey         String                @unique @db.Text
+  eventId          String?               @db.Uuid
+  schemaVersion    Int?
+  occurredAt       DateTime?             @db.Timestamptz(6)
   origin           Json?
   createdAt        DateTime              @default(now()) @db.Timestamptz(6)
   form             PublicForm            @relation(fields: [formId], references: [id], onDelete: Cascade)
@@ -5803,7 +5928,39 @@ model PublicFormMetricEvent {
   @@index([formId, createdAt(sort: Desc)])
   @@index([visitorSessionId, createdAt])
   @@index([questionId])
+  @@index([eventId])
   @@map("corretor_studio_public_form_metric_events")
+}
+
+/// Projeção da jornada do visitante em uma publicação. Atualizada de forma
+/// idempotente por evento aceito; o cron de abandono só marca `abandoned`
+/// após 30 minutos sem atividade e nunca reverte uma sessão `completed`.
+model PublicFormJourneySession {
+  id               String                 @id @default(uuid()) @db.Uuid
+  formId           String                 @db.Uuid
+  publicationId    String                 @db.Uuid
+  visitorSessionId String                 @db.Text
+  state            PublicFormJourneyState @default(active)
+  startedAt        DateTime               @default(now()) @db.Timestamptz(6)
+  lastActivityAt   DateTime               @default(now()) @db.Timestamptz(6)
+  currentPageId    String?                @db.Uuid
+  currentPageIndex Int?
+  lastExitIntentAt DateTime?              @db.Timestamptz(6)
+  lastAbandonedAt  DateTime?              @db.Timestamptz(6)
+  lastResumedAt    DateTime?              @db.Timestamptz(6)
+  abandonmentCount Int                    @default(0)
+  submittedAt      DateTime?              @db.Timestamptz(6)
+  completedAt      DateTime?              @db.Timestamptz(6)
+  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
+
+  form        PublicForm            @relation(fields: [formId], references: [id], onDelete: Cascade)
+  publication PublicFormPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@unique([publicationId, visitorSessionId])
+  @@index([state, lastActivityAt])
+  @@index([formId, state])
+  @@map("corretor_studio_public_form_journey_sessions")
 }
 
 enum BackofficeLeadExtractionStatus {
@@ -5833,7 +5990,7 @@ enum BackofficeCompanyType {
 model BackofficeLeadExtraction {
   id         String                         @id @default(uuid()) @db.Uuid
   profileId  String                         @db.Uuid
-  filters    Json
+  filters    Json                           @default("{}")
   totalCount Int                            @default(0)
   status     BackofficeLeadExtractionStatus @default(PENDING)
   createdAt  DateTime                       @default(now()) @db.Timestamptz(6)
@@ -5880,12 +6037,13 @@ model ShortLink {
 
 model BackofficeCnae {
   id        Int      @id @default(autoincrement())
-  code      String   @unique
+  code      String   @unique @db.VarChar(10)
   name      String
   isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
+  @@index([code])
   @@map("backoffice_cnaes")
 }
 
@@ -5967,7 +6125,9 @@ model LeadDocumentRequest {
   message            String?                   @db.Text
   status             LeadDocumentRequestStatus @default(pending)
   lastEmailSentAt    DateTime?                 @db.Timestamptz(6)
-  expiresAt          DateTime                  @db.Timestamptz(6)
+  /// O default físico vem de 20260721234500_lead-document-requests.sql; o
+  /// Prisma não expressa `now() + interval` sem `dbgenerated`.
+  expiresAt          DateTime                  @default(dbgenerated("(now() + '30 days'::interval)")) @db.Timestamptz(6)
   completedAt        DateTime?                 @db.Timestamptz(6)
   createdAt          DateTime                  @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime                  @updatedAt @db.Timestamptz(6)

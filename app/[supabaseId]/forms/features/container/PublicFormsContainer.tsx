@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Archive, BarChart3, Copy, Ellipsis, FileText, Plus, Settings } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
@@ -541,7 +542,7 @@ function SettingsSheet({
         setDraft(value)
         setInitial(value)
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : "Erro ao carregar"))
+      .catch((error) => toastUserError(error))
   }, [ids, open])
 
   function requestOpenChange(next: boolean) {
@@ -566,7 +567,7 @@ function SettingsSheet({
       toast.success("Configurações salvas")
       onOpenChange(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar")
+      toastUserError(error)
     } finally {
       setSaving(false)
     }
@@ -729,7 +730,7 @@ function AnalyticsDialog({
       })
       .then(setData)
       .catch((error) =>
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar métricas"),
+        toastUserError(error),
       )
       .finally(() => setLoading(false))
   }, [from, id, ids, publicationId, to])

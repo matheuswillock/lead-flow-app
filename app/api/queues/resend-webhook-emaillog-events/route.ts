@@ -1,8 +1,13 @@
 import { resendWebhookUseCase, ResendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"
 import {
   handleResendWebhookEmailLogEventsCallback,
+  RESEND_WEBHOOK_EMAILLOG_EVENTS_TOPIC,
   type ResendWebhookEmailLogEventPayload,
 } from "@/lib/queues/resend-webhook-emaillog-events"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -21,7 +26,8 @@ type QueueMessageMetadata = {
 export async function processResendWebhookEmailLogEventMessage(
   message: ResendWebhookEmailLogEventPayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<ResendWebhookUseCase, "handle"> = resendWebhookUseCase
+  useCase: Pick<ResendWebhookUseCase, "handle"> = resendWebhookUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[ResendWebhookEmailLogEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -64,6 +70,14 @@ export async function processResendWebhookEmailLogEventMessage(
       svixId: message.svixId,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RESEND_WEBHOOK_EMAILLOG_EVENTS_TOPIC,
+      idempotencyKey: message.svixId,
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

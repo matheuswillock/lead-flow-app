@@ -3,9 +3,14 @@ import {
 } from "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository"
 import { processAsaasWebhookEvent } from "@/app/api/webhooks/asaas/processAsaasWebhookEvent"
 import {
+  ASAAS_WEBHOOK_EVENTS_TOPIC,
   handleAsaasWebhookEventsCallback,
   type AsaasWebhookEventPayload,
 } from "@/lib/queues/asaas-webhook-events"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -33,6 +38,7 @@ export async function processAsaasWebhookEventMessage(
     process: typeof processAsaasWebhookEvent
     markProcessed: typeof asaasWebhookEventRepository.markProcessed
     markFailed: typeof asaasWebhookEventRepository.markFailed
+    ackDeadLetter?: AckAfterMaxDeliveriesFn
   } = {
     process: processAsaasWebhookEvent,
     markProcessed: asaasWebhookEventRepository.markProcessed.bind(asaasWebhookEventRepository),
@@ -77,6 +83,15 @@ export async function processAsaasWebhookEventMessage(
         markError,
       })
     })
+    const ackDeadLetter = deps.ackDeadLetter ?? ackAfterMaxDeliveries
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
+      idempotencyKey: message.eventId,
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

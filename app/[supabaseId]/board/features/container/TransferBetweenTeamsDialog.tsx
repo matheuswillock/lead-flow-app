@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { Lead } from "../context/BoardTypes";
@@ -270,9 +271,7 @@ export function TransferBetweenTeamsDialog({
       .catch((error) => {
         if (!active) return;
         setTeamMembers([]);
-        toast.error(
-          error instanceof Error ? error.message : "Erro ao carregar membros do time destino"
-        );
+        toastUserError(error);
       })
       .finally(() => {
         if (active) setMembersLoading(false);
@@ -490,7 +489,7 @@ export function TransferBetweenTeamsDialog({
       onSuccess(updatedLead);
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao transferir lead");
+      toastUserError(error);
     } finally {
       setSubmitting(false);
     }

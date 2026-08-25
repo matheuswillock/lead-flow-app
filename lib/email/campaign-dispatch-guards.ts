@@ -2,11 +2,24 @@ import { formatLocalDateValue, getMinutesInTz } from "@/lib/dates"
 
 export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: string }
 
-export const RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE =
-  "Com domínio próprio, é obrigatório habilitar as métricas de abertura e clique. Nenhum disparo será liberado até que as métricas estejam ativas e o DNS de tracking esteja verificado."
+/**
+ * O gate tem DUAS causas independentes, e a mensagem precisa dizer qual delas
+ * travou. Uma copy única mandava "habilite as métricas" mesmo quando o bloqueio
+ * real era o DNS — e aí ligar a abertura não destravava nada, porque
+ * `isResendDomainTrackingCapable` exige `verified`. O usuário ficava girando no
+ * botão errado.
+ */
+export const RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE =
+  "O DNS de tracking do seu domínio ainda não está verificado no Resend. Nenhum disparo será liberado até que todos os registros apareçam como verificados — inclusive o CNAME de tracking. Publique os registros pendentes e use \"Verificar DNS\"."
 
-/** @deprecated Use RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE — same copy after tracking became a hard gate. */
-export const RESEND_DOMAIN_TRACKING_DEGRADED_WARNING = RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE
+export const RESEND_DOMAIN_METRICS_DISABLED_MESSAGE =
+  "Com domínio próprio, é obrigatório habilitar a métrica de abertura para disparar campanhas. O rastreio de cliques permanece desligado de propósito: ele reescreve os links do e-mail e faz provedores marcarem a mensagem como suspeita."
+
+/** @deprecated Prefira as duas mensagens específicas — esta não diz qual causa travou. */
+export const RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE = RESEND_DOMAIN_METRICS_DISABLED_MESSAGE
+
+/** @deprecated Use RESEND_DOMAIN_METRICS_DISABLED_MESSAGE. */
+export const RESEND_DOMAIN_TRACKING_DEGRADED_WARNING = RESEND_DOMAIN_METRICS_DISABLED_MESSAGE
 
 export type ResendDomainTrackingInput = {
   domainName?: string | null
@@ -62,10 +75,18 @@ export function assertResendDomainTrackingReady(
 ): ResendDomainTrackingCheck {
   if (!params.domainName?.trim()) return { ok: true }
 
-  const metricsEnabled = Boolean(params.openTracking || params.clickTracking)
-  if (!metricsEnabled || !isResendDomainTrackingCapable(params.domainStatus)) {
-    return { ok: false, message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE }
+  // DNS primeiro: é a causa que o usuário não consegue contornar mexendo nos
+  // toggles. Reportar "habilite as métricas" para um domínio `partially_failed`
+  // manda ele para um botão que não destrava nada.
+  if (!isResendDomainTrackingCapable(params.domainStatus)) {
+    return { ok: false, message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE }
   }
+
+  const metricsEnabled = Boolean(params.openTracking || params.clickTracking)
+  if (!metricsEnabled) {
+    return { ok: false, message: RESEND_DOMAIN_METRICS_DISABLED_MESSAGE }
+  }
+
   return { ok: true }
 }
 
@@ -128,11 +149,34 @@ export function checkDispatchWindow(
   return { blocked: false }
 }
 
-/** Campanha só é `sent` quando todos os destinatários saíram; parcial fica `partially_sent`. */
+/**
+ * `partially_sent` significa "sobrou alguém que vale retentar" — não "a conta
+ * não fechou".
+ *
+ * A regra antiga comparava `sentCount` com `totalRecipients` e marcava
+ * `partially_sent` em qualquer diferença. Isso é frágil porque `totalRecipients`
+ * é a contagem da audiência no momento em que o disparo nasce, e nem todo
+ * destinatário chega a virar `EmailLog`: a materialização ainda descarta
+ * endereços por pré-validação e blocklist. Caso real (Homens v2 1/4,
+ * 22/08/2026): 1998 na audiência, 1969 logs criados, 1782 enviados, 187
+ * suprimidos — os 29 restantes sumiram antes de existir log, e a campanha ficava
+ * eternamente `partially_sent` oferecendo reenvio de gente que não existe.
+ *
+ * `failedCount` (logs `failed`) é o critério direto: são as recusas do provedor
+ * — rate limit, cota, erro transitório — as únicas que um reenvio pode resolver.
+ * Já `suppressed` vem da nossa pré-validação (typo de domínio, provedor morto,
+ * endereço genérico, bounce anterior) e reprovaria de novo na mesma regra
+ * determinística; e bounce posterior à entrega já contou como enviado, porque
+ * `countSuccessfulDispatchLogs` usa `sentAt != null`.
+ *
+ * `totalRecipients` continua na assinatura por compatibilidade com os
+ * chamadores, mas não decide mais o status.
+ */
 export function resolveCampaignStatusAfterDispatch(
   sentCount: number,
   failureDetail?: string | null,
-  totalRecipients?: number
+  totalRecipients?: number,
+  failedCount = 0
 ): {
   campaignStatus: "sent" | "failed" | "partially_sent"
   dispatchStatus: "completed" | "failed"
@@ -146,9 +190,7 @@ export function resolveCampaignStatusAfterDispatch(
     }
   }
 
-  const hasUnsentRecipients =
-    typeof totalRecipients === "number" && totalRecipients > sentCount
-  if (hasUnsentRecipients) {
+  if (failedCount > 0) {
     return {
       campaignStatus: "partially_sent",
       dispatchStatus: "completed",
@@ -157,4 +199,35 @@ export function resolveCampaignStatusAfterDispatch(
   }
 
   return { campaignStatus: "sent", dispatchStatus: "completed", errorMessage: null }
+}
+
+/**
+ * Mesma regra da função acima, aplicada na releitura da lista a partir dos
+ * contadores cumulativos de log. Vive aqui, ao lado da irmã, porque foi
+ * justamente a divergência entre as duas que causou o bug: o disparo persistia
+ * `sent`, o reconciler recalculava por outro critério e regravava
+ * `partially_sent`, devolvendo o botão de reenviar falhas sozinho.
+ *
+ * NÃO recebe `totalRecipients` de propósito. Comparar contagem de log com o
+ * total da audiência parece razoável e não é: destinatários podem ser
+ * descartados na materialização e nunca virar log — no caso real da Homens v2,
+ * 1782 aceitos + 187 suprimidos = 1969, contra `totalRecipients` 1998. Os 29 de
+ * diferença deixariam a campanha presa em `partially_sent` para sempre.
+ *
+ * Disparo interrompido no meio da materialização é problema do finalizador, que
+ * compara `materializedLogCount` com o total do dispatch e republica o wake —
+ * ver `recoverStuckSendingCampaigns` e `resumeOrphanSendingDispatches`. Aqui só
+ * há log, e log não distingue "nunca materializou" de "audiência encolheu".
+ */
+export function resolveReconciledCampaignStatus(counters: {
+  acceptedCount: number
+  failedCount: number
+  queuedCount: number
+  suppressedCount: number
+}): "sent" | "failed" | "partially_sent" {
+  if (counters.acceptedCount === 0) return "failed"
+  // Só o que ainda pode sair segura a campanha: falha é retentável, fila é
+  // transitória. Recusado na pré-validação é terminal e fecha.
+  if (counters.failedCount > 0 || counters.queuedCount > 0) return "partially_sent"
+  return "sent"
 }

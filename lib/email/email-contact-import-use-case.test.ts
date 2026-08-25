@@ -1,19 +1,29 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { Prisma } from "@prisma/client"
+import { AUDIENCE_REASON_BLOCKLISTED } from "@/lib/email/audience-prevalidation"
 
 const updateManyMock = mock(async () => ({ count: 0 }))
 const jobUpdateMock = mock(async () => ({}))
 const emailContactFindManyMock = mock(
-  async (_args?: { select?: { id?: boolean; email?: boolean } }) =>
-    [] as { id?: string; email?: string }[]
+  async (_args?: {
+    select?: { id?: boolean; email?: boolean }
+    where?: { list?: { isBlocklist?: boolean } }
+  }) => [] as { id?: string; email?: string }[]
 )
-const emailContactCreateManyMock = mock(async () => ({ count: 0 }))
+// Devolve o número de linhas do lote, como o Prisma faz quando nenhuma delas
+// colide. Cravar `count: 0` fazia o mock mentir: `blockedCount` agora vem de
+// `created.count`, e um zero fixo esconderia regressão real de contagem.
+const emailContactCreateManyMock = mock(
+  async (args?: { data?: unknown[] }) => ({ count: args?.data?.length ?? 0 })
+)
 const emailContactUpdateMock = mock(async () => ({}))
 const emailContactCountMock = mock(async () => 0)
 const emailContactListFindFirstMock = mock(async () => null as null | {
   id: string
   isSystemDefault: boolean
+  isBlocklist?: boolean
 })
+const emailContactDeleteManyMock = mock(async () => ({ count: 0 }))
 const emailContactListUpdateMock = mock(async () => ({}))
 
 const syncExecuteMock = mock(async () => ({
@@ -75,6 +85,8 @@ const prismaStub = {
     createMany: emailContactCreateManyMock,
     update: emailContactUpdateMock,
     count: emailContactCountMock,
+    deleteMany: emailContactDeleteManyMock,
+    upsert: mock(async () => ({})),
   },
 }
 
@@ -183,6 +195,8 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
           findFirst: mock(async () => claimedJob),
           updateMany: mock(async () => ({ count: claimedJob ? 1 : 0 })),
         },
+        emailContact: prismaStub.emailContact,
+        emailContactList: prismaStub.emailContactList,
       }
       return fn(tx)
     })
@@ -191,12 +205,16 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     emailContactFindManyMock.mockClear()
     emailContactFindManyMock.mockImplementation(async (_args?) => [])
     emailContactCreateManyMock.mockClear()
-    emailContactCreateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailContactCreateManyMock.mockImplementation(
+      async (args?: { data?: unknown[] }) => ({ count: args?.data?.length ?? 0 })
+    )
     emailContactUpdateMock.mockClear()
     emailContactCountMock.mockClear()
     emailContactCountMock.mockImplementation(async () => 0)
     emailContactListFindFirstMock.mockClear()
     emailContactListFindFirstMock.mockImplementation(async () => null)
+    emailContactDeleteManyMock.mockClear()
+    emailContactDeleteManyMock.mockImplementation(async () => ({ count: 0 }))
     emailContactListUpdateMock.mockClear()
     syncExecuteMock.mockClear()
     syncExecuteMock.mockImplementation(async () => ({
@@ -215,6 +233,251 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     downloadPayloadMock.mockImplementation(async () =>
       JSON.stringify({ rows: [] })
     )
+  })
+
+  it("lote que falha e é retentado não conta a mesma recusa duas vezes", async () => {
+    // Regressão: `suppressedSkippedCount` era incrementado ANTES da escrita.
+    // Se `importContactsBatch` lançava, o lote era repartitionado na tentativa
+    // seguinte e a mesma recusa entrava de novo — 3 tentativas = 1 endereço
+    // recusado contado 3x, tanto no contador quanto na lista de exemplos.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "bloqueado@example.com", name: "Bloqueado" },
+          { email: "livre@example.com", name: "Livre" },
+        ],
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.list?.isBlocklist) return [{ email: "bloqueado@example.com" }]
+      return []
+    })
+
+    // Falha nas duas primeiras tentativas, sucesso na terceira.
+    let createManyAttempts = 0
+    emailContactCreateManyMock.mockImplementation(async () => {
+      createManyAttempts += 1
+      if (createManyAttempts <= 2) throw new Error("erro transitório de escrita")
+      return { count: 1 }
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    expect(createManyAttempts).toBeGreaterThanOrEqual(3)
+
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { skippedCount?: number; skippedIssues?: { email: string }[] } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.skippedCount !== undefined)
+
+    // Um endereço recusado, contado uma vez — não uma vez por tentativa.
+    expect(progressUpdate?.data?.skippedCount).toBe(1)
+    expect(progressUpdate?.data?.skippedIssues).toHaveLength(1)
+  })
+
+  it("lote que esgota as tentativas ainda contabiliza as recusas apuradas", async () => {
+    // Regressao da minha propria correcao anterior: ao mover a contabilizacao
+    // para depois da escrita, o lote que falha nas 3 tentativas passou a avancar
+    // `processedRows` no catch SEM registrar as recusas — ninguem mais reapura
+    // aquele lote, entao a recusa sumia silenciosamente.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "bloqueado@example.com", name: "Bloqueado" },
+          { email: "livre@example.com", name: "Livre" },
+        ],
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.list?.isBlocklist) return [{ email: "bloqueado@example.com" }]
+      return []
+    })
+    // Falha em todas as tentativas.
+    emailContactCreateManyMock.mockImplementation(async () => {
+      throw new Error("erro permanente de escrita")
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { skippedCount?: number; failedBatches?: unknown[] } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.skippedCount !== undefined)
+
+    // O lote foi para failedBatches, mas a recusa nao se perdeu.
+    expect(progressUpdate?.data?.skippedCount).toBe(1)
+  })
+
+  it("não importa e-mail bloqueado no time, nem na lista alvo nem no fan-out padrão", async () => {
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      // Lista comum: força o fan-out para a lista padrão (o segundo destino de escrita).
+      isSystemDefault: false,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "bloqueado@example.com", name: "Bloqueado" },
+          { email: "livre@example.com", name: "Livre" },
+        ],
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      // Caixa alta de propósito: a blocklist compara normalizada.
+      if (args?.where?.list?.isBlocklist) return [{ email: "Bloqueado@Example.com" }]
+      return []
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const createManyArgs = emailContactCreateManyMock.mock.calls as unknown as Array<
+      [{ data?: { email: string }[] } | undefined]
+    >
+    const importedEmails = createManyArgs.flatMap(([args]) =>
+      (args?.data ?? []).map((row) => row.email)
+    )
+    expect(importedEmails).toContain("livre@example.com")
+    expect(importedEmails).not.toContain("bloqueado@example.com")
+
+    // A gravação de progresso carrega skippedCount; finalizeJob roda depois só com o status.
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { skippedCount?: number; skippedIssues?: unknown } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.skippedCount !== undefined)
+    expect(progressUpdate?.data?.skippedCount).toBe(1)
+    expect(progressUpdate?.data?.skippedIssues).toEqual([
+      { email: "bloqueado@example.com", reason: AUDIENCE_REASON_BLOCKLISTED },
+    ])
+  })
+
+  it("import para a blocklist grava o checkpoint de progresso a cada lote", async () => {
+    // Regressão: a branch de blocklist usava `continue`, que pula o
+    // `emailImportJob.update` do fim do laço. O job terminava com processedRows
+    // parado em 0 e, se o cron fosse interrompido, reprocessava tudo de novo.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: false,
+      isBlocklist: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: [
+          { email: "a@example.com", name: "A" },
+          { email: "b@example.com", name: "B" },
+        ],
+      })
+    )
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const jobUpdateArgs = jobUpdateMock.mock.calls as unknown as Array<
+      [{ data?: { processedRows?: number; importedCount?: number } } | undefined]
+    >
+    const progressUpdate = jobUpdateArgs
+      .map(([args]) => args)
+      .findLast((args) => args?.data?.processedRows !== undefined)
+
+    expect(progressUpdate?.data?.processedRows).toBe(2)
+    expect(progressUpdate?.data?.importedCount).toBe(2)
+  })
+
+  it("import para a blocklist não abre uma transação por endereço", async () => {
+    // Regressão: 500 linhas × 9 queries em 500 transações seriais estouravam o
+    // maxDuration=60s do cron antes de qualquer checkpoint.
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: false,
+      isBlocklist: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: Array.from({ length: 50 }, (_, i) => ({
+          email: `user${i}@example.com`,
+          name: `User ${i}`,
+        })),
+      })
+    )
+
+    const transactionsBefore = transactionMock.mock.calls.length
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+    const transactionsForBatch = transactionMock.mock.calls.length - transactionsBefore
+
+    // 1 do claim + 1 do lote inteiro. Nunca proporcional ao número de linhas.
+    expect(transactionsForBatch).toBeLessThanOrEqual(3)
+    expect(emailContactDeleteManyMock.mock.calls.length).toBeLessThanOrEqual(2)
+  })
+
+  it("resume não perde linha quando a blocklist cresce entre claims", async () => {
+    // Regressão: `processedRows` é offset POSICIONAL sobre `validRows`, mas
+    // `validRows` passou a depender da blocklist — estado mutável escrito em
+    // runtime pelo descadastro (endpoint público). Se um e-mail do prefixo já
+    // processado entra na blocklist entre claims, o array encolhe, todo o
+    // sufixo desloca uma posição para a esquerda, e a linha que estava no
+    // offset nunca é gravada nem reportada como recusada.
+    //
+    // Arranjo: 1000 linhas, BATCH_SIZE = 500. O claim 1 processou o lote 0 e
+    // gravou processedRows = 500. Entre os claims, a linha 0 entra na
+    // blocklist. No claim 2 `validRows` tem 999 itens e
+    // `batchIndex = floor(500/500) = 1` → `slice(500, 1000)` começa no ANTIGO
+    // índice 501. A linha 500 (`l500`) nunca é gravada nem reportada.
+    claimedJob = makeJob({ processedRows: 500, importedCount: 500 })
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: true,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({
+        rows: Array.from({ length: 1000 }, (_, i) => ({
+          email: `l${i}@example.com`,
+          name: `L${i}`,
+        })),
+      })
+    )
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      // l0 foi bloqueada depois do claim 1 — descadastro durante o import.
+      if (args?.where?.list?.isBlocklist) return [{ email: "l0@example.com" }]
+      return []
+    })
+
+    const useCase = new EmailContactImportUseCase()
+    await useCase.processPendingJobs()
+
+    const createManyArgs = emailContactCreateManyMock.mock.calls as unknown as Array<
+      [{ data?: { email: string }[] } | undefined]
+    >
+    const gravados = createManyArgs.flatMap(([args]) =>
+      (args?.data ?? []).map((row) => row.email)
+    )
+
+    // A linha exatamente no checkpoint é a que o deslocamento come.
+    expect(gravados).toContain("l500@example.com")
+    expect(gravados).toContain("l999@example.com")
+    // l0 está bloqueada — não pode entrar.
+    expect(gravados).not.toContain("l0@example.com")
   })
 
   it("T5: retorna sucesso quando não há jobs pendentes, sem retry desnecessário", async () => {

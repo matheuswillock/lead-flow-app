@@ -14,6 +14,10 @@ mock.module("@/lib/queues/asaas-webhook-events", () => ({
   ASAAS_WEBHOOK_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 mock.module("@/app/api/webhooks/asaas/processAsaasWebhookEvent", () => ({
   processAsaasWebhookEvent: mock(async () => {}),
 }))
@@ -118,6 +122,27 @@ describe("processAsaasWebhookEventMessage", () => {
     expect(markFailed).toHaveBeenCalledTimes(1)
     expect(markFailed).toHaveBeenCalledWith("evt-1", "persist failed")
     expect(markFailed.mock.calls[0]?.length).toBe(2)
+  })
+
+  it("deliveryCount excedeu o limite: helper acka após markFailed (cron Asaas segue)", async () => {
+    const ackDeadLetter = mock(async () => true)
+    process.mockRejectedValueOnce(new Error("persist failed"))
+
+    await expect(
+      processAsaasWebhookEventMessage(baseMessage(), { ...metadata, deliveryCount: 20 }, {
+        ...deps,
+        ackDeadLetter,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(markFailed).toHaveBeenCalledWith("evt-1", "persist failed")
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "asaas-webhook-events",
+        idempotencyKey: "evt-1",
+        deliveryCount: 20,
+      }),
+    )
   })
 
   it("markFailed também falha: ainda propaga o erro original de process", async () => {

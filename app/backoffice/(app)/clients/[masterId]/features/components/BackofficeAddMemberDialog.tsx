@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -155,7 +156,7 @@ export function BackofficeAddMemberDialog({
       await onSaved?.()
       onOpenChange(false)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao adicionar usuário")
+      toastUserError(err)
     } finally {
       setIsSubmitting(false)
     }

@@ -17,6 +17,10 @@ mock.module("@/lib/queues/radar-pixel-events", () => ({
   utcDayKey: () => "2026-08-14",
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 const { processRadarPixelEventMessage } = await import("./route")
 
 const persistQueuedHit = mock(async () => new Output(true, [], [], { status: "ok" }))
@@ -64,5 +68,24 @@ describe("processRadarPixelEventMessage", () => {
     await expect(
       processRadarPixelEventMessage(validMessage(), metadata, { persistQueuedHit })
     ).rejects.toThrow("falhou")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    persistQueuedHit.mockResolvedValue(new Output(false, [], ["falhou"], null))
+    await expect(
+      processRadarPixelEventMessage(
+        validMessage(),
+        { ...metadata, deliveryCount: 20 },
+        { persistQueuedHit },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "radar-pixel-events",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

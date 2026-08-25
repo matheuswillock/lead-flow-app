@@ -11,7 +11,9 @@ import {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
+  overlayRadarIdentityOnExtracted,
   type ExtractedLeadData,
+  type RadarIdentityOverlay,
 } from "@/lib/public-forms/lead-identity"
 import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
 import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
@@ -27,7 +29,12 @@ export {
   canCreateLeadFromExtracted,
   canUpdateLeadFromExtracted,
   extractLeadDataFromSnapshot,
+  hasCrmGateAC,
+  overlayRadarIdentityOnExtracted,
+  isBlankPublicFormAnswerValue,
+  publicFormAnswerValueText,
   type ExtractedLeadData,
+  type RadarIdentityOverlay,
 } from "@/lib/public-forms/lead-identity"
 
 const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
@@ -86,8 +93,12 @@ export async function upsertLeadFromFormAnswers(input: {
   origin: Record<string, unknown>
   extraNotes?: string[]
   allowCreate?: boolean
+  identityOverlay?: RadarIdentityOverlay | null
 }): Promise<UpsertLeadResult | null> {
-  const extracted = extractLeadDataFromSnapshot(input.snapshot, input.answers, input.visibleIds)
+  const extracted = overlayRadarIdentityOnExtracted(
+    extractLeadDataFromSnapshot(input.snapshot, input.answers, input.visibleIds),
+    input.identityOverlay,
+  )
   if (input.extraNotes?.length) {
     extracted.notes.push(...input.extraNotes)
   }

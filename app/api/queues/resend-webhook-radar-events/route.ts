@@ -1,8 +1,14 @@
 import { resendWebhookUseCase, ResendWebhookUseCase } from "@/app/api/useCases/resendWebhook/ResendWebhookUseCase"
 import {
+  buildResendWebhookRadarEventIdempotencyKey,
   handleResendWebhookRadarEventsCallback,
+  RESEND_WEBHOOK_RADAR_EVENTS_TOPIC,
   type ResendWebhookRadarEventPayload,
 } from "@/lib/queues/resend-webhook-radar-events"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -19,7 +25,8 @@ type QueueMessageMetadata = {
 export async function processResendWebhookRadarEventMessage(
   message: ResendWebhookRadarEventPayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<ResendWebhookUseCase, "handleRadarQueueEvent"> = resendWebhookUseCase
+  useCase: Pick<ResendWebhookUseCase, "handleRadarQueueEvent"> = resendWebhookUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[ResendWebhookRadarEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -73,6 +80,14 @@ export async function processResendWebhookRadarEventMessage(
       eventType: message.eventType,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RESEND_WEBHOOK_RADAR_EVENTS_TOPIC,
+      idempotencyKey: buildResendWebhookRadarEventIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { toastUserError } from '@/lib/ui/to-user-toast-message'
 import { useTeamContext } from '@/app/context/TeamContext'
 import { whatsAppAutoResponsesService } from '../services/WhatsAppAutoResponsesService'
 import type {
@@ -43,7 +44,7 @@ export function useWhatsAppAutoResponses(supabaseId: string): WhatsAppAutoRespon
       lastSuccessKeyRef.current = requestKey
     } catch (error) {
       console.error('[useWhatsAppAutoResponses] Erro ao carregar regras:', error)
-      toast.error(error instanceof Error ? error.message : 'Não foi possível carregar as regras')
+      toastUserError(error)
     } finally {
       if (currentKeyRef.current === requestKey) setIsLoading(false)
       if (inFlightKeyRef.current === requestKey) inFlightKeyRef.current = null
@@ -83,7 +84,7 @@ export function useWhatsAppAutoResponses(supabaseId: string): WhatsAppAutoRespon
         toast.success('Regra salva com sucesso')
       } catch (error) {
         console.error('[useWhatsAppAutoResponses] Erro ao salvar regra:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível salvar a regra')
+        toastUserError(error)
         throw error
       } finally {
         setIsSaving(false)
@@ -108,7 +109,7 @@ export function useWhatsAppAutoResponses(supabaseId: string): WhatsAppAutoRespon
         toast.success(isActive ? 'Regra ativada' : 'Regra desativada')
       } catch (error) {
         console.error('[useWhatsAppAutoResponses] Erro ao alternar regra:', error)
-        toast.error(error instanceof Error ? error.message : 'Não foi possível alterar a regra')
+        toastUserError(error)
       } finally {
         setIsSaving(false)
       }

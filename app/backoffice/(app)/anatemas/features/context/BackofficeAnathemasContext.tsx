@@ -8,6 +8,7 @@ import type {
   BackofficeAnathemasFilters,
   BackofficeAnathemasListResult,
 } from "./BackofficeAnathemasTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 interface BackofficeAnathemasContextValue {
   service: IBackofficeAnathemasService
@@ -80,7 +81,7 @@ export function BackofficeAnathemasProvider({
       lastSuccessKeyRef.current = loadKey
     } catch (err) {
       console.error("[BackofficeAnathemasProvider][refresh]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar anatemas")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightRef.current = false

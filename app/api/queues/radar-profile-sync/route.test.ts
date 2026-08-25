@@ -16,6 +16,10 @@ mock.module("@/lib/queues/radar-profile-sync", () => ({
   buildRadarProfileSyncIdempotencyKey: () => "key",
 }))
 
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
+}))
+
 const { processRadarProfileSyncMessage } = await import("./route")
 
 const execute = mock(async () => new Output(true, [], [], { ok: true }))
@@ -62,5 +66,24 @@ describe("processRadarProfileSyncMessage", () => {
         { execute }
       )
     ).rejects.toThrow("falhou")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    execute.mockResolvedValue(new Output(false, [], ["falhou"], null))
+    await expect(
+      processRadarProfileSyncMessage(
+        { source: "crm", teamId: "team-1", sourceId: "lead-1" },
+        { ...metadata, deliveryCount: 20 },
+        { execute },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "radar-profile-sync",
+        deliveryCount: 20,
+      }),
+    )
   })
 })

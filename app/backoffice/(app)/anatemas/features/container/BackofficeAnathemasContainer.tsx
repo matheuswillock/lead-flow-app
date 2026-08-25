@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ShieldBan } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,7 +59,7 @@ export function BackofficeAnathemasContainer() {
       setLiftTargetId(null)
     } catch (err) {
       console.error("[BackofficeAnathemasContainer][handleLiftConfirm]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao desbanir usuário")
+      toastUserError(err)
     }
   }
 

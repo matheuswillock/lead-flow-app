@@ -7,6 +7,7 @@ import { useUserContext } from "@/app/context/UserContext";
 import { deserializeAgeRanges, getTotalBeneficiaries } from "@/lib/ageRanges";
 import type { IPmeSimulatorService } from "../services/IPmeSimulatorService";
 import type { PmeHospitalId, PmeSimulationOutput, PmeSimulatorCatalog, PmeSimulatorContextValue } from "./PmeSimulatorTypes";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 const DEFAULT_HOSPITAL_ID: PmeHospitalId = "nenhum";
 
@@ -66,7 +67,7 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
         setSelectedHospitalId(result.hospitals[0].id);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao carregar catalogo.";
+      const message = toUserToastMessage(err);
       setError(message);
     } finally {
       setIsCatalogLoading(false);
@@ -94,7 +95,7 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
       setSimulation(output);
       setExpandedPlanIds([]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao executar simulacao.";
+      const message = toUserToastMessage(err);
       setError(message);
     } finally {
       setIsSimulationLoading(false);

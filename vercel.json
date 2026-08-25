@@ -99,6 +99,17 @@
           "topic": "email-campaign-dispatch",
           "retryAfterSeconds": 30,
           "initialDelaySeconds": 0,
+          "maxConcurrency": 4
+        }
+      ]
+    },
+    "app/api/queues/email-campaign-dispatch-overflow/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "email-campaign-dispatch-overflow",
+          "retryAfterSeconds": 30,
+          "initialDelaySeconds": 0,
           "maxConcurrency": 1
         }
       ]
@@ -130,6 +141,17 @@
         {
           "type": "queue/v2beta",
           "topic": "public-form-submission-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
+    "app/api/queues/public-form-progress-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "public-form-progress-events",
           "retryAfterSeconds": 60,
           "initialDelaySeconds": 0,
           "maxConcurrency": 2
@@ -267,6 +289,18 @@
     },
     {
       "path": "/api/v1/public-forms/cron/retry-queue-event-failures",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/public-forms/cron/dispatch-pending-submissions",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/public-forms/cron/mark-abandoned-sessions",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/queues/cron/retry-processing-failures",
       "schedule": "*/5 * * * *"
     }
   ]

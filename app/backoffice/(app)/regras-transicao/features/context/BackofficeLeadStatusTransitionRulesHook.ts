@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { IBackofficeLeadStatusTransitionRulesService } from "../services/IBackofficeLeadStatusTransitionRulesService";
 import type { BackofficeLeadStatusTransitionRulesState } from "./BackofficeLeadStatusTransitionRulesTypes";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 const initialState: BackofficeLeadStatusTransitionRulesState = {
   rules: [],
@@ -36,7 +37,7 @@ export function useBackofficeLeadStatusTransitionRulesHook(
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Erro ao carregar regras",
+        error: toUserToastMessage(error),
       }));
     } finally {
       inFlightRef.current = false;

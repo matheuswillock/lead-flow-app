@@ -21,7 +21,6 @@ async function resolveCachedFeatureAccess(
   teamContext: FeatureAccessTeamContext | null
 ) {
   "use cache"
-  cacheTag(cacheTags.featureAccess(profileId, activeTeamId))
   cacheTag(cacheTags.featureAccessProfile(profileId))
   cacheTag(cacheTags.featureAccessOwner(managerId))
   cacheTag(cacheTags.backofficeFeatures())

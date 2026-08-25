@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IBackofficeEmailAnalyticsService } from "../services/IBackofficeEmailAnalyticsService"
 import type {
   AnalyticsData,
@@ -60,7 +60,7 @@ export function BackofficeEmailAnalyticsProvider({ children, service }: Provider
         setData(result)
       } catch (err) {
         console.error("[BackofficeEmailAnalyticsContext][fetchData]", err)
-        if (!silent) toast.error(err instanceof Error ? err.message : "Erro ao carregar analytics")
+        if (!silent) toastUserError(err)
       } finally {
         if (silent) setIsRefreshing(false)
         else setIsLoading(false)

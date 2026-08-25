@@ -777,6 +777,15 @@ lost lost
     
 
 
+        subscription_cycle {
+            MONTHLY MONTHLY
+QUARTERLY QUARTERLY
+SEMIANNUALLY SEMIANNUALLY
+YEARLY YEARLY
+        }
+    
+
+
         contract_type {
             individual individual
 corporate corporate
@@ -925,12 +934,22 @@ skipped skipped
 
         public_form_queue_event_kind {
             metric metric
+progress progress
 submission submission
         }
     
 
 
         public_form_queue_event_failure_status {
+            pending pending
+processing processing
+resolved resolved
+failed failed
+        }
+    
+
+
+        queue_processing_failure_status {
             pending pending
 processing processing
 resolved resolved
@@ -1437,6 +1456,23 @@ form_completed form_completed
 lead_created lead_created
 lead_attached lead_attached
 meeting_scheduled meeting_scheduled
+page_viewed page_viewed
+page_advanced page_advanced
+page_returned page_returned
+question_focused question_focused
+form_submit_attempted form_submit_attempted
+form_validation_failed form_validation_failed
+form_exit_intent form_exit_intent
+form_abandoned form_abandoned
+form_resumed form_resumed
+        }
+    
+
+
+        public_form_journey_state {
+            active active
+abandoned abandoned
+completed completed
         }
     
 
@@ -1787,7 +1823,6 @@ completed completed
     String asaasInstallmentId "❓"
     Decimal discountPercent "❓"
     String discountStatus "❓"
-    String discountApprovedByProfileId "❓"
     DateTime discountApprovedAt "❓"
     Decimal negotiatedTotalAmount "❓"
     Int installmentCount "❓"
@@ -2857,6 +2892,25 @@ completed completed
     DateTime nextAttemptAt 
     String lastError "❓"
     String failureReason "❓"
+    String eventId "❓"
+    Int schemaVersion "❓"
+    String topic "❓"
+    String failureStage "❓"
+    String lastErrorCode "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_queue_processing_failures" {
+    String id "🗝️"
+    String topic 
+    String idempotencyKey 
+    Json payload 
+    QueueProcessingFailureStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    String lastError "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3535,6 +3589,14 @@ completed completed
     }
   
 
+  "corretor_studio_radar_pixel_rate_limits" {
+    String key "🗝️"
+    Int count 
+    DateTime resetAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_radar_segments" {
     String id "🗝️"
     String name 
@@ -3918,6 +3980,7 @@ completed completed
     String mappingKey "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    DateTime deletedAt "❓"
     }
   
 
@@ -3969,6 +4032,7 @@ completed completed
   "corretor_studio_public_form_submissions" {
     String id "🗝️"
     String requestKey 
+    String eventId "❓"
     String visitorSessionId "❓"
     PublicFormCompletionStatus completionStatus 
     PublicFormSubmissionStatus status 
@@ -3977,6 +4041,12 @@ completed completed
     Json origin "❓"
     String errorMessage "❓"
     DateTime submittedAt "❓"
+    DateTime dispatchAcceptedAt "❓"
+    Int dispatchAttemptCount 
+    DateTime nextDispatchAt "❓"
+    String lastDispatchError "❓"
+    String thankYouPageId "❓"
+    DateTime scheduledMeetingStartsAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3986,6 +4056,9 @@ completed completed
     String id "🗝️"
     Json value 
     Json questionSnapshot 
+    String sourceEventId "❓"
+    DateTime answeredAt "❓"
+    String mappingKey "❓"
     DateTime createdAt 
     }
   
@@ -3996,8 +4069,30 @@ completed completed
     String visitorSessionId 
     PublicFormMetricType eventType 
     String eventKey 
+    String eventId "❓"
+    Int schemaVersion "❓"
+    DateTime occurredAt "❓"
     Json origin "❓"
     DateTime createdAt 
+    }
+  
+
+  "corretor_studio_public_form_journey_sessions" {
+    String id "🗝️"
+    String visitorSessionId 
+    PublicFormJourneyState state 
+    DateTime startedAt 
+    DateTime lastActivityAt 
+    String currentPageId "❓"
+    Int currentPageIndex "❓"
+    DateTime lastExitIntentAt "❓"
+    DateTime lastAbandonedAt "❓"
+    DateTime lastResumedAt "❓"
+    Int abandonmentCount 
+    DateTime submittedAt "❓"
+    DateTime completedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
     }
   
 
@@ -4168,6 +4263,7 @@ completed completed
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
+    "backoffice_adhesions" }o--|o corretor_studio_profiles : "discountApprovedBy"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
@@ -4388,6 +4484,7 @@ completed completed
     "corretor_studio_resend_webhook_processing_failures" |o--|| "ResendWebhookProcessingFailureStatus" : "enum:status"
     "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventKind" : "enum:kind"
     "corretor_studio_public_form_queue_event_failures" |o--|| "PublicFormQueueEventFailureStatus" : "enum:status"
+    "corretor_studio_queue_processing_failures" |o--|| "QueueProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
@@ -4622,6 +4719,9 @@ completed completed
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_metric_events" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_metric_events" }o--|o corretor_studio_public_form_questions : "question"
+    "corretor_studio_public_form_journey_sessions" |o--|| "PublicFormJourneyState" : "enum:state"
+    "corretor_studio_public_form_journey_sessions" }o--|| corretor_studio_public_forms : "form"
+    "corretor_studio_public_form_journey_sessions" }o--|| corretor_studio_public_form_publications : "publication"
     "backoffice_lead_extractions" |o--|| "BackofficeLeadExtractionStatus" : "enum:status"
     "backoffice_lead_extractions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_lead_extraction_results" |o--|o "BackofficeCompanyType" : "enum:type"

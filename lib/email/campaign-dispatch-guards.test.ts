@@ -5,7 +5,10 @@ import {
   getResendDomainDispatchWarnings,
   isResendDomainSendCapable,
   isResendDomainTrackingCapable,
+  RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
+  RESEND_DOMAIN_METRICS_DISABLED_MESSAGE,
   RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+  resolveReconciledCampaignStatus,
   resolveCampaignStatusAfterDispatch,
 } from "./campaign-dispatch-guards"
 
@@ -60,7 +63,7 @@ describe("assertResendDomainTrackingReady", () => {
     expect(assertResendDomainTrackingReady({ domainName: "   " })).toEqual({ ok: true })
   })
 
-  it("bloqueia quando métricas estão desligadas", () => {
+  it("métricas desligadas com DNS verificado → mensagem de MÉTRICAS", () => {
     expect(
       assertResendDomainTrackingReady({
         domainName: "example.com",
@@ -68,10 +71,13 @@ describe("assertResendDomainTrackingReady", () => {
         openTracking: false,
         clickTracking: false,
       })
-    ).toEqual({ ok: false, message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE })
+    ).toEqual({ ok: false, message: RESEND_DOMAIN_METRICS_DISABLED_MESSAGE })
   })
 
-  it("bloqueia partially_failed e partially_verified mesmo com métricas ligadas", () => {
+  it("partially_failed/partially_verified → mensagem de DNS, mesmo com métricas ligadas", () => {
+    // A causa reportada precisa ser o DNS: mandar "habilite as métricas" aqui
+    // aponta para um toggle que não destrava nada, porque o gate exige
+    // `verified` exato.
     const base = {
       domainName: "example.com",
       openTracking: true,
@@ -79,12 +85,23 @@ describe("assertResendDomainTrackingReady", () => {
     }
     expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_failed" })).toEqual({
       ok: false,
-      message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+      message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
     })
     expect(assertResendDomainTrackingReady({ ...base, domainStatus: "partially_verified" })).toEqual({
       ok: false,
-      message: RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE,
+      message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE,
     })
+  })
+
+  it("DNS não verificado E métricas desligadas → DNS tem precedência", () => {
+    expect(
+      assertResendDomainTrackingReady({
+        domainName: "example.com",
+        domainStatus: "partially_failed",
+        openTracking: false,
+        clickTracking: false,
+      })
+    ).toEqual({ ok: false, message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE })
   })
 
   it("permite verified com pelo menos uma métrica ligada", () => {
@@ -116,7 +133,7 @@ describe("getResendDomainDispatchWarnings", () => {
         openTracking: true,
         clickTracking: true,
       })
-    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    ).toEqual([RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE])
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
@@ -124,7 +141,7 @@ describe("getResendDomainDispatchWarnings", () => {
         openTracking: true,
         clickTracking: true,
       })
-    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    ).toEqual([RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE])
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
@@ -132,7 +149,7 @@ describe("getResendDomainDispatchWarnings", () => {
         openTracking: false,
         clickTracking: false,
       })
-    ).toEqual([RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE])
+    ).toEqual([RESEND_DOMAIN_METRICS_DISABLED_MESSAGE])
     expect(
       getResendDomainDispatchWarnings({
         domainName: "example.com",
@@ -194,7 +211,8 @@ describe("resolveCampaignStatusAfterDispatch", () => {
   })
 
   it("marca partially_sent quando houve envios mas faltam destinatários", () => {
-    const terminal = resolveCampaignStatusAfterDispatch(7223, "Cota mensal excedida", 12664)
+    // Cota excedida deixa 5441 logs `failed` — recusa do provedor, retentável.
+    const terminal = resolveCampaignStatusAfterDispatch(7223, "Cota mensal excedida", 12664, 5441)
     expect(terminal.campaignStatus).toBe("partially_sent")
     expect(terminal.dispatchStatus).toBe("completed")
     expect(terminal.errorMessage).toBe("Cota mensal excedida")
@@ -204,5 +222,90 @@ describe("resolveCampaignStatusAfterDispatch", () => {
     const terminal = resolveCampaignStatusAfterDispatch(10, null, 10)
     expect(terminal.campaignStatus).toBe("sent")
     expect(terminal.errorMessage).toBeNull()
+  })
+
+  // `partially_sent` = sobrou alguem que vale retentar. Suprimido (nossa
+  // pre-validacao) e bounce nao valem: reprovam de novo na mesma regra.
+  it("so suprimidos fecham a campanha como sent, sem oferecer reenvio", () => {
+    // Homens v2 (1/4), 22/08/2026: 1998 na audiencia, 1969 logs, 1782 enviados,
+    // 187 suprimidos, 0 falhas reais. Os 29 restantes nunca viraram log.
+    const terminal = resolveCampaignStatusAfterDispatch(1782, null, 1998, 0)
+    expect(terminal.campaignStatus).toBe("sent")
+    expect(terminal.dispatchStatus).toBe("completed")
+    expect(terminal.errorMessage).toBeNull()
+  })
+
+  it("uma falha real ja basta para partially_sent", () => {
+    const terminal = resolveCampaignStatusAfterDispatch(1782, "429 — rate limit", 1998, 1)
+    expect(terminal.campaignStatus).toBe("partially_sent")
+    expect(terminal.errorMessage).toBe("429 — rate limit")
+  })
+
+  it("audiencia inteiramente suprimida nao e sucesso", () => {
+    const terminal = resolveCampaignStatusAfterDispatch(0, null, 500, 0)
+    expect(terminal.campaignStatus).toBe("failed")
+    expect(terminal.errorMessage).toBeTruthy()
+  })
+
+  it("total nao fechado sem falha real nao segura a campanha em partially_sent", () => {
+    // Era o bug: 1969 < 1998 mantinha reenvio disponivel para sempre.
+    expect(resolveCampaignStatusAfterDispatch(1969, null, 1998, 0).campaignStatus).toBe("sent")
+  })
+})
+
+/**
+ * Regra irma da de cima, aplicada na releitura da lista. As duas precisam
+ * concordar: quando divergiram, o reconciler regravou `partially_sent` por cima
+ * do `sent` que o disparo tinha acabado de persistir, e o botao de reenviar
+ * falhas voltou sozinho na proxima leitura.
+ */
+describe("resolveReconciledCampaignStatus", () => {
+  it("caso real Homens v2: 1782 aceitos + 187 suprimidos de 1998 fecha como sent", () => {
+    // 1782 + 187 = 1969, NAO 1998. Os 29 restantes nunca viraram log — foram
+    // descartados na materializacao. Comparar contagem de log com o total da
+    // audiencia devolve `partially_sent` para sempre, que e exatamente o bug
+    // que o teste acima ja documentava para o outro lado da regra.
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 1782, failedCount: 0, queuedCount: 0, suppressedCount: 187 }
+      )
+    ).toBe("sent")
+  })
+
+  it("falha retentavel mantem partially_sent", () => {
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 900, failedCount: 100, queuedCount: 0, suppressedCount: 0 }
+      )
+    ).toBe("partially_sent")
+  })
+
+  it("log ainda na fila mantem partially_sent", () => {
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 900, failedCount: 0, queuedCount: 100, suppressedCount: 0 }
+      )
+    ).toBe("partially_sent")
+  })
+
+  it("nenhum aceite e failed", () => {
+    expect(
+      resolveReconciledCampaignStatus(
+        { acceptedCount: 0, failedCount: 50, queuedCount: 0, suppressedCount: 10 }
+      )
+    ).toBe("failed")
+  })
+
+  it("suprimido sozinho, sem nada retentavel, fecha como sent", () => {
+    // Nao ha `totalRecipients` na assinatura de proposito: comparar contagem de
+    // log com o total da audiencia foi exatamente o bug.
+    expect(
+      resolveReconciledCampaignStatus({
+        acceptedCount: 10,
+        failedCount: 0,
+        queuedCount: 0,
+        suppressedCount: 990,
+      })
+    ).toBe("sent")
   })
 })

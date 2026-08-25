@@ -1,6 +1,7 @@
 import { ActivityType, Prisma } from "@prisma/client"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import type { PublicFormDraftInput, PublicFormListFilters } from "@/lib/public-forms/types"
 import { isThankYouRuleTarget, normalizeThankYouPages } from "@/lib/public-forms/thank-you-pages"
 import { inverseRuleAction } from "@/lib/public-forms/engine"
@@ -17,11 +18,13 @@ import {
 import {
   isStaleQuestionIdForeignKey,
   questionIdFromSnapshot,
+  resolveStoredSubmissionAnswerQuestionId,
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "@/lib/public-forms/publication-snapshot"
 import {
   type IPublicFormsRepository,
+  type PendingPublicFormSubmissionDispatch,
   type PublicFormCompleteSubmissionInput,
   type PublicFormDetailRecord,
   type PublicFormListItemRecord,
@@ -47,6 +50,41 @@ function toPublishedSnapshot(publication: {
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+function isPrismaUniqueConstraint(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
+
+function isBlankProgressAnswerValue(
+  value: Prisma.JsonValue | Prisma.InputJsonValue | null | undefined,
+): boolean {
+  if (value == null) return true
+  if (typeof value === "string") return value.trim() === ""
+  if (Array.isArray(value)) return value.length === 0
+  return false
+}
+
+const PERSIST_ANSWER_FK_SAVEPOINT = "persist_answer_fk"
+const PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT = "persist_answer_without_fk"
+/** Tombstone range above the live reorder band (100_000+) so unique(formId, position) stays free. */
+export const SOFT_DELETED_QUESTION_POSITION_BASE = 1_000_000
+
+type ProgressSubmissionWrite = {
+  visitorSessionId: string
+  completionStatus: import("@prisma/client").PublicFormCompletionStatus
+  leadId?: string | null
+  origin: Prisma.InputJsonValue
+  answers: ProgressAnswerWrite[]
+}
+
+type ProgressAnswerWrite = {
+  questionId: string
+  value: Prisma.InputJsonValue
+  questionSnapshot: Prisma.InputJsonValue
+  answeredAt?: Date | null
+  sourceEventId?: string | null
+  mappingKey?: string | null
 }
 
 const leadSubmissionSelect = {
@@ -79,6 +117,46 @@ const leadSubmissionSelect = {
   },
 } satisfies Prisma.PublicFormSubmissionSelect
 
+export function nextSoftDeletedQuestionPosition(maxExistingDeletedPosition: number | null): number {
+  return Math.max(
+    SOFT_DELETED_QUESTION_POSITION_BASE,
+    (maxExistingDeletedPosition ?? SOFT_DELETED_QUESTION_POSITION_BASE - 1) + 1,
+  )
+}
+
+async function softDeleteQuestionsMissingFromDraft(
+  tx: Prisma.TransactionClient,
+  formId: string,
+  incomingQuestionIds: string[],
+) {
+  const removed = await tx.publicFormQuestion.findMany({
+    where: {
+      formId,
+      deletedAt: null,
+      ...(incomingQuestionIds.length > 0 ? { id: { notIn: incomingQuestionIds } } : {}),
+    },
+    select: { id: true },
+    orderBy: { position: "asc" },
+  })
+  if (removed.length === 0) return
+
+  const maxTombstone = await tx.publicFormQuestion.aggregate({
+    where: { formId, deletedAt: { not: null } },
+    _max: { position: true },
+  })
+  const startPosition = nextSoftDeletedQuestionPosition(maxTombstone._max.position)
+  const deletedAt = new Date()
+  for (const [index, question] of removed.entries()) {
+    await tx.publicFormQuestion.update({
+      where: { id: question.id },
+      data: {
+        deletedAt,
+        position: startPosition + index,
+      },
+    })
+  }
+}
+
 async function replaceDraftRelations(
   tx: Prisma.TransactionClient,
   formId: string,
@@ -92,16 +170,11 @@ async function replaceDraftRelations(
   const incomingQuestionIds = input.questions
     .map((question) => question.id)
     .filter((id): id is string => Boolean(id))
-  await tx.publicFormQuestion.deleteMany({
-    where: {
-      formId,
-      ...(incomingQuestionIds.length > 0 ? { id: { notIn: incomingQuestionIds } } : {}),
-    },
-  })
+  await softDeleteQuestionsMissingFromDraft(tx, formId, incomingQuestionIds)
 
-  // Avoid unique(formId, position) collisions while reordering existing rows.
+  // Avoid unique(formId, position) collisions while reordering existing live rows.
   const existingQuestions = await tx.publicFormQuestion.findMany({
-    where: { formId },
+    where: { formId, deletedAt: null },
     select: { id: true },
     orderBy: { position: "asc" },
   })
@@ -133,6 +206,7 @@ async function replaceDraftRelations(
         required: question.required,
         scoreWeight: question.scoreWeight ?? 0,
         position,
+        deletedAt: null,
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
         mappingKey: question.mappingKey,
@@ -146,6 +220,7 @@ async function replaceDraftRelations(
         required: question.required,
         scoreWeight: question.scoreWeight ?? 0,
         position,
+        deletedAt: null,
         config: json(question.config ?? {}),
         mappingTarget: question.mappingTarget,
         mappingKey: question.mappingKey,
@@ -527,6 +602,23 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async attachLeadIdToSessionSubmission(
+    formId: string,
+    visitorSessionId: string,
+    leadId: string,
+  ) {
+    const session = await this.findLatestSessionSubmissionOnForm(formId, visitorSessionId)
+    if (!session) return null
+    if (session.leadId) return session
+    return prisma.publicFormSubmission.update({
+      where: { id: session.id },
+      data: {
+        leadId,
+        ...(session.completionStatus === "complete" ? {} : { completionStatus: "partial" }),
+      },
+    })
+  }
+
   findAvailabilityTeamContext(formId: string) {
     return prisma.publicForm.findUnique({
       where: { id: formId },
@@ -556,6 +648,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     visitorSessionId: string
     eventType: import("@prisma/client").PublicFormMetricType
     eventKey: string
+    eventId?: string | null
+    schemaVersion?: number | null
+    occurredAt?: Date | null
     origin: Prisma.InputJsonValue
   }) {
     const create = (questionId: string | null | undefined) => ({
@@ -566,6 +661,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       visitorSessionId: input.visitorSessionId,
       eventType: input.eventType,
       eventKey: input.eventKey,
+      eventId: input.eventId,
+      schemaVersion: input.schemaVersion,
+      occurredAt: input.occurredAt,
       origin: input.origin,
     })
 
@@ -980,6 +1078,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return prisma.publicFormSubmission.findUnique({ where: { requestKey } })
   }
 
+  async findLeadForSubmission(submissionId: string) {
+    const submission = await prisma.publicFormSubmission.findUnique({
+      where: { id: submissionId },
+      select: { lead: true },
+    })
+    return submission?.lead ?? null
+  }
+
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: {
@@ -1002,15 +1108,43 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async listSubmissionAnswers(submissionId: string) {
+    const rows = await prisma.publicFormAnswer.findMany({
+      where: { submissionId },
+      select: { questionId: true, value: true, questionSnapshot: true },
+    })
+    return rows.flatMap((row) => {
+      const questionId = resolveStoredSubmissionAnswerQuestionId(
+        row.questionId,
+        row.questionSnapshot,
+      )
+      return questionId ? [{ questionId, value: row.value as unknown }] : []
+    })
+  }
+
+  findFormsByIdsForTeam(
+    teamId: string,
+    formIds: string[],
+  ): Promise<Array<{ id: string; name: string; publicId: string }>> {
+    if (formIds.length === 0) return Promise.resolve([])
+    return prisma.publicForm.findMany({
+      where: { teamId, id: { in: formIds } },
+      select: { id: true, name: true, publicId: true },
+    })
+  }
+
   createSubmission(data: {
     formId: string
     publicationId: string
     requestKey: string
+    eventId?: string | null
     visitorSessionId?: string | null
     score?: number
     scoreBandLabel?: string | null
     origin: Prisma.InputJsonValue
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
+    thankYouPageId?: string | null
+    scheduledMeetingStartsAt?: Date | null
   }) {
     return prisma.publicFormSubmission.create({
       data: {
@@ -1028,30 +1162,15 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     origin: Prisma.InputJsonValue
     completionStatus: import("@prisma/client").PublicFormCompletionStatus
     leadId?: string | null
-    answers: Array<{
-      questionId: string
-      value: Prisma.InputJsonValue
-      questionSnapshot: Prisma.InputJsonValue
-    }>
+    answers: ProgressAnswerWrite[]
   }) {
     const existing = await this.findProgressSubmission(data.publicationId, data.visitorSessionId)
     if (existing) {
-      await prisma.$transaction(async (tx) => {
-        await tx.publicFormSubmission.update({
-          where: { id: existing.id },
-          data: {
-            completionStatus: data.completionStatus,
-            leadId: data.leadId ?? existing.leadId,
-            origin: data.origin,
-          },
-        })
-        await this.syncSubmissionAnswers(tx, existing.id, data.answers)
-      })
-      return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: existing.id } })
+      return this.updateProgressSubmissionWithAnswers(existing.id, data, existing.leadId)
     }
 
-    return prisma.$transaction(async (tx) => {
-      const submission = await tx.publicFormSubmission.create({
+    try {
+      const submission = await prisma.publicFormSubmission.create({
         data: {
           formId: data.formId,
           publicationId: data.publicationId,
@@ -1063,8 +1182,48 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           score: 0,
         },
       })
-      await this.syncSubmissionAnswers(tx, submission.id, data.answers)
+      await this.withVisitorProgressLock(data.visitorSessionId, async (tx) => {
+        await this.mergeSubmissionAnswers(tx, submission.id, data.answers)
+      })
       return submission
+    } catch (error) {
+      if (!isPrismaUniqueConstraint(error)) throw error
+      const winner = await this.findSubmissionByRequestKey(data.requestKey)
+      if (!winner) throw error
+      console.info(
+        "[PublicFormsRepository][upsertProgressSubmission] requestKey em disputa, reusando o vencedor",
+        { requestKey: data.requestKey, submissionId: winner.id },
+      )
+      return this.updateProgressSubmissionWithAnswers(winner.id, data, winner.leadId)
+    }
+  }
+
+  private async updateProgressSubmissionWithAnswers(
+    submissionId: string,
+    data: ProgressSubmissionWrite,
+    previousLeadId: string | null,
+  ) {
+    await this.withVisitorProgressLock(data.visitorSessionId, async (tx) => {
+      await tx.publicFormSubmission.update({
+        where: { id: submissionId },
+        data: {
+          completionStatus: data.completionStatus,
+          leadId: data.leadId ?? previousLeadId,
+          origin: data.origin,
+        },
+      })
+      await this.mergeSubmissionAnswers(tx, submissionId, data.answers)
+    })
+    return prisma.publicFormSubmission.findUniqueOrThrow({ where: { id: submissionId } })
+  }
+
+  private async withVisitorProgressLock(
+    visitorSessionId: string,
+    work: (tx: Prisma.TransactionClient) => Promise<void>,
+  ) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`public-form-progress:${visitorSessionId}`}))`
+      await work(tx)
     })
   }
 
@@ -1100,12 +1259,22 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  /**
+   * `escapeLikePattern` no e-mail: sem ele o `mode: "insensitive"` vira ILIKE
+   * com o valor cru, e `_`/`%` do endereço injetam no pool candidatos que não
+   * casam por e-mail nenhum. `findMatchingLead` decide no último critério por
+   * `byName.length === 1`, então o lixo do curinga faz uma resposta de
+   * formulário público ser gravada por cima do lead errado — ou empata o
+   * `byName` em 2 e perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
+   */
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {
         teamId,
         OR: [
-          ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
+          ...(email
+            ? [{ email: { equals: escapeLikePattern(email), mode: "insensitive" as const } }]
+            : []),
           ...(phone ? [{ phone }, { phone: normalizedPhone }] : []),
         ],
       },
@@ -1164,6 +1333,92 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     }
   }
 
+  private async mergeSubmissionAnswers(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answers: ProgressAnswerWrite[],
+  ) {
+    // Blur payloads carry one answer; deleteMany would wipe a concurrent full-page save.
+    // Queue retries can still deliver a stale empty blur after a filled save of the same question.
+    for (const answer of answers) {
+      if (await this.shouldSkipBlankProgressOverwrite(tx, submissionId, answer)) continue
+      if (await this.shouldSkipStaleProgressOverwrite(tx, submissionId, answer)) continue
+      await this.writeSubmissionAnswer(tx, submissionId, answer)
+    }
+  }
+
+  /**
+   * Retry atrasado do outbox não pode regredir uma resposta mais nova.
+   * Ordem causal do contrato v1: (occurredAt, eventId). Resposta sem
+   * `answeredAt` (legado) preserva o comportamento anterior de overwrite.
+   */
+  private async shouldSkipStaleProgressOverwrite(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: ProgressAnswerWrite,
+  ): Promise<boolean> {
+    if (!answer.questionId || !answer.answeredAt) return false
+    const existing = await tx.publicFormAnswer.findUnique({
+      where: {
+        submissionId_questionId: {
+          submissionId,
+          questionId: answer.questionId,
+        },
+      },
+      select: { answeredAt: true, sourceEventId: true },
+    })
+    if (!existing?.answeredAt) return false
+    const incomingTime = answer.answeredAt.getTime()
+    const storedTime = existing.answeredAt.getTime()
+    if (incomingTime !== storedTime) return incomingTime < storedTime
+    if (!answer.sourceEventId || !existing.sourceEventId) return false
+    return answer.sourceEventId < existing.sourceEventId
+  }
+
+  private async shouldSkipBlankProgressOverwrite(
+    tx: Prisma.TransactionClient,
+    submissionId: string,
+    answer: {
+      questionId: string
+      value: Prisma.InputJsonValue
+    },
+  ): Promise<boolean> {
+    if (!answer.questionId || !isBlankProgressAnswerValue(answer.value)) return false
+    const existing = await tx.publicFormAnswer.findUnique({
+      where: {
+        submissionId_questionId: {
+          submissionId,
+          questionId: answer.questionId,
+        },
+      },
+      select: { value: true },
+    })
+    return Boolean(existing && !isBlankProgressAnswerValue(existing.value))
+  }
+
+  private async withTransactionSavepoint<T>(
+    tx: Prisma.TransactionClient,
+    savepointName: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    await tx.$executeRawUnsafe(`SAVEPOINT ${savepointName}`)
+    try {
+      const result = await operation()
+      await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${savepointName}`)
+      return result
+    } catch (error) {
+      try {
+        await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${savepointName}`)
+      } catch (rollbackError) {
+        console.error("[PublicFormsRepository][withTransactionSavepoint] rollback falhou", {
+          savepointName,
+          rollbackError,
+        })
+      }
+      throw error
+    }
+  }
+
   private async writeSubmissionAnswer(
     tx: Prisma.TransactionClient,
     submissionId: string,
@@ -1171,46 +1426,62 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       questionId: string | null
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date | null
+      sourceEventId?: string | null
+      mappingKey?: string | null
     },
   ) {
+    // `undefined` = escrita sem envelope causal (submissão final/legado): não toca os metadados.
+    const causalMetadata = {
+      answeredAt: answer.answeredAt ?? undefined,
+      sourceEventId: answer.sourceEventId ?? undefined,
+      mappingKey: answer.mappingKey ?? undefined,
+    }
     if (!answer.questionId) {
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: answer.value,
         questionSnapshot: answer.questionSnapshot,
+        ...causalMetadata,
       })
       return
     }
 
+    const questionId = answer.questionId
     const data = {
       submissionId,
-      questionId: answer.questionId,
+      questionId,
       value: answer.value,
       questionSnapshot: answer.questionSnapshot,
+      ...causalMetadata,
     }
 
     try {
-      await tx.publicFormAnswer.upsert({
-        where: {
-          submissionId_questionId: {
-            submissionId,
-            questionId: answer.questionId,
+      await this.withTransactionSavepoint(tx, PERSIST_ANSWER_FK_SAVEPOINT, () =>
+        tx.publicFormAnswer.upsert({
+          where: {
+            submissionId_questionId: {
+              submissionId,
+              questionId,
+            },
           },
-        },
-        create: data,
-        update: {
-          value: answer.value,
-          questionSnapshot: answer.questionSnapshot,
-        },
-      })
+          create: data,
+          update: {
+            value: answer.value,
+            questionSnapshot: answer.questionSnapshot,
+            ...causalMetadata,
+          },
+        }),
+      )
     } catch (error) {
-      if (!isStaleQuestionIdForeignKey(error, answer.questionId)) throw error
+      if (!isStaleQuestionIdForeignKey(error, questionId)) throw error
       console.info("[PublicFormsRepository][writeSubmissionAnswer] questionId obsoleto, gravando sem o FK", {
         submissionId,
-        questionId: answer.questionId,
+        questionId,
       })
       await this.persistAnswerWithoutQuestionFk(tx, submissionId, {
         value: data.value,
         questionSnapshot: data.questionSnapshot,
+        ...causalMetadata,
       })
     }
   }
@@ -1221,6 +1492,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     data: {
       value: Prisma.InputJsonValue
       questionSnapshot: Prisma.InputJsonValue
+      answeredAt?: Date
+      sourceEventId?: string
+      mappingKey?: string
     },
   ) {
     const snapshotId = questionIdFromSnapshot(data.questionSnapshot)
@@ -1231,47 +1505,63 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       })
       const match = existing.find((row) => questionIdFromSnapshot(row.questionSnapshot) === snapshotId)
       if (match) {
-        await tx.publicFormAnswer.update({
-          where: { id: match.id },
-          data: {
-            value: data.value,
-            questionSnapshot: data.questionSnapshot,
-          },
-        })
+        await this.withTransactionSavepoint(tx, PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT, () =>
+          tx.publicFormAnswer.update({
+            where: { id: match.id },
+            data: {
+              value: data.value,
+              questionSnapshot: data.questionSnapshot,
+              answeredAt: data.answeredAt,
+              sourceEventId: data.sourceEventId,
+              mappingKey: data.mappingKey,
+            },
+          }),
+        )
         return
       }
     }
-    await tx.publicFormAnswer.create({
-      data: {
-        submissionId,
-        questionId: null,
-        value: data.value,
-        questionSnapshot: data.questionSnapshot,
-      },
-    })
+    await this.withTransactionSavepoint(tx, PERSIST_ANSWER_WITHOUT_FK_SAVEPOINT, () =>
+      tx.publicFormAnswer.create({
+        data: {
+          submissionId,
+          questionId: null,
+          value: data.value,
+          questionSnapshot: data.questionSnapshot,
+          answeredAt: data.answeredAt,
+          sourceEventId: data.sourceEventId,
+          mappingKey: data.mappingKey,
+        },
+      }),
+    )
   }
 
   finalizeProgressSubmission(
     submissionId: string,
     data: {
       requestKey: string
+      eventId?: string | null
       score: number
       scoreBandLabel?: string | null
       origin: Prisma.InputJsonValue
       visitorSessionId?: string | null
+      thankYouPageId?: string | null
+      scheduledMeetingStartsAt?: Date | null
     },
   ) {
     return prisma.publicFormSubmission.update({
       where: { id: submissionId },
       data: {
         requestKey: data.requestKey,
+        eventId: data.eventId,
         score: data.score,
         scoreBandLabel: data.scoreBandLabel,
         origin: data.origin,
         visitorSessionId: data.visitorSessionId,
+        thankYouPageId: data.thankYouPageId,
+        scheduledMeetingStartsAt: data.scheduledMeetingStartsAt,
         completionStatus: "partial",
       },
-      select: { id: true },
+      select: { id: true, eventId: true },
     })
   }
 
@@ -1293,7 +1583,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
-          leadId: input.leadId ?? null,
+          leadId: input.leadId ?? undefined,
           status: "completed",
           completionStatus: "complete",
           submittedAt: new Date(),
@@ -1367,6 +1657,98 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     return result.count === 1
+  }
+
+  async markSubmissionDispatchAccepted(submissionId: string): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        dispatchAcceptedAt: new Date(),
+        dispatchAttemptCount: { increment: 1 },
+        nextDispatchAt: null,
+        lastDispatchError: null,
+      },
+    })
+  }
+
+  async markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: submissionId },
+      data: {
+        dispatchAttemptCount: { increment: 1 },
+        nextDispatchAt: new Date(Date.now() + 5 * 60_000),
+        lastDispatchError: errorMessage.slice(0, 2_000),
+      },
+    })
+  }
+
+  async claimPendingSubmissionDispatches(input: {
+    limit: number
+    leaseUntil: Date
+  }): Promise<PendingPublicFormSubmissionDispatch[]> {
+    return prisma.$transaction(async (transaction) => {
+      const claimedRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "public"."corretor_studio_public_form_submissions"
+        WHERE "status" = 'processing'
+          AND "dispatchAcceptedAt" IS NULL
+          AND ("nextDispatchAt" IS NULL OR "nextDispatchAt" <= NOW())
+        ORDER BY "nextDispatchAt" ASC NULLS FIRST, "createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${input.limit}
+      `)
+
+      const submissionIds = claimedRows.map((row) => row.id)
+      if (submissionIds.length === 0) return []
+
+      await transaction.publicFormSubmission.updateMany({
+        where: { id: { in: submissionIds } },
+        data: { nextDispatchAt: input.leaseUntil },
+      })
+
+      const submissions = await transaction.publicFormSubmission.findMany({
+        where: { id: { in: submissionIds } },
+        select: {
+          id: true,
+          publicationId: true,
+          eventId: true,
+          requestKey: true,
+          visitorSessionId: true,
+          score: true,
+          scoreBandLabel: true,
+          origin: true,
+          thankYouPageId: true,
+          scheduledMeetingStartsAt: true,
+          publication: { select: { snapshot: true } },
+          answers: {
+            orderBy: { createdAt: "asc" },
+            select: { questionId: true, value: true, questionSnapshot: true },
+          },
+        },
+      })
+
+      const submissionsById = new Map(submissions.map((submission) => [submission.id, submission]))
+      return submissionIds.flatMap((submissionId) => {
+        const submission = submissionsById.get(submissionId)
+        if (!submission) return []
+        return [
+          {
+            id: submission.id,
+            publicationId: submission.publicationId,
+            eventId: submission.eventId,
+            requestKey: submission.requestKey,
+            visitorSessionId: submission.visitorSessionId,
+            score: submission.score,
+            scoreBandLabel: submission.scoreBandLabel,
+            origin: submission.origin,
+            thankYouPageId: submission.thankYouPageId,
+            scheduledMeetingStartsAt: submission.scheduledMeetingStartsAt,
+            snapshot: submission.publication.snapshot,
+            answers: submission.answers,
+          },
+        ]
+      })
+    })
   }
 
   async findCampaignContactListIds(teamId: string, campaignId: string) {

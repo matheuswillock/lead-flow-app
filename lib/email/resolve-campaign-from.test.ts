@@ -15,21 +15,22 @@ import {
 } from "./resolve-campaign-from"
 
 describe("resolveCampaignFrom", () => {
-  it("sem domínio e sem remetente → deliveryby@corretorstudio.com", () => {
+  it("sem domínio e sem remetente → contato@corretorstudio.com", () => {
     expect(resolveCampaignFrom({})).toEqual({
       fromName: PLATFORM_FROM_NAME,
-      fromEmail: PLATFORM_FROM_EMAIL,
+      fromEmail: "contato@corretorstudio.com",
     })
+    expect(PLATFORM_FROM_EMAIL).toBe("contato@corretorstudio.com")
   })
 
-  it("com domínio e sem remetente → deliveryby@[domínio]", () => {
+  it("com domínio e sem remetente → contato@[domínio]", () => {
     expect(
       resolveCampaignFrom({
         domainName: "mail.empresa.com.br",
       })
     ).toEqual({
       fromName: PLATFORM_FROM_NAME,
-      fromEmail: "deliveryby@mail.empresa.com.br",
+      fromEmail: "contato@mail.empresa.com.br",
     })
   })
 
@@ -37,11 +38,11 @@ describe("resolveCampaignFrom", () => {
     expect(
       resolveCampaignFrom({
         domainName: "mail.empresa.com.br",
-        defaultSender: { name: "Acme Seguros", email: "contato@mail.empresa.com.br" },
+        defaultSender: { name: "Acme Seguros", email: "vendas@mail.empresa.com.br" },
       })
     ).toEqual({
       fromName: "Acme Seguros",
-      fromEmail: "contato@mail.empresa.com.br",
+      fromEmail: "vendas@mail.empresa.com.br",
     })
   })
 
@@ -54,7 +55,30 @@ describe("resolveCampaignFrom", () => {
       })
     ).toEqual({
       fromName: "Corretor Studio",
-      fromEmail: "deliveryby@send.acme.com",
+      fromEmail: "contato@send.acme.com",
+    })
+  })
+
+  it("legacy deliveryby (default antigo do banco) → migra para contato@, não vira remetente próprio", () => {
+    expect(
+      resolveCampaignFrom({
+        domainName: "send.acme.com",
+        legacyFromEmail: "deliveryby@corretorstudio.com",
+        legacyFromName: "Corretor Studio",
+      })
+    ).toEqual({
+      fromName: "Corretor Studio",
+      fromEmail: "contato@send.acme.com",
+    })
+
+    expect(
+      resolveCampaignFrom({
+        legacyFromEmail: "deliveryby@corretorstudio.com",
+        legacyFromName: "Corretor Studio",
+      })
+    ).toEqual({
+      fromName: "Corretor Studio",
+      fromEmail: "contato@corretorstudio.com",
     })
   })
 })
@@ -62,12 +86,13 @@ describe("resolveCampaignFrom", () => {
 describe("buildDeliveryFromEmail / isPlatformDefaultFromEmail", () => {
   it("buildDeliveryFromEmail", () => {
     expect(buildDeliveryFromEmail(null)).toBe(PLATFORM_FROM_EMAIL)
-    expect(buildDeliveryFromEmail("Mail.Acme.COM")).toBe("deliveryby@mail.acme.com")
+    expect(buildDeliveryFromEmail("Mail.Acme.COM")).toBe("contato@mail.acme.com")
   })
 
   it("isPlatformDefaultFromEmail", () => {
     expect(isPlatformDefaultFromEmail(null)).toBe(true)
     expect(isPlatformDefaultFromEmail("no-reply@corretorstudio.com")).toBe(true)
+    expect(isPlatformDefaultFromEmail("deliveryby@corretorstudio.com")).toBe(true)
     expect(isPlatformDefaultFromEmail(PLATFORM_FROM_EMAIL)).toBe(true)
     expect(isPlatformDefaultFromEmail("contato@empresa.com")).toBe(false)
   })
