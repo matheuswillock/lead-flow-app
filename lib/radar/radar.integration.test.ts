@@ -565,12 +565,13 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
   it("conflito de telefone: sync WhatsApp com nome divergente reusa o perfil do CRM sem migrar a identidade phone (D8)", async () => {
     const lead = await prisma.lead.findUniqueOrThrow({
       where: { id: leadId },
-      select: { phone: true, name: true },
+      select: { phone: true },
     })
     const normalizedPhone = normalizeRadarPhone(lead.phone)
 
     const profilesBefore = await prisma.radarProfile.count({ where: { teamId: scope.teamId } })
 
+    const whatsappContactName = "Maria S."
     const conflictingConversation: WhatsAppConversationSelect = {
       id: randomUUID(),
       teamId: scope.teamId,
@@ -578,7 +579,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
       leadId: null,
       externalChatId: null,
       contactPhone: lead.phone!,
-      contactName: "Maria S.",
+      contactName: whatsappContactName,
       contactNameSource: "whatsapp",
       contactAvatarUrl: null,
       normalizedPhone,
@@ -607,8 +608,16 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
     })
     expect(identity?.profileId).toBe(profileId)
 
+    // O que este teste guarda é o reuso do perfil e a não-migração da identidade
+    // `phone` — não a precedência de nome entre fontes. O nome segue a política
+    // única de sobrescrita fechada no achado #7 do code review de 2026-08-19
+    // (commit b4942f7b): `resolveProfileForPhone` aceita o valor mais recente
+    // não-vazio da fonte atual, igual a `resolveProfileForDocument`. Antes disso
+    // o caminho do telefone nunca sobrescrevia, e uma correção de nome digitada
+    // depois de o telefone já ter criado o perfil era descartada em silêncio.
+    // A política está travada em `RadarRepository.nameOverwritePolicy.test.ts`.
     const originalProfile = await prisma.radarProfile.findUnique({ where: { id: profileId } })
-    expect(originalProfile?.displayName).toBe(lead.name)
+    expect(originalProfile?.displayName).toBe(whatsappContactName)
   })
 
   it("lead só-com-e-mail sem perfil existente conta em deferred, sem criar perfil (D8, Parte 2)", async () => {
@@ -1772,7 +1781,10 @@ describe.skipIf(!RUN_INTEGRATION)("Custom segment como audiência de campanha (D
     )
 
     expect(result.isValid).toBe(false)
-    expect(result.errorMessages[0]).toContain(String(EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB))
+    // A mensagem é de UI e formata o limite em pt-BR ("2.000"), então
+    // `String(2000)` nunca casa. Segue derivado da constante — nunca hardcoded —
+    // só que na mesma representação que o corretor lê na tela.
+    expect(result.errorMessages[0]).toContain(EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB.toLocaleString("pt-BR"))
 
     const campaign = await prisma.emailCampaign.findFirst({ where: { teamId, radarSegmentSlug: `custom:${oversizedSegmentId}` } })
     expect(campaign).toBeNull()
