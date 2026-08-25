@@ -2,6 +2,7 @@ import { Output } from "@/lib/output"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import { backofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/BackofficeCronExecutionRepository"
 import type { IBackofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/IBackofficeCronExecutionRepository"
+import type { IRadarEngagementBackfillRepository } from "@/app/api/infra/data/repositories/radar/IRadarEngagementBackfillRepository"
 
 const BATCH_SIZE = 200
 const ACTIVE_WINDOW_DAYS = 30
@@ -71,7 +72,7 @@ function parseProgress(metadata: unknown): RadarBackfillProgress | null {
  */
 export class RadarEngagementBackfillUseCase {
   constructor(
-    private readonly repo = radarRepository,
+    private readonly repo: IRadarEngagementBackfillRepository = radarRepository,
     private readonly cronExecutions: IBackofficeCronExecutionRepository = backofficeCronExecutionRepository,
     private readonly now: () => number = Date.now
   ) {}
