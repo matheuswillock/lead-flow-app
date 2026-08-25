@@ -13,6 +13,8 @@ const mapEventTypeMock = mock((type: string) => {
     "email.clicked": "clicked",
     "email.bounced": "bounced",
     "email.delivered": "delivered",
+    "email.complained": "complained",
+    "email.failed": "failed",
   }
   return map[type] ?? null
 })
@@ -383,6 +385,200 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     }
     expect(recuperacao.where.status).toBe("processing")
     expect(recuperacao.data.status).toBe("pending")
+  })
+
+  /**
+   * Review PR #1041 C1. O lease de 10 min de `recoverStaleProcessingClaims` é
+   * lido de `updatedAt`. Medido no Postgres local: o Prisma 6.19.3 já preenche
+   * `@updatedAt` sozinho em `updateMany`. O carimbo explícito trava a regra
+   * mesmo assim — ela é de negócio e não pode depender do gerador.
+   */
+  it("C1 — o claim carimba updatedAt para iniciar o lease de 10 min", async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-lease",
+        resendEmailId: "re_lease",
+        resendEventType: "email.delivered",
+        occurredAt: new Date(),
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+
+    const service = new EmailOrphanEventService({
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => "log-lease",
+    })
+
+    await service.processPendingBatch()
+
+    // call 0 = recuperação de stale; call 1 = claim da linha.
+    const claim = updateManyMock.mock.calls.at(1)?.[0] as unknown as {
+      where: { id: string; status: string }
+      data: { status: string; updatedAt?: Date }
+    }
+    expect(claim.where).toEqual({ id: "orphan-lease", status: "pending" })
+    expect(claim.data.status).toBe("processing")
+    expect(claim.data.updatedAt).toBeInstanceOf(Date)
+  })
+
+  /**
+   * Review PR #1041 C2. Quando um `email.complained` é o PRIMEIRO e único
+   * webhook de um e-mail desconhecido, o dreno criava o EmailLog (status
+   * `sent`) e marcava o órfão processado sem aplicar o evento — a reclamação
+   * sumia. É justamente a conformidade que o estágio existe para garantir.
+   */
+  it("C2 — evento recém-admitido é aplicado ao log que o enrichment acabou de criar", async () => {
+    const occurredAt = new Date("2026-08-24T15:00:00.000Z")
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-complained",
+        resendEmailId: "re_complained",
+        resendEventType: "email.complained",
+        occurredAt,
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+
+    // 1ª busca: log ainda não existe (por isso vira órfão).
+    // 2ª busca: depois do enrichment, o log recém-criado.
+    findByResendEmailIdMock.mockResolvedValueOnce(null)
+    findByResendEmailIdMock.mockResolvedValueOnce({
+      id: "log-novo",
+      teamId: "team-9",
+      status: "sent",
+      recipientEmail: "reclamante@test.com",
+      recipientName: "Reclamante",
+      campaignId: null,
+    })
+
+    const service = new EmailOrphanEventService(
+      {
+        fetchEmailMetadata: async () => null,
+        createOrphanTeamEmailLogFromResendEmail: async () => "log-novo",
+      },
+      publishResendWebhookRadarEventMock
+    )
+
+    const result = await service.processPendingBatch()
+
+    expect(result.processed).toBe(1)
+    expect(processEmailLogWebhookMock).toHaveBeenCalledTimes(1)
+    expect(processEmailLogWebhookMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        log: expect.objectContaining({ id: "log-novo" }),
+        eventType: "complained",
+        resendEventType: "email.complained",
+        occurredAt,
+      })
+    )
+    expect(publishResendWebhookRadarEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ logId: "log-novo", eventType: "complained" })
+    )
+  })
+
+  /**
+   * Review PR #1041 C3. O lote inteiro é reivindicado de uma vez; uma linha que
+   * estourava abortava o `for` e deixava todas as seguintes presas em
+   * `processing` até a recuperação de 10 min. Com lote de 200, uma falha
+   * transitória travava quase o lote todo.
+   */
+  it("C3 — uma linha que estoura não impede o processamento das seguintes", async () => {
+    const linha = (id: string, resendEmailId: string) => ({
+      id,
+      resendEmailId,
+      resendEventType: "email.delivered",
+      occurredAt: new Date(),
+      tagsHint: null,
+      attempts: 0,
+    })
+    findManyMock.mockResolvedValueOnce([
+      linha("orphan-a", "re_a"),
+      linha("orphan-b", "re_b"),
+      linha("orphan-c", "re_c"),
+    ])
+    findByResendEmailIdMock.mockResolvedValue({
+      id: "log-x",
+      teamId: "team-1",
+      status: "delivered",
+      recipientEmail: "lead@test.com",
+      recipientName: "Lead",
+      campaignId: null,
+    })
+    processEmailLogWebhookMock.mockImplementationOnce(async () => {
+      throw new Error("timeout no processEmailLogWebhook")
+    })
+
+    const service = new EmailOrphanEventService(
+      {
+        fetchEmailMetadata: async () => null,
+        createOrphanTeamEmailLogFromResendEmail: async () => null,
+      },
+      publishResendWebhookRadarEventMock
+    )
+
+    const result = await service.processPendingBatch()
+
+    // A 1ª falhou; B e C continuaram — antes da correção, o `for` abortava na A.
+    expect(processEmailLogWebhookMock).toHaveBeenCalledTimes(3)
+    expect(result.processed).toBe(2)
+    expect(result.failed).toBe(1)
+
+    // A linha que falhou volta para `pending`, não fica presa em `processing`.
+    const liberacao = (
+      updateMock.mock.calls as unknown as Array<
+        [{ where: { id: string }; data: { status: string } }]
+      >
+    ).find((call) => call[0].where.id === "orphan-a")
+    expect(liberacao?.[0].data.status).toBe("pending")
+  })
+
+  it("C3 — se a liberação individual falha, o lote devolve o claim em massa", async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-preso",
+        resendEmailId: "re_preso",
+        resendEventType: "email.delivered",
+        occurredAt: new Date(),
+        tagsHint: null,
+        attempts: 0,
+      },
+    ])
+    findByResendEmailIdMock.mockResolvedValue({
+      id: "log-x",
+      teamId: "team-1",
+      status: "delivered",
+      recipientEmail: "lead@test.com",
+      recipientName: "Lead",
+      campaignId: null,
+    })
+    processEmailLogWebhookMock.mockImplementationOnce(async () => {
+      throw new Error("timeout")
+    })
+    // A liberação individual (update) também falha.
+    updateMock.mockImplementationOnce(async () => {
+      throw new Error("db down")
+    })
+
+    const service = new EmailOrphanEventService(
+      {
+        fetchEmailMetadata: async () => null,
+        createOrphanTeamEmailLogFromResendEmail: async () => null,
+      },
+      publishResendWebhookRadarEventMock
+    )
+
+    await service.processPendingBatch()
+
+    const devolucaoEmMassa = (
+      updateManyMock.mock.calls as unknown as Array<
+        [{ where: { id?: { in?: string[] }; status?: string }; data: { status: string } }]
+      >
+    ).find((call) => Array.isArray(call[0].where.id?.in))
+    expect(devolucaoEmMassa?.[0].where.id?.in).toEqual(["orphan-preso"])
+    expect(devolucaoEmMassa?.[0].where.status).toBe("processing")
+    expect(devolucaoEmMassa?.[0].data.status).toBe("pending")
   })
 
   it("não processa o que outra execução já reivindicou", async () => {
