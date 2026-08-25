@@ -355,6 +355,18 @@ export interface IPublicFormsRepository {
   }): Promise<{ copied: number; skipped: number }>
   findSubmissionByRequestKey(requestKey: string): Promise<PublicFormSubmission | null>
   findLeadForSubmission(submissionId: string): Promise<Lead | null>
+  /**
+   * SPEC 40 E2 × modo radar (review #1058). Fato único que decide se
+   * `lead_discarded` pode existir para esta sessão: se alguma submissão do form
+   * já tem lead anexado, a sessão converteu e o descarte é mentira.
+   *
+   * Existe porque a compensação por `deleteMany` no gate C sozinha não fecha a
+   * corrida — ela apaga o que já está gravado, mas nada impede a gravação de
+   * chegar **depois**. As duas filas não têm ordem entre si e a mensagem de
+   * métrica ainda pode estar em voo. Consultar este fato em cada ponto de
+   * escrita transforma a correção pontual em invariante.
+   */
+  hasLeadAttachedToSession(formId: string, visitorSessionId: string): Promise<boolean>
   findCompletedSubmissionBySession(
     publicationId: string,
     visitorSessionId: string,

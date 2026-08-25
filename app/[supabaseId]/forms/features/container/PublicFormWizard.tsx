@@ -2801,17 +2801,23 @@ function Review({
       text: "Nome do lead mapeado",
       step: 2,
     },
-    // SPEC 40 E4/DA4: nome sozinho não gera lead pela regra vigente. O check
-    // acompanha a validação do servidor — inclusive a saída pelo opt-out logo
-    // abaixo, senão o formulário de pesquisa fica bloqueado sem alternativa.
-    {
-      ok: Boolean(d.leadCaptureDisabled) || hasMappedContactQuestion,
-      text: "Telefone mapeado",
-      step: 2,
-    },
     ...(isCatalogTemplate
       ? []
       : [
+          // SPEC 40 E4/DA4: nome sozinho não gera lead pela regra vigente. O
+          // check acompanha a validação do servidor — inclusive a saída pelo
+          // opt-out logo abaixo, senão o formulário de pesquisa fica bloqueado
+          // sem alternativa.
+          //
+          // Fica dentro do ramo não-catálogo (review #1058): o servidor roda a
+          // regra só em `mode: "form"`, e o switch de pesquisa é escondido para
+          // template. Cobrar contato ali travava o botão de publicar num draft
+          // que o backend aceita, sem nenhuma saída na tela.
+          {
+            ok: Boolean(d.leadCaptureDisabled) || hasMappedContactQuestion,
+            text: "Telefone mapeado",
+            step: 2,
+          },
           {
             ok: !d.schedulingEnabled || d.eligibleCloserIds.length > 0,
             text: "Closer selecionado para agenda",
@@ -2861,7 +2867,7 @@ function Review({
           <div>
             <p className="font-medium">Formulário de pesquisa (não capta leads)</p>
             <p className="text-sm text-muted-foreground">
-              Publica sem telefone nem e-mail mapeado. Em troca, este formulário não cria leads no
+              Publica sem telefone mapeado. Em troca, este formulário não cria leads no
               CRM, some do funil de leads e não pode usar a agenda — a reunião nasce presa ao lead.
             </p>
           </div>

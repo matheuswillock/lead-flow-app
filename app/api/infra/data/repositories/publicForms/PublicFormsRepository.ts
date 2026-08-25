@@ -1145,6 +1145,28 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return submission?.lead ?? null
   }
 
+  /**
+   * Fato que decide se `lead_discarded` pode existir para a sessão (review
+   * #1058). Escopo idêntico ao do `attachLeadToPendingSubmissions` do gate C —
+   * form + sessão — para que os dois lados falem do mesmo conjunto de linhas.
+   *
+   * Aceita `client` para ser consultado **dentro** da transação de
+   * `completeSubmission`: ali o `update` da submissão já segurou a linha, então
+   * a leitura enxerga o que o gate comitou ou o bloqueia até comitar. Fora de
+   * transação (fila, cron) roda no client compartilhado.
+   */
+  async hasLeadAttachedToSession(
+    formId: string,
+    visitorSessionId: string,
+    client: Prisma.TransactionClient = prisma,
+  ): Promise<boolean> {
+    const attached = await client.publicFormSubmission.findFirst({
+      where: { formId, visitorSessionId, leadId: { not: null } },
+      select: { id: true },
+    })
+    return Boolean(attached)
+  }
+
   findCompletedSubmissionBySession(publicationId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: {
@@ -1658,6 +1680,34 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  /**
+   * Reavalia o descarte contra o estado atual da sessão, dentro da transação.
+   * Só o `lead_discarded` sai — `form_completed` e o resto do lote continuam
+   * intactos, porque o que a corrida invalidou foi a conclusão de identidade,
+   * não o fato de a submissão ter completado.
+   */
+  private async dropDiscardWhenLeadAttached(
+    tx: Prisma.TransactionClient,
+    input: PublicFormCompleteSubmissionInput,
+  ) {
+    const discard = input.metricEvents.find((event) => event.eventType === "lead_discarded")
+    if (!discard) return input.metricEvents
+
+    const attached = await this.hasLeadAttachedToSession(
+      discard.formId,
+      discard.visitorSessionId,
+      tx,
+    )
+    if (!attached) return input.metricEvents
+
+    console.info("[PublicFormsRepository][completeSubmission] lead anexado na corrida, descarte descartado", {
+      submissionId: input.submissionId,
+      formId: discard.formId,
+      visitorSessionId: discard.visitorSessionId,
+    })
+    return input.metricEvents.filter((event) => event.eventType !== "lead_discarded")
+  }
+
   async completeSubmission(input: PublicFormCompleteSubmissionInput) {
     await prisma.$transaction(async (tx) => {
       await tx.publicFormSubmission.update({
@@ -1671,6 +1721,20 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         },
       })
       await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
+
+      // SPEC 40 E2 × modo radar (review #1058). A decisão de emitir
+      // `lead_discarded` foi tomada lá atrás, no `processInBackground`, sobre uma
+      // leitura que já pode estar velha: o gate C promove o lead por outra fila,
+      // sem ordem garantida. Reavaliar aqui é o que fecha a corrida — o `update`
+      // acima já segurou a linha da submissão, então ou enxergamos o lead que o
+      // gate comitou, ou o gate espera atrás de nós e a compensação dele apaga o
+      // descarte depois. Um dos dois lados sempre ganha, nunca os dois perdem.
+      const metricEvents = input.metricEvents.some(
+        (event) => event.eventType === "lead_discarded",
+      )
+        ? await this.dropDiscardWhenLeadAttached(tx, input)
+        : input.metricEvents
+
       if (input.leadId && input.activityBody && input.activityPayload) {
         await tx.leadActivity.create({
           data: {
@@ -1681,7 +1745,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           },
         })
       }
-      for (const event of input.metricEvents) {
+      for (const event of metricEvents) {
         const create = (questionId: string | null | undefined) => ({
           formId: event.formId,
           publicationId: event.publicationId,

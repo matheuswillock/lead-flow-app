@@ -489,6 +489,30 @@ export class PublicFormsService implements IPublicFormsService {
       }
     }
 
+    // SPEC 40 E2 × modo radar (review #1058). Terceiro e último ponto de escrita
+    // do descarte: a mensagem da fila é publicada **depois** de
+    // `completeSubmission` e consumida noutro processo, então ela sobrevive à
+    // compensação do gate C e recriaria a linha que ele acabou de apagar. O
+    // mesmo fato — sessão com lead anexado — decide aqui também.
+    //
+    // Devolve `true`, não `false`: o evento não é erro, é conclusão que ficou
+    // obsoleta. `false` faria o consumer logar "formulário indisponível"; o
+    // desfecho certo é ack sem persistir.
+    if (
+      input.eventType === "lead_discarded" &&
+      (await publicFormsRepository.hasLeadAttachedToSession(
+        current.snapshot.formId,
+        input.visitorSessionId,
+      ))
+    ) {
+      console.info("[PublicFormsService][recordMetric] lead anexado na corrida, descarte ignorado", {
+        formId: current.snapshot.formId,
+        visitorSessionId: input.visitorSessionId,
+        eventKey: input.eventKey,
+      })
+      return true
+    }
+
     await publicFormsRepository.upsertMetricEvent({
       formId: current.snapshot.formId,
       publicationId,
