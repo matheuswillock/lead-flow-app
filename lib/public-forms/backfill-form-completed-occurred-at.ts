@@ -27,6 +27,8 @@ export type SubmissionAnchor = {
   requestKey: string
   createdAt: Date | null
   dispatchAcceptedAt: Date | null
+  /** Atribuição de campanha da submissão (`origin.emailLogId`). */
+  emailLogId: string | null
 }
 
 export type ClocklessMetricEvent = {
@@ -34,7 +36,20 @@ export type ClocklessMetricEvent = {
   eventKey: string
   eventType: string
   visitorSessionId: string
-  submission: SubmissionAnchor | null
+  /** Quando a linha de métrica nasceu — o relógio errado que estamos corrigindo. */
+  createdAt: Date
+  /** Atribuição do evento, extraída do sufixo `:el:` do `eventKey`. */
+  attributionEmailLogId: string | null
+  /**
+   * TODAS as submissões da sessão, não a primeira.
+   *
+   * O cookie de sessão vive 30 dias: a mesma sessão produz submissões distintas
+   * para campanhas distintas, e pode ter uma casca do dispatcher abandonada
+   * antes de um aceite real. Escolher a mais antiga cegamente datava a conversão
+   * nova pela antiga — ou herdava a casca e deixava o evento real sem correção,
+   * que é exatamente o bug que este backfill existe para matar.
+   */
+  submissionCandidates: SubmissionAnchor[]
 }
 
 export type BackfillSkipReason =
@@ -68,9 +83,55 @@ export function isFabricatedByDispatcher(submission: SubmissionAnchor): boolean 
   return submission.requestKey.startsWith(FABRICATED_SUBMISSION_REQUEST_KEY_PREFIX)
 }
 
-/** Relógio do aceite: `createdAt` da submissão, `dispatchAcceptedAt` como reserva. */
+/**
+ * Relógio do aceite: `dispatchAcceptedAt` primeiro, `createdAt` como reserva.
+ *
+ * Mesma precedência de `resolveSubmissionAcceptedAt` no UseCase, e pelo mesmo
+ * motivo: numa parcial promovida do `/progress`, `createdAt` é o início do
+ * preenchimento, não o envio.
+ */
 export function resolveAcceptedAt(submission: SubmissionAnchor): Date | null {
-  return submission.createdAt ?? submission.dispatchAcceptedAt ?? null
+  return submission.dispatchAcceptedAt ?? submission.createdAt ?? null
+}
+
+/**
+ * A submissão que originou este evento, entre as da sessão.
+ *
+ * Ordem de preferência:
+ * 1. atribuição idêntica (`emailLogId`) — é a chave que escopa a conversão;
+ * 2. a mais recente que já existia quando o evento nasceu;
+ * 3. a mais recente de todas.
+ *
+ * Cascas do dispatcher só entram se não houver nenhum aceite real na sessão —
+ * aí o evento é legitimamente fabricado e será pulado como tal.
+ */
+export function selectSubmissionForEvent(event: ClocklessMetricEvent): SubmissionAnchor | null {
+  if (event.submissionCandidates.length === 0) return null
+
+  const real = event.submissionCandidates.filter(
+    (candidate) => !isFabricatedByDispatcher(candidate)
+  )
+  const pool = real.length > 0 ? real : event.submissionCandidates
+
+  if (event.attributionEmailLogId) {
+    const sameAttribution = pool.filter(
+      (candidate) => candidate.emailLogId === event.attributionEmailLogId
+    )
+    if (sameAttribution.length > 0) return latestBefore(sameAttribution, event.createdAt)
+  }
+
+  return latestBefore(pool, event.createdAt)
+}
+
+/** Mais recente entre as que precedem o corte; sem nenhuma, a mais antiga do conjunto. */
+function latestBefore(candidates: SubmissionAnchor[], cutoff: Date): SubmissionAnchor {
+  const byCreatedAtAsc = [...candidates].sort(
+    (a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
+  )
+  const preceding = byCreatedAtAsc.filter(
+    (candidate) => (candidate.createdAt?.getTime() ?? 0) <= cutoff.getTime()
+  )
+  return preceding.at(-1) ?? byCreatedAtAsc[0]
 }
 
 export function planFormCompletedOccurredAtBackfill(
@@ -81,17 +142,18 @@ export function planFormCompletedOccurredAtBackfill(
 
   for (const event of events) {
     const identity = { eventId: event.id, eventKey: event.eventKey }
+    const submission = selectSubmissionForEvent(event)
 
-    if (!event.submission) {
+    if (!submission) {
       skipped.push({ ...identity, reason: "submissao_nao_encontrada" })
       continue
     }
-    if (isFabricatedByDispatcher(event.submission)) {
+    if (isFabricatedByDispatcher(submission)) {
       skipped.push({ ...identity, reason: "fabricada_pelo_dispatcher" })
       continue
     }
 
-    const occurredAt = resolveAcceptedAt(event.submission)
+    const occurredAt = resolveAcceptedAt(submission)
     if (!occurredAt) {
       skipped.push({ ...identity, reason: "sem_ancora_de_aceite" })
       continue

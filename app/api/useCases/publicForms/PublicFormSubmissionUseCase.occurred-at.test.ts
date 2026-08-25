@@ -204,16 +204,34 @@ describe("PublicFormSubmissionUseCase.processInBackground — relógio do aceite
     expect(payload[1].occurredAt).toBe(ACEITE.toISOString())
   })
 
-  it("T-M3.3-unit — sem createdAt legível, cai no dispatchAcceptedAt (nunca no relógio do processamento)", async () => {
-    const aceiteDoDispatch = new Date("2026-08-21T10:00:00.000Z")
+  it("T-M3.3-unit — sem dispatchAcceptedAt, cai no createdAt (nunca no relógio do processamento)", async () => {
     findSubmissionAcceptedAt.mockImplementation(async () => ({
-      createdAt: null as unknown as Date,
-      dispatchAcceptedAt: aceiteDoDispatch,
+      createdAt: ACEITE,
+      dispatchAcceptedAt: null,
     }))
 
     await useCase.processInBackground(job())
 
     const completed = persistedEvents().find((event) => event.eventType === "form_completed")
-    expect(completed?.occurredAt).toEqual(aceiteDoDispatch)
+    expect(completed?.occurredAt).toEqual(ACEITE)
+  })
+
+  it("T-M3.4 — parcial promovida do /progress data pelo envio, não pelo início do preenchimento", async () => {
+    // Aqui `createdAt` é quando o visitante abriu o formulário e começou a
+    // digitar; o envio veio 3h depois. Datar pelo `createdAt` anteciparia a
+    // conversão em três horas — e, num preenchimento retomado no dia seguinte,
+    // em um dia inteiro. Como `createdAt` nunca é nulo, uma reserva depois dele
+    // jamais seria alcançada.
+    const comecouAPreencher = new Date("2026-08-20T19:05:00.000Z")
+    const enviou = new Date("2026-08-20T22:10:31.000Z")
+    findSubmissionAcceptedAt.mockImplementation(async () => ({
+      createdAt: comecouAPreencher,
+      dispatchAcceptedAt: enviou,
+    }))
+
+    await useCase.processInBackground(job())
+
+    const completed = persistedEvents().find((event) => event.eventType === "form_completed")
+    expect(completed?.occurredAt).toEqual(enviou)
   })
 })

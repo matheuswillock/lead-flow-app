@@ -285,12 +285,19 @@ export class PublicFormSubmissionUseCase {
    * Relógio do aceite, não do processamento. `processInBackground` roda quando a
    * fila drena: o incidente de 20–22/08 destravou dois dias depois e jogou ~105
    * conversões no dia errado, deixando o funil de 3 dias com mais `form_completed`
-   * do que `form_viewed`. `createdAt` é o instante em que o visitante enviou;
-   * `dispatchAcceptedAt` cobre a submissão cujo `createdAt` não pôde ser lido.
+   * do que `form_viewed`.
+   *
+   * `dispatchAcceptedAt` vem primeiro, e não `createdAt`, porque só ele marca o
+   * envio em toda submissão. Numa submissão promovida do `/progress`,
+   * `createdAt` é quando o visitante COMEÇOU a preencher — horas ou dias antes
+   * de enviar — e, sendo sempre não-nulo, jamais deixaria a reserva ser usada.
+   * O marcador é gravado no publish (`queueSubmissionForBackgroundProcessing`),
+   * logo após o `accept()`, então ele é o aceite e não o drain. `createdAt`
+   * cobre as submissões anteriores ao marcador, onde ele é o melhor que existe.
    */
   private async resolveSubmissionAcceptedAt(submissionId: string): Promise<Date> {
     const submission = await publicFormsRepository.findSubmissionAcceptedAt(submissionId)
-    return submission?.createdAt ?? submission?.dispatchAcceptedAt ?? new Date()
+    return submission?.dispatchAcceptedAt ?? submission?.createdAt ?? new Date()
   }
 
   async processInBackground(job: PublicFormSubmissionBackgroundJob): Promise<void> {

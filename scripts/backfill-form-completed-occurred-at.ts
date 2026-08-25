@@ -29,6 +29,7 @@
  *   bun run backfill:form-completed-occurred-at -- --apply
  */
 
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   planFormCompletedOccurredAtBackfill,
@@ -67,13 +68,16 @@ function resolveLimit(): number | undefined {
 }
 
 /**
- * A submissão é encontrada pelo `visitorSessionId` do evento: o worker usa
- * `submission.visitorSessionId` quando existe e o `requestKey` como reserva —
- * as duas colunas são procuradas aqui pelo mesmo motivo.
+ * TODAS as submissões de cada sessão, não uma por sessão.
+ *
+ * O worker identifica a sessão por `submission.visitorSessionId` e usa o
+ * `requestKey` como reserva — as duas colunas entram na busca pelo mesmo motivo.
+ * Guardar só a primeira colapsava sessões legítimas de 30 dias (campanhas
+ * distintas) numa submissão só; `selectSubmissionForEvent` escolhe a certa.
  */
-async function loadSubmissionsBySessionKey(
+async function loadSubmissionCandidatesBySessionKey(
   sessionKeys: string[]
-): Promise<Map<string, SubmissionAnchor>> {
+): Promise<Map<string, SubmissionAnchor[]>> {
   const submissions = await prisma.publicFormSubmission.findMany({
     where: {
       OR: [{ visitorSessionId: { in: sessionKeys } }, { requestKey: { in: sessionKeys } }],
@@ -84,28 +88,49 @@ async function loadSubmissionsBySessionKey(
       visitorSessionId: true,
       createdAt: true,
       dispatchAcceptedAt: true,
+      origin: true,
     },
     orderBy: { createdAt: "asc" },
   })
 
-  const bySessionKey = new Map<string, SubmissionAnchor>()
+  const bySessionKey = new Map<string, SubmissionAnchor[]>()
+  const push = (key: string, anchor: SubmissionAnchor) => {
+    const current = bySessionKey.get(key) ?? []
+    if (!current.some((item) => item.id === anchor.id)) current.push(anchor)
+    bySessionKey.set(key, current)
+  }
+
   for (const submission of submissions) {
     const anchor: SubmissionAnchor = {
       id: submission.id,
       requestKey: submission.requestKey,
       createdAt: submission.createdAt,
       dispatchAcceptedAt: submission.dispatchAcceptedAt,
+      emailLogId: readOriginEmailLogId(submission.origin),
     }
-    // `orderBy asc` + `set` sem guarda deixaria a mais recente vencer; a
-    // primeira submissão da sessão é a que originou o evento.
-    if (submission.visitorSessionId && !bySessionKey.has(submission.visitorSessionId)) {
-      bySessionKey.set(submission.visitorSessionId, anchor)
-    }
-    if (!bySessionKey.has(submission.requestKey)) {
-      bySessionKey.set(submission.requestKey, anchor)
-    }
+    if (submission.visitorSessionId) push(submission.visitorSessionId, anchor)
+    push(submission.requestKey, anchor)
   }
   return bySessionKey
+}
+
+/** `<sessão>:<tipo>` ou `<sessão>:<tipo>:el:<emailLogId>` — ver `buildPublicFormMetricEventKey`. */
+function parseAttributionFromEventKey(eventKey: string): string | null {
+  const marker = ":el:"
+  const index = eventKey.lastIndexOf(marker)
+  if (index === -1) return null
+  const emailLogId = eventKey.slice(index + marker.length)
+  return emailLogId.length > 0 ? emailLogId : null
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
+
+function readOriginEmailLogId(origin: unknown): string | null {
+  if (!origin || typeof origin !== "object" || Array.isArray(origin)) return null
+  const value = (origin as Record<string, unknown>).emailLogId
+  return typeof value === "string" && value.length > 0 ? value : null
 }
 
 async function main() {
@@ -126,6 +151,7 @@ async function main() {
       eventKey: true,
       eventType: true,
       visitorSessionId: true,
+      createdAt: true,
     },
     orderBy: { createdAt: "asc" },
     ...(limit ? { take: limit } : {}),
@@ -136,7 +162,7 @@ async function main() {
     return
   }
 
-  const submissionsBySessionKey = await loadSubmissionsBySessionKey([
+  const submissionsBySessionKey = await loadSubmissionCandidatesBySessionKey([
     ...new Set(clocklessEvents.map((event) => event.visitorSessionId)),
   ])
 
@@ -145,7 +171,9 @@ async function main() {
     eventKey: event.eventKey,
     eventType: event.eventType,
     visitorSessionId: event.visitorSessionId,
-    submission: submissionsBySessionKey.get(event.visitorSessionId) ?? null,
+    createdAt: event.createdAt,
+    attributionEmailLogId: parseAttributionFromEventKey(event.eventKey),
+    submissionCandidates: submissionsBySessionKey.get(event.visitorSessionId) ?? [],
   }))
 
   const plan = planFormCompletedOccurredAtBackfill(candidates)
@@ -174,28 +202,46 @@ async function main() {
   let metricsUpdated = 0
   let radarUpdated = 0
   let radarConflicts = 0
+  let failed = 0
 
   for (const update of plan.updates) {
-    await prisma.publicFormMetricEvent.update({
-      where: { id: update.eventId },
-      data: { occurredAt: update.occurredAt },
-    })
-    metricsUpdated += 1
-
     try {
-      const result = await prisma.radarEvent.updateMany({
-        where: {
-          sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
-          sourceId: update.eventKey,
-        },
-        data: { occurredAt: update.occurredAt },
+      // As duas escritas numa transação: a métrica só recebe `occurredAt` se o
+      // espelho do Radar também for redatado. Fora da transação, uma falha
+      // transitória no Radar deixava a métrica corrigida e o Radar na data
+      // errada — e, como a próxima execução só seleciona `occurredAt IS NULL`,
+      // esse par nunca mais seria reprocessado.
+      await prisma.$transaction(async (tx) => {
+        await tx.publicFormMetricEvent.update({
+          where: { id: update.eventId },
+          data: { occurredAt: update.occurredAt },
+        })
+
+        try {
+          const result = await tx.radarEvent.updateMany({
+            where: {
+              sourceType: PUBLIC_FORM_RADAR_SOURCE_TYPE,
+              sourceId: update.eventKey,
+            },
+            data: { occurredAt: update.occurredAt },
+          })
+          radarUpdated += result.count
+        } catch (error) {
+          // Só o conflito de unicidade é benigno: já existe linha do Radar na
+          // data certa, então não há o que redatar. Qualquer outro erro sobe e
+          // desfaz a transação, mantendo o evento retentável.
+          if (!isUniqueConstraintError(error)) throw error
+          radarConflicts += 1
+          console.info(`${LOG} Evento do Radar já estava na data certa`, {
+            eventKey: update.eventKey,
+            occurredAt: update.occurredAt.toISOString(),
+          })
+        }
       })
-      radarUpdated += result.count
+      metricsUpdated += 1
     } catch (error) {
-      // Unique (teamId, sourceType, sourceId, eventType, occurredAt): já existe
-      // linha na data certa. Reportar, não mascarar.
-      radarConflicts += 1
-      console.error(`${LOG} Conflito ao redatar evento do Radar`, {
+      failed += 1
+      console.error(`${LOG} Falha ao corrigir evento — segue retentável`, {
         eventKey: update.eventKey,
         occurredAt: update.occurredAt.toISOString(),
         error,
@@ -203,7 +249,9 @@ async function main() {
     }
   }
 
-  console.info(`${LOG} Concluído`, { metricsUpdated, radarUpdated, radarConflicts })
+  if (failed > 0) process.exitCode = 1
+
+  console.info(`${LOG} Concluído`, { metricsUpdated, radarUpdated, radarConflicts, failed })
 }
 
 main()
