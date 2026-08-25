@@ -16766,6 +16766,28 @@
               "response": []
             },
             {
+              "name": "Reconciliar Contadores de Campanha",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/reconcile-campaign-counters",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "reconcile-campaign-counters"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Recomputa total* de campanha e disparo a partir dos logs e corrige a divergencia (SPEC 20 E1 / DA1). Nao toca linha em voo: campanha ou disparo sending com atividade na ultima hora fica de fora. Metadata da execucao traz campanhas/disparos corrigidos e o delta somado - delta persistente e sinal de bug de incremento, nao de cache frio."
+              },
+              "response": []
+            },
+            {
               "name": "Digest Reuniões Pendentes (+3 dias)",
               "request": {
                 "method": "GET",
