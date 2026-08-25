@@ -21,6 +21,7 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import { resolveQuestionIdentityKey } from "@/lib/public-forms/metric-event-aggregation"
 import { publicFormJourneyRepository } from "@/app/api/infra/data/repositories/publicFormJourney/PublicFormJourneyRepository"
 import { buildJourneyResumeEventKey } from "@/lib/public-forms/journey-session"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
@@ -608,8 +609,10 @@ export class PublicFormsService implements IPublicFormsService {
       ...(publicationId ? { publicationId } : {}),
       ...(from || to ? { createdAt: { gte: from, lte: to } } : {}),
     }
-    const events = await publicFormsRepository.groupMetricEvents(id, where)
-    const sessionsByType = await publicFormsRepository.countDistinctSessionsByEventType(id, where)
+    const aggregationFilter = { formId: id, publicationId, from, to }
+    const events = await publicFormsRepository.groupMetricEvents(aggregationFilter)
+    const sessionsByType =
+      await publicFormsRepository.countDistinctSessionsByEventType(aggregationFilter)
     const uniqueLeads = await publicFormsRepository.countDistinctCompletedLeads(id, {
       publicationId,
       from,
@@ -652,6 +655,13 @@ export class PublicFormsService implements IPublicFormsService {
             id: question.id,
             title: question.title,
             position: question.position,
+            // Chave de junção com `events[].questionKey`. Casar por `id` perde
+            // as respostas de pergunta deletada/recriada no builder (FK
+            // `SetNull`): elas existem, mas apareciam como "0/0" no funil.
+            questionKey: resolveQuestionIdentityKey({
+              questionId: question.id,
+              questionSnapshot: question,
+            }),
           })),
         }
       }),

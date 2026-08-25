@@ -22,6 +22,12 @@ import {
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "@/lib/public-forms/publication-snapshot"
+import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
+import {
+  buildMetricEventWhereSql,
+  QUESTION_IDENTITY_KEY_SQL,
+  type MetricEventAggregationFilter,
+} from "./MetricEventAggregationSql"
 import {
   type IPublicFormsRepository,
   type PendingPublicFormSubmissionDispatch,
@@ -741,64 +747,54 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return form?.publications ?? null
   }
 
-  async groupMetricEvents(formId: string, where: Prisma.PublicFormMetricEventWhereInput) {
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where: { formId, ...where },
-      select: {
-        eventType: true,
-        publicationId: true,
-        questionId: true,
-        visitorSessionId: true,
-      },
-    })
-
-    const buckets = new Map<
-      string,
-      {
-        eventType: (typeof rows)[number]["eventType"]
+  async groupMetricEvents(filter: MetricEventAggregationFilter): Promise<GroupedMetricEvent[]> {
+    const rows = await prisma.$queryRaw<
+      Array<{
+        eventType: string
         publicationId: string
         questionId: string | null
-        sessions: Set<string>
-      }
-    >()
+        questionKey: string | null
+        uniqueSessions: number | bigint
+      }>
+    >`
+      SELECT
+        "eventType"::text AS "eventType",
+        "publicationId"::text AS "publicationId",
+        -- Pergunta recriada mistura linhas com e sem FK viva no mesmo bucket;
+        -- o id que sobreviveu é o que casa com a pergunta na tela.
+        (array_agg("questionId") FILTER (WHERE "questionId" IS NOT NULL))[1]::text AS "questionId",
+        ${QUESTION_IDENTITY_KEY_SQL} AS "questionKey",
+        COUNT(DISTINCT "visitorSessionId")::int AS "uniqueSessions"
+      FROM "corretor_studio_public_form_metric_events"
+      WHERE ${buildMetricEventWhereSql(filter)}
+      GROUP BY "eventType", "publicationId", ${QUESTION_IDENTITY_KEY_SQL}
+    `
 
-    for (const row of rows) {
-      const key = `${row.eventType}\0${row.publicationId}\0${row.questionId ?? ""}`
-      const bucket = buckets.get(key) ?? {
-        eventType: row.eventType,
-        publicationId: row.publicationId,
-        questionId: row.questionId,
-        sessions: new Set<string>(),
-      }
-      bucket.sessions.add(row.visitorSessionId)
-      buckets.set(key, bucket)
-    }
-
-    return Array.from(buckets.values()).map((bucket) => ({
-      eventType: bucket.eventType,
-      publicationId: bucket.publicationId,
-      questionId: bucket.questionId,
-      _count: { _all: bucket.sessions.size },
+    return rows.map((row) => ({
+      eventType: row.eventType,
+      publicationId: row.publicationId,
+      questionId: row.questionId,
+      questionKey: row.questionKey,
+      uniqueSessions: Number(row.uniqueSessions),
+      _count: { _all: Number(row.uniqueSessions) },
     }))
   }
 
   async countDistinctSessionsByEventType(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
-  ) {
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where: { formId, ...where },
-      select: { eventType: true, visitorSessionId: true },
-    })
-    const byType = new Map<string, Set<string>>()
-    for (const row of rows) {
-      const sessions = byType.get(row.eventType) ?? new Set<string>()
-      sessions.add(row.visitorSessionId)
-      byType.set(row.eventType, sessions)
-    }
-    return Object.fromEntries(
-      Array.from(byType, ([eventType, sessions]) => [eventType, sessions.size]),
-    ) as Record<string, number>
+    filter: MetricEventAggregationFilter,
+  ): Promise<Record<string, number>> {
+    const rows = await prisma.$queryRaw<
+      Array<{ eventType: string; uniqueSessions: number | bigint }>
+    >`
+      SELECT
+        "eventType"::text AS "eventType",
+        COUNT(DISTINCT "visitorSessionId")::int AS "uniqueSessions"
+      FROM "corretor_studio_public_form_metric_events"
+      WHERE ${buildMetricEventWhereSql(filter)}
+      GROUP BY "eventType"
+    `
+
+    return Object.fromEntries(rows.map((row) => [row.eventType, Number(row.uniqueSessions)]))
   }
 
   /**

@@ -935,15 +935,22 @@ function AnalyticsDialog({
               </TabsContent>
               <TabsContent value="funnel" className="space-y-2">
                 {questions.map((question) => {
-                  const questionEvents = events.filter(
-                    (event) =>
-                      event.publicationId === question.publicationId &&
-                      event.questionId === question.id,
-                  )
+                  // Junta por identidade de snapshot, não por FK. A FK é
+                  // `SetNull`: pergunta deletada e recriada no builder zera o
+                  // `questionId` de todo o histórico, e casar por id exibia
+                  // "0/0" para pergunta com respostas persistidas. `questionId`
+                  // continua como reserva para linhas sem snapshot utilizável.
+                  const questionEvents = events.filter((event) => {
+                    if (event.publicationId !== question.publicationId) return false
+                    if (question.questionKey && event.questionKey) {
+                      return event.questionKey === question.questionKey
+                    }
+                    return event.questionId === question.id
+                  })
                   const metric = (type: string) =>
                     questionEvents
                       .filter((event) => event.eventType === type)
-                      .reduce((sum, event) => sum + event._count._all, 0)
+                      .reduce((sum, event) => sum + (event.uniqueSessions ?? event._count._all), 0)
                   const viewed = metric("question_viewed")
                   const answered = metric("question_answered")
                   const skipped = metric("question_skipped")

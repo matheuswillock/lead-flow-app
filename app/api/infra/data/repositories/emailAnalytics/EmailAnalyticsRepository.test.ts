@@ -1,19 +1,30 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
-const findManyEventsMock = mock(async () => [] as Array<{ visitorSessionId: string; origin: unknown }>)
+/**
+ * A dedupe por destinatário saiu do JS para o Postgres (SPEC 30 — E4/DA4): o
+ * método não carrega mais as linhas do período. Estes testes travam a *consulta*
+ * — escopo de formulários do time, tipo de evento, janela e filtro de campanha.
+ * A equivalência com o algoritmo antigo de dedupe é provada contra um banco real
+ * em `publicForms/metric-aggregation.integration.test.ts` (T-M4.1).
+ */
+
 const findManyFormsMock = mock(async () => [] as Array<{ id: string }>)
+const findFirstFormMock = mock(async () => null as { id: string } | null)
 const findManyCampaignsMock = mock(async () => [] as Array<{ id: string }>)
 const countLogsMock = mock(async () => 0)
 const findManyDispatchesMock = mock(async () => [] as Array<Record<string, unknown>>)
+/**
+ * `$queryRaw` é um só no client, então os dois consumidores dividem este mock:
+ * os contadores por disparo (E1) e a contagem de destinatários únicos (E4).
+ * Cada suíte define o próprio `mockImplementation` no `beforeEach`.
+ */
 const queryRawMock = mock(async () => [] as Array<Record<string, unknown>>)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
-    publicFormMetricEvent: {
-      findMany: findManyEventsMock,
-    },
     publicForm: {
       findMany: findManyFormsMock,
+      findFirst: findFirstFormMock,
     },
     emailCampaign: {
       findMany: findManyCampaignsMock,
@@ -35,12 +46,13 @@ const dateRange = {
   to: new Date("2026-01-31T23:59:59.999Z"),
 }
 
-function eventRows(count: number, email = "user@test.com") {
-  return Array.from({ length: count }, (_, index) => ({
-    visitorSessionId: `session-${index}`,
-    origin: { recipientEmail: email },
-  }))
+function query(callIndex = 0): { sql: string; values: unknown[] } {
+  const call = queryRawMock.mock.calls[callIndex] as unknown as [{ sql: string; values: unknown[] }]
+  return call[0]
 }
+
+const queryText = (callIndex = 0): string => query(callIndex).sql
+const queryValues = (callIndex = 0): unknown[] => query(callIndex).values
 
 type CountLogsCall = [
   {
@@ -213,19 +225,18 @@ describe("EmailAnalyticsRepository.listDispatches — contadores de log (T-M1.3)
 
 describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
   beforeEach(() => {
-    findManyEventsMock.mockClear()
+    queryRawMock.mockClear()
     findManyFormsMock.mockClear()
+    findFirstFormMock.mockClear()
     findManyCampaignsMock.mockClear()
-    findManyEventsMock.mockImplementation(async () => [])
+    queryRawMock.mockImplementation(async () => [{ recipients: 0 }])
     findManyFormsMock.mockImplementation(async () => [{ id: "form-1" }, { id: "form-2" }])
+    findFirstFormMock.mockImplementation(async () => ({ id: "form-linked" }))
     findManyCampaignsMock.mockImplementation(async () => [])
   })
 
-  it("G0-1 — form_viewed conta destinatários únicos, não cada visualização", async () => {
-    findManyEventsMock.mockImplementation(async () => [
-      ...eventRows(10, "ana@test.com"),
-      ...eventRows(5, "bob@test.com"),
-    ])
+  it("G0-1 — conta no banco, sem trazer as linhas do período", async () => {
+    queryRawMock.mockImplementation(async () => [{ recipients: 2 }])
 
     const repo = new EmailAnalyticsRepository()
     const result = await repo.countFormEvents({
@@ -235,63 +246,30 @@ describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
     })
 
     expect(result).toBe(2)
-    expect(findManyEventsMock).toHaveBeenCalledTimes(1)
-    const calls = findManyEventsMock.mock.calls as unknown as Array<
-      [
-        {
-          where: {
-            formId: { in: string[] }
-            eventType: string
-            createdAt: { gte: Date; lte: Date }
-          }
-          select: { visitorSessionId: true; origin: true }
-        },
-      ]
-    >
-    const call = calls[0][0]
-    expect(call.where.eventType).toBe("form_viewed")
-    expect(call.where.formId.in).toEqual(["form-1", "form-2"])
-    expect(call.where.createdAt.gte).toEqual(dateRange.from)
-    expect(call.where.createdAt.lte).toEqual(dateRange.to)
-    expect(call.select).toEqual({ visitorSessionId: true, origin: true })
+    expect(queryRawMock).toHaveBeenCalledTimes(1)
+    // A chave de deduplicação é a mesma do caminho antigo: e-mail → log → sessão.
+    expect(queryText()).toContain("COUNT(DISTINCT")
+    expect(queryText()).toContain("recipientEmail")
+    expect(queryText()).toContain("emailLogId")
+    expect(queryText()).toContain("visitorSessionId")
+    expect(queryValues()).toEqual([
+      ["form-1", "form-2"],
+      "form_viewed",
+      dateRange.from,
+      dateRange.to,
+    ])
   })
 
-  it("G0-2 — form_started retorna contagem independente de form_viewed", async () => {
-    findManyEventsMock.mockImplementation(async (args?: { where?: { eventType?: string } }) => {
-      if (args?.where?.eventType === "form_viewed") {
-        return [
-          ...eventRows(10, "a@test.com"),
-          ...eventRows(8, "b@test.com"),
-          ...eventRows(11, "c@test.com"),
-        ]
-      }
-      if (args?.where?.eventType === "form_started") {
-        return [...eventRows(4, "a@test.com"), ...eventRows(2, "d@test.com")]
-      }
-      return []
-    })
-
+  it("G0-2 — form_started consulta o próprio tipo, independente de form_viewed", async () => {
     const repo = new EmailAnalyticsRepository()
+    await repo.countFormEvents({ teamId: "team-1", eventType: "form_viewed", ...dateRange })
+    await repo.countFormEvents({ teamId: "team-1", eventType: "form_started", ...dateRange })
 
-    const viewed = await repo.countFormEvents({
-      teamId: "team-1",
-      eventType: "form_viewed",
-      ...dateRange,
-    })
-    const started = await repo.countFormEvents({
-      teamId: "team-1",
-      eventType: "form_started",
-      ...dateRange,
-    })
-
-    expect(viewed).toBe(3)
-    expect(started).toBe(2)
-    expect(findManyEventsMock).toHaveBeenCalledTimes(2)
+    expect(queryValues(0)[1]).toBe("form_viewed")
+    expect(queryValues(1)[1]).toBe("form_started")
   })
 
-  it("G0-3 — formId restringe ao formulário informado", async () => {
-    findManyEventsMock.mockImplementation(async () => eventRows(4))
-
+  it("G0-3 — formId restringe ao formulário informado, validando o time", async () => {
     const repo = new EmailAnalyticsRepository()
     await repo.countFormEvents({
       teamId: "team-1",
@@ -301,16 +279,33 @@ describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
     })
 
     expect(findManyFormsMock).not.toHaveBeenCalled()
-    const calls = findManyEventsMock.mock.calls as unknown as Array<[{ where: { formId: string } }]>
-    expect(calls[0][0].where.formId).toBe("form-linked")
+    expect(findFirstFormMock).toHaveBeenCalledWith({
+      where: { id: "form-linked", teamId: "team-1" },
+      select: { id: true },
+    })
+    expect(queryValues()[0]).toEqual(["form-linked"])
+  })
+
+  it("G0-3b — formulário de outro time não conta nada e não consulta eventos", async () => {
+    findFirstFormMock.mockImplementation(async () => null)
+
+    const repo = new EmailAnalyticsRepository()
+    const result = await repo.countFormEvents({
+      teamId: "team-1",
+      eventType: "form_viewed",
+      formId: "form-de-outro-time",
+      ...dateRange,
+    })
+
+    expect(result).toBe(0)
+    expect(queryRawMock).not.toHaveBeenCalled()
   })
 
   it("G0-4 — campaignId restringe eventos atribuídos à campanha (inclui sub-campanhas)", async () => {
     findManyCampaignsMock.mockImplementation(async () => [{ id: "sub-camp-1" }])
-    findManyEventsMock.mockImplementation(async () => eventRows(12))
 
     const repo = new EmailAnalyticsRepository()
-    const result = await repo.countFormEvents({
+    await repo.countFormEvents({
       teamId: "team-1",
       eventType: "form_started",
       campaignId: "camp-parent",
@@ -318,20 +313,8 @@ describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
       ...dateRange,
     })
 
-    expect(result).toBe(1)
-    const calls = findManyEventsMock.mock.calls as unknown as Array<
-      [
-        {
-          where: {
-            OR: Array<{ origin: { path: string[]; equals: string } }>
-          }
-        },
-      ]
-    >
-    expect(calls[0][0].where.OR).toEqual([
-      { origin: { path: ["campaignId"], equals: "camp-parent" } },
-      { origin: { path: ["campaignId"], equals: "sub-camp-1" } },
-    ])
+    expect(queryText()).toContain("campaignId")
+    expect(queryValues().at(-1)).toEqual(["camp-parent", "sub-camp-1"])
   })
 
   it("G0-5 — sem formulários do time retorna 0 sem consultar eventos", async () => {
@@ -345,6 +328,13 @@ describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
     })
 
     expect(result).toBe(0)
-    expect(findManyEventsMock).not.toHaveBeenCalled()
+    expect(queryRawMock).not.toHaveBeenCalled()
+  })
+
+  it("G0-6 — countFormCompletions consulta form_completed", async () => {
+    const repo = new EmailAnalyticsRepository()
+    await repo.countFormCompletions({ teamId: "team-1", ...dateRange })
+
+    expect(queryValues()[1]).toBe("form_completed")
   })
 })
