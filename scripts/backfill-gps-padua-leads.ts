@@ -22,13 +22,41 @@
  * documentado na nota do Obsidian citada acima) e mantida apenas localmente.
  */
 
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { LeadStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase"
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
-import fixture from "./fixtures/gps-padua-leads.json"
+
+// Lida via fs, não import estático: a fixture tem dado pessoal e não é
+// versionada — um `import ... from "./fixtures/....json"` (resolveJsonModule)
+// exige o arquivo presente no checkout do CI e quebra o typecheck lá.
+const FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), "fixtures/gps-padua-leads.json")
+
+type Candidato = {
+  email: string
+  nome: string
+  telefone: string
+  cnpj: string
+  razaoSocial: string
+  evidencia: string
+}
+
+type Fixture = {
+  geradoEm: string
+  origem: string
+  regras: Record<string, string>
+  candidatos: Candidato[]
+  pendentesEnriquecimento: Array<{ email: string; motivo: string }>
+}
+
+function loadFixture(): Fixture {
+  return JSON.parse(readFileSync(FIXTURE_PATH, "utf8")) as Fixture
+}
 
 // Mesma composição usada pelo caminho de formulários públicos (publicFormLeadSync.ts:40).
 const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile())
@@ -36,8 +64,6 @@ const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserPro
 const GPS_TEAM_ID = "3a5c6f44-669e-4cca-8cc9-c9ea395123f8"
 const GPS_FORM_ID = "244afa18-0e95-4d88-a80d-c113359117bc"
 const BACKFILL_TAG = "gps-padua-2026-08-24"
-
-type Candidato = (typeof fixture.candidatos)[number]
 
 type ResultadoLinha = {
   email: string
@@ -111,6 +137,7 @@ async function main(): Promise<void> {
     throw new Error("Formulário Padrão do GPS não encontrado — abortando")
   }
 
+  const fixture = loadFixture()
   const candidatos = fixture.candidatos.filter(
     (candidato) => !only || candidato.email === only,
   )
