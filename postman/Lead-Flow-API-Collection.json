@@ -16678,6 +16678,28 @@
               "response": []
             },
             {
+              "name": "Drenar Eventos Orfaos do Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/drain-orphan-events",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "drain-orphan-events"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Drena email_orphan_events (evento do Resend que chegou antes do EmailLog existir) em lotes de 200, ordenados por occurredAt. Substitui a carona de 10 por execucao no fim do dispatch-scheduled."
+              },
+              "response": []
+            },
+            {
               "name": "Retry Falhas de Processamento de Fila",
               "request": {
                 "method": "GET",
@@ -16696,6 +16718,28 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Republica mensagens dead-letter (deliveryCount >= N) via mapa topic → publish."
+              },
+              "response": []
+            },
+            {
+              "name": "Watchdog de Execuções de Cron Órfãs",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/mark-stale-cron-executions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "mark-stale-cron-executions"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Marca como failed toda execução presa em running além do teto do proprio cronKey (2x maxDuration) e dispara o alerta Slack que o kill de plataforma nunca disparou."
               },
               "response": []
             },

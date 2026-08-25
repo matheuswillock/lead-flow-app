@@ -280,6 +280,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/v1/email/cron/drain-orphan-events",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/integrations/webhooks/cron/retry-asaas-webhook-failures",
       "schedule": "*/5 * * * *"
     },
@@ -302,6 +306,10 @@
     {
       "path": "/api/v1/queues/cron/retry-processing-failures",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/queues/cron/mark-stale-cron-executions",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

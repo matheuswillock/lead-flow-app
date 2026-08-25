@@ -87,22 +87,17 @@ Após o bootstrap, a operação diária (env N8N/Evolution, restart, import de w
 6. Em Vercel Production: `BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN=<mesmo token>`
 7. No painel Ops: `agentBaseUrl=https://ops.corretorstudio.com` → Salvar → Health.
 
-### Backup do banco (pg_dump na VPS)
+### Backup do banco — não é mais feito aqui
 
-O backup **não** é aplicado pelo painel Ops automaticamente — exige configuração na VPS:
+Decisão de 2026-08-25: **a VPS não faz backup do banco.** O `backup-supabase.sh`,
+os endpoints `/backup/run` e `/backup/download` do agente Ops e o painel
+`backupReadiness` foram removidos.
 
-1. Na VPS, crie `/opt/lead-flow-bot/.env.ops` a partir de `deploy/hostinger/.env.ops.example`.
-2. Preencha `BACKUP_DATABASE_URL` com a **connection string direct** do Supabase (porta `5432`).
-3. Crie o diretório de saída: `mkdir -p /opt/lead-flow-app/backups`.
-4. Rebuild do agente: `docker compose -f docker-compose.vps.yml up -d --build studio-bot-ops`.
-5. No painel **Ops → Health**, confira `backupReadiness.ok=true` no payload (bash, pg_dump, script, URL e pasta gravável).
-6. Teste **Backoffice → Backups → Gerar backup**.
+Os dois caminhos vigentes são o cron `database-backup` da Vercel (export para o
+Google Drive) e o dump manual `bun run db:backup -- <pasta>`.
 
-| Variável VPS (`.env.ops`) | Descrição |
-|---|---|
-| `BACKUP_DATABASE_URL` | Connection string direct Supabase para `pg_dump` |
-| `BACKUP_ROOT` | Pasta de saída (`/opt/lead-flow-app/backups`) |
-| `OPS_AGENT_TOKEN` | Mesmo token do backoffice/Vercel |
+Se a VPS ainda tiver um cron chamando o script antigo, remova-o de lá — ele é
+externo ao repositório e continuaria falhando todo dia.
 
 ### Sync de versão do host
 
