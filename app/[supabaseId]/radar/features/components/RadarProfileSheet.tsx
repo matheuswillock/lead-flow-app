@@ -41,6 +41,7 @@ import type { RadarProfileFormItem } from "@/lib/radar/profile-forms"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 import { PromoteRadarProfileAlertDialog } from "./PromoteRadarProfileAlertDialog"
+import { isRealLeadIdentity } from "@/lib/radar/lead-identity"
 import { RadarEngagementBadge } from "./RadarEngagementBadge"
 import { RadarProfileFormsTab } from "./RadarProfileFormsTab"
 import {
@@ -212,7 +213,10 @@ export function RadarProfileSheet({
   const [isPromotingToLead, setIsPromotingToLead] = useState(false)
   const [genderDraft, setGenderDraft] = useState<RadarGender>("unknown")
   const [isSavingGender, setIsSavingGender] = useState(false)
-  const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
+  // Reserva `pending:` não é vínculo: contá-la esconderia "Promover a Lead"
+  // para sempre num perfil cuja reserva ficou órfã, mesmo com o backend já
+  // aceitando a retomada.
+  const hasLeadIdentity = profile?.identities.some(isRealLeadIdentity) ?? false
   const displayableIdentities = profile ? filterDisplayableIdentities(profile.identities) : []
   const emailIdentities = profile
     ? profile.identities.filter((identity) => identity.type === "email")

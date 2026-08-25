@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { getRadarAccess, teamContextFromRadarAccess } from "@/app/api/v1/radar/utils/getRadarAccess"
 import { customerDataPlatformUseCase } from "@/app/api/useCases/radar/RadarUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { parsePageParam, parsePageSizeParam } from "@/lib/http/parse-pagination"
 
 type RouteParams = { params: Promise<{ segment: string }> }
 
@@ -16,8 +17,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { segment } = await params
     const { searchParams } = new URL(request.url)
-    const page = Math.max(1, Number(searchParams.get("page") ?? "1"))
-    const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? "20")))
+    // A paginação agora vira LIMIT/OFFSET no banco: `Number("abc")` é NaN e
+    // sobrevive a Math.max/min, então o clamp ingênuo transformaria query
+    // string malformada em erro do Postgres (500).
+    const page = parsePageParam(searchParams.get("page"))
+    const pageSize = parsePageSizeParam(searchParams.get("pageSize"))
 
     const result = await customerDataPlatformUseCase.listSegmentProfiles(
       radarAccess.access.teamId,

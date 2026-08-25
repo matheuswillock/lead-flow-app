@@ -7,6 +7,7 @@ import {
   type RadarSourceType,
   type LeadStatus,
 } from "@prisma/client"
+import { randomUUID } from "node:crypto"
 import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma"
 import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
@@ -27,6 +28,17 @@ import {
   publishRadarEngagementScoreUpdate,
   RADAR_ENGAGEMENT_SCORE_QUEUE_PUBLISH_FAILED_TAG,
 } from "@/lib/queues/radar-engagement-score-updates"
+import {
+  buildFixedSegmentCountSql,
+  buildFixedSegmentCountsSql,
+  buildFixedSegmentProfileIdsSql,
+} from "@/lib/radar/fixed-segment-sql"
+import { RADAR_SEGMENT_SLUGS, type RadarSegmentSlug } from "@/lib/radar/segment-config"
+import {
+  isPendingLeadIdentity,
+  PENDING_LEAD_IDENTITY_PREFIX,
+  PENDING_LEAD_IDENTITY_STALE_MS,
+} from "@/lib/radar/lead-identity"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
@@ -1340,13 +1352,102 @@ export class RadarRepository {
   async listProfilesForEngagementBackfill(params: {
     take: number
     cursorId?: string | null
+    /** Só perfis que nunca foram pontuados — a dívida do backfill. */
+    onlyMissingScore?: boolean
+    /** Recorta pela atividade recente, para a dívida ativa vir primeiro. */
+    activeSince?: Date | null
   }): Promise<Array<{ id: string; teamId: string }>> {
     return this.db.radarProfile.findMany({
-      where: params.cursorId ? { id: { gt: params.cursorId } } : undefined,
+      where: {
+        ...(params.cursorId ? { id: { gt: params.cursorId } } : {}),
+        ...(params.onlyMissingScore ? { engagementScore: null } : {}),
+        ...(params.activeSince ? { lastSeenAt: { gte: params.activeSince } } : {}),
+      },
       select: { id: true, teamId: true },
       orderBy: { id: "asc" },
       take: params.take,
     })
+  }
+
+  /** Quantos perfis ainda nunca receberam score — métrica de progresso do backfill. */
+  async countProfilesMissingEngagementScore(): Promise<number> {
+    return this.db.radarProfile.count({ where: { engagementScore: null } })
+  }
+
+  /**
+   * Recalcula score/banda de um LOTE de perfis com duas queries de leitura,
+   * não duas por perfil.
+   *
+   * O caminho anterior (`updateEngagementScore` num laço) fazia 1 `findMany` de
+   * eventos + 1 `updateMany` por perfil — até 1.000 round-trips por lote de 500
+   * (RADAR_AUDIT B4). Com o cron morrendo aos 300s, a cauda da base nunca era
+   * alcançada.
+   *
+   * Aqui os eventos do lote inteiro vêm numa query só, e a escrita agrupa os
+   * perfis que chegaram ao mesmo par (score, banda) — na prática poucas dezenas
+   * de `updateMany` no lugar de 500.
+   */
+  async updateEngagementScoresBatch(
+    profiles: Array<{ id: string; teamId: string }>
+  ): Promise<number> {
+    if (profiles.length === 0) return 0
+
+    return this.runWithTransientPrismaRetry(async () => {
+      const { weights, config, formRules } = await this.loadEngagementWeightsAndConfig()
+      const since = new Date(Date.now() - config.windowOldDays * 24 * 60 * 60 * 1000)
+
+      const teamIdByProfile = new Map(profiles.map((profile) => [profile.id, profile.teamId]))
+      const events = await findManyByInChunks([...teamIdByProfile.keys()], (chunk) =>
+        this.db.radarEvent.findMany({
+          where: { profileId: { in: chunk }, occurredAt: { gte: since } },
+          select: {
+            profileId: true,
+            teamId: true,
+            eventType: true,
+            occurredAt: true,
+            metadata: true,
+          },
+        })
+      )
+
+      const eventsByProfile = new Map<string, typeof events>()
+      for (const event of events) {
+        // Mantém a trava de tenant que o caminho por perfil tinha no `where`:
+        // o lote cruza times, então o filtro acontece no agrupamento.
+        if (teamIdByProfile.get(event.profileId) !== event.teamId) continue
+
+        const bucket = eventsByProfile.get(event.profileId)
+        if (bucket) bucket.push(event)
+        else eventsByProfile.set(event.profileId, [event])
+      }
+
+      const now = new Date()
+      const groups = new Map<string, { score: number; band: string; ids: string[] }>()
+      for (const profile of profiles) {
+        const { score, band } = computeEngagementScore(
+          eventsByProfile.get(profile.id) ?? [],
+          weights,
+          config,
+          now,
+          formRules
+        )
+        const key = `${score}:${band}`
+        const group = groups.get(key)
+        if (group) group.ids.push(profile.id)
+        else groups.set(key, { score, band, ids: [profile.id] })
+      }
+
+      let updated = 0
+      for (const group of groups.values()) {
+        const result = await this.db.radarProfile.updateMany({
+          where: { id: { in: group.ids } },
+          data: { engagementScore: group.score, engagementBand: group.band },
+        })
+        updated += result.count
+      }
+
+      return updated
+    }, "updateEngagementScoresBatch")
   }
 
   private async loadEngagementWeightsAndConfig(): Promise<{
@@ -1691,6 +1792,151 @@ export class RadarRepository {
     source = "manual_promote",
   ): Promise<boolean> {
     return this.tryClaimLeadIdentity(scope.teamId, profileId, leadId, source)
+  }
+
+  /**
+   * Reserva o slot `lead_id` do perfil ANTES de o Lead existir.
+   *
+   * A promoção criava o Lead primeiro e só então tentava a claim; perdendo a
+   * corrida (o `syncLeadToRadarInline` roubava o slot), o caminho de rollback
+   * DELETAVA o Lead recém-criado — destrutivo e correndo com qualquer coisa que
+   * já o referenciasse (auditoria CDP §4 R5/H3).
+   *
+   * Reservando antes, o rollback passa a apagar apenas esta linha provisória,
+   * que ninguém referencia. O valor provisório é prefixado com `pending:` para
+   * (a) satisfazer a unique `(teamId, type, normalizedValue)` e (b) nunca casar
+   * com uma busca por `lead_id` real, que é sempre um uuid puro.
+   */
+  async claimProvisionalLeadIdentity(
+    teamId: string,
+    profileId: string,
+    source = "manual_promote_pending",
+  ): Promise<{ identityId: string } | null> {
+    return this.db.$transaction(async (tx) => {
+      const lockKey = `${teamId}:promote-lead:${profileId}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarIdentity.findFirst({
+        where: { profileId, teamId, type: "lead_id" },
+        select: { id: true, normalizedValue: true, createdAt: true },
+      })
+
+      if (existing) {
+        // Vínculo real com o CRM: o perfil já foi promovido, ponto final.
+        if (!isPendingLeadIdentity(existing.normalizedValue)) return null
+
+        // Reserva provisória. `releaseClaim` é best-effort, então um crash entre
+        // reservar e liberar deixaria o perfil bloqueado para sempre — "já
+        // promovido" sem Lead nenhum, que é justamente o fluxo que a promoção
+        // deveria destravar. Passada a janela, a reserva é órfã e pode ser
+        // tomada; dentro dela, ainda é promoção concorrente de verdade e o
+        // bloqueio é o comportamento certo.
+        const ageMs = Date.now() - existing.createdAt.getTime()
+        if (ageMs < PENDING_LEAD_IDENTITY_STALE_MS) return null
+
+        console.info(
+          `[RadarRepository][claimProvisionalLeadIdentity] Reserva órfã retomada (profileId=${profileId}, idadeMs=${ageMs})`
+        )
+        await tx.radarIdentity.deleteMany({ where: { id: existing.id } })
+      }
+
+      const provisionalValue = `${PENDING_LEAD_IDENTITY_PREFIX}${randomUUID()}`
+      try {
+        const created = await tx.radarIdentity.create({
+          data: {
+            profileId,
+            teamId,
+            type: "lead_id",
+            value: provisionalValue,
+            normalizedValue: provisionalValue,
+            source,
+            isPrimary: false,
+          },
+          select: { id: true },
+        })
+        return { identityId: created.id }
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          return null
+        }
+        throw error
+      }
+    })
+  }
+
+  /**
+   * Troca o valor provisório da claim pelo id real do Lead.
+   *
+   * `createLead` dispara o sync inline, que grava a identidade `lead_id` com
+   * `upsertIdentity` — sem passar pelo advisory lock. Se ele vencer a corrida,
+   * a identidade REAL já existe quando chegamos aqui, e renomear a reserva para
+   * o mesmo `normalizedValue` violaria a unique `(teamId, type,
+   * normalizedValue)` com P2002: a promoção reportaria falha embora o Lead
+   * tivesse sido criado, e ainda deixaria a linha `pending:` bloqueando o
+   * perfil. Nesse caso a reserva apenas sai de cena — o vínculo já existe.
+   */
+  async finalizeLeadIdentityClaim(
+    teamId: string,
+    identityId: string,
+    leadId: string,
+    source = "manual_promote",
+  ): Promise<void> {
+    // Sem `$transaction` de propósito. Não há invariante multi-statement a
+    // proteger aqui — são operações de uma linha só — e, dentro de uma
+    // transação interativa, o P2002 do `updateMany` já teria abortado a TX
+    // (25P02): o `deleteMany` de limpeza falharia junto, e a promoção voltaria
+    // a reportar erro com o Lead criado e a reserva `pending:` travando o
+    // perfil, que é exatamente o R5/H3. Fora da transação, cada statement é
+    // independente e a limpeza roda numa conexão sã.
+    const dropReservation = () =>
+      this.db.radarIdentity.deleteMany({
+        where: { id: identityId, teamId, type: "lead_id" },
+      })
+
+    const alreadyReal = await this.db.radarIdentity.findFirst({
+      where: { teamId, type: "lead_id", normalizedValue: leadId },
+      select: { id: true },
+    })
+
+    if (alreadyReal && alreadyReal.id !== identityId) {
+      await dropReservation()
+      return
+    }
+
+    try {
+      const updated = await this.db.radarIdentity.updateMany({
+        where: { id: identityId, teamId, type: "lead_id" },
+        data: { value: leadId, normalizedValue: leadId, source },
+      })
+
+      // Contagem zero = a reserva sumiu entre a leitura e agora (o gate do
+      // formulário público a assume quando está órfã). Silenciar isso deixaria
+      // a promoção reportar sucesso sem ter vinculado nada, e o sync seguinte
+      // criaria um SEGUNDO `lead_id` no perfil. Falhar aqui joga o caso para o
+      // caminho de recuperação do UseCase, que libera e delega ao sync.
+      if (updated.count === 0) {
+        throw new Error(
+          `Reserva de lead_id desapareceu antes da finalização (identityId=${identityId})`
+        )
+      }
+    } catch (error) {
+      // A checagem acima não é atômica: o sync pode inserir a identidade real
+      // entre o `findFirst` e este `updateMany`, e aí o rename bate na unique.
+      // P2002 aqui significa exatamente "o vínculo já existe" — mesmo desfecho
+      // do caminho `alreadyReal`.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        await dropReservation()
+        return
+      }
+      throw error
+    }
+  }
+
+  /** Devolve o slot quando a criação do Lead não aconteceu. */
+  async releaseLeadIdentityClaim(teamId: string, identityId: string): Promise<void> {
+    await this.db.radarIdentity.deleteMany({
+      where: { id: identityId, teamId, type: "lead_id" },
+    })
   }
 
   async tryClaimLeadIdentity(
@@ -3238,206 +3484,72 @@ export class RadarRepository {
   }
 
   /**
-   * Fase 2: calcula as 9 contagens de segmentos fixos do Radar com agregação
-   * SQL nativa (Postgres) usando CTEs, substituindo varredura em memória.
-   * Retorna Map<slug, count> para preservar compatibilidade com o fluxo existente.
+   * Calcula as 9 contagens de segmentos de sistema numa varredura só.
+   *
+   * Os predicados vêm de `lib/radar/fixed-segment-sql` — os MESMOS que a
+   * listagem consome. Antes esta query era uma implementação independente do
+   * matcher em memória que servia a lista: duas verdades que divergiam sozinhas
+   * (auditoria CDP §4 R6). `COUNT(*) FILTER` preserva a passada única sobre os
+   * perfis do time que a versão com CTEs tinha.
    */
   async countFixedSegmentsSQL(
     teamId: string,
     recentWindowDays: number = 30,
   ): Promise<Map<string, number>> {
-    const recentWindowMs = recentWindowDays * 24 * 60 * 60 * 1000
-    const recentThreshold = new Date(Date.now() - recentWindowMs)
+    const recentThreshold = resolveRecentSegmentThreshold(recentWindowDays)
 
-    const result = await this.db.$queryRaw<
-      Array<{
-        email_marketable: bigint
-        email_blocked: bigint
-        opened_not_clicked: bigint
-        clicked_not_closed: bigint
-        engaged_no_lead: bigint
-        portfolio_renewal_due: bigint
-        inactive_recent_campaign: bigint
-        portfolio_clients: bigint
-        crm_clients: bigint
-      }>
-    >`
-      WITH profile_base AS (
-        SELECT
-          p.id,
-          p."normalizedPrimaryEmail",
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
-              AND c."channel" = 'email' AND c."status" = 'blocked'
-          ) AS has_blocked_consent,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-            WHERE c."profileId" = p.id AND c."teamId" = ${teamId}::uuid
-              AND c."channel" = 'email' AND c."status" = 'allowed'
-          ) AS has_allowed_consent,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_source_links" sl
-            WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
-              AND sl."sourceType" = 'portfolio'
-          ) AS has_portfolio,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_identities" i
-            WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
-              AND i."type" = 'lead_id'
-          ) AS has_lead_id,
-          EXISTS(
-            SELECT 1 FROM "corretor_studio_radar_events" e
-            WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
-              AND e."eventType" = 'email.sent'
-              AND e."occurredAt" >= ${recentThreshold}
-          ) AS has_recent_sent
-        FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}::uuid
-      ),
-      email_events AS (
-        SELECT
-          e."profileId",
-          e."eventType",
-          e."occurredAt",
-          e."metadata"
-        FROM "corretor_studio_radar_events" e
-        WHERE e."teamId" = ${teamId}::uuid
-          AND e."eventType" IN ('email.opened', 'email.clicked')
-          AND e."occurredAt" >= ${recentThreshold}
-      ),
-      campaign_opens AS (
-        SELECT DISTINCT
-          ee."profileId",
-          ee."metadata"->>'campaignId' AS campaign_id
-        FROM email_events ee
-        WHERE ee."eventType" = 'email.opened'
-          AND ee."metadata"->>'campaignId' IS NOT NULL
-      ),
-      campaign_clicks AS (
-        SELECT DISTINCT
-          ee."profileId",
-          ee."metadata"->>'campaignId' AS campaign_id
-        FROM email_events ee
-        WHERE ee."eventType" = 'email.clicked'
-          AND ee."metadata"->>'campaignId' IS NOT NULL
-      ),
-      opened_not_clicked_profiles AS (
-        SELECT DISTINCT co."profileId"
-        FROM campaign_opens co
-        LEFT JOIN campaign_clicks cc
-          ON co."profileId" = cc."profileId"
-          AND co.campaign_id = cc.campaign_id
-        WHERE cc."profileId" IS NULL
-      ),
-      clicked_profiles AS (
-        SELECT DISTINCT ee."profileId"
-        FROM email_events ee
-        WHERE ee."eventType" = 'email.clicked'
-          AND ee."metadata"->>'campaignId' IS NOT NULL
-      ),
-      closed_profiles AS (
-        SELECT p.id
-        FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}::uuid
-          AND (
-            EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_source_links" sl
-              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
-                AND sl."sourceType" = 'portfolio'
-            )
-            OR EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_identities" i
-              INNER JOIN "corretor_studio_leads" l ON i."normalizedValue" = l.id::text
-              WHERE i."profileId" = p.id AND i."teamId" = ${teamId}::uuid
-                AND i."type" = 'lead_id'
-                AND l."teamId" = ${teamId}::uuid
-                AND l."status" IN ('contract_finalized')
-            )
-          )
-      ),
-      clicked_not_closed_profiles AS (
-        SELECT cp."profileId"
-        FROM clicked_profiles cp
-        LEFT JOIN closed_profiles clp ON cp."profileId" = clp.id
-        WHERE clp.id IS NULL
-      ),
-      renewal_due_profiles AS (
-        SELECT DISTINCT p.id
-        FROM "corretor_studio_radar_profiles" p
-        WHERE p."teamId" = ${teamId}::uuid
-          AND (
-            EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_events" e
-              WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
-                AND e."eventType" = 'portfolio.renewal_due'
-            )
-            OR EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_source_links" sl
-              WHERE sl."profileId" = p.id AND sl."teamId" = ${teamId}::uuid
-                AND sl."sourceType" = 'portfolio'
-                AND sl."sourceMetadata"->>'renewalStatus' IN ('to_renew', 'contacted')
-            )
-          )
-      ),
-      engaged_no_lead_profiles AS (
-        SELECT DISTINCT pb.id AS "profileId"
-        FROM profile_base pb
-        WHERE NOT pb.has_lead_id
-          AND (
-            EXISTS (SELECT 1 FROM email_events ee WHERE ee."profileId" = pb.id)
-            OR EXISTS (
-              SELECT 1 FROM "corretor_studio_radar_events" e
-              WHERE e."profileId" = pb.id
-                AND e."teamId" = ${teamId}::uuid
-                AND e."eventType" IN ('form.viewed', 'form.started')
-                AND e."occurredAt" >= ${recentThreshold}
-            )
-          )
-      )
-      SELECT
-        COUNT(*) FILTER (
-          WHERE pb."normalizedPrimaryEmail" IS NOT NULL
-            AND pb."normalizedPrimaryEmail" != ''
-            AND (NOT pb.has_blocked_consent)
-            AND (pb.has_allowed_consent OR NOT EXISTS(
-              SELECT 1 FROM "corretor_studio_radar_channel_consents" c
-              WHERE c."profileId" = pb.id AND c."teamId" = ${teamId}::uuid
-                AND c."channel" = 'email'
-            ))
-        ) AS email_marketable,
-        COUNT(*) FILTER (WHERE pb.has_blocked_consent) AS email_blocked,
-        COUNT(oncp."profileId") AS opened_not_clicked,
-        COUNT(cncp."profileId") AS clicked_not_closed,
-        COUNT(enlp."profileId") AS engaged_no_lead,
-        COUNT(rdp.id) AS portfolio_renewal_due,
-        COUNT(*) FILTER (WHERE NOT pb.has_recent_sent) AS inactive_recent_campaign,
-        COUNT(*) FILTER (WHERE pb.has_portfolio) AS portfolio_clients,
-        COUNT(*) FILTER (WHERE pb.has_lead_id) AS crm_clients
-      FROM profile_base pb
-      LEFT JOIN opened_not_clicked_profiles oncp ON pb.id = oncp."profileId"
-      LEFT JOIN clicked_not_closed_profiles cncp ON pb.id = cncp."profileId"
-      LEFT JOIN engaged_no_lead_profiles enlp ON pb.id = enlp."profileId"
-      LEFT JOIN renewal_due_profiles rdp ON pb.id = rdp.id
-    `
+    const result = await this.db.$queryRaw<Array<Record<RadarSegmentSlug, bigint>>>(
+      buildFixedSegmentCountsSql(teamId, recentThreshold)
+    )
 
     const row = result[0]
     if (!row) {
       return new Map()
     }
 
-    return new Map([
-      ["email_marketable", Number(row.email_marketable)],
-      ["email_blocked", Number(row.email_blocked)],
-      ["opened_not_clicked", Number(row.opened_not_clicked)],
-      ["clicked_not_closed", Number(row.clicked_not_closed)],
-      ["engaged_no_lead", Number(row.engaged_no_lead)],
-      ["portfolio_renewal_due", Number(row.portfolio_renewal_due)],
-      ["inactive_recent_campaign", Number(row.inactive_recent_campaign)],
-      ["portfolio_clients", Number(row.portfolio_clients)],
-      ["crm_clients", Number(row.crm_clients)],
-    ])
+    return new Map(RADAR_SEGMENT_SLUGS.map((slug) => [slug, Number(row[slug])]))
   }
+
+  /** Contagem de um único segmento de sistema — mesmo predicado da listagem. */
+  async countFixedSegmentSQL(
+    teamId: string,
+    slug: RadarSegmentSlug,
+    recentWindowDays: number = 30,
+  ): Promise<number> {
+    const recentThreshold = resolveRecentSegmentThreshold(recentWindowDays)
+
+    const result = await this.db.$queryRaw<Array<{ count: bigint }>>(
+      buildFixedSegmentCountSql(slug, teamId, recentThreshold)
+    )
+
+    return Number(result[0]?.count ?? 0)
+  }
+
+  /**
+   * Página de ids do segmento de sistema, filtrada e paginada NO BANCO.
+   *
+   * Substitui o caminho que carregava todos os perfis do time em memória só
+   * para dar `slice` na página — o mesmo caminho que estourava P2035 (32.768
+   * bind vars) na rota de perfis de segmento com base grande.
+   */
+  async listFixedSegmentProfileIdsSQL(
+    teamId: string,
+    slug: RadarSegmentSlug,
+    pagination: { skip: number; take: number },
+    recentWindowDays: number = 30,
+  ): Promise<string[]> {
+    const recentThreshold = resolveRecentSegmentThreshold(recentWindowDays)
+
+    const rows = await this.db.$queryRaw<Array<{ id: string }>>(
+      buildFixedSegmentProfileIdsSql(slug, teamId, recentThreshold, pagination)
+    )
+
+    return rows.map((row) => row.id)
+  }
+}
+
+function resolveRecentSegmentThreshold(recentWindowDays: number): Date {
+  return new Date(Date.now() - recentWindowDays * 24 * 60 * 60 * 1000)
 }
 
 function genderSourceWriteWhere(incoming: RadarGenderSource): Prisma.RadarProfileWhereInput {
