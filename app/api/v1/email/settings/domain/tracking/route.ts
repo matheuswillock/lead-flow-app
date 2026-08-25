@@ -17,11 +17,12 @@ const trackingSchema = z
         "Use apenas letras minúsculas, números e hífen (ex.: links)"
       ),
     openTracking: z.boolean(),
-    clickTracking: z.boolean(),
-  })
-  .refine((data) => data.openTracking || data.clickTracking, {
-    message: "Habilite pelo menos abertura ou cliques",
-    path: ["openTracking"],
+    // Aceito e descartado. O rastreio de cliques do Resend reescreve os links do
+    // e-mail para o subdomínio de tracking, e provedores marcam a mensagem como
+    // suspeita; os cliques já vêm do first-party do formulário. A UI não oferece
+    // mais o controle — a rota também não obedece a ele, senão a garantia
+    // dependeria só do cliente.
+    clickTracking: z.boolean().optional(),
   })
 
 function makeUseCase() {
@@ -50,7 +51,13 @@ export async function PATCH(request: NextRequest) {
     }
 
     const useCase = makeUseCase()
-    const output = await useCase.configureDomainTracking(validation.data, teamAccess.access)
+    const output = await useCase.configureDomainTracking(
+      {
+        trackingSubdomain: validation.data.trackingSubdomain,
+        openTracking: validation.data.openTracking,
+      },
+      teamAccess.access
+    )
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)

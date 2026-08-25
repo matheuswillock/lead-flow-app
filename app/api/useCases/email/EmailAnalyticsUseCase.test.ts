@@ -162,7 +162,9 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         domainName: "example.com",
         domainStatus: "partially_verified",
         openTracking: true,
-        clickTracking: true,
+        clickTracking: false,
+        // DNS de envio íntegro: o domínio despacha, só não mede abertura.
+        sendingDnsVerified: true,
       })),
     })
     const uc = new EmailAnalyticsUseCase(repo)
