@@ -2,12 +2,9 @@ import { Output } from "@/lib/output"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
-import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
-
-const leadRepository = new LeadRepository()
 
 type PromotionProfile = NonNullable<
   Awaited<ReturnType<typeof radarRepository.getProfileForPromotionWithCtx>>
@@ -42,6 +39,12 @@ class PromoteRadarProfileToLeadUseCase {
     profileId: string
     access: TeamAccess
     ctx: TeamContext
+    /**
+     * Confirmação explícita do usuário de que quer criar o Lead mesmo havendo
+     * candidato a duplicata. Sem ela, o conflito volta como fluxo (409 com os
+     * candidatos no `result`), não como erro seco.
+     */
+    confirmDuplicate?: boolean
   }): Promise<Output> {
     try {
       const scope = { teamId: input.access.teamId, ctx: input.ctx }
@@ -60,48 +63,16 @@ class PromoteRadarProfileToLeadUseCase {
         )
       }
 
-      const phone = resolvePromotionPhone(profile)
-      const email = resolvePromotionEmail(profile)
-      const createOutput = await leadUseCase.createLead(
-        input.access.supabaseId,
-        {
-          name: profile.displayName.trim() || "Contato Radar",
-          email,
-          phone,
-          originChannel: "manual",
-          originMetadata: {
-            source: "radar_profile_promote",
-            radarProfileId: profile.id,
-          },
-          notes: buildPromotionNotes(Boolean(phone)),
-        } as unknown as CreateLeadRequest,
-        input.access.teamId
+      // Reserva o slot ANTES de criar o Lead. Criar primeiro e reservar depois
+      // era o que obrigava, ao perder a corrida com o sync inline, a DELETAR o
+      // Lead recém-criado (R5/H3). Agora o rollback apaga só a linha
+      // provisória, que ninguém referencia.
+      const claim = await radarRepository.claimProvisionalLeadIdentity(
+        input.access.teamId,
+        profile.id
       )
 
-      if (!createOutput.isValid) {
-        return createOutput
-      }
-
-      const createdLead = createOutput.result as { id?: string } | null
-      if (!createdLead?.id) {
-        return new Output(false, [], ["Erro ao criar Lead a partir do perfil Radar"], null)
-      }
-
-      const claimed = await radarRepository.tryInsertLeadIdentityIfAbsent(
-        scope,
-        profile.id,
-        createdLead.id
-      )
-
-      if (!claimed) {
-        try {
-          await leadRepository.delete(createdLead.id)
-        } catch (rollbackError) {
-          console.error(
-            "[PromoteRadarProfileToLeadUseCase][execute] Falha ao remover Lead órfão após corrida de promoção:",
-            rollbackError
-          )
-        }
+      if (!claim) {
         return new Output(
           false,
           [],
@@ -109,6 +80,53 @@ class PromoteRadarProfileToLeadUseCase {
           null
         )
       }
+
+      const phone = resolvePromotionPhone(profile)
+      const email = resolvePromotionEmail(profile)
+
+      let createOutput: Output
+      try {
+        createOutput = await leadUseCase.createLead(
+          input.access.supabaseId,
+          {
+            name: profile.displayName.trim() || "Contato Radar",
+            email,
+            phone,
+            originChannel: "manual",
+            originMetadata: {
+              source: "radar_profile_promote",
+              radarProfileId: profile.id,
+            },
+            notes: buildPromotionNotes(Boolean(phone)),
+            ...(input.confirmDuplicate === true ? { confirmDuplicate: true } : {}),
+          } as unknown as CreateLeadRequest,
+          input.access.teamId
+        )
+      } catch (createError) {
+        await this.releaseClaim(input.access.teamId, claim.identityId)
+        throw createError
+      }
+
+      const createdLead = createOutput.result as { id?: string } | null
+
+      if (!createOutput.isValid || !createdLead?.id) {
+        await this.releaseClaim(input.access.teamId, claim.identityId)
+
+        // O `result` do LeadUseCase carrega `requiresDuplicateConfirmation` +
+        // `duplicateCandidates`. Repassar íntegro é o que deixa a rota devolver
+        // 409 e o frontend oferecer "criar assim mesmo" ([[11]] E1). Antes o
+        // Output voltava com `result` que a rota tratava como 400 genérico.
+        if (!createOutput.isValid) {
+          return createOutput
+        }
+        return new Output(false, [], ["Erro ao criar Lead a partir do perfil Radar"], null)
+      }
+
+      await radarRepository.finalizeLeadIdentityClaim(
+        input.access.teamId,
+        claim.identityId,
+        createdLead.id
+      )
 
       const syncOutput = await syncLeadToRadarUseCase.execute({
         leadId: createdLead.id,
@@ -133,6 +151,25 @@ class PromoteRadarProfileToLeadUseCase {
       const message =
         error instanceof Error ? error.message : "Erro ao promover perfil Radar a Lead"
       return new Output(false, [], [message], null)
+    }
+  }
+
+  /**
+   * Devolve o slot reservado quando o Lead não chegou a existir.
+   *
+   * Best-effort de propósito: se a liberação falhar, o perfil fica com uma
+   * identidade `pending:` que bloqueia nova promoção — ruim, mas recuperável
+   * (é uma linha marcada com `source = manual_promote_pending`). Propagar o
+   * erro aqui esconderia a causa real da falha do usuário.
+   */
+  private async releaseClaim(teamId: string, identityId: string): Promise<void> {
+    try {
+      await radarRepository.releaseLeadIdentityClaim(teamId, identityId)
+    } catch (releaseError) {
+      console.error(
+        "[PromoteRadarProfileToLeadUseCase][releaseClaim] Falha ao liberar reserva de lead_id:",
+        releaseError
+      )
     }
   }
 }

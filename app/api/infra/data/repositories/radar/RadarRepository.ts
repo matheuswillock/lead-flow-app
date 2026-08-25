@@ -7,6 +7,7 @@ import {
   type RadarSourceType,
   type LeadStatus,
 } from "@prisma/client"
+import { randomUUID } from "node:crypto"
 import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma"
 import type { PrismaClient } from "@prisma/client"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
@@ -1691,6 +1692,78 @@ export class RadarRepository {
     source = "manual_promote",
   ): Promise<boolean> {
     return this.tryClaimLeadIdentity(scope.teamId, profileId, leadId, source)
+  }
+
+  /**
+   * Reserva o slot `lead_id` do perfil ANTES de o Lead existir.
+   *
+   * A promoção criava o Lead primeiro e só então tentava a claim; perdendo a
+   * corrida (o `syncLeadToRadarInline` roubava o slot), o caminho de rollback
+   * DELETAVA o Lead recém-criado — destrutivo e correndo com qualquer coisa que
+   * já o referenciasse (auditoria CDP §4 R5/H3).
+   *
+   * Reservando antes, o rollback passa a apagar apenas esta linha provisória,
+   * que ninguém referencia. O valor provisório é prefixado com `pending:` para
+   * (a) satisfazer a unique `(teamId, type, normalizedValue)` e (b) nunca casar
+   * com uma busca por `lead_id` real, que é sempre um uuid puro.
+   */
+  async claimProvisionalLeadIdentity(
+    teamId: string,
+    profileId: string,
+    source = "manual_promote_pending",
+  ): Promise<{ identityId: string } | null> {
+    return this.db.$transaction(async (tx) => {
+      const lockKey = `${teamId}:promote-lead:${profileId}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+      const existing = await tx.radarIdentity.findFirst({
+        where: { profileId, teamId, type: "lead_id" },
+        select: { id: true },
+      })
+      if (existing) return null
+
+      const provisionalValue = `pending:${randomUUID()}`
+      try {
+        const created = await tx.radarIdentity.create({
+          data: {
+            profileId,
+            teamId,
+            type: "lead_id",
+            value: provisionalValue,
+            normalizedValue: provisionalValue,
+            source,
+            isPrimary: false,
+          },
+          select: { id: true },
+        })
+        return { identityId: created.id }
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          return null
+        }
+        throw error
+      }
+    })
+  }
+
+  /** Troca o valor provisório da claim pelo id real do Lead. */
+  async finalizeLeadIdentityClaim(
+    teamId: string,
+    identityId: string,
+    leadId: string,
+    source = "manual_promote",
+  ): Promise<void> {
+    await this.db.radarIdentity.updateMany({
+      where: { id: identityId, teamId, type: "lead_id" },
+      data: { value: leadId, normalizedValue: leadId, source },
+    })
+  }
+
+  /** Devolve o slot quando a criação do Lead não aconteceu. */
+  async releaseLeadIdentityClaim(teamId: string, identityId: string): Promise<void> {
+    await this.db.radarIdentity.deleteMany({
+      where: { id: identityId, teamId, type: "lead_id" },
+    })
   }
 
   async tryClaimLeadIdentity(

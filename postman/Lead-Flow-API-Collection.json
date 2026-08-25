@@ -19176,8 +19176,17 @@
               {
                 "key": "x-team-id",
                 "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
+            "description": "Body opcional. Sem body, um possivel duplicado devolve 409 com result.requiresDuplicateConfirmation e result.duplicateCandidates. Reenvie com confirmDuplicate=true para criar mesmo assim.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmDuplicate\": false\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/promote-to-lead",
               "host": [
