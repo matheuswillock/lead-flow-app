@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { RADAR_SEGMENT_SLUGS, type RadarSegmentSlug } from "./segment-config"
+import { RADAR_EXPORT_MAX_ROWS } from "./exportRadarProfiles"
 
 /**
  * Predicados SQL dos segmentos de sistema — fonte ÚNICA para card e lista.
@@ -270,7 +271,13 @@ export function buildFixedSegmentProfileIdsSql(
   `
 }
 
-const MAX_PAGE_SIZE = 1000
+/**
+ * Teto do `LIMIT`, alinhado ao maior consumidor legítimo deste builder: o
+ * export de segmento (`RADAR_EXPORT_MAX_ROWS`). Um teto menor truncaria o
+ * export em silêncio — pior ainda, o `truncated` do Output era derivado do
+ * total, então anunciaria que não truncou.
+ */
+const MAX_PAGE_SIZE = RADAR_EXPORT_MAX_ROWS
 
 /**
  * O Postgres rejeita `NaN`, `Infinity` e fracionário em `LIMIT`/`OFFSET`, e o
