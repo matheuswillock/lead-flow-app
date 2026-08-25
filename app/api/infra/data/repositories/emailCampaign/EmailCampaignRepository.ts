@@ -6,6 +6,10 @@ import {
   resolveDispatchLockConnectionString,
   toDispatchAdvisoryLockKeys,
 } from "@/lib/email/dispatch-advisory-lock"
+import {
+  queryDispatchLogCounters,
+  type DispatchLogCounterRow,
+} from "@/app/api/infra/data/repositories/emailLog/DispatchLogCountersQuery"
 
 export type CampaignForSegmentGeneration = {
   id: string
@@ -39,14 +43,7 @@ export type DispatchProcessingLockOutcome<T> =
   | { acquired: false }
   | { acquired: true; result: T }
 
-export type DispatchLogCounterRow = {
-  dispatchId: string
-  acceptedCount: number
-  failedCount: number
-  queuedCount: number
-  /** Recusados pela pré-validação — terminais e não retentáveis. */
-  suppressedCount: number
-}
+export type { DispatchLogCounterRow }
 
 export type EmailCampaignCreateData = Prisma.EmailCampaignUncheckedCreateInput
 
@@ -213,55 +210,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
     teamId: string,
     dispatchIds: string[]
   ): Promise<DispatchLogCounterRow[]> {
-    if (dispatchIds.length === 0) return []
-
-    const rows = await this.db.$queryRaw<
-      Array<{
-        dispatchId: string
-        acceptedCount: number | bigint
-        failedCount: number | bigint
-        queuedCount: number | bigint
-        suppressedCount: number | bigint
-      }>
-    >`
-      SELECT
-        "dispatchId",
-        COUNT(*) FILTER (
-          WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL
-        )::int AS "acceptedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'failed'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "failedCount",
-        COUNT(*) FILTER (
-          WHERE status = 'queued'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "queuedCount",
-        -- Recusados pela pré-validação, antes de tocar o provedor. Sem esta
-        -- coluna eles não entram em contador nenhum e a barra de progresso fica
-        -- travada abaixo de 100% num disparo que já terminou.
-        COUNT(*) FILTER (
-          WHERE status = 'suppressed'::"email_log_status"
-            AND "sentAt" IS NULL
-            AND "resendEmailId" IS NULL
-        )::int AS "suppressedCount"
-      FROM "corretor_studio_email_logs"
-      WHERE "teamId" = ${teamId}::uuid
-        AND "dispatchId" = ANY(${dispatchIds}::uuid[])
-      GROUP BY "dispatchId"
-    `
-
-    return rows
-      .filter((row) => Boolean(row.dispatchId))
-      .map((row) => ({
-        dispatchId: row.dispatchId,
-        acceptedCount: Number(row.acceptedCount),
-        failedCount: Number(row.failedCount),
-        queuedCount: Number(row.queuedCount),
-        suppressedCount: Number(row.suppressedCount),
-      }))
+    return queryDispatchLogCounters(this.db, { teamId, dispatchIds })
   }
 
   async createCampaignPlan(

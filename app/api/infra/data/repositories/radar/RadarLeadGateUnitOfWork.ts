@@ -283,6 +283,24 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       },
       data: { leadId: input.leadId },
     })
+
+    // SPEC 40 E2 × modo radar (review #1051). O evento de progresso que move o
+    // gate e o job da submissão vivem em filas diferentes, sem ordem garantida:
+    // a submissão pode completar e emitir `lead_discarded` ANTES de o gate
+    // anexar o lead. O `updateMany` acima conserta o vínculo, mas o evento de
+    // descarte ficava lá — sessão convertida contada como descartada, o oposto
+    // do que o funil promete.
+    //
+    // Compensação no mesmo `transaction` do gate: ou o lead é anexado e o
+    // descarte some, ou nada acontece. Idempotente — rodar de novo não muda o
+    // resultado, e sem descarte pendente é `deleteMany` de zero linhas.
+    await this.transaction.publicFormMetricEvent.deleteMany({
+      where: {
+        formId: input.formId,
+        visitorSessionId: input.visitorSessionId,
+        eventType: "lead_discarded",
+      },
+    })
   }
 }
 

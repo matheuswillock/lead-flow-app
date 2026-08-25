@@ -2679,8 +2679,9 @@ describe("EmailCampaignUseCase.dispatchScheduledCampaigns", () => {
     }))
   })
 
-  it("C11 — processPendingBatch chamado 1× após o loop de campanhas", async () => {
-    // Sem campanhas agendadas; apenas verifica que o orphan sweep ocorre
+  it("C11 — o dispatch não drena mais órfãos: o dreno é cron próprio", async () => {
+    // A carona de 10 órfãos por execução saiu daqui (120/h). Agora quem drena
+    // é /api/v1/email/cron/drain-orphan-events, em lotes de 200 a cada 5 min.
     processPendingBatchMock.mockImplementation(async () => ({
       processed: 3,
       failed: 0,
@@ -2690,9 +2691,10 @@ describe("EmailCampaignUseCase.dispatchScheduledCampaigns", () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
 
-    expect(processPendingBatchMock).toHaveBeenCalledTimes(1)
+    expect(processPendingBatchMock).not.toHaveBeenCalled()
     expect(output.isValid).toBe(true)
     expect(output.result.dispatched).toBe(0)
+    expect(output.result).not.toHaveProperty("orphanResult")
   })
 })
 

@@ -13,9 +13,20 @@ mock.module("@/lib/queues/public-form-metric-events", () => ({
   PUBLIC_FORM_METRIC_EVENTS_TOPIC: "public-form-metric-events",
 }))
 
-mock.module("@/lib/queues/queue-processing-failure", () => ({
-  ackAfterMaxDeliveries: mock(async () => false),
-}))
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
 
 const { processPublicFormMetricQueueMessage } = await import("./route")
 
@@ -106,6 +117,7 @@ describe("processPublicFormMetricQueueMessage", () => {
         idempotencyKey: "session_abcdefghij:form_viewed:form",
         deliveryCount: 2,
       }),
+      expect.any(Function),
     )
   })
 
@@ -129,7 +141,36 @@ describe("processPublicFormMetricQueueMessage", () => {
         idempotencyKey: "session_abcdefghij:form_viewed:form",
         deliveryCount: 25,
       }),
+      expect.any(Function),
     )
+  })
+
+  it("deliveryCount excedeu o limite sem outbox: loga sem afirmar que persistiu", async () => {
+    const ackDeadLetter = mock(async (_input: unknown, onOutboxOutcome: (persisted: boolean) => void) => {
+      onOutboxOutcome(false)
+      return true
+    })
+    const errorSpy = mock((_message?: unknown, _context?: unknown) => {})
+    const originalConsoleError = console.error
+    console.error = errorSpy as unknown as typeof console.error
+    persistQueuedMetric.mockRejectedValueOnce(new Error("Foreign key constraint violated"))
+
+    try {
+      await processPublicFormMetricQueueMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 100 },
+        undefined,
+        ackDeadLetter,
+      )
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    const ackLogCall = errorSpy.mock.calls.find((call) =>
+      String(call[0]).includes("deliveryCount excedeu o limite"),
+    )
+    expect(ackLogCall?.[0]).not.toContain("movido para outbox")
+    expect(ackLogCall?.[1]).toEqual(expect.objectContaining({ persistedToOutbox: false }))
   })
 
   it("payload inválido: ack sem chamar persistQueuedMetric", async () => {
@@ -138,6 +179,54 @@ describe("processPublicFormMetricQueueMessage", () => {
       metadata,
     )
     expect(persistQueuedMetric).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T-Q3.2 + review #1042. Payload malformado é falha **terminal**: se entrasse
+   * como `pending`, o cron de retry republicaria o mesmo payload e o ciclo
+   * fila↔outbox não fecharia nunca. O `reason` nomeia o campo que faltou.
+   */
+  it("T-Q3.2 — payload inválido grava dead-letter TERMINAL nomeando o campo, e acka", async () => {
+    recordTerminalFailure.mockClear()
+    upsertFromProcessingFailure.mockClear()
+
+    await expect(
+      processPublicFormMetricQueueMessage({ ...baseMessage(), publicId: "" }, metadata),
+    ).resolves.toBeUndefined()
+
+    expect(persistQueuedMetric).not.toHaveBeenCalled()
+    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledTimes(1)
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-metric-events",
+        idempotencyKey: "session_abcdefghij:form_viewed:form",
+        lastError: "campos obrigatórios ausentes: publicId",
+      }),
+    )
+  })
+
+  it("T-Q3.2 — sem chave no payload, a linha usa o messageId como idempotencyKey", async () => {
+    recordTerminalFailure.mockClear()
+
+    await processPublicFormMetricQueueMessage(
+      { ...baseMessage(), publicId: "", eventKey: "" },
+      metadata,
+    )
+
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "invalid-payload:msg-1" }),
+    )
+  })
+
+  it("T-Q3.2 — outbox indisponível não retém a mensagem: acka sem throw", async () => {
+    recordTerminalFailure.mockImplementationOnce(async () => {
+      throw new Error("db down")
+    })
+
+    await expect(
+      processPublicFormMetricQueueMessage({ ...baseMessage(), publicId: "" }, metadata),
+    ).resolves.toBeUndefined()
   })
 
   it("payload server-side lead_created persiste via UseCase", async () => {

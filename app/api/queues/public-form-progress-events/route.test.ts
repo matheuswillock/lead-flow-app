@@ -21,10 +21,20 @@ mock.module("@/lib/queues/public-form-progress-events", () => ({
   PUBLIC_FORM_PROGRESS_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
-mock.module("@/lib/queues/queue-processing-failure", () => ({
-  ackAfterMaxDeliveries: mock(async () => false),
-  deadLetterInvalidPayload: mock(async () => {}),
-}))
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
 
 type QueueMessageMetadata = {
   messageId: string
@@ -162,6 +172,35 @@ describe("processPublicFormProgressEventMessage", () => {
         idempotencyKey: "progress:session_abcdefghij:pub:q:hash",
         deliveryCount: 20,
       }),
+      expect.any(Function),
     )
+  })
+
+  it("deliveryCount excedeu o limite sem outbox: loga sem afirmar que persistiu", async () => {
+    const ackDeadLetter = mock(async (_input: unknown, onOutboxOutcome: (persisted: boolean) => void) => {
+      onOutboxOutcome(false)
+      return true
+    })
+    const errorSpy = mock((_message?: unknown, _context?: unknown) => {})
+    const originalConsoleError = console.error
+    console.error = errorSpy as unknown as typeof console.error
+    execute.mockRejectedValueOnce(new Error("P2002"))
+
+    try {
+      await processPublicFormProgressEventMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 100 },
+        { execute },
+        ackDeadLetter,
+      )
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    const ackLogCall = errorSpy.mock.calls.find((call) =>
+      String(call[0]).includes("deliveryCount excedeu o limite"),
+    )
+    expect(ackLogCall?.[0]).not.toContain("movido para outbox")
+    expect(ackLogCall?.[1]).toEqual(expect.objectContaining({ persistedToOutbox: false }))
   })
 })
