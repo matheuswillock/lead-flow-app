@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
-type ContactRow = { listId: string; email: string; name: string | null }
+type ContactRow = {
+  listId: string
+  email: string
+  name: string | null
+  blockReason?: string | null
+  blockedAt?: Date | null
+}
 
 const state: {
   lists: Array<{ id: string; teamId: string; isArchived: boolean; isBlocklist: boolean; isSystemDefault: boolean }>
@@ -68,9 +74,20 @@ const tx = {
     count: mock(async (args: { where: { listId: string } }) =>
       state.contacts.filter((contact) => contact.listId === args.where.listId).length
     ),
+    /** O código lê a linha atual antes do upsert para não rebaixar o motivo. */
+    findUnique: mock(async (args: {
+      where: { listId_email: { listId: string; email: string } }
+    }) => {
+      const { listId, email } = args.where.listId_email
+      const found = state.contacts.find(
+        (contact) => contact.listId === listId && contact.email === email
+      )
+      if (!found) return null
+      return { blockReason: found.blockReason ?? null, blockedAt: found.blockedAt ?? null }
+    }),
     upsert: mock(async (args: {
       where: { listId_email: { listId: string; email: string } }
-      create: { listId: string; email: string; name: string | null }
+      create: { listId: string; email: string; name: string | null; blockReason?: string; blockedAt?: Date }
       update: {
         name?: string
         isUnsubscribed?: boolean
@@ -80,9 +97,22 @@ const tx = {
     }) => {
       const { listId, email } = args.where.listId_email
       state.upserts.push({ listId, email, ...args.update })
-      if (!state.contacts.some((contact) => contact.listId === listId && contact.email === email)) {
-        state.contacts.push({ listId, email, name: args.create.name })
+      const existing = state.contacts.find(
+        (contact) => contact.listId === listId && contact.email === email
+      )
+      if (!existing) {
+        state.contacts.push({
+          listId,
+          email,
+          name: args.create.name,
+          blockReason: args.create.blockReason ?? null,
+          blockedAt: args.create.blockedAt ?? null,
+        })
+        return {}
       }
+      // Espelha o comportamento do Postgres: campo ausente no `update` não é tocado.
+      if (args.update.blockReason !== undefined) existing.blockReason = args.update.blockReason
+      if (args.update.blockedAt !== undefined) existing.blockedAt = args.update.blockedAt
       return {}
     }),
   },
@@ -112,7 +142,13 @@ const tx = {
 
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: tx, default: tx }))
 
-const { blockTeamEmail, blockTeamEmailsBulk, BLOCK_REASON_MANUAL } = await import(
+const {
+  blockTeamEmail,
+  blockTeamEmailsBulk,
+  BLOCK_REASON_MANUAL,
+  BLOCK_REASON_UNSUBSCRIBE,
+  BLOCK_REASON_IMPORT,
+} = await import(
   "./email-contact-blocklist"
 )
 
@@ -309,5 +345,79 @@ describe("blockTeamEmail", () => {
     )
     expect(naBlocklist).toHaveLength(1)
     expect(state.totals["blocklist"]).toBe(1)
+  })
+
+  it("re-bloqueio não reinicia blockedAt — a data é a primeira entrada", async () => {
+    const primeiroBloqueio = new Date("2026-01-10T12:00:00Z")
+    await blockTeamEmail(tx as never, {
+      teamId: "team-1",
+      email: "alvo@example.com",
+      name: null,
+      createdBy: "profile-1",
+      reason: BLOCK_REASON_UNSUBSCRIBE,
+      blockedAt: primeiroBloqueio,
+    })
+
+    await blockTeamEmail(tx as never, {
+      teamId: "team-1",
+      email: "alvo@example.com",
+      name: null,
+      createdBy: "profile-1",
+      reason: BLOCK_REASON_UNSUBSCRIBE,
+      blockedAt: new Date("2026-08-24T23:00:00Z"),
+    })
+
+    const linha = state.contacts.find(
+      (contact) => contact.listId === "blocklist" && contact.email === "alvo@example.com"
+    )
+    expect(linha?.blockedAt).toEqual(primeiroBloqueio)
+  })
+
+  it("motivo não rebaixa: descadastro sobrevive a um import posterior", async () => {
+    await blockTeamEmail(tx as never, {
+      teamId: "team-1",
+      email: "alvo@example.com",
+      name: null,
+      createdBy: "profile-1",
+      reason: BLOCK_REASON_UNSUBSCRIBE,
+    })
+
+    await blockTeamEmail(tx as never, {
+      teamId: "team-1",
+      email: "alvo@example.com",
+      name: null,
+      createdBy: "profile-1",
+      reason: BLOCK_REASON_IMPORT,
+    })
+
+    const linha = state.contacts.find(
+      (contact) => contact.listId === "blocklist" && contact.email === "alvo@example.com"
+    )
+    // Opt-out é o motivo com peso legal — um import não pode apagá-lo.
+    expect(linha?.blockReason).toBe(BLOCK_REASON_UNSUBSCRIBE)
+  })
+
+  it("motivo sobe: import vira descadastro quando a pessoa realmente se descadastra", async () => {
+    await blockTeamEmail(tx as never, {
+      teamId: "team-1",
+      email: "alvo@example.com",
+      name: null,
+      createdBy: "profile-1",
+      reason: BLOCK_REASON_IMPORT,
+    })
+
+    await blockTeamEmail(tx as never, {
+      teamId: "team-1",
+      email: "alvo@example.com",
+      name: null,
+      createdBy: "profile-1",
+      reason: BLOCK_REASON_UNSUBSCRIBE,
+      markUnsubscribed: true,
+    })
+
+    const linha = state.contacts.find(
+      (contact) => contact.listId === "blocklist" && contact.email === "alvo@example.com"
+    )
+    expect(linha?.blockReason).toBe(BLOCK_REASON_UNSUBSCRIBE)
   })
 })

@@ -33,16 +33,35 @@ alter table "public"."corretor_studio_email_contacts"
 -- EmailEvent ⇒ corretor_studio_email_events, EmailLog ⇒ corretor_studio_email_logs.
 -- ---------------------------------------------------------------------------
 
+-- CTE materializada, não `exists` correlacionado: sem `as materialized` o
+-- planner faz inline e revarre events+logs uma vez por linha da blocklist.
+--
+-- O filtro de escopo importa: `EmailUnsubscribeUseCase` grava os DOIS escopos
+-- como type='unsubscribed', distinguindo só por metadata.scope. Opt-out de UMA
+-- campanha (scope='campaign') NÃO põe ninguém na blocklist — quem está lá
+-- entrou por outro caminho. Sem excluir esse escopo, um endereço que saiu de uma
+-- campanha e depois foi bloqueado manualmente seria rotulado como descadastro.
+--
+-- `coalesce(..., 'all')` é deliberado: metadata nulo ou sem a chave `scope` é
+-- descadastro global antigo ou evento vindo do webhook do Resend (que não grava
+-- scope). Esses continuam contando.
+with unsubscribed_global as materialized (
+  select distinct
+         lg."teamId" as team_id,
+         lower(btrim(lg."recipientEmail")) as email
+    from "public"."corretor_studio_email_events" ev
+    join "public"."corretor_studio_email_logs" lg on lg."id" = ev."logId"
+   where ev."type" = 'unsubscribed'
+     and coalesce(ev."metadata"->>'scope', 'all') <> 'campaign'
+)
 update "public"."corretor_studio_email_contacts" as c
 set
   "blockReason" = case
     when exists (
       select 1
-        from "public"."corretor_studio_email_events" ev
-        join "public"."corretor_studio_email_logs" lg on lg."id" = ev."logId"
-       where ev."type" = 'unsubscribed'
-         and lg."teamId" = l."teamId"
-         and lower(btrim(lg."recipientEmail")) = lower(btrim(c."email"))
+        from unsubscribed_global u
+       where u.team_id = l."teamId"
+         and u.email = lower(btrim(c."email"))
     ) then 'Descadastro pelo destinatário'
     when c."isUnsubscribed" then 'Descadastro pelo destinatário'
     when c."isBounced" then 'Bounce reportado pelo provedor'
