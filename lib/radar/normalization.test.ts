@@ -58,6 +58,29 @@ describe("normalizeRadarPhone", () => {
     })
   })
 
+  // 55 também é o DDD do Rio Grande do Sul. Tratar o prefixo "55" antes do
+  // comprimento recusaria o estado inteiro — e o saneamento apagaria números
+  // reais, achando que eram artefato.
+  describe("DDD 55 (Rio Grande do Sul) não é confundido com DDI", () => {
+    test("celular do RS sem DDI ganha o DDI", () => {
+      expect(normalizeRadarPhone("(55) 99999-9999")).toBe("5555999999999")
+      expect(normalizeRadarPhone("55999999999")).toBe("5555999999999")
+    })
+
+    test("fixo do RS sem DDI ganha o DDI", () => {
+      expect(normalizeRadarPhone("(55) 3333-4444")).toBe("555533334444")
+    })
+
+    test("e não é marcado como artefato", () => {
+      expect(isRadarPhoneArtifact("55999999999")).toBe(false)
+      expect(isRadarPhoneArtifact("5533334444")).toBe(false)
+    })
+
+    test("com DDI continua intacto", () => {
+      expect(normalizeRadarPhone("5555999999999")).toBe("5555999999999")
+    })
+  })
+
   test("o que era aceito e é telefone de verdade continua aceito", () => {
     expect(normalizeRadarPhone("5511987654321")).toBe("5511987654321")
     expect(normalizeRadarPhone("551133334444")).toBe("551133334444")
