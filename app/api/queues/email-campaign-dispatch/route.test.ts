@@ -62,6 +62,29 @@ describe("processEmailCampaignDispatchMessage", () => {
     ).rejects.toThrow("P2024")
   })
 
+  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
+    const ackDeadLetter = mock(async () => true)
+
+    await expect(
+      processEmailCampaignDispatchMessage(
+        { reason: "start" } as EmailCampaignDispatchWakePayload,
+        metadata,
+        { processDispatchQueueBatch },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(processDispatchQueueBatch).not.toHaveBeenCalled()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "email-campaign-dispatch",
+        idempotencyKey: "invalid_payload:msg-1",
+        maxDeliveryCount: 1,
+        lastError: "invalid_payload: campos obrigatórios ausentes: dispatchId",
+      }),
+    )
+  })
+
   it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
     const ackDeadLetter = mock(async () => true)
     processDispatchQueueBatch.mockRejectedValueOnce(new Error("P2024"))

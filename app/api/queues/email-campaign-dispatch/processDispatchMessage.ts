@@ -8,6 +8,11 @@ import {
   ackAfterMaxDeliveries,
   type AckAfterMaxDeliveriesFn,
 } from "@/lib/queues/queue-processing-failure"
+import {
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+} from "@/lib/queues/queue-invalid-payload"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -43,11 +48,23 @@ export async function processEmailCampaignDispatchMessage(
     reason: message?.reason,
   })
 
-  if (!message?.dispatchId) {
-    console.error("[EmailCampaignDispatchQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({ dispatchId: message?.dispatchId })
+  if (missingFields.length > 0) {
+    console.error("[EmailCampaignDispatchQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       message,
+      missingFields,
     })
+    await deadLetterInvalidPayload(
+      {
+        topic,
+        idempotencyKeyCandidate: message?.dispatchId,
+        messageId: metadata.messageId,
+        payload: message,
+        detail: describeMissingRequiredFields(missingFields),
+      },
+      ackDeadLetter,
+    )
     return
   }
 

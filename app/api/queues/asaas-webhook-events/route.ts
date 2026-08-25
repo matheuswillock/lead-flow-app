@@ -11,6 +11,11 @@ import {
   ackAfterMaxDeliveries,
   type AckAfterMaxDeliveriesFn,
 } from "@/lib/queues/queue-processing-failure"
+import {
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+} from "@/lib/queues/queue-invalid-payload"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -54,11 +59,26 @@ export async function processAsaasWebhookEventMessage(
     event: message?.body?.event,
   })
 
-  if (!message?.eventId || !message?.body) {
-    console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    eventId: message?.eventId,
+    body: message?.body,
+  })
+  if (missingFields.length > 0) {
+    console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       message,
+      missingFields,
     })
+    await deadLetterInvalidPayload(
+      {
+        topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
+        idempotencyKeyCandidate: message?.eventId,
+        messageId: metadata.messageId,
+        payload: message,
+        detail: describeMissingRequiredFields(missingFields),
+      },
+      deps.ackDeadLetter ?? ackAfterMaxDeliveries,
+    )
     return
   }
 

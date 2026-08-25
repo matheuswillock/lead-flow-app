@@ -11,6 +11,11 @@ import {
   ackAfterMaxDeliveries,
   type AckAfterMaxDeliveriesFn,
 } from "@/lib/queues/queue-processing-failure"
+import {
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+} from "@/lib/queues/queue-invalid-payload"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -42,11 +47,27 @@ export async function processPublicFormSubmissionEventMessage(
     requestKey: message?.requestKey,
   })
 
-  if (!message?.submissionId || !message?.requestKey || !message?.snapshot) {
-    console.error("[PublicFormSubmissionEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    submissionId: message?.submissionId,
+    requestKey: message?.requestKey,
+    snapshot: message?.snapshot,
+  })
+  if (missingFields.length > 0) {
+    console.error("[PublicFormSubmissionEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       message,
+      missingFields,
     })
+    await deadLetterInvalidPayload(
+      {
+        topic: PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC,
+        idempotencyKeyCandidate: message?.requestKey,
+        messageId: metadata.messageId,
+        payload: message,
+        detail: describeMissingRequiredFields(missingFields),
+      },
+      ackDeadLetter,
+    )
     return
   }
 

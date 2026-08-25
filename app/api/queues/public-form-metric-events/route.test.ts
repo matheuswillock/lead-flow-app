@@ -171,6 +171,45 @@ describe("processPublicFormMetricQueueMessage", () => {
     expect(persistQueuedMetric).not.toHaveBeenCalled()
   })
 
+  it("T-Q3.2 — payload inválido gera linha invalid_payload no outbox e acka", async () => {
+    const ackDeadLetter = mock(async () => true)
+
+    await expect(
+      processPublicFormMetricQueueMessage(
+        { ...baseMessage(), publicId: "" },
+        metadata,
+        undefined,
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(persistQueuedMetric).not.toHaveBeenCalled()
+    expect(ackDeadLetter).toHaveBeenCalledTimes(1)
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "public-form-metric-events",
+        idempotencyKey: "session_abcdefghij:form_viewed:form",
+        maxDeliveryCount: 1,
+        lastError: "invalid_payload: campos obrigatórios ausentes: publicId",
+      }),
+    )
+  })
+
+  it("T-Q3.2 — sem chave no payload, a linha usa o messageId como idempotencyKey", async () => {
+    const ackDeadLetter = mock(async () => true)
+
+    await processPublicFormMetricQueueMessage(
+      { ...baseMessage(), publicId: "", eventKey: "" },
+      metadata,
+      undefined,
+      ackDeadLetter,
+    )
+
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "invalid_payload:msg-1" }),
+    )
+  })
+
   it("payload server-side lead_created persiste via UseCase", async () => {
     await processPublicFormMetricQueueMessage(
       { ...baseMessage(), eventType: "lead_created", eventKey: "session_abcdefghij:lead_created:form" },
