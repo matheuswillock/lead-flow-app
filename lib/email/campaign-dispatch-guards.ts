@@ -10,10 +10,10 @@ export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: stri
  * botão errado.
  */
 export const RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE =
-  "O DNS de tracking do seu domínio ainda não está verificado no Resend. Nenhum disparo será liberado até que todos os registros apareçam como verificados — inclusive o CNAME de tracking. Publique os registros pendentes e use \"Verificar DNS\"."
+  "O DNS de envio do seu domínio ainda não está verificado no Resend. Nenhum disparo será liberado enquanto os registros DKIM e SPF não aparecerem como verificados. Publique os registros pendentes e use \"Verificar DNS\"."
 
 export const RESEND_DOMAIN_METRICS_DISABLED_MESSAGE =
-  "Com domínio próprio, é obrigatório habilitar a métrica de abertura para disparar campanhas. O rastreio de cliques permanece desligado de propósito: ele reescreve os links do e-mail e faz provedores marcarem a mensagem como suspeita."
+  "Suas campanhas disparam normalmente, mas sem taxa de abertura. Para recuperar a métrica, publique o CNAME de tracking e habilite a abertura em Métricas de tracking. O rastreio de cliques permanece desligado de propósito: ele reescreve os links do e-mail e faz provedores marcarem a mensagem como suspeita — os cliques já são medidos no próprio formulário."
 
 /** @deprecated Prefira as duas mensagens específicas — esta não diz qual causa travou. */
 export const RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE = RESEND_DOMAIN_METRICS_DISABLED_MESSAGE
@@ -26,6 +26,8 @@ export type ResendDomainTrackingInput = {
   domainStatus?: string | null
   openTracking?: boolean | null
   clickTracking?: boolean | null
+  /** DKIM e SPF verificados, ignorando o CNAME de tracking. */
+  sendingDnsVerified?: boolean | null
 }
 
 export type ResendDomainTrackingCheck =
@@ -56,44 +58,80 @@ export function resendDomainTrackingInputFromSettings(settings: {
   resendDomainStatus?: string | null
   resendOpenTracking?: boolean | null
   resendClickTracking?: boolean | null
+  resendSendingDnsVerified?: boolean | null
 } | null | undefined): ResendDomainTrackingInput {
   return {
     domainName: settings?.resendDomainName,
     domainStatus: settings?.resendDomainStatus,
     openTracking: settings?.resendOpenTracking,
     clickTracking: settings?.resendClickTracking,
+    sendingDnsVerified: settings?.resendSendingDnsVerified,
   }
 }
 
 /**
- * Custom domains must have at least one tracking metric enabled and a fully
- * verified Resend status (CNAME included) before campaign dispatch.
- * Teams without a custom domain are not gated.
+ * O DNS de envio está ok?
+ *
+ * `resendSendingDnsVerified` é derivado registro a registro em
+ * `syncFromResendDomain` e é a fonte precisa. O fallback por `verified` existe
+ * para a transição: a coluna nasce `false` para todo mundo e só é populada
+ * quando o cron de 6h roda ou alguém clica "Verificar DNS". Sem ele, subir esta
+ * mudança bloquearia na hora todos os times que hoje disparam normalmente.
+ *
+ * Domínio `verified` tem, por definição, DKIM e SPF verificados — então tratar
+ * como equivalente não afrouxa nada.
+ */
+export function hasSendingDnsReady(params: ResendDomainTrackingInput): boolean {
+  if (params.sendingDnsVerified) return true
+  return isResendDomainTrackingCapable(params.domainStatus)
+}
+
+/**
+ * Domínio próprio só dispara com o DNS de ENVIO verificado. Time sem domínio
+ * próprio não é gateado.
+ *
+ * O gate protege a capacidade de entregar, não a de medir. Antes ele exigia
+ * `status === "verified"` estrito, e um CNAME de tracking pendente — que só
+ * alimenta o pixel de abertura — derrubava o domínio inteiro para
+ * `partially_failed` e travava todo disparo, indefinidamente e sem saída pela
+ * UI. Foi o que aconteceu com um time real cujo DKIM e SPF estavam íntegros
+ * desde a criação do domínio.
+ *
+ * Métrica desligada virou aviso não-bloqueante em
+ * `getResendDomainDispatchWarnings`: perder taxa de abertura é recuperável a
+ * qualquer momento; não conseguir enviar, não.
  */
 export function assertResendDomainTrackingReady(
   params: ResendDomainTrackingInput
 ): ResendDomainTrackingCheck {
   if (!params.domainName?.trim()) return { ok: true }
 
-  // DNS primeiro: é a causa que o usuário não consegue contornar mexendo nos
-  // toggles. Reportar "habilite as métricas" para um domínio `partially_failed`
-  // manda ele para um botão que não destrava nada.
-  if (!isResendDomainTrackingCapable(params.domainStatus)) {
+  if (!hasSendingDnsReady(params)) {
     return { ok: false, message: RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE }
-  }
-
-  const metricsEnabled = Boolean(params.openTracking || params.clickTracking)
-  if (!metricsEnabled) {
-    return { ok: false, message: RESEND_DOMAIN_METRICS_DISABLED_MESSAGE }
   }
 
   return { ok: true }
 }
 
-/** Warnings when campaign dispatch is blocked by the tracking gate. */
+/**
+ * Avisos da tela de campanhas. Inclui tanto o que BLOQUEIA (DNS de envio) quanto
+ * o que apenas DEGRADA (sem métrica de abertura) — quem consome distingue pelo
+ * `assertResendDomainTrackingReady`, não por esta lista.
+ */
 export function getResendDomainDispatchWarnings(params: ResendDomainTrackingInput): string[] {
-  const result = assertResendDomainTrackingReady(params)
-  return result.ok ? [] : [result.message]
+  const blocked = assertResendDomainTrackingReady(params)
+  if (!blocked.ok) return [blocked.message]
+  if (!params.domainName?.trim()) return []
+
+  // Duas causas para não medir abertura: métrica desligada, ou CNAME de
+  // tracking pendente. As duas produzem o mesmo efeito e a mesma orientação.
+  const metricsEnabled = Boolean(params.openTracking || params.clickTracking)
+  const canMeasure = isResendDomainTrackingCapable(params.domainStatus)
+  if (!metricsEnabled || !canMeasure) {
+    return [RESEND_DOMAIN_METRICS_DISABLED_MESSAGE]
+  }
+
+  return []
 }
 
 export type DispatchWindowCheckResult =

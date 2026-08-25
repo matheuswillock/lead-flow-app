@@ -107,7 +107,10 @@ export function CampaignAnalyticsDialog({
           <AlertDescription>{campaignErrorMessage}</AlertDescription>
         </Alert>
       ) : null}
-      <TrackingDegradedAlert warnings={data?.trackingWarnings} />
+      <TrackingDegradedAlert
+        warnings={data?.trackingWarnings}
+        blocked={data?.trackingDispatchBlocked}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-1">
           <PeriodSelector period={period} onPeriodChange={handlePeriodChange} />

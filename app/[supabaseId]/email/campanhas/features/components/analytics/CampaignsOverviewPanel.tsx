@@ -65,7 +65,10 @@ export function CampaignsOverviewPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <TrackingDegradedAlert warnings={data.trackingWarnings} />
+      <TrackingDegradedAlert
+        warnings={data.trackingWarnings}
+        blocked={data.trackingDispatchBlocked}
+      />
       <div className="grid gap-4 md:grid-cols-3">
         <OverviewMetric
           title="Entregabilidade (hoje)"
