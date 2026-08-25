@@ -186,11 +186,21 @@ export type RadarSegmentDeleteResult = {
   softDeleted: boolean
 }
 
+/**
+ * Métricas do dashboard do Radar.
+ *
+ * Os derivados são `number | null` porque dependem da contagem de segmentos de
+ * sistema: quando ela falha, o backend manda `null` = DESCONHECIDO, nunca `0`
+ * (auditoria CDP §4 R8). Declarar `number` aqui seria mentira de contrato — o
+ * valor chega nulo e o tipo promete que não.
+ *
+ * `RadarContainer` renderiza `null`/`undefined` como "—", nunca `0`.
+ */
 export type RadarMetrics = {
   totalProfiles: number
-  marketable: number
-  blocked: number
-  engaged: number
+  marketable: number | null
+  blocked: number | null
+  engaged: number | null
 }
 
 export type RadarProfileAssignee = {
