@@ -2491,3 +2491,154 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema
     expect([...firstPage, ...secondPage]).toEqual(all.slice(0, firstPage.length + secondPage.length))
   })
 })
+
+/**
+ * T-R2.3 — o lote agregado precisa dar exatamente o mesmo número que o cálculo
+ * por perfil. Trocar 2 queries/perfil por 2 queries/lote só vale se o resultado
+ * for idêntico; senão o backfill "termina" gravando score errado na base toda.
+ */
+describe.skipIf(!RUN_INTEGRATION)("T-R2.3 — lote agregado === cálculo unitário", () => {
+  let teamId = ""
+  const profileIds: string[] = []
+
+  beforeAll(async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const owner = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-backfill-${suffix}@example.com`,
+        supabaseId: randomUUID(),
+        fullName: "Radar Backfill Tester",
+        isMaster: true,
+      },
+    })
+    const team = await prisma.team.create({
+      data: { id: randomUUID(), name: `Radar Backfill ${suffix}`, masterId: owner.id },
+    })
+    await prisma.teamMember.create({
+      data: { id: randomUUID(), teamId: team.id, profileId: owner.id, role: "manager" },
+    })
+    teamId = team.id
+
+    const now = Date.now()
+    // Perfis com volumes de evento diferentes, para os scores não colidirem por acaso.
+    for (let index = 0; index < 4; index += 1) {
+      const profile = await prisma.radarProfile.create({
+        data: {
+          id: randomUUID(),
+          teamId: team.id,
+          displayName: `Backfill Perfil ${index}`,
+          normalizedName: normalizeRadarName(`Backfill Perfil ${index}`),
+          displayPhone: formatDisplayPhone(`551190000${100 + index}`),
+          normalizedPhone: normalizeRadarPhone(`551190000${100 + index}`),
+          primaryEmail: `backfill-${index}-${suffix}@example.com`,
+          normalizedPrimaryEmail: normalizeRadarEmail(`backfill-${index}-${suffix}@example.com`),
+          lastSeenAt: new Date(now - index * 60 * 60 * 1000),
+        },
+      })
+      profileIds.push(profile.id)
+
+      for (let event = 0; event <= index; event += 1) {
+        await prisma.radarEvent.create({
+          data: {
+            id: randomUUID(),
+            teamId: team.id,
+            profileId: profile.id,
+            eventType: event % 2 === 0 ? "email.opened" : "email.clicked",
+            sourceType: "email_campaign",
+            sourceId: `${randomUUID()}:${event}`,
+            occurredAt: new Date(now - event * 24 * 60 * 60 * 1000),
+            metadata: { campaignId: randomUUID() },
+          },
+        })
+      }
+    }
+  })
+
+  it("gera score e banda idênticos ao caminho por perfil", async () => {
+    const unitResults = new Map<string, { score: number; band: string | null }>()
+    for (const profileId of profileIds) {
+      const result = await radarRepository.updateEngagementScore(profileId, teamId)
+      unitResults.set(profileId, { score: result.score, band: result.band })
+    }
+
+    // Zera para garantir que a escrita do lote é o que estamos medindo.
+    await prisma.radarProfile.updateMany({
+      where: { id: { in: profileIds } },
+      data: { engagementScore: null, engagementBand: null },
+    })
+
+    const updated = await radarRepository.updateEngagementScoresBatch(
+      profileIds.map((id) => ({ id, teamId }))
+    )
+    expect(updated).toBe(profileIds.length)
+
+    const stored = await prisma.radarProfile.findMany({
+      where: { id: { in: profileIds } },
+      select: { id: true, engagementScore: true, engagementBand: true },
+    })
+
+    expect(stored).toHaveLength(profileIds.length)
+    for (const profile of stored) {
+      const expected = unitResults.get(profile.id)!
+      expect({
+        id: profile.id,
+        score: profile.engagementScore,
+        band: profile.engagementBand,
+      }).toEqual({ id: profile.id, score: expected.score, band: expected.band })
+    }
+
+    // Sem isso o teste passaria com todo mundo em zero.
+    expect(new Set(stored.map((profile) => profile.engagementScore)).size).toBeGreaterThan(1)
+  })
+
+  it("não vaza evento de outro time para dentro do score", async () => {
+    const otherOwner = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-backfill-other-${randomUUID().slice(0, 8)}@example.com`,
+        supabaseId: randomUUID(),
+        fullName: "Outro Time",
+        isMaster: true,
+      },
+    })
+    const otherTeam = await prisma.team.create({
+      data: { id: randomUUID(), name: `Outro Time ${randomUUID().slice(0, 6)}`, masterId: otherOwner.id },
+    })
+
+    const target = profileIds[0]!
+    const before = await radarRepository.updateEngagementScoresBatch([{ id: target, teamId }])
+    expect(before).toBe(1)
+    const scoreBefore = (
+      await prisma.radarProfile.findUniqueOrThrow({
+        where: { id: target },
+        select: { engagementScore: true },
+      })
+    ).engagementScore
+
+    // Evento com o profileId certo mas teamId de outro time: o agrupamento tem
+    // de descartar, como o `where` por perfil descartava.
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: otherTeam.id,
+        profileId: target,
+        eventType: "email.clicked",
+        sourceType: "email_campaign",
+        sourceId: `${randomUUID()}:cross-team`,
+        occurredAt: new Date(),
+        metadata: { campaignId: randomUUID() },
+      },
+    })
+
+    await radarRepository.updateEngagementScoresBatch([{ id: target, teamId }])
+    const scoreAfter = (
+      await prisma.radarProfile.findUniqueOrThrow({
+        where: { id: target },
+        select: { engagementScore: true },
+      })
+    ).engagementScore
+
+    expect(scoreAfter).toBe(scoreBefore)
+  })
+})
