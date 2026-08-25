@@ -5,6 +5,8 @@ import { EmailContactListService } from "@/app/api/services/EmailContactList/Ema
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
+  BLOCK_REASON_IMPORT,
+  BLOCK_REASON_MANUAL,
   blockTeamEmail,
   blockTeamEmailsBulk,
   EMAIL_BLOCKLIST_NAME,
@@ -598,6 +600,7 @@ export class EmailContactListUseCase {
         teamId: ctx.teamId,
         createdBy: ctx.profileId,
         contacts,
+        reason: BLOCK_REASON_IMPORT,
       })
     )
 
@@ -645,6 +648,7 @@ export class EmailContactListUseCase {
             email: blockedEmail,
             name,
             createdBy: ctx.profileId,
+            reason: BLOCK_REASON_MANUAL,
           })
         })
 
