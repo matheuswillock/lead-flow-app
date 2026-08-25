@@ -214,7 +214,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const affected = await prisma.lead.findMany({
+  const candidates = await prisma.lead.findMany({
     where,
     select: {
       id: true,
@@ -246,7 +246,15 @@ async function main(): Promise<void> {
     orderBy: { createdAt: "asc" },
   });
 
-  console.info(`[cleanup-fake-email-attribution-leads] ${affected.length} lead(s) no escopo`);
+  // originMetadata.backfill identifica leads recuperados manualmente (nome/telefone/e-mail
+  // reais, verificados por um operador) — mesmo predicado de "sem submission" de um lead
+  // fantasma, mas não é fantasma. Nunca entram no escopo de exclusão.
+  const affected = candidates.filter((lead) => !(lead.originMetadata as Record<string, unknown> | null)?.backfill);
+  const excludedByBackfill = candidates.length - affected.length;
+
+  console.info(
+    `[cleanup-fake-email-attribution-leads] ${affected.length} lead(s) no escopo${excludedByBackfill ? ` (${excludedByBackfill} excluído(s) por originMetadata.backfill — recuperados com identidade real, não são fantasmas)` : ""}`,
+  );
 
   const byTeam = new Map<string, number>();
   for (const lead of affected) {

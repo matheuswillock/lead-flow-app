@@ -30,7 +30,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository"
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase"
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase"
-import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
+import { CreateLeadRequestSchema, type CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
 
 // Lida via fs, não import estático: a fixture tem dado pessoal e não é
 // versionada — um `import ... from "./fixtures/....json"` (resolveJsonModule)
@@ -85,6 +85,26 @@ async function leadJaExiste(email: string): Promise<boolean> {
   return Boolean(existing)
 }
 
+// LeadUseCase.createLead não roda o Zod (só a route HTTP roda, em
+// app/api/v1/leads/route.ts:40) — como este script chama o UseCase direto,
+// validamos os campos base aqui com o mesmo schema da API antes de criar,
+// para dado de fixture malformado (nome vazio, e-mail/telefone/CNPJ inválido)
+// nunca virar registro no CRM.
+function validarCandidato(candidato: Candidato): { ok: true } | { ok: false; motivo: string } {
+  const parsed = CreateLeadRequestSchema.safeParse({
+    name: candidato.nome,
+    email: candidato.email,
+    phone: candidato.telefone,
+    cnpj: candidato.cnpj,
+    status: LeadStatus.new_opportunity,
+    confirmDuplicate: false,
+  })
+  if (!parsed.success) {
+    return { ok: false, motivo: parsed.error.issues.map((issue) => issue.message).join("; ") }
+  }
+  return { ok: true }
+}
+
 function montarRequest(
   candidato: Candidato,
   form: { name: string; publicId: string },
@@ -110,9 +130,10 @@ function montarRequest(
       motivo: candidato.evidencia,
       razaoSocial: candidato.razaoSocial,
     },
-    // Mesmo padrão de PromoteRadarProfileToLeadUseCase: o tipo inferido do Zod
-    // exige as chaves opcionais-undefined; o subset preenchido é validado pelo
-    // próprio schema dentro do createLead.
+    // originChannel/originMetadata ficam fora do CreateLeadRequestSchema de
+    // propósito (comentário no DTO: provenance só é setada por criadores
+    // server-side confiáveis, depois do parse) — por isso o cast aqui, com
+    // os campos do schema já validados por validarCandidato() acima.
   } as unknown as CreateLeadRequest
 }
 
@@ -146,6 +167,16 @@ async function main(): Promise<void> {
   for (const candidato of candidatos) {
     if (await leadJaExiste(candidato.email)) {
       resultados.push({ email: candidato.email, situacao: "ja_existe", detalhe: "lead ativo com este e-mail no time" })
+      continue
+    }
+
+    const validacao = validarCandidato(candidato)
+    if (!validacao.ok) {
+      resultados.push({
+        email: candidato.email,
+        situacao: "erro",
+        detalhe: `fixture reprovada pelo CreateLeadRequestSchema: ${validacao.motivo}`,
+      })
       continue
     }
 
