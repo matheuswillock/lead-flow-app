@@ -1145,6 +1145,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    submitRequestedAt: Date
   }) {
     return prisma.publicFormSubmission.create({
       data: {
@@ -1546,6 +1547,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       visitorSessionId?: string | null
       thankYouPageId?: string | null
       scheduledMeetingStartsAt?: Date | null
+      submitRequestedAt: Date
     },
   ) {
     return prisma.publicFormSubmission.update({
@@ -1559,6 +1561,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         visitorSessionId: data.visitorSessionId,
         thankYouPageId: data.thankYouPageId,
         scheduledMeetingStartsAt: data.scheduledMeetingStartsAt,
+        submitRequestedAt: data.submitRequestedAt,
         completionStatus: "partial",
       },
       select: { id: true, eventId: true },
@@ -1637,23 +1640,25 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
-  async claimSubmissionForRetry(
-    submissionId: string,
-    publicationId: string,
-    staleBefore: Date,
-  ) {
+  async claimSubmissionForRetry(input: {
+    submissionId: string
+    publicationId: string
+    staleBefore: Date
+    submitRequestedAt: Date
+  }) {
     const result = await prisma.publicFormSubmission.updateMany({
       where: {
-        id: submissionId,
-        publicationId,
+        id: input.submissionId,
+        publicationId: input.publicationId,
         OR: [
           { status: "failed" },
-          { status: "processing", updatedAt: { lt: staleBefore } },
+          { status: "processing", updatedAt: { lt: input.staleBefore } },
         ],
       },
       data: {
         status: "processing",
         errorMessage: null,
+        submitRequestedAt: input.submitRequestedAt,
       },
     })
     return result.count === 1
@@ -1682,6 +1687,14 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  /**
+   * SPEC 40 E0/DA6: `submitRequestedAt IS NOT NULL` é o que separa as duas
+   * populações. `status = 'processing'` é o default da coluna, então toda casca
+   * criada pelo `/progress` também o satisfaz — sem o marcador de aceite este
+   * claim completava formulário com o visitante ainda digitando. Filtrar por
+   * prefixo do `requestKey` não resolveria: um envio real que resolve a
+   * submissão da sessão **herda** o `requestKey` `progress:`.
+   */
   async claimPendingSubmissionDispatches(input: {
     limit: number
     leaseUntil: Date
@@ -1691,6 +1704,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         SELECT "id"
         FROM "public"."corretor_studio_public_form_submissions"
         WHERE "status" = 'processing'
+          AND "submitRequestedAt" IS NOT NULL
           AND "dispatchAcceptedAt" IS NULL
           AND ("nextDispatchAt" IS NULL OR "nextDispatchAt" <= NOW())
         ORDER BY "nextDispatchAt" ASC NULLS FIRST, "createdAt" ASC

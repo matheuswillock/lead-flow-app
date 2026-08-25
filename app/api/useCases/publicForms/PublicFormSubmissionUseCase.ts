@@ -184,14 +184,22 @@ export class PublicFormSubmissionUseCase {
 
     const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
 
+    // DA6: o aceite é gravado aqui, junto da própria escrita da submissão —
+    // síncrono, antes de qualquer enfileiramento — e é o único fato que
+    // autoriza o cron de re-despacho a tocar nesta linha. Reenvio do mesmo
+    // `requestKey` preserva o primeiro carimbo (first-write-wins), então o
+    // marcador conta quando o visitante enviou, não quando o retry rodou.
+    const submitRequestedAt = new Date()
+
     // Retry: só reenfileira após claim atômico (failed ou processing stale).
     if (existing) {
       const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS)
-      const claimed = await publicFormsRepository.claimSubmissionForRetry(
-        existing.id,
+      const claimed = await publicFormsRepository.claimSubmissionForRetry({
+        submissionId: existing.id,
         publicationId,
         staleBefore,
-      )
+        submitRequestedAt: existing.submitRequestedAt ?? submitRequestedAt,
+      })
       if (!claimed) {
         return new Output(true, ["Respostas já recebidas"], [], {
           submissionId: existing.id,
@@ -240,6 +248,7 @@ export class PublicFormSubmissionUseCase {
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
           visitorSessionId: input.visitorSessionId ?? null,
+          submitRequestedAt: progressSubmission.submitRequestedAt ?? submitRequestedAt,
           ...dispatchContext,
         })
       : await publicFormsRepository.createSubmission({
@@ -252,6 +261,7 @@ export class PublicFormSubmissionUseCase {
           scoreBandLabel: band?.label,
           origin: origin as Prisma.InputJsonValue,
           completionStatus: "partial",
+          submitRequestedAt,
           ...dispatchContext,
         })
 

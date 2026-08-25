@@ -374,6 +374,7 @@ export interface IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    submitRequestedAt: Date
   }): Promise<PublicFormSubmission>
   upsertProgressSubmission(data: {
     formId: string
@@ -425,6 +426,7 @@ export interface IPublicFormsRepository {
       visitorSessionId?: string | null
       thankYouPageId?: string | null
       scheduledMeetingStartsAt?: Date | null
+      submitRequestedAt: Date
     },
   ): Promise<{ id: string; eventId: string | null }>
   completeSubmission(input: PublicFormCompleteSubmissionInput): Promise<void>
@@ -441,11 +443,12 @@ export interface IPublicFormsRepository {
    * Claim atômico para retry de background: só falhas ou `processing` stale.
    * Retorna true se este caller ficou com o claim.
    */
-  claimSubmissionForRetry(
-    submissionId: string,
-    publicationId: string,
-    staleBefore: Date,
-  ): Promise<boolean>
+  claimSubmissionForRetry(input: {
+    submissionId: string
+    publicationId: string
+    staleBefore: Date
+    submitRequestedAt: Date
+  }): Promise<boolean>
   markSubmissionDispatchAccepted(submissionId: string): Promise<void>
   markSubmissionDispatchDeferred(submissionId: string, errorMessage: string): Promise<void>
   claimPendingSubmissionDispatches(input: {
