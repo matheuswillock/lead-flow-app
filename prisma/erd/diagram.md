@@ -2751,6 +2751,8 @@ completed completed
     Boolean isUnsubscribed 
     Boolean isBounced 
     Boolean isComplained 
+    String blockReason "❓"
+    DateTime blockedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }

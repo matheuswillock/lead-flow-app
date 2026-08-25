@@ -246,3 +246,94 @@ describe("applyEmailLogAttribution", () => {
     expect(collectUnattributedEmailLogIds([semCampanha, semCampanha])).toEqual([EMAIL_LOG])
   })
 })
+
+describe("planFormViewedAttributionBackfill — alvo form_started", () => {
+  const orfaStarted = () =>
+    row({ eventKey: `${SESSION}:form_started:form`, eventType: "form_started" })
+
+  const completedAtribuido = () =>
+    row({
+      eventKey: `${SESSION}:form_completed:el:${EMAIL_LOG}`,
+      eventType: "form_completed",
+      occurredAt: VISITA_CAMPANHA,
+      createdAt: VISITA_CAMPANHA,
+      origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN },
+    })
+
+  it("sintetiza form_started a partir de form_completed atribuido", () => {
+    const plan = planFormViewedAttributionBackfill(
+      [orfaStarted(), completedAtribuido()],
+      "form_started",
+    )
+    expect(plan.rows).toHaveLength(1)
+    expect(plan.rows[0].eventKey).toBe(`${SESSION}:form_started:form:el:${EMAIL_LOG}`)
+    expect(plan.rows[0].origin.backfill).toBe("form_started_attribution")
+    expect(plan.rows[0].donorEventType).toBe("form_completed")
+  })
+
+  it("NAO aceita form_viewed como doador de form_started", () => {
+    // form_viewed dispara em TODO carregamento, sem guard de `started`
+    // (PublicFormRenderer:361). Abrir o formulario nao prova que iniciou.
+    const viewedAtribuido = row({
+      eventKey: `${SESSION}:form_viewed:form:el:${EMAIL_LOG}`,
+      eventType: "form_viewed",
+      origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN },
+    })
+    const plan = planFormViewedAttributionBackfill(
+      [orfaStarted(), viewedAtribuido],
+      "form_started",
+    )
+    expect(plan.rows).toHaveLength(0)
+  })
+
+  it.each(["question_viewed", "page_viewed", "form_exit_intent"])(
+    "aceita %s: o renderer so o emite atras de `if (!started) return`",
+    (eventType) => {
+      // Sem estes, o backfill repararia form_started apenas de quem converteu,
+      // apagando quem iniciou e abandonou — o segmento que a metrica mede.
+      const doadorGated = row({
+        eventKey: `${SESSION}:${eventType}:q-1:el:${EMAIL_LOG}`,
+        eventType,
+        occurredAt: VISITA_CAMPANHA,
+        createdAt: VISITA_CAMPANHA,
+        origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN },
+      })
+      const plan = planFormViewedAttributionBackfill(
+        [orfaStarted(), doadorGated],
+        "form_started",
+      )
+      expect(plan.rows).toHaveLength(1)
+      expect(plan.rows[0].donorEventType).toBe(eventType)
+      expect(plan.rows[0].eventKey).toBe(`${SESSION}:form_started:form:el:${EMAIL_LOG}`)
+    },
+  )
+
+  it("prefere conversao a evento de interacao quando ha os dois", () => {
+    const questionViewed = row({
+      eventKey: `${SESSION}:question_viewed:q-1:el:${EMAIL_LOG}`,
+      eventType: "question_viewed",
+      origin: { emailLogId: EMAIL_LOG, campaignId: CAMPAIGN },
+    })
+    const plan = planFormViewedAttributionBackfill(
+      [orfaStarted(), questionViewed, completedAtribuido()],
+      "form_started",
+    )
+    expect(plan.rows).toHaveLength(1)
+    expect(plan.rows[0].donorEventType).toBe("form_completed")
+  })
+
+  it("exige orfa do proprio alvo: sessao so com form_viewed orfao nao conta", () => {
+    const plan = planFormViewedAttributionBackfill(
+      [row(), completedAtribuido()],
+      "form_started",
+    )
+    expect(plan.rows).toHaveLength(0)
+    expect(plan.sessionsWithoutOrphanView).toContain(SESSION)
+  })
+
+  it("alvo form_viewed segue aceitando qualquer doador atribuido", () => {
+    const plan = planFormViewedAttributionBackfill([row(), completedAtribuido()], "form_viewed")
+    expect(plan.rows).toHaveLength(1)
+    expect(plan.rows[0].origin.backfill).toBe("form_viewed_attribution")
+  })
+})
