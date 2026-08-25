@@ -80,6 +80,13 @@ const upsertLeadFromFormAnswers = mock(
   async () => ({ outcome: "discarded", reason: "sem_telefone" }) as unknown,
 )
 const publishServerPublicFormMetricEvent = mock(async () => true)
+const attributionExecute = mock(
+  async () =>
+    ({ isValid: true, result: null }) as {
+      isValid: boolean
+      result: { leadId: string; enrichedOrigin: Record<string, unknown> } | null
+    },
+)
 
 mock.module("@/app/api/services/PublicForms/PublicFormsService", () => ({
   publicFormsService: { getPublic: mock(async () => null) },
@@ -114,9 +121,7 @@ mock.module("@/app/api/useCases/integrations/PublicLeadFormUseCase", () => ({
   publicLeadFormUseCase: {},
 }))
 mock.module("@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase", () => ({
-  resolveEmailCampaignFormAttributionUseCase: {
-    execute: mock(async () => ({ isValid: true, result: null })),
-  },
+  resolveEmailCampaignFormAttributionUseCase: { execute: attributionExecute },
 }))
 mock.module("@/lib/queues/public-form-metric-events", () => ({
   buildPublicFormMetricQueuePayload: mock((_publicId: string, input: unknown) => input),
@@ -159,6 +164,8 @@ describe("PublicFormSubmissionUseCase descarte de lead", () => {
     upsertLeadFromFormAnswers.mockResolvedValue({ outcome: "discarded", reason: "sem_telefone" })
     publishServerPublicFormMetricEvent.mockClear()
     publishServerPublicFormMetricEvent.mockResolvedValue(true)
+    attributionExecute.mockClear()
+    attributionExecute.mockResolvedValue({ isValid: true, result: null })
   })
 
   // T-F2.1
@@ -197,18 +204,43 @@ describe("PublicFormSubmissionUseCase descarte de lead", () => {
     expect(types).not.toContain("lead_discarded")
   })
 
-  // "Pontos críticos" do E2: modo radar caminho B só enriquece — não é descarte.
-  it("modo radar com allowCreate:false não emite descarte", async () => {
+  /**
+   * Review #1040 (P1). No modo radar o upsert sai como `skipped` — quem promove
+   * é o gate C. Checar só `outcome === "discarded"` deixava toda submissão de
+   * time canário completada **sem par** no funil. A condição correta é "não
+   * sobrou lead nenhum", e o motivo vem da identidade extraída.
+   */
+  it("modo radar sem lead resolvido também emite descarte", async () => {
     process.env.PUBLIC_FORM_LEAD_GATE_MODE = "radar"
     upsertLeadFromFormAnswers.mockResolvedValue({ outcome: "skipped" })
 
     try {
       await useCase.processInBackground(JOB)
 
-      const types = completedMetricEvents().map((event) => event.eventType)
-      expect(types).toEqual(["form_completed"])
+      const events = completedMetricEvents()
+      expect(events.map((event) => event.eventType)).toEqual(["form_completed", "lead_discarded"])
+      expect(events[1]?.origin.reason).toBe("sem_telefone")
     } finally {
       delete process.env.PUBLIC_FORM_LEAD_GATE_MODE
     }
+  })
+
+  /**
+   * Review #1040 (P1). A atribuição por `cs_el` resolve um lead existente mesmo
+   * quando as respostas não têm identidade para o upsert. Antes, a mesma
+   * conclusão saía como `lead_attached` **e** `lead_discarded` — um
+   * `form_completed` com dois desfechos.
+   */
+  it("lead resolvido só pela atribuição não gera descarte junto", async () => {
+    attributionExecute.mockResolvedValue({
+      isValid: true,
+      result: { leadId: "lead-atribuido", enrichedOrigin: {} },
+    })
+
+    await useCase.processInBackground(JOB)
+
+    const types = completedMetricEvents().map((event) => event.eventType)
+    expect(types).toContain("lead_attached")
+    expect(types).not.toContain("lead_discarded")
   })
 })

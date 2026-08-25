@@ -29,16 +29,15 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
 
           const eligibility = this.eligibilityUseCase.evaluateProfile(profile)
           if (!eligibility.eligible) {
-            // E2/DA2: inelegível deixa de ser um `return` mudo. O gate C nunca
-            // rodou fora de shadow — sem esta linha, o descarte dele nasceria
-            // invisível no dia em que for ligado.
-            await transaction.appendGateEvent({
-              teamId: input.teamId,
-              radarProfileId: profile.id,
-              eventType: "radar.crm_lead_discarded",
-              eventId: input.eventId,
-              metadata: { reason: eligibility.reason, formId: input.formId },
-            })
+            // E2/DA2: aqui NÃO nasce evento de descarte, e é de propósito.
+            //
+            // Este gate roda a cada `question_answered` que muda identidade —
+            // digitar o nome antes do telefone passa por aqui como
+            // `invalid_phone` e o telefone chega no evento seguinte. Emitir
+            // deixaria um descarte para sessão que converte, o mesmo motivo que
+            // manteve o `/progress` fora da emissão. O descarte do modo radar
+            // sai no completamento (`processInBackground`, quando não há lead
+            // resolvido), que é terminal e é onde o par do funil é medido.
             return new Output(true, [], [], {
               skipped: "not_eligible",
               reason: eligibility.reason,

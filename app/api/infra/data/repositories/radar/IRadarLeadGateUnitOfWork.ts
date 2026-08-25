@@ -40,12 +40,7 @@ export interface IRadarLeadGateProfileRepository {
   appendGateEvent(input: {
     teamId: string
     radarProfileId: string
-    eventType:
-      | "radar.crm_identity_conflict"
-      | "radar.crm_lead_created"
-      | "radar.crm_lead_attached"
-      /** SPEC 40 E2/DA2: perfil que o gate C recusou — motivo em `metadata.reason`. */
-      | "radar.crm_lead_discarded"
+    eventType: "radar.crm_identity_conflict" | "radar.crm_lead_created" | "radar.crm_lead_attached"
     eventId: string
     metadata: Record<string, string | boolean | null>
   }): Promise<void>
