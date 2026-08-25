@@ -3440,6 +3440,7 @@ model EmailEvent {
 
 enum EmailOrphanEventStatus {
   pending
+  processing
   processed
   failed
   skipped
@@ -3484,7 +3485,7 @@ enum ResendWebhookProcessingFailureStatus {
 
 model EmailOrphanEvent {
   id              String                 @id @default(uuid()) @db.Uuid
-  resendEmailId   String                 @unique @db.Text
+  resendEmailId   String                 @db.Text
   resendEventType String                 @db.Text
   occurredAt      DateTime               @db.Timestamptz(6)
   tagsHint        Json?
@@ -3495,7 +3496,13 @@ model EmailOrphanEvent {
   createdAt       DateTime               @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime               @updatedAt @db.Timestamptz(6)
 
+  // Mesma chave de dedupe do EmailEvent: um órfão é (e-mail, tipo, momento).
+  // A unique antiga era só resendEmailId e descartava o segundo evento do
+  // mesmo e-mail em silêncio.
+  @@unique([resendEmailId, resendEventType, occurredAt])
   @@index([status, createdAt])
+  @@index([status, occurredAt])
+  @@index([resendEmailId])
   @@map("email_orphan_events")
 }
 

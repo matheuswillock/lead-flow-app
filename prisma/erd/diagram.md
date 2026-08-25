@@ -925,6 +925,7 @@ failed failed
 
         email_orphan_event_status {
             pending pending
+processing processing
 processed processed
 failed failed
 skipped skipped

@@ -1,9 +1,10 @@
 import { describe, expect, it, mock, beforeEach } from "bun:test"
 import type { IResendEmailEnrichmentService } from "@/app/api/services/resend/ResendEmailEnrichmentService"
 
-const upsertMock = mock(async () => ({}))
-const findManyMock = mock(async () => [] as Array<Record<string, unknown>>)
+const upsertMock = mock(async (_args: unknown) => ({}))
+const findManyMock = mock(async (_args: unknown) => [] as Array<Record<string, unknown>>)
 const updateMock = mock(async () => ({}))
+const updateManyMock = mock(async (_args: unknown) => ({ count: 1 }))
 const findByResendEmailIdMock = mock(async () => null as null | Record<string, unknown>)
 const processEmailLogWebhookMock = mock(async () => true)
 const mapEventTypeMock = mock((type: string) => {
@@ -24,6 +25,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       upsert: upsertMock,
       findMany: findManyMock,
       update: updateMock,
+      updateMany: updateManyMock,
     },
   },
 }))
@@ -154,12 +156,92 @@ describe("EmailOrphanEventService.queueOrphanEvent", () => {
 
     expect(upsertMock).not.toHaveBeenCalled()
   })
+
+  it("T-Q4.1 — N eventos do mesmo e-mail viram N linhas (chave é a tripla)", async () => {
+    const service = new EmailOrphanEventService({
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => null,
+    })
+    const resendEmailId = "re_multi"
+
+    await service.queueOrphanEvent({
+      resendEmailId,
+      resendEventType: "email.sent",
+      occurredAt: new Date("2026-08-24T10:00:00.000Z"),
+    })
+    await service.queueOrphanEvent({
+      resendEmailId,
+      resendEventType: "email.delivered",
+      occurredAt: new Date("2026-08-24T10:00:05.000Z"),
+    })
+    await service.queueOrphanEvent({
+      resendEmailId,
+      resendEventType: "email.opened",
+      occurredAt: new Date("2026-08-24T10:01:00.000Z"),
+    })
+
+    expect(upsertMock).toHaveBeenCalledTimes(3)
+    const chaves = upsertMock.mock.calls.map(
+      (call) => (call[0] as { where: Record<string, unknown> }).where,
+    )
+    expect(chaves).toEqual([
+      {
+        resendEmailId_resendEventType_occurredAt: {
+          resendEmailId,
+          resendEventType: "email.sent",
+          occurredAt: new Date("2026-08-24T10:00:00.000Z"),
+        },
+      },
+      {
+        resendEmailId_resendEventType_occurredAt: {
+          resendEmailId,
+          resendEventType: "email.delivered",
+          occurredAt: new Date("2026-08-24T10:00:05.000Z"),
+        },
+      },
+      {
+        resendEmailId_resendEventType_occurredAt: {
+          resendEmailId,
+          resendEventType: "email.opened",
+          occurredAt: new Date("2026-08-24T10:01:00.000Z"),
+        },
+      },
+    ])
+    // Três chaves distintas ⇒ a unique composta cria três linhas. A chave
+    // antiga (só resendEmailId) colapsaria as três no `update: {}`.
+    expect(new Set(chaves.map((chave) => JSON.stringify(chave))).size).toBe(3)
+  })
+
+  it("T-Q4.2 — email.complained e email.unsubscribed órfãos são enfileirados", async () => {
+    const service = new EmailOrphanEventService({
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => null,
+    })
+
+    await service.queueOrphanEvent({
+      resendEmailId: "re_conformidade",
+      resendEventType: "email.complained",
+      occurredAt: new Date("2026-08-24T12:00:00.000Z"),
+    })
+    await service.queueOrphanEvent({
+      resendEmailId: "re_conformidade",
+      resendEventType: "email.unsubscribed",
+      occurredAt: new Date("2026-08-24T12:00:01.000Z"),
+    })
+
+    const tipos = upsertMock.mock.calls.map(
+      (call) => (call[0] as { create: { resendEventType: string } }).create.resendEventType,
+    )
+    expect(tipos).toEqual(["email.complained", "email.unsubscribed"])
+  })
 })
 
 describe("EmailOrphanEventService.processPendingBatch", () => {
   beforeEach(() => {
     findManyMock.mockClear()
     updateMock.mockClear()
+    updateManyMock.mockClear()
+    updateManyMock.mockImplementation(async () => ({ count: 1 }))
     findByResendEmailIdMock.mockReset()
     findByResendEmailIdMock.mockResolvedValue(null)
     processEmailLogWebhookMock.mockClear()
@@ -267,5 +349,65 @@ describe("EmailOrphanEventService.processPendingBatch", () => {
     expect(result.skipped).toBe(1)
     const updateCall = (updateMock.mock.calls as unknown as Array<[{ data: { status: string } }]>).at(0)?.[0]
     expect(updateCall?.data.status).toBe("skipped")
+  })
+
+  it("T-Q4.3 — o dreno pede o lote recebido, ordenado por occurredAt", async () => {
+    const service = new EmailOrphanEventService({
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => null,
+    })
+
+    await service.processPendingBatch(200)
+
+    const busca = findManyMock.mock.calls.at(0)?.[0] as unknown as {
+      take: number
+      orderBy: unknown
+      where: { status: string }
+    }
+    expect(busca.take).toBe(200)
+    expect(busca.where.status).toBe("pending")
+    expect(busca.orderBy).toEqual([{ occurredAt: "asc" }, { createdAt: "asc" }])
+  })
+
+  it("libera claims presos em processing antes de montar o lote", async () => {
+    const service = new EmailOrphanEventService({
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => null,
+    })
+
+    await service.processPendingBatch(200)
+
+    const recuperacao = updateManyMock.mock.calls.at(0)?.[0] as unknown as {
+      where: { status: string }
+      data: { status: string }
+    }
+    expect(recuperacao.where.status).toBe("processing")
+    expect(recuperacao.data.status).toBe("pending")
+  })
+
+  it("não processa o que outra execução já reivindicou", async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: "orphan-disputado",
+        resendEmailId: "re_race",
+        occurredAt: new Date(),
+        tagsHint: null,
+        attempts: 0,
+        resendEventType: "email.delivered",
+      },
+    ])
+    // Recuperação de stale passa; o claim da linha perde a corrida.
+    updateManyMock.mockImplementationOnce(async () => ({ count: 0 }))
+    updateManyMock.mockImplementationOnce(async () => ({ count: 0 }))
+
+    const service = new EmailOrphanEventService({
+      fetchEmailMetadata: async () => null,
+      createOrphanTeamEmailLogFromResendEmail: async () => "log-1",
+    })
+
+    const result = await service.processPendingBatch()
+
+    expect(result).toEqual({ processed: 0, failed: 0, skipped: 0 })
+    expect(updateMock).not.toHaveBeenCalled()
   })
 })

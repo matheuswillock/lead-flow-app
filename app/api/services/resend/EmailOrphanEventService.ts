@@ -23,9 +23,13 @@ async function defaultPublishRadarEvent(
 }
 
 const BATCH_SIZE = 10
+/** Lote do cron dedicado de dreno — 200 a cada 5 min = 2.400/h. */
+export const ORPHAN_DRAIN_BATCH_SIZE = 200
 const MAX_REQUESTS_PER_SECOND = 8
 const MIN_INTERVAL_MS = Math.ceil(1000 / MAX_REQUESTS_PER_SECOND)
 const MAX_ATTEMPTS = 5
+/** Depois disso, um `processing` é assumido como execução morta e volta para a fila. */
+const STALE_PROCESSING_MS = 10 * 60 * 1000
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -55,8 +59,17 @@ export class EmailOrphanEventService {
       return
     }
 
+    // Uma linha por (e-mail, tipo, momento) — mesma chave de dedupe do
+    // EmailEvent. A chave antiga era só o resendEmailId e fazia o segundo
+    // evento do mesmo e-mail cair no `update: {}` e sumir.
     await prisma.emailOrphanEvent.upsert({
-      where: { resendEmailId: input.resendEmailId },
+      where: {
+        resendEmailId_resendEventType_occurredAt: {
+          resendEmailId: input.resendEmailId,
+          resendEventType: input.resendEventType,
+          occurredAt: input.occurredAt,
+        },
+      },
       create: {
         resendEmailId: input.resendEmailId,
         resendEventType: input.resendEventType,
@@ -68,12 +81,48 @@ export class EmailOrphanEventService {
     })
   }
 
-  async processPendingBatch(): Promise<{ processed: number; failed: number; skipped: number }> {
-    const pending = await prisma.emailOrphanEvent.findMany({
-      where: { status: "pending", attempts: { lt: MAX_ATTEMPTS } },
-      orderBy: { createdAt: "asc" },
-      take: BATCH_SIZE,
+  /** Devolve à fila o que ficou `processing` numa execução que morreu. */
+  private async recoverStaleProcessingClaims(): Promise<void> {
+    await prisma.emailOrphanEvent.updateMany({
+      where: {
+        status: "processing",
+        updatedAt: { lt: new Date(Date.now() - STALE_PROCESSING_MS) },
+      },
+      data: { status: "pending" },
     })
+  }
+
+  /**
+   * Claim atômico: só entra no lote quem esta execução conseguiu tirar de
+   * `pending`. Ordena por `occurredAt` para aplicar sent antes de delivered
+   * antes de opened.
+   */
+  private async claimPendingBatch(limit: number) {
+    await this.recoverStaleProcessingClaims()
+
+    const due = await prisma.emailOrphanEvent.findMany({
+      where: { status: "pending", attempts: { lt: MAX_ATTEMPTS } },
+      orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+      take: limit,
+    })
+
+    const claimed: typeof due = []
+    for (const row of due) {
+      const updated = await prisma.emailOrphanEvent.updateMany({
+        where: { id: row.id, status: "pending" },
+        data: { status: "processing" },
+      })
+      if (updated.count === 1) {
+        claimed.push(row)
+      }
+    }
+    return claimed
+  }
+
+  async processPendingBatch(
+    limit: number = BATCH_SIZE,
+  ): Promise<{ processed: number; failed: number; skipped: number }> {
+    const pending = await this.claimPendingBatch(limit)
 
     let processed = 0
     let failed = 0
@@ -181,6 +230,7 @@ export class EmailOrphanEventService {
         await prisma.emailOrphanEvent.update({
           where: { id: event.id },
           data: {
+            status: "pending",
             attempts: { increment: 1 },
             lastError,
           },
