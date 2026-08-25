@@ -266,6 +266,25 @@ export function buildFixedSegmentProfileIdsSql(
     WHERE p."teamId" = ${teamId}::uuid
       AND ${buildFixedSegmentPredicateSql(slug, teamId, recentThreshold)}
     ORDER BY p."lastSeenAt" DESC NULLS LAST, p.id ASC
-    LIMIT ${pagination.take} OFFSET ${pagination.skip}
+    LIMIT ${toSafeLimit(pagination.take)} OFFSET ${toSafeOffset(pagination.skip)}
   `
+}
+
+const MAX_PAGE_SIZE = 1000
+
+/**
+ * O Postgres rejeita `NaN`, `Infinity` e fracionário em `LIMIT`/`OFFSET`, e o
+ * erro sobe como 500. A rota já valida a query string, mas este builder é uma
+ * primitiva compartilhada: deixar a garantia só no chamador significa que o
+ * próximo chamador reintroduz o bug. Enquanto a paginação era `ids.slice()` em
+ * memória, esses valores eram coagidos em silêncio.
+ */
+function toSafeLimit(take: number): number {
+  if (!Number.isSafeInteger(take) || take <= 0) return 1
+  return Math.min(take, MAX_PAGE_SIZE)
+}
+
+function toSafeOffset(skip: number): number {
+  if (!Number.isSafeInteger(skip) || skip < 0) return 0
+  return skip
 }

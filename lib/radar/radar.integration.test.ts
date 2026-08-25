@@ -3,20 +3,6 @@ import { randomUUID } from "crypto"
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 
-// Alguém no grafo de imports puxa `server-only`, que lança fora do runtime do
-// Next e derrubava o arquivo inteiro antes do primeiro teste rodar. Mesmo
-// tratamento dos outros testes do repo (ex.: getCachedTeamLeads.failure.test.ts).
-mock.module("server-only", () => ({}))
-
-// `cacheTag`/`cacheLife` exigem o runtime do Next (`cacheComponents`) e lançam
-// no bun test. Fora do Next a diretiva `"use cache"` já é inerte, então o
-// no-op aqui apenas deixa a função rodar sem cache.
-mock.module("next/cache", () => ({
-  cacheTag: () => undefined,
-  cacheLife: () => undefined,
-  revalidateTag: () => undefined,
-}))
-
 const RUN_INTEGRATION = process.env.RADAR_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
 
 /**
@@ -48,6 +34,23 @@ let listRadarSegmentEmailRecipients: typeof import("@/lib/radar/list-segment-rec
 let parseRadarSegmentRules: typeof import("@/lib/radar/segment-dsl").parseRadarSegmentRules
 
 if (RUN_INTEGRATION) {
+  // `mock.module` é global ao processo, então precisa ficar DENTRO do guard:
+  // registrado no topo, ele valeria também quando este arquivo é apenas
+  // carregado-e-pulado, e sobrescreveria os mocks instrumentados que outros
+  // testes instalam para os mesmos módulos (public-stats, MetricsUseCase.tags).
+  //
+  // Alguém no grafo de imports puxa `server-only`, que lança fora do runtime
+  // do Next e derrubava o arquivo antes do primeiro teste rodar.
+  mock.module("server-only", () => ({}))
+
+  // `cacheTag`/`cacheLife` exigem o runtime do Next (`cacheComponents`) e
+  // lançam no bun test. Fora do Next a diretiva `"use cache"` já é inerte.
+  mock.module("next/cache", () => ({
+    cacheTag: () => undefined,
+    cacheLife: () => undefined,
+    revalidateTag: () => undefined,
+  }))
+
   ;({ prisma } = await import("@/app/api/infra/data/prisma"))
   ;({ radarService } = await import("@/app/api/services/radar/RadarService"))
   ;({ radarRepository } = await import("@/app/api/infra/data/repositories/radar/RadarRepository"))
