@@ -1,6 +1,10 @@
 import { describe, expect, it, mock } from "bun:test"
+import { Readable } from "node:stream"
 import type { IBackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/IBackofficeDatabaseBackupRepository"
-import type { IBackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
+import type {
+  IBackofficeDatabaseBackupExportService,
+  BackupArchive,
+} from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
 import type { IBackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupGoogleDriveService"
 import { BackofficeDatabaseBackupUseCase } from "./BackofficeDatabaseBackupUseCase"
 
@@ -16,16 +20,29 @@ function createRepoMock(
   }
 }
 
+function createArchiveStub(
+  overrides: Partial<BackupArchive> = {}
+): BackupArchive {
+  const body = Readable.from([Buffer.from("zip-content")])
+  return {
+    fileName: "backup-2026-07-31-10-00.zip",
+    body,
+    completion: Promise.resolve({
+      sizeBytes: 1024,
+      checksumSha256: "abc123",
+      modelCount: 3,
+      rowCount: 42,
+    }),
+    abort: () => {},
+    ...overrides,
+  }
+}
+
 function createExportMock(
   overrides: Partial<IBackofficeDatabaseBackupExportService> = {}
 ): IBackofficeDatabaseBackupExportService {
   return {
-    exportToZip: async () => ({
-      buffer: Buffer.from("zip-content"),
-      fileName: "backup-2026-07-31-10-00.zip",
-      sizeBytes: 1024,
-      checksumSha256: "abc123",
-    }),
+    createArchive: () => createArchiveStub(),
     ...overrides,
   }
 }
@@ -133,7 +150,7 @@ describe("BackofficeDatabaseBackupUseCase", () => {
       expect(claimPendingSlot).toHaveBeenCalled()
     })
 
-    it("marca failed e propaga mensagem quando o export service lança exceção", async () => {
+    it("marca failed e leva a causa real do export para a mensagem do cron", async () => {
       const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
@@ -142,29 +159,79 @@ describe("BackofficeDatabaseBackupUseCase", () => {
           },
         }),
         createExportMock({
-          exportToZip: async () => {
-            throw new Error("Falha ao exportar dados")
-          },
+          createArchive: () =>
+            createArchiveStub({
+              completion: Promise.reject(new Error("Invalid string length")),
+            }),
         }),
         createDriveMock()
       )
 
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
-      expect(output.errorMessages[0]).toBe("Erro ao gerar backup")
+      // withCronAudit deriva o errorSummary de errorMessages.join("; ").
+      expect(output.errorMessages[0]).toBe(
+        "Erro ao gerar backup: Invalid string length"
+      )
       expect(lastUpdate[0]?.status).toBe("failed")
-      expect(lastUpdate[0]?.errorMessage).toBe("Falha ao exportar dados")
+      expect(lastUpdate[0]?.errorMessage).toBe("Invalid string length")
     })
 
-    it("marca failed quando o drive service lança exceção", async () => {
+    it("prefere a causa do export quando o upload falha por efeito colateral", async () => {
       const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
+      const aborted: Error[] = []
       const useCase = new BackofficeDatabaseBackupUseCase(
         createRepoMock({
           update: async (_id, data) => {
             lastUpdate.push(data)
           },
         }),
-        createExportMock(),
+        createExportMock({
+          createArchive: () =>
+            createArchiveStub({
+              completion: Promise.reject(
+                new Error("Transaction already closed: timeout")
+              ),
+              abort: (error) => {
+                aborted.push(error)
+              },
+            }),
+        }),
+        createDriveMock({
+          upload: async () => {
+            throw new Error("socket hang up")
+          },
+        })
+      )
+
+      const output = await useCase.triggerCronBackup()
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toBe(
+        "Erro ao gerar backup: Transaction already closed: timeout"
+      )
+      expect(lastUpdate[0]?.errorMessage).toBe(
+        "Transaction already closed: timeout"
+      )
+      expect(aborted[0]?.message).toBe("socket hang up")
+    })
+
+    it("marca failed e aborta o arquivo quando só o upload falha", async () => {
+      const lastUpdate: Array<{ status?: string; errorMessage?: string | null }> = []
+      const aborted: Error[] = []
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock({
+          update: async (_id, data) => {
+            lastUpdate.push(data)
+          },
+        }),
+        createExportMock({
+          createArchive: () =>
+            createArchiveStub({
+              abort: (error) => {
+                aborted.push(error)
+              },
+            }),
+        }),
         createDriveMock({
           upload: async () => {
             throw new Error("Upload falhou")
@@ -174,8 +241,51 @@ describe("BackofficeDatabaseBackupUseCase", () => {
 
       const output = await useCase.triggerCronBackup()
       expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toBe("Erro ao gerar backup: Upload falhou")
       expect(lastUpdate[0]?.status).toBe("failed")
       expect(lastUpdate[0]?.errorMessage).toBe("Upload falhou")
+      expect(aborted[0]?.message).toBe("Upload falhou")
+    })
+
+    it("achata mensagem multi-linha do Prisma em uma unica linha", async () => {
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock(),
+        createExportMock({
+          createArchive: () =>
+            createArchiveStub({
+              completion: Promise.reject(
+                new Error(
+                  "\n   Transaction already closed: the timeout was 120000 ms\n   at runInTransaction"
+                )
+              ),
+            }),
+        }),
+        createDriveMock()
+      )
+
+      const output = await useCase.triggerCronBackup()
+      expect(output.errorMessages[0]).toBe(
+        "Erro ao gerar backup: Transaction already closed: the timeout was 120000 ms"
+      )
+      expect(output.errorMessages[0]).not.toContain("\n")
+    })
+
+    it("trunca causa muito longa para caber no errorSummary do cron", async () => {
+      const useCase = new BackofficeDatabaseBackupUseCase(
+        createRepoMock(),
+        createExportMock({
+          createArchive: () =>
+            createArchiveStub({
+              completion: Promise.reject(new Error("z".repeat(1000))),
+            }),
+        }),
+        createDriveMock()
+      )
+
+      const output = await useCase.triggerCronBackup()
+      const summary = output.errorMessages[0]!
+      expect(summary.length).toBeLessThan(300)
+      expect(summary.endsWith("...")).toBe(true)
     })
   })
 
