@@ -338,9 +338,74 @@ describe("T-R5.2 — sync inline vencendo a corrida nao derruba a promocao", () 
 
     const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
 
-    // O Lead existe. O caminho de erro pode reportar falha, mas nunca deve
-    // reintroduzir a delecao de Lead que este estagio removeu.
-    expect(output.isValid).toBe(false)
+    // O Lead existe e NUNCA e deletado — a delecao que este estagio removeu nao
+    // volta por aqui. Alem disso a reserva e liberada e o vinculo fica por conta
+    // do sync, entao o perfil nao termina bloqueado.
     expect(createLead).toHaveBeenCalledTimes(1)
+    expect(releaseLeadIdentityClaim).toHaveBeenCalledWith("team-1", "identity-1")
+    expect(output.isValid).toBe(true)
+  })
+})
+
+describe("reserva pending: nao bloqueia o perfil", () => {
+  const profileWithPendingClaim = {
+    ...profileWithoutLead,
+    id: "profile-pending",
+    identities: [
+      { type: "email" as RadarIdentityType, value: "alpha@example.com", normalizedValue: "alpha@example.com" },
+      { type: "lead_id" as RadarIdentityType, value: "pending:abc", normalizedValue: "pending:abc" },
+    ],
+  }
+
+  beforeEach(() => {
+    getProfileForPromotionWithCtx.mockReset()
+    claimProvisionalLeadIdentity.mockReset()
+    finalizeLeadIdentityClaim.mockReset()
+    releaseLeadIdentityClaim.mockReset()
+    createLead.mockReset()
+    syncLeadExecute.mockReset()
+
+    claimProvisionalLeadIdentity.mockImplementation(async () => ({ identityId: "identity-1" }))
+    finalizeLeadIdentityClaim.mockImplementation(async () => undefined)
+    releaseLeadIdentityClaim.mockImplementation(async () => undefined)
+    createLead.mockImplementation(async () => new Output(true, [], [], { id: "lead-new-1" }))
+    syncLeadExecute.mockImplementation(async () => new Output(true, [], [], null))
+  })
+
+  // O gate roda ANTES da claim. Tratar a reserva como vinculo real faria o
+  // perfil responder "ja vinculado" para sempre quando a liberacao falhasse, e
+  // a retomada de reserva orfa na claim viraria codigo morto.
+  it("perfil com reserva orfa segue promovivel — o gate delega a claim", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithPendingClaim)
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    expect(output.isValid).toBe(true)
+    expect(claimProvisionalLeadIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  it("vinculo real continua bloqueando", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithLead)
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    expect(output.isValid).toBe(false)
+    expect(claimProvisionalLeadIdentity).not.toHaveBeenCalled()
+  })
+
+  // O Lead ja existe quando o finalize falha: deixar a reserva para tras
+  // bloquearia o perfil e o usuario ficaria com um Lead que nao consegue
+  // revincular.
+  it("falha no finalize libera a reserva e deixa o sync ligar o Lead", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    finalizeLeadIdentityClaim.mockImplementation(async () => {
+      throw new Error("connection reset")
+    })
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    expect(releaseLeadIdentityClaim).toHaveBeenCalledWith("team-1", "identity-1")
+    expect(syncLeadExecute).toHaveBeenCalledWith({ leadId: "lead-new-1", teamId: "team-1" })
+    expect(output.isValid).toBe(true)
   })
 })

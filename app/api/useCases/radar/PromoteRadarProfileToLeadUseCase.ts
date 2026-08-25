@@ -5,13 +5,25 @@ import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRe
 import { leadUseCase } from "@/app/api/useCases/leads/leadUseCaseFactory"
 import { syncLeadToRadarUseCase } from "@/app/api/useCases/radar/SyncLeadToRadarUseCase"
 import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead"
+import { isPendingLeadIdentity } from "@/lib/radar/lead-identity"
 
 type PromotionProfile = NonNullable<
   Awaited<ReturnType<typeof radarRepository.getProfileForPromotionWithCtx>>
 >
 
+/**
+ * Vínculo REAL com o CRM — reserva provisória não conta.
+ *
+ * Este gate roda ANTES de `claimProvisionalLeadIdentity`. Tratar a reserva
+ * `pending:` como vínculo faria o perfil responder "já está vinculado a um
+ * Lead" para sempre quando a liberação falhasse, e a retomada de reserva órfã
+ * que existe na claim nunca seria alcançada — código morto.
+ */
 function profileHasLeadIdentity(profile: PromotionProfile): boolean {
-  return profile.identities.some((identity) => identity.type === "lead_id")
+  return profile.identities.some(
+    (identity) =>
+      identity.type === "lead_id" && !isPendingLeadIdentity(identity.normalizedValue)
+  )
 }
 
 function resolvePromotionEmail(profile: PromotionProfile): string | undefined {
@@ -122,11 +134,24 @@ class PromoteRadarProfileToLeadUseCase {
         return new Output(false, [], ["Erro ao criar Lead a partir do perfil Radar"], null)
       }
 
-      await radarRepository.finalizeLeadIdentityClaim(
-        input.access.teamId,
-        claim.identityId,
-        createdLead.id
-      )
+      try {
+        await radarRepository.finalizeLeadIdentityClaim(
+          input.access.teamId,
+          claim.identityId,
+          createdLead.id
+        )
+      } catch (finalizeError) {
+        // O Lead JÁ EXISTE neste ponto. Deixar a reserva para trás bloquearia o
+        // perfil (o gate acima e a própria claim veem qualquer `lead_id`), e o
+        // usuário ficaria com um Lead criado que ele não consegue revincular.
+        // Libera a reserva e delega o vínculo ao sync logo abaixo — que é o
+        // mesmo caminho pelo qual todo lead se liga a um perfil normalmente.
+        console.error(
+          "[PromoteRadarProfileToLeadUseCase][execute] Falha ao finalizar reserva; liberando e delegando ao sync:",
+          finalizeError
+        )
+        await this.releaseClaim(input.access.teamId, claim.identityId)
+      }
 
       const syncOutput = await syncLeadToRadarUseCase.execute({
         leadId: createdLead.id,
