@@ -10,6 +10,7 @@ import type {
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
+  RadarPromoteToLeadResult,
 } from "../context/RadarTypes"
 
 export type CustomSegmentInput = {
@@ -99,11 +100,17 @@ export interface IRadarService {
     profileId: string,
     gender: "male" | "female" | "unknown"
   ): Promise<{ id: string; gender: string; genderSource: string }>
+  /**
+   * `confirmDuplicate` reenvia a promoção depois de o usuário confirmar que
+   * quer criar mesmo havendo candidato a duplicata. Sem ele, o backend
+   * responde 409 e o serviço lança `RadarDuplicateLeadError` com os candidatos.
+   */
   promoteProfileToLead(
     supabaseId: string,
     teamId: string,
-    profileId: string
-  ): Promise<{ leadId: string; radarProfileId: string }>
+    profileId: string,
+    options?: { confirmDuplicate?: boolean }
+  ): Promise<RadarPromoteToLeadResult>
   listSegments(supabaseId: string, teamId: string): Promise<RadarListSegmentsResult>
   listSegmentProfiles(
     supabaseId: string,

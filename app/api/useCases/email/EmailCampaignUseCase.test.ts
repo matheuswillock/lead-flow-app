@@ -819,6 +819,51 @@ describe("EmailCampaignUseCase.send", () => {
     })
   })
 
+  /**
+   * T-C4.2 — com a cota do mês já estourada, aceitar o disparo só produziria
+   * centenas de `failed` mudos e devolveria crédito depois. A recusa acontece
+   * antes de qualquer escrita: nenhum dispatch criado, nenhum crédito
+   * reservado, nada enfileirado.
+   */
+  it("T-C4.2 — cota mensal ativa recusa o disparo na origem, sem enfileirar nada", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    // O registro consultável do incidente é o `errorMessage` do último disparo
+    // abortado por cota no mês — sem tabela nova (SPEC 20, DA4).
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-antigo",
+      // `dispatchedAt`, não `updatedAt`: a âncora do incidente é imutável, para
+      // que webhook tardio ou a reconciliação noturna não empurrem um incidente
+      // de agosto para dentro de setembro.
+      dispatchedAt: new Date(),
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("Cota mensal")
+    expect(output.errorMessages[0]).toContain("Nenhum e-mail foi enfileirado")
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("T-C4.2b — sem incidente de cota no mês, o disparo segue normalmente", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => null as never)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+  })
+
   it("processDispatchQueueBatch materializa logs queued em lote na primeira execução", async () => {
     const recipients = makeRecipients(2)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
@@ -2085,6 +2130,60 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
       return { count: 0 }
     })
   }
+
+  /**
+   * Revisão do PR #1074: dos 429 estouros de cota pós-deploy medidos no
+   * `EMAIL_AUDIT` §8.2, **129** vieram de `dispatch-scheduled` — o maior volume
+   * do incidente. Proteger só o botão manual deixava justamente o caminho que
+   * mais sofreu enfileirando contra uma cota morta.
+   */
+  it("T-C4.2c — cota mensal ativa impede o cron de disparar campanha agendada", async () => {
+    setupScheduledCampaignLock()
+    // Registro consultável do incidente: último disparo abortado por cota.
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-antigo",
+      // `dispatchedAt`, não `updatedAt`: a âncora do incidente é imutável, para
+      // que webhook tardio ou a reconciliação noturna não empurrem um incidente
+      // de agosto para dentro de setembro.
+      dispatchedAt: new Date(),
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.skippedByMonthlyQuota).toBe(1)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+
+    // Nenhuma campanha foi travada em `sending`: a recusa acontece antes do
+    // lock, e a campanha continua `scheduled` para sair na virada do mês.
+    const lockedToSending = emailCampaignUpdateManyMock.mock.calls.some(
+      (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
+    )
+    expect(lockedToSending).toBe(false)
+  })
+
+  /**
+   * Revisão do PR #1075: a ficha da campanha exibe `errorMessage` sem filtrar
+   * por status e só o limpa em `sent`. Sem zerar no lock, a campanha adiada
+   * pela cota dispara normal na virada do mês exibindo "cota mensal esgotada" —
+   * erro velho descrevendo um envio que deu certo.
+   */
+  it("T-C4.2d — lock da campanha agendada limpa errorMessage anterior", async () => {
+    setupScheduledCampaignLock()
+
+    const uc = new EmailCampaignUseCase()
+    await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    const lockCall = emailCampaignUpdateManyMock.mock.calls.find(
+      (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
+    )
+    expect(lockCall).toBeDefined()
+    expect((lockCall?.[0] as { data: { errorMessage?: string | null } }).data.errorMessage).toBeNull()
+  })
 
   it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {
     setupScheduledCampaignLock()
