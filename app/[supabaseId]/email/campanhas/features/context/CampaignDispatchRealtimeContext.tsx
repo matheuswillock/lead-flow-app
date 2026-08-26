@@ -5,11 +5,8 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { useUser } from "@/app/context/UserContext"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
-import { createSupabaseBrowser } from "@/lib/supabase/browser"
-import { shouldSkipRealtimeSubscribe } from "@/lib/supabase/realtime-guard"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 import { resolveCampaignDispatchTerminal } from "@/lib/email/campaign-dispatch-terminal"
-import { takeLeavingSendingSnapshot } from "./campaign-dispatch-leaving-snapshot"
 import type {
   CampaignDispatchCompletionKind,
   CampaignDispatchProgress,
@@ -17,6 +14,26 @@ import type {
 } from "./CampanhasTypes"
 
 export const CAMPAIGN_DISPATCH_TERMINAL_TTL_MS = 8_000
+
+/**
+ * Este provider NÃO usa Supabase Realtime. É polling, de propósito.
+ *
+ * Existia aqui um canal em `corretor_studio_email_campaigns` que nunca entregou
+ * um evento sequer: a tabela não está na publicação `supabase_realtime`, e
+ * nenhuma migration jamais a adicionou. Enumerando todas as sentenças de
+ * pertencimento à publicação no repositório, a lista é
+ * `lead_activities`, `lead_activity_reactions`, `notifications`,
+ * `whatsapp_conversations`, `whatsapp_messages` — campanhas nunca esteve lá.
+ *
+ * O canal foi removido em vez de a tabela ser publicada. `corretor_studio_email_campaigns`
+ * teve 398.542 updates na janela medida, de longe a tabela mais escrita do
+ * banco; publicá-la geraria trabalho de WAL por linha, por subscriber, para
+ * substituir um polling que já funciona.
+ *
+ * Se algum dia a entrega instantânea de progresso justificar o custo, o caminho
+ * é publicar a tabela numa migration E reintroduzir o canal na mesma mudança —
+ * canal sem publicação é código morto que aparenta cobertura.
+ */
 
 /**
  * Cadência do polling de progresso de disparo.
@@ -120,8 +137,6 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
   const [terminalCampaigns, setTerminalCampaigns] = useState<TerminalCampaign[]>([])
   const previousSendingRef = useRef<Map<string, SendingCampaign>>(new Map())
   const terminalTimersRef = useRef<Map<string, number>>(new Map())
-  const reconnectTimerRef = useRef<number | null>(null)
-  const reconnectAttemptRef = useRef(0)
 
   const promoteToTerminal = useCallback((campaign: SendingCampaign) => {
     const dispatchId = campaign.dispatchId ?? `campaign:${campaign.id}`
@@ -311,168 +326,6 @@ export function CampaignDispatchRealtimeProvider({ children, supabaseId }: Props
       terminalTimersRef.current.clear()
     }
   }, [])
-
-  useEffect(() => {
-    if (shouldSkipRealtimeSubscribe()) return
-    if (!activeTeamId || !user?.id) return
-
-    const supabase = createSupabaseBrowser()
-    if (!supabase) return
-
-    type SupabaseChannel = ReturnType<typeof supabase.channel>
-    let channel: SupabaseChannel | null = null
-    let cancelled = false
-
-    const clearReconnectTimer = () => {
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current)
-        reconnectTimerRef.current = null
-      }
-    }
-
-    const teardownChannel = () => {
-      if (channel) {
-        void supabase.removeChannel(channel)
-        channel = null
-      }
-    }
-
-    const scheduleReconnect = (reason: string) => {
-      if (cancelled || reconnectTimerRef.current !== null) return
-      reconnectAttemptRef.current += 1
-      const delayMs = Math.min(1000 * 2 ** (reconnectAttemptRef.current - 1), 10000)
-      console.info(`[CampaignDispatchRealtime] Reagendando (${reason}) em ${delayMs}ms`)
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null
-        if (!cancelled) void setupRealtime()
-      }, delayMs)
-    }
-
-    const setupRealtime = async () => {
-      clearReconnectTimer()
-      teardownChannel()
-
-      let accessToken: string | null = null
-      try {
-        const sessionResult = await supabase.auth.getSession()
-        accessToken = sessionResult.data.session?.access_token ?? null
-      } catch {
-        // silent — try fallback below
-      }
-
-      if (!accessToken) {
-        try {
-          const res = await fetch(`${API_CLIENT_BASE}/realtime/auth-token`, { cache: "no-store" })
-          if (res.ok) {
-            const result = (await res.json()) as { result?: { accessToken?: string } }
-            accessToken = result?.result?.accessToken ?? null
-          }
-        } catch {
-          // silent — scheduleReconnect handles retry
-        }
-      }
-
-      if (!accessToken) {
-        scheduleReconnect("MISSING_TOKEN")
-        return
-      }
-
-      await supabase.realtime.setAuth(accessToken)
-      if (cancelled) return
-
-      const capturedTeamId = activeTeamId
-
-      channel = supabase
-        .channel(`campaign-dispatch-${capturedTeamId}-${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "corretor_studio_email_campaigns",
-            filter: `teamId=eq.${capturedTeamId}`,
-          },
-          (payload) => {
-            const row = payload.new as {
-              id?: string
-              name?: string
-              status?: string
-              totalRecipients?: number
-              totalSent?: number
-              teamId?: string
-              errorMessage?: string | null
-            }
-            if (!row?.id || row.teamId !== capturedTeamId) return
-
-            const { id, name = "", status: newStatus, totalSent = 0, totalRecipients = 0 } = row
-
-            if (newStatus === "sending") {
-              setSendingCampaigns((prev) => {
-                const idx = prev.findIndex((c) => c.id === id)
-                if (idx >= 0) {
-                  const next = [...prev]
-                  next[idx] = {
-                    ...next[idx],
-                    totalSent,
-                    totalRecipients,
-                    acceptedCount: totalSent,
-                    name: name || next[idx].name,
-                  }
-                  previousSendingRef.current.set(id, next[idx])
-                  return next
-                }
-                const created: SendingCampaign = {
-                  id,
-                  name,
-                  totalRecipients,
-                  totalSent,
-                  acceptedCount: totalSent,
-                  status: "sending",
-                  completionKind: "pending",
-                }
-                previousSendingRef.current.set(id, created)
-                return [...prev, created]
-              })
-              return
-            }
-
-            // Leave sending: never invent completionKind from realtime row totals
-            // (totalSent can lag acceptedCount). Resolve via GET + resolveCampaignDispatchTerminal
-            // — same safe path as polling disappearance.
-            // Snapshot do ref síncrono ANTES do setState (updater pode não rodar neste tick).
-            const leavingSnapshot = takeLeavingSendingSnapshot(previousSendingRef.current, id, {
-              name,
-              errorMessage: row.errorMessage ?? null,
-            })
-            setSendingCampaigns((prev) => prev.filter((c) => c.id !== id))
-
-            if (leavingSnapshot) {
-              void resolveTerminalFromApi(leavingSnapshot).then((resolved) => {
-                if (resolved) promoteToTerminal(resolved)
-              })
-            }
-
-            // Aceleração: refetch lista sending (não substitui a resolução terminal acima)
-            void fetchSendingCampaigns()
-          }
-        )
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            reconnectAttemptRef.current = 0
-          }
-          if (status === "CHANNEL_ERROR") scheduleReconnect("CHANNEL_ERROR")
-          if (status === "TIMED_OUT") scheduleReconnect("TIMED_OUT")
-        })
-    }
-
-    void setupRealtime()
-
-    return () => {
-      cancelled = true
-      clearReconnectTimer()
-      teardownChannel()
-    }
-  }, [activeTeamId, fetchSendingCampaigns, promoteToTerminal, resolveTerminalFromApi, user?.id])
 
   return (
     <CampaignDispatchRealtimeContext.Provider value={{ sendingCampaigns, terminalCampaigns }}>
