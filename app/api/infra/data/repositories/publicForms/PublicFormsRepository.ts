@@ -25,6 +25,7 @@ import {
 import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
 import {
   buildMetricEventWhereSql,
+  isFabricatedByDispatcher,
   QUESTION_IDENTITY_KEY_SQL,
   type MetricEventAggregationFilter,
 } from "./MetricEventAggregationSql"
@@ -853,10 +854,34 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             }
           : {}),
       },
-      select: { leadId: true },
-      distinct: ["leadId"],
+      select: { leadId: true, origin: true },
     })
-    return rows.length
+    // SPEC 40, todo 23 (review #1070). `uniqueLeads` e `leadCreatedSessions`
+    // moram no MESMO card do funil ("Leads vinculados"), e vinham de fontes
+    // diferentes: este conta submissões, aquele conta eventos. Com o corte só
+    // nos eventos, os leads criados a partir de submissões fabricadas sumiriam
+    // de um número e continuariam no outro — dois valores brigando na mesma
+    // tela, que é pior que os dois errados juntos: não há como saber qual
+    // conferir.
+    //
+    // O lead em si continua no CRM, intocado — é pessoa real. O que sai daqui é
+    // a atribuição dele a uma conversão que nunca houve.
+    //
+    // Sem `distinct: ["leadId"]` de propósito (segundo review do #1070): a
+    // dedupe acontecia ANTES deste filtro, então para um lead com submissão
+    // fabricada E submissão real o banco devolvia UMA linha, arbitrária. Caindo
+    // a fabricada, o lead legítimo sumia da conta — erro no sentido oposto ao
+    // do bug original, e justamente nas sessões mistas que este PR quis
+    // preservar. Medido em produção: 2 leads nessa situação.
+    //
+    // Deduplicar depois de filtrar é o que garante a ordem certa: sobra o lead
+    // se QUALQUER submissão dele for legítima.
+    const leadIds = new Set<string>()
+    for (const row of rows) {
+      if (isFabricatedByDispatcher(row.origin)) continue
+      if (row.leadId) leadIds.add(row.leadId)
+    }
+    return leadIds.size
   }
 
   async listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {
@@ -887,6 +912,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         formId: true,
         eventType: true,
         visitorSessionId: true,
+        origin: true,
       },
     })
 
@@ -905,6 +931,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     for (const row of rows) {
       const entry = byForm.get(row.formId)
       if (!entry) continue
+      // Mesmo corte de `buildMetricEventWhereSql` (SPEC 40, todo 23): este é o
+      // ranking "top convertendo", e sem o filtro ele premiava justamente os
+      // formulários que o cron mais completou sozinho.
+      if (isFabricatedByDispatcher(row.origin)) continue
       if (row.eventType === "form_viewed") entry.viewedSessions.add(row.visitorSessionId)
       if (row.eventType === "form_completed") entry.completedSessions.add(row.visitorSessionId)
     }
