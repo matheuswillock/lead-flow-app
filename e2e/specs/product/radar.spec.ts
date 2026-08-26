@@ -261,4 +261,143 @@ test.describe("app/[supabaseId]/radar", () => {
     await expect(incompleteCard.getByText("Incompleto", { exact: true })).toBeVisible()
     await expect(startedCard.getByText("Iniciou sem nenhuma resposta", { exact: true })).toBeVisible()
   })
+
+  /**
+   * SPEC 11 E1 / auditoria CDP §4 R5 — duplicata na promoção é fluxo, não beco.
+   *
+   * O backend devolve 409 com `requiresDuplicateConfirmation` + candidatos, o
+   * `parseOutput` preserva o `result` e a UI precisa oferecer saída. Antes o
+   * usuário via só a mensagem de erro e ficava sem caminho para confirmar.
+   *
+   * A promoção é interceptada para produzir o 409 de forma determinística —
+   * fabricar uma duplicata real dependeria da régua de matching do CRM, que é
+   * outro assunto (D2b).
+   */
+  test("duplicata na promoção abre confirmação com candidatos e permite criar assim mesmo", async ({
+    page,
+  }) => {
+    let confirmedWithFlag = false
+
+    await page.route("**/promote-to-lead**", async (route) => {
+      const body = route.request().postData()
+      const confirmed = Boolean(body && JSON.parse(body).confirmDuplicate === true)
+
+      if (!confirmed) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: false,
+            successMessages: [],
+            errorMessages: ["Possível lead duplicado neste time"],
+            result: {
+              requiresDuplicateConfirmation: true,
+              duplicateCandidates: [
+                {
+                  id: "e2e-lead-dup-1",
+                  name: "Maria Duplicada",
+                  phone: "(11) 98888-7777",
+                  email: "maria@dup.com",
+                },
+              ],
+            },
+          }),
+        })
+        return
+      }
+
+      confirmedWithFlag = true
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          isValid: true,
+          successMessages: ["Lead criado e vinculado ao perfil Radar"],
+          errorMessages: [],
+          result: { leadId: "e2e-lead-dup-created", radarProfileId: E2E_RADAR_PROFILE_ID },
+        }),
+      })
+    })
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar?perfil=${E2E_RADAR_PROFILE_ID}`, {
+      waitUntil: "domcontentloaded",
+    })
+
+    const promoteButton = page.getByRole("button", { name: "Promover a Lead" })
+    await expect(promoteButton).toBeVisible({ timeout: 45_000 })
+    await promoteButton.click()
+
+    // O botão abre primeiro a confirmação da própria promoção; a duplicata só
+    // aparece depois que a chamada acontece.
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Confirmar promoção" })
+      .click()
+
+    // O diálogo existe, nomeia o conflito e mostra o candidato com o contato.
+    const dialog = page.getByRole("alertdialog")
+    await expect(dialog.getByText("Já existe lead parecido. Criar mesmo assim?")).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(dialog.getByText("Maria Duplicada")).toBeVisible()
+    await expect(dialog.getByText("(11) 98888-7777 · maria@dup.com")).toBeVisible()
+
+    // 360px sem overflow horizontal, com o diálogo aberto.
+    await page.setViewportSize({ width: 360, height: 800 })
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+    ).toBe(true)
+
+    // A saída funciona e reenvia com o flag — é isso que destrava o usuário.
+    await dialog.getByRole("button", { name: "Criar assim mesmo" }).click()
+    await expect(dialog).toBeHidden({ timeout: 15_000 })
+    expect(confirmedWithFlag).toBe(true)
+  })
+
+  test("cancelar a confirmação de duplicata não promove", async ({ page }) => {
+    let promoteCalls = 0
+
+    await page.route("**/promote-to-lead**", async (route) => {
+      promoteCalls += 1
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          isValid: false,
+          successMessages: [],
+          errorMessages: ["Possível lead duplicado neste time"],
+          result: { requiresDuplicateConfirmation: true, duplicateCandidates: [] },
+        }),
+      })
+    })
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar?perfil=${E2E_RADAR_PROFILE_ID}`, {
+      waitUntil: "domcontentloaded",
+    })
+
+    const promoteButton = page.getByRole("button", { name: "Promover a Lead" })
+    await expect(promoteButton).toBeVisible({ timeout: 45_000 })
+    await promoteButton.click()
+
+    // O botão abre primeiro a confirmação da própria promoção; a duplicata só
+    // aparece depois que a chamada acontece.
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Confirmar promoção" })
+      .click()
+
+    // Sem candidatos o diálogo ainda precisa explicar o conflito, não ficar mudo.
+    const duplicateMessage = page.getByText(
+      "O CRM apontou um possível lead duplicado para este perfil."
+    )
+    await expect(duplicateMessage).toBeVisible({ timeout: 15_000 })
+
+    const duplicateDialog = page.getByRole("alertdialog").filter({ hasText: "Já existe lead" })
+    await duplicateDialog.getByRole("button", { name: "Cancelar" }).click()
+
+    // Some o diálogo de duplicata — a confirmação da promoção segue aberta
+    // atrás, então asserir "nenhum alertdialog" seria falso.
+    await expect(duplicateMessage).toBeHidden({ timeout: 15_000 })
+    expect(promoteCalls).toBe(1)
+  })
 })

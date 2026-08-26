@@ -227,6 +227,22 @@ describe("proxy", () => {
   })
 
   describe("api/q client slug masking (regression)", () => {
+    // Estas asserções descrevem o proxy FORA do modo E2E — em modo E2E o
+    // `x-supabase-user-id` do cliente é permitido de propósito (20ce228c).
+    // Sem neutralizar, quem segue a receita de e2e local do agents.md passa a
+    // ter `.env.test` no worktree, o `bun test` carrega `E2E_TEST_MODE=true`
+    // e este teste fica vermelho por ambiente — não por regressão de código.
+    let restoreE2eEnv: (() => void) | null = null
+
+    beforeEach(() => {
+      restoreE2eEnv = withE2eEnv({ e2e: undefined, appEnv: undefined, vercelEnv: undefined })
+    })
+
+    afterEach(() => {
+      restoreE2eEnv?.()
+      restoreE2eEnv = null
+    })
+
     function getRewriteUrl(callIndex = 0) {
       return rewriteWithSessionSpy.mock.calls[callIndex]?.[1] as URL | string
     }
