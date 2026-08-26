@@ -26,3 +26,20 @@ export function parsePageSizeParam(
   const { fallback = 20, max = 100 } = options
   return Math.min(max, parsePositiveInteger(value, fallback))
 }
+
+/**
+ * Offset de `page`/`pageSize`, ou `null` quando a multiplicação estoura.
+ *
+ * `page` e `pageSize` podem ser inteiros válidos e ainda assim gerar um produto
+ * fora do intervalo seguro (`page=9007199254740991&pageSize=100`). Sanitizar o
+ * offset depois — trocando o valor inseguro por `0` — devolveria a PRIMEIRA
+ * página anunciando o número pedido, que é pior que recusar: o chamador acha
+ * que está no fim da lista e vê o começo.
+ */
+export function resolvePageOffset(page: number, pageSize: number): number | null {
+  if (!Number.isSafeInteger(page) || !Number.isSafeInteger(pageSize)) return null
+  if (page < 1 || pageSize < 1) return null
+
+  const offset = (page - 1) * pageSize
+  return Number.isSafeInteger(offset) ? offset : null
+}

@@ -110,10 +110,11 @@ describe("isEmailAllowedForTeamDomain", () => {
     expect(isEmailAllowedForTeamDomain("a@b.com", null)).toBe(true)
   })
 
-  it("exige host igual ou subdomínio do domínio cadastrado", () => {
+  it("aceita host igual e equivalência de domínio raiz com prefixo mail", () => {
     expect(isEmailAllowedForTeamDomain("x@mail.acme.com", "mail.acme.com")).toBe(true)
-    expect(isEmailAllowedForTeamDomain("x@sub.mail.acme.com", "mail.acme.com")).toBe(true)
-    expect(isEmailAllowedForTeamDomain("x@acme.com", "mail.acme.com")).toBe(false)
+    expect(isEmailAllowedForTeamDomain("x@acme.com", "mail.acme.com")).toBe(true)
+    expect(isEmailAllowedForTeamDomain("x@mail.acme.com", "acme.com")).toBe(true)
+    expect(isEmailAllowedForTeamDomain("x@sub.mail.acme.com", "mail.acme.com")).toBe(false)
     expect(isEmailAllowedForTeamDomain("x@other.com", "mail.acme.com")).toBe(false)
   })
 })
@@ -198,6 +199,39 @@ describe("assertCampaignFromIsSendable", () => {
         domainStatus: "verified",
       })
     ).toEqual({ ok: true })
+  })
+
+  it("domínio verified com prefixo mail + sender no domínio raiz → ok", () => {
+    expect(
+      assertCampaignFromIsSendable({
+        resolved: { fromName: "Alexandre", fromEmail: "alexandre@libercorretora.com.br" },
+        domainName: "mail.libercorretora.com.br",
+        domainStatus: "verified",
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("domínio verified raiz + sender com prefixo mail → ok", () => {
+    expect(
+      assertCampaignFromIsSendable({
+        resolved: { fromName: "Alexandre", fromEmail: "alexandre@mail.libercorretora.com.br" },
+        domainName: "libercorretora.com.br",
+        domainStatus: "verified",
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("domínio verified com prefixo mail + sender em outro subdomínio raiz → bloqueia", () => {
+    expect(
+      assertCampaignFromIsSendable({
+        resolved: { fromName: "Alexandre", fromEmail: "alexandre@app.libercorretora.com.br" },
+        domainName: "mail.libercorretora.com.br",
+        domainStatus: "verified",
+      })
+    ).toEqual({
+      ok: false,
+      message: CAMPAIGN_FROM_SENDER_OUTSIDE_DOMAIN_MESSAGE,
+    })
   })
 
   it("domínio partially_verified/partially_failed + sender no domínio → ok (envio permitido)", () => {

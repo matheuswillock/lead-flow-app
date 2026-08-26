@@ -9,6 +9,7 @@ import type { IEmailAnalyticsRepository } from "@/app/api/infra/data/repositorie
 function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAnalyticsRepository {
   return {
     countLogs: mock(async () => 0),
+    countCohortLogs: mock(async () => 0),
     findCampaignFunnel: mock(async () => null),
     listDispatches: mock(async () => []),
     findDispatchPreview: mock(async () => null),
@@ -29,6 +30,29 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
 }
 
 const baseWindow = { from: new Date("2026-01-01"), to: new Date("2026-01-31") }
+
+/**
+ * Coorte "sem cauda": todo engajamento da janela pertence a e-mails enviados na
+ * própria janela, então os números de coorte batem com os de evento. É o caso
+ * normal; a divergência entre os dois só aparece em janela curta com abertura de
+ * e-mail antigo, e é isso que `T-M2.2-g` exercita.
+ */
+function cohortMirroring(counts: {
+  delivered?: number
+  opened?: number
+  clicked?: number
+  bounced?: number
+  complained?: number
+}) {
+  return mock(async (_where: unknown, filter: string) => {
+    if (filter === "delivered") return counts.delivered ?? 0
+    if (filter === "opened" || filter === "openedOnSent") return counts.opened ?? 0
+    if (filter === "clicked") return counts.clicked ?? 0
+    if (filter === "bounced") return counts.bounced ?? 0
+    if (filter === "complained") return counts.complained ?? 0
+    return 0
+  })
+}
 
 // ---------- testes ----------
 
@@ -57,7 +81,7 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
     expect(eventTypes).toContain("form_started")
   })
 
-  it("A1 — openRate usa 'sent' como denominador (não 'delivered')", async () => {
+  it("A1 — openRate usa 'delivered' como denominador (D6), com 'sent' em paralelo", async () => {
     const repo = buildRepo({
       countLogs: mock(async (_where, filter) => {
         if (!filter) return 2000
@@ -68,15 +92,23 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         if (filter === "complained") return 5
         return 0
       }),
+      countCohortLogs: cohortMirroring({
+        delivered: 1800,
+        opened: 400,
+        clicked: 100,
+        bounced: 50,
+        complained: 5,
+      }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
 
     expect(output.isValid).toBe(true)
-    // openRate correto: 400/2000 = 20.00
-    expect(output.result.rates.openRate).toBe(20)
-    // garante que o bug antigo (400/1800 ≈ 22.22) não está presente
-    expect(output.result.rates.openRate).not.toBe(22.22)
+    // D6 inverteu este contrato: `/delivered` virou a base principal, para o
+    // produto fechar com o painel do Resend. 400/1800 = 22.22.
+    expect(output.result.rates.openRate).toBe(22.22)
+    // A base antiga continua exposta na transição de 30 dias: 400/2000 = 20.00.
+    expect(output.result.rates.openRateOnSent).toBe(20)
     expect(output.result.deltas).toBeDefined()
     expect(output.result.totals.formCompletions).toBe(0)
   })
@@ -91,6 +123,13 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         if (filter === "bounced") return 50
         if (filter === "complained") return 5
         return 0
+      }),
+      countCohortLogs: cohortMirroring({
+        delivered: 1800,
+        opened: 400,
+        clicked: 100,
+        bounced: 50,
+        complained: 5,
       }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
@@ -110,6 +149,13 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         if (filter === "bounced") return 50
         if (filter === "complained") return 5
         return 0
+      }),
+      countCohortLogs: cohortMirroring({
+        delivered: 1800,
+        opened: 400,
+        clicked: 100,
+        bounced: 50,
+        complained: 5,
       }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
@@ -140,6 +186,7 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         if (filter === "opened") return 1
         return 0
       }),
+      countCohortLogs: cohortMirroring({ delivered: 3, opened: 1 }),
     })
     const uc = new EmailAnalyticsUseCase(repo)
     const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
@@ -214,8 +261,9 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
 
     expect(output.isValid).toBe(true)
     expect(output.result.dispatches).toHaveLength(1)
-    // openRate do disparo: 40/100 = 40
-    expect(output.result.dispatches[0].rates.openRate).toBe(40)
+    // D6 vale também por disparo: 40/90 sobre entregues = 44.44.
+    expect(output.result.dispatches[0].rates.openRate).toBe(44.44)
+    expect(output.result.dispatches[0].rates.openRateOnSent).toBe(40)
     // deliverabilityRate do disparo: 90/100 = 90
     expect(output.result.dispatches[0].rates.deliverabilityRate).toBe(90)
   })
@@ -371,9 +419,10 @@ describe("EmailAnalyticsUseCase.getTopTemplates", () => {
     const output = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
 
     expect(output.isValid).toBe(true)
-    // g1 agrega 200 sent / 80 opened = 40% open — lidera abertura
+    // g1 agrega 180 delivered / 80 opened = 44,44% — lidera abertura.
+    // (Era 40% quando a base era `sent`; a D6 moveu o denominador.)
     expect(output.result.byOpenRate[0].versionGroupId).toBe("g1")
-    expect(output.result.byOpenRate[0].rates.openRate).toBe(40)
+    expect(output.result.byOpenRate[0].rates.openRate).toBe(44.44)
     // g2 lidera clique (20%)
     expect(output.result.byClickRate[0].versionGroupId).toBe("g2")
     // Sem dados suficientes fica de fora
@@ -460,5 +509,97 @@ describe("EmailAnalyticsUseCase.getCampaignFunnel (E5)", () => {
     const output = await uc.getCampaignFunnel({ teamId: "t1", campaignId: "c1" })
 
     expect(output.isValid).toBe(false)
+  })
+})
+
+describe("EmailAnalyticsUseCase — relógio declarado (T-M2.1/T-M2.3, D5)", () => {
+  it("T-M2.3 — TODA resposta com período declara o anchor", async () => {
+    // O contrato que impede a volta dos três relógios: número sem relógio não
+    // sai da API. Se um método novo devolver `period` sem `anchor`, este teste
+    // é o que reclama.
+    const uc = new EmailAnalyticsUseCase(buildRepo())
+
+    const analytics = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+    const overview = await uc.getOverview({ teamId: "t1", timezone: "America/Sao_Paulo" })
+    const templates = await uc.getTopTemplates({ teamId: "t1", ...baseWindow })
+    const compare = await uc.compareCampaigns({
+      teamId: "t1",
+      ...baseWindow,
+      campaignIds: ["c1"],
+    })
+
+    expect(analytics.result.anchor).toBe("event")
+    expect(overview.result.anchor).toBe("event")
+    // Ranking de template NÃO é fato-no-tempo: a janela seleciona disparos e os
+    // números são contadores acumulados deles. Travar `event` aqui era travar o
+    // contrato errado — o campo existe para dizer a verdade sobre o relógio,
+    // não para estar preenchido.
+    expect(templates.result.anchor).toBe("dispatch_dispatched_at")
+    // compareCampaigns só resolve com campanha existente; o contrato do anchor
+    // vale igual quando ela existe.
+    expect(compare.isValid ? compare.result.anchor : "event").toBe("event")
+  })
+
+  it("T-M2.1-f — e-mail enviado no dia 1 e aberto no dia 20 conta na janela do dia 20", async () => {
+    // A leitura que a Proposta A compra: "aberturas ocorridas no período".
+    // O repositório é quem aplica a âncora; aqui o que se trava é que o
+    // UseCase pede a contagem de abertura E rotula a resposta, para o
+    // frontend nunca exibir esse número sem dizer de onde ele vem.
+    const countLogs = mock(async (_where, filter) => {
+      if (!filter) return 0 // nada foi ENVIADO na janela do dia 20
+      if (filter === "delivered") return 0
+      if (filter === "opened") return 1 // mas houve uma ABERTURA
+      return 0
+    })
+    const uc = new EmailAnalyticsUseCase(buildRepo({ countLogs }))
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.result.totals.opened).toBe(1)
+    expect(output.result.totals.sent).toBe(0)
+    expect(output.result.anchor).toBe("event")
+    // Sem entrega na janela, a taxa não inventa denominador.
+    expect(output.result.rates.openRate).toBe(0)
+  })
+
+  it("T-M2.2-f — a resposta carrega as duas bases do openRate na transição", async () => {
+    const countLogs = mock(async (_where, filter) => {
+      if (!filter) return 9741
+      if (filter === "delivered") return 8436
+      if (filter === "opened") return 2184
+      return 0
+    })
+    const uc = new EmailAnalyticsUseCase(
+      buildRepo({ countLogs, countCohortLogs: cohortMirroring({ delivered: 8436, opened: 2184 }) }),
+    )
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    expect(output.result.rates.openRate).toBe(25.89)
+    expect(output.result.rates.openRateOnSent).toBe(22.42)
+    expect(output.result.deltas.rates.openRateOnSent).toBeDefined()
+  })
+
+  it("T-M2.2-g — janela curta com abertura de e-mail antigo NÃO passa de 100%", async () => {
+    // O achado do #1065: sob a âncora de evento, `opened` conta aberturas
+    // ocorridas na janela e `delivered` conta entregas ocorridas na janela —
+    // populações diferentes. Aqui há 500 aberturas (de e-mails velhos) contra
+    // 10 entregas: dividir uma pela outra daria 5000%.
+    const countLogs = mock(async (_where, filter) => {
+      if (!filter) return 10
+      if (filter === "delivered") return 10
+      if (filter === "opened") return 500
+      return 0
+    })
+    // Da coorte de 10 entregues na janela, 3 foram abertos.
+    const countCohortLogs = cohortMirroring({ delivered: 10, opened: 3 })
+    const uc = new EmailAnalyticsUseCase(buildRepo({ countLogs, countCohortLogs }))
+    const output = await uc.getAnalytics({ teamId: "t1", ...baseWindow })
+
+    // O total continua respondendo "quantas aberturas aconteceram".
+    expect(output.result.totals.opened).toBe(500)
+    // A taxa mede a coorte: 3 de 10.
+    expect(output.result.rates.openRate).toBe(30)
+    expect(output.result.rates.openRate).toBeLessThanOrEqual(100)
+    // E a resposta avisa que `rates` não deriva de `totals`.
+    expect(output.result.rateBasis).toBe("cohort")
   })
 })

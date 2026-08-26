@@ -63,6 +63,9 @@ export function attachRateDeltas(
       isRate: true,
     }),
     openRate: calcMetricDelta(current.openRate, previous.openRate, { isRate: true }),
+    openRateOnSent: calcMetricDelta(current.openRateOnSent, previous.openRateOnSent, {
+      isRate: true,
+    }),
     clickRate: calcMetricDelta(current.clickRate, previous.clickRate, { isRate: true }),
     bounceRate: calcMetricDelta(current.bounceRate, previous.bounceRate, { isRate: true }),
     complainRate: calcMetricDelta(current.complainRate, previous.complainRate, { isRate: true }),
