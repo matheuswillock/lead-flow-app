@@ -334,13 +334,15 @@ test.describe("app/[supabaseId]/radar", () => {
       .getByRole("button", { name: "Confirmar promoção" })
       .click()
 
-    // O diálogo existe, nomeia o conflito e mostra o candidato com o contato.
-    const dialog = page.getByRole("alertdialog")
-    await expect(dialog.getByText("Já existe lead parecido. Criar mesmo assim?")).toBeVisible({
-      timeout: 15_000,
-    })
-    await expect(dialog.getByText("Maria Duplicada")).toBeVisible()
-    await expect(dialog.getByText("(11) 98888-7777 · maria@dup.com")).toBeVisible()
+    // Escopado ao diálogo de DUPLICATA: o de confirmação da promoção continua
+    // montado atrás, então `getByRole("alertdialog")` casa os dois e qualquer
+    // asserção de visibilidade viraria corrida entre eles.
+    const duplicateTitle = page.getByText("Já existe lead parecido. Criar mesmo assim?")
+    await expect(duplicateTitle).toBeVisible({ timeout: 15_000 })
+
+    const duplicateDialog = page.getByRole("alertdialog").filter({ hasText: "Já existe lead" })
+    await expect(duplicateDialog.getByText("Maria Duplicada")).toBeVisible()
+    await expect(duplicateDialog.getByText("(11) 98888-7777 · maria@dup.com")).toBeVisible()
 
     // 360px sem overflow horizontal, com o diálogo aberto.
     await page.setViewportSize({ width: 360, height: 800 })
@@ -349,8 +351,8 @@ test.describe("app/[supabaseId]/radar", () => {
     ).toBe(true)
 
     // A saída funciona e reenvia com o flag — é isso que destrava o usuário.
-    await dialog.getByRole("button", { name: "Criar assim mesmo" }).click()
-    await expect(dialog).toBeHidden({ timeout: 15_000 })
+    await duplicateDialog.getByRole("button", { name: "Criar assim mesmo" }).click()
+    await expect(duplicateTitle).toBeHidden({ timeout: 15_000 })
     expect(confirmedWithFlag).toBe(true)
   })
 
