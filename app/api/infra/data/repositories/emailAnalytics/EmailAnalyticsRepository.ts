@@ -3,6 +3,10 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { queryDispatchLogCounters } from "@/app/api/infra/data/repositories/emailLog/DispatchLogCountersQuery"
+import {
+  NOT_FABRICATED_BY_DISPATCHER_SQL,
+  notFabricatedByDispatcherSql,
+} from "@/app/api/infra/data/repositories/publicForms/MetricEventAggregationSql"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 
 export type EmailAnalyticsLogWhere = {
@@ -51,35 +55,103 @@ export type EmailAnalyticsLogFilter =
   | "suppressed"
   | "queued"
 
-const LOG_FILTER_CONDITIONS: Record<EmailAnalyticsLogFilter, Prisma.EmailLogWhereInput> = {
-  delivered: { deliveredAt: { not: null } },
-  opened: { openedAt: { not: null } },
-  clicked: { clickedAt: { not: null } },
-  bounced: { bouncedAt: { not: null } },
-  complained: { complainedAt: { not: null } },
-  // `status` sozinho não delimita a população "nunca saiu". `applyWebhookEvent`
-  // promove `email.failed` por prioridade de status e, para tipos sem timestamp
-  // próprio, só escreve o status — `sentAt` e `resendEmailId` sobrevivem. Um log
-  // aceito pelo Resend e marcado `failed` depois cairia em `sent` E em `failed`,
-  // inflando `failureRate` e divergindo de `dispatches[].failedCount`. A regra é
-  // a mesma de `queryDispatchLogCounters`, que é a fonte única da definição.
-  failed: { status: "failed", sentAt: null, resendEmailId: null },
-  suppressed: { status: "suppressed", sentAt: null, resendEmailId: null },
-  queued: { status: "queued", sentAt: null, resendEmailId: null },
-  delivery_delayed: { events: { some: { type: "delivery_delayed" } } },
-  unsubscribed: { events: { some: { type: "unsubscribed" } } },
-}
+type MetricPeriod = { gte: Date; lte: Date }
+type LogFilterClause = (period: MetricPeriod) => Prisma.EmailLogWhereInput
 
 /**
- * Populações que nunca chegaram a sair: `sentAt` é NULL por construção. Ancorá-las
- * na âncora padrão do analytics (`sentAt`) as apagava de qualquer período — os
- * logs falhos eram invisíveis nos totais. `createdAt` é a única âncora que têm.
+ * Cada população conta no relógio do próprio fato (D5 — Proposta A).
+ *
+ * Antes o analytics ancorava tudo em `sentAt`, e o dashboard dizia "aberturas no
+ * período" querendo dizer "aberturas dos e-mails ENVIADOS no período": uma
+ * abertura de hoje, de um e-mail de três semanas atrás, não aparecia em recorte
+ * nenhum. Agora a leitura é "aberturas ocorridas no período", e a API declara
+ * isso em `anchor`.
+ *
+ * Consequência aceita na decisão: some a leitura de coorte — "quanto o disparo
+ * de terça rendeu" deixa de ser respondível olhando só a janela de terça.
+ *
+ * Um mapa por variação, e não uma cadeia de `if`: adicionar população é
+ * acrescentar linha, não crescer condicional.
  */
-const CREATED_AT_ANCHORED_FILTERS: ReadonlySet<EmailAnalyticsLogFilter> = new Set([
-  "failed",
-  "suppressed",
-  "queued",
-])
+const LOG_FILTER_CLAUSES: Record<EmailAnalyticsLogFilter, LogFilterClause> = {
+  // Engajamento ancora no timestamp do PRÓPRIO fato. O range sobre a coluna já
+  // exclui NULL, então não há `{ not: null }` redundante junto.
+  delivered: (period) => ({ deliveredAt: period }),
+  opened: (period) => ({ openedAt: period }),
+  clicked: (period) => ({ clickedAt: period }),
+  bounced: (period) => ({ bouncedAt: period }),
+  complained: (period) => ({ complainedAt: period }),
+
+  // Nunca saíram: `sentAt` é NULL por construção, e `createdAt` é a única âncora
+  // que possuem. O par `sentAt`/`resendEmailId` nulos aqui é recorte de
+  // POPULAÇÃO, não âncora — `applyWebhookEvent` promove `email.failed` sem
+  // limpar esses campos, e sem o recorte um log aceito e marcado failed depois
+  // cairia em `sent` E em `failed`. Mesma regra de `queryDispatchLogCounters`.
+  failed: (period) => ({
+    status: "failed",
+    sentAt: null,
+    resendEmailId: null,
+    createdAt: period,
+  }),
+  suppressed: (period) => ({
+    status: "suppressed",
+    sentAt: null,
+    resendEmailId: null,
+    createdAt: period,
+  }),
+  queued: (period) => ({
+    status: "queued",
+    sentAt: null,
+    resendEmailId: null,
+    createdAt: period,
+  }),
+
+  // Estes dois não têm coluna própria no log: o fato vive no `EmailEvent`, e é o
+  // `occurredAt` dele que data a métrica. Ancorá-los no `sentAt` do log era o
+  // mais grosseiro dos três relógios que a auditoria encontrou (M2).
+  delivery_delayed: (period) => ({
+    events: { some: { type: "delivery_delayed", occurredAt: period } },
+  }),
+  unsubscribed: (period) => ({
+    events: { some: { type: "unsubscribed", occurredAt: period } },
+  }),
+}
+
+export type EmailAnalyticsCohortFilter =
+  | "delivered"
+  | "opened"
+  | "openedOnSent"
+  | "clicked"
+  | "bounced"
+  | "complained"
+
+/**
+ * Contagens de COORTE, usadas só para as taxas.
+ *
+ * Sob a âncora de evento (D5), `opened` conta aberturas ocorridas na janela e
+ * `delivered` conta entregas ocorridas na janela — populações diferentes. A
+ * razão entre elas não é taxa de conversão: numa janela de um dia com muitas
+ * aberturas de e-mails antigos e poucas entregas novas, ela passa de 100%.
+ *
+ * Aqui numerador e denominador vivem na MESMA coorte: "dos e-mails entregues na
+ * janela, quantos foram abertos". `totals` continua respondendo "quantas
+ * aberturas aconteceram" — as duas perguntas são legítimas e diferentes, e por
+ * isso a resposta declara `rateBasis` ao lado de `anchor`.
+ */
+const COHORT_FILTER_CLAUSES: Record<EmailAnalyticsCohortFilter, LogFilterClause> = {
+  // Da coorte ENVIADA na janela, quantos chegaram.
+  delivered: (period) => ({ sentAt: period, deliveredAt: { not: null } }),
+  // D6: a base do openRate é a entrega, então a coorte é a das ENTREGAS.
+  opened: (period) => ({ deliveredAt: period, openedAt: { not: null } }),
+  // A base antiga da transição, na coorte de envio.
+  openedOnSent: (period) => ({ sentAt: period, openedAt: { not: null } }),
+  clicked: (period) => ({ sentAt: period, clickedAt: { not: null } }),
+  bounced: (period) => ({ sentAt: period, bouncedAt: { not: null } }),
+  complained: (period) => ({ sentAt: period, complainedAt: { not: null } }),
+}
+
+/** Sem filtro, a pergunta é sobre o envio — e o relógio do envio é `sentAt`. */
+const SENT_CLAUSE: LogFilterClause = (period) => ({ sentAt: period })
 
 export type EmailTemplateVersionMetricRow = {
   versionGroupId: string
@@ -139,6 +211,10 @@ export type EmailCampaignFunnel = {
 
 export interface IEmailAnalyticsRepository {
   countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
+  countCohortLogs(
+    where: EmailAnalyticsLogWhere,
+    filter: EmailAnalyticsCohortFilter,
+  ): Promise<number>
   findCampaignFunnel(options: {
     teamId: string
     campaignId: string
@@ -203,20 +279,16 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     return campaignIds.length === 1 ? campaignIds[0] : { in: campaignIds }
   }
 
-  private async buildLogWhere(
-    options: EmailAnalyticsLogWhere,
-    filter?: EmailAnalyticsLogFilter
+  /**
+   * Escopo do time e da campanha. O recorte de período NÃO entra aqui: ele
+   * pertence à cláusula da população, porque cada uma tem o seu relógio.
+   */
+  private async buildLogScope(
+    options: EmailAnalyticsLogWhere
   ): Promise<Prisma.EmailLogWhereInput> {
     const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
-    const period = { gte: options.from, lte: options.to }
-    const anchor =
-      filter && CREATED_AT_ANCHORED_FILTERS.has(filter)
-        ? { createdAt: period }
-        : { sentAt: period }
-
     return {
       teamId: options.teamId,
-      ...anchor,
       ...(campaignFilter && { campaignId: campaignFilter }),
     }
   }
@@ -225,11 +297,26 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     where: EmailAnalyticsLogWhere,
     filter?: EmailAnalyticsLogFilter
   ): Promise<number> {
-    const base = await this.buildLogWhere(where, filter)
-    const condition = filter ? LOG_FILTER_CONDITIONS[filter] : {}
+    const scope = await this.buildLogScope(where)
+    const clause = filter ? LOG_FILTER_CLAUSES[filter] : SENT_CLAUSE
 
     return prisma.emailLog.count({
-      where: { ...base, ...condition },
+      where: { ...scope, ...clause({ gte: where.from, lte: where.to }) },
+    })
+  }
+
+  /** Contagem de coorte — numerador e denominador na mesma população. */
+  async countCohortLogs(
+    where: EmailAnalyticsLogWhere,
+    filter: EmailAnalyticsCohortFilter
+  ): Promise<number> {
+    const scope = await this.buildLogScope(where)
+
+    return prisma.emailLog.count({
+      where: {
+        ...scope,
+        ...COHORT_FILTER_CLAUSES[filter]({ gte: where.from, lte: where.to }),
+      },
     })
   }
 
@@ -274,7 +361,15 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         SELECT e."eventType", e."visitorSessionId"
         FROM "corretor_studio_public_form_metric_events" e
         WHERE
+          -- SPEC 40, todo 23 (review #1070): as conclusoes que o cron de
+          -- despacho inventou nao contam aqui tampouco. Medido em 25/08: 211
+          -- dos 311 eventos fabricados carregam atribuicao de campanha, em 44
+          -- campanhas — o funil de e-mail estava MAIS inflado que o do
+          -- formulario, e corrigir so um dos dois deixaria as duas telas
+          -- discordando sobre a mesma conversao.
+          ${notFabricatedByDispatcherSql("e")}
           -- Vale para OS DOIS ramos: o formulario do evento tem de ser do time.
+          AND
           -- O origin inteiro vem do POST publico, e o emailLogId viaja em texto
           -- claro no cs_el de qualquer e-mail da campanha — quem tem o link tem
           -- o id. Sem esta amarra no caminho principal, bastava POStar metrica
@@ -523,6 +618,10 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       FROM "corretor_studio_public_form_metric_events"
       WHERE "formId" = ANY(${formIds}::uuid[])
         AND "eventType" = ${options.eventType}::"PublicFormMetricType"
+        -- Mesmo corte de buildMetricEventWhereSql (SPEC 40, todo 23, review
+        -- #1070): sem ele este relatorio conta como destinatario convertido
+        -- quem nunca enviou o formulario — o cron e que completou por ele.
+        AND ${NOT_FABRICATED_BY_DISPATCHER_SQL}
         -- Mesmo relogio de buildMetricEventWhereSql: o do fato, com o do insert
         -- como reserva. createdAt sozinho data a conversao pelo dia do drain.
         AND COALESCE("occurredAt", "createdAt") >= ${options.from}

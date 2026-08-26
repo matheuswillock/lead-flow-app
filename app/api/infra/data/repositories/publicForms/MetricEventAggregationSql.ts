@@ -52,8 +52,55 @@ export const QUESTION_IDENTITY_KEY_SQL = Prisma.sql`
  */
 const PERIOD_ANCHOR_SQL = Prisma.sql`COALESCE("occurredAt", "createdAt")`
 
+/**
+ * SPEC 40 E0 / todo 23 — as conclusões que o cron de despacho inventou ficam
+ * fora de toda contagem de funil.
+ *
+ * Antes do E0 o dispatcher completava cascas do `/progress` como se fossem
+ * envio: 311 submissões, de 30/07 a 25/08. O efeito é de medição, não de dado —
+ * o painel mostrava 21,5% de conversão contra 75,7% reais. A marca é gravada
+ * pela migration `20260825213332`; aqui ela some das séries.
+ *
+ * Predicado sobre `IS NULL`, não sobre `= false`: linha não marcada não tem a
+ * chave, e `origin->'x' = 'false'` não casaria com ela. Casado com o índice
+ * parcial da mesma migration.
+ */
+export const NOT_FABRICATED_BY_DISPATCHER_SQL = Prisma.sql`(origin -> 'fabricatedByDispatcher') IS NULL`
+
+/**
+ * Mesmo predicado, qualificado por alias — para as consultas que juntam a tabela
+ * de métricas com outra (`EmailAnalyticsRepository`, review #1070). Sem o alias
+ * o `origin` fica ambíguo assim que o outro lado do join também tiver a coluna,
+ * e o erro só aparece em runtime.
+ */
+export function notFabricatedByDispatcherSql(alias: string): Prisma.Sql {
+  return Prisma.sql`(${Prisma.raw(`"${alias}"`)}."origin" -> 'fabricatedByDispatcher') IS NULL`
+}
+
+/**
+ * Mesmo corte para quem lê pelo Prisma Client em vez de SQL cru
+ * (`listFormConversionTotals`). Os dois **precisam** concordar: um funil que
+ * exclui a fabricada e um ranking que a inclui dariam números diferentes para a
+ * mesma pergunta, na mesma tela.
+ *
+ * Em JS, e não como `where` de JSON do Prisma, de propósito. O filtro que
+ * queremos é "a chave **não existe**", e o `path`/`equals` do Prisma vira
+ * comparação SQL sobre `origin#>'{...}'`: para linha sem a chave o operando é
+ * NULL, `NOT (NULL = 'true')` é NULL, e a lógica de três valores **descarta a
+ * linha** — o oposto do pretendido, silenciosamente. Aqui a consulta já
+ * materializa as linhas para deduplicar por sessão, então filtrar em memória
+ * não custa varredura extra e a semântica fica explícita e testável.
+ */
+export function isFabricatedByDispatcher(origin: unknown): boolean {
+  if (!origin || typeof origin !== "object" || Array.isArray(origin)) return false
+  return (origin as Record<string, unknown>).fabricatedByDispatcher === true
+}
+
 export function buildMetricEventWhereSql(filter: MetricEventAggregationFilter): Prisma.Sql {
-  const conditions: Prisma.Sql[] = [Prisma.sql`"formId" = ${filter.formId}::uuid`]
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`"formId" = ${filter.formId}::uuid`,
+    NOT_FABRICATED_BY_DISPATCHER_SQL,
+  ]
 
   if (filter.publicationId) {
     conditions.push(Prisma.sql`"publicationId" = ${filter.publicationId}::uuid`)
