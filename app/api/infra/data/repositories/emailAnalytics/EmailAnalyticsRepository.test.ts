@@ -113,17 +113,16 @@ describe("EmailAnalyticsRepository.countLogs — âncora por status (T-M1.1)", (
     expect(calls[1][0].where.status).toBe("queued")
   })
 
-  it("T-M1.1-c — envio e engajamento continuam ancorados em sentAt", async () => {
+  it("T-M1.1-c — envio continua ancorado em sentAt (engajamento migrou na D5)", async () => {
+    // Este teste nasceu quando TUDO ancorava em `sentAt`. A D5 tirou o
+    // engajamento de lá — `delivered`/`opened` agora contam no próprio
+    // timestamp (ver T-M2.1). O envio é o que permaneceu.
     const repo = new EmailAnalyticsRepository()
     await repo.countLogs({ teamId: "team-1", ...dateRange })
-    await repo.countLogs({ teamId: "team-1", ...dateRange }, "delivered")
-    await repo.countLogs({ teamId: "team-1", ...dateRange }, "opened")
 
-    const calls = countLogsMock.mock.calls as unknown as CountLogsCall[]
-    for (const call of calls) {
-      expect(call[0].where.sentAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
-      expect(call[0].where.createdAt).toBeUndefined()
-    }
+    const call = (countLogsMock.mock.calls as unknown as CountLogsCall[])[0][0]
+    expect(call.where.sentAt).toEqual({ gte: dateRange.from, lte: dateRange.to })
+    expect(call.where.createdAt).toBeUndefined()
   })
 
   it("T-M1.1-d — filtro de campanha permanece aplicado na âncora de createdAt", async () => {
@@ -336,5 +335,86 @@ describe("EmailAnalyticsRepository.countFormEvents (G0)", () => {
     await repo.countFormCompletions({ teamId: "team-1", ...dateRange })
 
     expect(queryValues()[1]).toBe("form_completed")
+  })
+})
+
+describe("EmailAnalyticsRepository.countLogs — evento no seu tempo (T-M2.1, D5)", () => {
+  beforeEach(() => {
+    countLogsMock.mockClear()
+    countLogsMock.mockImplementation(async () => 0)
+    findManyCampaignsMock.mockImplementation(async () => [])
+  })
+
+  function whereOf(callIndex = 0): Record<string, unknown> {
+    const calls = countLogsMock.mock.calls as unknown as Array<[{ where: Record<string, unknown> }]>
+    return calls[callIndex][0].where
+  }
+
+  const period = { gte: dateRange.from, lte: dateRange.to }
+
+  it("T-M2.1-a — cada engajamento ancora no seu proprio timestamp", async () => {
+    // D5/Proposta A: "aberturas ocorridas no periodo", nao "aberturas dos
+    // e-mails enviados no periodo". Um e-mail de 3 semanas atras aberto hoje
+    // conta hoje — antes ele sumia de qualquer recorte recente.
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "delivered")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "opened")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "clicked")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "bounced")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "complained")
+
+    expect(whereOf(0).deliveredAt).toEqual(period)
+    expect(whereOf(1).openedAt).toEqual(period)
+    expect(whereOf(2).clickedAt).toEqual(period)
+    expect(whereOf(3).bouncedAt).toEqual(period)
+    expect(whereOf(4).complainedAt).toEqual(period)
+
+    // Nenhum deles pode mais ancorar no relogio do ENVIO.
+    for (let index = 0; index < 5; index += 1) {
+      expect(whereOf(index).sentAt).toBeUndefined()
+    }
+  })
+
+  it("T-M2.1-b — o range no proprio timestamp dispensa o `not: null`", async () => {
+    // Range sobre coluna nullable ja exclui NULL; manter `{ not: null }` junto
+    // seria redundancia que so confunde quem le.
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "opened")
+
+    expect(whereOf().openedAt).toEqual(period)
+  })
+
+  it("T-M2.1-c — envio continua sendo o unico ancorado em sentAt", async () => {
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange })
+
+    expect(whereOf().sentAt).toEqual(period)
+    expect(whereOf().createdAt).toBeUndefined()
+  })
+
+  it("T-M2.1-d — delivery_delayed e unsubscribed ancoram no occurredAt do EVENTO", async () => {
+    // Estes dois nao tem coluna propria no log: o fato vive em `EmailEvent`.
+    // Ancora-los no `sentAt` do log era o erro mais grosseiro dos tres relogios.
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "delivery_delayed")
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "unsubscribed")
+
+    expect(whereOf(0).events).toEqual({
+      some: { type: "delivery_delayed", occurredAt: period },
+    })
+    expect(whereOf(1).events).toEqual({
+      some: { type: "unsubscribed", occurredAt: period },
+    })
+    expect(whereOf(0).sentAt).toBeUndefined()
+    expect(whereOf(1).sentAt).toBeUndefined()
+  })
+
+  it("T-M2.1-e — populacoes que nunca sairam seguem em createdAt, com o recorte de populacao", async () => {
+    const repo = new EmailAnalyticsRepository()
+    await repo.countLogs({ teamId: "team-1", ...dateRange }, "failed")
+
+    expect(whereOf().createdAt).toEqual(period)
+    expect(whereOf().sentAt).toBeNull()
+    expect(whereOf().resendEmailId).toBeNull()
   })
 })
