@@ -203,6 +203,26 @@ export type RadarMetrics = {
   engaged: number | null
 }
 
+/** Lead já existente que o backend apontou como possível duplicata na promoção. */
+export type RadarDuplicateLeadCandidate = {
+  id: string
+  name: string | null
+  phone?: string | null
+  email?: string | null
+  createdAt?: string
+}
+
+export type RadarPromoteToLeadResult = {
+  leadId: string
+  radarProfileId: string
+  /**
+   * `false` quando o Lead foi criado mas o vínculo com o perfil não pôde ser
+   * confirmado. O Lead existe — não repetir a promoção, sob risco de criar um
+   * segundo; o próximo sync do CRM refaz o vínculo.
+   */
+  identityLinked?: boolean
+}
+
 export type RadarProfileAssignee = {
   leadId: string
   leadCode: string
