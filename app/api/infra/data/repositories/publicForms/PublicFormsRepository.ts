@@ -854,10 +854,20 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             }
           : {}),
       },
-      select: { leadId: true },
+      select: { leadId: true, origin: true },
       distinct: ["leadId"],
     })
-    return rows.length
+    // SPEC 40, todo 23 (review #1070). `uniqueLeads` e `leadCreatedSessions`
+    // moram no MESMO card do funil ("Leads vinculados"), e vinham de fontes
+    // diferentes: este conta submissões, aquele conta eventos. Com o corte só
+    // nos eventos, os 21 leads criados a partir de submissões fabricadas
+    // sumiriam de um número e continuariam no outro — dois valores brigando na
+    // mesma tela, que é pior que os dois errados juntos: não há como saber qual
+    // conferir.
+    //
+    // O lead em si continua no CRM, intocado — é pessoa real. O que sai daqui é
+    // a atribuição dele a uma conversão que nunca houve.
+    return rows.filter((row) => !isFabricatedByDispatcher(row.origin)).length
   }
 
   async listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {

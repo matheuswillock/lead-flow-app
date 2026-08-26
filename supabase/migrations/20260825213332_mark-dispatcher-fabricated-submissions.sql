@@ -72,7 +72,48 @@ where e."formId" = s."formId"
   and e."eventType" in ('form_completed', 'lead_created', 'lead_attached', 'meeting_scheduled')
   and (e.origin -> 'fabricatedByDispatcher') is null;
 
--- 3) Índice parcial para o predicado novo do funil.
+-- 3) A projeção de jornada, que também foi contaminada.
+--
+-- `recordJourneyProgress` roda a cada métrica: ao consumir o `form_completed`
+-- fabricado ele moveu a `PublicFormJourneySession` para `completed`. Marcar só
+-- o evento deixaria `journey.completed` inflado — `countJourneyStates` lê o
+-- estado da sessão, não a métrica, e o código **nunca reverte** um `completed`.
+-- Medido em 25/08: **302 sessões** nesse estado por conclusão fabricada.
+--
+-- O estado verdadeiro é `abandoned`: a pessoa preencheu parte e foi embora. É a
+-- conclusão a que o cron de jornada teria chegado sozinho — o E0 já diz que
+-- "abandono continua sendo trabalho do cron de jornada (`form_abandoned`), que é
+-- o evento verdadeiro". Não é invenção nova, é devolver o fato.
+--
+-- `lastAbandonedAt` recebe `lastActivityAt`, o último instante em que o
+-- visitante de fato mexeu no formulário — nunca `now()`, que dataria o abandono
+-- no dia da migration e jogaria 302 abandonos falsos no recorte de hoje.
+--
+-- Mesmo escopo do bloco 2: sessões mistas ficam de fora, porque nelas houve um
+-- envio real e o `completed` é legítimo.
+with sessoes_so_fabricadas as (
+  select "formId", "visitorSessionId"
+  from "public"."corretor_studio_public_form_submissions"
+  where "visitorSessionId" is not null
+  group by "formId", "visitorSessionId"
+  having bool_and(
+           status = 'completed'
+           and "requestKey" like 'progress:%'
+           and "submitRequestedAt" is null
+           and "dispatchAcceptedAt" is not null
+         )
+)
+update "public"."corretor_studio_public_form_journey_sessions" j
+set state = 'abandoned',
+    "lastAbandonedAt" = coalesce(j."lastAbandonedAt", j."lastActivityAt"),
+    "completedAt" = null,
+    "submittedAt" = null
+from sessoes_so_fabricadas s
+where j."formId" = s."formId"
+  and j."visitorSessionId" = s."visitorSessionId"
+  and j.state = 'completed';
+
+-- 4) Índice parcial para o predicado novo do funil.
 --
 -- Toda leitura de métrica passa a carregar `(origin->'fabricatedByDispatcher') IS NULL`
 -- (ver `buildMetricEventWhereSql`). Parcial porque a esmagadora maioria das

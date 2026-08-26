@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   buildMetricEventWhereSql,
   isFabricatedByDispatcher,
+  notFabricatedByDispatcherSql,
 } from "./MetricEventAggregationSql"
 
 /**
@@ -39,6 +40,26 @@ describe("buildMetricEventWhereSql — corte das fabricadas", () => {
     }).sql
 
     expect(sql).toContain("fabricatedByDispatcher")
+  })
+})
+
+/**
+ * Review #1070 (P1): o funil de e-mail lia a mesma tabela sem o corte. Medido em
+ * 25/08: 211 dos 311 eventos fabricados carregam atribuição de campanha, em 44
+ * campanhas — o funil de e-mail estava MAIS inflado que o do formulário.
+ * Naquelas consultas a tabela entra com alias, então o predicado precisa ser
+ * qualificado: `origin` solto fica ambíguo assim que o outro lado do join tiver
+ * a coluna, e isso só estoura em runtime.
+ */
+describe("notFabricatedByDispatcherSql — predicado com alias", () => {
+  it("qualifica a coluna com o alias e as aspas", () => {
+    expect(notFabricatedByDispatcherSql("e").sql).toContain('"e"."origin"')
+  })
+
+  it("mantém o IS NULL, não vira comparação com false", () => {
+    const sql = notFabricatedByDispatcherSql("e").sql
+    expect(sql).toContain("IS NULL")
+    expect(sql).not.toContain("false")
   })
 })
 

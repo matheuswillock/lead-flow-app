@@ -3,6 +3,10 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { queryDispatchLogCounters } from "@/app/api/infra/data/repositories/emailLog/DispatchLogCountersQuery"
+import {
+  NOT_FABRICATED_BY_DISPATCHER_SQL,
+  notFabricatedByDispatcherSql,
+} from "@/app/api/infra/data/repositories/publicForms/MetricEventAggregationSql"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 
 export type EmailAnalyticsLogWhere = {
@@ -274,7 +278,15 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         SELECT e."eventType", e."visitorSessionId"
         FROM "corretor_studio_public_form_metric_events" e
         WHERE
+          -- SPEC 40, todo 23 (review #1070): as conclusoes que o cron de
+          -- despacho inventou nao contam aqui tampouco. Medido em 25/08: 211
+          -- dos 311 eventos fabricados carregam atribuicao de campanha, em 44
+          -- campanhas — o funil de e-mail estava MAIS inflado que o do
+          -- formulario, e corrigir so um dos dois deixaria as duas telas
+          -- discordando sobre a mesma conversao.
+          ${notFabricatedByDispatcherSql("e")}
           -- Vale para OS DOIS ramos: o formulario do evento tem de ser do time.
+          AND
           -- O origin inteiro vem do POST publico, e o emailLogId viaja em texto
           -- claro no cs_el de qualquer e-mail da campanha — quem tem o link tem
           -- o id. Sem esta amarra no caminho principal, bastava POStar metrica
@@ -523,6 +535,10 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       FROM "corretor_studio_public_form_metric_events"
       WHERE "formId" = ANY(${formIds}::uuid[])
         AND "eventType" = ${options.eventType}::"PublicFormMetricType"
+        -- Mesmo corte de buildMetricEventWhereSql (SPEC 40, todo 23, review
+        -- #1070): sem ele este relatorio conta como destinatario convertido
+        -- quem nunca enviou o formulario — o cron e que completou por ele.
+        AND ${NOT_FABRICATED_BY_DISPATCHER_SQL}
         -- Mesmo relogio de buildMetricEventWhereSql: o do fato, com o do insert
         -- como reserva. createdAt sozinho data a conversao pelo dia do drain.
         AND COALESCE("occurredAt", "createdAt") >= ${options.from}

@@ -68,6 +68,16 @@ const PERIOD_ANCHOR_SQL = Prisma.sql`COALESCE("occurredAt", "createdAt")`
 export const NOT_FABRICATED_BY_DISPATCHER_SQL = Prisma.sql`(origin -> 'fabricatedByDispatcher') IS NULL`
 
 /**
+ * Mesmo predicado, qualificado por alias — para as consultas que juntam a tabela
+ * de métricas com outra (`EmailAnalyticsRepository`, review #1070). Sem o alias
+ * o `origin` fica ambíguo assim que o outro lado do join também tiver a coluna,
+ * e o erro só aparece em runtime.
+ */
+export function notFabricatedByDispatcherSql(alias: string): Prisma.Sql {
+  return Prisma.sql`(${Prisma.raw(`"${alias}"`)}."origin" -> 'fabricatedByDispatcher') IS NULL`
+}
+
+/**
  * Mesmo corte para quem lê pelo Prisma Client em vez de SQL cru
  * (`listFormConversionTotals`). Os dois **precisam** concordar: um funil que
  * exclui a fabricada e um ranking que a inclui dariam números diferentes para a
