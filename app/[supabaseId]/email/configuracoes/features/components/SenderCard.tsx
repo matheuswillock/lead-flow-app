@@ -9,6 +9,7 @@ import {
   Plus,
   Star,
   Trash2,
+  AlertCircle,
 } from "lucide-react"
 import {
   AlertDialog,
@@ -21,6 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -267,6 +269,8 @@ export function SenderCard() {
     updatingSenderId,
     deletingSenderId,
     settingDefaultSenderId,
+    senderErrorMessage,
+    clearSenderErrorMessage,
     handleCreateSender,
     handleUpdateSender,
     handleDeleteSender,
@@ -334,7 +338,10 @@ export function SenderCard() {
               </div>
               <Button
                 type="button"
-                onClick={() => setAdding((current) => !current)}
+                onClick={() => {
+                  clearSenderErrorMessage()
+                  setAdding((current) => !current)
+                }}
                 disabled={creatingSender || !domainSendCapable}
               >
                 {creatingSender ? (
@@ -351,6 +358,14 @@ export function SenderCard() {
               </p>
             ) : null}
           </div>
+
+          {senderErrorMessage ? (
+            <Alert variant="destructive">
+              <AlertCircle data-icon="inline-start" />
+              <AlertTitle>Remetente não cadastrado</AlertTitle>
+              <AlertDescription>{senderErrorMessage}</AlertDescription>
+            </Alert>
+          ) : null}
 
           {adding && domainSendCapable ? (
             <SenderForm
