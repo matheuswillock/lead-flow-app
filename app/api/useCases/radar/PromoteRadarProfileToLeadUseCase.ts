@@ -167,11 +167,27 @@ class PromoteRadarProfileToLeadUseCase {
         )
       }
 
-      // O vínculo existe se a finalização OU o sync deu certo. Falhando os
-      // dois, o Lead está criado e SOLTO — dizer "vinculado ao perfil Radar"
-      // aqui seria mentira, e é o tipo de mentira que some: o usuário fecha o
-      // dialog achando que acabou.
-      if (!identityLinked && !syncOutput.isValid) {
+      // Quando a finalização falhou, o vínculo passou a depender do sync — e
+      // `syncOutput.isValid` NÃO prova que ele aconteceu: `SyncLeadToRadarUseCase`
+      // devolve `true` sempre que `syncFromCrm` não lança, inclusive quando o
+      // lead foi `skipped`/`deferred` (promoção só-com-e-mail) ou quando o erro
+      // por lead foi engolido em `result.errors`. Confiar no Output aqui
+      // reintroduziria exatamente a mentira que este PR conserta, então a
+      // verificação é feita na identidade real.
+      if (!identityLinked) {
+        identityLinked = Boolean(
+          await radarRepository.findProfileByIdentity(
+            input.access.teamId,
+            "lead_id",
+            createdLead.id
+          )
+        )
+      }
+
+      // Sem vínculo confirmado o Lead está criado e SOLTO — dizer "vinculado ao
+      // perfil Radar" seria mentira, e é o tipo de mentira que some: o usuário
+      // fecha o dialog achando que acabou.
+      if (!identityLinked) {
         console.error(
           `[PromoteRadarProfileToLeadUseCase][execute] Lead ${createdLead.id} criado sem vínculo com o perfil ${profile.id}`
         )
