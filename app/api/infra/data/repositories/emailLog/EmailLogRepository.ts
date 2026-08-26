@@ -441,18 +441,29 @@ export class EmailLogRepository implements IEmailLogRepository {
     const occurredAt = new Date()
     const logIds = staleLogs.map((log) => log.id)
 
-    await prisma.$transaction([
-      prisma.emailLog.updateMany({
-        // `dispatchId: null` repetido aqui de propósito: se um reclaim anexar a
-        // linha a um disparo entre o `findMany` e esta escrita, ela deixa de ser
-        // órfã e sai da alçada deste cron.
-        where: { id: { in: logIds }, status: "queued", dispatchId: null },
-        data: { status: "failed" },
-      }),
-      prisma.emailEvent.createMany({
-        data: logIds.map((logId) => ({
+    return await prisma.$transaction(async (tx) => {
+      // `UPDATE ... RETURNING` em vez de `updateMany`: o evento de falha precisa
+      // nascer das linhas que a escrita **de fato** mudou, não das que a leitura
+      // selecionou. O `findMany` acima roda fora da transação, então entre ele e
+      // aqui um `markSent` pode ter tirado a linha de `queued`, um reclaim pode
+      // tê-la anexado a um disparo, ou uma segunda execução do cron pode ter
+      // pego o mesmo lote. Emitir evento por id lido criaria falha falsa para
+      // e-mail que saiu, e devolver `logIds.length` inflaria o número que o cron
+      // reporta.
+      const expired = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "corretor_studio_email_logs"
+        SET "status" = 'failed'::"email_log_status"
+        WHERE "id" = ANY(${logIds}::uuid[])
+          AND "status" = 'queued'::"email_log_status"
+          AND "dispatchId" IS NULL
+        RETURNING "id"
+      `
+      if (expired.length === 0) return 0
+
+      await tx.emailEvent.createMany({
+        data: expired.map((log) => ({
           id: randomUUID(),
-          logId,
+          logId: log.id,
           type: "failed" as const,
           occurredAt,
           metadata: { errorMessage: options.errorMessage },
@@ -460,10 +471,10 @@ export class EmailLogRepository implements IEmailLogRepository {
         // Reexecução do mesmo lote no mesmo instante não pode explodir por
         // `@@unique([logId, type, occurredAt])`.
         skipDuplicates: true,
-      }),
-    ])
+      })
 
-    return logIds.length
+      return expired.length
+    })
   }
 }
 

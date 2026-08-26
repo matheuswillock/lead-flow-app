@@ -4809,7 +4809,12 @@ export class EmailCampaignUseCase {
       try {
         const lockResult = await this.db.emailCampaign.updateMany({
           where: { id: campaign.id, status: "scheduled" },
-          data: { status: "sending" },
+          // `errorMessage: null` espelha o `startManualDispatch`: a ficha da
+          // campanha exibe `errorMessage` sem filtrar por status, e só limpa em
+          // `sent`. Sem zerar aqui, a campanha adiada pela cota dispara normal
+          // na virada do mês mas continua mostrando "cota mensal esgotada" —
+          // erro velho descrevendo um envio que deu certo.
+          data: { status: "sending", errorMessage: null },
         })
 
         if (lockResult.count === 0) {

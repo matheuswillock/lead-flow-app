@@ -56,6 +56,26 @@ describe("ExpireStaleQueuedEmailLogsUseCase", () => {
     expect(summary.hasMore).toBe(true)
   })
 
+  /**
+   * Revisão do PR #1075: o repositório lê os candidatos fora da transação e só
+   * então escreve com guarda. Se outro worker mexer numa linha no intervalo, a
+   * escrita a pula — e o número que sobe **tem** que ser o das linhas expiradas
+   * de fato, não o tamanho do lote lido. `hasMore` depende dele: contagem
+   * inflada até o teto faria o cron anunciar backlog que não existe, e contagem
+   * inflada em geral vira falha falsa no painel do time.
+   */
+  it("T-C2.2c — conta o que a escrita confirmou, não o que a leitura selecionou", async () => {
+    const useCase = new ExpireStaleQueuedEmailLogsUseCase(buildRepository(), { batchSize: 2_000 })
+    // Leu 2.000 candidatos, mas a guarda só deixou 1.850 passarem.
+    expireStaleQueuedLogs.mockImplementation(async () => 1_850)
+
+    const output = await useCase.execute()
+
+    const summary = output.result as { expired: number; hasMore: boolean }
+    expect(summary.expired).toBe(1_850)
+    expect(summary.hasMore).toBe(false)
+  })
+
   it("T-C2.2b — nada parado: execução silenciosa e sem escrita", async () => {
     const output = await new ExpireStaleQueuedEmailLogsUseCase(buildRepository()).execute()
 

@@ -833,7 +833,10 @@ describe("EmailCampaignUseCase.send", () => {
     // abortado por cota no mês — sem tabela nova (SPEC 20, DA4).
     emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
       id: "dispatch-antigo",
-      updatedAt: new Date(),
+      // `dispatchedAt`, não `updatedAt`: a âncora do incidente é imutável, para
+      // que webhook tardio ou a reconciliação noturna não empurrem um incidente
+      // de agosto para dentro de setembro.
+      dispatchedAt: new Date(),
     }))
 
     const uc = new EmailCampaignUseCase()
@@ -2139,7 +2142,10 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     // Registro consultável do incidente: último disparo abortado por cota.
     emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
       id: "dispatch-antigo",
-      updatedAt: new Date(),
+      // `dispatchedAt`, não `updatedAt`: a âncora do incidente é imutável, para
+      // que webhook tardio ou a reconciliação noturna não empurrem um incidente
+      // de agosto para dentro de setembro.
+      dispatchedAt: new Date(),
     }))
 
     const uc = new EmailCampaignUseCase()
@@ -2158,6 +2164,25 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
       (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
     )
     expect(lockedToSending).toBe(false)
+  })
+
+  /**
+   * Revisão do PR #1075: a ficha da campanha exibe `errorMessage` sem filtrar
+   * por status e só o limpa em `sent`. Sem zerar no lock, a campanha adiada
+   * pela cota dispara normal na virada do mês exibindo "cota mensal esgotada" —
+   * erro velho descrevendo um envio que deu certo.
+   */
+  it("T-C4.2d — lock da campanha agendada limpa errorMessage anterior", async () => {
+    setupScheduledCampaignLock()
+
+    const uc = new EmailCampaignUseCase()
+    await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    const lockCall = emailCampaignUpdateManyMock.mock.calls.find(
+      (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
+    )
+    expect(lockCall).toBeDefined()
+    expect((lockCall?.[0] as { data: { errorMessage?: string | null } }).data.errorMessage).toBeNull()
   })
 
   it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {

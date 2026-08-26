@@ -445,15 +445,22 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
     since: Date
     quotaFailureMessage: string
   }): Promise<Date | null> {
+    // A âncora é `dispatchedAt`, não `updatedAt`. `updatedAt` é mexido por
+    // qualquer webhook de abertura/entrega que aterrisse depois — e agora também
+    // pela reconciliação noturna de contadores. Um disparo abortado por cota em
+    // agosto que recebesse uma abertura em setembro voltaria a parecer incidente
+    // do mês corrente e bloquearia **todas** as campanhas, manuais e agendadas,
+    // pelo resto de setembro. `dispatchedAt` é `@default(now())` e nunca é
+    // reescrito: o disparo fica carimbado no mês em que aconteceu.
     const incident = await this.db.emailCampaignDispatch.findFirst({
       where: {
         errorMessage: options.quotaFailureMessage,
-        updatedAt: { gte: options.since },
+        dispatchedAt: { gte: options.since },
       },
-      select: { updatedAt: true },
-      orderBy: { updatedAt: "desc" },
+      select: { dispatchedAt: true },
+      orderBy: { dispatchedAt: "desc" },
     })
-    return incident?.updatedAt ?? null
+    return incident?.dispatchedAt ?? null
   }
 
   async createCampaignPlan(
