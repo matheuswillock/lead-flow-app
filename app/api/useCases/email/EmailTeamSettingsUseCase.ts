@@ -158,21 +158,34 @@ function normalizeSenderPayload(input: UpsertEmailSenderInput) {
   }
 }
 
+export type EmailTeamSettingsDependencies = {
+  settingsRepo?: IEmailTeamSettingsRepository
+  resendFactory?: () => ReturnType<typeof assertResend>
+  domainEvents?: IEmailTeamDomainEventRepository
+}
+
 export class EmailTeamSettingsUseCase {
   // Default singleton: existem 10 call sites fazendo `new EmailTeamSettingsUseCase()`
   // (8 rotas de produto, o UseCase de backoffice em field initializer e o teste).
   // Parâmetro obrigatório quebraria todos sem ganho nenhum.
+  private readonly settingsRepo: IEmailTeamSettingsRepository
+  private readonly resendFactory: () => ReturnType<typeof assertResend>
+  private readonly domainEvents: IEmailTeamDomainEventRepository
+
   /**
+   * Dependências por objeto nomeado, não por posição: quem só quer injetar o
+   * `resendFactory` não precisa repetir o repositório antes dele.
+   *
    * `resendFactory` é costura de teste, não indireção decorativa: sem ela o
    * único jeito de exercitar `connectDomain` seria `mock.module` no
    * `@/lib/email`, que vaza para todos os arquivos da mesma execução de
    * `bun test`.
    */
-  constructor(
-    private readonly settingsRepo: IEmailTeamSettingsRepository = emailTeamSettingsRepository,
-    private readonly resendFactory: () => ReturnType<typeof assertResend> = assertResend,
-    private readonly domainEvents: IEmailTeamDomainEventRepository = emailTeamDomainEventRepository
-  ) {}
+  constructor(dependencies: EmailTeamSettingsDependencies = {}) {
+    this.settingsRepo = dependencies.settingsRepo ?? emailTeamSettingsRepository
+    this.resendFactory = dependencies.resendFactory ?? assertResend
+    this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
+  }
 
   private composeResult(
     settings: EmailTeamSettingsRecord | null,

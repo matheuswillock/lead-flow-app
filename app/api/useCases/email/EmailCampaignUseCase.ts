@@ -4776,6 +4776,35 @@ export class EmailCampaignUseCase {
 
     let dispatched = 0
 
+    // Recusa na origem do caminho agendado. Medido no `EMAIL_AUDIT` §8.2: dos
+    // 429 estouros de cota pós-deploy, **129** vieram de `dispatch-scheduled` —
+    // o maior volume do incidente. Proteger só o botão manual deixaria
+    // justamente o caminho que mais sofreu enfileirando contra uma cota morta.
+    //
+    // A consulta fica FORA do laço: a cota é da conta no provedor, o veredito
+    // vale para todas as campanhas deste tick, e uma ida ao banco por campanha
+    // seria desperdício puro. Nada é travado, nenhum crédito reservado, nenhum
+    // dispatch criado — a recusa acontece antes do lock.
+    if (campaigns.length > 0 && (await this.isMonthlyQuotaIncidentActive(now))) {
+      console.error(
+        "[EmailCampaignUseCase][dispatchScheduled] cota mensal ativa — nenhuma campanha agendada foi disparada",
+        { skipped: campaigns.length }
+      )
+      for (const campaign of campaigns) {
+        // Continua `scheduled`, não vira `failed`: o envio não morreu, foi
+        // adiado até a virada do mês. Marcar como falha faria o usuário recriar
+        // uma campanha que ainda vai sair sozinha.
+        await this.db.emailCampaign.updateMany({
+          where: { id: campaign.id, status: "scheduled" },
+          data: { errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE },
+        })
+      }
+      return new Output(true, [EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE], [], {
+        dispatched: 0,
+        skippedByMonthlyQuota: campaigns.length,
+      })
+    }
+
     for (const campaign of campaigns) {
       try {
         const lockResult = await this.db.emailCampaign.updateMany({

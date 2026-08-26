@@ -106,7 +106,7 @@ function resetMocks() {
 }
 
 describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-capable", () => {
-  const uc = new EmailTeamSettingsUseCase(buildSettingsRepository())
+  const uc = new EmailTeamSettingsUseCase({ settingsRepo: buildSettingsRepository() })
 
   beforeEach(() => {
     resetMocks()
@@ -270,7 +270,7 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
  * nada tivesse acontecido no banco.
  */
 describe("EmailTeamSettingsUseCase — remetente inexistente", () => {
-  const uc = new EmailTeamSettingsUseCase(buildSettingsRepository())
+  const uc = new EmailTeamSettingsUseCase({ settingsRepo: buildSettingsRepository() })
 
   beforeEach(() => {
     resetMocks()

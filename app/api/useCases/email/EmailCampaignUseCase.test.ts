@@ -2128,6 +2128,38 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     })
   }
 
+  /**
+   * Revisão do PR #1074: dos 429 estouros de cota pós-deploy medidos no
+   * `EMAIL_AUDIT` §8.2, **129** vieram de `dispatch-scheduled` — o maior volume
+   * do incidente. Proteger só o botão manual deixava justamente o caminho que
+   * mais sofreu enfileirando contra uma cota morta.
+   */
+  it("T-C4.2c — cota mensal ativa impede o cron de disparar campanha agendada", async () => {
+    setupScheduledCampaignLock()
+    // Registro consultável do incidente: último disparo abortado por cota.
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-antigo",
+      updatedAt: new Date(),
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.skippedByMonthlyQuota).toBe(1)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+
+    // Nenhuma campanha foi travada em `sending`: a recusa acontece antes do
+    // lock, e a campanha continua `scheduled` para sair na virada do mês.
+    const lockedToSending = emailCampaignUpdateManyMock.mock.calls.some(
+      (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
+    )
+    expect(lockedToSending).toBe(false)
+  })
+
   it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {
     setupScheduledCampaignLock()
     emailTeamSenderFindFirstMock.mockImplementation(async () => ({

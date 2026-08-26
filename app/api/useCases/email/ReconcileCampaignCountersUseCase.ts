@@ -34,9 +34,12 @@ export type ReconcileCampaignCountersSummary = {
   campaignCandidates: number
   campaignsFixed: number
   campaignDelta: number
+  /** Linhas que um webhook mexeu entre a leitura e a escrita — voltam amanhã. */
+  campaignsSkipped: number
   dispatchCandidates: number
   dispatchesFixed: number
   dispatchDelta: number
+  dispatchesSkipped: number
   /** Lote cheio: sobrou divergência para a próxima execução. */
   truncated: boolean
 }
@@ -70,23 +73,39 @@ export class ReconcileCampaignCountersUseCase {
 
     const campaignSnapshots = await this.repository.findCampaignCounterSnapshots(query)
     const campaignFixes = collectFixes(campaignSnapshots)
-    if (campaignFixes.length > 0) {
-      await this.repository.applyCampaignCounterFixes(campaignFixes)
-    }
+    const campaignsFixed =
+      campaignFixes.length > 0
+        ? await this.repository.applyCampaignCounterFixes(campaignFixes)
+        : 0
 
     const dispatchSnapshots = await this.repository.findDispatchCounterSnapshots(query)
     const dispatchFixes = collectFixes(dispatchSnapshots)
-    if (dispatchFixes.length > 0) {
-      await this.repository.applyDispatchCounterFixes(dispatchFixes)
+    const dispatchesFixed =
+      dispatchFixes.length > 0
+        ? await this.repository.applyDispatchCounterFixes(dispatchFixes)
+        : 0
+
+    // `*Fixed` conta o que o banco confirmou, não o que tentamos: a escrita é
+    // otimista e uma linha que o webhook mexeu no intervalo é pulada de
+    // propósito. Ela volta ao lote da próxima noite.
+    const campaignsSkipped = campaignFixes.length - campaignsFixed
+    const dispatchesSkipped = dispatchFixes.length - dispatchesFixed
+    if (campaignsSkipped > 0 || dispatchesSkipped > 0) {
+      console.info(
+        "[ReconcileCampaignCountersUseCase] Correções puladas por escrita concorrente",
+        { campaignsSkipped, dispatchesSkipped }
+      )
     }
 
     const summary: ReconcileCampaignCountersSummary = {
       campaignCandidates: campaignSnapshots.length,
-      campaignsFixed: campaignFixes.length,
+      campaignsFixed,
       campaignDelta: sumDelta(campaignFixes),
+      campaignsSkipped,
       dispatchCandidates: dispatchSnapshots.length,
-      dispatchesFixed: dispatchFixes.length,
+      dispatchesFixed,
       dispatchDelta: sumDelta(dispatchFixes),
+      dispatchesSkipped,
       truncated:
         campaignSnapshots.length >= this.batchSize || dispatchSnapshots.length >= this.batchSize,
     }

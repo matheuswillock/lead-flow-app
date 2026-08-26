@@ -8,10 +8,22 @@
  * 28 campanhas (Σ 42.292) e `totalDelivered > totalSent` exibível na lista.
  */
 
-/** Contadores de campanha reconciliáveis a partir dos logs. */
+/**
+ * Contadores reconciliáveis a partir dos logs.
+ *
+ * `totalRecipients` **não** está aqui, nem na campanha nem no disparo. Ele é o
+ * tamanho *planejado* da audiência, não a cardinalidade dos logs: quem lê é
+ * `campaign-dispatch-terminal.ts`, que calcula
+ * `failedCount = totalRecipients - totalSent` e usa o campo como denominador na
+ * lista. Recomputá-lo como distinto de destinatários materializados encolheria
+ * o denominador de uma campanha com materialização parcial — 400/500 no lugar
+ * de 400/2000 — fazendo uma campanha `partially_sent` parecer mais completa do
+ * que foi e subestimando a contagem de falhas.
+ *
+ * A DA1 da SPEC 20 pedia o recompute; a revisão do PR #1071 mostrou o consumidor
+ * e a decisão foi revertida. Divergência registrada na nota da SPEC.
+ */
 export type CampaignCounters = {
-  /** Destinatários distintos materializados (não o planejado da audiência). */
-  totalRecipients: number
   totalSent: number
   totalDelivered: number
   totalOpened: number
@@ -20,11 +32,8 @@ export type CampaignCounters = {
   totalComplained: number
 }
 
-/**
- * Disparo não reconcilia `totalRecipients`: ele guarda o planejado do lote, que
- * a finalização da fila usa como denominador. Recomputar viraria outra métrica.
- */
-export type DispatchCounters = Omit<CampaignCounters, "totalRecipients">
+/** Mesma população de contadores no nível do disparo. */
+export type DispatchCounters = CampaignCounters
 
 export type CounterSnapshot<TCounters> = {
   id: string
@@ -37,6 +46,11 @@ export type CounterSnapshot<TCounters> = {
 export type CounterFix<TCounters> = {
   id: string
   counters: TCounters
+  /**
+   * Valores lidos no snapshot. Viajam junto para a escrita poder exigir que a
+   * linha ainda esteja neles — concorrência otimista contra o webhook.
+   */
+  expected: TCounters
   /** Soma dos módulos das diferenças por campo — o "quanto o cache mentia". */
   delta: number
 }
@@ -50,7 +64,7 @@ export function diffCounters<TCounters extends Record<string, number>>(
 ): CounterFix<TCounters> | null {
   const delta = sumAbsoluteDifferences(snapshot.current, snapshot.computed)
   if (delta === 0) return null
-  return { id: snapshot.id, counters: snapshot.computed, delta }
+  return { id: snapshot.id, counters: snapshot.computed, expected: snapshot.current, delta }
 }
 
 function sumAbsoluteDifferences<TCounters extends Record<string, number>>(

@@ -30,6 +30,10 @@ const DEFAULT_BATCH_SIZE = 2_000
  * reabrir. Sem esta varredura eles ficam `queued` para sempre e o contador de
  * fila mede esquecimento, não trabalho em andamento.
  *
+ * O alvo é **só** o órfão. Log preso sob disparo terminal tem dono — o reclaim —
+ * e matá-lo aqui roubaria destinatário ainda recuperável de um disparo que
+ * estava na fila para ser reaberto.
+ *
  * O log expirado **nunca** é reenviado: disparar um e-mail de trinta dias atrás
  * é dano, não recuperação. A decisão de reenviar é do usuário, não do cron.
  */

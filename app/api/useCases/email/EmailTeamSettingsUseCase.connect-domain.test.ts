@@ -95,7 +95,11 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
    * a resposta montava relatório em cima de um clique que nunca chegaria.
    */
   it("T-C3.2 — o que a resposta afirma é exatamente o que foi persistido", async () => {
-    const useCase = new EmailTeamSettingsUseCase(buildSettingsRepository(), buildResend, buildDomainEvents())
+    const useCase = new EmailTeamSettingsUseCase({
+      settingsRepo: buildSettingsRepository(),
+      resendFactory: buildResend,
+      domainEvents: buildDomainEvents(),
+    })
 
     const output = await useCase.connectDomain("empresaxyz.com.br", teamCtx)
 
@@ -112,7 +116,11 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
   })
 
   it("T-C3.2b — o que é gravado é o mesmo que foi pedido ao provedor", async () => {
-    const useCase = new EmailTeamSettingsUseCase(buildSettingsRepository(), buildResend, buildDomainEvents())
+    const useCase = new EmailTeamSettingsUseCase({
+      settingsRepo: buildSettingsRepository(),
+      resendFactory: buildResend,
+      domainEvents: buildDomainEvents(),
+    })
 
     await useCase.connectDomain("empresaxyz.com.br", teamCtx)
 

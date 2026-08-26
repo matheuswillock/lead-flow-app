@@ -50,15 +50,25 @@ async function defaultUpdateResendDomainTracking(params: {
   return { error: error?.message ?? null }
 }
 
-export class ReconcileResendDomainStatusUseCase {
-  private trackingFixed = 0
-  private trackingErrors = 0
+export type ReconcileResendDomainStatusDependencies = {
+  domainEvents?: IEmailTeamDomainEventRepository
+  fetchDomain?: ResendDomainFetcher
+  updateTracking?: ResendDomainTrackingUpdater
+}
 
-  constructor(
-    private readonly domainEvents: IEmailTeamDomainEventRepository = emailTeamDomainEventRepository,
-    private readonly fetchDomain: ResendDomainFetcher = defaultFetchResendDomain,
-    private readonly updateTracking: ResendDomainTrackingUpdater = defaultUpdateResendDomainTracking
-  ) {}
+/** Placar de uma execução. Local, nunca campo de instância — ver `execute`. */
+type TrackingTally = { fixed: number; errors: number }
+
+export class ReconcileResendDomainStatusUseCase {
+  private readonly domainEvents: IEmailTeamDomainEventRepository
+  private readonly fetchDomain: ResendDomainFetcher
+  private readonly updateTracking: ResendDomainTrackingUpdater
+
+  constructor(dependencies: ReconcileResendDomainStatusDependencies = {}) {
+    this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
+    this.fetchDomain = dependencies.fetchDomain ?? defaultFetchResendDomain
+    this.updateTracking = dependencies.updateTracking ?? defaultUpdateResendDomainTracking
+  }
 
   async execute(): Promise<Output> {
     const teams = await this.domainEvents.listConnectedDomains()
@@ -67,12 +77,14 @@ export class ReconcileResendDomainStatusUseCase {
     let synced = 0
     let inSync = 0
     let errors = 0
-    this.trackingFixed = 0
-    this.trackingErrors = 0
+    // Placar por execução, não campo de instância: o singleton é compartilhado
+    // e `withCronAudit` não trava sobreposição — duas execuções concorrentes
+    // corromperiam o resumo uma da outra.
+    const tracking: TrackingTally = { fixed: 0, errors: 0 }
 
     for (const team of teams) {
       scanned += 1
-      const outcome = await this.reconcileTeam(team)
+      const outcome = await this.reconcileTeam(team, tracking)
       if (outcome === "synced") synced += 1
       else if (outcome === "in_sync") inSync += 1
       else errors += 1
@@ -83,8 +95,8 @@ export class ReconcileResendDomainStatusUseCase {
       synced,
       inSync,
       errors,
-      trackingFixed: this.trackingFixed,
-      trackingErrors: this.trackingErrors,
+      trackingFixed: tracking.fixed,
+      trackingErrors: tracking.errors,
     })
 
     const summary = {
@@ -92,8 +104,23 @@ export class ReconcileResendDomainStatusUseCase {
       synced,
       inSync,
       errors,
-      trackingFixed: this.trackingFixed,
-      trackingErrors: this.trackingErrors,
+      trackingFixed: tracking.fixed,
+      trackingErrors: tracking.errors,
+    }
+
+    // Falha ao aplicar a política é falha do cron. Sem isso o `withCronAudit`
+    // marcava sucesso e não disparava o alerta enquanto o domínio seguia com
+    // abertura desligada — o monitoramento diria "tudo certo" sobre exatamente
+    // a cegueira que este estágio existe para acabar.
+    if (tracking.errors > 0 && errors === 0) {
+      return new Output(
+        false,
+        synced > 0 ? [`${synced} domínio(s) reconciliado(s) de ${scanned} verificado(s)`] : [],
+        [
+          `${tracking.errors} domínio(s) sem a política de tracking aplicada (abertura pode seguir desligada)`,
+        ],
+        summary
+      )
     }
 
     if (errors > 0) {
@@ -118,7 +145,8 @@ export class ReconcileResendDomainStatusUseCase {
   }
 
   private async reconcileTeam(
-    team: ConnectedResendDomainRow
+    team: ConnectedResendDomainRow,
+    tracking: TrackingTally
   ): Promise<"synced" | "in_sync" | "error"> {
     try {
       const { data, error } = await this.fetchDomain(team.resendDomainId)
@@ -135,7 +163,7 @@ export class ReconcileResendDomainStatusUseCase {
       // A política de tracking é aplicada ANTES da comparação: o que o time
       // deve ter persistido é o estado corrigido, não o que o provedor
       // devolveu antes da correção.
-      const effective = await this.enforceTrackingPolicy(team, data)
+      const effective = await this.enforceTrackingPolicy(team, data, tracking)
 
       if (isResendDomainSnapshotInSync(team, effective)) {
         return "in_sync"
@@ -169,7 +197,8 @@ export class ReconcileResendDomainStatusUseCase {
    */
   private async enforceTrackingPolicy(
     team: ConnectedResendDomainRow,
-    remote: ResendDomainSnapshot
+    remote: ResendDomainSnapshot,
+    tracking: TrackingTally
   ): Promise<ResendDomainSnapshot> {
     const drift = resolveResendTrackingPolicyDrift(remote)
     if (!drift.needsUpdate) return remote
@@ -181,7 +210,7 @@ export class ReconcileResendDomainStatusUseCase {
     })
 
     if (error) {
-      this.trackingErrors += 1
+      tracking.errors += 1
       console.error("[ReconcileResendDomainStatusUseCase] Falha ao aplicar política de tracking", {
         teamId: team.teamId,
         resendDomainId: team.resendDomainId,
@@ -191,7 +220,7 @@ export class ReconcileResendDomainStatusUseCase {
       return remote
     }
 
-    this.trackingFixed += 1
+    tracking.fixed += 1
     console.info("[ReconcileResendDomainStatusUseCase] Política de tracking aplicada", {
       teamId: team.teamId,
       resendDomainId: team.resendDomainId,

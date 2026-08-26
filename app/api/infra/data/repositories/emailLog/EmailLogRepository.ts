@@ -411,13 +411,17 @@ export class EmailLogRepository implements IEmailLogRepository {
   }
 
   /**
-   * Log `queued` sem disparo ativo e parado além do prazo vira `failed` — em
-   * lote, porque o backlog medido em produção era de 13.936 linhas e um
-   * `markFailed` por linha significaria 13.936 transações.
+   * Log `queued` **órfão** (sem `dispatchId`) e parado além do prazo vira
+   * `failed` — em lote, porque o backlog medido em produção era de 13.936
+   * linhas e um `markFailed` por linha significaria 13.936 transações.
    *
-   * O disparo `sending` é intocável a qualquer idade: ali o log ainda é
-   * trabalho em andamento, e `reclaimCompletedDispatchesWithQueuedLogs` pode
-   * estar prestes a drená-lo.
+   * `dispatchId: null` é o predicado inteiro, de propósito. Uma versão anterior
+   * também pegava log sob disparo terminal (`status <> 'sending'`) — que é
+   * exatamente o conjunto que `reclaimCompletedDispatchesWithQueuedLogs` reabre
+   * para drenar. Com o reclaim limitado a 5 disparos por tick, esta varredura
+   * horária mataria destinatários ainda recuperáveis, e o reclaim seguinte
+   * reabriria um disparo já sem `queued`. Log com disparo tem dono; só o órfão
+   * não tem, e é dele que este cron cuida.
    */
   async expireStaleQueuedLogs(options: ExpireStaleQueuedLogsOptions): Promise<number> {
     const staleLogs = await prisma.emailLog.findMany({
@@ -426,7 +430,7 @@ export class EmailLogRepository implements IEmailLogRepository {
         sentAt: null,
         resendEmailId: null,
         createdAt: { lt: options.olderThan },
-        OR: [{ dispatchId: null }, { dispatch: { status: { not: "sending" } } }],
+        dispatchId: null,
       },
       select: { id: true },
       orderBy: { createdAt: "asc" },
@@ -439,7 +443,10 @@ export class EmailLogRepository implements IEmailLogRepository {
 
     await prisma.$transaction([
       prisma.emailLog.updateMany({
-        where: { id: { in: logIds }, status: "queued" },
+        // `dispatchId: null` repetido aqui de propósito: se um reclaim anexar a
+        // linha a um disparo entre o `findMany` e esta escrita, ela deixa de ser
+        // órfã e sai da alçada deste cron.
+        where: { id: { in: logIds }, status: "queued", dispatchId: null },
         data: { status: "failed" },
       }),
       prisma.emailEvent.createMany({

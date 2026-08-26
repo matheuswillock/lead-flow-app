@@ -89,10 +89,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       }),
     ])
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
@@ -113,10 +114,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       }),
     ])
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.result.synced).toBe(0)
@@ -153,10 +155,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       error: null,
     }))
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.result.synced).toBe(1)
@@ -191,10 +194,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       error: null,
     }))
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.result.synced).toBe(1)
@@ -213,10 +217,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       }),
     ])
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(true)
@@ -237,10 +242,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       error: "rate limit",
     }))
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(false)
@@ -278,10 +284,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       }
     })
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.isValid).toBe(false)
@@ -315,11 +322,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       error: null,
     }))
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock,
-      updateTrackingMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(updateTrackingMock).toHaveBeenCalledTimes(1)
@@ -346,11 +353,11 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       }),
     ])
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock,
-      updateTrackingMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(updateTrackingMock).not.toHaveBeenCalled()
@@ -379,16 +386,23 @@ describe("ReconcileResendDomainStatusUseCase", () => {
     }))
     updateTrackingMock.mockImplementation(async () => ({ error: "rate limit" }))
 
-    const useCase = new ReconcileResendDomainStatusUseCase(
-      buildRepository(),
-      fetchDomainMock,
-      updateTrackingMock
-    )
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
     const result = await useCase.execute()
 
     expect(result.result.trackingErrors).toBe(1)
     expect(result.result.trackingFixed).toBe(0)
     expect(syncFromResendDomainMock).toHaveBeenCalledTimes(1)
+
+    // Revisão do PR #1073: sem isto o `withCronAudit` marcava sucesso e não
+    // disparava alerta, enquanto o domínio seguia com abertura desligada — o
+    // monitoramento afirmando "tudo certo" sobre a cegueira que este estágio
+    // existe para acabar.
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages[0]).toContain("política de tracking")
 
     // Não pode gravar `openTracking: true` sem o provedor ter aceitado: seria
     // trocar uma cegueira por uma mentira.

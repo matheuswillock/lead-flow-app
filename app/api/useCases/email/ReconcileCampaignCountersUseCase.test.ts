@@ -12,7 +12,6 @@ import {
 
 function campaignCounters(overrides: Partial<CampaignCounters> = {}): CampaignCounters {
   return {
-    totalRecipients: 100,
     totalSent: 100,
     totalDelivered: 90,
     totalOpened: 40,
@@ -23,17 +22,7 @@ function campaignCounters(overrides: Partial<CampaignCounters> = {}): CampaignCo
   }
 }
 
-function dispatchCounters(overrides: Partial<DispatchCounters> = {}): DispatchCounters {
-  return {
-    totalSent: 100,
-    totalDelivered: 90,
-    totalOpened: 40,
-    totalClicked: 10,
-    totalBounced: 5,
-    totalComplained: 1,
-    ...overrides,
-  }
-}
+const dispatchCounters = campaignCounters
 
 type QueryOptions = { limit: number; inFlightWatermark: Date }
 
@@ -43,8 +32,8 @@ const findCampaignSnapshots = mock(
 const findDispatchSnapshots = mock(
   async (_options: QueryOptions): Promise<CounterSnapshot<DispatchCounters>[]> => []
 )
-const applyCampaignFixes = mock(async (_fixes: CounterFix<CampaignCounters>[]) => {})
-const applyDispatchFixes = mock(async (_fixes: CounterFix<DispatchCounters>[]) => {})
+const applyCampaignFixes = mock(async (fixes: CounterFix<CampaignCounters>[]) => fixes.length)
+const applyDispatchFixes = mock(async (fixes: CounterFix<DispatchCounters>[]) => fixes.length)
 
 function buildRepository(): ICampaignCounterReconciliationRepository {
   return {
@@ -63,6 +52,8 @@ describe("ReconcileCampaignCountersUseCase", () => {
     applyDispatchFixes.mockClear()
     findCampaignSnapshots.mockImplementation(async () => [])
     findDispatchSnapshots.mockImplementation(async () => [])
+    applyCampaignFixes.mockImplementation(async (fixes) => fixes.length)
+    applyDispatchFixes.mockImplementation(async (fixes) => fixes.length)
   })
 
   /**
@@ -89,6 +80,9 @@ describe("ReconcileCampaignCountersUseCase", () => {
     expect(fixes[0]?.counters.totalSent).toBe(8_512)
     expect(fixes[0]?.counters.totalDelivered).toBe(8_436)
     expect(fixes[0]?.delta).toBe(3_481)
+    // Concorrência otimista: a escrita leva junto o valor lido, para exigir que
+    // a linha ainda esteja nele.
+    expect(fixes[0]?.expected.totalSent).toBe(5_031)
 
     const summary = output.result as { campaignsFixed: number; campaignDelta: number }
     expect(summary.campaignsFixed).toBe(1)
@@ -169,6 +163,30 @@ describe("ReconcileCampaignCountersUseCase", () => {
       campaignOptions.inFlightWatermark.getTime()
     )
     expect(campaignOptions.limit).toBeGreaterThan(0)
+  })
+
+  /**
+   * Revisão do PR #1071: entre a leitura do snapshot e a escrita, um webhook de
+   * abertura pode incrementar o contador. A escrita é condicionada ao valor
+   * lido, então a linha mexida é pulada — o incremento do webhook sobrevive e a
+   * correção volta amanhã. Perder a correção é barato; perder o evento, não.
+   */
+  it("T-C1.1e — linha mexida por webhook no intervalo é pulada, não sobrescrita", async () => {
+    findCampaignSnapshots.mockImplementation(async () => [
+      {
+        id: "campanha-1",
+        current: campaignCounters({ totalSent: 100 }),
+        computed: campaignCounters({ totalSent: 130 }),
+      },
+    ])
+    // O banco não casou o `where` otimista: nenhuma linha atualizada.
+    applyCampaignFixes.mockImplementation(async () => 0)
+
+    const output = await new ReconcileCampaignCountersUseCase(buildRepository()).execute()
+
+    const summary = output.result as { campaignsFixed: number; campaignsSkipped: number }
+    expect(summary.campaignsFixed).toBe(0)
+    expect(summary.campaignsSkipped).toBe(1)
   })
 
   /** Teto de lote não pode virar cobertura silenciosa: a execução avisa. */
