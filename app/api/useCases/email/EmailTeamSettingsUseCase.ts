@@ -467,7 +467,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(
           false,
           [],
-          [mapResendDomainError(trackingError.message, "connect", domainName.trim())],
+          [mapResendDomainError(trackingError.message, "tracking", domainName.trim())],
           null
         )
       }

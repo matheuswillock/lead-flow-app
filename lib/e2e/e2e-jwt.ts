@@ -2,11 +2,11 @@ import { createHmac } from "node:crypto";
 import {
   E2E_MASTER_EMAIL,
   E2E_MASTER_SUPABASE_ID,
-} from "@/lib/e2e/constants";
-import type { E2eJwtClaims } from "@/lib/e2e/e2e-jwt-verify";
+} from "./constants";
+import type { E2eJwtClaims } from "./e2e-jwt-verify";
 
-export type { E2eJwtClaims } from "@/lib/e2e/e2e-jwt-verify";
-export { verifyE2eJwt } from "@/lib/e2e/e2e-jwt-verify";
+export type { E2eJwtClaims } from "./e2e-jwt-verify";
+export { verifyE2eJwt } from "./e2e-jwt-verify";
 
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000;
