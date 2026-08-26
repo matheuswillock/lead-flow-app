@@ -4,7 +4,8 @@
 
 - Data da investigação: 2026-08-26
 - Status: investigado
-- Commit da correção: pendente
+- Commit da investigação: `6209e77d`
+- Commit da correção: não aplicado nesta etapa
 - PR da correção: pendente
 
 ## Achado
