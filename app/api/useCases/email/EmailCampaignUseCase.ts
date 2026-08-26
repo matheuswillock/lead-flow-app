@@ -47,6 +47,10 @@ import {
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import {
+  isMonthlyQuotaIncidentActive,
+  startOfMonthUtc,
+} from "@/lib/email/resend-quota-incident"
+import {
   countRetriableFailedDispatchLogs,
   countSuccessfulDispatchLogs,
   persistDispatchTerminalFallback,
@@ -199,6 +203,13 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
   MONTHLY_QUOTA:
     "Cota mensal de envio do provedor excedida. O disparo foi interrompido. Tente novamente mais tarde.",
+  /**
+   * Recusa na origem — mensagem diferente da de interrupção de propósito: aqui
+   * nada foi enviado, e dizer "o disparo foi interrompido" faria o usuário
+   * procurar destinatários que nunca existiram.
+   */
+  MONTHLY_QUOTA_ACTIVE:
+    "Cota mensal de envio do provedor esgotada neste mês. Nenhum e-mail foi enfileirado. O envio volta a funcionar na virada do mês.",
   INTERNAL: "Ocorreu um erro ao disparar a campanha",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
   ALL_SUPPRESSED: CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE,
@@ -2756,6 +2767,15 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Seu perfil não tem permissão para disparar campanhas"], null)
       }
 
+      // Recusa na origem. Com a cota do mês estourada, aceitar o disparo só
+      // cria centenas de logs `failed` mudos e devolve créditos depois — o
+      // usuário fica olhando uma campanha "enviada" que não saiu. Nada é
+      // enfileirado, nenhum crédito é reservado: a recusa acontece antes de
+      // qualquer escrita.
+      if (await this.isMonthlyQuotaIncidentActive()) {
+        return new Output(false, [], [EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE], null)
+      }
+
       previousStatus = campaign.status
 
       const publishedTemplate = await this.resolvePublishedTemplate(campaign.templateId, ctx.teamId)
@@ -3672,6 +3692,19 @@ export class EmailCampaignUseCase {
         `[EmailCampaignUseCase] Cota mensal do Resend excedida: campaignId=${params.campaignId} dispatchId=${params.dispatchId} totalRecipients=${params.totalRecipients}`
       )
     })
+  }
+
+  /**
+   * A cota é da conta no provedor, não do time: um estouro cega todo mundo.
+   * O registro consultável é o `errorMessage` do último disparo abortado no mês
+   * — sem tabela nova, conforme a decisão registrada na SPEC 20 (DA4).
+   */
+  async isMonthlyQuotaIncidentActive(now = new Date()): Promise<boolean> {
+    const lastIncidentAt = await this.repository.findLastMonthlyQuotaIncidentAt({
+      since: startOfMonthUtc(now),
+      quotaFailureMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA,
+    })
+    return isMonthlyQuotaIncidentActive(lastIncidentAt, now)
   }
 
   /**
@@ -4743,11 +4776,45 @@ export class EmailCampaignUseCase {
 
     let dispatched = 0
 
+    // Recusa na origem do caminho agendado. Medido no `EMAIL_AUDIT` §8.2: dos
+    // 429 estouros de cota pós-deploy, **129** vieram de `dispatch-scheduled` —
+    // o maior volume do incidente. Proteger só o botão manual deixaria
+    // justamente o caminho que mais sofreu enfileirando contra uma cota morta.
+    //
+    // A consulta fica FORA do laço: a cota é da conta no provedor, o veredito
+    // vale para todas as campanhas deste tick, e uma ida ao banco por campanha
+    // seria desperdício puro. Nada é travado, nenhum crédito reservado, nenhum
+    // dispatch criado — a recusa acontece antes do lock.
+    if (campaigns.length > 0 && (await this.isMonthlyQuotaIncidentActive(now))) {
+      console.error(
+        "[EmailCampaignUseCase][dispatchScheduled] cota mensal ativa — nenhuma campanha agendada foi disparada",
+        { skipped: campaigns.length }
+      )
+      for (const campaign of campaigns) {
+        // Continua `scheduled`, não vira `failed`: o envio não morreu, foi
+        // adiado até a virada do mês. Marcar como falha faria o usuário recriar
+        // uma campanha que ainda vai sair sozinha.
+        await this.db.emailCampaign.updateMany({
+          where: { id: campaign.id, status: "scheduled" },
+          data: { errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE },
+        })
+      }
+      return new Output(true, [EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE], [], {
+        dispatched: 0,
+        skippedByMonthlyQuota: campaigns.length,
+      })
+    }
+
     for (const campaign of campaigns) {
       try {
         const lockResult = await this.db.emailCampaign.updateMany({
           where: { id: campaign.id, status: "scheduled" },
-          data: { status: "sending" },
+          // `errorMessage: null` espelha o `startManualDispatch`: a ficha da
+          // campanha exibe `errorMessage` sem filtrar por status, e só limpa em
+          // `sent`. Sem zerar aqui, a campanha adiada pela cota dispara normal
+          // na virada do mês mas continua mostrando "cota mensal esgotada" —
+          // erro velho descrevendo um envio que deu certo.
+          data: { status: "sending", errorMessage: null },
         })
 
         if (lockResult.count === 0) {
