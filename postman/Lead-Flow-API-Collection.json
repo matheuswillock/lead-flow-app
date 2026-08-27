@@ -12284,7 +12284,48 @@
                     }
                   ]
                 },
-                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha."
+                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha. Cada reenvio de convite gera um link novo (o anterior é invalidado pelo GoTrue) e usa idempotencyKey por conteúdo do link — reenvio legítimo sempre sai, duplo-clique/retry do mesmo corpo não duplica o envio."
+              }
+            },
+            {
+              "name": "POST Generate Member Invite Link",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mode\": \"invite\",\n  \"deliver\": \"link\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/access-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "access-email"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Gera um link de convite novo (invalida o anterior) SEM disparar e-mail — para o dono copiar e enviar por outro canal (ex.: WhatsApp) quando o e-mail não chega. Retorna actionLink no result; a resposta é one-shot, o link não é persistido nem logado no servidor."
               }
             }
           ]
