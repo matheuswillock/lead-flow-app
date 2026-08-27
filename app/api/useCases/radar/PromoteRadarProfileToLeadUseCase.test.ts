@@ -13,6 +13,10 @@ const claimProvisionalLeadIdentity = mock(
 )
 const finalizeLeadIdentityClaim = mock(async () => undefined)
 const releaseLeadIdentityClaim = mock(async () => undefined)
+/** Verificação do vínculo real — não confundir com o Output do sync. */
+const findProfileByIdentity = mock(
+  async () => ({ profileId: "profile-1" }) as { profileId: string } | null
+)
 const createLead = mock(async () => new Output(true, [], [], { id: "lead-new-1" }))
 const syncLeadExecute = mock(async () => new Output(true, [], [], null))
 
@@ -22,6 +26,7 @@ mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
     claimProvisionalLeadIdentity,
     finalizeLeadIdentityClaim,
     releaseLeadIdentityClaim,
+    findProfileByIdentity,
   },
 }))
 
@@ -98,6 +103,8 @@ describe("PromoteRadarProfileToLeadUseCase", () => {
     claimProvisionalLeadIdentity.mockReset()
     finalizeLeadIdentityClaim.mockReset()
     releaseLeadIdentityClaim.mockReset()
+    findProfileByIdentity.mockReset()
+    findProfileByIdentity.mockImplementation(async () => ({ profileId: "profile-1" }))
     createLead.mockReset()
     syncLeadExecute.mockReset()
 
@@ -222,6 +229,8 @@ describe("T-R5.1 — duplicata é fluxo, não erro seco", () => {
     claimProvisionalLeadIdentity.mockReset()
     finalizeLeadIdentityClaim.mockReset()
     releaseLeadIdentityClaim.mockReset()
+    findProfileByIdentity.mockReset()
+    findProfileByIdentity.mockImplementation(async () => ({ profileId: "profile-1" }))
     createLead.mockReset()
     syncLeadExecute.mockReset()
 
@@ -308,6 +317,8 @@ describe("T-R5.2 — sync inline vencendo a corrida nao derruba a promocao", () 
     claimProvisionalLeadIdentity.mockReset()
     finalizeLeadIdentityClaim.mockReset()
     releaseLeadIdentityClaim.mockReset()
+    findProfileByIdentity.mockReset()
+    findProfileByIdentity.mockImplementation(async () => ({ profileId: "profile-1" }))
     createLead.mockReset()
     syncLeadExecute.mockReset()
 
@@ -362,6 +373,8 @@ describe("reserva pending: nao bloqueia o perfil", () => {
     claimProvisionalLeadIdentity.mockReset()
     finalizeLeadIdentityClaim.mockReset()
     releaseLeadIdentityClaim.mockReset()
+    findProfileByIdentity.mockReset()
+    findProfileByIdentity.mockImplementation(async () => ({ profileId: "profile-1" }))
     createLead.mockReset()
     syncLeadExecute.mockReset()
 
@@ -401,11 +414,74 @@ describe("reserva pending: nao bloqueia o perfil", () => {
     finalizeLeadIdentityClaim.mockImplementation(async () => {
       throw new Error("connection reset")
     })
+    // O sync criou a identidade de verdade.
+    findProfileByIdentity.mockImplementation(async () => ({ profileId: "profile-1" }))
 
     const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
 
     expect(releaseLeadIdentityClaim).toHaveBeenCalledWith("team-1", "identity-1")
     expect(syncLeadExecute).toHaveBeenCalledWith({ leadId: "lead-new-1", teamId: "team-1" })
     expect(output.isValid).toBe(true)
+    expect((output.result as { identityLinked: boolean }).identityLinked).toBe(true)
+  })
+
+  // O achado da revisão: `SyncLeadToRadarUseCase` devolve `isValid: true`
+  // sempre que `syncFromCrm` não lança — inclusive com o lead `skipped`/
+  // `deferred` (promoção só-com-e-mail) ou com erro por lead engolido em
+  // `result.errors`. Inferir vínculo do Output reintroduz a mentira que este
+  // PR conserta; por isso a checagem é na identidade real.
+  it("sync com Output válido mas SEM identidade criada não conta como vínculo", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    finalizeLeadIdentityClaim.mockImplementation(async () => {
+      throw new Error("connection reset")
+    })
+    syncLeadExecute.mockImplementation(
+      async () => new Output(true, [], [], { created: 0, skipped: 1, deferred: 0, errors: [] })
+    )
+    findProfileByIdentity.mockImplementation(async () => null)
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+    const result = output.result as { identityLinked: boolean }
+
+    expect(findProfileByIdentity).toHaveBeenCalledWith("team-1", "lead_id", "lead-new-1")
+    expect(result.identityLinked).toBe(false)
+    expect(output.successMessages.join(" ")).toContain("não foi confirmado")
+  })
+
+  // Finalize E sync falhando: o Lead existe e esta SOLTO. Dizer "vinculado ao
+  // perfil Radar" aqui e o tipo de mentira que some — o usuario fecha o dialog
+  // achando que acabou.
+  it("finalize e sync falhando: reporta que o vinculo nao foi confirmado", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    finalizeLeadIdentityClaim.mockImplementation(async () => {
+      throw new Error("connection reset")
+    })
+    syncLeadExecute.mockImplementation(
+      async () => new Output(false, [], ["sync indisponivel"], null)
+    )
+    findProfileByIdentity.mockImplementation(async () => null)
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+    const result = output.result as { leadId: string; identityLinked: boolean }
+
+    // `isValid` segue true: o Lead EXISTE. Reportar falha faria o usuario
+    // tentar de novo e criar um segundo Lead.
+    expect(output.isValid).toBe(true)
+    expect(result.leadId).toBe("lead-new-1")
+    expect(result.identityLinked).toBe(false)
+    expect(output.successMessages.join(" ")).toContain("não foi confirmado")
+    expect(output.successMessages.join(" ")).not.toContain("e vinculado")
+  })
+
+  it("sync falhando mas finalize OK ainda e vinculo confirmado", async () => {
+    getProfileForPromotionWithCtx.mockImplementation(async () => profileWithoutLead)
+    syncLeadExecute.mockImplementation(
+      async () => new Output(false, [], ["sync indisponivel"], null)
+    )
+
+    const output = await promoteRadarProfileToLeadUseCase.execute(baseInput)
+
+    expect(output.isValid).toBe(true)
+    expect((output.result as { identityLinked: boolean }).identityLinked).toBe(true)
   })
 })

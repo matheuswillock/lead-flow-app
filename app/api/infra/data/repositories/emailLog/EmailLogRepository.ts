@@ -1,8 +1,10 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Prisma } from "@prisma/client"
+import { randomUUID } from "crypto"
 import type {
   ApplyEmailLogWebhookInput,
   CreateTeamEmailLogInput,
+  ExpireStaleQueuedLogsOptions,
   IEmailLogRepository,
   MarkSentEntry,
 } from "./IEmailLogRepository"
@@ -408,6 +410,72 @@ export class EmailLogRepository implements IEmailLogRepository {
     })
   }
 
+  /**
+   * Log `queued` **órfão** (sem `dispatchId`) e parado além do prazo vira
+   * `failed` — em lote, porque o backlog medido em produção era de 13.936
+   * linhas e um `markFailed` por linha significaria 13.936 transações.
+   *
+   * `dispatchId: null` é o predicado inteiro, de propósito. Uma versão anterior
+   * também pegava log sob disparo terminal (`status <> 'sending'`) — que é
+   * exatamente o conjunto que `reclaimCompletedDispatchesWithQueuedLogs` reabre
+   * para drenar. Com o reclaim limitado a 5 disparos por tick, esta varredura
+   * horária mataria destinatários ainda recuperáveis, e o reclaim seguinte
+   * reabriria um disparo já sem `queued`. Log com disparo tem dono; só o órfão
+   * não tem, e é dele que este cron cuida.
+   */
+  async expireStaleQueuedLogs(options: ExpireStaleQueuedLogsOptions): Promise<number> {
+    const staleLogs = await prisma.emailLog.findMany({
+      where: {
+        status: "queued",
+        sentAt: null,
+        resendEmailId: null,
+        createdAt: { lt: options.olderThan },
+        dispatchId: null,
+      },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: options.limit,
+    })
+    if (staleLogs.length === 0) return 0
+
+    const occurredAt = new Date()
+    const logIds = staleLogs.map((log) => log.id)
+
+    return await prisma.$transaction(async (tx) => {
+      // `UPDATE ... RETURNING` em vez de `updateMany`: o evento de falha precisa
+      // nascer das linhas que a escrita **de fato** mudou, não das que a leitura
+      // selecionou. O `findMany` acima roda fora da transação, então entre ele e
+      // aqui um `markSent` pode ter tirado a linha de `queued`, um reclaim pode
+      // tê-la anexado a um disparo, ou uma segunda execução do cron pode ter
+      // pego o mesmo lote. Emitir evento por id lido criaria falha falsa para
+      // e-mail que saiu, e devolver `logIds.length` inflaria o número que o cron
+      // reporta.
+      const expired = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "corretor_studio_email_logs"
+        SET "status" = 'failed'::"email_log_status"
+        WHERE "id" = ANY(${logIds}::uuid[])
+          AND "status" = 'queued'::"email_log_status"
+          AND "dispatchId" IS NULL
+        RETURNING "id"
+      `
+      if (expired.length === 0) return 0
+
+      await tx.emailEvent.createMany({
+        data: expired.map((log) => ({
+          id: randomUUID(),
+          logId: log.id,
+          type: "failed" as const,
+          occurredAt,
+          metadata: { errorMessage: options.errorMessage },
+        })),
+        // Reexecução do mesmo lote no mesmo instante não pode explodir por
+        // `@@unique([logId, type, occurredAt])`.
+        skipDuplicates: true,
+      })
+
+      return expired.length
+    })
+  }
 }
 
 export const emailLogRepository = new EmailLogRepository()

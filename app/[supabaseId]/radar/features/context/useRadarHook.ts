@@ -6,7 +6,7 @@ import { removeProfileFromSegmentList } from "@/lib/radar/radar-segment-promote-
 import { toast } from "sonner"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { radarFrontendService } from "../services/RadarService"
+import { radarFrontendService, RadarDuplicateLeadError } from "../services/RadarService"
 import { buildProfileHref, buildTabHref } from "../utils/radarSegmentBuilderUtils"
 import {
   buildCampaignRadarSegmentSlug,
@@ -15,6 +15,7 @@ import {
 import type {
   RadarCustomSegmentListItem,
   RadarMetrics,
+  RadarDuplicateLeadCandidate,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
@@ -73,6 +74,12 @@ export function useRadarHookFn() {
   const [segmentProfilesTarget, setSegmentProfilesTarget] = useState<RadarSegmentProfilesTarget | null>(null)
   const [segmentProfilesItems, setSegmentProfilesItems] = useState<RadarProfileDetail[]>([])
   const [segmentProfilesTotal, setSegmentProfilesTotal] = useState(0)
+  /** Promoção parada esperando o usuário confirmar que quer criar mesmo com duplicata. */
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    profileId: string
+    source?: "profile-sheet" | "segment-list"
+    candidates: RadarDuplicateLeadCandidate[]
+  } | null>(null)
   const [segmentProfilesPage, setSegmentProfilesPage] = useState(1)
   const [isLoadingSegmentProfiles, setIsLoadingSegmentProfiles] = useState(false)
   const pageSize = 20
@@ -719,13 +726,33 @@ export function useRadarHookFn() {
   const promoteProfileToLead = useCallback(
     async (
       profileId: string,
-      options?: { source?: "profile-sheet" | "segment-list" }
+      options?: {
+        source?: "profile-sheet" | "segment-list"
+        /** Reenvio depois de o usuário confirmar no diálogo de duplicata. */
+        confirmDuplicate?: boolean
+      }
     ): Promise<boolean> => {
       if (!supabaseId || !activeTeamId) return false
       const result = await withMutationLock(async () => {
         try {
-          await radarFrontendService.promoteProfileToLead(supabaseId, activeTeamId, profileId)
-          toast.success("Lead criado a partir do perfil Radar.")
+          const promoted = await radarFrontendService.promoteProfileToLead(
+            supabaseId,
+            activeTeamId,
+            profileId,
+            { confirmDuplicate: options?.confirmDuplicate }
+          )
+          setDuplicatePrompt(null)
+
+          if (promoted.identityLinked === false) {
+            // O Lead EXISTE; repetir criaria um segundo. O aviso é honesto e
+            // desencoraja o retry.
+            toast.warning(
+              "Lead criado, mas o vínculo com o perfil Radar não foi confirmado. Ele será refeito no próximo sync."
+            )
+          } else {
+            toast.success("Lead criado a partir do perfil Radar.")
+          }
+
           if (options?.source === "segment-list") {
             let removedFromList = false
             setSegmentProfilesItems((prev) => {
@@ -742,6 +769,18 @@ export function useRadarHookFn() {
           await loadDashboard()
           return true
         } catch (promoteError) {
+          // Duplicata não é falha: o backend devolveu 409 com os candidatos e
+          // está esperando confirmação. Abrir o diálogo em vez de torrar num
+          // toast é o que torna o fluxo completável.
+          if (promoteError instanceof RadarDuplicateLeadError) {
+            setDuplicatePrompt({
+              profileId,
+              source: options?.source,
+              candidates: promoteError.candidates,
+            })
+            return false
+          }
+
           console.error("[useRadarHookFn][promoteProfileToLead]", promoteError)
           toastUserError(promoteError)
           return false
@@ -751,6 +790,17 @@ export function useRadarHookFn() {
     },
     [activeTeamId, loadDashboard, openProfile, supabaseId, withMutationLock]
   )
+
+  /** Reenvia a promoção que ficou pendente de confirmação de duplicata. */
+  const confirmDuplicatePromotion = useCallback(async (): Promise<boolean> => {
+    if (!duplicatePrompt) return false
+    return promoteProfileToLead(duplicatePrompt.profileId, {
+      source: duplicatePrompt.source,
+      confirmDuplicate: true,
+    })
+  }, [duplicatePrompt, promoteProfileToLead])
+
+  const dismissDuplicatePromotion = useCallback(() => setDuplicatePrompt(null), [])
 
   const updateProfileGender = useCallback(
     async (profileId: string, gender: "male" | "female" | "unknown"): Promise<boolean> => {
@@ -834,6 +884,9 @@ export function useRadarHookFn() {
     previewSegmentContactList,
     materializeSegmentToContactList,
     promoteProfileToLead,
+    duplicatePrompt,
+    confirmDuplicatePromotion,
+    dismissDuplicatePromotion,
     updateProfileGender,
     reload: loadDashboard,
   }
