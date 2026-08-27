@@ -3,22 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
-import { Check, Clock, Copy, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, Clock, Copy, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { LeadDocumentRequestsDialog } from "./LeadDocumentRequestsDialog";
+import { LeadDocumentRequestsSkeleton } from "./LeadDocumentRequestsSkeleton";
 
 type DocumentRequestItem = {
   id: string;
@@ -64,9 +55,6 @@ export function LeadDocumentRequestsTab({
   const [requests, setRequests] = useState<DocumentRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
-  const [documents, setDocuments] = useState<string[]>([""]);
-  const [message, setMessage] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const requestKeyRef = useRef<string | null>(null);
   const inFlightRef = useRef(false);
@@ -122,40 +110,6 @@ export function LeadDocumentRequestsTab({
     }
   };
 
-  const createRequest = async () => {
-    if (isCreating) return;
-    const cleaned = documents.map((d) => d.trim()).filter(Boolean);
-    if (cleaned.length === 0) {
-      toast.error("Adicione ao menos um documento");
-      return;
-    }
-    setIsCreating(true);
-    try {
-      const res = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/document-requests`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          documents: cleaned,
-          message: message.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data?.isValid === false) {
-        throw new Error(data?.errorMessages?.[0] ?? "Falha ao criar solicitação");
-      }
-      toast.success("Solicitação criada e e-mail enviado");
-      setCreateOpen(false);
-      setDocuments([""]);
-      setMessage("");
-      await load();
-    } catch (error) {
-      console.error("[LeadDocumentRequestsTab] Erro ao criar:", error);
-      toastUserError(error);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
   const resendEmail = async (requestId: string) => {
     if (resendingId) return;
     setResendingId(requestId);
@@ -179,11 +133,7 @@ export function LeadDocumentRequestsTab({
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 p-1">
-        <Skeleton className="h-9 w-48" />
-        <Skeleton className="h-28 w-full" />
-        <Skeleton className="h-28 w-full" />
-      </div>
+      <LeadDocumentRequestsSkeleton />
     );
   }
 
@@ -277,74 +227,14 @@ export function LeadDocumentRequestsTab({
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Nova solicitação de documentos</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel>Documentos solicitados</FieldLabel>
-                <div className="flex flex-col gap-2">
-                  {documents.map((doc, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input
-                        value={doc}
-                        onChange={(e) => {
-                          const next = [...documents];
-                          next[index] = e.target.value;
-                          setDocuments(next);
-                        }}
-                        placeholder={`Documento ${index + 1}`}
-                      />
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-8 shrink-0"
-                        disabled={documents.length === 1}
-                        onClick={() => setDocuments((prev) => prev.filter((_, i) => i !== index))}
-                        aria-label="Remover documento"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDocuments((prev) => [...prev, ""])}
-                  >
-                    <Plus data-icon="inline-start" />
-                    Adicionar documento
-                  </Button>
-                </div>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="doc-request-message">Mensagem (opcional)</FieldLabel>
-                <Textarea
-                  id="doc-request-message"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={3}
-                  placeholder="Mensagem que o lead verá no e-mail e no formulário"
-                />
-              </Field>
-            </FieldGroup>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" disabled={isCreating} onClick={() => setCreateOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="button" disabled={isCreating} onClick={() => void createRequest()}>
-              {isCreating ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
-              Gerar link e enviar e-mail
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LeadDocumentRequestsDialog
+        open={createOpen}
+        leadId={leadId}
+        teamId={teamId}
+        supabaseId={supabaseId}
+        onOpenChange={setCreateOpen}
+        onRequestCreated={load}
+      />
     </div>
   );
 }
