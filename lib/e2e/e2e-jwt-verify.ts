@@ -1,7 +1,7 @@
 import {
   E2E_MASTER_EMAIL,
   E2E_MASTER_SUPABASE_ID,
-} from "@/lib/e2e/constants";
+} from "./constants";
 
 export type E2eJwtClaims = {
   sub: string;

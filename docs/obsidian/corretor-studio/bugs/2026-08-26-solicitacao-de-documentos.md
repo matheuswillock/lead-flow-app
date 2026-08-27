@@ -1,10 +1,11 @@
-# Bug: Solicitação de documentos retorna erro genérico
+# 🐛 Investigação: Solicitação de documentos retorna erro genérico
 
 ## Status
 
 - Data da investigação: 2026-08-26
 - Status: investigado
 - Commit da investigação: `6209e77d`
+- Commit desta atualização: `933821d5`
 - Commit da correção: não aplicado nesta etapa
 - PR da correção: pendente
 
@@ -14,10 +15,18 @@ Clientes reportaram erro ao criar uma nova solicitação de documentos pelo moda
 
 ## Evidências
 
-- Em 2026-08-25, a Vercel registrou tráfego em `POST /api/q/leads/.../document-requests` com `7` respostas `400`, `2` respostas `201` e `26` respostas `200`.
-- Exemplo observado: `POST /api/q/leads/6c503819-b7e3-4ad4-a882-363448955dfa/document-requests` retornou `400` às `15:42:59Z` e `15:43:21Z`.
+- Em 2026-08-25, a Vercel registrou tráfego em `POST /api/q/leads/.../document-requests` com `7` respostas `400`, `2` respostas `201` e `25` respostas `200`.
+- Distribuição dos `400` por rota:
+  - `POST /api/q/leads/f481094c-9c85-4593-8d68-fa568df98a4d/document-requests`: `5` erros.
+  - `POST /api/q/leads/6c503819-b7e3-4ad4-a882-363448955dfa/document-requests`: `2` erros.
+- Exemplo observado: `POST /api/q/leads/6c503819-b7e3-4ad4-a882-363448955dfa/document-requests` retornou `400` às `15:42:59Z` e `15:43:21Z` no deployment `dpl_FGkzEm2aGpox8x6rndPkjhJVmwo8`.
 - A imagem anexada ao bug mostra o modal com vários documentos longos e o toast genérico.
-- A consulta ao Sentry não retornou evidências adicionais nesta investigação porque o acesso disponível retornou `403`.
+
+## Sentry
+
+- O plugin/skill `sentry:sentry` foi usado na investigação em 2026-08-26.
+- Existe `SENTRY_AUTH_TOKEN` local em `.env`, mas as chamadas oficiais ao Sentry retornaram `HTTP 403` para a organização/projeto configurado (`corretor-studio/sentry-camel-flower`).
+- Sem o escopo/permissão de leitura no Sentry, não foi possível recuperar eventos ou issues adicionais. Nenhum token foi registrado na nota.
 
 ## Hipótese
 
