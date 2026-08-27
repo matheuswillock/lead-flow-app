@@ -23,6 +23,7 @@ import {
   MAX_BATCH_SEND_ATTEMPTS,
   resendBatchRetryBackoffMs,
 } from "@/lib/email/is-retryable-resend-batch-error"
+import { logResendMonthlyQuotaIncident } from "@/lib/email/resend-quota-incident"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
   interpolateEmailTemplate,
@@ -364,6 +365,18 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                     name: errorName,
                   })
                 ) {
+                  // 429 de rate limit continua retentando (ver
+                  // `isRetryableResendBatchError`); 429 de cota aborta. A tag
+                  // aqui é o que transforma o aborto em incidente alertável em
+                  // vez de mais uma linha de `failed` no meio de 98.884.
+                  logResendMonthlyQuotaIncident({
+                    surface: "campaign_dispatch",
+                    teamId: params.teamId,
+                    campaignId: params.campaignId,
+                    dispatchId: params.dispatchId,
+                    recipientCount: sortedChunk.length,
+                    message: errorMessage,
+                  })
                   result.abortedReason = "monthly_quota_exceeded"
                   abortRemainingChunks = true
                   chunkQueue.length = 0
