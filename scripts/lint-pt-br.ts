@@ -361,12 +361,19 @@ async function scanFile(filePath: string): Promise<Finding[]> {
     }
 
     // Skip path/identifier-like segments (e.g. "/email/templates/",
-    // "sidebar-email-collapsed", "landing-email-orbs") and email-address
-    // domains in examples (e.g. "convidado1@email.com") — Portuguese prose
-    // never glues words to "/", "-" or "@" without surrounding whitespace.
+    // "sidebar-email-collapsed", "landing-email-orbs", "corretor_studio_email_campaigns")
+    // and email-address domains in examples (e.g. "convidado1@email.com") —
+    // Portuguese prose never glues words to "/", "-", "_" or "@" without
+    // surrounding whitespace.
+    //
+    // O "_" entrou depois: nomes físicos de tabela em snake_case
+    // (`corretor_studio_email_campaigns`) escapavam da regra e viravam falso
+    // positivo em comentário técnico. Silenciar a palavra em IGNORE_WORDS
+    // desligaria a checagem no repositório inteiro; estender a regra de
+    // identificador para "_" resolve só o caso que ela já pretendia cobrir.
     const charBefore = content.charAt(index - 1);
     const charAfter = content.charAt(index + word.length);
-    if (["/", "-", "@"].includes(charBefore) || ["/", "-"].includes(charAfter)) {
+    if (["/", "-", "_", "@"].includes(charBefore) || ["/", "-", "_"].includes(charAfter)) {
       continue;
     }
 
