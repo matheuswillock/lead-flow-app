@@ -5,6 +5,9 @@
  * `failed`/`partially_sent` com zero enviados é o primeiro Disparar.
  */
 
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
+import { ApiRequestError, isApiRequestError } from "@/lib/http/api-request-error"
+
 export const CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE =
   "Ocorreu um erro ao disparar a campanha"
 
@@ -66,4 +69,24 @@ export function formatCampaignDispatchErrorMessage(
   }
 
   return raw
+}
+
+/**
+ * Converte o erro capturado no catch de `handleSend` (CampanhasHook.ts) na
+ * mensagem final do toast: aplica a copy conhecida (INTERNAL/STUCK_SENDING)
+ * via `formatCampaignDispatchErrorMessage` e preserva a etiqueta
+ * `ApiRequestError` (Output.errorMessages da nossa própria rota) antes de
+ * repassar para `toUserToastMessage`.
+ *
+ * Achado de review (PR #1085): extrair `err.message` como string pura ANTES
+ * desta etapa descarta a classe `ApiRequestError` — a heurística de
+ * acento/PRODUCT_PORTUGUESE_MARKERS de `toUserToastMessage` volta a mascarar
+ * mensagens de produto sem acento como "Ocorreu um erro." (regressão Calli),
+ * mesmo com o service e o helper de toast já corrigidos.
+ */
+export function resolveDispatchErrorToastMessage(err: unknown, fallback: string): string {
+  const rawMessage = err instanceof Error ? err.message : ""
+  const formattedMessage = formatCampaignDispatchErrorMessage(rawMessage) ?? rawMessage
+  const text = formattedMessage || fallback
+  return toUserToastMessage(isApiRequestError(err) ? new ApiRequestError(text, err.status) : text)
 }

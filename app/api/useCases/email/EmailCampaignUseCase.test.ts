@@ -1250,11 +1250,11 @@ describe("EmailCampaignUseCase.send", () => {
     expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
   })
 
-  it("T08 — campanha com radarSegmentSlug e zero perfis elegíveis → NO_RECIPIENTS_RADAR (não é o gate de Beta removido)", async () => {
+  it("T08 — campanha com radarSegmentSlug, COM Beta Radar, e zero perfis elegíveis → NO_RECIPIENTS_RADAR", async () => {
     emailCampaignFindFirstMock.mockImplementation(async () =>
       makeCampaign({ radarSegmentSlug: "sem-radar-team" })
     )
-    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
     listRadarSegmentEmailRecipientsMock.mockImplementation(async () => [])
 
     const uc = new EmailCampaignUseCase()
@@ -1262,6 +1262,33 @@ describe("EmailCampaignUseCase.send", () => {
 
     expect(output.isValid).toBe(false)
     expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // T09 — achado de review (PR #1085): remover o gate por completo abria uma
+  // lacuna de entitlement distinta do incidente Calli. Disparo para LISTA de
+  // contatos nunca exige Radar (T05–T07 acima). Mas disparo para
+  // radarSegmentSlug LÊ dados do Radar (listRadarSegmentEmailRecipients só
+  // filtra por teamId + regras do segmento, sem checar entitlement) — um time
+  // com Radar revogado ainda conseguiria consultar e disparar para a própria
+  // audiência de Radar antiga. Escopo do gate: só quando radarSegmentSlug
+  // está setado, nunca para disparo de lista.
+  // ---------------------------------------------------------------------------
+  it("T09 — campanha com radarSegmentSlug e SEM Beta Radar → bloqueia antes de consultar perfis de Radar", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ radarSegmentSlug: "segmento-vip" })
+    )
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(
+      EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT
+    )
+    expect(listRadarSegmentEmailRecipientsMock).not.toHaveBeenCalled()
     expect(dispatchBatchMock).not.toHaveBeenCalled()
   })
 
@@ -4266,6 +4293,73 @@ describe("EmailCampaignUseCase dispatch progress", () => {
       return data?.status === "failed"
     })
     expect(failedUpdateCalls).toHaveLength(0)
+  })
+
+  it("dispatchScheduledCampaigns marca failed quando radarSegmentSlug está setado e o time perdeu o Beta Radar (achado de review PR #1085)", async () => {
+    const scheduledCampaign = {
+      id: "camp-scheduled-radar-revoked",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      templateId: "tpl-1",
+      contactListId: null,
+      radarSegmentSlug: "segmento-vip",
+      audienceContactIds: [],
+      createdBy: "profile-1",
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: null,
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [scheduledCampaign]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return { count: 0 }
+      if (
+        whereArgs?.where?.status === "scheduled" ||
+        whereArgs?.where?.id === "camp-scheduled-radar-revoked"
+      ) {
+        return { count: 1 }
+      }
+      return { count: 0 }
+    })
+    emailCampaignUpdateMock.mockImplementation(async () => ({
+      parentCampaignId: null,
+      name: "Sched Radar Revogado",
+      teamId: "team-1",
+      createdBy: null,
+    }))
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 1 })
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(listRadarSegmentEmailRecipientsMock).not.toHaveBeenCalled()
+    const failedCall = emailCampaignUpdateMock.mock.calls.find((call) => {
+      const data = (call as unknown as [{ data?: { status?: string; errorMessage?: string } }])[0]?.data
+      return data?.status === "failed"
+    }) as unknown as [{ data?: { errorMessage?: string } }] | undefined
+    expect(failedCall?.[0]?.data?.errorMessage).toBe(
+      EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT
+    )
   })
 
   it("query de logs de progresso sempre filtra por teamId", async () => {

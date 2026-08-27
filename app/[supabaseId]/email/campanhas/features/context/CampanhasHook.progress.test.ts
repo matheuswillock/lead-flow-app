@@ -5,8 +5,13 @@ import {
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   resolveCampaignExitToast,
 } from "@/lib/email/campaign-dispatch-terminal"
-import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
+import {
+  formatCampaignDispatchErrorMessage,
+  resolveDispatchErrorToastMessage,
+} from "@/lib/email/campaign-dispatch-copy"
 import { shouldShowCampaignListSkeleton } from "@/lib/email/campaign-dispatch-list-skeleton"
+import { USER_TOAST_GENERIC_ERROR } from "@/lib/ui/to-user-toast-message"
+import { ApiRequestError } from "@/lib/http/api-request-error"
 
 /**
  * Contrato de polling/force para CampanhasHook — exercita a lógica pura de assinatura
@@ -199,6 +204,40 @@ describe("toast de falha — fallback do hook formata INTERNAL", () => {
     expect(
       buildFailedFallbackToast("Lista Fria", "Erro interno durante o disparo")
     ).not.toContain("Erro interno")
+  })
+})
+
+describe("resolveDispatchErrorToastMessage — catch de handleSend preserva ApiRequestError até o toast (achado de review PR #1085)", () => {
+  // O bug de review: o catch de `handleSend` (CampanhasHook.ts) extraía
+  // `err.message` como string ANTES de chamar `toUserToastMessage`, descartando
+  // a classe `ApiRequestError` — a heurística de acento/marcador voltava a
+  // mascarar mensagens de produto sem acento (regressão Calli), mesmo com o
+  // service e o helper já corrigidos noutro lugar. `resolveDispatchErrorToastMessage`
+  // é a função real que o hook chama — não uma cópia espelhada no teste.
+  it("ApiRequestError sem acento (caso Calli) chega intacto ao toast", () => {
+    const backendMessage = "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo"
+    const err = new ApiRequestError(backendMessage, 400)
+
+    const message = resolveDispatchErrorToastMessage(err, "Ocorreu um erro ao disparar a campanha")
+
+    expect(message).toBe(backendMessage)
+  })
+
+  it("ApiRequestError com copy INTERNAL antiga ainda é reescrita para a copy amigável", () => {
+    const err = new ApiRequestError("Erro interno durante o disparo", 500)
+
+    const message = resolveDispatchErrorToastMessage(err, "Ocorreu um erro ao disparar a campanha")
+
+    expect(message).toBe("Ocorreu um erro ao disparar a campanha")
+    expect(message).not.toContain("Erro interno")
+  })
+
+  it("erro técnico real (não ApiRequestError) continua mascarado", () => {
+    const err = new TypeError("Cannot read properties of undefined")
+
+    const message = resolveDispatchErrorToastMessage(err, "Ocorreu um erro ao disparar a campanha")
+
+    expect(message).toBe(USER_TOAST_GENERIC_ERROR)
   })
 })
 

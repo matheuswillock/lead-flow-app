@@ -26,7 +26,7 @@ import {
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   type PreAttemptDispatchId,
 } from "@/lib/email/campaign-dispatch-terminal"
-import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
+import { resolveDispatchErrorToastMessage } from "@/lib/email/campaign-dispatch-copy"
 import { shouldShowCampaignListSkeleton } from "@/lib/email/campaign-dispatch-list-skeleton"
 import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
 
@@ -637,13 +637,12 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
       const rawMessage = err instanceof Error ? err.message : ""
-      const formattedMessage = formatCampaignDispatchErrorMessage(rawMessage) ?? rawMessage
       const message =
         /409|idempotency|idempotência/i.test(rawMessage)
           ? retryFailedOnly
             ? "Não foi possível reenviar as falhas agora. Tente novamente em instantes."
             : "Não foi possível disparar a campanha agora. Tente novamente em instantes."
-          : toUserToastMessage(formattedMessage || "Ocorreu um erro ao disparar a campanha")
+          : resolveDispatchErrorToastMessage(err, "Ocorreu um erro ao disparar a campanha")
       toast.error(message)
       if (!isDetailSubCampaign) {
         sendingIdRef.current = null

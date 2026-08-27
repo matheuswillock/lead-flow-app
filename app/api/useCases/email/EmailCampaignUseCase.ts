@@ -196,6 +196,17 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_TEMPLATE:
     "O template vinculado à campanha não está mais disponível. Atualize a campanha antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
+  /**
+   * Escopo estreito (achado de review, PR #1085): disparo para LISTA de
+   * contatos nunca exige Beta de Radar (Radar e e-mail são features
+   * independentes). Mas disparo para `radarSegmentSlug` LÊ dados do Radar —
+   * `listRadarSegmentEmailRecipients` só filtra por teamId + regras do
+   * segmento, sem checar entitlement. Sem este gate, um time com Radar
+   * revogado ainda conseguiria consultar e disparar para a própria audiência
+   * de Radar antiga.
+   */
+  NO_RADAR_BETA_FOR_SEGMENT:
+    "Envio para segmento de Radar liberado apenas para o Grupo Beta de Radar no time ativo",
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
   NO_RECIPIENTS_RADAR: "Nenhum perfil apto no segmento Radar",
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
@@ -2806,6 +2817,25 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
+      // Escopo estreito: só audiência de Radar exige o Beta — disparo para
+      // lista de contatos nunca passa por aqui (radarSegmentSlug null).
+      if (campaign.radarSegmentSlug) {
+        const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
+          profileId: ctx.profileId,
+          managerId: ctx.managerId,
+          isMaster: ctx.isMaster,
+          teamId: ctx.teamId,
+        })
+        if (!radarBetaAccess) {
+          return new Output(
+            false,
+            [],
+            [EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT],
+            null
+          )
+        }
+      }
+
       hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
         profileId: ctx.profileId,
         managerId: ctx.managerId,
@@ -4872,6 +4902,24 @@ export class EmailCampaignUseCase {
         if (!publishedTemplate.html) {
           await this.markScheduledCampaignFailed(campaign.id, EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_HTML)
           continue
+        }
+
+        // Escopo estreito: só audiência de Radar exige o Beta — mesmo gate do
+        // disparo manual (ver comentário em startManualDispatch).
+        if (campaign.radarSegmentSlug) {
+          const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
+            profileId: masterId,
+            managerId: masterId,
+            isMaster: true,
+            teamId: campaign.teamId,
+          })
+          if (!radarBetaAccess) {
+            await this.markScheduledCampaignFailed(
+              campaign.id,
+              EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT
+            )
+            continue
+          }
         }
 
         const hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
