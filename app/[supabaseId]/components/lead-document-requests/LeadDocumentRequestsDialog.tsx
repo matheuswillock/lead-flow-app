@@ -46,6 +46,7 @@ export function LeadDocumentRequestsDialog({
   const [documents, setDocuments] = useState<string[]>([""]);
   const [message, setMessage] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const normalizedMessage = message.trim();
 
   const headers = useMemo(
     () => ({
@@ -68,7 +69,7 @@ export function LeadDocumentRequestsDialog({
       toast.error(`Cada documento pode ter no máximo ${MAX_DOCUMENT_LENGTH} caracteres.`);
       return;
     }
-    if (message.trim().length > MAX_MESSAGE_LENGTH) {
+    if (normalizedMessage.length > MAX_MESSAGE_LENGTH) {
       toast.error(`A mensagem pode ter no máximo ${MAX_MESSAGE_LENGTH} caracteres.`);
       return;
     }
@@ -80,7 +81,7 @@ export function LeadDocumentRequestsDialog({
         headers,
         body: JSON.stringify({
           documents: cleanedDocuments,
-          message: message.trim() || undefined,
+          message: normalizedMessage || undefined,
         }),
       });
       const data = await response.json();
@@ -117,46 +118,20 @@ export function LeadDocumentRequestsDialog({
               </FieldDescription>
               <div className="flex flex-col gap-2">
                 {documents.map((doc, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <Input
-                        value={doc}
-                        aria-invalid={doc.length > MAX_DOCUMENT_LENGTH}
-                        aria-describedby={`document-${index}-error`}
-                        onChange={(event) => {
-                          const next = [...documents];
-                          next[index] = event.target.value;
-                          setDocuments(next);
-                        }}
-                        placeholder={`Documento ${index + 1}`}
-                      />
-                      <div className="flex items-center justify-between gap-2">
-                        {doc.length > MAX_DOCUMENT_LENGTH ? (
-                          <FieldError id={`document-${index}-error`}>
-                            O documento excede o limite de {MAX_DOCUMENT_LENGTH} caracteres.
-                          </FieldError>
-                        ) : (
-                          <span />
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {doc.length}/{MAX_DOCUMENT_LENGTH}
-                        </span>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="size-8 shrink-0"
-                      disabled={documents.length === 1}
-                      onClick={() =>
-                        setDocuments(documents.filter((_, itemIndex) => itemIndex !== index))
-                      }
-                      aria-label="Remover documento"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
+                  <DocumentInput
+                    key={index}
+                    value={doc}
+                    index={index}
+                    onChange={(value) => {
+                      const next = [...documents];
+                      next[index] = value;
+                      setDocuments(next);
+                    }}
+                    onRemove={() =>
+                      setDocuments(documents.filter((_, itemIndex) => itemIndex !== index))
+                    }
+                    canRemove={documents.length > 1}
+                  />
                 ))}
                 <Button
                   type="button"
@@ -177,14 +152,14 @@ export function LeadDocumentRequestsDialog({
               <Textarea
                 id="doc-request-message"
                 value={message}
-                aria-invalid={message.length > MAX_MESSAGE_LENGTH}
+                aria-invalid={normalizedMessage.length > MAX_MESSAGE_LENGTH}
                 aria-describedby="doc-request-message-error"
                 onChange={(event) => setMessage(event.target.value)}
                 rows={3}
                 placeholder="Mensagem que o lead verá no e-mail e no formulário"
               />
               <div className="flex items-center justify-between gap-2">
-                {message.length > MAX_MESSAGE_LENGTH ? (
+                {normalizedMessage.length > MAX_MESSAGE_LENGTH ? (
                   <FieldError id="doc-request-message-error">
                     A mensagem excede o limite de {MAX_MESSAGE_LENGTH} caracteres.
                   </FieldError>
@@ -192,7 +167,7 @@ export function LeadDocumentRequestsDialog({
                   <span />
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {message.length}/{MAX_MESSAGE_LENGTH}
+                  {normalizedMessage.length}/{MAX_MESSAGE_LENGTH}
                 </span>
               </div>
             </Field>
@@ -214,5 +189,55 @@ export function LeadDocumentRequestsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface DocumentInputProps {
+  value: string;
+  index: number;
+  canRemove: boolean;
+  onChange: (value: string) => void;
+  onRemove: () => void;
+}
+
+function DocumentInput({ value, index, canRemove, onChange, onRemove }: DocumentInputProps) {
+  const normalizedValue = value.trim();
+  const isTooLong = normalizedValue.length > MAX_DOCUMENT_LENGTH;
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <Input
+          value={value}
+          aria-invalid={isTooLong}
+          aria-describedby={`document-${index}-error`}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={`Documento ${index + 1}`}
+        />
+        <div className="flex items-center justify-between gap-2">
+          {isTooLong ? (
+            <FieldError id={`document-${index}-error`}>
+              O documento excede o limite de {MAX_DOCUMENT_LENGTH} caracteres.
+            </FieldError>
+          ) : (
+            <span />
+          )}
+          <span className="text-xs text-muted-foreground">
+            {normalizedValue.length}/{MAX_DOCUMENT_LENGTH}
+          </span>
+        </div>
+      </div>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        className="size-8 shrink-0"
+        disabled={!canRemove}
+        onClick={onRemove}
+        aria-label="Remover documento"
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
+    </div>
   );
 }
