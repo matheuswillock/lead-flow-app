@@ -24,7 +24,7 @@ import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 const defaultService = new EmailSettingsService()
 const SENDER_DOMAIN_ERROR_PREFIX = "O e-mail do remetente deve usar o domínio cadastrado"
 
-function buildSenderErrorMessage(error: unknown, domainName: string | null): string {
+export function buildSenderErrorMessage(error: unknown, domainName: string | null): string {
   const message = error instanceof Error ? error.message : String(error ?? "")
   if (!message.includes(SENDER_DOMAIN_ERROR_PREFIX)) return toUserToastMessage(error)
 

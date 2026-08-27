@@ -35,6 +35,19 @@ describe("mapResendDomainError", () => {
     )
   })
 
+  it("traduz conflito de subdomínio de tracking sem sugerir duplicidade local", () => {
+    const result = mapResendDomainError(
+      'A tracking domain with the subdomain "links" already exists for this domain.',
+      "tracking",
+      "onsidemarketing.com.br"
+    )
+
+    expect(result).toBe(
+      "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
+    )
+    expect(result).not.toContain("domínio já está cadastrado")
+  })
+
   it("traduz domínio inválido", () => {
     const result = mapResendDomainError("Invalid domain name provided", "connect")
 

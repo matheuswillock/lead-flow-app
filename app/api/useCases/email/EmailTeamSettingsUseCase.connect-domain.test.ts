@@ -10,15 +10,20 @@ import { assertResend } from "@/lib/email"
 import { EmailTeamSettingsUseCase } from "./EmailTeamSettingsUseCase"
 
 type SaveConnectedDomainArgs = Parameters<IEmailTeamSettingsRepository["saveConnectedDomain"]>
+type DomainsCreatePayload = { openTracking: boolean; clickTracking: boolean }
+type DomainMutationResult = {
+  data: { id: string; name: string; records: never[] } | null
+  error: { statusCode: number; message: string; name: string } | null
+}
 
 const saveConnectedDomainMock = mock(async (..._args: SaveConnectedDomainArgs) => {})
-type DomainsCreatePayload = { openTracking: boolean; clickTracking: boolean }
 
-const domainsCreateMock = mock(async (_payload: DomainsCreatePayload) => ({
+const domainsCreateMock = mock(async (_payload: DomainsCreatePayload): Promise<DomainMutationResult> => ({
   data: { id: "dom-1", name: "empresaxyz.com.br", records: [] },
   error: null,
 }))
-const domainsUpdateMock = mock(async () => ({ data: null, error: null }))
+const domainsUpdateMock = mock(async (): Promise<DomainMutationResult> => ({ data: null, error: null }))
+const domainsRemoveMock = mock(async (): Promise<DomainMutationResult> => ({ data: null, error: null }))
 
 function emptySnapshot(): EmailTeamSettingsSnapshot {
   return { settings: null, senders: [], variables: [] }
@@ -62,8 +67,20 @@ function buildDomainEvents(): IEmailTeamDomainEventRepository {
 
 function buildResend(): ReturnType<typeof assertResend> {
   return {
-    domains: { create: domainsCreateMock, update: domainsUpdateMock },
+    domains: {
+      create: domainsCreateMock,
+      update: domainsUpdateMock,
+      remove: domainsRemoveMock,
+    },
   } as unknown as ReturnType<typeof assertResend>
+}
+
+function buildUseCase(): EmailTeamSettingsUseCase {
+  return new EmailTeamSettingsUseCase({
+    settingsRepo: buildSettingsRepository(),
+    resendFactory: buildResend,
+    domainEvents: buildDomainEvents(),
+  })
 }
 
 const teamCtx = {
@@ -87,6 +104,7 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
     saveConnectedDomainMock.mockClear()
     domainsCreateMock.mockClear()
     domainsUpdateMock.mockClear()
+    domainsRemoveMock.mockClear()
   })
 
   /**
@@ -95,13 +113,7 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
    * a resposta montava relatório em cima de um clique que nunca chegaria.
    */
   it("T-C3.2 — o que a resposta afirma é exatamente o que foi persistido", async () => {
-    const useCase = new EmailTeamSettingsUseCase({
-      settingsRepo: buildSettingsRepository(),
-      resendFactory: buildResend,
-      domainEvents: buildDomainEvents(),
-    })
-
-    const output = await useCase.connectDomain("empresaxyz.com.br", teamCtx)
+    const output = await buildUseCase().connectDomain("empresaxyz.com.br", teamCtx)
 
     expect(output.isValid).toBe(true)
     expect(saveConnectedDomainMock).toHaveBeenCalledTimes(1)
@@ -116,18 +128,37 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
   })
 
   it("T-C3.2b — o que é gravado é o mesmo que foi pedido ao provedor", async () => {
-    const useCase = new EmailTeamSettingsUseCase({
-      settingsRepo: buildSettingsRepository(),
-      resendFactory: buildResend,
-      domainEvents: buildDomainEvents(),
-    })
-
-    await useCase.connectDomain("empresaxyz.com.br", teamCtx)
+    await buildUseCase().connectDomain("empresaxyz.com.br", teamCtx)
 
     const created = domainsCreateMock.mock.calls[0]![0]
     const persisted = saveConnectedDomainMock.mock.calls[0]![1]
 
     expect(created.openTracking).toBe(persisted.openTracking)
     expect(created.clickTracking).toBe(persisted.clickTracking)
+  })
+
+  it("retorna mensagem específica quando o subdomínio de tracking já existe no Resend", async () => {
+    domainsCreateMock.mockImplementationOnce(async () => ({
+      data: { id: "domain-1", name: "onsidemarketing.com.br", records: [] },
+      error: null,
+    }))
+    domainsUpdateMock.mockImplementationOnce(async () => ({
+      data: null,
+      error: {
+        statusCode: 409,
+        message:
+          'A tracking domain with the subdomain "links" already exists for this domain.',
+        name: "validation_error",
+      },
+    }))
+
+    const output = await buildUseCase().connectDomain("onsidemarketing.com.br", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(
+      "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
+    )
+    expect(output.errorMessages[0]).not.toContain("domínio já está cadastrado")
+    expect(domainsRemoveMock).toHaveBeenCalledWith("domain-1")
   })
 })
