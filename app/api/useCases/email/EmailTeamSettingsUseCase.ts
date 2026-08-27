@@ -10,9 +10,11 @@ import type {
 import { assertResend } from "@/lib/email"
 import { RESEND_TRACKING_POLICY } from "@/lib/email/resend-domain-reconcile"
 import {
-  isTrackingSubdomainAlreadyExists,
+  isSelfInflictedTrackingConflict,
+  isTrackingSubdomainConflict,
   mapResendDomainError,
 } from "@/lib/email/map-resend-domain-error"
+import { normalizeSendingDomainName } from "@/lib/email/normalize-sending-domain-name"
 import {
   assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
@@ -417,7 +419,11 @@ export class EmailTeamSettingsUseCase {
 
   async connectDomain(domainName: string, ctx: TeamContext): Promise<Output> {
     try {
-      if (!domainName.trim() || domainName.length < 3) {
+      // Colar a URL da barra de endereço (`http://dominio.com.br/`) é o caminho
+      // natural de quem está na tela, e o provedor responde 422 a isso. Sanear
+      // antes de validar mantém a tentativa viva em vez de culpar o operador.
+      const sanitizedDomainName = normalizeSendingDomainName(domainName)
+      if (sanitizedDomainName.length < 3) {
         return new Output(false, [], ["Nome de domínio inválido"], null)
       }
 
@@ -433,11 +439,11 @@ export class EmailTeamSettingsUseCase {
 
       const resend = this.resendFactory()
       const { data, error } = await resend.domains.create({
-        name: domainName.trim(),
+        name: sanitizedDomainName,
         region: DEFAULT_DOMAIN_REGION,
         customReturnPath: "bounce",
-        openTracking: true,
-        clickTracking: false,
+        openTracking: RESEND_TRACKING_POLICY.openTracking,
+        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
       if (error || !data) {
@@ -445,7 +451,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(
           false,
           [],
-          [mapResendDomainError(error?.message, "connect", domainName.trim())],
+          [mapResendDomainError(error?.message, "connect", sanitizedDomainName)],
           null
         )
       }
@@ -461,17 +467,52 @@ export class EmailTeamSettingsUseCase {
       // que o redirecionador exista. Este update é reforço, e o erro dele é
       // verificado: sem isso, uma falha aqui deixaria o provedor divergente do
       // que gravamos no banco e a operação ainda reportaria sucesso.
+      //
+      // O `trackingSubdomain` NÃO vai neste payload: o `create` acabou de
+      // configurá-lo, e repetir o mesmo valor faz o provedor responder 409
+      // ("already exists for this domain"). Foi assim que uma criação bem
+      // sucedida virava falha destrutiva em 27/08 — o tratamento de erro
+      // apagava o domínio recém-criado.
       const { error: trackingError } = await resend.domains.update({
         id: data.id,
-        openTracking: true,
-        clickTracking: false,
-        trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
+        openTracking: RESEND_TRACKING_POLICY.openTracking,
+        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
       })
-      if (trackingError) {
+
+      // Conflito causado pelo próprio `create` é sucesso idempotente: o estado
+      // desejado já está no provedor. Seguir o fluxo é o certo — apagar o
+      // domínio aqui destruiria exatamente o que acabou de dar certo.
+      const selfInflictedTrackingConflict = isSelfInflictedTrackingConflict(
+        trackingError,
+        DEFAULT_TRACKING_SUBDOMAIN
+      )
+
+      if (trackingError && selfInflictedTrackingConflict) {
+        console.info(
+          "[EmailTeamSettingsUseCase][connectDomain] Tracking já configurado pelo create; seguindo sem reaplicar",
+          { domainId: data.id, domainName: data.name, trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN }
+        )
+      }
+
+      if (trackingError && !selfInflictedTrackingConflict) {
         console.error(
           "[EmailTeamSettingsUseCase][connectDomain] Resend tracking error",
           trackingError
         )
+        if (isTrackingSubdomainConflict(trackingError)) {
+          // Conflito de tracking que não é nosso: o subdomínio citado diverge do
+          // que este fluxo configura. Logar os dois lados é o que permite
+          // diagnosticar sem reabrir o log do provedor.
+          console.error(
+            "[EmailTeamSettingsUseCase][connectDomain] Conflito de tracking não pertence a este fluxo",
+            {
+              domainId: data.id,
+              domainName: data.name,
+              expectedTrackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
+              providerMessage: trackingError.message,
+            }
+          )
+        }
         // Remove o domínio recém-criado antes de devolver o erro. Sem isso o
         // `create` acima deixa um domínio órfão no Resend que nós nunca
         // persistimos: a retentativa tenta criar o mesmo nome e trava para
@@ -490,7 +531,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(
           false,
           [],
-          [mapResendDomainError(trackingError.message, "tracking", domainName.trim())],
+          [mapResendDomainError(trackingError.message, "tracking", sanitizedDomainName)],
           null
         )
       }
@@ -620,9 +661,7 @@ export class EmailTeamSettingsUseCase {
 
       const { error } = await resend.domains.update(updatePayload)
 
-      const maybeTrackingConflict =
-        Boolean(error) &&
-        (error?.statusCode === 409 || isTrackingSubdomainAlreadyExists(error?.message))
+      const maybeTrackingConflict = isTrackingSubdomainConflict(error)
 
       if (error && !maybeTrackingConflict) {
         console.error("[EmailTeamSettingsUseCase][configureDomainTracking] Resend error", error)
