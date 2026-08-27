@@ -197,6 +197,57 @@ export function buildDispatchTerminalToast(
   }
 }
 
+export type CampaignExitToastDecision =
+  | { emit: true; toast: DispatchTerminalToast }
+  | { emit: false }
+
+/**
+ * Decide o toast (se algum) quando uma campanha rastreada sai de `sending`.
+ * Centraliza a lógica usada tanto pelo watcher da campanha principal quanto
+ * pelo polling de retry de sub-campanha em `CampanhasHook.ts`.
+ *
+ * Regra fail-closed (incidente Calli, 2026-08-27): sem `terminal` resolvido E
+ * status diferente de `failed`, a recusa aconteceu **antes** de qualquer
+ * `EmailCampaignDispatch` ser criado (gate, cota, etc.) — o servidor nunca
+ * escreveu nada, então o status observado é o antigo (`draft`, `scheduled`,
+ * `canceled`, `archived`). Não há nada "concluído" para celebrar: o `catch` de
+ * `handleSend` já mostrou o erro real. `resolveCampaignDispatchTerminal` cobre
+ * todo desfecho terminal genuíno (sending→completed/failed via latestDispatch
+ * ou dispatchProgressSummary, ou status sent/partially_sent/failed) — se ele
+ * devolveu `null`, não houve desfecho novo.
+ */
+export function resolveCampaignExitToast(params: {
+  name: string | null | undefined
+  status: string
+  terminal: ResolvedDispatchTerminal | null
+  errorMessage?: string | null
+}): CampaignExitToastDecision {
+  if (params.terminal) {
+    return { emit: true, toast: buildDispatchTerminalToast(params.name, params.terminal) }
+  }
+
+  if (params.status === "failed") {
+    const formattedError = formatCampaignDispatchErrorMessage(params.errorMessage ?? null)
+    const named = Boolean(params.name?.trim())
+    const quoted = named ? `"${params.name}"` : null
+    return {
+      emit: true,
+      toast: {
+        type: "error",
+        message: formattedError
+          ? quoted
+            ? `Disparo de ${quoted} falhou: ${formattedError}`
+            : `Disparo falhou: ${formattedError}`
+          : quoted
+            ? `Disparo de ${quoted} falhou.`
+            : "Disparo falhou.",
+      },
+    }
+  }
+
+  return { emit: false }
+}
+
 export function applyDispatchTerminalToast(
   toastApi: {
     success: (message: string) => void

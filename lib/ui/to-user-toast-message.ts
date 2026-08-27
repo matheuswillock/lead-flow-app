@@ -129,6 +129,13 @@ export function toUserToastMessage(error: unknown): string {
   if (!display) {
     return USER_TOAST_GENERIC_ERROR;
   }
+  // Mensagem etiquetada como vinda da nossa própria rota (Output.errorMessages
+  // propagado como ApiRequestError) é sempre copy de produto — passa intacta.
+  // A heurística de acento/PRODUCT_PORTUGUESE_MARKERS abaixo existe só para
+  // classificar erros de transporte/exceção, cuja origem não é rastreável.
+  if (isApiRequestError(error)) {
+    return display;
+  }
   if (hasTechnicalErrorSignal(readClassificationText(error))) {
     return USER_TOAST_GENERIC_ERROR;
   }

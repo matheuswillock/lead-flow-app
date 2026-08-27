@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { toUserToastMessage, USER_TOAST_GENERIC_ERROR } from "./to-user-toast-message";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 describe("toUserToastMessage", () => {
   it("hides JSON.parse unexpected character", () => {
@@ -47,5 +48,40 @@ describe("toUserToastMessage", () => {
     );
     expect(toUserToastMessage(new Error("fetch failed"))).toBe(USER_TOAST_GENERIC_ERROR);
     expect(toUserToastMessage(undefined)).toBe(USER_TOAST_GENERIC_ERROR);
+  });
+
+  // Regressão Calli (2026-08-27): Output.errorMessages de rota nossa é sempre
+  // copy de produto, mesmo sem acento e sem nenhum PRODUCT_PORTUGUESE_MARKERS —
+  // "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo"
+  // era mascarado para "Ocorreu um erro." porque a heurística de acento/marcador
+  // não tem como saber a origem da string. A origem precisa vir etiquetada
+  // (ApiRequestError), não adivinhada pelo conteúdo.
+  it("preserva mensagem de ApiRequestError (Output do nosso backend) mesmo sem acento e sem marcador PT-BR", () => {
+    const backendMessage = "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo";
+    expect(toUserToastMessage(new ApiRequestError(backendMessage, 400))).toBe(backendMessage);
+  });
+
+  it("preserva qualquer copy futura sem acento vinda de ApiRequestError (classe do bug, não o caso específico)", () => {
+    const futureBackendMessage = "Envio bloqueado para clientes sem plano corporativo ativo";
+    expect(toUserToastMessage(new ApiRequestError(futureBackendMessage, 403))).toBe(
+      futureBackendMessage,
+    );
+  });
+
+  it("ApiRequestError NUNCA é mascarado por conteúdo, mesmo contendo substrings técnicas por coincidência", () => {
+    // O ponto do fix: a decisão é pela ORIGEM (a classe), não por adivinhar o
+    // conteúdo — mesmo um texto que colidiria com TECHNICAL_SUBSTRINGS deve
+    // passar intacto quando vem etiquetado como erro da nossa própria rota.
+    const message = "prisma não configurado corretamente para este time";
+    expect(toUserToastMessage(new ApiRequestError(message, 400))).toBe(message);
+  });
+
+  it("erro técnico real (não ApiRequestError) continua mascarado, mesmo com acento/marcador coincidente", () => {
+    // Guarda-costas do fix: só ApiRequestError ganha passe livre. Um TypeError
+    // ou falha de rede genuínos continuam escondidos atrás da copy genérica.
+    expect(toUserToastMessage(new TypeError("Cannot read properties of undefined"))).toBe(
+      USER_TOAST_GENERIC_ERROR,
+    );
+    expect(toUserToastMessage(new Error("fetch failed"))).toBe(USER_TOAST_GENERIC_ERROR);
   });
 });
