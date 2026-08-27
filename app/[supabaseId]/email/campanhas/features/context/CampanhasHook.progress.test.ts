@@ -239,6 +239,20 @@ describe("resolveDispatchErrorToastMessage — catch de handleSend preserva ApiR
 
     expect(message).toBe(USER_TOAST_GENERIC_ERROR)
   })
+
+  // Ajuste de review (PR #1085): CampanhasService.parseCampaignsResponse só
+  // etiqueta ApiRequestError quando a mensagem veio de fato de
+  // Output.errorMessages — um 502/504 de proxy (corpo não-JSON) ou um
+  // isValid:false sem errorMessages agora lança `Error` puro. Esta função NÃO
+  // deve re-embrulhar esse `Error` em ApiRequestError: `isApiRequestError(err)`
+  // precisa ser false para que `toUserToastMessage` mascare.
+  it("Error puro (fallback técnico do service, ex.: HTTP 502) NÃO é reembrulhado em ApiRequestError — continua mascarado", () => {
+    const err = new Error("HTTP 502")
+
+    const message = resolveDispatchErrorToastMessage(err, "Ocorreu um erro ao disparar a campanha")
+
+    expect(message).toBe(USER_TOAST_GENERIC_ERROR)
+  })
 })
 
 describe("watcher de campanha — recusa pré-dispatch não celebra sucesso (incidente Calli, 2026-08-27)", () => {

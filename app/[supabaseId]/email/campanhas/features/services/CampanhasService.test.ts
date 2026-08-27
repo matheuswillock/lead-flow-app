@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import { isApiRequestError } from "@/lib/http/api-request-error"
+import { toUserToastMessage, USER_TOAST_GENERIC_ERROR } from "@/lib/ui/to-user-toast-message"
 
 /**
  * Regressão Calli (2026-08-27): o backend recusa o disparo (400, Output com
@@ -109,5 +110,129 @@ describe("CampanhasService.send — propagação de erro HTTP", () => {
 
     expect(isApiRequestError(caught)).toBe(false)
     expect(caught).toBeInstanceOf(TypeError)
+  })
+})
+
+/**
+ * Ajuste de review (PR #1085): `parseCampaignsResponse` etiquetava como
+ * `ApiRequestError` inclusive os fallbacks técnicos (`HTTP ${status}`, `'Erro'`)
+ * quando o corpo não tinha copy de produto — um 502/504 de proxy/CDN (corpo
+ * não-JSON) ou um `isValid:false` sem `errorMessages` passava a chegar CRU no
+ * toast em vez de mascarado. A etiqueta só pode vir de
+ * `Output.errorMessages` real (array não-vazio de strings não-vazias).
+ */
+describe("CampanhasService — fallback técnico não pode ganhar etiqueta de copy de produto (ajuste de review, PR #1085)", () => {
+  afterEach(() => {
+    mock.restore()
+  })
+
+  it("502 com corpo não-JSON (proxy/CDN) — erro NÃO é ApiRequestError e o toast mostra o genérico", async () => {
+    const fetchMock = mock(async () => new Response("<html>Bad Gateway</html>", { status: 502 }))
+    ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { CampanhasService } = await import("./CampanhasService")
+    const service = new CampanhasService()
+
+    let caught: unknown = null
+    try {
+      await service.send("supa-1", "team-1", "camp-1")
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).not.toBeNull()
+    expect(isApiRequestError(caught)).toBe(false)
+    expect(toUserToastMessage(caught)).toBe(USER_TOAST_GENERIC_ERROR)
+  })
+
+  it("200 com isValid:false e errorMessages vazio — erro NÃO é ApiRequestError, mesmo tratamento mascarado", async () => {
+    const fetchMock = mock(async () =>
+      Response.json(
+        { isValid: false, successMessages: [], errorMessages: [], result: null },
+        { status: 200 }
+      )
+    )
+    ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { CampanhasService } = await import("./CampanhasService")
+    const service = new CampanhasService()
+
+    let caught: unknown = null
+    try {
+      await service.send("supa-1", "team-1", "camp-1")
+    } catch (err) {
+      caught = err
+    }
+
+    expect(isApiRequestError(caught)).toBe(false)
+    expect(toUserToastMessage(caught)).toBe(USER_TOAST_GENERIC_ERROR)
+  })
+
+  it("errorMessages com copy de produto continua ApiRequestError e passa intacta (não pode quebrar a regressão principal)", async () => {
+    const backendMessage =
+      "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo"
+    const fetchMock = mock(async () =>
+      Response.json(
+        { isValid: false, successMessages: [], errorMessages: [backendMessage], result: null },
+        { status: 400 }
+      )
+    )
+    ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { CampanhasService } = await import("./CampanhasService")
+    const service = new CampanhasService()
+
+    let caught: unknown = null
+    try {
+      await service.send("supa-1", "team-1", "camp-1")
+    } catch (err) {
+      caught = err
+    }
+
+    expect(isApiRequestError(caught)).toBe(true)
+    expect(toUserToastMessage(caught)).toBe(backendMessage)
+  })
+
+  it("deleteDraft: 504 (gateway timeout, corpo não-JSON) também não vira ApiRequestError", async () => {
+    const fetchMock = mock(async () => new Response("Gateway Timeout", { status: 504 }))
+    ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { CampanhasService } = await import("./CampanhasService")
+    const service = new CampanhasService()
+
+    let caught: unknown = null
+    try {
+      await service.deleteDraft("supa-1", "team-1", "camp-1")
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).not.toBeNull()
+    expect(isApiRequestError(caught)).toBe(false)
+    expect(toUserToastMessage(caught)).toBe(USER_TOAST_GENERIC_ERROR)
+  })
+
+  it("deleteDraft: errorMessages com copy de produto continua ApiRequestError e passa intacta", async () => {
+    const backendMessage = "Campanha não pode ser excluída após o primeiro disparo"
+    const fetchMock = mock(async () =>
+      Response.json(
+        { isValid: false, successMessages: [], errorMessages: [backendMessage], result: null },
+        { status: 409 }
+      )
+    )
+    ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const { CampanhasService } = await import("./CampanhasService")
+    const service = new CampanhasService()
+
+    let caught: unknown = null
+    try {
+      await service.deleteDraft("supa-1", "team-1", "camp-1")
+    } catch (err) {
+      caught = err
+    }
+
+    expect(isApiRequestError(caught)).toBe(true)
+    expect(toUserToastMessage(caught)).toBe(backendMessage)
   })
 })

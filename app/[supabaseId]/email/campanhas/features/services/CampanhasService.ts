@@ -62,20 +62,48 @@ export class CampanhasService implements ICampanhasService {
   }
 
   /**
+   * `ApiRequestError` só é uma etiqueta honesta quando a mensagem veio de fato
+   * de `Output.errorMessages` — array não-vazio de strings não-vazias. Sem
+   * isso não há copy de produto para preservar, só um fallback técnico
+   * (`HTTP 502`, corpo não-JSON de proxy/CDN etc.) que precisa continuar
+   * mascarado por `toUserToastMessage` como qualquer exceção genuína.
+   */
+  private extractProductErrorMessage(json: unknown): string | null {
+    const errorMessages = (json as { errorMessages?: unknown } | null)?.errorMessages
+    if (!Array.isArray(errorMessages)) return null
+    const nonEmpty = errorMessages.filter(
+      (message): message is string => typeof message === "string" && message.trim().length > 0
+    )
+    return nonEmpty.length > 0 ? nonEmpty.join(', ') : null
+  }
+
+  /**
    * Único ponto de leitura de resposta HTTP do módulo de e-mail. Erro de rota
-   * nossa (HTTP não-2xx ou Output.isValid:false) vira `ApiRequestError` — a
-   * mensagem já é copy de produto (Output.errorMessages) e chega etiquetada
-   * até o toast, em vez de um `Error` genérico que força `toUserToastMessage`
-   * a adivinhar a origem pela string (regressão Calli, 2026-08-27: mensagem
-   * sem acento era mascarada como "Ocorreu um erro.").
+   * nossa com copy de produto real (`Output.errorMessages` não-vazio) vira
+   * `ApiRequestError` — chega etiquetado até o toast, em vez de um `Error`
+   * genérico que força `toUserToastMessage` a adivinhar a origem pela string
+   * (regressão Calli, 2026-08-27: mensagem sem acento era mascarada como
+   * "Ocorreu um erro.").
+   *
+   * Sem copy de produto (502/504 de proxy/CDN com corpo não-JSON,
+   * `isValid:false` sem `errorMessages`) o `throw` é um `Error` puro — nunca
+   * `ApiRequestError` — para que o mesmo `toUserToastMessage` mascare o
+   * detalhe técnico (ajuste de review, PR #1085: `parseCampaignsResponse`
+   * etiquetava esses fallbacks também, vazando "HTTP 502" cru pro usuário).
+   * A mensagem do fallback de `isValid:false` é deliberadamente sem acento —
+   * um acento aqui passaria pela heurística de copy PT-BR de
+   * `toUserToastMessage` e vazaria do mesmo jeito.
    */
   private async parseCampaignsResponse<T>(res: Response): Promise<T> {
     const json = await res.json().catch(() => null)
+    const productMessage = this.extractProductErrorMessage(json)
     if (!res.ok) {
-      throw new ApiRequestError(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`, res.status)
+      if (productMessage) throw new ApiRequestError(productMessage, res.status)
+      throw new Error(`HTTP ${res.status}`)
     }
     if (!json?.isValid) {
-      throw new ApiRequestError(json?.errorMessages?.join(', ') ?? 'Erro', res.status)
+      if (productMessage) throw new ApiRequestError(productMessage, res.status)
+      throw new Error(`Resposta invalida da rota de campanhas (HTTP ${res.status})`)
     }
     return json.result as T
   }
@@ -174,7 +202,9 @@ export class CampanhasService implements ICampanhasService {
     })
     if (!res.ok) {
       const json = await res.json().catch(() => null)
-      throw new ApiRequestError(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`, res.status)
+      const productMessage = this.extractProductErrorMessage(json)
+      if (productMessage) throw new ApiRequestError(productMessage, res.status)
+      throw new Error(`HTTP ${res.status}`)
     }
   }
 
