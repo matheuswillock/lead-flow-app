@@ -10,7 +10,18 @@ import { assertResend } from "@/lib/email"
 import { EmailTeamSettingsUseCase } from "./EmailTeamSettingsUseCase"
 
 type SaveConnectedDomainArgs = Parameters<IEmailTeamSettingsRepository["saveConnectedDomain"]>
-type DomainsCreatePayload = { openTracking: boolean; clickTracking: boolean }
+type DomainsCreatePayload = {
+  name: string
+  openTracking: boolean
+  clickTracking: boolean
+  trackingSubdomain?: string
+}
+type DomainsUpdatePayload = {
+  id: string
+  openTracking: boolean
+  clickTracking: boolean
+  trackingSubdomain?: string
+}
 type DomainMutationResult = {
   data: { id: string; name: string; records: never[] } | null
   error: { statusCode: number; message: string; name: string } | null
@@ -22,7 +33,12 @@ const domainsCreateMock = mock(async (_payload: DomainsCreatePayload): Promise<D
   data: { id: "dom-1", name: "empresaxyz.com.br", records: [] },
   error: null,
 }))
-const domainsUpdateMock = mock(async (): Promise<DomainMutationResult> => ({ data: null, error: null }))
+const domainsUpdateMock = mock(
+  async (_payload: DomainsUpdatePayload): Promise<DomainMutationResult> => ({
+    data: null,
+    error: null,
+  })
+)
 const domainsRemoveMock = mock(async (): Promise<DomainMutationResult> => ({ data: null, error: null }))
 
 function emptySnapshot(): EmailTeamSettingsSnapshot {
@@ -137,28 +153,103 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
     expect(created.clickTracking).toBe(persisted.clickTracking)
   })
 
-  it("retorna mensagem específica quando o subdomínio de tracking já existe no Resend", async () => {
+  /**
+   * Bug de 27/08 (suitseguros.com.br): o `create` já nascia com
+   * `trackingSubdomain: "links"` e o update de reforço pedia o MESMO valor, o
+   * que o Resend responde com 409. O tratamento apagava o domínio recém-criado
+   * e devolvia erro — criação bem-sucedida virava falha destrutiva.
+   */
+  it("o update de reforço não repete o trackingSubdomain que o create já configurou", async () => {
+    await buildUseCase().connectDomain("empresaxyz.com.br", teamCtx)
+
+    expect(domainsCreateMock.mock.calls[0]![0].trackingSubdomain).toBe("links")
+    expect(domainsUpdateMock.mock.calls[0]![0]).not.toHaveProperty("trackingSubdomain")
+  })
+
+  it("409 de tracking do próprio domínio é sucesso idempotente — não apaga o domínio criado", async () => {
     domainsCreateMock.mockImplementationOnce(async () => ({
-      data: { id: "domain-1", name: "onsidemarketing.com.br", records: [] },
+      data: { id: "domain-1", name: "suitseguros.com.br", records: [] },
       error: null,
     }))
     domainsUpdateMock.mockImplementationOnce(async () => ({
       data: null,
       error: {
-        statusCode: 409,
+        // Corpo verbatim do log da API do Resend em 27/08.
+        name: "validation_error",
         message:
           'A tracking domain with the subdomain "links" already exists for this domain.',
-        name: "validation_error",
+        statusCode: 409,
       },
     }))
 
-    const output = await buildUseCase().connectDomain("onsidemarketing.com.br", teamCtx)
+    const output = await buildUseCase().connectDomain("suitseguros.com.br", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(output.errorMessages).toEqual([])
+    expect(domainsRemoveMock).not.toHaveBeenCalled()
+    expect(saveConnectedDomainMock).toHaveBeenCalledTimes(1)
+    expect(saveConnectedDomainMock.mock.calls[0]![1]).toMatchObject({
+      domainId: "domain-1",
+      domainName: "suitseguros.com.br",
+    })
+  })
+
+  it("409 de tracking de OUTRO subdomínio continua sendo falha, com limpeza e orientação de suporte", async () => {
+    domainsCreateMock.mockImplementationOnce(async () => ({
+      data: { id: "domain-2", name: "outrodominio.com.br", records: [] },
+      error: null,
+    }))
+    domainsUpdateMock.mockImplementationOnce(async () => ({
+      data: null,
+      error: {
+        name: "validation_error",
+        message:
+          'A tracking domain with the subdomain "email" already exists for this domain.',
+        statusCode: 409,
+      },
+    }))
+
+    const output = await buildUseCase().connectDomain("outrodominio.com.br", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(
-      "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
-    )
-    expect(output.errorMessages[0]).not.toContain("domínio já está cadastrado")
-    expect(domainsRemoveMock).toHaveBeenCalledWith("domain-1")
+    expect(output.errorMessages[0]).toContain("suporte do Corretor Studio")
+    expect(output.errorMessages[0]).not.toContain("Escolha outro subdomínio")
+    expect(domainsRemoveMock).toHaveBeenCalledWith("domain-2")
+    expect(saveConnectedDomainMock).not.toHaveBeenCalled()
+  })
+
+  it("falha real no update mantém a limpeza anti-órfão e propaga o erro", async () => {
+    domainsCreateMock.mockImplementationOnce(async () => ({
+      data: { id: "domain-3", name: "empresaxyz.com.br", records: [] },
+      error: null,
+    }))
+    domainsUpdateMock.mockImplementationOnce(async () => ({
+      data: null,
+      error: {
+        name: "application_error",
+        message: "Internal server error",
+        statusCode: 500,
+      },
+    }))
+
+    const output = await buildUseCase().connectDomain("empresaxyz.com.br", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(domainsRemoveMock).toHaveBeenCalledWith("domain-3")
+    expect(saveConnectedDomainMock).not.toHaveBeenCalled()
+  })
+
+  it("sanitiza o domínio antes do POST — protocolo, barra final, espaços e caixa", async () => {
+    await buildUseCase().connectDomain("  HTTP://Dominio.COM.br/  ", teamCtx)
+
+    expect(domainsCreateMock.mock.calls[0]![0].name).toBe("dominio.com.br")
+  })
+
+  it("recusa entrada que sobra vazia depois da sanitização", async () => {
+    const output = await buildUseCase().connectDomain("https:// /", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe("Nome de domínio inválido")
+    expect(domainsCreateMock).not.toHaveBeenCalled()
   })
 })

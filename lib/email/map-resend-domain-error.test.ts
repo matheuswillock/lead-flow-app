@@ -1,5 +1,21 @@
 import { describe, expect, it } from "bun:test"
-import { mapResendDomainError } from "./map-resend-domain-error"
+import {
+  isSelfInflictedTrackingConflict,
+  isTrackingSubdomainConflict,
+  mapResendDomainError,
+} from "./map-resend-domain-error"
+
+const RESEND_409_SAME_SUBDOMAIN = {
+  name: "validation_error",
+  message: 'A tracking domain with the subdomain "links" already exists for this domain.',
+  statusCode: 409,
+}
+
+const RESEND_409_OTHER_SUBDOMAIN = {
+  name: "validation_error",
+  message: 'A tracking domain with the subdomain "email" already exists for this domain.',
+  statusCode: 409,
+}
 
 describe("mapResendDomainError", () => {
   it("traduz domínio registrado em outro time sem expor API ou links", () => {
@@ -35,16 +51,22 @@ describe("mapResendDomainError", () => {
     )
   })
 
-  it("traduz conflito de subdomínio de tracking sem sugerir duplicidade local", () => {
+  /**
+   * O conflito que sobra aqui é o que NÃO é do próprio fluxo — o nosso vira
+   * sucesso idempotente antes de chegar em mensagem. Mandar "escolha outro
+   * subdomínio" era orientação impossível: o subdomínio é fixo do produto e o
+   * operador não tem esse controle na tela.
+   */
+  it("orienta suporte no conflito de subdomínio de tracking, não escolha de subdomínio", () => {
     const result = mapResendDomainError(
       'A tracking domain with the subdomain "links" already exists for this domain.',
       "tracking",
       "onsidemarketing.com.br"
     )
 
-    expect(result).toBe(
-      "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
-    )
+    expect(result).toContain("onsidemarketing.com.br")
+    expect(result).toContain("suporte do Corretor Studio")
+    expect(result).not.toContain("Escolha outro subdomínio")
     expect(result).not.toContain("domínio já está cadastrado")
   })
 
@@ -78,5 +100,50 @@ describe("mapResendDomainError", () => {
   it("usa fallback quando mensagem está vazia", () => {
     expect(mapResendDomainError(undefined, "connect")).toContain("conectar o domínio")
     expect(mapResendDomainError("", "verify")).toContain("verificação")
+  })
+})
+
+describe("isSelfInflictedTrackingConflict", () => {
+  it("reconhece o 409 causado pelo trackingSubdomain que nós mesmos pedimos", () => {
+    expect(isSelfInflictedTrackingConflict(RESEND_409_SAME_SUBDOMAIN, "links")).toBe(true)
+  })
+
+  it("não reconhece conflito de subdomínio divergente", () => {
+    expect(isSelfInflictedTrackingConflict(RESEND_409_OTHER_SUBDOMAIN, "links")).toBe(false)
+  })
+
+  it("não reconhece 409 de outra natureza", () => {
+    expect(
+      isSelfInflictedTrackingConflict(
+        { message: "Domain already exists", statusCode: 409 },
+        "links"
+      )
+    ).toBe(false)
+  })
+
+  it("não reconhece ausência de erro nem falha real", () => {
+    expect(isSelfInflictedTrackingConflict(null, "links")).toBe(false)
+    expect(
+      isSelfInflictedTrackingConflict({ message: "Internal server error", statusCode: 500 }, "links")
+    ).toBe(false)
+  })
+})
+
+describe("isTrackingSubdomainConflict", () => {
+  it("aceita 409 e mensagem de subdomínio já existente", () => {
+    expect(isTrackingSubdomainConflict(RESEND_409_SAME_SUBDOMAIN)).toBe(true)
+    expect(
+      isTrackingSubdomainConflict({
+        message: 'A tracking domain with the subdomain "links" already exists for this domain.',
+        statusCode: 422,
+      })
+    ).toBe(true)
+  })
+
+  it("recusa erro sem conflito", () => {
+    expect(isTrackingSubdomainConflict(null)).toBe(false)
+    expect(isTrackingSubdomainConflict({ message: "Internal server error", statusCode: 500 })).toBe(
+      false
+    )
   })
 })
