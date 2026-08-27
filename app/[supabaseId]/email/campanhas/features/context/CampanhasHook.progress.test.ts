@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import {
+  applyDispatchTerminalToast,
   isNewTerminalDispatch,
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
+  resolveCampaignExitToast,
 } from "@/lib/email/campaign-dispatch-terminal"
 import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
 import { shouldShowCampaignListSkeleton } from "@/lib/email/campaign-dispatch-list-skeleton"
@@ -197,6 +199,40 @@ describe("toast de falha — fallback do hook formata INTERNAL", () => {
     expect(
       buildFailedFallbackToast("Lista Fria", "Erro interno durante o disparo")
     ).not.toContain("Erro interno")
+  })
+})
+
+describe("watcher de campanha — recusa pré-dispatch não celebra sucesso (incidente Calli, 2026-08-27)", () => {
+  it("catch do handleSend mostra o erro; o watcher (CampanhasHook.ts:~665-692) não soma um 'concluído' fantasma por cima", () => {
+    // Reproduz a corrida real: handleSend mostra "sending" otimista, service.send()
+    // é recusado pré-dispatch (400, gate ou quota — sem EmailCampaignDispatch novo),
+    // o catch de handleSend já emitiu o erro, e a lista eventualmente reflete o
+    // status real (nunca saiu de "draft"/"scheduled" no servidor). O watcher observa
+    // essa transição e, com o bug antigo, tratava "sem terminal e não-failed" como
+    // sucesso — vermelho + verde para um disparo que nunca começou.
+    const toasts: Array<{ type: string; message: string }> = []
+    const toastApi = {
+      success: (message: string) => toasts.push({ type: "success", message }),
+      warning: (message: string) => toasts.push({ type: "warning", message }),
+      error: (message: string) => toasts.push({ type: "error", message }),
+    }
+
+    // 1) catch do handleSend.
+    toastApi.error("Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo")
+
+    // 2) watcher observa a campanha rastreada fora de "sending", sem terminal novo.
+    const decision = resolveCampaignExitToast({
+      name: "Campanha Calli",
+      status: "draft",
+      terminal: null,
+    })
+    if (decision.emit) {
+      applyDispatchTerminalToast(toastApi, decision.toast)
+    }
+
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].type).toBe("error")
+    expect(toasts.some((t) => t.type === "success")).toBe(false)
   })
 })
 

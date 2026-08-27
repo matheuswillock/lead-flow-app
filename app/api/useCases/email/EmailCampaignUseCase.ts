@@ -196,8 +196,6 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_TEMPLATE:
     "O template vinculado à campanha não está mais disponível. Atualize a campanha antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
-  NO_RADAR_BETA:
-    "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo",
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
   NO_RECIPIENTS_RADAR: "Nenhum perfil apto no segmento Radar",
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
@@ -2808,16 +2806,6 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-      const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
-        profileId: ctx.profileId,
-        managerId: ctx.managerId,
-        isMaster: ctx.isMaster,
-        teamId: ctx.teamId,
-      })
-      if (!radarBetaAccess) {
-        return new Output(false, [], [EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA], null)
-      }
-
       hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
         profileId: ctx.profileId,
         managerId: ctx.managerId,
@@ -4883,20 +4871,6 @@ export class EmailCampaignUseCase {
         }
         if (!publishedTemplate.html) {
           await this.markScheduledCampaignFailed(campaign.id, EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_HTML)
-          continue
-        }
-
-        const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
-          profileId: masterId,
-          managerId: masterId,
-          isMaster: true,
-          teamId: campaign.teamId,
-        })
-        if (!radarBetaAccess) {
-          await this.markScheduledCampaignFailed(
-            campaign.id,
-            EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA
-          )
           continue
         }
 

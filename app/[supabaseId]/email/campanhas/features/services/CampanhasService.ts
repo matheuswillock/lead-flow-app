@@ -1,5 +1,6 @@
 import type { Campaign, CreditStatus, Template, ContactList, CampaignEmailLog, CampaignLogDetail, CampaignPreviewPlan } from '../context/CampanhasTypes'
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 export type CampaignWritePayload = {
   name: string
@@ -60,6 +61,25 @@ export class CampanhasService implements ICampanhasService {
     }
   }
 
+  /**
+   * Único ponto de leitura de resposta HTTP do módulo de e-mail. Erro de rota
+   * nossa (HTTP não-2xx ou Output.isValid:false) vira `ApiRequestError` — a
+   * mensagem já é copy de produto (Output.errorMessages) e chega etiquetada
+   * até o toast, em vez de um `Error` genérico que força `toUserToastMessage`
+   * a adivinhar a origem pela string (regressão Calli, 2026-08-27: mensagem
+   * sem acento era mascarada como "Ocorreu um erro.").
+   */
+  private async parseCampaignsResponse<T>(res: Response): Promise<T> {
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new ApiRequestError(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`, res.status)
+    }
+    if (!json?.isValid) {
+      throw new ApiRequestError(json?.errorMessages?.join(', ') ?? 'Erro', res.status)
+    }
+    return json.result as T
+  }
+
   async list(supabaseId: string, teamId: string | null | undefined, page: number, pageSize: number, status?: string[], name?: string, createdAtFrom?: string, createdAtTo?: string) {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (status && status.length > 0) params.set('status', status.join(','))
@@ -70,10 +90,7 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as { campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }
+    return this.parseCampaignsResponse<{ campaigns: Campaign[]; total: number; page: number; pageSize: number; totalPages: number }>(res)
   }
 
   async create(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload) {
@@ -82,10 +99,7 @@ export class CampanhasService implements ICampanhasService {
       headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
       body: JSON.stringify(data),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as Campaign
+    return this.parseCampaignsResponse<Campaign>(res)
   }
 
   async previewPlan(supabaseId: string, teamId: string | null | undefined, data: CampaignWritePayload) {
@@ -94,10 +108,7 @@ export class CampanhasService implements ICampanhasService {
       headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
       body: JSON.stringify(data),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as CampaignPreviewPlan
+    return this.parseCampaignsResponse<CampaignPreviewPlan>(res)
   }
 
   async getById(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -105,10 +116,7 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as Campaign
+    return this.parseCampaignsResponse<Campaign>(res)
   }
 
   async send(
@@ -124,17 +132,14 @@ export class CampanhasService implements ICampanhasService {
         ...(options?.retryFailedOnly ? { retryFailedOnly: true } : {}),
       }),
     })
-    const json = await res.json().catch(() => null)
     // 202 Accepted conta como sucesso (res.ok === true)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json?.isValid) throw new Error(json?.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as {
+    return this.parseCampaignsResponse<{
       campaignId: string
       dispatchId: string
       totalRecipients: number
       retryFailedOnly?: boolean
       status: "sending"
-    }
+    }>(res)
   }
 
   async cancel(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -142,9 +147,7 @@ export class CampanhasService implements ICampanhasService {
       method: 'POST',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    await this.parseCampaignsResponse<void>(res)
   }
 
   async update(supabaseId: string, teamId: string | null | undefined, id: string, data: Partial<CampaignWritePayload> & {
@@ -161,10 +164,7 @@ export class CampanhasService implements ICampanhasService {
       headers: { 'Content-Type': 'application/json', ...this.buildHeaders(supabaseId, teamId) },
       body: JSON.stringify(data),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as Campaign
+    return this.parseCampaignsResponse<Campaign>(res)
   }
 
   async deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -172,8 +172,10 @@ export class CampanhasService implements ICampanhasService {
       method: 'DELETE',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      throw new ApiRequestError(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`, res.status)
+    }
   }
 
   async archive(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -181,9 +183,7 @@ export class CampanhasService implements ICampanhasService {
       method: 'POST',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    await this.parseCampaignsResponse<void>(res)
   }
 
   async getCreditStatus(supabaseId: string, teamId: string | null | undefined) {
@@ -191,10 +191,7 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as CreditStatus
+    return this.parseCampaignsResponse<CreditStatus>(res)
   }
 
   async getTemplates(supabaseId: string, teamId: string | null | undefined) {
@@ -202,10 +199,8 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return ((json.result ?? []) as Template[]).filter((t) => t.status === 'published' && t.isCurrentPublished)
+    const templates = await this.parseCampaignsResponse<Template[] | undefined>(res)
+    return (templates ?? []).filter((t) => t.status === 'published' && t.isCurrentPublished)
   }
 
   async getTemplateById(supabaseId: string, teamId: string | null | undefined, id: string) {
@@ -213,10 +208,7 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as Template
+    return this.parseCampaignsResponse<Template>(res)
   }
 
   async getContactLists(supabaseId: string, teamId: string | null | undefined) {
@@ -224,10 +216,8 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return (json.result ?? []) as ContactList[]
+    const lists = await this.parseCampaignsResponse<ContactList[] | undefined>(res)
+    return lists ?? []
   }
 
   async getCampaignLogs(
@@ -247,10 +237,7 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as { logs: CampaignEmailLog[]; total: number; page: number; pageSize: number; totalPages: number }
+    return this.parseCampaignsResponse<{ logs: CampaignEmailLog[]; total: number; page: number; pageSize: number; totalPages: number }>(res)
   }
 
   async getCampaignLogDetail(supabaseId: string, teamId: string | null | undefined, logId: string) {
@@ -258,9 +245,6 @@ export class CampanhasService implements ICampanhasService {
       cache: 'no-store',
       headers: this.buildHeaders(supabaseId, teamId),
     })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
-    return json.result as CampaignLogDetail
+    return this.parseCampaignsResponse<CampaignLogDetail>(res)
   }
 }

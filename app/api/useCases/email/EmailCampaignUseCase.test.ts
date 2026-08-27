@@ -1151,25 +1151,39 @@ describe("EmailCampaignUseCase.send", () => {
   })
 
   // ---------------------------------------------------------------------------
-  // T05/T06/T07 — gate Grupo Beta de Radar (SPEC D12)
+  // T05/T06/T06b/T07 — Radar e disparo de e-mail são features independentes que
+  // se complementam (decisão de produto, 27/08). O disparo NUNCA deve consultar
+  // resolveRadarBetaAccess: incidente Calli — time com Beta de e-mail e SEM
+  // Radar teve o disparo recusado (400) por um gate indevido, enquanto o front
+  // já deixava clicar (checava só resolveEmailBetaAccess) — vermelho + verde
+  // simultâneos na UI para um disparo que nunca começou.
   // ---------------------------------------------------------------------------
-  it("T05 — com créditos mas fora do Beta Radar → bloqueia envio", async () => {
+  it("T05 — sem Beta Radar mas com Beta de e-mail (caso Calli) → dispara com sucesso", async () => {
     resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    resolveEmailBetaAccessMock.mockImplementation(async () => true)
+    const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
-      makeDefaultDispatchInput(makeRecipients(3))
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 3,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
     )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
 
-    expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA)
+    expect(output.isValid).toBe(true)
     expect(reserveCreditsMock).not.toHaveBeenCalled()
-    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
   })
 
-  it("T06 — no Beta Radar com créditos → pode enviar", async () => {
-    resolveRadarBetaAccessMock.mockImplementation(async () => true)
+  it("T06 — sem Beta Radar e sem Beta de e-mail, com créditos → dispara e reserva créditos", async () => {
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
     resolveEmailBetaAccessMock.mockImplementation(async () => false)
     const recipients = makeRecipients(2)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
@@ -1191,7 +1205,7 @@ describe("EmailCampaignUseCase.send", () => {
     expect(reserveCreditsMock).toHaveBeenCalled()
   })
 
-  it("T06b — no Beta Radar com isenção de créditos de e-mail → pode enviar sem debitar", async () => {
+  it("T06b — com Beta Radar e Beta de e-mail (irrelevante para o disparo) → dispara sem debitar", async () => {
     resolveRadarBetaAccessMock.mockImplementation(async () => true)
     resolveEmailBetaAccessMock.mockImplementation(async () => true)
     const recipients = makeRecipients(2)
@@ -1214,20 +1228,41 @@ describe("EmailCampaignUseCase.send", () => {
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 
-  it("T07 — Beta Radar de outro time (activeTeamId fora do escopo) → bloqueia", async () => {
-    // resolveRadarBetaAccess já encapsula ALL_TEAMS vs SPECIFIC_TEAMS pelo teamId ativo.
+  it("T07 — resolveRadarBetaAccess nunca é chamado pelo disparo manual, mesmo em time fora do escopo do Radar", async () => {
     resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 3,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
+    )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", { ...teamCtx, teamId: "team-outro" })
 
+    expect(output.isValid).toBe(true)
+    expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
+  })
+
+  it("T08 — campanha com radarSegmentSlug e zero perfis elegíveis → NO_RECIPIENTS_RADAR (não é o gate de Beta removido)", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ radarSegmentSlug: "sem-radar-team" })
+    )
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    listRadarSegmentEmailRecipientsMock.mockImplementation(async () => [])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA)
-    expect(resolveRadarBetaAccessMock).toHaveBeenCalled()
-    const call = resolveRadarBetaAccessMock.mock.calls[0] as unknown as [
-      { teamId: string }
-    ]
-    expect(call[0].teamId).toBe("team-outro")
+    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
   })
 
   // ---------------------------------------------------------------------------
@@ -4146,6 +4181,91 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     expect(publishEmailCampaignDispatchWakeMock).toHaveBeenCalledWith(
       expect.objectContaining({ dispatchId: "dispatch-sched-big", reason: "cron-start" })
     )
+  })
+
+  it("dispatchScheduledCampaigns dispara campanha agendada mesmo sem Beta Radar — nunca marca failed por isso (incidente Calli)", async () => {
+    const scheduledCampaign = {
+      id: "camp-scheduled-no-radar",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      templateId: "tpl-1",
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+      audienceContactIds: [],
+      createdBy: "profile-1",
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: { id: "list-1", name: "Lista" },
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [scheduledCampaign]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return { count: 0 }
+      if (
+        whereArgs?.where?.status === "scheduled" ||
+        whereArgs?.where?.id === "camp-scheduled-no-radar"
+      ) {
+        return { count: 1 }
+      }
+      return { count: 0 }
+    })
+    emailCampaignDispatchUpdateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({
+      id: "dispatch-sched-no-radar",
+    }))
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(1))
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 1,
+      failed: 0,
+      dispatched: [{ email: "r0@test.com", resendId: "re_1" }],
+      providerErrors: [],
+    }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-sched-no-radar",
+    }))
+    emailCampaignFindUniqueMock.mockImplementation(async () => ({
+      name: "Sched sem Radar",
+      parentCampaignId: null,
+    }))
+    emailCampaignDispatchFindUniqueMock.mockImplementation(async () => ({
+      triggeredBy: "profile-1",
+      status: "sending",
+    }))
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 1 })
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+    expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
+    // markScheduledCampaignFailed grava status "failed" via emailCampaign.update — nunca
+    // deve acontecer por falta de Radar (Radar e e-mail são features independentes).
+    const failedUpdateCalls = emailCampaignUpdateMock.mock.calls.filter((call) => {
+      const data = (call as unknown as [{ data?: { status?: string } }])[0]?.data
+      return data?.status === "failed"
+    })
+    expect(failedUpdateCalls).toHaveLength(0)
   })
 
   it("query de logs de progresso sempre filtra por teamId", async () => {
