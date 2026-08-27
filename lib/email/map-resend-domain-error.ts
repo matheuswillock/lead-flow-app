@@ -37,6 +37,52 @@ export function isTrackingSubdomainAlreadyExists(message: string | undefined): b
   )
 }
 
+/**
+ * Formato mínimo do erro do SDK do Resend. `statusCode` chega como `number |
+ * null` no `ErrorResponse` deles; aceitar os dois evita cast no call site.
+ */
+export type ResendDomainErrorLike = {
+  statusCode?: number | null
+  message?: string
+} | null
+
+/**
+ * Conflito plausível no endpoint de tracking: ou o provedor respondeu 409, ou a
+ * mensagem é a de subdomínio já existente. É só a suspeita — quem chama ainda
+ * precisa confirmar se o subdomínio em conflito é o nosso.
+ */
+export function isTrackingSubdomainConflict(error: ResendDomainErrorLike): boolean {
+  if (!error) return false
+  return error.statusCode === 409 || isTrackingSubdomainAlreadyExists(error.message)
+}
+
+const TRACKING_SUBDOMAIN_IN_MESSAGE_RE = /subdomain\s+"([^"]+)"/i
+
+/** O subdomínio citado entre aspas na mensagem de conflito, quando informado. */
+export function extractConflictingTrackingSubdomain(message: string | undefined): string | null {
+  const captured = message?.match(TRACKING_SUBDOMAIN_IN_MESSAGE_RE)?.[1]?.trim().toLowerCase()
+  return captured || null
+}
+
+/**
+ * O conflito foi causado pela própria chamada anterior deste fluxo.
+ *
+ * Vale quando o subdomínio citado é exatamente o que acabamos de configurar.
+ * Sem subdomínio citado também vale: o domínio nasceu segundos antes, nesta
+ * mesma execução, e ninguém mais teve janela para configurar tracking nele.
+ * Subdomínio divergente NÃO é nosso — isso sobe como erro.
+ */
+export function isSelfInflictedTrackingConflict(
+  error: ResendDomainErrorLike,
+  expectedTrackingSubdomain: string
+): boolean {
+  if (!isTrackingSubdomainConflict(error)) return false
+  if (!isTrackingSubdomainAlreadyExists(error?.message)) return false
+
+  const conflicting = extractConflictingTrackingSubdomain(error?.message)
+  return conflicting === null || conflicting === expectedTrackingSubdomain.trim().toLowerCase()
+}
+
 function isInvalidDomain(message: string): boolean {
   const lower = message.toLowerCase()
   return lower.includes("invalid domain") || lower.includes("not a valid")
@@ -62,8 +108,12 @@ export function mapResendDomainError(
     return `O domínio ${domainLabel} já está vinculado a outra conta. Entre em contato com o suporte do Corretor Studio informando o domínio para solicitar a transferência.`
   }
 
+  // Só chega aqui o conflito que NÃO é nosso — o do próprio fluxo é tratado
+  // como sucesso idempotente antes de virar mensagem. Não adianta pedir "escolha
+  // outro subdomínio": o operador não tem esse controle na tela, o subdomínio é
+  // fixo do produto. O caminho de saída é o suporte.
   if (context === "tracking" && isTrackingSubdomainAlreadyExists(message)) {
-    return "Este subdomínio de tracking já está em uso no Resend. Escolha outro subdomínio ou use o que já está vinculado a este domínio."
+    return `O subdomínio de tracking do domínio ${domainLabel} já está vinculado a outra configuração. Entre em contato com o suporte do Corretor Studio informando o domínio.`
   }
 
   if (isAlreadyRegistered(message) && context !== "tracking") {
