@@ -14,7 +14,10 @@ import type {
  */
 
 const findProfileAccessRecordMock = mock(
-  async (_profileId: string): Promise<BackofficeMemberAccessProfileRecord | null> => ({
+  async (_input: {
+    profileId: string
+    accountMasterId: string
+  }): Promise<BackofficeMemberAccessProfileRecord | null> => ({
     profileId: "profile-1",
     supabaseId: "supa-1",
     email: "ana@example.com",
@@ -55,6 +58,10 @@ const runWithInviteLockMock = mock(
 )
 
 const { BackofficeMemberAccessEmailUseCase } = await import("./BackofficeMemberAccessEmailUseCase")
+
+function createMemberAccessInput(mode: "invite" | "reset_password") {
+  return { profileId: "profile-1", accountMasterId: "master-1", mode }
+}
 
 describe("BackofficeMemberAccessEmailUseCase", () => {
   beforeEach(() => {
@@ -105,7 +112,11 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       findProfileAccessRecordMock.mockImplementation(async () => null)
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.sendAccessEmail("profile-x", "invite")
+      const output = await useCase.sendAccessEmail({
+        profileId: "profile-x",
+        accountMasterId: "master-1",
+        mode: "invite",
+      })
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe("Membro não encontrado")
@@ -118,7 +129,7 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       })
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.sendAccessEmail("profile-1", "invite")
+      const output = await useCase.sendAccessEmail(createMemberAccessInput("invite"))
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe(
@@ -129,7 +140,7 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
     it("sucesso → Output válido com email", async () => {
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.sendAccessEmail("profile-1", "invite")
+      const output = await useCase.sendAccessEmail(createMemberAccessInput("invite"))
 
       expect(output.isValid).toBe(true)
       expect((output.result as { email: string }).email).toBe("ana@example.com")
@@ -139,7 +150,7 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       runWithInviteLockMock.mockImplementation(async () => ({ acquired: false as const }))
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.sendAccessEmail("profile-1", "invite")
+      const output = await useCase.sendAccessEmail(createMemberAccessInput("invite"))
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe(
@@ -158,7 +169,10 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       findProfileAccessRecordMock.mockImplementation(async () => null)
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.generateInviteLink("profile-x")
+      const output = await useCase.generateInviteLink({
+        profileId: "profile-x",
+        accountMasterId: "master-1",
+      })
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe("Membro não encontrado")
@@ -167,7 +181,10 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
     it("sucesso → Output válido com actionLink no result", async () => {
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.generateInviteLink("profile-1")
+      const output = await useCase.generateInviteLink({
+        profileId: "profile-1",
+        accountMasterId: "master-1",
+      })
 
       expect(output.isValid).toBe(true)
       expect((output.result as { actionLink: string }).actionLink).toBe(
@@ -181,7 +198,10 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       })
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.generateInviteLink("profile-1")
+      const output = await useCase.generateInviteLink({
+        profileId: "profile-1",
+        accountMasterId: "master-1",
+      })
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe("Erro ao gerar link de convite")
@@ -191,7 +211,10 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       runWithInviteLockMock.mockImplementation(async () => ({ acquired: false as const }))
       const useCase = new BackofficeMemberAccessEmailUseCase(repository)
 
-      const output = await useCase.generateInviteLink("profile-1")
+      const output = await useCase.generateInviteLink({
+        profileId: "profile-1",
+        accountMasterId: "master-1",
+      })
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe(

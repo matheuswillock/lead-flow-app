@@ -39,14 +39,15 @@ function mapMutationResult(result: unknown): BackofficeMutationResult {
 }
 
 export class BackofficeClientDetailsService implements IBackofficeClientDetailsService {
-  async sendAccessEmail(
-    memberId: string,
+  async sendAccessEmail(input: {
+    memberId: string
+    accountMasterId: string
     mode: "invite" | "reset_password"
-  ): Promise<{ email: string }> {
-    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
+  }): Promise<{ email: string }> {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${input.memberId}/access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode: input.mode, accountMasterId: input.accountMasterId }),
     })
     const json = await res.json()
     if (!json.isValid || !json.result) {
@@ -56,11 +57,18 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
   }
 
   /** Entregável 3: gera link de convite novo sem disparar e-mail, para copiar no clipboard. */
-  async generateInviteLink(memberId: string): Promise<{ actionLink: string; email: string }> {
-    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
+  async generateInviteLink(input: {
+    memberId: string
+    accountMasterId: string
+  }): Promise<{ actionLink: string; email: string }> {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${input.memberId}/access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "invite", deliver: "link" }),
+      body: JSON.stringify({
+        mode: "invite",
+        deliver: "link",
+        accountMasterId: input.accountMasterId,
+      }),
     })
     const json = await res.json()
     if (!json.isValid || !json.result) {

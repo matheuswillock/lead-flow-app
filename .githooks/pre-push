@@ -10,4 +10,15 @@ if [ "${CI:-}" = "true" ]; then
 fi
 
 echo "[pre-push] Executando validação de implementação..."
+if ! command -v bun >/dev/null 2>&1; then
+  bun_directory="$HOME/.bun/bin"
+  if [ -x "$bun_directory/bun" ]; then
+    PATH="$bun_directory:$PATH"
+    export PATH
+  else
+    echo "[pre-push] Bun não encontrado no PATH nem em $bun_directory/bun."
+    exit 127
+  fi
+fi
+
 exec bun run validate:implementation

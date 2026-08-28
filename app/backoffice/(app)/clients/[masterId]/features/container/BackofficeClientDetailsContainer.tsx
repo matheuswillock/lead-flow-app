@@ -498,7 +498,7 @@ export function BackofficeClientDetailsContainer() {
     member: BackofficeClientTeamMember,
     mode: "invite" | "reset_password"
   ) {
-    if (memberAccessActionId) return
+    if (!details || memberAccessActionId) return
 
     setMemberAccessActionId(`${member.id}:${mode}`)
     const toastId = toast.loading(
@@ -506,7 +506,11 @@ export function BackofficeClientDetailsContainer() {
     )
 
     try {
-      const result = await service.sendAccessEmail(member.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: member.id,
+        accountMasterId: details.id,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite reenviado para ${result.email}.`
@@ -530,7 +534,11 @@ export function BackofficeClientDetailsContainer() {
     )
 
     try {
-      const result = await service.sendAccessEmail(details.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: details.id,
+        accountMasterId: details.id,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite enviado para ${result.email}.`
@@ -1599,12 +1607,15 @@ export function BackofficeClientDetailsContainer() {
         </>
       )}
 
-      <BackofficeMemberProfileSheet
-        open={memberSheetOpen}
-        onOpenChange={setMemberSheetOpen}
-        member={selectedMember}
-        service={service}
-      />
+      {details ? (
+        <BackofficeMemberProfileSheet
+          open={memberSheetOpen}
+          onOpenChange={setMemberSheetOpen}
+          member={selectedMember}
+          accountMasterId={details.id}
+          service={service}
+        />
+      ) : null}
 
       <BackofficeMemberEditDialog
         open={memberEditOpen}
