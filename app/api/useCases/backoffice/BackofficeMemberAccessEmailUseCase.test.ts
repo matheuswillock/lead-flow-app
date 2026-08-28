@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
-import type { BackofficeMemberAccessProfileRecord } from "@/app/api/infra/data/repositories/backoffice/MemberAccessRepository/IBackofficeMemberAccessRepository"
+import type {
+  BackofficeInviteLockOutcome,
+  BackofficeMemberAccessProfileRecord,
+  IBackofficeMemberAccessRepository,
+} from "@/app/api/infra/data/repositories/backoffice/MemberAccessRepository/IBackofficeMemberAccessRepository"
 
 /**
  * Entregável 3 (botão "Copiar link do convite") + Entregável 4 (falha nunca silenciosa):
@@ -38,6 +42,18 @@ mock.module("@/lib/backoffice-member-access", () => ({
   generateBackofficeInviteAccessLink: generateBackofficeInviteAccessLinkMock,
 }))
 
+// Default: lock sempre disponível (roda `work()` normalmente) — os testes de
+// "lock ocupado" abaixo sobrescrevem isso pontualmente.
+const runWithInviteLockMock = mock(
+  async (
+    _profileId: string,
+    work: () => Promise<unknown>
+  ): Promise<BackofficeInviteLockOutcome<unknown>> => ({
+    acquired: true,
+    result: await work(),
+  })
+)
+
 const { BackofficeMemberAccessEmailUseCase } = await import("./BackofficeMemberAccessEmailUseCase")
 
 describe("BackofficeMemberAccessEmailUseCase", () => {
@@ -45,6 +61,16 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
     findProfileAccessRecordMock.mockClear()
     generateBackofficeInviteAccessLinkMock.mockClear()
     sendBackofficeMemberAccessEmailMock.mockClear()
+    runWithInviteLockMock.mockClear()
+    runWithInviteLockMock.mockImplementation(
+      async (
+        _profileId: string,
+        work: () => Promise<unknown>
+      ): Promise<BackofficeInviteLockOutcome<unknown>> => ({
+        acquired: true,
+        result: await work(),
+      })
+    )
     findProfileAccessRecordMock.mockImplementation(async () => ({
       profileId: "profile-1",
       supabaseId: "supa-1",
@@ -68,7 +94,11 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
     }))
   })
 
-  const repository = { findProfileAccessRecord: findProfileAccessRecordMock }
+  const repository: IBackofficeMemberAccessRepository = {
+    findProfileAccessRecord: findProfileAccessRecordMock,
+    runWithInviteLock: <T>(profileId: string, work: () => Promise<T>) =>
+      runWithInviteLockMock(profileId, work) as Promise<BackofficeInviteLockOutcome<T>>,
+  }
 
   describe("sendAccessEmail", () => {
     it("membro não encontrado → Output inválido, nunca chama o envio", async () => {
@@ -104,6 +134,23 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
       expect(output.isValid).toBe(true)
       expect((output.result as { email: string }).email).toBe("ana@example.com")
     })
+
+    it("lock ocupado (requisição concorrente pro mesmo perfil) → Output de erro específico de concorrência, não a mensagem genérica de falha", async () => {
+      runWithInviteLockMock.mockImplementation(async () => ({ acquired: false as const }))
+      const useCase = new BackofficeMemberAccessEmailUseCase(repository)
+
+      const output = await useCase.sendAccessEmail("profile-1", "invite")
+
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toBe(
+        "Já existe um envio em andamento para este membro. Aguarde alguns segundos e tente novamente."
+      )
+      // A chamada real a sendBackofficeMemberAccessEmail só acontece DENTRO do
+      // callback `work` passado a runWithInviteLock — neste teste o mock do
+      // lock nunca invoca `work`, então isto valida que o UseCase não chama
+      // sendBackofficeMemberAccessEmail nenhuma outra vez fora desse caminho.
+      expect(sendBackofficeMemberAccessEmailMock).not.toHaveBeenCalled()
+    })
   })
 
   describe("generateInviteLink (Entregável 3)", () => {
@@ -138,6 +185,19 @@ describe("BackofficeMemberAccessEmailUseCase", () => {
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toBe("Erro ao gerar link de convite")
+    })
+
+    it("lock ocupado (requisição concorrente pro mesmo perfil) → Output de erro específico de concorrência, não a mensagem genérica de falha", async () => {
+      runWithInviteLockMock.mockImplementation(async () => ({ acquired: false as const }))
+      const useCase = new BackofficeMemberAccessEmailUseCase(repository)
+
+      const output = await useCase.generateInviteLink("profile-1")
+
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toBe(
+        "Já existe uma geração de link em andamento para este membro. Aguarde alguns segundos e tente novamente."
+      )
+      expect(generateBackofficeInviteAccessLinkMock).not.toHaveBeenCalled()
     })
   })
 })

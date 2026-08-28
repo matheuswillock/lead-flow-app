@@ -18,7 +18,23 @@ export class BackofficeMemberAccessEmailUseCase implements IBackofficeMemberAcce
         return new Output(false, [], ["Membro não encontrado"], null)
       }
 
-      const result = await sendBackofficeMemberAccessEmail({ profile, mode })
+      // Achado de review (PR #1090): duas requisições concorrentes pro mesmo
+      // profileId geram tokens Supabase distintos que se invalidam entre si —
+      // o lock serializa, nunca gera um segundo token enquanto o primeiro
+      // segue em voo (ver BackofficeMemberAccessRepository.runWithInviteLock).
+      const lockOutcome = await this.repository.runWithInviteLock(profileId, () =>
+        sendBackofficeMemberAccessEmail({ profile, mode })
+      )
+      if (!lockOutcome.acquired) {
+        return new Output(
+          false,
+          [],
+          ["Já existe um envio em andamento para este membro. Aguarde alguns segundos e tente novamente."],
+          null
+        )
+      }
+
+      const result = lockOutcome.result
       return new Output(
         true,
         [
@@ -51,7 +67,19 @@ export class BackofficeMemberAccessEmailUseCase implements IBackofficeMemberAcce
         return new Output(false, [], ["Membro não encontrado"], null)
       }
 
-      const result = await generateBackofficeInviteAccessLink(profile)
+      const lockOutcome = await this.repository.runWithInviteLock(profileId, () =>
+        generateBackofficeInviteAccessLink(profile)
+      )
+      if (!lockOutcome.acquired) {
+        return new Output(
+          false,
+          [],
+          ["Já existe uma geração de link em andamento para este membro. Aguarde alguns segundos e tente novamente."],
+          null
+        )
+      }
+
+      const result = lockOutcome.result
       return new Output(true, ["Link de convite gerado."], [], {
         actionLink: result.actionLink,
         email: result.email,
