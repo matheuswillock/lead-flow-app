@@ -79,9 +79,21 @@ export function BackofficeAllUsersDetailSheet() {
   async function handleSendAccessEmail(mode: "invite" | "reset_password") {
     if (!selectedDetail || accessAction) return
 
+    const accountMasterId = selectedDetail.isMaster
+      ? selectedDetail.id
+      : selectedDetail.master?.id
+    if (!accountMasterId) {
+      toast.error("Usuário sem cliente vinculado para enviar o acesso.")
+      return
+    }
+
     setAccessAction(mode)
     try {
-      const result = await service.sendAccessEmail(selectedDetail.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: selectedDetail.id,
+        accountMasterId,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite reenviado para ${result.email}.`

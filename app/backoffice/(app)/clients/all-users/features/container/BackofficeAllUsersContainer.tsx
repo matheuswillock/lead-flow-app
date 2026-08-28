@@ -361,6 +361,12 @@ export function BackofficeAllUsersContainer() {
   ) {
     if (accessActionKey) return
 
+    const accountMasterId = getMasterId(item)
+    if (!accountMasterId) {
+      toast.error("Usuário sem cliente vinculado para enviar o acesso.")
+      return
+    }
+
     const key = `${item.id}:${mode}`
     setAccessActionKey(key)
     const toastId = toast.loading(
@@ -368,7 +374,11 @@ export function BackofficeAllUsersContainer() {
     )
 
     try {
-      const result = await service.sendAccessEmail(item.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: item.id,
+        accountMasterId,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite reenviado para ${result.email}.`
