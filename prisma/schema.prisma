@@ -3961,7 +3961,7 @@ model EmailTeamSettings {
   id        String  @id @default(uuid()) @db.Uuid
   teamId    String  @unique @db.Uuid
   fromName  String  @default("Corretor Studio") @db.Text
-  fromEmail String  @default("deliveryby@corretorstudio.com") @db.Text
+  fromEmail String  @default("contato@mail.corretorstudio.com") @db.Text
   replyTo   String? @db.Text
 
   dispatchBlockedDates     Json?

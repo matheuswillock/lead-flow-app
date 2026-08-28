@@ -15,12 +15,12 @@ import {
 } from "./resolve-campaign-from"
 
 describe("resolveCampaignFrom", () => {
-  it("sem domínio e sem remetente → contato@corretorstudio.com", () => {
+  it("sem domínio e sem remetente → contato@mail.corretorstudio.com", () => {
     expect(resolveCampaignFrom({})).toEqual({
       fromName: PLATFORM_FROM_NAME,
-      fromEmail: "contato@corretorstudio.com",
+      fromEmail: "contato@mail.corretorstudio.com",
     })
-    expect(PLATFORM_FROM_EMAIL).toBe("contato@corretorstudio.com")
+    expect(PLATFORM_FROM_EMAIL).toBe("contato@mail.corretorstudio.com")
   })
 
   it("com domínio e sem remetente → contato@[domínio]", () => {
@@ -78,7 +78,7 @@ describe("resolveCampaignFrom", () => {
       })
     ).toEqual({
       fromName: "Corretor Studio",
-      fromEmail: "contato@corretorstudio.com",
+      fromEmail: "contato@mail.corretorstudio.com",
     })
   })
 })
@@ -93,6 +93,7 @@ describe("buildDeliveryFromEmail / isPlatformDefaultFromEmail", () => {
     expect(isPlatformDefaultFromEmail(null)).toBe(true)
     expect(isPlatformDefaultFromEmail("no-reply@corretorstudio.com")).toBe(true)
     expect(isPlatformDefaultFromEmail("deliveryby@corretorstudio.com")).toBe(true)
+    expect(isPlatformDefaultFromEmail("contato@corretorstudio.com")).toBe(true)
     expect(isPlatformDefaultFromEmail(PLATFORM_FROM_EMAIL)).toBe(true)
     expect(isPlatformDefaultFromEmail("contato@empresa.com")).toBe(false)
   })
@@ -101,6 +102,7 @@ describe("buildDeliveryFromEmail / isPlatformDefaultFromEmail", () => {
     expect(isEmailOnPlatformDomain(null)).toBe(false)
     expect(isEmailOnPlatformDomain("contato@corretorstudio.com")).toBe(true)
     expect(isEmailOnPlatformDomain("a@mail.corretorstudio.com")).toBe(true)
+    expect(isEmailOnPlatformDomain("contato@mail.corretorstudio.com")).toBe(true)
     expect(isEmailOnPlatformDomain("bruno@backstageclub.com.br")).toBe(false)
   })
 })
@@ -146,6 +148,13 @@ describe("assertCampaignFromIsSendable", () => {
     expect(
       assertCampaignFromIsSendable({
         resolved: { fromName: "Contato", fromEmail: "contato@corretorstudio.com" },
+        domainName: null,
+        domainStatus: null,
+      })
+    ).toEqual({ ok: true })
+    expect(
+      assertCampaignFromIsSendable({
+        resolved: { fromName: "Contato", fromEmail: "contato@mail.corretorstudio.com" },
         domainName: null,
         domainStatus: null,
       })
@@ -262,7 +271,7 @@ describe("assertSenderEmailIsAllowed", () => {
   it("plataforma → ok sem domínio", () => {
     expect(
       assertSenderEmailIsAllowed({
-        email: "contato@corretorstudio.com",
+        email: "contato@mail.corretorstudio.com",
         domainName: null,
         domainStatus: null,
       })

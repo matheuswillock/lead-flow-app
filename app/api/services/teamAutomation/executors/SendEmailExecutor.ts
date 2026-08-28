@@ -1,5 +1,6 @@
 import { emailService } from "@/lib/services/EmailService";
 import { interpolateAutomationTemplate } from "@/lib/team-automation/template";
+import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from";
 import type {
   AutomationExecutionContext,
   AutomationExecutionResult,
@@ -29,7 +30,7 @@ export class SendEmailExecutor implements IAutomationActionExecutor {
         to: [ctx.lead.email],
         subject,
         html,
-        from: "Corretor Studio <no-reply@corretorstudio.com>",
+        from: PLATFORM_FROM_HEADER,
       });
 
       if (!result.success) {

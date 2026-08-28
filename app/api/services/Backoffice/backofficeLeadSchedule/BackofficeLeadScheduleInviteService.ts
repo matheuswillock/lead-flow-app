@@ -3,6 +3,7 @@ import type { Attachment, CreateEmailOptions } from "resend"
 import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { buildBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import { getResendOwnerEmail } from "@/lib/email/resend-owner-email"
+import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
@@ -236,7 +237,7 @@ async function sendBackofficeScheduleEmail(options: BackofficeScheduleEmailOptio
         : options.html
 
       const payload: CreateEmailOptions = {
-        from: "Corretor Studio <no-reply@corretorstudio.com>",
+        from: PLATFORM_FROM_HEADER,
         to: deliveryRecipients,
         subject: effectiveTestMode
           ? `[TESTE - Para: ${recipient}] ${options.subject}`
