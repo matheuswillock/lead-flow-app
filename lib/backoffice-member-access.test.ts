@@ -20,6 +20,12 @@ const generateLinkMock = mock(
     }) as unknown
 )
 
+let e2eTestModeEnabled = false
+
+mock.module("@/lib/e2e/is-e2e-test-mode", () => ({
+  isE2eTestMode: () => e2eTestModeEnabled,
+}))
+
 mock.module("@/lib/supabase/server", () => ({
   createSupabaseAdmin: () => ({
     auth: {
@@ -143,6 +149,7 @@ describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa
 
 describe("generateBackofficeInviteAccessLink — Entregável 3 (copiar link, sem enviar e-mail)", () => {
   afterEach(() => {
+    e2eTestModeEnabled = false
     generateLinkMock.mockClear()
     sendOperatorInviteEmailMock.mockClear()
   })
@@ -169,5 +176,17 @@ describe("generateBackofficeInviteAccessLink — Entregável 3 (copiar link, sem
     }
 
     expect(caught).not.toBeNull()
+  })
+
+  it("em modo E2E retorna link local sem acessar o Supabase Admin", async () => {
+    e2eTestModeEnabled = true
+
+    const result = await generateBackofficeInviteAccessLink(pendingProfile)
+
+    expect(result.actionLink).toBe(
+      "https://app.local/set-password?token_hash=e2e-invite-profile-1&type=invite"
+    )
+    expect(result.email).toBe("ana@example.com")
+    expect(generateLinkMock).not.toHaveBeenCalled()
   })
 })

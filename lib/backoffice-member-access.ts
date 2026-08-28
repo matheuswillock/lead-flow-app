@@ -1,3 +1,4 @@
+import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import { createEmailService } from "@/lib/services/EmailService"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
@@ -199,6 +200,13 @@ async function generateInviteActionLink(
   return { actionLink: buildSetPasswordEmailAuthLink(data, "invite"), displayName }
 }
 
+function buildE2eInviteActionLink(profileId: string): string {
+  const inviteUrl = new URL(getFullUrl("/set-password"))
+  inviteUrl.searchParams.set("token_hash", `e2e-invite-${profileId}`)
+  inviteUrl.searchParams.set("type", "invite")
+  return inviteUrl.toString()
+}
+
 export async function sendBackofficeMemberAccessEmail(input: {
   profile: BackofficeMemberAccessIdentity
   mode: BackofficeMemberAccessMode
@@ -279,6 +287,13 @@ export async function sendBackofficeMemberAccessEmail(input: {
 export async function generateBackofficeInviteAccessLink(
   profile: BackofficeMemberAccessIdentity
 ): Promise<{ actionLink: string; email: string }> {
+  if (isE2eTestMode()) {
+    return {
+      actionLink: buildE2eInviteActionLink(profile.profileId),
+      email: profile.email,
+    }
+  }
+
   const accessByProfileId = await resolveBackofficeMemberAccess([profile])
   const access = accessByProfileId.get(profile.profileId) ?? buildSnapshot(null)
   if (access.accessStatus === "active") {
