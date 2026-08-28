@@ -6,6 +6,7 @@ import type {
   BackofficeClientPendingActionsResult,
 } from "../context/BackofficeClientDetailsTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 function mapMutationResult(result: unknown): BackofficeMutationResult {
   if (
@@ -49,9 +50,23 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     })
     const json = await res.json()
     if (!json.isValid || !json.result) {
-      throw new Error(json.errorMessages?.[0] ?? "Erro ao enviar e-mail de acesso")
+      throw new ApiRequestError(json.errorMessages?.[0] ?? "Erro ao enviar e-mail de acesso", res.status)
     }
     return json.result as { email: string }
+  }
+
+  /** Entregável 3: gera link de convite novo sem disparar e-mail, para copiar no clipboard. */
+  async generateInviteLink(memberId: string): Promise<{ actionLink: string; email: string }> {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "invite", deliver: "link" }),
+    })
+    const json = await res.json()
+    if (!json.isValid || !json.result) {
+      throw new ApiRequestError(json.errorMessages?.[0] ?? "Erro ao gerar link de convite", res.status)
+    }
+    return json.result as { actionLink: string; email: string }
   }
 
   async getByMasterId(
