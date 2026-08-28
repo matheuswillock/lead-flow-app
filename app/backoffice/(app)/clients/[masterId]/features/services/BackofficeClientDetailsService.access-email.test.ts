@@ -28,7 +28,11 @@ describe("BackofficeClientDetailsService.sendAccessEmail — propagação de err
 
     let caught: unknown = null
     try {
-      await service.sendAccessEmail("member-1", "invite")
+      await service.sendAccessEmail({
+        memberId: "member-1",
+        accountMasterId: "master-1",
+        mode: "invite",
+      })
     } catch (err) {
       caught = err
     }
@@ -49,7 +53,11 @@ describe("BackofficeClientDetailsService.sendAccessEmail — propagação de err
     const { BackofficeClientDetailsService } = await import("./BackofficeClientDetailsService")
     const service = new BackofficeClientDetailsService()
 
-    const result = await service.sendAccessEmail("member-1", "invite")
+    const result = await service.sendAccessEmail({
+      memberId: "member-1",
+      accountMasterId: "master-1",
+      mode: "invite",
+    })
     expect(result.email).toBe("ana@example.com")
   })
 })
@@ -76,7 +84,7 @@ describe("BackofficeClientDetailsService.generateInviteLink (Entregável 3)", ()
     const { BackofficeClientDetailsService } = await import("./BackofficeClientDetailsService")
     const service = new BackofficeClientDetailsService()
 
-    const result = await service.generateInviteLink("member-1")
+    const result = await service.generateInviteLink({ memberId: "member-1", accountMasterId: "master-1" })
     expect(result.actionLink).toBe("https://app.local/set-password?token=NEW")
   })
 
@@ -95,7 +103,7 @@ describe("BackofficeClientDetailsService.generateInviteLink (Entregável 3)", ()
 
     let caught: unknown = null
     try {
-      await service.generateInviteLink("member-1")
+      await service.generateInviteLink({ memberId: "member-1", accountMasterId: "master-1" })
     } catch (err) {
       caught = err
     }
@@ -120,10 +128,14 @@ describe("BackofficeClientDetailsService.generateInviteLink (Entregável 3)", ()
 
     const { BackofficeClientDetailsService } = await import("./BackofficeClientDetailsService")
     const service = new BackofficeClientDetailsService()
-    await service.generateInviteLink("member-1")
+    await service.generateInviteLink({ memberId: "member-1", accountMasterId: "master-1" })
 
     const call = fetchMock.mock.calls[0] as unknown as [string, { body?: string }]
     expect(call[0]).toContain("/access-email")
-    expect(JSON.parse(call[1].body ?? "{}")).toEqual({ mode: "invite", deliver: "link" })
+    expect(JSON.parse(call[1].body ?? "{}")).toEqual({
+      mode: "invite",
+      deliver: "link",
+      accountMasterId: "master-1",
+    })
   })
 })

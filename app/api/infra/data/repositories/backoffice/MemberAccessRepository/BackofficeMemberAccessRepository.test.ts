@@ -11,23 +11,10 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
  * `team.master`). Sem essa correção, o reenvio caía sempre no fallback genérico.
  */
 
-const findUniqueMock = mock(
-  async () =>
-    ({
-      id: "profile-1",
-      supabaseId: "supa-1",
-      email: "ana@example.com",
-      fullName: "Ana Souza",
-      role: "operator" as const,
-      isMaster: false,
-    }) as unknown
-)
-
 const findFirstTeamMemberMock = mock(async () => null as unknown)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
-    profile: { findUnique: findUniqueMock },
     teamMember: { findFirst: findFirstTeamMemberMock },
   },
 }))
@@ -55,49 +42,68 @@ const { BackofficeMemberAccessRepository } = await import("./BackofficeMemberAcc
 
 describe("BackofficeMemberAccessRepository.findProfileAccessRecord — managerName é o master do time", () => {
   beforeEach(() => {
-    findUniqueMock.mockClear()
     findFirstTeamMemberMock.mockClear()
   })
 
   it("resolve managerName a partir do master do time (team.master), não de profile.managerId", async () => {
     findFirstTeamMemberMock.mockImplementation(async () => ({
+      profile: {
+        id: "profile-1",
+        supabaseId: "supa-1",
+        email: "ana@example.com",
+        fullName: "Ana Souza",
+        role: "operator",
+        isMaster: false,
+      },
       team: { master: { fullName: "Carlos Mestre", email: "carlos@example.com" } },
     }))
 
     const repo = new BackofficeMemberAccessRepository()
-    const record = await repo.findProfileAccessRecord("profile-1")
+    const record = await repo.findProfileAccessRecord({
+      profileId: "profile-1",
+      accountMasterId: "master-1",
+    })
 
     expect(record?.managerName).toBe("Carlos Mestre")
+    expect(findFirstTeamMemberMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { profileId: "profile-1", team: { masterId: "master-1" } },
+      })
+    )
   })
 
   it("cai para o e-mail do master quando ele não tem fullName", async () => {
     findFirstTeamMemberMock.mockImplementation(async () => ({
+      profile: {
+        id: "profile-1",
+        supabaseId: "supa-1",
+        email: "ana@example.com",
+        fullName: "Ana Souza",
+        role: "operator",
+        isMaster: false,
+      },
       team: { master: { fullName: null, email: "carlos@example.com" } },
     }))
 
     const repo = new BackofficeMemberAccessRepository()
-    const record = await repo.findProfileAccessRecord("profile-1")
+    const record = await repo.findProfileAccessRecord({
+      profileId: "profile-1",
+      accountMasterId: "master-1",
+    })
 
     expect(record?.managerName).toBe("carlos@example.com")
   })
 
-  it("sem nenhuma associação de time, managerName é null (fallback genérico do e-mail assume daqui)", async () => {
+  it("sem associação com a conta atual, não devolve o perfil de outra conta", async () => {
     findFirstTeamMemberMock.mockImplementation(async () => null)
 
     const repo = new BackofficeMemberAccessRepository()
-    const record = await repo.findProfileAccessRecord("profile-1")
-
-    expect(record?.managerName).toBeNull()
-  })
-
-  it("perfil inexistente retorna null sem consultar team.master", async () => {
-    findUniqueMock.mockImplementation(async () => null)
-
-    const repo = new BackofficeMemberAccessRepository()
-    const record = await repo.findProfileAccessRecord("profile-inexistente")
+    const record = await repo.findProfileAccessRecord({
+      profileId: "profile-1",
+      accountMasterId: "master-1",
+    })
 
     expect(record).toBeNull()
-    expect(findFirstTeamMemberMock).not.toHaveBeenCalled()
   })
 })
 

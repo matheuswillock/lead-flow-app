@@ -18,12 +18,16 @@ export type BackofficeMutationResult =
   | ({ kind: "pending_payment" } & BackofficeMutationPendingPayment)
 
 export interface IBackofficeClientDetailsService {
-  sendAccessEmail(
-    memberId: string,
+  sendAccessEmail(input: {
+    memberId: string
+    accountMasterId: string
     mode: "invite" | "reset_password"
-  ): Promise<{ email: string }>
+  }): Promise<{ email: string }>
 
-  generateInviteLink(memberId: string): Promise<{ actionLink: string; email: string }>
+  generateInviteLink(input: {
+    memberId: string
+    accountMasterId: string
+  }): Promise<{ actionLink: string; email: string }>
 
   getByMasterId(
     masterId: string,
