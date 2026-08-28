@@ -1501,21 +1501,30 @@ export class EmailService {
       </html>
     `;
 
+    const subject = `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`;
+
     if (data.profileId) {
       return sendTrackedEmailToProfileRecipients({
         profileId: data.profileId,
         category: "operator_invite",
-        subject: `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`,
+        subject,
         html,
         sourceType: data.sourceType ?? "member_access",
         sourceId: data.sourceId,
-        idempotencyKey: data.sourceId ? `operator-invite/${data.sourceId}` : undefined,
+        // Chave por CONTEÚDO, não por pessoa (bug reenvio, 2026-08-27): a cada
+        // clique em "Reenviar convite" o Supabase gera um link novo — corpo
+        // muda, e uma chave estável por sourceId colide com a tentativa
+        // anterior dentro da janela de 24h do Resend (409, e-mail nunca sai).
+        // Mesmo corpo repetido (retry real) ainda dedupica na mesma chave.
+        idempotencyKey: data.sourceId
+          ? buildResendIdempotencyKeyWithVariant("operator-invite", data.sourceId, `${subject}\n${html}`)
+          : undefined,
       });
     }
 
     return this.sendEmailUntracked({
       to: [data.operatorEmail],
-      subject: `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`,
+      subject,
       html,
     });
   }
@@ -1723,7 +1732,11 @@ export class EmailService {
         html,
         sourceType: options.sourceType ?? "member_access",
         sourceId: options.sourceId,
-        idempotencyKey: options.sourceId ? `password-reset/${options.sourceId}` : undefined,
+        // Mesmo raciocínio de sendOperatorInviteEmail: chave por conteúdo do
+        // link de reset, não por pessoa — reenvio legítimo gera resetUrl novo.
+        idempotencyKey: options.sourceId
+          ? buildResendIdempotencyKeyWithVariant("password-reset", options.sourceId, html)
+          : undefined,
       });
     }
 

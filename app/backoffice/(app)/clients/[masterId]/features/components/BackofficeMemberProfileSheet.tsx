@@ -73,7 +73,9 @@ export function BackofficeMemberProfileSheet({
   const [grantedScopes, setGrantedScopes] = useState<string[]>([])
   const [isScopesLoading, setIsScopesLoading] = useState(false)
   const [scopesError, setScopesError] = useState<string | null>(null)
-  const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | null>(null)
+  const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | "copy_link" | null>(
+    null
+  )
   const lastFetchedMemberId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -138,6 +140,27 @@ export function BackofficeMemberProfileSheet({
       })
     } catch (error) {
       console.error("[BackofficeMemberProfileSheet][handleSendAccessEmail]", error)
+      toastUserError(error)
+    } finally {
+      setAccessAction(null)
+    }
+  }
+
+  /**
+   * Entregável 3: link é credencial de acesso de uso único — nunca vai para
+   * console.*, nunca é persistido em estado do componente além do clipboard,
+   * e a UI só confirma "copiado" (nunca renderiza o link em tela permanente).
+   */
+  async function handleCopyInviteLink() {
+    if (!member || accessAction) return
+
+    setAccessAction("copy_link")
+    try {
+      const result = await service.generateInviteLink(member.id)
+      await navigator.clipboard.writeText(result.actionLink)
+      toast.success("Link de convite copiado para a área de transferência.")
+    } catch (error) {
+      console.error("[BackofficeMemberProfileSheet][handleCopyInviteLink]", error)
       toastUserError(error)
     } finally {
       setAccessAction(null)
@@ -225,14 +248,24 @@ export function BackofficeMemberProfileSheet({
 
               <div className="flex flex-wrap gap-2">
                 {member.accessStatus === "pending_first_access" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void handleSendAccessEmail("invite")}
-                    disabled={accessAction !== null}
-                  >
-                    Reenviar convite
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void handleSendAccessEmail("invite")}
+                      disabled={accessAction !== null}
+                    >
+                      Reenviar convite
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void handleCopyInviteLink()}
+                      disabled={accessAction !== null}
+                    >
+                      Copiar link do convite
+                    </Button>
+                  </>
                 ) : null}
                 {member.accessStatus === "active" ? (
                   <Button

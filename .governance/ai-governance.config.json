@@ -363,7 +363,6 @@
       "app/backoffice/(app)/clients/[masterId]/forms/[formId]/page.tsx",
       "app/backoffice/(app)/clients/[masterId]/forms/new/page.tsx",
       "app/backoffice/(app)/clients/[masterId]/invoices/[invoiceId]/page.tsx",
-      "app/backoffice/(app)/clients/[masterId]/page.tsx",
       "app/backoffice/(app)/clients/adhesions/page.tsx",
       "app/backoffice/(app)/clients/all-users/page.tsx",
       "app/backoffice/(app)/clients/authorized-sponsors/page.tsx",
@@ -424,7 +423,8 @@
   },
   "e2ePageCoverage": {
     "coveredBy": {
-      "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts"
+      "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
+      "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts"
     }
   }
 }
