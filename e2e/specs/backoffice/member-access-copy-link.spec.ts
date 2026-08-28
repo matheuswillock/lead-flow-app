@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { disconnectPrisma, getPrisma } from "../../support/db";
 import { signE2eJwt } from "../../../lib/e2e/e2e-jwt";
+import { API_CLIENT_BASE } from "../../../lib/route-map";
 
 type CreatedRecords = {
   backofficeProfileId: string | null;
@@ -168,7 +169,7 @@ test.describe("backoffice clients member access link", () => {
 
     const accessRequest = page.waitForResponse((response) => {
       return (
-        response.url().includes(`/api/v1/backoffice/members/${created.memberProfileId}/access-email`) &&
+        response.url().includes(`${API_CLIENT_BASE}/backoffice/members/${created.memberProfileId}/access-email`) &&
         response.request().method() === "POST"
       );
     });
