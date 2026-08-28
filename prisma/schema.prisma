@@ -585,6 +585,21 @@ enum SubscriptionPlan {
   @@map("subscription_plan")
 }
 
+enum SubscriptionLifecycleEvent {
+  contracted
+  renewed
+  plan_changed
+  addon_purchased
+  overdue
+  reduced
+  cut
+  restored
+  free_access_granted
+  level_transition
+
+  @@map("subscription_lifecycle_event")
+}
+
 enum PendingActionType {
   create_team
   add_member
@@ -1030,8 +1045,9 @@ model Profile {
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
-  subscriptionChangeLogs       SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
-  subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
+  subscriptionChangeLogs        SubscriptionChangeLog[]        @relation("SubscriptionChangeLogProfile")
+  subscriptionChangeLogsAsActor SubscriptionChangeLog[]        @relation("SubscriptionChangeLogActor")
+  subscriptionStateSnapshots    SubscriptionStateSnapshot[]
 
   // User type (Comum / Member PRO)
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
@@ -3924,22 +3940,38 @@ model ProfileSubscription {
 }
 
 model SubscriptionChangeLog {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileId      String   @db.Uuid
-  source         String   @db.Text
-  actorProfileId String?  @db.Uuid
-  changeType     String   @db.Text
+  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId      String                      @db.Uuid
+  source         String                      @db.Text
+  actorProfileId String?                     @db.Uuid
+  changeType     String                      @db.Text
+  eventType      SubscriptionLifecycleEvent?
   before         Json?
   after          Json?
   metadata       Json?
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime                    @default(now()) @db.Timestamptz(6)
 
   profile Profile  @relation("SubscriptionChangeLogProfile", fields: [profileId], references: [id], onDelete: Cascade)
   actor   Profile? @relation("SubscriptionChangeLogActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
 
   @@index([profileId], map: "subscription_change_logs_profile_id_idx")
   @@index([createdAt], map: "subscription_change_logs_created_at_idx")
+  @@index([eventType], map: "subscription_change_logs_event_type_idx")
   @@map("corretor_studio_subscription_change_logs")
+}
+
+model SubscriptionStateSnapshot {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId     String   @db.Uuid
+  capturedAt    DateTime @default(now()) @db.Timestamptz(6)
+  schemaVersion String   @db.Text
+  payload       Json
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@index([profileId], map: "subscription_state_snapshots_profile_id_idx")
+  @@index([capturedAt], map: "subscription_state_snapshots_captured_at_idx")
+  @@map("corretor_studio_subscription_state_snapshots")
 }
 
 model ProfileSubscriptionCapacity {

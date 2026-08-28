@@ -13,6 +13,304 @@ import {
 import { isManagerLikeRole } from "@/lib/roles";
 import { managerAccountUsersUseCase } from "@/app/api/useCases/managerAccountUsers/ManagerAccountUsersUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots";
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+async function getTeamName(teamId: string) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { name: true },
+  });
+  return team?.name || "Time";
+}
+
+async function getProfileLabel(profileId: string) {
+  const profile = await prisma.profile.findUnique({
+    where: { id: profileId },
+    select: { fullName: true, email: true },
+  });
+  return profile?.fullName || profile?.email || "Usuário";
+}
+
+async function getBillingOwnerProfile(profileId: string): Promise<BillingOwnerProfile | null> {
+  return prisma.profile.findUnique({
+    where: { id: profileId },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      cpfCnpj: true,
+      phone: true,
+      postalCode: true,
+      address: true,
+      addressNumber: true,
+      neighborhood: true,
+      complement: true,
+      asaasCustomerId: true,
+      asaasSubscriptionId: true,
+      subscriptionStatus: true,
+      subscriptionNextDueDate: true,
+      subscriptionCycle: true,
+      hasPermanentSubscription: true,
+      hasUnlimitedUsers: true,
+      timezone: true,
+    },
+  });
+}
+
+function resolveDelegatedPermissions(
+  role: CreateUserRequest["role"],
+  requestedPermissions: {
+    canCreateAccountUsers?: boolean;
+    canManageAccountTeams?: boolean;
+    canTransferAccountLeads?: boolean;
+    canViewAllTeams?: boolean;
+  },
+  options: {
+    canManageDelegation: boolean;
+  }
+) {
+  if (!options.canManageDelegation) {
+    return {
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
+      canTransferAccountLeads: false,
+      canViewAllTeams: false,
+    };
+  }
+
+  const isManagerLike = role === "manager" || role === "backoffice";
+
+  return {
+    canCreateAccountUsers: role === "manager" && requestedPermissions.canCreateAccountUsers === true,
+    canManageAccountTeams: role === "manager" && requestedPermissions.canManageAccountTeams === true,
+    canTransferAccountLeads: isManagerLike && requestedPermissions.canTransferAccountLeads === true,
+    canViewAllTeams: isManagerLike && requestedPermissions.canViewAllTeams === true,
+  };
+}
+
+async function createUserRecords(
+  args: {
+    teamId: string;
+    masterId: string;
+    userData: CreateUserRequest;
+    delegatedPermissions: {
+      canCreateAccountUsers: boolean;
+      canManageAccountTeams: boolean;
+      canTransferAccountLeads: boolean;
+      canViewAllTeams: boolean;
+    };
+  },
+  db: Prisma.TransactionClient | typeof prisma
+) {
+  const email = normalizeEmail(args.userData.email);
+
+  const profile = await db.profile.create({
+    data: {
+      fullName: args.userData.name,
+      email,
+      role: args.userData.role as UserRole,
+      functions: args.userData.functions ?? [],
+      managerId: args.masterId,
+      isMaster: false,
+      hasPermanentSubscription: args.userData.hasPermanentSubscription ?? false,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      profileIconId: true,
+      profileIconUrl: true,
+    },
+  });
+
+  const teamMemberRecord = await db.teamMember.create({
+    data: {
+      teamId: args.teamId,
+      profileId: profile.id,
+      role: args.userData.role as UserRole,
+      functions: args.userData.functions ?? [],
+      canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
+      canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+      canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
+      canViewAllTeams: args.delegatedPermissions.canViewAllTeams,
+    },
+    select: {
+      role: true,
+      functions: true,
+      createdAt: true,
+      updatedAt: true,
+      canCreateAccountUsers: true,
+      canManageAccountTeams: true,
+      canTransferAccountLeads: true,
+      canViewAllTeams: true,
+    },
+  });
+
+  return { profile, teamMemberRecord };
+}
+
+async function finalizeUserCreation(args: {
+  teamId: string;
+  masterId: string;
+  requesterProfileId: string;
+  actorName: string;
+  teamName: string;
+  userData: CreateUserRequest;
+  delegatedPermissions: {
+    canCreateAccountUsers: boolean;
+    canManageAccountTeams: boolean;
+    canTransferAccountLeads: boolean;
+    canViewAllTeams: boolean;
+  };
+  profile: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    profileIconId: string | null;
+    profileIconUrl: string | null;
+  };
+  teamMemberRecord: {
+    role: UserRole;
+    functions: string[];
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}) {
+  const { profile, teamMemberRecord } = args;
+  const email = normalizeEmail(args.userData.email);
+
+  // External API calls outside any transaction — no timeout risk
+  try {
+    const supabaseAdmin = createSupabaseAdmin();
+    if (!supabaseAdmin) {
+      throw new Error("Falha ao criar cliente Supabase Admin");
+    }
+
+    const redirectTo = getFullUrl("/set-password");
+
+    const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: {
+        redirectTo,
+        data: {
+          name: args.userData.name,
+          invited: true,
+          first_access: true,
+        },
+      },
+    });
+
+    if (linkError || !data?.properties?.action_link) {
+      throw new Error("Erro ao gerar link de convite");
+    }
+
+    const supabaseUserId = data.user?.id;
+    const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
+
+    if (supabaseUserId) {
+      await prisma.profile.update({
+        where: { id: profile.id },
+        data: { supabaseId: supabaseUserId },
+      });
+    }
+
+    const requesterProfile = await prisma.profile.findUnique({
+      where: { id: args.requesterProfileId },
+      select: { fullName: true, email: true },
+    });
+
+    const emailService = getEmailService();
+    await emailService.sendOperatorInviteEmail({
+      operatorName: args.userData.name,
+      operatorEmail: email,
+      operatorRole: args.userData.role,
+      managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
+      inviteUrl: inviteLink,
+    });
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId: args.teamId,
+        actorProfileId: args.requesterProfileId,
+        actorName: args.actorName,
+        teamName: args.teamName,
+        recipientProfileId: profile.id,
+        type: NotificationType.TEAM_MEMBER_ADDED,
+      });
+    } catch (notificationError) {
+      console.error(
+        "[ManagerUsersRoute][finalizeUserCreation] Erro ao criar notificação de membro adicionado:",
+        notificationError
+      );
+    }
+  } catch (inviteError) {
+    console.error("[ManagerUsersRoute][finalizeUserCreation] Invite falhou:", {
+      email,
+      teamId: args.teamId,
+      error: inviteError instanceof Error
+        ? { message: inviteError.message, stack: inviteError.stack, name: inviteError.name }
+        : inviteError,
+    });
+    await prisma.teamMember.delete({
+      where: {
+        teamId_profileId: {
+          teamId: args.teamId,
+          profileId: profile.id,
+        },
+      },
+    });
+    await deleteSubscriptionStateSnapshotsForProfiles(prisma, [profile.id]);
+    await prisma.profile.delete({ where: { id: profile.id } });
+    throw new Error("Erro ao enviar convite. Tente novamente.");
+  }
+
+  return {
+    id: profile.id,
+    name: profile.fullName || args.userData.name,
+    email: profile.email,
+    role: teamMemberRecord.role.toLowerCase(),
+    functions: teamMemberRecord.functions,
+    profileIconId: profile.profileIconId,
+    profileIconUrl: profile.profileIconUrl,
+    managerId: args.masterId,
+    canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
+    canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+    canTransferAccountLeads: args.delegatedPermissions.canTransferAccountLeads,
+    canViewAllTeams: args.delegatedPermissions.canViewAllTeams,
+    createdAt: teamMemberRecord.createdAt,
+    updatedAt: teamMemberRecord.updatedAt,
+  };
+}
+
+async function getPendingPaymentStatus(paymentId?: string | null) {
+  if (!paymentId) {
+    return null;
+  }
+
+  try {
+    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
+      method: "GET",
+    });
+    return {
+      paymentId,
+      paymentStatus: payment?.status || "PENDING",
+      paymentMethod: payment?.billingType || "UNDEFINED",
+    };
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
+    console.error("[ManagerUsersRoute] Erro ao consultar pagamento pendente:", error);
+    return {
+      paymentId,
+      paymentStatus: "PENDING",
+      paymentMethod: "UNDEFINED",
+    };
+  }
+}
 
 /**
  * POST /api/v1/manager/[supabaseId]/users

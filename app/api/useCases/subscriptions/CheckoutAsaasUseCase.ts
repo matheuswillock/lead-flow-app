@@ -6,6 +6,7 @@ import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase
 import { getFullUrl } from "@/lib/utils/app-url";
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots";
 
 // Helper para detectar ambiente de produção
 function getIsProduction() {
@@ -254,6 +255,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           // 1. Deletar profile do banco de dados
           if (profileId) {
             console.info('🗑️ [createSubscriptionCheckout] Rollback: Deletando profile do banco...');
+            await deleteSubscriptionStateSnapshotsForProfiles(prisma, [profileId]);
             await prisma.profile.delete({
               where: { id: profileId }
             });

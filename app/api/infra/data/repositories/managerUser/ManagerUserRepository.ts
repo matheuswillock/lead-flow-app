@@ -1,6 +1,7 @@
 import { IManagerUserRepository } from "./IManagerUserRepository";
 import { prisma } from "../../prisma";
 import { UserRole } from "@prisma/client";
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots";
 
 export class ManagerUserRepository implements IManagerUserRepository {
     async associateOperatorToManager(managerId: string, operatorId: string): Promise<void> {
@@ -193,6 +194,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             throw new Error("Não é possível excluir um manager que possui leads associados");
         }
 
+        await deleteSubscriptionStateSnapshotsForProfiles(prisma, [managerId]);
         await prisma.profile.delete({
             where: { id: managerId }
         });
@@ -208,6 +210,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             throw new Error("Não é possível excluir um operator que possui leads atribuídos");
         }
 
+        await deleteSubscriptionStateSnapshotsForProfiles(prisma, [operatorId]);
         await prisma.profile.delete({
             where: { id: operatorId }
         });
@@ -216,6 +219,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
     async deleteOperatorHard(operatorId: string): Promise<void> {
         // Hard delete - deleta sem verificações de leads
         // Os leads devem ter sido transferidos antes desta chamada
+        await deleteSubscriptionStateSnapshotsForProfiles(prisma, [operatorId]);
         await prisma.profile.delete({
             where: { id: operatorId }
         });

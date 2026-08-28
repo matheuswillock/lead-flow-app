@@ -80,6 +80,7 @@
     "db:seed:local": "tsx scripts/seed-local.ts",
     "db:seed:leads": "bunx tsx prisma/seed-leads.ts",
     "db:seed:e2e": "tsx scripts/seed-e2e.ts",
+    "db:snapshot:subscription-state": "tsx scripts/snapshot-subscription-state.ts",
     "db:migrate:from-prisma": "bunx tsx scripts/db-migrate-from-prisma.ts",
     "db:migrate:new": "bunx tsx scripts/db-migrate-new.ts",
     "db:migrate:apply:local": "PGSSLMODE=disable supabase migration up --db-url postgresql://postgres:postgres@127.0.0.1:55322/postgres --yes",

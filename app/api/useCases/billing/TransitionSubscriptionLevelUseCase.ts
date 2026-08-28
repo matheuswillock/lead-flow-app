@@ -88,7 +88,7 @@ export class TransitionSubscriptionLevelUseCase {
       profileId,
       source,
       actorProfileId,
-      changeType: "level_transition",
+      eventType: "level_transition",
       before,
       after,
     });

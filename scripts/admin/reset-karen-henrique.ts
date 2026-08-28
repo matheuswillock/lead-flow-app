@@ -2,6 +2,7 @@ import "dotenv/config"
 
 import { createClient } from "@supabase/supabase-js"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { deleteSubscriptionStateSnapshotsForProfiles } from "@/lib/billing/deleteSubscriptionStateSnapshots"
 
 type TargetUser = {
   email: string
@@ -102,6 +103,7 @@ async function deleteUserEverywhere(opts: {
     }
 
     if (!dryRun) {
+      await deleteSubscriptionStateSnapshotsForProfiles(prisma, [profile.id])
       await prisma.profile.delete({ where: { id: profile.id } })
     }
   }
