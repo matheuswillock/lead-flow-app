@@ -2,6 +2,10 @@ import type { Output } from "@/lib/output"
 import type { BackofficeMemberAccessMode } from "@/lib/backoffice-member-access"
 
 export interface IBackofficeMemberAccessEmailUseCase {
-  sendAccessEmail(profileId: string, mode: BackofficeMemberAccessMode): Promise<Output>
-  generateInviteLink(profileId: string): Promise<Output>
+  sendAccessEmail(input: {
+    profileId: string
+    accountMasterId: string
+    mode: BackofficeMemberAccessMode
+  }): Promise<Output>
+  generateInviteLink(input: { profileId: string; accountMasterId: string }): Promise<Output>
 }

@@ -13,7 +13,10 @@ export type BackofficeInviteLockOutcome<T> =
   | { acquired: true; result: T }
 
 export interface IBackofficeMemberAccessRepository {
-  findProfileAccessRecord(profileId: string): Promise<BackofficeMemberAccessProfileRecord | null>
+  findProfileAccessRecord(input: {
+    profileId: string
+    accountMasterId: string
+  }): Promise<BackofficeMemberAccessProfileRecord | null>
   /**
    * Serializa geração de link (convite/reset) por `profileId` — ver
    * `BackofficeMemberAccessRepository.runWithInviteLock` para o motivo

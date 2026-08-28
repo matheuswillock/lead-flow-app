@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CircleCheckBig, CircleX } from "lucide-react"
+import { CircleCheckBig, CircleX, Clipboard, X } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -60,6 +61,7 @@ interface BackofficeMemberProfileSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   member: BackofficeClientTeamMember | null
+  accountMasterId: string
   service: IBackofficeClientDetailsService
 }
 
@@ -67,6 +69,7 @@ export function BackofficeMemberProfileSheet({
   open,
   onOpenChange,
   member,
+  accountMasterId,
   service,
 }: BackofficeMemberProfileSheetProps) {
   const { tz } = useTimezone()
@@ -76,6 +79,7 @@ export function BackofficeMemberProfileSheet({
   const [accessAction, setAccessAction] = useState<"invite" | "reset_password" | "copy_link" | null>(
     null
   )
+  const [inviteLinkForManualCopy, setInviteLinkForManualCopy] = useState<string | null>(null)
   const lastFetchedMemberId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -118,6 +122,7 @@ export function BackofficeMemberProfileSheet({
       setGrantedScopes([])
       setScopesError(null)
       setAccessAction(null)
+      setInviteLinkForManualCopy(null)
     }
     onOpenChange(next)
   }
@@ -127,7 +132,11 @@ export function BackofficeMemberProfileSheet({
 
     setAccessAction(mode)
     try {
-      const result = await service.sendAccessEmail(member.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: member.id,
+        accountMasterId,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite reenviado para ${result.email}.`
@@ -156,14 +165,28 @@ export function BackofficeMemberProfileSheet({
 
     setAccessAction("copy_link")
     try {
-      const result = await service.generateInviteLink(member.id)
-      await navigator.clipboard.writeText(result.actionLink)
-      toast.success("Link de convite copiado para a área de transferência.")
+      const result = await service.generateInviteLink({
+        memberId: member.id,
+        accountMasterId,
+      })
+      await copyInviteLink(result.actionLink)
     } catch (error) {
       console.error("[BackofficeMemberProfileSheet][handleCopyInviteLink]", error)
       toastUserError(error)
     } finally {
       setAccessAction(null)
+    }
+  }
+
+  async function copyInviteLink(actionLink: string) {
+    try {
+      await navigator.clipboard.writeText(actionLink)
+      setInviteLinkForManualCopy(null)
+      toast.success("Link de convite copiado para a área de transferência.")
+    } catch (error) {
+      console.error("[BackofficeMemberProfileSheet][copyInviteLink]", error)
+      setInviteLinkForManualCopy(actionLink)
+      toast.error("A cópia automática falhou. Copie o link exibido.")
     }
   }
 
@@ -278,6 +301,37 @@ export function BackofficeMemberProfileSheet({
                   </Button>
                 ) : null}
               </div>
+
+              {inviteLinkForManualCopy ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label="Link do convite"
+                    readOnly
+                    value={inviteLinkForManualCopy}
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                  <Button
+                    aria-label="Tentar copiar link do convite"
+                    title="Tentar copiar link do convite"
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void copyInviteLink(inviteLinkForManualCopy)}
+                  >
+                    <Clipboard />
+                  </Button>
+                  <Button
+                    aria-label="Ocultar link do convite"
+                    title="Ocultar link do convite"
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setInviteLinkForManualCopy(null)}
+                  >
+                    <X />
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <Separator />

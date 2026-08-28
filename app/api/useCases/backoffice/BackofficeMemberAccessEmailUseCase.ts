@@ -11,9 +11,13 @@ import type { IBackofficeMemberAccessEmailUseCase } from "./IBackofficeMemberAcc
 export class BackofficeMemberAccessEmailUseCase implements IBackofficeMemberAccessEmailUseCase {
   constructor(private readonly repository: IBackofficeMemberAccessRepository) {}
 
-  async sendAccessEmail(profileId: string, mode: BackofficeMemberAccessMode): Promise<Output> {
+  async sendAccessEmail(input: {
+    profileId: string
+    accountMasterId: string
+    mode: BackofficeMemberAccessMode
+  }): Promise<Output> {
     try {
-      const profile = await this.repository.findProfileAccessRecord(profileId)
+      const profile = await this.repository.findProfileAccessRecord(input)
       if (!profile) {
         return new Output(false, [], ["Membro não encontrado"], null)
       }
@@ -22,8 +26,8 @@ export class BackofficeMemberAccessEmailUseCase implements IBackofficeMemberAcce
       // profileId geram tokens Supabase distintos que se invalidam entre si —
       // o lock serializa, nunca gera um segundo token enquanto o primeiro
       // segue em voo (ver BackofficeMemberAccessRepository.runWithInviteLock).
-      const lockOutcome = await this.repository.runWithInviteLock(profileId, () =>
-        sendBackofficeMemberAccessEmail({ profile, mode })
+      const lockOutcome = await this.repository.runWithInviteLock(input.profileId, () =>
+        sendBackofficeMemberAccessEmail({ profile, mode: input.mode })
       )
       if (!lockOutcome.acquired) {
         return new Output(
@@ -38,7 +42,7 @@ export class BackofficeMemberAccessEmailUseCase implements IBackofficeMemberAcce
       return new Output(
         true,
         [
-          mode === "invite"
+          input.mode === "invite"
             ? "Convite reenviado com sucesso."
             : "E-mail de reset de senha enviado com sucesso.",
         ],
@@ -60,14 +64,14 @@ export class BackofficeMemberAccessEmailUseCase implements IBackofficeMemberAcce
   }
 
   /** Entregável 3: gera link de convite novo sem disparar e-mail, para o dono copiar. */
-  async generateInviteLink(profileId: string): Promise<Output> {
+  async generateInviteLink(input: { profileId: string; accountMasterId: string }): Promise<Output> {
     try {
-      const profile = await this.repository.findProfileAccessRecord(profileId)
+      const profile = await this.repository.findProfileAccessRecord(input)
       if (!profile) {
         return new Output(false, [], ["Membro não encontrado"], null)
       }
 
-      const lockOutcome = await this.repository.runWithInviteLock(profileId, () =>
+      const lockOutcome = await this.repository.runWithInviteLock(input.profileId, () =>
         generateBackofficeInviteAccessLink(profile)
       )
       if (!lockOutcome.acquired) {
