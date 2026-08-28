@@ -9,7 +9,7 @@ const POOL_EXHAUSTED_ERRORS = new Set(["P1001", "P1002", "P1008", "P2024"]);
 const SERVER_CLOSED_ERRORS = new Set(["P1017"]);
 
 export type DispatchTerminalSnapshot = {
-  campaignStatus: "sent" | "failed";
+  campaignStatus: "sent" | "failed" | "partially_sent";
   dispatchStatus: "completed" | "failed";
   errorMessage: string | null;
 };
@@ -26,6 +26,23 @@ export async function countSuccessfulDispatchLogs(dispatchId: string): Promise<n
     where: {
       dispatchId,
       sentAt: { not: null },
+    },
+  });
+}
+
+/**
+ * Conta só o que um reenvio poderia resolver: recusas do provedor (`failed`).
+ *
+ * Fora da conta de propósito: `suppressed`, que é recusa da nossa
+ * pré-validação e reprovaria de novo na mesma regra; e bounce, que já entrou
+ * em `countSuccessfulDispatchLogs` por ter `sentAt`. É este valor que decide
+ * entre `sent` e `partially_sent`.
+ */
+export async function countRetriableFailedDispatchLogs(dispatchId: string): Promise<number> {
+  return prisma.emailLog.count({
+    where: {
+      dispatchId,
+      status: "failed",
     },
   });
 }
@@ -59,7 +76,9 @@ export async function persistDispatchTerminalFallback(params: {
     data: {
       status: params.terminal.campaignStatus,
       errorMessage: params.terminal.errorMessage,
-      ...(params.terminal.campaignStatus === "sent" ? { sentAt: new Date() } : {}),
+      ...(params.terminal.campaignStatus === "sent" || params.terminal.campaignStatus === "partially_sent"
+        ? { sentAt: new Date() }
+        : {}),
       ...(params.totalRecipients !== undefined ? { totalRecipients: params.totalRecipients } : {}),
       ...(incrementCampaignSent && params.sentCount > 0
         ? { totalSent: { increment: params.sentCount } }

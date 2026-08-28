@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, Eye, Loader2, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
+import { Archive, CalendarX, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, Eye, MoreHorizontal, Send, Trash2, Pencil, BarChart3, ScrollText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,8 @@ import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
 import {
+  CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
+  CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
   campaignDispatchSendOptions,
   isCampaignFailedRetry,
 } from "@/lib/email/campaign-dispatch-copy"
@@ -312,9 +314,9 @@ function CampaignActionsMenu({
             <AlertDialogDescription>
               {campaign.status === "sending" ? (
                 <>
-                  O envio da campanha <strong>"{campaign.name}"</strong> será interrompido
-                  imediatamente. E-mails que ainda não foram enviados serão cancelados. E-mails já
-                  enviados não serão afetados.
+                  O envio da campanha <strong>&quot;{campaign.name}&quot;</strong> será
+                  interrompido. {CAMPAIGN_CANCEL_SENDING_UNSENT_COPY}{" "}
+                  {CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY}
                 </>
               ) : (
                 <>
@@ -438,7 +440,7 @@ export function CampaignList({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table className="min-w-[1180px]">
           <TableHeader>
             <TableRow>
@@ -534,32 +536,23 @@ export function CampaignList({
                         : "—"}
                     </TableCell>
                     <TableCell className="align-middle text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {isSending ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-semantic-warning">
-                            <Loader2 className="size-3.5 animate-spin" />
-                            Enviando...
-                          </span>
-                        ) : (
-                          <CampaignActionsMenu
-                            campaign={campaign}
-                            canSendCampaign={canSendCampaign}
-                            sendBlockReason={getSendBlockReason(campaign)}
-                            deletingId={deletingId}
-                            cancelingId={cancelingId}
-                            archivingId={archivingId}
-                            readOnly={readOnly}
-                            openView={openView}
-                            openEditWizard={openEditWizard}
-                            openDuplicateWizard={openDuplicateWizard}
-                            handleSend={handleSend}
-                            handleCancel={handleCancel}
-                            handleDeleteDraft={handleDeleteDraft}
-                            handleArchive={handleArchive}
-                            onOpenAnalytics={onOpenAnalytics}
-                          />
-                        )}
-                      </div>
+                      <CampaignActionsMenu
+                        campaign={campaign}
+                        canSendCampaign={canSendCampaign}
+                        sendBlockReason={getSendBlockReason(campaign)}
+                        deletingId={deletingId}
+                        cancelingId={cancelingId}
+                        archivingId={archivingId}
+                        readOnly={readOnly}
+                        openView={openView}
+                        openEditWizard={openEditWizard}
+                        openDuplicateWizard={openDuplicateWizard}
+                        handleSend={handleSend}
+                        handleCancel={handleCancel}
+                        handleDeleteDraft={handleDeleteDraft}
+                        handleArchive={handleArchive}
+                        onOpenAnalytics={onOpenAnalytics}
+                      />
                     </TableCell>
                   </TableRow>
                 )

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, connection } from "next/server";
-import { prisma } from "@/app/api/infra/data/prisma"
 import { Output } from "@/lib/output"
-import { isValidTimezone } from "@/lib/dates"
+import { profileTimezoneUseCase } from "@/app/api/useCases/profileTimezone/ProfileTimezoneUseCase"
+import { assertProfileOwnership } from "@/app/api/v1/profiles/utils/assertProfileOwnership"
+import { invalidatePublicFormBootstrapCache } from "@/lib/cache/invalidation"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 /**
@@ -9,21 +10,22 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
  * Returns the timezone for a profile.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   await connection();
 
   try {
     const { supabaseId } = await params
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { timezone: true },
-    })
-    if (!profile) {
-      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 })
+
+    const access = await assertProfileOwnership(request, supabaseId)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
     }
-    return NextResponse.json(new Output(true, [], [], { timezone: profile.timezone }), { status: 200 })
+
+    const output = await profileTimezoneUseCase.getTimezone(supabaseId)
+    const status = output.isValid ? 200 : output.errorMessages.includes("Perfil não encontrado") ? 404 : 500
+    return NextResponse.json(output, { status })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[ProfileTimezoneRoute][GET]", error)
@@ -41,30 +43,34 @@ export async function PATCH(
 ) {
   try {
     const { supabaseId } = await params
+
+    const access = await assertProfileOwnership(request, supabaseId)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
+    }
+
     const body = await request.json()
-    const timezone: string = body?.timezone
 
-    if (!timezone || !isValidTimezone(timezone)) {
-      return NextResponse.json(
-        new Output(false, [], ["Timezone inválido"], null),
-        { status: 400 }
-      )
+    const output = await profileTimezoneUseCase.updateTimezone(supabaseId, body?.timezone)
+
+    if (output.isValid) {
+      // O bootstrap do formulário público exibe o fuso do master do time.
+      const { affectedTeamIds } = output.result as { affectedTeamIds: string[] }
+      for (const teamId of affectedTeamIds) {
+        invalidatePublicFormBootstrapCache({ teamId })
+      }
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true },
-    })
-    if (!profile) {
-      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 })
-    }
+    const firstError = output.errorMessages[0] ?? ""
+    const status = output.isValid
+      ? 200
+      : firstError === "Perfil não encontrado"
+        ? 404
+        : firstError === "Timezone inválido"
+          ? 400
+          : 500
 
-    await prisma.profile.update({
-      where: { supabaseId },
-      data: { timezone },
-    })
-
-    return NextResponse.json(new Output(true, ["Fuso horário atualizado"], [], { timezone }), { status: 200 })
+    return NextResponse.json(output, { status })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[ProfileTimezoneRoute][PATCH]", error)

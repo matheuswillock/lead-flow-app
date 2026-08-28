@@ -116,6 +116,9 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bun run build
 
+      - name: Validar saida do build
+        uses: ./.github/actions/validate-build-output
+
   e2e:
     name: E2E (Playwright)
     if: ${{ github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
@@ -213,6 +216,13 @@ jobs:
         with:
           version: 2.109.1
 
+      # `install: false` — o parser não tem dependências, então não vale pagar
+      # `bun install` só para rodá-lo.
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun-deps
+        with:
+          install: 'false'
+
       - name: Detect Migration Status
         id: detect
         shell: bash
@@ -222,31 +232,14 @@ jobs:
           MIGRATION_LIST="$(supabase migration list --db-url "$DIRECT_URL" 2>&1)"
           echo "$MIGRATION_LIST"
 
-          RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" node -e '
-            const input = process.env.MIGRATION_LIST ?? "";
-            let hasPending = false;
-
-            const stripCell = (value) => value.trim().replace(/^`|`$/g, "");
-
-            for (const line of input.split(/\r?\n/)) {
-              if (!/\d{14}/.test(line)) continue;
-              const parts = line.split(/[│|]/).map(stripCell);
-              const local = parts[0] ?? "";
-              const remote = parts[1] ?? "";
-
-              if (!local && remote) {
-                process.stderr.write("Remote migration " + remote + " not tracked locally. Repair history before continuing.\n");
-                process.exit(1);
-              }
-              if (local && remote && local !== remote) {
-                process.stderr.write("Migration mismatch: local=" + local + " remote=" + remote + "\n");
-                process.exit(1);
-              }
-              if (local && !remote) hasPending = true;
-            }
-
-            process.stdout.write(hasPending ? "true" : "false");
-          ') || { echo "::error::Migration history is inconsistent. Repair remote history before continuing."; exit 1; }
+          # O parser vive em scripts/parse-supabase-migration-list.ts, com
+          # testes. Ele era JS inline aqui e um bug de uma linha — `.trim()`
+          # antes de remover as crases, deixando `" "` truthy numa célula vazia
+          # — classificava toda migration pendente como histórico corrompido e
+          # travou a esteira de release por 4+ execuções, sem nada para rodar
+          # que pegasse isso.
+          RESULT=$(MIGRATION_LIST="$MIGRATION_LIST" bun scripts/parse-supabase-migration-list.ts) \
+            || { echo "::error::Migration history is inconsistent. Repair remote history before continuing."; exit 1; }
 
           echo "has_pending=$RESULT" >> "$GITHUB_OUTPUT"
 
@@ -494,15 +487,43 @@ jobs:
           git push origin release/develop-to-main --force-with-lease --no-verify
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
+      # Preview de TODA push para `develop` era o maior gerador de Build CPU
+      # Minutes na Vercel. Diferente do `ci-main`, aqui NÃO dá para reaproveitar
+      # o artefato do job `build`: este deploy sai do `release/develop-to-main`
+      # já com o version bump aplicado — outro conteúdo, outra versão no
+      # package.json. Reaproveitar publicaria a versão errada.
+      #
+      # Relocar o build para o runner self-hosted também não serve: `next build`
+      # pica em 2,5–4 GB e a VPS é compartilhada com Evolution/N8N (ver nota
+      # `VPS/GitHub Actions Self-Hosted`, guardrail de OOM).
+      #
+      # Então o corte aqui é de FREQUÊNCIA, não de lugar: opt-in via variável de
+      # repositório. Ligar com `gh variable set DEPLOY_DEVELOP_PREVIEW --body true`
+      # quando a validação do release exigir URL de preview.
       - name: Deploy Vercel (Preview) from release branch
         id: vercel-preview
-        if: ${{ steps['push-release'].outcome == 'success' && steps['push-release'].outputs.pushed == 'true' }}
+        if: ${{ vars.DEPLOY_DEVELOP_PREVIEW == 'true' && steps['push-release'].outcome == 'success' && steps['push-release'].outputs.pushed == 'true' }}
         run: |
           # Working tree is already release/develop-to-main (post version bump).
-          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy \
+          # Sem `| tail -1`: sem `pipefail` o shell via o exit code do `tail`,
+          # e a mesma construcao mascarou 3 dias de deploy de producao falhando
+          # em silencio (ver Postmortem/2026-08-22 — Deploy verde sem publicar
+          # versao). Aqui o impacto e menor, mas o defeito e identico.
+          set -euo pipefail
+          PREVIEW_LOG="$(mktemp)"
+          if ! npx --yes vercel@56.3.2 deploy \
             --token=${{ secrets.VERCEL_TOKEN }} \
-            --yes \
-            2>&1 | tail -1)
+            --yes >"$PREVIEW_LOG" 2>&1; then
+            echo "::error::vercel deploy (preview) falhou"
+            cat "$PREVIEW_LOG"
+            exit 1
+          fi
+          cat "$PREVIEW_LOG"
+          DEPLOY_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.vercel\.app' "$PREVIEW_LOG" | tail -1 || true)"
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::preview terminou 0 mas nao imprimiu URL Vercel valida"
+            exit 1
+          fi
           echo "preview-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "### Preview Deploy (release/develop-to-main)" >> "$GITHUB_STEP_SUMMARY"
           echo "- URL: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
@@ -551,7 +572,11 @@ jobs:
               migrationCheckResult === 'success' &&
               (migrationDryRunResult === 'success' || migrationDryRunResult === 'skipped') &&
               releasePushResult === 'success' &&
-              deployPreviewResult === 'success';
+              // 'skipped' aqui = preview desligado de proposito (vars.DEPLOY_DEVELOP_PREVIEW).
+              // Nao mascara falha de push da release: releasePushResult === 'success'
+              // ja e exigido na linha acima, entao o unico caminho para 'skipped'
+              // com push OK e o opt-out deliberado.
+              (deployPreviewResult === 'success' || deployPreviewResult === 'skipped');
             const resolveSkipReason = () => {
               if (qualityGateResult !== 'success') {
                 return 'Quality gate falhou. Corrija governance, lint, typecheck, spellcheck ou build em develop.';
@@ -586,9 +611,8 @@ jobs:
               if (deployPreviewResult === 'failure') {
                 return 'Deploy de preview da release falhou. Corrija o deploy na Vercel antes de liberar o release.';
               }
-              if (deployPreviewResult === 'skipped') {
-                return 'Deploy de preview da release nao executou. Verifique o push da release branch.';
-              }
+              // 'skipped' nao bloqueia mais o release (preview e opt-in), entao
+              // so cai aqui se algum outro check acima ja tiver falhado.
               return 'Um ou mais checks obrigatorios nao passaram.';
             };
             const checks = {

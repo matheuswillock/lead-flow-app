@@ -14,6 +14,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/cookies",
   "/recursos",
   "/prime",
+  "/adquirir/creditos",
   "/checkout-return",
   "/lead-form",
   "/backoffice-lead-form",
@@ -34,6 +35,7 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/addon-checkout/",
   "/oferta/",
   "/adesao/",
+  "/adquirir/",
   "/documentos/",
 ] as const
 

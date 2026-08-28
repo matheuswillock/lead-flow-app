@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import {
+  CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
+  CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
   CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE,
+  EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE,
   campaignDispatchSendOptions,
   formatCampaignDispatchErrorMessage,
   isCampaignFailedRetry,
@@ -82,6 +85,14 @@ describe("formatCampaignDispatchErrorMessage", () => {
     ).toBe("Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas")
   })
 
+  it("timeout de disparo travado (30 min) vira a copy genérica", () => {
+    expect(
+      formatCampaignDispatchErrorMessage(
+        "Disparo interrompido: tempo limite de envio excedido (30 min)"
+      )
+    ).toBe(CAMPAIGN_DISPATCH_INTERNAL_ERROR_MESSAGE)
+  })
+
   it("null e vazio não inventam copy", () => {
     expect(formatCampaignDispatchErrorMessage(null)).toBeNull()
     expect(formatCampaignDispatchErrorMessage(undefined)).toBeNull()
@@ -107,5 +118,13 @@ describe("copy de disparo — ramo zero enviados", () => {
       : 'Abra a campanha e use "Disparar" nas partes'
     expect(parentTooltip).toContain("Disparar")
     expect(parentTooltip).not.toContain("Reenviar apenas falhas")
+  })
+})
+
+describe("copy de cancelar envio", () => {
+  it("deixa explícito que não enviados não saem e o Resend aceito permanece", () => {
+    expect(CAMPAIGN_CANCEL_SENDING_UNSENT_COPY).toContain("não serão disparados")
+    expect(CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY).toContain("Resend")
+    expect(EMAIL_CAMPAIGN_USER_CANCELED_MESSAGE).toBe("Cancelado pelo usuário")
   })
 })

@@ -1,15 +1,19 @@
-import type { Prisma } from "@prisma/client"
 import { publicFormsUseCase, PublicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase"
 import type { PublicFormMetricEventInput } from "@/lib/public-forms/types"
 import {
   handlePublicFormMetricEventsCallback,
+  PUBLIC_FORM_METRIC_EVENTS_TOPIC,
   type PublicFormMetricQueuePayload,
 } from "@/lib/queues/public-form-metric-events"
 import {
-  formatProcessingError,
-  publicFormQueueEventFailureRepository,
-} from "@/app/api/infra/data/repositories/publicFormQueueEventFailure/PublicFormQueueEventFailureRepository"
-import type { IPublicFormQueueEventFailureRepository } from "@/app/api/infra/data/repositories/publicFormQueueEventFailure/IPublicFormQueueEventFailureRepository"
+  ackAfterMaxDeliveriesWithOutcome,
+  buildInvalidPayloadIdempotencyKey,
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+  type AckAfterMaxDeliveriesWithOutcomeFn,
+  type DeadLetterInvalidPayloadFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -20,35 +24,17 @@ type QueueMessageMetadata = {
 }
 
 /**
- * Tópicos na Vercel Queues são particionados por deployment: uma mensagem é
- * sempre reentregue para o MESMO deployment que a publicou (push mode), nunca
- * para um deployment mais novo. Se essa mensagem começou a falhar num
- * deployment antigo (com bug já corrigido em produção), nenhum fix de código
- * a resgata — ela reentrega para sempre contra o deployment antigo até
- * expirar (retentionSeconds, até 7 dias). Acima de `MAX_DELIVERY_COUNT`,
- * desviamos para o outbox `PublicFormQueueEventFailure` (kind=metric) e
- * acknowledgeamos a mensagem: o cron de retry (`RetryPublicFormQueueEventFailuresUseCase`)
- * republica como mensagem NOVA, que passa a ser processada pelo deployment
- * atual (com todos os fixes).
- */
-const MAX_DELIVERY_COUNT = Math.max(
-  1,
-  Number(process.env.PUBLIC_FORM_METRIC_EVENTS_MAX_DELIVERY_COUNT ?? 20),
-)
-
-/**
  * Consumer push privado (trigger `queue/v2beta`, maxConcurrency: 1).
  * Persiste `PublicFormMetricEvent` de forma idempotente via `eventKey` único.
  * Entrega at-least-once: duplicatas colapsam no upsert do repositório.
+ * Acima de N entregas, o helper de dead-letter persiste em `QueueProcessingFailure` e acka.
  */
 export async function processPublicFormMetricQueueMessage(
   message: PublicFormMetricQueuePayload,
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormsUseCase, "persistQueuedMetric"> = publicFormsUseCase,
-  outboxRepository: Pick<
-    IPublicFormQueueEventFailureRepository,
-    "upsertFromProcessingFailure"
-  > = publicFormQueueEventFailureRepository,
+  ackDeadLetter: AckAfterMaxDeliveriesWithOutcomeFn = ackAfterMaxDeliveriesWithOutcome,
+  deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[PublicFormMetricEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -61,26 +47,52 @@ export async function processPublicFormMetricQueueMessage(
     publicId: message?.publicId,
   })
 
-  if (!message?.publicId || !message?.eventKey || !message?.visitorSessionId || !message?.eventType) {
-    console.error("[PublicFormMetricEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    publicId: message?.publicId,
+    eventKey: message?.eventKey,
+    visitorSessionId: message?.visitorSessionId,
+    eventType: message?.eventType,
+  })
+  if (missingFields.length > 0) {
+    console.error("[PublicFormMetricEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
-      message,
+      publicId: message?.publicId,
+      eventId: message?.eventId ?? null,
+      eventKey: message?.eventKey,
+      eventType: message?.eventType,
+      missingFields,
+    })
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await deadLetter({
+      topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.eventKey, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
     })
     return
   }
 
   const input: PublicFormMetricEventInput = {
     visitorSessionId: message.visitorSessionId,
+    schemaVersion: message.schemaVersion,
+    eventId: message.eventId ?? undefined,
+    occurredAt: message.occurredAt,
     eventType: message.eventType as PublicFormMetricEventInput["eventType"],
     questionId: message.questionId ?? undefined,
     eventKey: message.eventKey,
     origin: message.origin ?? {},
+    answerMappingKey: message.answerMappingKey ?? null,
+    answerValue: message.answerValue ?? null,
+    pageId: message.pageId ?? null,
+    pageIndex: message.pageIndex ?? null,
+    validationCodes: message.validationCodes,
+    createCrmLead: message.createCrmLead !== false,
   }
 
   try {
     const accepted = await useCase.persistQueuedMetric(message.publicId, input)
     if (!accepted) {
-      // Formulário indisponível / publicação encerrada — sem sentido retry infinito.
       console.info("[PublicFormMetricEventsQueueRoute][POST] form unavailable, acking", {
         messageId: metadata.messageId,
         publicId: message.publicId,
@@ -92,6 +104,8 @@ export async function processPublicFormMetricQueueMessage(
       messageId: metadata.messageId,
       eventKey: message.eventKey,
       eventType: message.eventType,
+      visitorSessionId: message.visitorSessionId,
+      questionId: message.questionId ?? null,
     })
   } catch (error) {
     console.error("[PublicFormMetricEventsQueueRoute][POST] persist failed, will retry", {
@@ -101,34 +115,32 @@ export async function processPublicFormMetricQueueMessage(
       error,
     })
 
-    if (metadata.deliveryCount >= MAX_DELIVERY_COUNT) {
-      try {
-        await outboxRepository.upsertFromProcessingFailure({
-          kind: "metric",
-          idempotencyKey: message.eventKey,
-          payload: message as unknown as Prisma.InputJsonValue,
-          lastError: formatProcessingError(error),
-          failureReason: "delivery_count_exceeded",
-        })
-        console.error(
-          "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking",
-          {
-            messageId: metadata.messageId,
-            deliveryCount: metadata.deliveryCount,
-            eventKey: message.eventKey,
-          },
-        )
-        return
-      } catch (outboxError) {
-        console.error(
-          "[PublicFormMetricEventsQueueRoute][POST] falha ao gravar no outbox, mantém retry",
-          {
-            messageId: metadata.messageId,
-            eventKey: message.eventKey,
-            outboxError,
-          },
-        )
-      }
+    let persistedToOutbox = false
+    const acked = await ackDeadLetter(
+      {
+        deliveryCount: metadata.deliveryCount,
+        topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
+        idempotencyKey: message.eventKey,
+        payload: message,
+        lastError: error,
+      },
+      (outcome) => {
+        persistedToOutbox = outcome
+      },
+    )
+    if (acked) {
+      console.error(
+        persistedToOutbox
+          ? "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking"
+          : "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite rígido sem outbox, payload só no log, acking",
+        {
+          messageId: metadata.messageId,
+          deliveryCount: metadata.deliveryCount,
+          eventKey: message.eventKey,
+          persistedToOutbox,
+        },
+      )
+      return
     }
 
     throw error

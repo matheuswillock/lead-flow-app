@@ -29,10 +29,11 @@ export function buildWhatsappRadarEventIdempotencyKey(
 }
 
 export async function publishWhatsappRadarEvent(
-  payload: WhatsappRadarEventPayload
+  payload: WhatsappRadarEventPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(WHATSAPP_RADAR_EVENTS_TOPIC, payload, {
-    idempotencyKey: buildWhatsappRadarEventIdempotencyKey(payload),
+    idempotencyKey: options?.idempotencyKey ?? buildWhatsappRadarEventIdempotencyKey(payload),
     retentionSeconds: WHATSAPP_RADAR_EVENTS_RETENTION_SECONDS,
   })
 }

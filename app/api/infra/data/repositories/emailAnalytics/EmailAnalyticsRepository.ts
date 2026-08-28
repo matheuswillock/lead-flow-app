@@ -1,6 +1,13 @@
+// Import de valor, não só de tipo: o E1 usa `Prisma.EmailLogWhereInput` (tipo) e
+// o E4/E5 usam `Prisma.sql` (valor) no mesmo arquivo.
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { queryDispatchLogCounters } from "@/app/api/infra/data/repositories/emailLog/DispatchLogCountersQuery"
+import {
+  NOT_FABRICATED_BY_DISPATCHER_SQL,
+  notFabricatedByDispatcherSql,
+} from "@/app/api/infra/data/repositories/publicForms/MetricEventAggregationSql"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
-import { countUniqueFormMetricRecipients } from "@/lib/email/unique-form-metric-recipients"
 
 export type EmailAnalyticsLogWhere = {
   teamId: string
@@ -26,6 +33,14 @@ export type EmailAnalyticsDispatchRecord = {
   totalBounced: number
   totalComplained: number
   status: string
+  /**
+   * Contadores de log do disparo. Os totais gravados no disparo só descrevem o
+   * que saiu; sem estas três colunas um disparo que morreu por quota exibe
+   * "delivered/opened" normais e nenhum sinal do incêndio.
+   */
+  failedCount: number
+  suppressedCount: number
+  queuedCount: number
 }
 
 export type EmailAnalyticsLogFilter =
@@ -38,6 +53,105 @@ export type EmailAnalyticsLogFilter =
   | "delivery_delayed"
   | "unsubscribed"
   | "suppressed"
+  | "queued"
+
+type MetricPeriod = { gte: Date; lte: Date }
+type LogFilterClause = (period: MetricPeriod) => Prisma.EmailLogWhereInput
+
+/**
+ * Cada população conta no relógio do próprio fato (D5 — Proposta A).
+ *
+ * Antes o analytics ancorava tudo em `sentAt`, e o dashboard dizia "aberturas no
+ * período" querendo dizer "aberturas dos e-mails ENVIADOS no período": uma
+ * abertura de hoje, de um e-mail de três semanas atrás, não aparecia em recorte
+ * nenhum. Agora a leitura é "aberturas ocorridas no período", e a API declara
+ * isso em `anchor`.
+ *
+ * Consequência aceita na decisão: some a leitura de coorte — "quanto o disparo
+ * de terça rendeu" deixa de ser respondível olhando só a janela de terça.
+ *
+ * Um mapa por variação, e não uma cadeia de `if`: adicionar população é
+ * acrescentar linha, não crescer condicional.
+ */
+const LOG_FILTER_CLAUSES: Record<EmailAnalyticsLogFilter, LogFilterClause> = {
+  // Engajamento ancora no timestamp do PRÓPRIO fato. O range sobre a coluna já
+  // exclui NULL, então não há `{ not: null }` redundante junto.
+  delivered: (period) => ({ deliveredAt: period }),
+  opened: (period) => ({ openedAt: period }),
+  clicked: (period) => ({ clickedAt: period }),
+  bounced: (period) => ({ bouncedAt: period }),
+  complained: (period) => ({ complainedAt: period }),
+
+  // Nunca saíram: `sentAt` é NULL por construção, e `createdAt` é a única âncora
+  // que possuem. O par `sentAt`/`resendEmailId` nulos aqui é recorte de
+  // POPULAÇÃO, não âncora — `applyWebhookEvent` promove `email.failed` sem
+  // limpar esses campos, e sem o recorte um log aceito e marcado failed depois
+  // cairia em `sent` E em `failed`. Mesma regra de `queryDispatchLogCounters`.
+  failed: (period) => ({
+    status: "failed",
+    sentAt: null,
+    resendEmailId: null,
+    createdAt: period,
+  }),
+  suppressed: (period) => ({
+    status: "suppressed",
+    sentAt: null,
+    resendEmailId: null,
+    createdAt: period,
+  }),
+  queued: (period) => ({
+    status: "queued",
+    sentAt: null,
+    resendEmailId: null,
+    createdAt: period,
+  }),
+
+  // Estes dois não têm coluna própria no log: o fato vive no `EmailEvent`, e é o
+  // `occurredAt` dele que data a métrica. Ancorá-los no `sentAt` do log era o
+  // mais grosseiro dos três relógios que a auditoria encontrou (M2).
+  delivery_delayed: (period) => ({
+    events: { some: { type: "delivery_delayed", occurredAt: period } },
+  }),
+  unsubscribed: (period) => ({
+    events: { some: { type: "unsubscribed", occurredAt: period } },
+  }),
+}
+
+export type EmailAnalyticsCohortFilter =
+  | "delivered"
+  | "opened"
+  | "openedOnSent"
+  | "clicked"
+  | "bounced"
+  | "complained"
+
+/**
+ * Contagens de COORTE, usadas só para as taxas.
+ *
+ * Sob a âncora de evento (D5), `opened` conta aberturas ocorridas na janela e
+ * `delivered` conta entregas ocorridas na janela — populações diferentes. A
+ * razão entre elas não é taxa de conversão: numa janela de um dia com muitas
+ * aberturas de e-mails antigos e poucas entregas novas, ela passa de 100%.
+ *
+ * Aqui numerador e denominador vivem na MESMA coorte: "dos e-mails entregues na
+ * janela, quantos foram abertos". `totals` continua respondendo "quantas
+ * aberturas aconteceram" — as duas perguntas são legítimas e diferentes, e por
+ * isso a resposta declara `rateBasis` ao lado de `anchor`.
+ */
+const COHORT_FILTER_CLAUSES: Record<EmailAnalyticsCohortFilter, LogFilterClause> = {
+  // Da coorte ENVIADA na janela, quantos chegaram.
+  delivered: (period) => ({ sentAt: period, deliveredAt: { not: null } }),
+  // D6: a base do openRate é a entrega, então a coorte é a das ENTREGAS.
+  opened: (period) => ({ deliveredAt: period, openedAt: { not: null } }),
+  // A base antiga da transição, na coorte de envio.
+  openedOnSent: (period) => ({ sentAt: period, openedAt: { not: null } }),
+  clicked: (period) => ({ sentAt: period, clickedAt: { not: null } }),
+  bounced: (period) => ({ sentAt: period, bouncedAt: { not: null } }),
+  complained: (period) => ({ sentAt: period, complainedAt: { not: null } }),
+}
+
+/** Sem filtro, a pergunta é sobre o envio — e o relógio do envio é `sentAt`. */
+const SENT_CLAUSE: LogFilterClause = (period) => ({ sentAt: period })
 
 export type EmailTemplateVersionMetricRow = {
   versionGroupId: string
@@ -73,8 +187,40 @@ export type CountFormEventsOptions = {
   campaignId?: string
 }
 
+/**
+ * Funil de uma campanha, do envio ao lead, em uma consulta.
+ *
+ * Cada etapa de formulário conta **sessões únicas** — a tabela artesanal da
+ * auditoria misturava unidades (contava `question_answered` em eventos brutos)
+ * e é justamente o que esta SPEC corrige.
+ */
+export type EmailCampaignFunnel = {
+  campaignId: string
+  name: string
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+  failed: number
+  formViewed: number
+  formStarted: number
+  questionAnswered: number
+  formCompleted: number
+  leadAttached: number
+}
+
 export interface IEmailAnalyticsRepository {
   countLogs(where: EmailAnalyticsLogWhere, filter?: EmailAnalyticsLogFilter): Promise<number>
+  countCohortLogs(
+    where: EmailAnalyticsLogWhere,
+    filter: EmailAnalyticsCohortFilter,
+  ): Promise<number>
+  findCampaignFunnel(options: {
+    teamId: string
+    campaignId: string
+    from?: Date
+    to?: Date
+  }): Promise<EmailCampaignFunnel | null>
   listDispatches(options: {
     teamId: string
     campaignId: string
@@ -122,6 +268,7 @@ export interface IEmailAnalyticsRepository {
     domainStatus: string | null
     openTracking: boolean
     clickTracking: boolean
+    sendingDnsVerified: boolean
   }>
 }
 
@@ -132,11 +279,16 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     return campaignIds.length === 1 ? campaignIds[0] : { in: campaignIds }
   }
 
-  private async buildLogWhere(options: EmailAnalyticsLogWhere) {
+  /**
+   * Escopo do time e da campanha. O recorte de período NÃO entra aqui: ele
+   * pertence à cláusula da população, porque cada uma tem o seu relógio.
+   */
+  private async buildLogScope(
+    options: EmailAnalyticsLogWhere
+  ): Promise<Prisma.EmailLogWhereInput> {
     const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
     return {
       teamId: options.teamId,
-      sentAt: { gte: options.from, lte: options.to },
       ...(campaignFilter && { campaignId: campaignFilter }),
     }
   }
@@ -145,31 +297,137 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     where: EmailAnalyticsLogWhere,
     filter?: EmailAnalyticsLogFilter
   ): Promise<number> {
-    const base = await this.buildLogWhere(where)
-    const timestampFilter =
-      filter === "delivered"
-        ? { deliveredAt: { not: null as Date | null } }
-        : filter === "opened"
-          ? { openedAt: { not: null as Date | null } }
-          : filter === "clicked"
-            ? { clickedAt: { not: null as Date | null } }
-            : filter === "bounced"
-              ? { bouncedAt: { not: null as Date | null } }
-              : filter === "complained"
-                ? { complainedAt: { not: null as Date | null } }
-                : filter === "failed"
-                  ? { status: "failed" as const }
-                  : filter === "suppressed"
-                    ? { status: "suppressed" as const }
-                    : filter === "delivery_delayed"
-                      ? { events: { some: { type: "delivery_delayed" as const } } }
-                      : filter === "unsubscribed"
-                        ? { events: { some: { type: "unsubscribed" as const } } }
-                        : {}
+    const scope = await this.buildLogScope(where)
+    const clause = filter ? LOG_FILTER_CLAUSES[filter] : SENT_CLAUSE
 
     return prisma.emailLog.count({
-      where: { ...base, ...timestampFilter },
+      where: { ...scope, ...clause({ gte: where.from, lte: where.to }) },
     })
+  }
+
+  /** Contagem de coorte — numerador e denominador na mesma população. */
+  async countCohortLogs(
+    where: EmailAnalyticsLogWhere,
+    filter: EmailAnalyticsCohortFilter
+  ): Promise<number> {
+    const scope = await this.buildLogScope(where)
+
+    return prisma.emailLog.count({
+      where: {
+        ...scope,
+        ...COHORT_FILTER_CLAUSES[filter]({ gte: where.from, lte: where.to }),
+      },
+    })
+  }
+
+  /**
+   * Uma consulta liga campanha → e-mail → formulário → lead.
+   *
+   * A ponte é o `cs_el`: o log de e-mail viaja no link e volta em
+   * `origin.emailLogId` do evento de métrica. `origin.campaignId` entra como
+   * segunda porta porque o enriquecimento do servidor carimba a campanha em
+   * eventos cujo link perdeu o `cs_el`.
+   *
+   * Âncora do período: `createdAt` do log. `sentAt` deixaria de fora justamente
+   * a campanha que morreu antes de enviar — a que mais precisa aparecer no funil.
+   */
+  async findCampaignFunnel(options: {
+    teamId: string
+    campaignId: string
+    from?: Date
+    to?: Date
+  }): Promise<EmailCampaignFunnel | null> {
+    const campaign = await prisma.emailCampaign.findFirst({
+      where: { id: options.campaignId, teamId: options.teamId },
+      select: { id: true, name: true },
+    })
+    if (!campaign) return null
+
+    const campaignIds = await resolveCampaignIdsIncludingSubs(
+      options.teamId,
+      options.campaignId,
+    )
+
+    const query = Prisma.sql`
+      WITH logs AS (
+        SELECT id, "sentAt", "resendEmailId", "deliveredAt", "openedAt", "clickedAt", status
+        FROM "corretor_studio_email_logs"
+        WHERE "teamId" = ${options.teamId}::uuid
+          AND "campaignId" = ANY(${campaignIds}::uuid[])
+          ${options.from ? Prisma.sql`AND "createdAt" >= ${options.from}` : Prisma.empty}
+          ${options.to ? Prisma.sql`AND "createdAt" <= ${options.to}` : Prisma.empty}
+      ),
+      attributed AS (
+        SELECT e."eventType", e."visitorSessionId"
+        FROM "corretor_studio_public_form_metric_events" e
+        WHERE
+          -- SPEC 40, todo 23 (review #1070): as conclusoes que o cron de
+          -- despacho inventou nao contam aqui tampouco. Medido em 25/08: 211
+          -- dos 311 eventos fabricados carregam atribuicao de campanha, em 44
+          -- campanhas — o funil de e-mail estava MAIS inflado que o do
+          -- formulario, e corrigir so um dos dois deixaria as duas telas
+          -- discordando sobre a mesma conversao.
+          ${notFabricatedByDispatcherSql("e")}
+          -- Vale para OS DOIS ramos: o formulario do evento tem de ser do time.
+          AND
+          -- O origin inteiro vem do POST publico, e o emailLogId viaja em texto
+          -- claro no cs_el de qualquer e-mail da campanha — quem tem o link tem
+          -- o id. Sem esta amarra no caminho principal, bastava POStar metrica
+          -- no formulario de OUTRO time carregando um emailLogId desta campanha
+          -- para inflar o funil dela.
+          EXISTS (
+            SELECT 1 FROM "corretor_studio_public_forms" f
+            WHERE f.id = e."formId" AND f."teamId" = ${options.teamId}::uuid
+          )
+          AND (
+            -- Caminho principal: o log pertence ao time e a campanha, e ja esta
+            -- recortado pelo periodo no CTE acima.
+            e.origin->>'emailLogId' IN (SELECT id::text FROM logs)
+            OR (
+              -- Reserva, para o evento cujo link perdeu o cs_el:
+              -- (a) so quando nao ha emailLogId utilizavel — senao o ramo
+              --     principal ja decidiu, e este passaria por cima dele;
+              -- (b) o mesmo periodo — origin.campaignId nao esta correlacionado
+              --     com o CTE logs, entao sem isto o funil descrevia o recorte
+              --     nos degraus de e-mail e a vida inteira da campanha nos de
+              --     formulario, chegando a taxas acima de 100%.
+              COALESCE(NULLIF(btrim(e.origin->>'emailLogId'), ''), NULL) IS NULL
+              AND e.origin->>'campaignId' = ANY(${campaignIds}::text[])
+              ${options.from ? Prisma.sql`AND COALESCE(e."occurredAt", e."createdAt") >= ${options.from}` : Prisma.empty}
+              ${options.to ? Prisma.sql`AND COALESCE(e."occurredAt", e."createdAt") <= ${options.to}` : Prisma.empty}
+            )
+          )
+      )
+      SELECT
+        (SELECT COUNT(*) FROM logs WHERE "sentAt" IS NOT NULL)::int AS "sent",
+        (SELECT COUNT(*) FROM logs WHERE "deliveredAt" IS NOT NULL)::int AS "delivered",
+        (SELECT COUNT(*) FROM logs WHERE "openedAt" IS NOT NULL)::int AS "opened",
+        (SELECT COUNT(*) FROM logs WHERE "clickedAt" IS NOT NULL)::int AS "clicked",
+        -- Mesma regra de LOG_FILTER_CONDITIONS e queryDispatchLogCounters: um log
+        -- aceito e marcado failed depois (email.failed pos-aceite) conserva
+        -- sentAt/resendEmailId e cairia em sent E em failed no mesmo funil.
+        (SELECT COUNT(*) FROM logs
+          WHERE status = 'failed'::"email_log_status"
+            AND "sentAt" IS NULL
+            AND "resendEmailId" IS NULL)::int AS "failed",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'form_viewed')::int AS "formViewed",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'form_started')::int AS "formStarted",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'question_answered')::int AS "questionAnswered",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" = 'form_completed')::int AS "formCompleted",
+        (SELECT COUNT(DISTINCT "visitorSessionId") FROM attributed
+          WHERE "eventType" IN ('lead_created', 'lead_attached'))::int AS "leadAttached"
+    `
+
+    const rows =
+      await prisma.$queryRaw<Array<Omit<EmailCampaignFunnel, "campaignId" | "name">>>(query)
+    const totals = rows[0]
+    if (!totals) return null
+
+    return { campaignId: campaign.id, name: campaign.name, ...totals }
   }
 
   async listDispatches(options: {
@@ -179,7 +437,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     to: Date
   }) {
     const campaignFilter = await this.resolveCampaignFilter(options.teamId, options.campaignId)
-    return prisma.emailCampaignDispatch.findMany({
+    const dispatches = await prisma.emailCampaignDispatch.findMany({
       where: {
         teamId: options.teamId,
         ...(campaignFilter && { campaignId: campaignFilter }),
@@ -205,6 +463,22 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         errorMessage: true,
       },
       orderBy: { dispatchNumber: "desc" },
+    })
+
+    const counters = await queryDispatchLogCounters(prisma, {
+      teamId: options.teamId,
+      dispatchIds: dispatches.map((dispatch) => dispatch.id),
+    })
+    const countersByDispatchId = new Map(counters.map((row) => [row.dispatchId, row]))
+
+    return dispatches.map((dispatch) => {
+      const counter = countersByDispatchId.get(dispatch.id)
+      return {
+        ...dispatch,
+        failedCount: counter?.failedCount ?? 0,
+        suppressedCount: counter?.suppressedCount ?? 0,
+        queuedCount: counter?.queuedCount ?? 0,
+      }
     })
   }
 
@@ -312,63 +586,75 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     }))
   }
 
-  private async buildFormMetricEventWhere(options: {
+  /**
+   * Destinatários únicos, contados no Postgres.
+   *
+   * Antes o método carregava todas as linhas do período e deduplicava em JS
+   * (`Set` de chaves) — O(memória) num período que cresce sozinho. A chave é a
+   * mesma de `uniqueFormMetricRecipientKey`: e-mail do destinatário, senão o
+   * log da campanha, senão a sessão do visitante.
+   */
+  private async countUniqueFormMetricRecipientsInDatabase(options: {
     teamId: string
     from: Date
     to: Date
     eventType: FormMetricEventType
     formId?: string
     campaignId?: string
-  }) {
-    const dateFilter = { createdAt: { gte: options.from, lte: options.to } }
+  }): Promise<number> {
+    const formIds = await this.resolveFormIdsForCount(options.teamId, options.formId)
+    if (formIds.length === 0) return 0
 
-    if (options.formId) {
-      const campaignFilter = options.campaignId
-        ? await this.buildCampaignOriginFilter(options.teamId, options.campaignId)
-        : undefined
+    const campaignIds = options.campaignId
+      ? await resolveCampaignIdsIncludingSubs(options.teamId, options.campaignId)
+      : null
 
-      return {
-        formId: options.formId,
-        eventType: options.eventType,
-        ...dateFilter,
-        form: { teamId: options.teamId },
-        ...(campaignFilter && { OR: campaignFilter }),
-      }
-    }
+    const query = Prisma.sql`
+      SELECT COUNT(DISTINCT COALESCE(
+        NULLIF('email:' || lower(btrim(origin->>'recipientEmail')), 'email:'),
+        NULLIF('log:' || btrim(origin->>'emailLogId'), 'log:'),
+        'session:' || "visitorSessionId"
+      ))::int AS recipients
+      FROM "corretor_studio_public_form_metric_events"
+      WHERE "formId" = ANY(${formIds}::uuid[])
+        AND "eventType" = ${options.eventType}::"PublicFormMetricType"
+        -- Mesmo corte de buildMetricEventWhereSql (SPEC 40, todo 23, review
+        -- #1070): sem ele este relatorio conta como destinatario convertido
+        -- quem nunca enviou o formulario — o cron e que completou por ele.
+        AND ${NOT_FABRICATED_BY_DISPATCHER_SQL}
+        -- Mesmo relogio de buildMetricEventWhereSql: o do fato, com o do insert
+        -- como reserva. createdAt sozinho data a conversao pelo dia do drain.
+        AND COALESCE("occurredAt", "createdAt") >= ${options.from}
+        AND COALESCE("occurredAt", "createdAt") <= ${options.to}
+        ${
+          campaignIds
+            ? Prisma.sql`AND origin->>'campaignId' = ANY(${campaignIds}::text[])`
+            : Prisma.empty
+        }
+    `
 
-    const forms = await prisma.publicForm.findMany({
-      where: { teamId: options.teamId },
-      select: { id: true },
-    })
-    if (forms.length === 0) return null
-
-    const campaignFilter = options.campaignId
-      ? await this.buildCampaignOriginFilter(options.teamId, options.campaignId)
-      : undefined
-
-    return {
-      formId: { in: forms.map((form) => form.id) },
-      eventType: options.eventType,
-      ...dateFilter,
-      ...(campaignFilter && { OR: campaignFilter }),
-    }
+    const rows = await prisma.$queryRaw<Array<{ recipients: number | bigint }>>(query)
+    return Number(rows[0]?.recipients ?? 0)
   }
 
-  private async buildCampaignOriginFilter(teamId: string, campaignId: string) {
-    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId)
-    return campaignIds.map((id) => ({
-      origin: { path: ["campaignId"], equals: id },
-    }))
+  /**
+   * Sem `formId` explícito o escopo é o time inteiro. A lista sai daqui para o
+   * SQL poder filtrar por `formId = ANY(...)` sem um join só para o `teamId`.
+   */
+  private async resolveFormIdsForCount(teamId: string, formId?: string): Promise<string[]> {
+    if (formId) {
+      const form = await prisma.publicForm.findFirst({
+        where: { id: formId, teamId },
+        select: { id: true },
+      })
+      return form ? [form.id] : []
+    }
+    const forms = await prisma.publicForm.findMany({ where: { teamId }, select: { id: true } })
+    return forms.map((form) => form.id)
   }
 
   async countFormEvents(options: CountFormEventsOptions): Promise<number> {
-    const where = await this.buildFormMetricEventWhere(options)
-    if (!where) return 0
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where,
-      select: { visitorSessionId: true, origin: true },
-    })
-    return countUniqueFormMetricRecipients(rows)
+    return this.countUniqueFormMetricRecipientsInDatabase(options)
   }
 
   async countFormCompletions(options: {
@@ -378,16 +664,10 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     formId?: string
     campaignId?: string
   }): Promise<number> {
-    const where = await this.buildFormMetricEventWhere({
+    return this.countUniqueFormMetricRecipientsInDatabase({
       ...options,
       eventType: "form_completed",
     })
-    if (!where) return 0
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where,
-      select: { visitorSessionId: true, origin: true },
-    })
-    return countUniqueFormMetricRecipients(rows)
   }
 
   async findCampaignTemplateHtml(options: {
@@ -422,6 +702,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     domainStatus: string | null
     openTracking: boolean
     clickTracking: boolean
+    sendingDnsVerified: boolean
   }> {
     const settings = await prisma.emailTeamSettings.findUnique({
       where: { teamId },
@@ -430,6 +711,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         resendDomainStatus: true,
         resendOpenTracking: true,
         resendClickTracking: true,
+        resendSendingDnsVerified: true,
       },
     })
     return {
@@ -437,6 +719,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       domainStatus: settings?.resendDomainStatus ?? null,
       openTracking: Boolean(settings?.resendOpenTracking),
       clickTracking: Boolean(settings?.resendClickTracking),
+      sendingDnsVerified: Boolean(settings?.resendSendingDnsVerified),
     }
   }
 }

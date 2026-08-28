@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { LeadStatus } from "@prisma/client";
 import {
   parseCustomFieldFiltersQueryParam,
   parseCustomFieldSortQueryParam,
+  parseLeadStatusQueryParam,
 } from "./requestToListLeadsCustomFields";
 
 const DEFINITION_ID = "11111111-1111-4111-8111-111111111111";
@@ -65,5 +67,31 @@ describe("parseCustomFieldSortQueryParam", () => {
   it("rejeita direction inválida", () => {
     const raw = JSON.stringify({ definitionId: DEFINITION_ID, direction: "sideways" });
     expect(() => parseCustomFieldSortQueryParam(raw)).toThrow();
+  });
+});
+
+describe("parseLeadStatusQueryParam", () => {
+  it("retorna undefined quando ausente", () => {
+    expect(parseLeadStatusQueryParam(null)).toBeUndefined();
+  });
+
+  it("retorna undefined para string vazia", () => {
+    expect(parseLeadStatusQueryParam("")).toBeUndefined();
+  });
+
+  it("aceita todos os valores do enum sem lançar", () => {
+    for (const status of Object.values(LeadStatus)) {
+      expect(parseLeadStatusQueryParam(status)).toBe(status);
+    }
+  });
+
+  it("rejeita status fora do enum", () => {
+    // Antes era `searchParams.get('status') as LeadStatus`, então isso chegava
+    // até a consulta Prisma como enum inválido.
+    expect(() => parseLeadStatusQueryParam("lixo")).toThrow();
+  });
+
+  it("rejeita status com caixa diferente", () => {
+    expect(() => parseLeadStatusQueryParam("SCHEDULED")).toThrow();
   });
 });

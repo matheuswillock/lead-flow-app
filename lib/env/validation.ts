@@ -94,6 +94,7 @@ export const envSchema = z.object({
 
   // Slack
   SLACK_SUPPORT_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for support requests'),
+  SLACK_EMAIL_CREDITS_WEBHOOK_URL: urlSchema.optional().describe('Slack Incoming Webhook URL for email credits purchase interest'),
   SLACK_BACKOFFICE_LEADS_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for backoffice lead events'),
 
   // Asaas Payment Gateway
@@ -168,13 +169,6 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe('Bearer token do agente studio-bot-ops na VPS'),
-  BACKUP_VPS_WEBHOOK_URL: urlSchema
-    .optional()
-    .describe('URL do POST /backup/run na VPS (default ops.corretorstudio.com)'),
-  BACKUP_VPS_TOKEN: z
-    .string()
-    .optional()
-    .describe('Bearer token do backup VPS (fallback: BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN)'),
   N8N_BETHANIA_INBOUND_PATH: z.string().optional().describe('N8N inbound workflow path'),
   EVO_BETHANIA_INSTANCE: z.string().optional().describe('Evolution instance name for Bethânia'),
   BACKOFFICE_BETHANIA_WHATSAPP_NUMBER: z.string().optional().describe('Bethânia WhatsApp number E.164'),

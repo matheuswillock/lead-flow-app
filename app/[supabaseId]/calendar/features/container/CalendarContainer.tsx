@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -337,7 +338,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       } catch (err) {
         patchLead?.(lead.id, { meetingHeald: previous })
         toast.warning(
-          err instanceof Error ? err.message : "Não foi possível atualizar a reunião.",
+          toUserToastMessage(err),
         )
       } finally {
         setMeetingHealdSavingId(null)
@@ -406,7 +407,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       } catch (err) {
         patchLead?.(lead.id, { meetingPresenceConfirmed: false })
         toast.warning(
-          err instanceof Error ? err.message : "Não foi possível confirmar a agenda.",
+          toUserToastMessage(err),
         )
       } finally {
         setMeetingPresenceConfirmSavingId(null)
@@ -649,7 +650,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       }
     } catch (error) {
       console.error("Erro ao cancelar agenda:", error)
-      const message = error instanceof Error ? error.message : "Erro ao cancelar agenda"
+      const message = toUserToastMessage(error)
       toast.error(message)
     }
   }
@@ -674,7 +675,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
         toast.success("Agenda marcada como no-show.")
         await refreshLeads()
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show.")
+        toastUserError(error)
       }
     },
     [supabaseId, activeTeamId, refreshLeads]

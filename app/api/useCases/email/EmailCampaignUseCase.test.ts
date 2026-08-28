@@ -1,13 +1,21 @@
 import { describe, expect, it, mock, beforeEach } from "bun:test"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import type { SuppressedAudienceCounts } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
+
+const EMPTY_SUPPRESSED_COUNTS: SuppressedAudienceCounts = {
+  bounced: 0,
+  unsubscribed: 0,
+  complained: 0,
+  total: 0,
+}
 
 // =============================================================================
 // MOCKS — declarar ANTES de qualquer await import()
 // =============================================================================
 
 // --- EmailCampaignRecipientRepository (dynamic import in previewPlan) ---
-const countSuppressedRecipientsForListsMock = mock(async () => 0)
-const countSuppressedRecipientsForEmailsMock = mock(async () => 0)
+const countSuppressedRecipientsForListsMock = mock(async () => EMPTY_SUPPRESSED_COUNTS)
+const countSuppressedRecipientsForEmailsMock = mock(async () => EMPTY_SUPPRESSED_COUNTS)
 mock.module(
   "@/app/api/infra/data/repositories/emailCampaignRecipient/EmailCampaignRecipientRepository",
   () => ({
@@ -96,11 +104,13 @@ const createQueuedLogsMock = mock(async (inputs: Array<{ recipientEmail: string 
 )
 const markManyTeamEmailLogsSentMock = mock(async (_entries: Array<{ logId: string }>) => {})
 const markTeamEmailLogFailedMock = mock(async (_logId: string) => {})
+const markTeamEmailLogSuppressedMock = mock(async (_logId: string) => {})
 mock.module("@/lib/email/team-email-dispatch-logger", () => ({
   teamEmailDispatchLogger: {
     createQueuedTeamEmailLogs: createQueuedLogsMock,
     markManyTeamEmailLogsSent: markManyTeamEmailLogsSentMock,
     markTeamEmailLogFailed: markTeamEmailLogFailedMock,
+    markTeamEmailLogSuppressed: markTeamEmailLogSuppressedMock,
   },
 }))
 
@@ -140,6 +150,7 @@ const queryRawMock = mock(async (..._args: unknown[]) => [] as Array<{
   failedCount: number
   queuedCount: number
 }>)
+const queryRawUnsafeMock = mock(async () => [{ acquired: true }] as Array<{ acquired: boolean }>)
 const emailLogCountMock = mock(async (..._args: unknown[]) => 0)
 const emailLogGroupByMock = mock(async (..._args: unknown[]) => [] as Array<{ campaignId: string | null }>)
 const profileFindManyMock = mock(async (..._args: unknown[]) => [] as unknown[])
@@ -193,6 +204,7 @@ const prismaMock = {
   },
   $transaction: transactionMock,
   $queryRaw: queryRawMock,
+  $queryRawUnsafe: queryRawUnsafeMock,
 }
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
@@ -200,6 +212,20 @@ mock.module("@/app/api/infra/data/prisma", () => ({
   getEmailCronPrisma: () => prismaMock,
   // RadarRepository (pulled via list-segment-recipients) imports withPrismaRetry.
   withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
+}))
+
+// --- Sentry (recoverStuckSendingCampaigns alerta em stuck-sending genuíno) ---
+const captureMessageMock = mock((..._args: unknown[]) => {})
+mock.module("@sentry/nextjs", () => ({
+  withScope: (
+    fn: (scope: {
+      setTag: (key: string, value: string) => void
+      setContext: (key: string, context: Record<string, unknown>) => void
+    }) => void
+  ) => {
+    fn({ setTag: () => {}, setContext: () => {} })
+  },
+  captureMessage: captureMessageMock,
 }))
 
 // --- FeatureAccessService ---
@@ -280,8 +306,12 @@ mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
 const publishEmailCampaignDispatchWakeMock = mock(async (..._args: unknown[]) => ({
   messageId: "msg-1",
 }))
+const publishEmailCampaignDispatchOverflowWakeMock = mock(async (..._args: unknown[]) => ({
+  messageId: "msg-overflow",
+}))
 mock.module("@/lib/queues/email-campaign-dispatch", () => ({
   publishEmailCampaignDispatchWake: publishEmailCampaignDispatchWakeMock,
+  publishEmailCampaignDispatchOverflowWake: publishEmailCampaignDispatchOverflowWakeMock,
 }))
 
 const findBouncedEmailsMock = mock(async (_emails: string[]) => new Set<string>())
@@ -306,21 +336,42 @@ mock.module(
   })
 )
 
+
+const pgQueryMock = mock(async (sql: string) => {
+  if (String(sql).includes("pg_try_advisory_lock")) {
+    return { rows: [{ acquired: true }] }
+  }
+  return { rows: [] }
+})
+const pgConnectMock = mock(async () => {})
+const pgEndMock = mock(async () => {})
+mock.module("pg", () => ({
+  Client: class {
+    connect = pgConnectMock
+    end = pgEndMock
+    query = pgQueryMock
+  },
+}))
+
 // =============================================================================
 // Importação dinâmica — APÓS todos os mocks
 // =============================================================================
 const { EmailCampaignUseCase, EMAIL_CAMPAIGN_FAILURE_MESSAGES } = await import(
   "./EmailCampaignUseCase"
 )
-const { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } = await import(
-  "@/lib/email/campaign-dispatch-guards"
-)
+const { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE, RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE } =
+  await import("@/lib/email/campaign-dispatch-guards")
 const { CAMPAIGN_FROM_DOMAIN_NOT_VERIFIED_MESSAGE } = await import(
   "@/lib/email/resolve-campaign-from"
 )
 const { aggregateDispatchLogCounters } = await import(
   "@/lib/email/campaign-dispatch-progress"
 )
+
+if (!process.env.DIRECT_URL && !process.env.DATABASE_URL) {
+  process.env.DIRECT_URL = "postgresql://postgres:postgres@127.0.0.1:55322/postgres"
+}
+
 
 type ProgressLogFixture = {
   dispatchId?: string | null
@@ -374,7 +425,7 @@ function makeDefaultDispatchInput(
     from: "Test <test@sender.com>",
     replyTo: null as string | null,
     resolvedFrom:
-      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "deliveryby@corretorstudio.com" },
+      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "contato@corretorstudio.com" },
   }
 }
 
@@ -411,8 +462,11 @@ function makeSendingDispatch(overrides: Record<string, unknown> = {}) {
     reservedCredits: 3,
     hasCampaignsBetaAccess: false,
     materializeSourceOffset: 0,
+    createdAt: new Date(),
+    status: "sending",
     campaign: {
       name: "Campanha Teste",
+      status: "sending",
       audienceContactIds: [] as string[],
       contactListId: "list-1",
       radarSegmentSlug: null,
@@ -491,6 +545,10 @@ function installQueuedLogStore() {
   markTeamEmailLogFailedMock.mockImplementation(async (logId: string) => {
     const log = materializedQueuedLogs.find((item) => item.id === logId)
     if (log) log.status = "failed"
+  })
+  markTeamEmailLogSuppressedMock.mockImplementation(async (logId: string) => {
+    const log = materializedQueuedLogs.find((item) => item.id === logId)
+    if (log) log.status = "suppressed"
   })
 }
 
@@ -615,6 +673,10 @@ const allMocks = [
   emailLogCountMock,
   emailLogGroupByMock,
   queryRawMock,
+  queryRawUnsafeMock,
+  pgQueryMock,
+  pgConnectMock,
+  pgEndMock,
   profileFindManyMock,
   transactionMock,
   reserveCreditsMock,
@@ -623,6 +685,7 @@ const allMocks = [
   createQueuedLogsMock,
   markManyTeamEmailLogsSentMock,
   markTeamEmailLogFailedMock,
+  markTeamEmailLogSuppressedMock,
   resolveEmailBetaAccessMock,
   resolveRadarBetaAccessMock,
   processPendingBatchMock,
@@ -635,6 +698,7 @@ const allMocks = [
   dispatchBatchMock,
   emailTeamSettingsFindUniqueMock,
   publishEmailCampaignDispatchWakeMock,
+  publishEmailCampaignDispatchOverflowWakeMock,
   countSuppressedRecipientsForListsMock,
   countSuppressedRecipientsForEmailsMock,
   findBouncedEmailsMock,
@@ -666,6 +730,13 @@ describe("EmailCampaignUseCase.send", () => {
     emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
     emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
     queryRawMock.mockImplementation(async () => [])
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -746,6 +817,51 @@ describe("EmailCampaignUseCase.send", () => {
       totalRecipients: 3,
       status: "sending",
     })
+  })
+
+  /**
+   * T-C4.2 — com a cota do mês já estourada, aceitar o disparo só produziria
+   * centenas de `failed` mudos e devolveria crédito depois. A recusa acontece
+   * antes de qualquer escrita: nenhum dispatch criado, nenhum crédito
+   * reservado, nada enfileirado.
+   */
+  it("T-C4.2 — cota mensal ativa recusa o disparo na origem, sem enfileirar nada", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    // O registro consultável do incidente é o `errorMessage` do último disparo
+    // abortado por cota no mês — sem tabela nova (SPEC 20, DA4).
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-antigo",
+      // `dispatchedAt`, não `updatedAt`: a âncora do incidente é imutável, para
+      // que webhook tardio ou a reconciliação noturna não empurrem um incidente
+      // de agosto para dentro de setembro.
+      dispatchedAt: new Date(),
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("Cota mensal")
+    expect(output.errorMessages[0]).toContain("Nenhum e-mail foi enfileirado")
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("T-C4.2b — sem incidente de cota no mês, o disparo segue normalmente", async () => {
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(3))
+    )
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => null as never)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
   })
 
   it("processDispatchQueueBatch materializa logs queued em lote na primeira execução", async () => {
@@ -890,6 +1006,7 @@ describe("EmailCampaignUseCase.send", () => {
         radarSegmentSlug: "email_marketable",
         campaign: {
           name: "Campanha Teste",
+          status: "sending",
           audienceContactIds: [],
           contactListId: null,
           radarSegmentSlug: "email_marketable",
@@ -1034,25 +1151,39 @@ describe("EmailCampaignUseCase.send", () => {
   })
 
   // ---------------------------------------------------------------------------
-  // T05/T06/T07 — gate Grupo Beta de Radar (SPEC D12)
+  // T05/T06/T06b/T07 — Radar e disparo de e-mail são features independentes que
+  // se complementam (decisão de produto, 27/08). O disparo NUNCA deve consultar
+  // resolveRadarBetaAccess: incidente Calli — time com Beta de e-mail e SEM
+  // Radar teve o disparo recusado (400) por um gate indevido, enquanto o front
+  // já deixava clicar (checava só resolveEmailBetaAccess) — vermelho + verde
+  // simultâneos na UI para um disparo que nunca começou.
   // ---------------------------------------------------------------------------
-  it("T05 — com créditos mas fora do Beta Radar → bloqueia envio", async () => {
+  it("T05 — sem Beta Radar mas com Beta de e-mail (caso Calli) → dispara com sucesso", async () => {
     resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    resolveEmailBetaAccessMock.mockImplementation(async () => true)
+    const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
-      makeDefaultDispatchInput(makeRecipients(3))
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 3,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
     )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", teamCtx)
 
-    expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA)
+    expect(output.isValid).toBe(true)
     expect(reserveCreditsMock).not.toHaveBeenCalled()
-    expect(dispatchBatchMock).not.toHaveBeenCalled()
+    expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
   })
 
-  it("T06 — no Beta Radar com créditos → pode enviar", async () => {
-    resolveRadarBetaAccessMock.mockImplementation(async () => true)
+  it("T06 — sem Beta Radar e sem Beta de e-mail, com créditos → dispara e reserva créditos", async () => {
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
     resolveEmailBetaAccessMock.mockImplementation(async () => false)
     const recipients = makeRecipients(2)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
@@ -1074,7 +1205,7 @@ describe("EmailCampaignUseCase.send", () => {
     expect(reserveCreditsMock).toHaveBeenCalled()
   })
 
-  it("T06b — no Beta Radar com isenção de créditos de e-mail → pode enviar sem debitar", async () => {
+  it("T06b — com Beta Radar e Beta de e-mail (irrelevante para o disparo) → dispara sem debitar", async () => {
     resolveRadarBetaAccessMock.mockImplementation(async () => true)
     resolveEmailBetaAccessMock.mockImplementation(async () => true)
     const recipients = makeRecipients(2)
@@ -1097,20 +1228,68 @@ describe("EmailCampaignUseCase.send", () => {
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 
-  it("T07 — Beta Radar de outro time (activeTeamId fora do escopo) → bloqueia", async () => {
-    // resolveRadarBetaAccess já encapsula ALL_TEAMS vs SPECIFIC_TEAMS pelo teamId ativo.
+  it("T07 — resolveRadarBetaAccess nunca é chamado pelo disparo manual, mesmo em time fora do escopo do Radar", async () => {
     resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 3,
+        failed: 0,
+        dispatched: recipients.map((r) => ({ email: r.email, resendId: `re_${r.email}` })),
+        providerErrors: [],
+      })
+    )
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.send("camp-1", { ...teamCtx, teamId: "team-outro" })
 
+    expect(output.isValid).toBe(true)
+    expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
+  })
+
+  it("T08 — campanha com radarSegmentSlug, COM Beta Radar, e zero perfis elegíveis → NO_RECIPIENTS_RADAR", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ radarSegmentSlug: "sem-radar-team" })
+    )
+    resolveRadarBetaAccessMock.mockImplementation(async () => true)
+    listRadarSegmentEmailRecipientsMock.mockImplementation(async () => [])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA)
-    expect(resolveRadarBetaAccessMock).toHaveBeenCalled()
-    const call = resolveRadarBetaAccessMock.mock.calls[0] as unknown as [
-      { teamId: string }
-    ]
-    expect(call[0].teamId).toBe("team-outro")
+    expect(output.errorMessages[0]).toBe(EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RECIPIENTS_RADAR)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // T09 — achado de review (PR #1085): remover o gate por completo abria uma
+  // lacuna de entitlement distinta do incidente Calli. Disparo para LISTA de
+  // contatos nunca exige Radar (T05–T07 acima). Mas disparo para
+  // radarSegmentSlug LÊ dados do Radar (listRadarSegmentEmailRecipients só
+  // filtra por teamId + regras do segmento, sem checar entitlement) — um time
+  // com Radar revogado ainda conseguiria consultar e disparar para a própria
+  // audiência de Radar antiga. Escopo do gate: só quando radarSegmentSlug
+  // está setado, nunca para disparo de lista.
+  // ---------------------------------------------------------------------------
+  it("T09 — campanha com radarSegmentSlug e SEM Beta Radar → bloqueia antes de consultar perfis de Radar", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () =>
+      makeCampaign({ radarSegmentSlug: "segmento-vip" })
+    )
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.send("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(
+      EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT
+    )
+    expect(listRadarSegmentEmailRecipientsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
   })
 
   // ---------------------------------------------------------------------------
@@ -1157,7 +1336,7 @@ describe("EmailCampaignUseCase.send", () => {
   // ---------------------------------------------------------------------------
   // C12 — e-mails pipe (casos reais) filtrados antes do Resend
   // ---------------------------------------------------------------------------
-  it("C12 — destinatários com pipe: não chama dispatchBatch; marca failed com motivo local; campanha failed", async () => {
+  it("C12 — destinatários com pipe: não chama dispatchBatch; marca suppressed com motivo local", async () => {
     const recipients = [
       {
         email: "carol.ocipriani@gmail.com|hugopoli@gmail.com",
@@ -1181,21 +1360,24 @@ describe("EmailCampaignUseCase.send", () => {
 
     expect(output.isValid).toBe(true)
     expect(dispatchBatchMock).not.toHaveBeenCalled()
-    expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(2)
+    expect(markTeamEmailLogSuppressedMock).toHaveBeenCalledTimes(2)
     expect(output.result.sent).toBe(0)
 
-    const failedReasons = markTeamEmailLogFailedMock.mock.calls.map(
+    // Recusa da pre-validacao e terminal: vira `suppressed`, nao `failed`,
+    // para nao oferecer reenvio de endereco que reprova na mesma regra.
+    expect(markTeamEmailLogFailedMock).not.toHaveBeenCalled()
+    const suppressedReasons = markTeamEmailLogSuppressedMock.mock.calls.map(
       (call) => (call as unknown as [string, string])[1]
     )
     expect(
-      failedReasons.every((reason) => reason.includes("E-mail inválido para o Resend"))
+      suppressedReasons.every((reason) => reason.includes("E-mail inválido para o Resend"))
     ).toBe(true)
   })
 
   // ---------------------------------------------------------------------------
   // C13 — mix: válidos enviados + pipe filtrado localmente
   // ---------------------------------------------------------------------------
-  it("C13 — mix válido + pipe: dispatchBatch só recebe válidos; pipe falha localmente", async () => {
+  it("C13 — mix válido + pipe: dispatchBatch só recebe válidos; pipe vira suppressed", async () => {
     const recipients = [
       {
         email: "ok@example.com",
@@ -1240,10 +1422,11 @@ describe("EmailCampaignUseCase.send", () => {
     expect(output.result.sent).toBe(1)
     expect(output.result.failed).toBe(1)
     expect(dispatchBatchMock).toHaveBeenCalledTimes(1)
-    expect(markTeamEmailLogFailedMock).toHaveBeenCalledTimes(1)
-    expect((markTeamEmailLogFailedMock.mock.calls[0] as unknown as [string, string])[1]).toContain(
-      "carol.ocipriani@gmail.com|hugopoli@gmail.com"
-    )
+    expect(markTeamEmailLogFailedMock).not.toHaveBeenCalled()
+    expect(markTeamEmailLogSuppressedMock).toHaveBeenCalledTimes(1)
+    expect(
+      (markTeamEmailLogSuppressedMock.mock.calls[0] as unknown as [string, string])[1]
+    ).toContain("carol.ocipriani@gmail.com|hugopoli@gmail.com")
   })
 
   // ---------------------------------------------------------------------------
@@ -1670,7 +1853,8 @@ describe("EmailCampaignUseCase.send", () => {
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    // Causa é o DNS, não as métricas: elas estão ligadas neste cenário.
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
@@ -1697,12 +1881,16 @@ describe("EmailCampaignUseCase.send", () => {
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
+    // Causa é o DNS, não as métricas: elas estão ligadas neste cenário.
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
     expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 
-  it("domínio verified com métricas desligadas → bloqueia disparo", async () => {
+  it("domínio verified com métricas desligadas → dispara mesmo assim", async () => {
+    // Invertido de propósito: antes bloqueava. O gate protege a capacidade de
+    // entregar, não a de medir — sem abertura a campanha sai, só não reporta a
+    // taxa. O aviso continua, via getResendDomainDispatchWarnings.
     const recipients = makeRecipients(3)
     buildCampaignDispatchInputMock.mockImplementation(async () =>
       makeDefaultDispatchInput(recipients)
@@ -1723,9 +1911,64 @@ describe("EmailCampaignUseCase.send", () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
+    expect(output.isValid).toBe(true)
+    expect(reserveCreditsMock).toHaveBeenCalled()
+  })
+
+  it("caso Liber: só o CNAME de tracking falhou → dispara", async () => {
+    // `partially_failed` com DKIM e SPF verificados. Era o cenário que travava
+    // todo disparo do time, indefinidamente e sem saída pela UI.
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "mail.example.com",
+      resendDomainStatus: "partially_failed",
+      resendOpenTracking: false,
+      resendClickTracking: false,
+      resendSendingDnsVerified: true,
+      fromName: "Test",
+      fromEmail: "test@mail.example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
+    expect(output.isValid).toBe(true)
+    expect(reserveCreditsMock).toHaveBeenCalled()
+  })
+
+  it("caso inverso: DNS de envio quebrado continua bloqueando", async () => {
+    // O que separa a correção de um afrouxamento cego — `partially_failed`
+    // também aparece quando o DKIM falha, e aí o e-mail sairia sem assinatura.
+    const recipients = makeRecipients(3)
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+      resendDomainName: "mail.example.com",
+      resendDomainStatus: "partially_failed",
+      resendOpenTracking: true,
+      resendClickTracking: false,
+      resendSendingDnsVerified: false,
+      fromName: "Test",
+      fromEmail: "test@mail.example.com",
+      replyTo: null,
+      dispatchBlockedDates: [],
+      dispatchTimeFrom: null,
+      dispatchTimeTo: null,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.startManualDispatch("camp-1", teamCtx)
+
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
-    expect(emailCampaignUpdateManyMock).not.toHaveBeenCalled()
+    expect(output.errorMessages[0]).toBe(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
     expect(reserveCreditsMock).not.toHaveBeenCalled()
   })
 
@@ -1816,6 +2059,13 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     emailTeamSenderFindFirstMock.mockImplementation(async () => null)
     emailLogFindManyMock.mockImplementation(async () => [])
     queryRawMock.mockImplementation(async () => [])
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
     transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
     reserveCreditsMock.mockImplementation(async () => ({ ok: true as const }))
     releaseCreditsMock.mockImplementation(async () => {})
@@ -1868,7 +2118,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     expect(createQueuedLogsMock).not.toHaveBeenCalled()
   })
 
-  it("D13b — domínio null sem sender → from de plataforma (deliveryby) permite disparo", async () => {
+  it("D13b — domínio null sem sender → from de plataforma (contato) permite disparo", async () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.startManualDispatch("camp-1", teamCtx)
 
@@ -1943,9 +2193,66 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     })
   }
 
+  /**
+   * Revisão do PR #1074: dos 429 estouros de cota pós-deploy medidos no
+   * `EMAIL_AUDIT` §8.2, **129** vieram de `dispatch-scheduled` — o maior volume
+   * do incidente. Proteger só o botão manual deixava justamente o caminho que
+   * mais sofreu enfileirando contra uma cota morta.
+   */
+  it("T-C4.2c — cota mensal ativa impede o cron de disparar campanha agendada", async () => {
+    setupScheduledCampaignLock()
+    // Registro consultável do incidente: último disparo abortado por cota.
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-antigo",
+      // `dispatchedAt`, não `updatedAt`: a âncora do incidente é imutável, para
+      // que webhook tardio ou a reconciliação noturna não empurrem um incidente
+      // de agosto para dentro de setembro.
+      dispatchedAt: new Date(),
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result.skippedByMonthlyQuota).toBe(1)
+    expect(output.result.dispatched).toBe(0)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(reserveCreditsMock).not.toHaveBeenCalled()
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+
+    // Nenhuma campanha foi travada em `sending`: a recusa acontece antes do
+    // lock, e a campanha continua `scheduled` para sair na virada do mês.
+    const lockedToSending = emailCampaignUpdateManyMock.mock.calls.some(
+      (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
+    )
+    expect(lockedToSending).toBe(false)
+  })
+
+  /**
+   * Revisão do PR #1075: a ficha da campanha exibe `errorMessage` sem filtrar
+   * por status e só o limpa em `sent`. Sem zerar no lock, a campanha adiada
+   * pela cota dispara normal na virada do mês exibindo "cota mensal esgotada" —
+   * erro velho descrevendo um envio que deu certo.
+   */
+  it("T-C4.2d — lock da campanha agendada limpa errorMessage anterior", async () => {
+    setupScheduledCampaignLock()
+
+    const uc = new EmailCampaignUseCase()
+    await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+    const lockCall = emailCampaignUpdateManyMock.mock.calls.find(
+      (call) => (call[0] as { data?: { status?: string } })?.data?.status === "sending"
+    )
+    expect(lockCall).toBeDefined()
+    expect((lockCall?.[0] as { data: { errorMessage?: string | null } }).data.errorMessage).toBeNull()
+  })
+
   it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {
     setupScheduledCampaignLock()
-    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
@@ -1964,7 +2271,10 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
 
   it("D13e — scheduled domínio verified + sender de outro domínio → marca failed com msg de remetente", async () => {
     setupScheduledCampaignLock()
-    buildCampaignDispatchInputMock.mockImplementation(async () => outsideSenderInput())
+    emailTeamSenderFindFirstMock.mockImplementation(async () => ({
+      name: "Vendas",
+      email: "vendas@empresaxyz.com.br",
+    }))
     emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
       resendDomainName: "example.com",
       resendDomainStatus: "verified",
@@ -2011,24 +2321,34 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
         hasCampaignsBetaAccess: false,
       },
     ])
-    // 1ª chamada (resumeOrphanSendingDispatches lendo o lote órfão) e 2ª chamada
-    // (1ª iteração do while de failDispatchOnDomainGuard) ainda veem o log
-    // "queued"; da 3ª em diante ele já foi resolvido (markTeamEmailLogFailed)
-    // e o while precisa parar — sem isso o loop nunca termina.
-    let queuedLogFetches = 0
-    emailLogFindManyMock.mockImplementation(async () => {
-      queuedLogFetches += 1
-      if (queuedLogFetches <= 2) {
-        return [
-          {
-            id: "log-q",
-            recipientEmail: "r0@test.com",
-            recipientName: "R0",
-            status: "queued",
-          },
-        ]
-      }
-      return []
+    // O dispatch órfão começa com 1 log "queued"; ele deixa de existir quando
+    // `markTeamEmailLogFailed` o resolve, que é o que faz o while de
+    // `failDispatchOnDomainGuard` parar — sem isso o loop nunca termina.
+    //
+    // A causalidade é modelada pelo próprio efeito, não por contagem de
+    // chamadas. A versão anterior contava `findMany` ("as 2 primeiras veem o
+    // log"), o que amarrava o teste ao número exato de leituras: quando
+    // `resumeOrphanSendingDispatches` trocou o `findMany` inicial por um
+    // `count`, o contador deslocou e o teste passou a exercitar outro caminho.
+    let logQueuedResolvido = false
+    markTeamEmailLogFailedMock.mockImplementation(async () => {
+      logQueuedResolvido = true
+    })
+
+    const logQueued = {
+      id: "log-q",
+      recipientEmail: "r0@test.com",
+      recipientName: "R0",
+      status: "queued",
+    }
+
+    emailLogFindManyMock.mockImplementation(async () =>
+      logQueuedResolvido ? [] : [logQueued]
+    )
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { status?: unknown } })?.where
+      if (where?.status === "queued") return logQueuedResolvido ? 0 : 1
+      return queuedLogCountImpl(args)
     })
     emailTeamSenderFindFirstMock.mockImplementation(async () => ({
       name: "Vendas",
@@ -2084,7 +2404,11 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     // (o envio real já saiu, só faltou consolidar o estado da campanha).
     emailLogFindManyMock.mockImplementation(async () => [])
     emailLogCountMock.mockImplementation(async (args: unknown) => {
-      const where = (args as { where?: { sentAt?: unknown } })?.where
+      const where = (args as { where?: { sentAt?: unknown; status?: unknown } })?.where
+      // `status: "queued"` é a leitura que `resumeOrphanSendingDispatches` faz
+      // para decidir se ainda há o que retomar. Tem que ser 0 aqui, senão o
+      // teste contradiz a própria premissa declarada acima.
+      if (where?.status === "queued") return 0
       if (where?.sentAt) return 269
       return 287
     })
@@ -2143,7 +2467,7 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     const subCampaignUpdate = campaignUpdateCalls.find(
       (call) => call[0].where.id === "camp-child-2"
     )
-    expect(subCampaignUpdate?.[0].data.status).toBe("sent")
+    expect(subCampaignUpdate?.[0].data.status).toBe("partially_sent")
     expect(subCampaignUpdate?.[0].data.totalSent).toEqual({ increment: 269 })
     expect(subCampaignUpdate?.[0].data.dispatchCount).toEqual({ increment: 1 })
 
@@ -2174,7 +2498,9 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
       templateId: "tpl-1",
       reservedCredits: 1,
       hasCampaignsBetaAccess: false,
-      campaign: { name: "Campanha Teste" },
+      createdAt: new Date(),
+      status: "sending",
+      campaign: { name: "Campanha Teste", status: "sending" },
     }))
     // 1ª chamada (lote lido pelo processDispatchQueueBatch) e 2ª chamada (1ª
     // iteração do while de failDispatchOnDomainGuard) ainda veem o log
@@ -2231,6 +2557,272 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
 })
 
 // =============================================================================
+// EmailCampaignUseCase.recoverStuckSendingCampaigns
+// =============================================================================
+
+describe("EmailCampaignUseCase.recoverStuckSendingCampaigns", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    transactionMock.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops))
+    releaseCreditsMock.mockImplementation(async () => {})
+    captureMessageMock.mockClear()
+  })
+
+  it("campanha sem nenhum dispatch (órfã real) é revertida para draft, não failed", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      {
+        id: "camp-orphan",
+        name: "Sem dispatch",
+        _count: { dispatches: 0 },
+      },
+    ])
+
+    const uc = new EmailCampaignUseCase()
+    const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
+
+    expect(recovered).toBe(1)
+    expect(emailCampaignUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["camp-orphan"] } },
+        data: expect.objectContaining({ status: "draft" }),
+      })
+    )
+    expect(emailCampaignDispatchFindFirstMock).not.toHaveBeenCalled()
+    expect(captureMessageMock).not.toHaveBeenCalled()
+  })
+
+  it("dispatch sending com EmailLog queued pendente republica wake em vez de falhar (resiliência, incidente Lista Fria)", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      { id: "camp-in-progress", name: "Lista Fria", _count: { dispatches: 1 } },
+    ])
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-in-progress",
+      campaignId: "camp-in-progress",
+      teamId: "team-1",
+      totalRecipients: 60_646,
+      reservedCredits: 60_646,
+      hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 1500,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
+    }))
+    emailLogCountMock.mockImplementation(async () => 59_146)
+
+    const uc = new EmailCampaignUseCase()
+    const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
+
+    expect(recovered).toBe(1)
+    expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dispatchId: "dispatch-in-progress",
+        reason: "cron-reclaim",
+        remainingCount: 59_146,
+      })
+    )
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
+    // Não deve tratar como falho enquanto ainda há trabalho na fila.
+    expect(emailCampaignUpdateMock).not.toHaveBeenCalled()
+    expect(captureMessageMock).not.toHaveBeenCalled()
+  })
+
+  it("dispatch sem queued restante e zero enviados vira failed de verdade e alerta no Sentry", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      { id: "camp-stuck", name: "Travada", _count: { dispatches: 1 } },
+    ])
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-stuck",
+      campaignId: "camp-stuck",
+      teamId: "team-1",
+      totalRecipients: 10,
+      reservedCredits: 10,
+      hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 10,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
+    }))
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
+      if (where?.status === "queued") return 0
+      if (where?.sentAt) return 0
+      return 10
+    })
+    emailCampaignUpdateMock.mockImplementation(async () => ({ parentCampaignId: null }))
+
+    const uc = new EmailCampaignUseCase()
+    const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
+
+    expect(recovered).toBe(1)
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
+    expect(captureMessageMock).toHaveBeenCalledTimes(1)
+    expect(captureMessageMock.mock.calls[0][0]).toContain("dispatch-stuck")
+  })
+
+  it("dispatch sem queued restante mas com envios reais reconcilia como partially_sent, não sobrescreve com failed", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      { id: "camp-partial", name: "Parcial", _count: { dispatches: 1 } },
+    ])
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-partial",
+      campaignId: "camp-partial",
+      teamId: "team-1",
+      totalRecipients: 10,
+      reservedCredits: 10,
+      hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 10,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
+    }))
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
+      if (where?.status === "queued") return 0
+      if (where?.sentAt) return 7
+      return 10
+    })
+    emailCampaignUpdateMock.mockImplementation(async () => ({ parentCampaignId: null }))
+
+    const uc = new EmailCampaignUseCase()
+    const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
+
+    expect(recovered).toBe(1)
+    expect(emailCampaignUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "partially_sent" }),
+      })
+    )
+    expect(captureMessageMock).not.toHaveBeenCalled()
+  })
+
+  it("dispatch com queued 0 e materialização incompleta republica wake e não finaliza (review PR #908)", async () => {
+    emailCampaignFindManyMock.mockImplementation(async () => [
+      { id: "camp-lazy", name: "Lista Fria", _count: { dispatches: 1 } },
+    ])
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-lazy",
+      campaignId: "camp-lazy",
+      teamId: "team-1",
+      totalRecipients: 60_646,
+      reservedCredits: 60_646,
+      hasCampaignsBetaAccess: false,
+      materializeSourceOffset: 500,
+      createdAt: new Date("2019-12-31T00:00:00.000Z"),
+    }))
+    emailLogCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: { status?: string; sentAt?: unknown } })?.where
+      if (where?.status === "queued") return 0
+      return 500
+    })
+
+    const uc = new EmailCampaignUseCase()
+    const recovered = await uc.recoverStuckSendingCampaigns(new Date("2020-01-01T01:00:00.000Z"))
+
+    expect(recovered).toBe(1)
+    // `wakeBucket` é o que impede a chave `dispatchId:cron-reclaim` constante
+    // de deduplicar por 24h e matar a recuperação pelo cron.
+    expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dispatchId: "dispatch-lazy",
+        reason: "cron-reclaim",
+        wakeBucket: expect.any(Number),
+      })
+    )
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
+    expect(emailCampaignUpdateMock).not.toHaveBeenCalled()
+    expect(captureMessageMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("EmailCampaignUseCase.processDispatchQueueBatch — PR6 lock, overflow e cancel", () => {
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => makeSendingDispatch())
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
+    queryRawMock.mockImplementation(async () => [])
+    installQueuedLogStore()
+    emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
+    emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 0,
+      failed: 0,
+      dispatched: [],
+      providerErrors: [],
+    }))
+    setupTemplateMock()
+    restoreRadarRecipientPageMock()
+    buildCampaignDispatchInputMock.mockImplementation(async () => makeDefaultDispatchInput([]))
+    findUnresolvedTokensMock.mockImplementation(() => [])
+    listActiveRecipientsMock.mockImplementation(async () => [])
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set<string>())
+  })
+
+  it("lock ocupado: ack sem chamar Resend", async () => {
+    pgQueryMock.mockImplementation(async () => ({ rows: [{ acquired: false }] }))
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1")
+    expect(output.isValid).toBe(true)
+    expect((output.result as { skipped?: boolean } | null)?.skipped).toBe(true)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("campanha cancelada: ack sem Resend", async () => {
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () =>
+      makeSendingDispatch({
+        campaign: {
+          name: "Campanha Teste",
+          status: "canceled",
+          audienceContactIds: [],
+          contactListId: "list-1",
+          radarSegmentSlug: null,
+        },
+      })
+    )
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1")
+    expect(output.isValid).toBe(true)
+    expect((output.result as { skipped?: boolean } | null)?.skipped).toBe(true)
+    expect(dispatchBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("idade >= 30 min republica continue na overflow", async () => {
+    const recipients = makeRecipients(3)
+    persistDispatchSourceOffset(
+      makeSendingDispatch({
+        totalRecipients: 3,
+        reservedCredits: 3,
+        createdAt: new Date(Date.now() - 31 * 60 * 1000),
+      })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.slice(0, 2).map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      })
+    )
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+    expect(output.isValid).toBe(true)
+    expect((output.result as { hasMore?: boolean } | null)?.hasMore).toBe(true)
+    expect(publishEmailCampaignDispatchOverflowWakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchId: "dispatch-1", reason: "continue" })
+    )
+    expect(publishEmailCampaignDispatchWakeMock).not.toHaveBeenCalled()
+  })
+})
+
+// =============================================================================
 // EmailCampaignUseCase.dispatchScheduledCampaigns
 // =============================================================================
 
@@ -2248,8 +2840,9 @@ describe("EmailCampaignUseCase.dispatchScheduledCampaigns", () => {
     }))
   })
 
-  it("C11 — processPendingBatch chamado 1× após o loop de campanhas", async () => {
-    // Sem campanhas agendadas; apenas verifica que o orphan sweep ocorre
+  it("C11 — o dispatch não drena mais órfãos: o dreno é cron próprio", async () => {
+    // A carona de 10 órfãos por execução saiu daqui (120/h). Agora quem drena
+    // é /api/v1/email/cron/drain-orphan-events, em lotes de 200 a cada 5 min.
     processPendingBatchMock.mockImplementation(async () => ({
       processed: 3,
       failed: 0,
@@ -2259,9 +2852,10 @@ describe("EmailCampaignUseCase.dispatchScheduledCampaigns", () => {
     const uc = new EmailCampaignUseCase()
     const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
 
-    expect(processPendingBatchMock).toHaveBeenCalledTimes(1)
+    expect(processPendingBatchMock).not.toHaveBeenCalled()
     expect(output.isValid).toBe(true)
     expect(output.result.dispatched).toBe(0)
+    expect(output.result).not.toHaveProperty("orphanResult")
   })
 })
 
@@ -2357,9 +2951,14 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     expect(result.subCampaigns.length).toBe(2)
   })
 
-  it("inclui suppressedExcludedCount no preview de lista", async () => {
+  it("inclui contagens split de bounce, descadastro e reclamação no preview de lista", async () => {
     listActiveRecipientsMock.mockImplementation(async () => makeRecipients(100))
-    countSuppressedRecipientsForListsMock.mockImplementation(async () => 12)
+    countSuppressedRecipientsForListsMock.mockImplementation(async () => ({
+      bounced: 7,
+      unsubscribed: 3,
+      complained: 2,
+      total: 12,
+    }))
 
     const uc = new EmailCampaignUseCase()
     const output = await uc.previewPlan(
@@ -2372,8 +2971,16 @@ describe("EmailCampaignUseCase.previewPlan", () => {
     )
 
     expect(output.isValid).toBe(true)
-    const result = output.result as { suppressedExcludedCount?: number }
+    const result = output.result as {
+      suppressedExcludedCount?: number
+      bouncedExcludedCount?: number
+      unsubscribedExcludedCount?: number
+      complainedExcludedCount?: number
+    }
     expect(result.suppressedExcludedCount).toBe(12)
+    expect(result.bouncedExcludedCount).toBe(7)
+    expect(result.unsubscribedExcludedCount).toBe(3)
+    expect(result.complainedExcludedCount).toBe(2)
   })
 })
 
@@ -3024,6 +3631,85 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     })
   })
 
+  it("partiallySentCount conta sub-campanhas 'partially_sent' como concluídas, não só 'sent'", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () => ({
+      ...makeCampaign({ id: "parent-2", status: "partially_sent" }),
+      description: null,
+      sourceContactListIds: [],
+      audienceContactIds: [],
+      managedByBackofficeUserId: null,
+      dispatchCount: 2,
+      totalRecipients: 20,
+      totalSent: 15,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalBounced: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      scheduledAt: null,
+      sentAt: null,
+      createdBy: "profile-1",
+      errorMessage: null,
+      template: { id: "tpl-1", name: "T", subject: "S" },
+      contactList: { id: "list-1", name: "T", totalContacts: 10 },
+      subCampaigns: [
+        {
+          id: "sub-sent",
+          name: "Parte 1",
+          description: null,
+          status: "sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 10,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 0,
+          contactListId: "list-1",
+          templateId: "tpl-1",
+          errorMessage: null,
+        },
+        {
+          id: "sub-partial",
+          name: "Parte 2",
+          description: null,
+          status: "partially_sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 5,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 1,
+          contactListId: "list-2",
+          templateId: "tpl-1",
+          errorMessage: "Limite mensal de envios do provedor atingido",
+        },
+      ],
+    }))
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [])
+    mockLogCounterAggregation([])
+    emailLogFindManyMock.mockImplementation(async () => [])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.getById("parent-2", teamCtx)
+    expect(output.isValid).toBe(true)
+    const result = output.result as {
+      partiallySentCount?: number
+      partiallySentTotal?: number
+    }
+    // "sub-sent" (sent) + "sub-partial" (partially_sent) contam como concluídas:
+    // uma sub-campanha que abortou por limite de quota, mas enviou parte,
+    // não pode aparecer como "não concluída" no resumo "X de Y partes enviadas".
+    expect(result.partiallySentCount).toBe(2)
+    expect(result.partiallySentTotal).toBe(2)
+  })
+
   it("agregação diferencia queued/accepted/failed e não reduz aceite após delivered/opened", async () => {
     emailCampaignFindManyMock.mockImplementation(async () => [
       {
@@ -3453,6 +4139,227 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     ]
     expect(createArg[0].data.retryFailedOnly).toBe(false)
     expect(createArg[0].data.teamId).toBe("team-1")
+  })
+
+  it("dispatchScheduledCampaigns nunca materializa a audiência inteira no kickoff — só conta e publica wake (resiliência, incidente Lista Fria)", async () => {
+    const scheduledCampaign = {
+      id: "camp-scheduled-big",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      templateId: "tpl-1",
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+      audienceContactIds: [],
+      createdBy: "profile-1",
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: { id: "list-1", name: "Lista" },
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [scheduledCampaign]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return { count: 0 }
+      if (whereArgs?.where?.status === "scheduled" || whereArgs?.where?.id === "camp-scheduled-big") {
+        return { count: 1 }
+      }
+      return { count: 0 }
+    })
+    emailCampaignDispatchUpdateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({ id: "dispatch-sched-big" }))
+    // Audiência "grande" (abaixo do limite diário mockado de 2000, só pra provar
+    // que o kickoff não materializa nada, não pra estressar o guard de limite
+    // diário): buildCampaignDispatchInputMock (via countActiveRecipients fallback
+    // do harness) simula 1.500 destinatários — dispatchScheduledCampaigns não deve
+    // mais chamar dispatchInput.recipients em nenhum ponto do kickoff.
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(1_500))
+    )
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 1 })
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+    const createArg = emailCampaignDispatchCreateMock.mock.calls[0] as unknown as [
+      { data: { totalRecipients?: number } },
+    ]
+    expect(createArg[0].data.totalRecipients).toBe(1_500)
+    // Núcleo do fix: nenhum EmailLog é criado no kickoff — a materialização em
+    // lotes de DISPATCH_QUEUE_BATCH_SIZE fica a cargo do consumer da fila.
+    expect(createQueuedLogsMock).not.toHaveBeenCalled()
+    expect(publishEmailCampaignDispatchWakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchId: "dispatch-sched-big", reason: "cron-start" })
+    )
+  })
+
+  it("dispatchScheduledCampaigns dispara campanha agendada mesmo sem Beta Radar — nunca marca failed por isso (incidente Calli)", async () => {
+    const scheduledCampaign = {
+      id: "camp-scheduled-no-radar",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      templateId: "tpl-1",
+      contactListId: "list-1",
+      radarSegmentSlug: null,
+      audienceContactIds: [],
+      createdBy: "profile-1",
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: { id: "list-1", name: "Lista" },
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [scheduledCampaign]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return { count: 0 }
+      if (
+        whereArgs?.where?.status === "scheduled" ||
+        whereArgs?.where?.id === "camp-scheduled-no-radar"
+      ) {
+        return { count: 1 }
+      }
+      return { count: 0 }
+    })
+    emailCampaignDispatchUpdateManyMock.mockImplementation(async () => ({ count: 0 }))
+    emailCampaignDispatchCreateMock.mockImplementation(async () => ({
+      id: "dispatch-sched-no-radar",
+    }))
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(makeRecipients(1))
+    )
+    dispatchBatchMock.mockImplementation(async () => ({
+      sent: 1,
+      failed: 0,
+      dispatched: [{ email: "r0@test.com", resendId: "re_1" }],
+      providerErrors: [],
+    }))
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => ({
+      id: "dispatch-sched-no-radar",
+    }))
+    emailCampaignFindUniqueMock.mockImplementation(async () => ({
+      name: "Sched sem Radar",
+      parentCampaignId: null,
+    }))
+    emailCampaignDispatchFindUniqueMock.mockImplementation(async () => ({
+      triggeredBy: "profile-1",
+      status: "sending",
+    }))
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 1 })
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).toHaveBeenCalled()
+    expect(resolveRadarBetaAccessMock).not.toHaveBeenCalled()
+    // markScheduledCampaignFailed grava status "failed" via emailCampaign.update — nunca
+    // deve acontecer por falta de Radar (Radar e e-mail são features independentes).
+    const failedUpdateCalls = emailCampaignUpdateMock.mock.calls.filter((call) => {
+      const data = (call as unknown as [{ data?: { status?: string } }])[0]?.data
+      return data?.status === "failed"
+    })
+    expect(failedUpdateCalls).toHaveLength(0)
+  })
+
+  it("dispatchScheduledCampaigns marca failed quando radarSegmentSlug está setado e o time perdeu o Beta Radar (achado de review PR #1085)", async () => {
+    const scheduledCampaign = {
+      id: "camp-scheduled-radar-revoked",
+      teamId: "team-1",
+      status: "scheduled",
+      scheduledAt: new Date("2020-01-01T00:00:00.000Z"),
+      templateId: "tpl-1",
+      contactListId: null,
+      radarSegmentSlug: "segmento-vip",
+      audienceContactIds: [],
+      createdBy: "profile-1",
+      template: {
+        id: "tpl-1",
+        name: "T",
+        subject: "S",
+        html: "<p>Hi</p>",
+        variables: [],
+        versionNumber: 1,
+      },
+      contactList: null,
+      team: { master: { id: "master-1", timezone: "America/Sao_Paulo" } },
+    }
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return []
+      if (whereArgs?.where?.status === "scheduled") return [scheduledCampaign]
+      return []
+    })
+    emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where?.status === "sending") return { count: 0 }
+      if (
+        whereArgs?.where?.status === "scheduled" ||
+        whereArgs?.where?.id === "camp-scheduled-radar-revoked"
+      ) {
+        return { count: 1 }
+      }
+      return { count: 0 }
+    })
+    emailCampaignUpdateMock.mockImplementation(async () => ({
+      parentCampaignId: null,
+      name: "Sched Radar Revogado",
+      teamId: "team-1",
+      createdBy: null,
+    }))
+    resolveRadarBetaAccessMock.mockImplementation(async () => false)
+    processPendingBatchMock.mockImplementation(async () => ({
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+    }))
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 1 })
+
+    expect(output.isValid).toBe(true)
+    expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+    expect(listRadarSegmentEmailRecipientsMock).not.toHaveBeenCalled()
+    const failedCall = emailCampaignUpdateMock.mock.calls.find((call) => {
+      const data = (call as unknown as [{ data?: { status?: string; errorMessage?: string } }])[0]?.data
+      return data?.status === "failed"
+    }) as unknown as [{ data?: { errorMessage?: string } }] | undefined
+    expect(failedCall?.[0]?.data?.errorMessage).toBe(
+      EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT
+    )
   })
 
   it("query de logs de progresso sempre filtra por teamId", async () => {

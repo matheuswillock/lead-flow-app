@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { backofficeStudioEmailService } from "../../services/BackofficeStudioEmailService"
 import type {
   StudioEmailContact,
@@ -141,7 +142,7 @@ export function useBackofficeContatos() {
         toast.success(`Lista "${created.name}" criada com sucesso`)
       } catch (error) {
         console.error("[useBackofficeContatos] handleCreateList error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao criar lista")
+        toastUserError(error)
         throw error
       } finally {
         setCreatingList(false)
@@ -163,7 +164,7 @@ export function useBackofficeContatos() {
         toast.success("Lista excluída com sucesso")
       } catch (error) {
         console.error("[useBackofficeContatos] handleDeleteList error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao excluir lista")
+        toastUserError(error)
         throw error
       } finally {
         setDeletingListId(null)
@@ -187,7 +188,7 @@ export function useBackofficeContatos() {
         toast.success("Contato adicionado")
       } catch (error) {
         console.error("[useBackofficeContatos] handleAddContact error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao adicionar contato")
+        toastUserError(error)
         throw error
       } finally {
         setAddingContact(false)
@@ -245,7 +246,7 @@ export function useBackofficeContatos() {
         return true
       } catch (error) {
         console.error("[useBackofficeContatos] handleUploadContacts error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao importar contatos")
+        toastUserError(error)
         return false
       } finally {
         setUploading(false)

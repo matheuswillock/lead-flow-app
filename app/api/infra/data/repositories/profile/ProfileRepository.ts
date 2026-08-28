@@ -1020,6 +1020,69 @@ class PrismaProfileRepository implements IProfileRepository {
             data: { asaasCustomerId },
         });
     }
+
+  async findContactById(id: string) {
+    return await prisma.profile.findUnique({
+      where: { id },
+      select: { id: true, email: true, fullName: true },
+    });
+  }
+
+  async findIdentityById(id: string) {
+    return await prisma.profile.findUnique({
+      where: { id },
+      select: { id: true, supabaseId: true },
+    });
+  }
+
+  async findTimezoneBySupabaseId(supabaseId: string) {
+    return await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, timezone: true },
+    });
+  }
+
+  async findAuthContactBySupabaseId(supabaseId: string) {
+    return await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, email: true },
+    });
+  }
+
+  async updateTimezoneBySupabaseId(supabaseId: string, timezone: string) {
+    return await prisma.profile.update({
+      where: { supabaseId },
+      data: { timezone },
+      select: { id: true },
+    });
+  }
+
+  async findFirstActiveMasterManager() {
+    return await prisma.profile.findFirst({
+      where: {
+        role: "manager",
+        isMaster: true,
+        subscriptionStatus: { in: ["active", "trial"] },
+      },
+      select: { id: true, supabaseId: true },
+    });
+  }
+
+  async findWithGoogleConnectionById(id: string) {
+    return await prisma.profile.findUnique({
+      where: { id },
+      include: {
+        googleConnection: {
+          select: {
+            accessToken: true,
+            refreshToken: true,
+            tokenExpiresAt: true,
+            revokedAt: true,
+          },
+        },
+      },
+    });
+  }
 }
 
 export const profileRepository: IProfileRepository = new PrismaProfileRepository();

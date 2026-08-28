@@ -11149,6 +11149,42 @@
                   }
                 },
                 {
+                  "name": "POST Public Form Submission",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"requestKey\": \"{{publicFormVisitorSessionId}}:submit\",\n  \"visitorSessionId\": \"{{publicFormVisitorSessionId}}\",\n  \"answers\": [\n    {\n      \"questionId\": \"{{publicFormQuestionId}}\",\n      \"value\": \"Maria Silva\"\n    }\n  ],\n  \"origin\": {\n    \"utm_source\": \"postman\"\n  }\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/public-forms/:publicId/submissions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "public-forms",
+                        ":publicId",
+                        "submissions"
+                      ],
+                      "variable": [
+                        {
+                          "key": "publicId",
+                          "value": "{{publicFormPublicId}}"
+                        }
+                      ]
+                    },
+                    "description": "Envia o formulário público. 201 = aceito (grava submitRequestedAt e enfileira o processamento). 422 = respostas não satisfazem as perguntas obrigatórias visíveis do snapshot da publicação, com result.validation = [{ questionId, code }] (SPEC 40 E1). 400 = payload fora do contrato. 429 = rate limit (10 por 10 min por fingerprint)."
+                  }
+                },
+                {
                   "name": "POST Public Form Metric Events",
                   "request": {
                     "method": "POST",
@@ -12248,7 +12284,48 @@
                     }
                   ]
                 },
-                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha."
+                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha. Cada reenvio de convite gera um link novo (o anterior é invalidado pelo GoTrue) e usa idempotencyKey por conteúdo do link — reenvio legítimo sempre sai, duplo-clique/retry do mesmo corpo não duplica o envio."
+              }
+            },
+            {
+              "name": "POST Generate Member Invite Link",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mode\": \"invite\",\n  \"deliver\": \"link\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/access-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "access-email"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Gera um link de convite novo (invalida o anterior) SEM disparar e-mail — para o dono copiar e enviar por outro canal (ex.: WhatsApp) quando o e-mail não chega. Retorna actionLink no result; a resposta é one-shot, o link não é persistido nem logado no servidor."
               }
             }
           ]
@@ -16452,6 +16529,41 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Funil da Campanha (campanha → lead)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/funnel?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "funnel"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "",
+                      "description": "ISO 8601. Opcional — sem período o funil cobre a campanha inteira."
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "description": "ISO 8601. Opcional."
+                    }
+                  ]
+                },
+                "description": "Funil ponta a ponta da campanha: enviado → entregue → aberto → clicado → formulário visto/iniciado/respondido/concluído → lead. Cada etapa de formulário conta SESSÕES ÚNICAS (`unit: unique_sessions`); o período ancora no `createdAt` do log (`anchor: log_created_at`) para que a campanha que falhou antes de enviar não desapareça. `rates` mede cada salto sobre o degrau anterior, mais `sentToLeadRate` ponta a ponta. 404 quando a campanha não pertence ao time. Datas malformadas em `from`/`to` respondem 400 (nunca 200 com o histórico inteiro). 404 quando a campanha não pertence ao time; 500 em falha de infraestrutura — os dois casos são distintos na resposta."
+              },
+              "response": []
             }
           ]
         },
@@ -16607,6 +16719,72 @@
               "response": []
             },
             {
+              "name": "Drenar Eventos Orfaos do Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/drain-orphan-events",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "drain-orphan-events"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Drena email_orphan_events (evento do Resend que chegou antes do EmailLog existir) em lotes de 200, ordenados por occurredAt. Substitui a carona de 10 por execucao no fim do dispatch-scheduled."
+              },
+              "response": []
+            },
+            {
+              "name": "Retry Falhas de Processamento de Fila",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/retry-processing-failures",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "retry-processing-failures"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Republica mensagens dead-letter (deliveryCount >= N) via mapa topic → publish."
+              },
+              "response": []
+            },
+            {
+              "name": "Watchdog de Execuções de Cron Órfãs",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/mark-stale-cron-executions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "mark-stale-cron-executions"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Marca como failed toda execução presa em running além do teto do proprio cronKey (2x maxDuration) e dispara o alerta Slack que o kill de plataforma nunca disparou."
+              },
+              "response": []
+            },
+            {
               "name": "Reconciliar Status de Domínio Resend",
               "request": {
                 "method": "GET",
@@ -16625,6 +16803,50 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Poll Resend API e corrige resendDomainStatus dessincronizado (D12 item 3)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reconciliar Contadores de Campanha",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/reconcile-campaign-counters",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "reconcile-campaign-counters"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Recomputa total* de campanha e disparo a partir dos logs e corrige a divergencia (SPEC 20 E1 / DA1). Nao toca linha em voo: campanha ou disparo sending com atividade na ultima hora fica de fora. Metadata da execucao traz campanhas/disparos corrigidos e o delta somado - delta persistente e sinal de bug de incremento, nao de cache frio."
+              },
+              "response": []
+            },
+            {
+              "name": "Expirar Logs Queued Parados",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/expire-stale-queued-logs",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "expire-stale-queued-logs"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Fecha log queued ORFAO (sem dispatchId) parado ha mais de 48h, marcando failed com errorMessage queued_expired no evento (SPEC 20 E2 / DA2). NUNCA reenvia: reenviar e-mail de trinta dias atras e dano, nao recuperacao — a decisao de reenvio e do usuario. Log com dispatch, terminal ou nao, fica fora: quem o drena e o reclaim."
               },
               "response": []
             },
@@ -19154,8 +19376,17 @@
               {
                 "key": "x-team-id",
                 "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
+            "description": "Body opcional. Sem body, um possivel duplicado devolve 409 com result.requiresDuplicateConfirmation e result.duplicateCandidates. Reenvie com confirmDuplicate=true para criar mesmo assim.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmDuplicate\": false\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/promote-to-lead",
               "host": [
@@ -19300,6 +19531,44 @@
                 }
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Formulários do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/forms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "forms"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            },
+            "description": "Lista os formulários públicos com os quais o perfil Radar interagiu (completo / incompleto / iniciou sem resposta)."
           },
           "response": []
         },

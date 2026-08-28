@@ -20,6 +20,8 @@ Antes de qualquer implementação, leia:
 - `DESIGN.md` — DNA visual, influence matrix, component language
 - `app/globals.css` — todos os tokens CSS Variables (OKLch)
 
+Antes de propor ou implementar qualquer componente/página, aplique também a skill `clean-code` — nomes significativos, componentes pequenos com uma responsabilidade, props tipadas (sem flags booleanas confusas), Context/Service seguindo SOLID (ver `agents.md` § Clean Code & SOLID).
+
 ---
 
 ## Design System do Projeto

@@ -1,6 +1,7 @@
 import type { LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type {
+  CreateLeadTransferDTO,
   ILeadTransferRepository,
   LeadTransferCompletedRow,
   LeadTransferListFilters,
@@ -55,6 +56,25 @@ function hasTransferDateFilter(filters: LeadTransferListFilters): boolean {
 }
 
 export class LeadTransferRepository implements ILeadTransferRepository {
+  async existsTransferFromTeam(params: { leadId: string; fromTeamId: string }): Promise<boolean> {
+    const transfer = await prisma.leadTransfer.findFirst({
+      where: { leadId: params.leadId, fromTeamId: params.fromTeamId },
+      select: { id: true },
+    });
+    return transfer !== null;
+  }
+
+  async create(data: CreateLeadTransferDTO): Promise<void> {
+    await prisma.leadTransfer.create({ data });
+  }
+
+  async markScheduledAtTransfer(params: { leadId: string; toTeamId: string }): Promise<void> {
+    await prisma.leadTransfer.updateMany({
+      where: { leadId: params.leadId, toTeamId: params.toTeamId },
+      data: { scheduledAtTransfer: true },
+    });
+  }
+
   async findPendingByTeam(filters: LeadTransferListFilters): Promise<LeadTransferPendingRow[]> {
     if (hasTransferDateFilter(filters)) {
       return [];

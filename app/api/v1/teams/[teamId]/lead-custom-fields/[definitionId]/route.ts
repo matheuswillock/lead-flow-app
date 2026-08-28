@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
 import { leadCustomFieldsUseCase } from "@/app/api/useCases/leadCustomFields/LeadCustomFieldsUseCase";
+import { invalidatePublicFormBootstrapCache } from "@/lib/cache/invalidation";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 const optionSchema = z.object({
@@ -66,6 +67,9 @@ export async function PATCH(
       definitionId,
       parsed.data
     );
+    if (output.isValid) {
+      invalidatePublicFormBootstrapCache({ teamId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
@@ -103,6 +107,9 @@ export async function DELETE(
     }
 
     const output = await leadCustomFieldsUseCase.deleteDefinition(teamAccess.access, definitionId);
+    if (output.isValid) {
+      invalidatePublicFormBootstrapCache({ teamId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

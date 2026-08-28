@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useDeferredValue } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { CampanhasService } from "../services/CampanhasService"
 import type {
   Campaign,
@@ -21,10 +22,11 @@ import {
   buildDispatchTerminalToast,
   isNewTerminalDispatch,
   resolveCampaignDispatchTerminal,
+  resolveCampaignExitToast,
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   type PreAttemptDispatchId,
 } from "@/lib/email/campaign-dispatch-terminal"
-import { formatCampaignDispatchErrorMessage } from "@/lib/email/campaign-dispatch-copy"
+import { resolveDispatchErrorToastMessage } from "@/lib/email/campaign-dispatch-copy"
 import { shouldShowCampaignListSkeleton } from "@/lib/email/campaign-dispatch-list-skeleton"
 import { useCampaignDispatchRealtime } from "./CampaignDispatchRealtimeContext"
 
@@ -634,14 +636,13 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       void fetchCredits()
     } catch (err) {
       console.error("[useCampanhas] handleSend error", err)
-      const rawMessage = err instanceof Error ? err.message : "Erro ao disparar campanha"
-      const formattedMessage = formatCampaignDispatchErrorMessage(rawMessage) ?? rawMessage
+      const rawMessage = err instanceof Error ? err.message : ""
       const message =
         /409|idempotency|idempotência/i.test(rawMessage)
           ? retryFailedOnly
             ? "Não foi possível reenviar as falhas agora. Tente novamente em instantes."
             : "Não foi possível disparar a campanha agora. Tente novamente em instantes."
-          : formattedMessage || "Ocorreu um erro ao disparar a campanha"
+          : resolveDispatchErrorToastMessage(err, "Ocorreu um erro ao disparar a campanha")
       toast.error(message)
       if (!isDetailSubCampaign) {
         sendingIdRef.current = null
@@ -677,17 +678,23 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       dispatchSeenInListRef.current = false
       setSendingId(null)
       const terminal = resolveCampaignDispatchTerminal(tracked)
-      if (terminal) {
-        applyDispatchTerminalToast(toast, buildDispatchTerminalToast(name, terminal))
-      } else if (tracked.status === "failed") {
-        const formattedError = formatCampaignDispatchErrorMessage(tracked.errorMessage)
-        toast.error(
-          formattedError
-            ? `Disparo de "${name}" falhou: ${formattedError}`
-            : `Disparo de "${name}" falhou.`
-        )
+      const exitToast = resolveCampaignExitToast({
+        name,
+        status: tracked.status,
+        terminal,
+        errorMessage: tracked.errorMessage,
+      })
+      if (exitToast.emit) {
+        applyDispatchTerminalToast(toast, exitToast.toast)
       } else {
-        toast.success(`Disparo de "${name}" concluído. O status foi atualizado automaticamente.`)
+        // Sem terminal resolvido e status não é "failed": recusa pré-dispatch
+        // (gate, cota, etc.) — nenhum EmailCampaignDispatch novo foi criado. O
+        // catch de handleSend já mostrou o erro real; não inventar um
+        // "concluído" que nunca aconteceu (incidente Calli, 2026-08-27).
+        console.info("[useCampanhas] campanha saiu de sending sem terminal resolvido", {
+          trackedId,
+          status: tracked.status,
+        })
       }
       void fetchCredits()
       return
@@ -758,19 +765,21 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         dispatchSeenInListRef.current = false
         setSendingId(null)
         const terminal = resolveCampaignDispatchTerminal(tracked)
-        if (terminal) {
-          applyDispatchTerminalToast(toast, buildDispatchTerminalToast(tracked.name, terminal))
-        } else if (tracked.status === "failed") {
-          const formattedError = formatCampaignDispatchErrorMessage(tracked.errorMessage)
-          toast.error(
-            formattedError
-              ? `Disparo de "${tracked.name}" falhou: ${formattedError}`
-              : `Disparo de "${tracked.name}" falhou.`
-          )
+        const exitToast = resolveCampaignExitToast({
+          name: tracked.name,
+          status: tracked.status,
+          terminal,
+          errorMessage: tracked.errorMessage,
+        })
+        if (exitToast.emit) {
+          applyDispatchTerminalToast(toast, exitToast.toast)
         } else {
-          toast.success(
-            `Disparo de "${tracked.name}" concluído. O status foi atualizado automaticamente.`
-          )
+          // Mesmo guard do watcher principal: sem terminal e status não é
+          // "failed" — não inventar sucesso (incidente Calli, 2026-08-27).
+          console.info("[useCampanhas] sub-campanha saiu de sending sem terminal resolvido", {
+            subCampaignId: sendingId,
+            status: tracked.status,
+          })
         }
         void fetchCredits()
         void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
@@ -1575,7 +1584,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       void fetchCampaigns(page, statusFilter, pageSize, nameFilter, dateFrom, dateTo)
     } catch (err) {
       console.error("[useCampanhas] handleSaveCampaign error", err)
-      const message = err instanceof Error ? err.message : "Erro ao salvar campanha"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setWizardSaving(false)
@@ -1631,7 +1640,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setWizardListStrategy("single")
     } catch (err) {
       console.error("[useCampanhas] handleMaterializeRadarSegment error", err)
-      const message = err instanceof Error ? err.message : "Erro ao materializar lista"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setMaterializingSegment(false)
@@ -1656,7 +1665,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setSheetTab("campaign")
     } catch (err) {
       console.error("[useCampanhas] openViewById getById error", err)
-      const message = err instanceof Error ? err.message : "Erro ao carregar campanha"
+      const message = toUserToastMessage(err)
       toast.error(message)
     }
   }, [activeTeamId, service, supabaseId])
@@ -1671,7 +1680,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       await openEditWizard(detailed)
     } catch (err) {
       console.error("[useCampanhas] openEditById getById error", err)
-      const message = err instanceof Error ? err.message : "Erro ao carregar campanha"
+      const message = toUserToastMessage(err)
       toast.error(message)
     }
   }, [activeTeamId, openEditWizard, service, supabaseId])

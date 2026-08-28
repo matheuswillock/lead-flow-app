@@ -10,6 +10,20 @@ import type {
 import type { EmailGlobalVariable, EmailSender, EmailSettings } from "../context/EmailSettingsTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
+interface EmailSettingsApiOutput<T> {
+  isValid: boolean
+  errorMessages?: string[]
+  result: T
+}
+
+async function parseEmailSettingsOutput<T>(res: Response): Promise<T> {
+  const json = (await res.json().catch(() => null)) as EmailSettingsApiOutput<T> | null
+  if (!res.ok || !json?.isValid) {
+    throw new Error(json?.errorMessages?.join(", ") ?? `HTTP ${res.status}`)
+  }
+  return json.result
+}
+
 export class EmailSettingsService implements IEmailSettingsService {
   private readonly base = `${API_CLIENT_BASE}/email/settings`
 
@@ -47,10 +61,7 @@ export class EmailSettingsService implements IEmailSettingsService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
-    return json.result as EmailSender
+    return parseEmailSettingsOutput<EmailSender>(res)
   }
 
   async updateSender(senderId: string, data: UpsertEmailSenderData): Promise<EmailSender> {
@@ -59,10 +70,7 @@ export class EmailSettingsService implements IEmailSettingsService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
-    return json.result as EmailSender
+    return parseEmailSettingsOutput<EmailSender>(res)
   }
 
   async deleteSender(senderId: string): Promise<void> {

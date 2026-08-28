@@ -7,6 +7,15 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened]
+  # Escotilha de retomada, mesmo padrão de `ci-develop.yml`: sem ela, um deploy
+  # de produção que falha só pode ser re-tentado com um commit artificial em
+  # `main`. Foi exatamente o que faltou quando produção ficou 3 dias em
+  # 16bf5dd3 — não havia como refazer o deploy do SHA que já estava em `main`.
+  #
+  # `workflow_dispatch` aceita qualquer `--ref`, então os jobs que publicam são
+  # travados em `github.ref_name == 'main'`; sem isso, um dispatch a partir de
+  # uma feature colocaria aquele ref em produção.
+  workflow_dispatch:
 
 concurrency:
   group: ci-main-${{ github.event_name }}-${{ github.ref }}
@@ -66,7 +75,7 @@ jobs:
 
   migration-status:
     name: Migration Status
-    if: github.event_name == 'push'
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 5
     needs:
@@ -137,14 +146,20 @@ jobs:
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
-      - name: Build
+      # Quality gate em todo evento. Este job NÃO gera mais artefato de
+      # deploy: `vercel build` + transferência do `.vercel/output` entre
+      # runners foi revertido (ver comentário no job `deploy-production`).
+      - name: Build (quality gate)
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
-          DATABASE_URL: ${{ github.event_name == 'push' && secrets.DATABASE_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
-          DIRECT_URL: ${{ github.event_name == 'push' && secrets.DIRECT_URL || 'postgresql://placeholder:placeholder@placeholder:5432/placeholder' }}
+          DATABASE_URL: 'postgresql://placeholder:placeholder@placeholder:5432/placeholder'
+          DIRECT_URL: 'postgresql://placeholder:placeholder@placeholder:5432/placeholder'
         run: bun run build
+
+      - name: Validar saida do build
+        uses: ./.github/actions/validate-build-output
 
   e2e:
     name: E2E (Playwright)
@@ -180,7 +195,7 @@ jobs:
   deploy-production:
     name: Deploy Vercel (Production)
     if: |
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main' &&
       needs.build.result == 'success' &&
       needs['migration-status'].result == 'success' &&
       needs.e2e.result == 'success'
@@ -199,15 +214,225 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      # REVERTIDO: `vercel build` no CI + transferência do `.vercel/output`
+      # entre runners (introduzido em 9a57c733, 20/08) para poupar Build CPU
+      # Minutes. Essa estratégia NUNCA produziu um deploy de produção
+      # funcional: os 6 deploys tentados desde então falharam, cada um num
+      # arquivo diferente que o `filePathMap` esperava
+      # (`node_modules/.prisma`, `.next/node_modules`, `.next/server/chunks`),
+      # e a tentativa de resolver regenerando dependências aqui publicou um
+      # Prisma engine de outra plataforma e derrubou produção em 22/08.
+      #
+      # A raiz é estrutural: `.vercel/output` não é autocontido — referencia o
+      # workspace inteiro do build — e binários nativos como o query engine do
+      # Prisma são específicos do runtime. Nenhum dos dois sobrevive a uma
+      # transferência entre máquinas diferentes.
+      #
+      # Voltando a mandar o código-fonte, a Vercel builda no próprio runtime de
+      # destino. Custa Build CPU Minutes, e é a configuração que rodou estável
+      # até 19/08.
+      #
+      # Ver: Postmortem/2026-08-22 — Prisma engine de outro runtime derruba producao
+
       - name: Deploy to Vercel (Production)
         id: vercel-prod
         run: |
-          DEPLOY_URL=$(npx --yes vercel@56.3.2 deploy --prod \
-            --token=${{ secrets.VERCEL_TOKEN }} \
+          set -euo pipefail
+
+          DEPLOY_LOG="$(mktemp)"
+          if ! npx --yes vercel@56.3.2 deploy --prod \
+            --token="$VERCEL_TOKEN" \
             --yes \
-            2>&1 | tail -1)
-          echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+            --meta githubCommitSha="$GITHUB_SHA" \
+            >"$DEPLOY_LOG" 2>&1; then
+            echo "::error::vercel deploy falhou (exit code preservado)"
+            echo "::group::Vercel CLI — saida completa (deploy falhou)"
+            cat "$DEPLOY_LOG"
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "::group::Vercel CLI — saida completa"
+          cat "$DEPLOY_LOG"
+          echo "::endgroup::"
+
+          DEPLOY_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.vercel\.app' "$DEPLOY_LOG" | tail -1 || true)"
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::deploy terminou 0 mas nao imprimiu URL Vercel valida"
+            exit 1
+          fi
+          echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
         env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Um `vercel deploy` bem-sucedido não prova que o runtime de produção
+      # mudou. Aqui confirmamos, pela API, que o deployment ficou READY, que o
+      # alvo é production e que o SHA publicado é o mesmo do commit em `main`.
+      - name: Verify production deployment
+        id: verify-prod
+        run: |
+          set -euo pipefail
+
+          DEPLOY_HOST="${DEPLOY_URL#https://}"
+          API="https://api.vercel.com/v13/deployments/${DEPLOY_HOST}"
+          if [ -n "${VERCEL_ORG_ID:-}" ]; then
+            API="${API}?teamId=${VERCEL_ORG_ID}"
+          fi
+
+          RESPONSE="$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" "$API")"
+
+          RESPONSE="$RESPONSE" EXPECTED_SHA="$GITHUB_SHA" node -e '
+            const data = JSON.parse(process.env.RESPONSE ?? "{}");
+            const expected = process.env.EXPECTED_SHA ?? "";
+            const readyState = data.readyState ?? data.status ?? "";
+            const target = data.target ?? "";
+            const sha = data.meta?.githubCommitSha ?? "";
+            const fail = (message) => {
+              process.stderr.write("::error::" + message + "\n");
+              process.exitCode = 1;
+            };
+
+            // Bloco completo em vez de uma linha: quando um deploy falha, é
+            // isto que responde "qual versão está no ar?" sem ter que abrir a
+            // Vercel. Diagnosticar os falsos positivos de 21-22/08 custou caro
+            // justamente porque o log não guardava nada disso.
+            const info = {
+              id: data.uid ?? data.id ?? "-",
+              url: data.url ? `https://${data.url}` : "-",
+              readyState: readyState || "-",
+              target: target || "-",
+              commitSha: sha || "(sem meta)",
+              commitEsperado: expected,
+              criadoEm: data.createdAt ? new Date(data.createdAt).toISOString() : "-",
+              regiao: (data.regions ?? []).join(",") || "-",
+              inspector: data.inspectorUrl ?? "-",
+              erro: data.errorMessage ?? data.errorCode ?? "-",
+            };
+
+            process.stdout.write("::group::Vercel — deployment de producao\n");
+            for (const [key, value] of Object.entries(info)) {
+              process.stdout.write(`  ${key.padEnd(14)} ${value}\n`);
+            }
+            process.stdout.write("::endgroup::\n");
+
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            if (summary) {
+              const rows = Object.entries(info).map(([k, v]) => `| ${k} | \`${v}\` |`).join("\n");
+              require("fs").appendFileSync(
+                summary,
+                `\n### Vercel — deployment verificado\n\n| campo | valor |\n|---|---|\n${rows}\n`
+              );
+            }
+
+            if (readyState !== "READY") fail(`deployment nao esta READY: ${readyState || "desconhecido"}`);
+            if (target !== "production") fail(`deployment nao e production: ${target || "desconhecido"}`);
+            if (!sha) fail("deployment sem githubCommitSha — nao da para provar a versao publicada");
+            else if (sha !== expected) fail(`SHA divergente: publicado=${sha} esperado=${expected}`);
+          '
+        env:
+          DEPLOY_URL: ${{ steps.vercel-prod.outputs.deploy-url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+
+      # A checagem que faltava. Todas as anteriores olham procedência e
+      # integridade: commit certo, arquivos presentes, deployment READY. Nenhuma
+      # exercita o serviço. Em 22/08/2026 um deploy passou em todas elas e
+      # mesmo assim devolvia 500 em qualquer rota que tocasse o banco — o
+      # Prisma engine era de outra plataforma. Só uma requisição real pega isso.
+      #
+      # `/api/health` faz um `SELECT 1`, então cobre Prisma Client + engine +
+      # conexão. Tentativas com espera porque a promoção leva alguns segundos
+      # para propagar no edge.
+      # Bate na URL DO DEPLOYMENT, não no domínio de produção.
+      #
+      # A primeira versão usava o domínio, com o argumento de que é o que o
+      # usuário acessa. Errado neste projeto: Rolling Releases estão ativos,
+      # então após a promoção o canary começa em 10% e o domínio serve
+      # majoritariamente o deployment ANTERIOR. Medido em 22/08 durante um
+      # canary de 10%: 0 de 20 requisições ao domínio chegaram ao deployment
+      # novo. Como smoke test isso seria falso negativo em todo deploy — e
+      # dispararia rollback de deployments saudáveis.
+      #
+      # A URL do deployment endereça exatamente o que acabou de subir,
+      # independente da fatia de canary; o 302 de deployment protection é
+      # resolvido pelo header de bypass.
+      #
+      # Prova: o deployment novo sobe, responde e alcança o banco.
+      # Não prova: que o tráfego já migrou — isso é decisão do rolling release.
+      - name: Smoke test pós-deploy
+        id: smoke-test
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BYPASS_SECRET:-}" ]; then
+            echo "::error::VERCEL_AUTOMATION_BYPASS_SECRET ausente nos secrets do repositorio."
+            echo "::error::Sem ele o smoke test nao endereca o deployment (302 de deployment protection)."
+            echo "::error::Valor em: Vercel > Settings > Deployment Protection > Protection Bypass for Automation."
+            exit 1
+          fi
+
+          URL="${DEPLOY_URL%/}/api/health"
+          echo "GET $URL (via protection bypass)"
+
+          for attempt in 1 2 3 4 5; do
+            BODY="$(mktemp)"
+            CODE="$(curl -sSL -o "$BODY" -w '%{http_code}' --max-time 25 \
+              -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
+              -H "x-vercel-set-bypass-cookie: false" \
+              "$URL" || echo "000")"
+            echo "  tentativa $attempt: HTTP $CODE — $(head -c 200 "$BODY")"
+
+            # Status 200 sozinho NAO basta: com bypass invalido a Vercel serve
+            # a tela de login SSO com HTTP 200. Verificado em 22/08 — o check
+            # por status aprovava essa resposta. So aceitamos o corpo que
+            # apenas o /api/health produz.
+            if [ "$CODE" = "200" ] && grep -q '"database":"ok"' "$BODY"; then
+              echo "Smoke test OK — deployment no ar e alcancando o banco."
+              exit 0
+            fi
+
+            if [ "$CODE" = "200" ]; then
+              echo "::error::smoke test: HTTP 200 mas o corpo nao e do /api/health"
+              echo "::error::provavel tela de deployment protection — verifique VERCEL_AUTOMATION_BYPASS_SECRET"
+              exit 1
+            fi
+
+            # 503 = rota respondeu mas o banco/engine falhou. Modo de falha de
+            # 22/08 (Prisma engine de outra plataforma); nao melhora com retry.
+            if [ "$CODE" = "503" ]; then
+              echo "::error::smoke test: /api/health respondeu 503 — runtime no ar mas sem acesso ao banco"
+              exit 1
+            fi
+
+            # 401/403 = bypass recusado. Insistir nao resolve.
+            if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
+              echo "::error::smoke test: bypass recusado (HTTP $CODE) — verifique VERCEL_AUTOMATION_BYPASS_SECRET"
+              exit 1
+            fi
+
+            [ "$attempt" -lt 5 ] && sleep 10
+          done
+
+          echo "::error::smoke test falhou: /api/health nao respondeu 200 em 5 tentativas (ultimo: $CODE)"
+          exit 1
+        env:
+          DEPLOY_URL: ${{ steps.vercel-prod.outputs.deploy-url }}
+          BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      # Roda quando a verificação OU o smoke test reprovam um deployment que
+      # chegou a ser promovido. Não cobre o caso em que o deploy nem aconteceu
+      # (aí produção continua na versão anterior, que é o estado desejado).
+      - name: Rollback em verificação reprovada
+        if: ${{ failure() && (steps.verify-prod.outcome == 'failure' || steps.smoke-test.outcome == 'failure') && steps.vercel-prod.outputs.deploy-url != '' }}
+        run: |
+          set -euo pipefail
+          echo "::warning::deployment promovido reprovou (verificacao ou smoke test) — revertendo"
+          npx --yes vercel@56.3.2 rollback \
+            --token="$VERCEL_TOKEN" \
+            --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
@@ -216,3 +441,58 @@ jobs:
           echo "### Production Deploy (main)" >> $GITHUB_STEP_SUMMARY
           echo "- URL: ${{ steps.vercel-prod.outputs.deploy-url }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: main" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Um push em `main` que não termina com produção no SHA do push é um
+  # incidente, e o modo mais perigoso é o job de deploy ser **pulado** (o `if:`
+  # exige build + migration-status + e2e verdes): nesse caso nada falha e
+  # produção fica defasada em silêncio. Foi assim que produção passou 3 dias em
+  # 16bf5dd3. Este job roda sempre e é o único que enxerga esse caso.
+  deploy-guard:
+    name: Deploy Guard (main)
+    if: ${{ always() && ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main') }}
+    needs:
+      - deploy-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Alertar se produção não ficou no SHA do push
+        run: |
+          set -euo pipefail
+
+          RESULT="${{ needs.deploy-production.result }}"
+          echo "deploy-production: $RESULT"
+
+          if [ "$RESULT" = "success" ]; then
+            echo "Deploy concluiu e foi verificado."
+            exit 0
+          fi
+
+          if [ "$RESULT" = "skipped" ]; then
+            MESSAGE="Deploy de producao PULADO no push $GITHUB_SHA — producao continua na versao anterior."
+          else
+            MESSAGE="Deploy de producao terminou '$RESULT' no push $GITHUB_SHA — producao pode estar defasada."
+          fi
+
+          echo "::error::$MESSAGE"
+
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            MESSAGE="$MESSAGE" RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              node -e '
+                const body = JSON.stringify({
+                  text: `:rotating_light: *Lead Flow — deploy de produção não concluiu*\n${process.env.MESSAGE}\n${process.env.RUN_URL}`,
+                });
+                fetch(process.env.SLACK_WEBHOOK_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body,
+                }).then((r) => process.stdout.write(`slack=${r.status}\n`))
+                  .catch((e) => process.stderr.write(`slack falhou: ${e}\n`));
+              ' || echo "::warning::nao foi possivel notificar o Slack"
+          else
+            echo "::warning::SLACK_DEPLOY_WEBHOOK_URL nao configurado — alerta so no Actions"
+          fi
+
+          exit 1
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}

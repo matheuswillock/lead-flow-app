@@ -1,6 +1,8 @@
 import { Output } from "@/lib/output"
 import { cacheLife, cacheTag } from "next/cache"
 import { cacheTags } from "@/lib/cache/cacheTags"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { resolvePageOffset } from "@/lib/http/parse-pagination"
 import { DEFAULT_TZ } from "@/lib/dates/DEFAULT_TZ"
 import { formatLocalDateValue } from "@/lib/dates/parse"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
@@ -55,8 +57,49 @@ const SEGMENT_LABELS: Record<string, string> = {
 }
 
 /**
- * Fase 3: função cacheada para listSegments do Radar.
- * Aceita apenas primitivos para garantir estabilidade do cache.
+ * Reconstrói o `TeamContext` a partir de primitivos.
+ *
+ * A função cacheada aceita apenas primitivos para manter a chave de cache
+ * estável — objeto na assinatura fragmentaria o cache por referência.
+ */
+function rebuildRadarScope(
+  teamId: string,
+  profileId: string,
+  role: string,
+  functionsKey: string
+): RadarTeamScope {
+  const ctx: TeamContext = {
+    profileId,
+    teamMember: { role, functions: functionsKey ? functionsKey.split(",") : [] },
+  }
+  return { teamId, ctx }
+}
+
+async function listCustomRadarSegments(scope: RadarTeamScope, teamId: string) {
+  const customSegments = await teamRadarSegmentService.listByTeam(teamId, { onlyActive: true })
+  const customSegmentCounts = await Promise.all(
+    customSegments.map((segment) =>
+      radarSegmentQueryService.countProfiles(scope, parseRadarSegmentRules(segment.rulesJson))
+    )
+  )
+
+  return customSegments.map((segment, index) => ({
+    slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
+    name: segment.name,
+    description: segment.description,
+    count: customSegmentCounts[index] ?? 0,
+    isSystem: false,
+  }))
+}
+
+/**
+ * Caminho feliz de `listSegments` — o ÚNICO que pode virar entrada de cache.
+ *
+ * Nenhuma falha é engolida aqui de propósito (DA3). O Next só grava a entrada
+ * quando a função `"use cache"` RETORNA; devolver um payload degradado
+ * (`fixedSegments: []` + flag de erro, como era até R8) congelava o dashboard
+ * zerado por até 60s, sem mutação nenhuma para disparar `revalidateTag`.
+ * Lançando, nada é gravado e o caller decide o fallback.
  */
 async function getCachedRadarSegments(
   teamId: string,
@@ -68,42 +111,40 @@ async function getCachedRadarSegments(
   cacheTag(cacheTags.radarSegments(teamId))
   cacheLife({ stale: 30, revalidate: 60 })
 
-  const ctx: TeamContext = {
-    profileId,
-    teamMember: { role, functions: functionsKey ? functionsKey.split(",") : [] },
-  }
-  const scope = { teamId, ctx }
+  const scope = rebuildRadarScope(teamId, profileId, role, functionsKey)
 
-  let fixedSegments: Awaited<ReturnType<typeof radarService.countSegments>> = []
-  let fixedSegmentsError = false
-  try {
-    fixedSegments = await radarService.countSegments(scope)
-  } catch (error) {
-    fixedSegmentsError = true
-    console.error(`[RadarUseCase][getCachedRadarSegments] Falha ao contar segmentos fixos (teamId=${teamId})`, error)
-  }
+  const fixedSegments = await radarService.countSegments(scope)
   const metrics = await radarService.getMetrics(scope, fixedSegments)
-
-  const customSegments = await teamRadarSegmentService.listByTeam(teamId, { onlyActive: true })
-  const customSegmentCounts = await Promise.all(
-    customSegments.map((segment) =>
-      radarSegmentQueryService.countProfiles(scope, parseRadarSegmentRules(segment.rulesJson))
-    )
-  )
+  const customSegments = await listCustomRadarSegments(scope, teamId)
 
   const segments = [
     ...fixedSegments.map((segment) => ({ ...segment, isSystem: true })),
-    ...customSegments.map((segment, index) => ({
-      slug: `${CUSTOM_RADAR_SEGMENT_PREFIX}${segment.id}`,
-      name: segment.name,
-      description: segment.description,
-      count: customSegmentCounts[index] ?? 0,
-      isSystem: false,
-    })),
+    ...customSegments,
   ]
 
   // "use cache" requires plain objects — Output class instances are not serializable
-  return { segments, metrics, fixedSegmentsError }
+  return { segments, metrics }
+}
+
+/**
+ * Caminho degradado — NUNCA cacheado.
+ *
+ * Roda quando o bloco cacheado falhou. Devolve o que ainda é verdade (total de
+ * perfis, segmentos customizados) e `null` no que dependia da contagem de
+ * sistema, para a UI marcar como desconhecido em vez de imprimir zero.
+ */
+async function buildRadarSegmentsWithoutFixed(
+  teamId: string,
+  profileId: string,
+  role: string,
+  functionsKey: string
+) {
+  const scope = rebuildRadarScope(teamId, profileId, role, functionsKey)
+
+  const metrics = await radarService.getMetrics(scope, null)
+  const segments = await listCustomRadarSegments(scope, teamId)
+
+  return { segments, metrics }
 }
 
 export type RadarListProfilesInput = {
@@ -259,21 +300,27 @@ export class RadarUseCase {
    */
   async exportSegmentProfiles(teamId: string, ctx: TeamContext, segment: string) {
     const scope = this.scope(teamId, ctx)
-    const ids = await this.resolveSegmentProfileIds(scope, segment)
-    if (ids === null) {
+    const page = await this.resolveSegmentProfileIdsPage(scope, segment, {
+      skip: 0,
+      take: RADAR_EXPORT_MAX_ROWS,
+    })
+    if (page === null) {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const truncated = ids.length > RADAR_EXPORT_MAX_ROWS
-    const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, ids)
+    // Derivado do que a página REALMENTE trouxe, não do total: qualquer teto
+    // aplicado abaixo desta camada (LIMIT do builder, por exemplo) precisa
+    // aparecer aqui em vez de sair como export silenciosamente cortado.
+    const truncated = page.ids.length < page.total
+    const items = await radarRepository.listProfilesForExportByIdsWithCtx(scope, page.ids)
     const rows = buildRadarExportRows(mapProfilesToExportInput(items))
     const messages = truncated
-      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${ids.length} membros no segmento).`]
+      ? [`Export limitado a ${RADAR_EXPORT_MAX_ROWS} linhas (${page.total} membros no segmento).`]
       : []
 
     return new Output(true, messages, [], {
       rows,
-      total: ids.length,
+      total: page.total,
       exported: rows.length,
       truncated,
       maxRows: RADAR_EXPORT_MAX_ROWS,
@@ -490,7 +537,11 @@ export class RadarUseCase {
     page: number,
     pageSize: number
   ) {
-    const skip = (page - 1) * pageSize
+    const skip = resolvePageOffset(page, pageSize)
+    if (skip === null) {
+      return new Output(false, [], ["Página fora do intervalo"], null)
+    }
+
     const result = await radarRepository.listProfileEventsWithCtx(
       this.scope(teamId, ctx),
       profileId,
@@ -508,8 +559,31 @@ export class RadarUseCase {
   async listSegments(teamId: string, ctx: TeamContext) {
     const role = ctx.teamMember.role
     const functionsKey = ctx.teamMember.functions.join(",")
-    const cached = await getCachedRadarSegments(teamId, ctx.profileId, role, functionsKey)
-    return new Output(true, [], [], cached)
+
+    try {
+      const cached = await getCachedRadarSegments(teamId, ctx.profileId, role, functionsKey)
+      return new Output(true, [], [], { ...cached, fixedSegmentsError: false })
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error)
+
+      // O erro que sai de `"use cache"` perde o protótipo (o Next o serializa com
+      // React Flight e troca por um Error genérico com digest), então não dá para
+      // discriminar a causa pela classe. Recalcular sem cache resolve os dois
+      // casos: se a falha era só da contagem de sistema, o degradado responde;
+      // se era estrutural, ela estoura aqui de novo e a rota devolve 500 — que é
+      // a resposta honesta.
+      console.error(
+        `[RadarUseCase][listSegments] Bloco cacheado indisponível, recalculando sem cache (teamId=${teamId})`,
+        error
+      )
+      const degraded = await buildRadarSegmentsWithoutFixed(
+        teamId,
+        ctx.profileId,
+        role,
+        functionsKey
+      )
+      return new Output(true, [], [], { ...degraded, fixedSegmentsError: true })
+    }
   }
 
   async listSegmentProfiles(
@@ -520,21 +594,26 @@ export class RadarUseCase {
     pageSize: number
   ) {
     const scope = this.scope(teamId, ctx)
-    const ids = await this.resolveSegmentProfileIds(scope, segment)
-    if (ids === null) {
+    const skip = resolvePageOffset(page, pageSize)
+    if (skip === null) {
+      return new Output(false, [], ["Página fora do intervalo"], null)
+    }
+
+    const resolved = await this.resolveSegmentProfileIdsPage(scope, segment, {
+      skip,
+      take: pageSize,
+    })
+    if (resolved === null) {
       return new Output(false, [], ["Segmento inválido"], null)
     }
 
-    const skip = (page - 1) * pageSize
-    const pageIds = ids.slice(skip, skip + pageSize)
-
     const items = await Promise.all(
-      pageIds.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
+      resolved.ids.map((id) => radarRepository.getProfileDetailWithCtx(scope, id))
     )
 
     return new Output(true, [], [], {
       items: items.filter(Boolean),
-      total: ids.length,
+      total: resolved.total,
       page,
       pageSize,
       segment,
@@ -752,7 +831,11 @@ export class RadarUseCase {
         return new Output(false, [], ["Segmento não encontrado"], null)
       }
       const rules = parseRadarSegmentRules(segment.rulesJson)
-      const skip = (page - 1) * pageSize
+      const skip = resolvePageOffset(page, pageSize)
+      if (skip === null) {
+        return new Output(false, [], ["Página fora do intervalo"], null)
+      }
+
       const [total, pageIds] = await Promise.all([
         this.segmentQueryService.countProfiles(scope, rules),
         this.segmentQueryService.listProfileIds(scope, rules, { skip, take: pageSize }),
@@ -823,12 +906,25 @@ export class RadarUseCase {
    * Resolve IDs de perfil para slug de sistema ou `campaign:{uuid}`.
    * Retorna `null` quando a audiência é inválida / não pertence ao time.
    */
-  private async resolveSegmentProfileIds(
+  /**
+   * Resolve uma página do segmento — de sistema ou audiência `campaign:{id}`.
+   *
+   * Segmento de sistema pagina no banco pelo mesmo predicado que alimenta o
+   * card (R6/DA4). Audiência de campanha ainda resolve a lista inteira e fatia
+   * aqui: é um recorte por `campaignId`, com ordem de magnitude menor que a
+   * base do time, e sai do escopo desta SPEC.
+   */
+  private async resolveSegmentProfileIdsPage(
     scope: RadarTeamScope,
-    segment: string
-  ): Promise<string[] | null> {
+    segment: string,
+    pagination: { skip: number; take: number }
+  ): Promise<{ ids: string[]; total: number } | null> {
     if (isRadarSegmentSlug(segment)) {
-      return this.service.listSegmentProfileIds(scope, segment)
+      const [ids, total] = await Promise.all([
+        this.service.listSegmentProfileIds(scope, segment, pagination),
+        this.service.countSegmentProfiles(scope, segment),
+      ])
+      return { ids, total }
     }
 
     const campaignId = parseCampaignRadarSegmentSlug(segment)
@@ -837,7 +933,11 @@ export class RadarUseCase {
     const campaignName = await radarRepository.findEmailCampaignName(scope.teamId, campaignId)
     if (!campaignName) return null
 
-    return this.service.listCampaignSegmentProfileIds(scope, campaignId)
+    const campaignIds = await this.service.listCampaignSegmentProfileIds(scope, campaignId)
+    return {
+      ids: campaignIds.slice(pagination.skip, pagination.skip + pagination.take),
+      total: campaignIds.length,
+    }
   }
 }
 

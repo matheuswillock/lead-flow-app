@@ -121,4 +121,37 @@ export interface IProfileRepository {
     asaasCustomerId: string | null;
   } | null>;
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
+  /** Dados minimos de contato, para notificacao e rotulo em atividade. */
+  findContactById(id: string): Promise<ProfileContact | null>;
+  /** Identidade Supabase do perfil, para acoes executadas em nome dele. */
+  findIdentityById(id: string): Promise<ProfileIdentity | null>;
+  /** Fuso horario configurado, para exibicao e para o bootstrap do form publico. */
+  findTimezoneBySupabaseId(supabaseId: string): Promise<{ id: string; timezone: string } | null>;
+  /** Id e e-mail do solicitante, para reautenticacao por senha e log de auditoria. */
+  findAuthContactBySupabaseId(supabaseId: string): Promise<{ id: string; email: string } | null>;
+  /** Atualiza o fuso e devolve o id do perfil, para invalidacao em cascata. */
+  updateTimezoneBySupabaseId(supabaseId: string, timezone: string): Promise<{ id: string } | null>;
+  /**
+   * Primeiro master com assinatura vigente. Fallback da ingestao do Meta quando
+   * o webhook chega sem `managerId` no query param.
+   */
+  findFirstActiveMasterManager(): Promise<ProfileIdentity | null>;
+  /**
+   * Perfil com a conexao Google, para operar o calendario em nome dele.
+   * Devolve o Profile completo porque `cancelCalendarEvent` o recebe como organizer.
+   */
+  findWithGoogleConnectionById(id: string): Promise<ProfileWithGoogleConnection | null>;
 }
+
+export type ProfileContact = Pick<Profile, "id" | "email" | "fullName">;
+
+export type ProfileIdentity = Pick<Profile, "id" | "supabaseId">;
+
+export type ProfileWithGoogleConnection = Profile & {
+  googleConnection: {
+    accessToken: string | null;
+    refreshToken: string | null;
+    tokenExpiresAt: Date | null;
+    revokedAt: Date | null;
+  } | null;
+};

@@ -14,6 +14,7 @@ import {
   getMeetingPresenceBadgeLabel,
   getMeetingPresenceBadgeVariant,
 } from "@/lib/lead-meeting"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 import {
   Card,
@@ -158,7 +159,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
         setError(null)
       } catch (err) {
         if (isCancelled) return
-        const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar agendamentos';
+        const errorMessage = toUserToastMessage(err);
         console.error('[UpcomingMeetings] Fetch error:', errorMessage);
         setError(errorMessage)
       } finally {

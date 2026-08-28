@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { publicFormViewService } from "../services/PublicFormViewService"
 import type { PublicFormViewState } from "./PublicFormViewTypes"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 export function usePublicFormView(
   publicId: string,
@@ -31,7 +32,7 @@ export function usePublicFormView(
         lastSuccessKeyRef.current = requestKey
       })
       .catch((fetchError: unknown) => {
-        setError(fetchError instanceof Error ? fetchError.message : "Formulário indisponível")
+        setError(toUserToastMessage(fetchError))
       })
       .finally(() => {
         if (inFlightKeyRef.current === requestKey) inFlightKeyRef.current = null

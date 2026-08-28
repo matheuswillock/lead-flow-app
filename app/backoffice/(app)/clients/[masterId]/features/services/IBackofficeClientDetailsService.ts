@@ -23,6 +23,8 @@ export interface IBackofficeClientDetailsService {
     mode: "invite" | "reset_password"
   ): Promise<{ email: string }>
 
+  generateInviteLink(memberId: string): Promise<{ actionLink: string; email: string }>
+
   getByMasterId(
     masterId: string,
     options?: {

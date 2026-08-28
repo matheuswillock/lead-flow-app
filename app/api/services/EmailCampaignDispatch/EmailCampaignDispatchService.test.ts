@@ -1,4 +1,4 @@
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, mock, spyOn, beforeEach, afterEach } from "bun:test"
 
 // ---------- mocks (antes de qualquer import do módulo) ----------
 
@@ -8,7 +8,16 @@ const batchSendMock = mock(async () => ({
 }))
 
 mock.module("@/lib/email/is-retryable-resend-batch-error", () => ({
-  isRetryableResendBatchError: (error: { statusCode?: number; message?: string }) => {
+  isRetryableResendBatchError: (error: {
+    statusCode?: number
+    message?: string
+    name?: string
+  }) => {
+    const name = error.name?.toLowerCase() ?? ""
+    const message = error.message?.toLowerCase() ?? ""
+    if (name === "monthly_quota_exceeded" || message.includes("monthly email sending quota")) {
+      return false
+    }
     const NON_RETRYABLE = new Set([401, 403, 422])
     const statusCode = error.statusCode
     if (statusCode !== undefined && NON_RETRYABLE.has(statusCode)) return false
@@ -16,6 +25,11 @@ mock.module("@/lib/email/is-retryable-resend-batch-error", () => ({
     if (statusCode === undefined) return true
     if (statusCode === 429 || statusCode >= 500) return true
     return false
+  },
+  isResendMonthlyQuotaExceeded: (error: { name?: string; message?: string }) => {
+    const name = error.name?.toLowerCase() ?? ""
+    const message = error.message?.toLowerCase() ?? ""
+    return name === "monthly_quota_exceeded" || message.includes("monthly email sending quota")
   },
   MAX_BATCH_SEND_ATTEMPTS: 3,
   resendBatchRetryBackoffMs: () => 0,
@@ -207,6 +221,90 @@ describe("EmailCampaignDispatchService.dispatchBatch", () => {
     expect(result.providerErrors[0]?.statusCode).toBe(429)
     expect(result.providerErrors[0]?.message).toBe("Too many requests")
     expect(result.providerErrors[0]?.emails).toHaveLength(3)
+  })
+
+  it("D4-quota — 429 monthly_quota_exceeded aborta sem retry e não processa chunks restantes", async () => {
+    batchSendMock.mockResolvedValue({
+      data: null as unknown as Array<{ id?: string }>,
+      error: {
+        name: "monthly_quota_exceeded",
+        message: "You have exceeded your monthly email sending quota.",
+        statusCode: 429,
+      },
+    })
+
+    const onChunkDispatched = mock(async () => {})
+    const result = await service.dispatchBatch({
+      ...makeBaseParams(),
+      recipients: makeRecipients(250),
+      onChunkDispatched,
+    })
+
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+    expect(result.abortedReason).toBe("monthly_quota_exceeded")
+    expect(result.sent).toBe(0)
+    expect(result.failed).toBe(100)
+    expect(onChunkDispatched).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T-C4.1 — o aborto por cota tem que sair com a tag estável: é ela que vira
+   * alerta no drain. Sem isso o incidente é mais uma linha de `failed` no meio
+   * de 98.884, e ninguém descobre até um cliente reclamar.
+   */
+  it("T-C4.1 — aborto por cota emite a tag estruturada resend_monthly_quota_exceeded", async () => {
+    batchSendMock.mockResolvedValue({
+      data: null as unknown as Array<{ id?: string }>,
+      error: {
+        name: "monthly_quota_exceeded",
+        message: "You have exceeded your monthly email sending quota.",
+        statusCode: 429,
+      },
+    })
+    const consoleError = spyOn(console, "error").mockImplementation(() => {})
+
+    try {
+      await service.dispatchBatch({ ...makeBaseParams(), recipients: makeRecipients(10) })
+
+      const quotaLog = consoleError.mock.calls.find(
+        (call) => call[0] === "[resend_monthly_quota_exceeded]"
+      )
+      expect(quotaLog).toBeDefined()
+      expect(quotaLog?.[1]).toMatchObject({
+        tag: "resend_monthly_quota_exceeded",
+        surface: "campaign_dispatch",
+      })
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it("T-C4.1b — 429 de rate limit não é incidente de cota: retenta e não emite a tag", async () => {
+    batchSendMock
+      .mockResolvedValueOnce({
+        data: null as unknown as Array<{ id?: string }>,
+        error: { name: "rate_limit_exceeded", message: "Too many requests", statusCode: 429 },
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: "re_0" }, { id: "re_1" }, { id: "re_2" }],
+        error: null,
+      })
+    const consoleError = spyOn(console, "error").mockImplementation(() => {})
+
+    try {
+      const result = await service.dispatchBatch({
+        ...makeBaseParams(),
+        recipients: makeRecipients(3),
+      })
+
+      expect(result.abortedReason).toBeUndefined()
+      expect(batchSendMock).toHaveBeenCalledTimes(2)
+      expect(
+        consoleError.mock.calls.some((call) => call[0] === "[resend_monthly_quota_exceeded]")
+      ).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it("D4-retry — 429 na 1ª tentativa e sucesso na 2ª", async () => {

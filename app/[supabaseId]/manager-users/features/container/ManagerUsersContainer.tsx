@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 
 import { useManagerUsers } from "../context/useManagerUsers";
 import { DataTable } from "@/app/[supabaseId]/components/data-table/DataTable";
@@ -144,7 +145,7 @@ export function ManagerUsersContainer({
         remainingMonths: Number(details.pricing?.remainingMonths ?? 1),
       });
     } catch (error: any) {
-      toast.error(error?.message || "Erro ao carregar pagamento pendente.");
+      toastUserError(error);
       setIsEditPendingPaymentOpen(false);
       setPendingPaymentTarget(null);
     } finally {
@@ -173,7 +174,7 @@ export function ManagerUsersContainer({
       setPendingPaymentTarget(null);
       await refreshData();
     } catch (error: any) {
-      toast.error(error?.message || "Erro ao atualizar forma de pagamento.");
+      toastUserError(error);
     } finally {
       setPendingPaymentSubmitting(false);
     }

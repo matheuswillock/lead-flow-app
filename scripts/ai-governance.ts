@@ -29,6 +29,7 @@ interface WarningsConfig {
 interface LegacyExceptionsConfig {
   [category: string]: string[] | undefined;
   prismaInV1RouteAllowlist?: string[];
+  dipPrismaInUseCaseAllowlist?: string[];
   useCaseWithoutOutputAllowlist?: string[];
   frontendFeatureStructureAllowlist?: string[];
   nonTypeScriptFileAllowlist?: string[];
@@ -178,6 +179,86 @@ const CLIENT_API_MASKING_EXCLUDED_PATH_PREFIXES = [
   "app/api/",
   "lib/route-map/",
 ];
+
+/** `<receiver>.$queryRaw` / `$executeRaw` / `$transaction` — client-level API. */
+const PRISMA_CLIENT_API_REGEX =
+  /[\w$)\]]\s*\.\s*\$(?:queryRaw|executeRaw|transaction)/;
+/** Direct access through the shared client exported as `prisma`. */
+const PRISMA_LITERAL_ACCESS_REGEX = /\bprisma\s*\./;
+/** Identifiers annotated with a Prisma client/transaction type. */
+const PRISMA_TYPED_IDENTIFIER_REGEX =
+  /\b([A-Za-z_$][\w$]*)\s*[?!]?\s*:\s*(?:Omit<\s*)?(?:PrismaClient|PrismaTransactionClient|Prisma\.TransactionClient|TransactionClient)\b/g;
+/**
+ * Identifiers holding the client without a type annotation: aliases of the
+ * shared export (`const db = prisma`) and factory calls
+ * (`const db = getEmailCronPrisma()`).
+ */
+const PRISMA_ALIAS_IDENTIFIER_REGEX =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*(?:prisma\b|[\w.]*[Pp]risma[\w]*\s*\()|\bthis\.([A-Za-z_$][\w$]*)\s*=\s*(?:prisma\b|[\w.]*[Pp]risma[\w]*\s*\()/g;
+/** Transaction callback parameter (`$transaction(async (tx) => ...)`). */
+const PRISMA_TRANSACTION_PARAM_REGEX =
+  /\$transaction\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>/g;
+
+/** Prisma client identifiers other than the literal `prisma` export. */
+function collectInjectedPrismaIdentifiers(fileContent: string): Set<string> {
+  const identifiers = new Set<string>();
+
+  const addIdentifier = (identifier: string | undefined): void => {
+    if (identifier && identifier !== "prisma") {
+      identifiers.add(identifier);
+    }
+  };
+
+  for (const match of fileContent.matchAll(PRISMA_TYPED_IDENTIFIER_REGEX)) {
+    addIdentifier(match[1]);
+  }
+
+  for (const match of fileContent.matchAll(PRISMA_ALIAS_IDENTIFIER_REGEX)) {
+    addIdentifier(match[1] ?? match[2]);
+  }
+
+  for (const match of fileContent.matchAll(PRISMA_TRANSACTION_PARAM_REGEX)) {
+    addIdentifier(match[1]);
+  }
+
+  return identifiers;
+}
+
+/**
+ * Property access on an identifier already established as a Prisma client
+ * (`this.db.`, `db.`, `deps.db.`), so the receiver is never inferred from the
+ * property name — `cache.lead.count()` is not database access.
+ */
+function accessesInjectedPrismaClient(fileContent: string): boolean {
+  for (const identifier of collectInjectedPrismaIdentifiers(fileContent)) {
+    const escaped = identifier.replaceAll("$", "\\$");
+    const accessRegex = new RegExp(
+      `(?<![\\w$])(?:[A-Za-z_$][\\w$]*\\s*\\.\\s*)?${escaped}\\s*\\.\\s*[A-Za-z_$]`,
+    );
+
+    if (accessRegex.test(fileContent)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Detects Prisma data access through any accessor: the shared `prisma` export,
+ * a client injected in the constructor (`this.db.`), a transaction client
+ * (`tx.`), or any identifier typed as `PrismaClient`.
+ */
+export function containsPrismaDataAccess(fileContent: string): boolean {
+  if (
+    PRISMA_LITERAL_ACCESS_REGEX.test(fileContent) ||
+    PRISMA_CLIENT_API_REGEX.test(fileContent)
+  ) {
+    return true;
+  }
+
+  return accessesInjectedPrismaClient(fileContent);
+}
 
 function extractImportSpecifiers(fileContent: string): string[] {
   const specifiers = new Set<string>();
@@ -551,6 +632,60 @@ async function validatePrismaInV1Routes(
   }
 }
 
+async function validateNoPrismaInUseCase(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.dipPrismaInUseCaseAllowlist,
+  );
+
+  const useCaseFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api", "useCases"),
+    (filename) =>
+      filename.endsWith("UseCase.ts") && !/^I[A-Z].*UseCase\.ts$/.test(filename),
+  );
+
+  const currentViolations = new Set<string>();
+
+  for (const useCaseFile of useCaseFiles) {
+    const relative = normalizeRelativePath(useCaseFile);
+    const fileContent = await fs.readFile(useCaseFile, "utf8");
+
+    const usesPrisma =
+      /\$queryRaw|\$executeRaw/.test(fileContent) ||
+      containsPrismaDataAccess(fileContent);
+
+    if (!usesPrisma) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      issues.push(
+        `Disallowed direct Prisma usage in UseCase (violates DIP): ${relative}. Move data access to a Service/Repository or add justified LEGACY EXCEPTION in config.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (dipPrismaInUseCaseAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (no direct Prisma detected anymore): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
 async function validatePrismaIncludeUsage(
   config: GovernanceConfig,
   issues: string[],
@@ -571,11 +706,11 @@ async function validatePrismaIncludeUsage(
     const relative = normalizeRelativePath(apiFile);
     const fileContent = await fs.readFile(apiFile, "utf8");
 
-    if (!/\bprisma\s*\./.test(fileContent)) {
+    if (!/\binclude\s*:/.test(fileContent)) {
       continue;
     }
 
-    if (!/\binclude\s*:/.test(fileContent)) {
+    if (!containsPrismaDataAccess(fileContent)) {
       continue;
     }
 
@@ -893,7 +1028,7 @@ async function validateNonRepositoryDatabaseAccess(
     }
 
     const fileContent = await fs.readFile(apiFile, "utf8");
-    if (!/\bprisma\s*\./.test(fileContent)) {
+    if (!containsPrismaDataAccess(fileContent)) {
       continue;
     }
 
@@ -1492,6 +1627,7 @@ async function checkGovernance(
   validateFrozenAllowlistsNoNewItems(config, frozenAllowlists, issues);
   await validateAdapters(config, canonicalText, canonicalAbsolutePath, issues);
   await validatePrismaInV1Routes(config, issues, warnings);
+  await validateNoPrismaInUseCase(config, issues, warnings);
   await validatePrismaIncludeUsage(config, issues, warnings);
   await validateRouteRepositoryImports(config, issues, warnings);
   await validateServiceImportsOutsideUseCases(config, issues, warnings);
@@ -1622,7 +1758,9 @@ async function main(): Promise<void> {
   await checkGovernance(config, canonicalText, canonicalPath);
 }
 
-main().catch((error: unknown) => {
-  console.error("[governance] Fatal error:", error);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error("[governance] Fatal error:", error);
+    process.exit(1);
+  });
+}

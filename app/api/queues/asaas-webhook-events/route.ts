@@ -3,9 +3,19 @@ import {
 } from "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository"
 import { processAsaasWebhookEvent } from "@/app/api/webhooks/asaas/processAsaasWebhookEvent"
 import {
+  ASAAS_WEBHOOK_EVENTS_TOPIC,
   handleAsaasWebhookEventsCallback,
   type AsaasWebhookEventPayload,
 } from "@/lib/queues/asaas-webhook-events"
+import {
+  ackAfterMaxDeliveries,
+  buildInvalidPayloadIdempotencyKey,
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+  type AckAfterMaxDeliveriesFn,
+  type DeadLetterInvalidPayloadFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -33,6 +43,8 @@ export async function processAsaasWebhookEventMessage(
     process: typeof processAsaasWebhookEvent
     markProcessed: typeof asaasWebhookEventRepository.markProcessed
     markFailed: typeof asaasWebhookEventRepository.markFailed
+    ackDeadLetter?: AckAfterMaxDeliveriesFn
+    deadLetter?: DeadLetterInvalidPayloadFn
   } = {
     process: processAsaasWebhookEvent,
     markProcessed: asaasWebhookEventRepository.markProcessed.bind(asaasWebhookEventRepository),
@@ -48,10 +60,23 @@ export async function processAsaasWebhookEventMessage(
     event: message?.body?.event,
   })
 
-  if (!message?.eventId || !message?.body) {
-    console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    eventId: message?.eventId,
+    body: message?.body,
+  })
+  if (missingFields.length > 0) {
+    console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       message,
+      missingFields,
+    })
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await (deps.deadLetter ?? deadLetterInvalidPayload)({
+      topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.eventId, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
     })
     return
   }
@@ -77,6 +102,15 @@ export async function processAsaasWebhookEventMessage(
         markError,
       })
     })
+    const ackDeadLetter = deps.ackDeadLetter ?? ackAfterMaxDeliveries
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
+      idempotencyKey: message.eventId,
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

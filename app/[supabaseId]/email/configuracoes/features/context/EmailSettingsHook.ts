@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { getResendDomainDispatchWarnings } from "@/lib/email/campaign-dispatch-guards"
+import { toastUserError, toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { EmailSettingsService } from "../services/EmailSettingsService"
 import type {
   ConfigureDomainTrackingData,
@@ -22,6 +22,17 @@ import type {
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
 
 const defaultService = new EmailSettingsService()
+const SENDER_DOMAIN_ERROR_PREFIX = "O e-mail do remetente deve usar o domínio cadastrado"
+
+export function buildSenderErrorMessage(error: unknown, domainName: string | null): string {
+  const message = error instanceof Error ? error.message : String(error ?? "")
+  if (!message.includes(SENDER_DOMAIN_ERROR_PREFIX)) return toUserToastMessage(error)
+
+  const normalizedDomain = domainName?.trim()
+  return normalizedDomain
+    ? `Não foi possível cadastrar o remetente porque ele não possui o domínio cadastrado. Use um e-mail com o domínio cadastrado (@${normalizedDomain}).`
+    : "Não foi possível cadastrar o remetente porque ele não possui o domínio cadastrado."
+}
 
 export type EmailSettingsHookReturn = {
   settings: EmailSettings | null
@@ -56,6 +67,8 @@ export type EmailSettingsHookReturn = {
   updatingSenderId: string | null
   deletingSenderId: string | null
   settingDefaultSenderId: string | null
+  senderErrorMessage: string | null
+  clearSenderErrorMessage: () => void
   handleCreateSender: (data: UpsertEmailSenderData) => Promise<void>
   handleUpdateSender: (senderId: string, data: UpsertEmailSenderData) => Promise<void>
   handleDeleteSender: (senderId: string) => Promise<void>
@@ -117,6 +130,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [updatingSenderId, setUpdatingSenderId] = useState<string | null>(null)
   const [deletingSenderId, setDeletingSenderId] = useState<string | null>(null)
   const [settingDefaultSenderId, setSettingDefaultSenderId] = useState<string | null>(null)
+  const [senderErrorMessage, setSenderErrorMessage] = useState<string | null>(null)
 
   const [globalVariables, setGlobalVariables] = useState<EmailGlobalVariable[]>([])
   const [creatingVariable, setCreatingVariable] = useState(false)
@@ -132,16 +146,17 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainOpenTracking, setDomainOpenTracking] = useState(false)
   const [domainClickTracking, setDomainClickTracking] = useState(false)
   const [domainTrackingSubdomain, setDomainTrackingSubdomain] = useState<string | null>(null)
-  const domainDispatchWarnings = useMemo(
-    () =>
-      getResendDomainDispatchWarnings({
-        domainName,
-        domainStatus,
-        openTracking: domainOpenTracking,
-        clickTracking: domainClickTracking,
-      }),
-    [domainName, domainStatus, domainOpenTracking, domainClickTracking]
-  )
+  /**
+   * Vem pronto do servidor, não é recalculado aqui.
+   *
+   * O recálculo local só enxergava `domainStatus`, e desde que o gate passou a
+   * distinguir DNS de envio de DNS de tracking isso divergia: para um domínio
+   * `partially_failed` com DKIM e SPF íntegros, o servidor responde "dispara
+   * sem medir" e o cliente respondia "disparo bloqueado". A regra depende de
+   * `resendSendingDnsVerified`, que não é exposto no DTO — e não precisa ser,
+   * porque o servidor já manda a conclusão em `resendDomainDispatchWarnings`.
+   */
+  const [domainDispatchWarnings, setDomainDispatchWarnings] = useState<string[]>([])
   const [domainEvents, setDomainEvents] = useState<DomainEvent[]>([])
   const [connectingDomain, setConnectingDomain] = useState(false)
   const [verifyingDomain, setVerifyingDomain] = useState(false)
@@ -168,6 +183,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     setDomainConnectedAt(result.resendDomainConnectedAt ?? null)
     setDomainOpenTracking(result.resendOpenTracking ?? false)
     setDomainClickTracking(result.resendClickTracking ?? false)
+    setDomainDispatchWarnings(result.resendDomainDispatchWarnings ?? [])
     setDomainEvents(result.domainEvents ?? [])
     setSenders(result.senders ?? [])
     setDefaultSenderId(result.defaultSenderId ?? null)
@@ -194,6 +210,16 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   useEffect(() => {
     void fetchSettings()
+  }, [fetchSettings])
+
+  /**
+   * Refaz o GET ignorando o dedupe. Necessário depois de mexer no domínio:
+   * `resendDomainDispatchWarnings` é decidido no servidor, então mudar o
+   * tracking sem reler deixaria o aviso na tela contradizendo o estado real.
+   */
+  const reloadSettings = useCallback(async () => {
+    lastSettingsKeyRef.current = ""
+    await fetchSettings()
   }, [fetchSettings])
 
   const handleSave = useCallback(async () => {
@@ -276,41 +302,48 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   const handleCreateSender = useCallback(async (data: UpsertEmailSenderData) => {
     setCreatingSender(true)
+    setSenderErrorMessage(null)
     try {
       await service.createSender(data)
       await fetchSettings()
       toast.success("Remetente criado com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleCreateSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao criar remetente")
+      const message = buildSenderErrorMessage(err, domainName)
+      setSenderErrorMessage(message)
+      toast.error(message)
     } finally {
       setCreatingSender(false)
     }
-  }, [fetchSettings])
+  }, [domainName, fetchSettings])
 
   const handleUpdateSender = useCallback(async (senderId: string, data: UpsertEmailSenderData) => {
     setUpdatingSenderId(senderId)
+    setSenderErrorMessage(null)
     try {
       await service.updateSender(senderId, data)
       await fetchSettings()
       toast.success("Remetente atualizado com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleUpdateSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar remetente")
+      const message = buildSenderErrorMessage(err, domainName)
+      setSenderErrorMessage(message)
+      toast.error(message)
     } finally {
       setUpdatingSenderId(null)
     }
-  }, [fetchSettings])
+  }, [domainName, fetchSettings])
 
   const handleDeleteSender = useCallback(async (senderId: string) => {
     setDeletingSenderId(senderId)
+    setSenderErrorMessage(null)
     try {
       await service.deleteSender(senderId)
       await fetchSettings()
       toast.success("Remetente removido com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleDeleteSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao remover remetente")
+      toastUserError(err)
     } finally {
       setDeletingSenderId(null)
     }
@@ -318,13 +351,14 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   const handleSetDefaultSender = useCallback(async (senderId: string) => {
     setSettingDefaultSenderId(senderId)
+    setSenderErrorMessage(null)
     try {
       const updated = await service.setDefaultSender(senderId)
       applySettings(updated)
       toast.success("Remetente padrão atualizado")
     } catch (err) {
       console.error("[useEmailSettings] handleSetDefaultSender error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao definir remetente padrão")
+      toastUserError(err)
     } finally {
       setSettingDefaultSenderId(null)
     }
@@ -338,7 +372,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Variável global criada com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleCreateVariable error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao criar variável global")
+      toastUserError(err)
       throw err
     } finally {
       setCreatingVariable(false)
@@ -355,7 +389,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Variável global atualizada com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleUpdateVariable error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar variável global")
+      toastUserError(err)
       throw err
     } finally {
       setUpdatingVariableId(null)
@@ -370,7 +404,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       toast.success("Variável global removida com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleDeleteVariable error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao remover variável global")
+      toastUserError(err)
     } finally {
       setDeletingVariableId(null)
     }
@@ -394,15 +428,18 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainRecords(result.records)
       setDomainEvents(result.events ?? [])
       setDomainInput("")
-      await fetchSettings()
+      // `reloadSettings`, não `fetchSettings`: o dedupe usa uma chave constante,
+      // então o `fetchSettings` que existia aqui era um no-op desde o primeiro
+      // load — e os avisos ficavam os do domínio anterior até um reload de página.
+      await reloadSettings()
       toast.success("Domínio conectado. Configure os registros DNS abaixo.")
     } catch (err) {
       console.error("[useEmailSettings] handleConnectDomain error", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao conectar domínio")
+      toastUserError(err)
     } finally {
       setConnectingDomain(false)
     }
-  }, [domainInput, fetchSettings])
+  }, [domainInput, reloadSettings])
 
   const handleDisconnectDomain = useCallback(async () => {
     setDisconnectingDomain(true)
@@ -417,6 +454,9 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainTrackingSubdomain(null)
       setDomainRecords([])
       setDomainEvents([])
+      // Sem domínio não há o que avisar. Deixar a lista anterior na tela faria o
+      // card alertar sobre um domínio que não existe mais.
+      setDomainDispatchWarnings([])
       toast.success("Domínio removido")
     } catch (err) {
       console.error("[useEmailSettings] handleDisconnectDomain error", err)
@@ -438,12 +478,16 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainClickTracking(result.clickTracking ?? domainClickTracking)
       setDomainTrackingSubdomain(result.trackingSubdomain ?? domainTrackingSubdomain)
       if (result.events) setDomainEvents(result.events)
+      // `getDomainRecords` roda `syncFromResendDomain` no servidor, então este é
+      // o ponto em que `resendSendingDnsVerified` costuma mudar. Reler mantém o
+      // aviso coerente com o que o gate passou a decidir.
+      void reloadSettings()
     } catch (err) {
       console.error("[useEmailSettings] handleLoadDomainRecords error", err)
     } finally {
       setLoadingRecords(false)
     }
-  }, [])
+  }, [reloadSettings])
 
   const handleVerifyDomain = useCallback(async () => {
     setVerifyingDomain(true)
@@ -452,13 +496,14 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainStatus(result.status)
       toast.success("Verificação iniciada. Aguarde a propagação do DNS.")
       void handleLoadDomainRecords()
+      void reloadSettings()
     } catch (err) {
       console.error("[useEmailSettings] handleVerifyDomain error", err)
       toast.error("Erro ao verificar domínio")
     } finally {
       setVerifyingDomain(false)
     }
-  }, [handleLoadDomainRecords])
+  }, [handleLoadDomainRecords, reloadSettings])
 
   const handleConfigureDomainTracking = useCallback(
     async (data: ConfigureDomainTrackingData) => {
@@ -475,16 +520,17 @@ export function useEmailSettings(): EmailSettingsHookReturn {
         toast.success(
           "Métricas configuradas. Adicione o registro DNS de Tracking e re-verifique."
         )
+        void reloadSettings()
         return true
       } catch (err) {
         console.error("[useEmailSettings] handleConfigureDomainTracking error", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao configurar métricas de tracking")
+        toastUserError(err)
         return false
       } finally {
         setConfiguringDomainTracking(false)
       }
     },
-    [configuringDomainTracking, domainRegion]
+    [configuringDomainTracking, domainRegion, reloadSettings]
   )
 
   return {
@@ -515,6 +561,8 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     updatingSenderId,
     deletingSenderId,
     settingDefaultSenderId,
+    senderErrorMessage,
+    clearSenderErrorMessage: () => setSenderErrorMessage(null),
     handleCreateSender,
     handleUpdateSender,
     handleDeleteSender,

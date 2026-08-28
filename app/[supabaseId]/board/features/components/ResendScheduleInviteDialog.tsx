@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 import type { Output } from "@/lib/output";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
@@ -270,7 +271,7 @@ export function ResendScheduleInviteDialog({
       onOpenChange(false);
       onSuccess?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao reenviar convite";
+      const message = toUserToastMessage(error);
       toast.error(message, { id: loadingToast });
     } finally {
       setIsSubmitting(false);

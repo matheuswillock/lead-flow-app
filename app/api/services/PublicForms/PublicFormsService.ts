@@ -21,8 +21,12 @@ import { inverseRuleAction } from "@/lib/public-forms/engine"
 import { redistributeQuestionScoresEvenly } from "@/lib/public-forms/scoring"
 import { sanitizePublicFormOrigin } from "@/lib/public-forms/origin"
 import { parsePublicFormSnapshot } from "@/lib/public-forms/publication-snapshot"
+import { resolveQuestionIdentityKey } from "@/lib/public-forms/metric-event-aggregation"
+import { publicFormJourneyRepository } from "@/app/api/infra/data/repositories/publicFormJourney/PublicFormJourneyRepository"
+import { buildJourneyResumeEventKey } from "@/lib/public-forms/journey-session"
 import { syncPublicFormMetricToRadarInline } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarInline"
-import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
+import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarFactory"
+import type { SyncPublicFormMetricToRadarInput } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
 import { resolveEmailCampaignFormAttributionUseCase } from "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
 import { instantiatePublicFormTemplateDraft } from "@/lib/public-forms/instantiate-template-draft"
 import { publicFormDraftSchema } from "@/lib/public-forms/validation"
@@ -121,6 +125,7 @@ export function mapPublicFormDraft(form: PublicFormDetailRecord): PublicFormDraf
     schedulingMessage: form.schedulingMessage,
     formKind:
       form.formKind === "health_plan_simulator" ? "health_plan_simulator" : "standard",
+    leadCaptureDisabled: form.leadCaptureDisabled,
     questions: needsRebalance ? redistributeQuestionScoresEvenly(questions) : questions,
     rules: form.rules.map((rule) => ({
       id: rule.id,
@@ -389,7 +394,18 @@ export class PublicFormsService implements IPublicFormsService {
   async recordMetric(
     publicId: string,
     input: PublicFormMetricEventInput,
-    options?: { radarMode?: "inline" | "after" | "skip" },
+    options?: {
+      radarMode?: "inline" | "after" | "skip"
+      /**
+       * Publicação já fixada pelo caller (review #1030). `getPublic` devolve
+       * sempre a **vigente**; quem já resolveu a publicação da submissão —
+       * `accept()`, que pina o snapshot por `requestKey` ou por sessão — precisa
+       * gravar o evento naquela, senão a recusa validada contra o snapshot
+       * antigo é contada no funil da publicação nova e some do filtro da que o
+       * visitante realmente viu.
+       */
+      publicationId?: string
+    },
   ) {
     const current = (await this.getPublic(publicId)) as {
       publicationId: string
@@ -397,7 +413,7 @@ export class PublicFormsService implements IPublicFormsService {
     } | null
     if (!current) return false
 
-    let publicationId = current.publicationId
+    let publicationId = options?.publicationId ?? current.publicationId
     let snapshot = current.snapshot
     let matchedQuestion = input.questionId
       ? snapshot.questions.find((item) => item.id === input.questionId)
@@ -428,6 +444,17 @@ export class PublicFormsService implements IPublicFormsService {
           : null
         : null
 
+    const trustedAnswerValue =
+      typeof input.answerValue === "string" && input.answerValue.trim() ? input.answerValue : null
+    const trustedMappingKey = matchedQuestion?.mappingKey ?? null
+    const isIdentityMapping =
+      trustedMappingKey === "name" ||
+      trustedMappingKey === "email" ||
+      trustedMappingKey === "phone"
+    if (input.eventType === "question_answered" && isIdentityMapping && !trustedAnswerValue) {
+      return true
+    }
+
     let origin = sanitizePublicFormOrigin(input.origin ?? {})
     let leadId: string | null = null
 
@@ -451,6 +478,7 @@ export class PublicFormsService implements IPublicFormsService {
         eventType: input.eventType,
         origin,
         visitorSessionId: input.visitorSessionId,
+        occurredAt: input.occurredAt ?? null,
       })
       if (attribution.isValid && attribution.result) {
         const result = attribution.result as {
@@ -462,20 +490,70 @@ export class PublicFormsService implements IPublicFormsService {
       }
     }
 
-    await publicFormsRepository.upsertMetricEvent({
+    // SPEC 40 E2 × modo radar (review #1058). Último ponto de escrita do
+    // descarte: a mensagem da fila é publicada **depois** de
+    // `completeSubmission` e consumida noutro processo, então sobrevive à
+    // compensação do gate C e recriaria a linha que ele acabou de apagar.
+    //
+    // Conferir antes e gravar depois, em duas chamadas, seria check-then-act: o
+    // gate cabe na fresta entre as duas. O repositório faz as duas coisas na
+    // mesma transação, com `FOR UPDATE` nas submissões da sessão — as mesmas
+    // linhas que `attachLeadToPendingSubmissions` atualiza, o que serializa os
+    // dois lados.
+    //
+    // O retorno é `true` mesmo quando não grava: o evento não é erro, é
+    // conclusão que ficou obsoleta. `false` faria o consumer logar "formulário
+    // indisponível" e mascarar o motivo.
+    if (input.eventType === "lead_discarded") {
+      const persisted = await publicFormsRepository.upsertDiscardMetricEventWhenSessionHasNoLead({
+        formId: current.snapshot.formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+      if (!persisted) {
+        console.info(
+          "[PublicFormsService][recordMetric] lead anexado na corrida, descarte ignorado",
+          {
+            formId: current.snapshot.formId,
+            visitorSessionId: input.visitorSessionId,
+            eventKey: input.eventKey,
+          },
+        )
+        return true
+      }
+    } else {
+      await publicFormsRepository.upsertMetricEvent({
+        formId: current.snapshot.formId,
+        publicationId,
+        questionId: liveQuestionId,
+        questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        eventId: input.eventId ?? null,
+        schemaVersion: input.schemaVersion ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+        origin: json(origin),
+      })
+    }
+
+    // Fire-and-forget: journey tracking must never block metric recording.
+    // DB connection contention from the advisory lock would exhaust the pool
+    // and cause the rate-limit query to time-out (fail-closed → 429).
+    void this.recordJourneyProgress({
       formId: current.snapshot.formId,
       publicationId,
-      questionId: liveQuestionId,
-      questionSnapshot: matchedQuestion ? json(matchedQuestion) : null,
-      visitorSessionId: input.visitorSessionId,
-      eventType: input.eventType,
-      eventKey: input.eventKey,
-      origin: json(origin),
+      input,
     })
 
     const radarMode = options?.radarMode ?? "after"
     if (teamCtx?.teamId && radarMode !== "skip") {
-      const radarInput = {
+      const radarInput: SyncPublicFormMetricToRadarInput = {
         teamId: teamCtx.teamId,
         eventType: input.eventType,
         eventKey: input.eventKey,
@@ -483,8 +561,14 @@ export class PublicFormsService implements IPublicFormsService {
         formId: current.snapshot.formId,
         publicationId,
         questionId: input.questionId,
+        questionType: matchedQuestion?.type ?? null,
         leadId,
         origin,
+        answerMappingKey: trustedMappingKey,
+        answerValue: input.answerValue,
+        leadGateRequest: input.createCrmLead === true ? "identity_revision" : "none",
+        eventId: input.eventId ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
       }
       if (radarMode === "inline") {
         const radarResult = await syncPublicFormMetricToRadarUseCase.execute(radarInput)
@@ -501,20 +585,107 @@ export class PublicFormsService implements IPublicFormsService {
     return true
   }
 
+  /**
+   * Projeta o evento na sessão de jornada. `form_resumed` derivado da
+   * transição é persistido como métrica própria, com chave causal por
+   * `resumedAt`, para que o funil enxergue a retomada.
+   */
+  private async recordJourneyProgress(params: {
+    formId: string
+    publicationId: string
+    input: PublicFormMetricEventInput
+  }): Promise<void> {
+    const { formId, publicationId, input } = params
+    try {
+      const occurredAt = input.occurredAt ? new Date(input.occurredAt) : new Date()
+      const result = await publicFormJourneyRepository.recordJourneyEvent({
+        formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        event: {
+          eventType: input.eventType,
+          occurredAt,
+          pageId: input.pageId ?? null,
+          pageIndex: input.pageIndex ?? null,
+        },
+      })
+
+      if (result.derivedEvent === "form_resumed" && result.projection.lastResumedAt) {
+        await publicFormsRepository.upsertMetricEvent({
+          formId,
+          publicationId,
+          questionId: null,
+          questionSnapshot: null,
+          visitorSessionId: input.visitorSessionId,
+          eventType: "form_resumed",
+          eventKey: buildJourneyResumeEventKey(
+            input.visitorSessionId,
+            result.projection.lastResumedAt,
+          ),
+          eventId: input.eventId ?? null,
+          schemaVersion: input.schemaVersion ?? null,
+          occurredAt: result.projection.lastResumedAt,
+          origin: json({ publicationId }),
+        })
+      }
+    } catch (error) {
+      console.error("[PublicFormsService][recordJourneyProgress]", {
+        formId,
+        publicationId,
+        visitorSessionId: input.visitorSessionId,
+        eventType: input.eventType,
+        eventKey: input.eventKey,
+        error,
+      })
+    }
+  }
+
   async analytics(teamId: string, id: string, from?: Date, to?: Date, publicationId?: string) {
     const publications = await publicFormsRepository.findAnalyticsPublications(teamId, id)
     if (!publications) return null
+    // Uma resposta, um relógio. Os agregados em SQL cortam por
+    // `COALESCE(occurredAt, createdAt)` (ver `buildMetricEventWhereSql`); estes
+    // dois consumidores em Prisma precisam concordar, senão a MESMA resposta
+    // mistura duas âncoras — `totals.leadDiscardedSessions` no dia do aceite e
+    // `leadDiscardsByReason` no dia do drain, com o total diferente da soma por
+    // motivo na tela. É a doença que esta SPEC existe para matar (M2).
+    //
+    // `occurredAt: null` precisa ser um ramo explícito do `OR`: um filtro de
+    // range sobre coluna nullable descarta NULL, e o histórico inteiro anterior
+    // ao E3 tem o campo vazio.
+    const periodFilter: Prisma.PublicFormMetricEventWhereInput | null =
+      from || to
+        ? {
+            OR: [
+              { occurredAt: { gte: from, lte: to } },
+              { occurredAt: null, createdAt: { gte: from, lte: to } },
+            ],
+          }
+        : null
     const where: Prisma.PublicFormMetricEventWhereInput = {
       ...(publicationId ? { publicationId } : {}),
-      ...(from || to ? { createdAt: { gte: from, lte: to } } : {}),
+      ...(periodFilter ?? {}),
     }
-    const events = await publicFormsRepository.groupMetricEvents(id, where)
-    const sessionsByType = await publicFormsRepository.countDistinctSessionsByEventType(id, where)
+    const aggregationFilter = { formId: id, publicationId, from, to }
+    const events = await publicFormsRepository.groupMetricEvents(aggregationFilter)
+    const sessionsByType =
+      await publicFormsRepository.countDistinctSessionsByEventType(aggregationFilter)
     const uniqueLeads = await publicFormsRepository.countDistinctCompletedLeads(id, {
       publicationId,
       from,
       to,
     })
+    // PR 4: o funil passa a enxergar a jornada — quantos visitantes estão em
+    // andamento, quantos abandonaram e quantos concluíram.
+    const journey = await publicFormJourneyRepository.countJourneyStates({
+      formId: id,
+      publicationId,
+      from,
+      to,
+    })
+    // SPEC 40 E2/DA2: sem isto o `lead_discarded` fica persistido e invisível —
+    // o funil continuaria mostrando só o lado bem-sucedido da conversão.
+    const discardedByReason = await publicFormsRepository.countDiscardedLeadsByReason(id, where)
     const originEvents = await publicFormsRepository.listFormViewOrigins({ formId: id, ...where })
     const origins = new Map<string, Set<string>>()
     for (const event of originEvents) {
@@ -541,19 +712,30 @@ export class PublicFormsService implements IPublicFormsService {
             id: question.id,
             title: question.title,
             position: question.position,
+            // Chave de junção com `events[].questionKey`. Casar por `id` perde
+            // as respostas de pergunta deletada/recriada no builder (FK
+            // `SetNull`): elas existem, mas apareciam como "0/0" no funil.
+            questionKey: resolveQuestionIdentityKey({
+              questionId: question.id,
+              questionSnapshot: question,
+            }),
           })),
         }
       }),
       events,
+      journey,
       totals: {
         views: sessionsByType.form_viewed ?? 0,
         starts: sessionsByType.form_started ?? 0,
         completions: sessionsByType.form_completed ?? 0,
         leadCreatedSessions: sessionsByType.lead_created ?? 0,
         leadAttachedSessions: sessionsByType.lead_attached ?? 0,
+        leadDiscardedSessions: sessionsByType.lead_discarded ?? 0,
         meetings: sessionsByType.meeting_scheduled ?? 0,
         uniqueLeads,
       },
+      /** Descartes por motivo (`sem_nome`, `sem_telefone`, …) em sessões distintas. */
+      leadDiscardsByReason: discardedByReason,
       origins: Array.from(origins, ([source, sessions]) => ({
         source,
         sessions: sessions.size,

@@ -32,6 +32,9 @@ describe("publishPublicFormMetricEvent", () => {
       questionId: null,
       visitorSessionId: "session_abcdefghij",
       origin: {},
+      answerMappingKey: null,
+      answerValue: null,
+      createCrmLead: true,
       receivedAt: "2026-08-11T12:00:00.000Z",
     }
     const result = await publishPublicFormMetricEvent(payload)
@@ -58,6 +61,9 @@ describe("publishPublicFormMetricEvent", () => {
       questionId: null,
       visitorSessionId: "session_abcdefghij",
       origin: {},
+      answerMappingKey: null,
+      answerValue: null,
+      createCrmLead: true,
       receivedAt: "2026-08-11T12:00:00.000Z",
     }
     await publishPublicFormMetricEvent(payload, {
@@ -94,6 +100,18 @@ describe("public-form-metric-events helpers", () => {
     })
     expect(payload.eventType).toBe("lead_created")
     expect(payload.eventKey).toBe("key-lead")
+    expect(payload.createCrmLead).toBe(true)
+  })
+
+  it("buildPublicFormMetricQueuePayload marca createCrmLead false no POST público /events", () => {
+    const payload = buildPublicFormMetricQueuePayload("11111111-1111-4111-8111-111111111111", {
+      visitorSessionId: "session_abcdefghij",
+      eventType: "question_answered",
+      eventKey: "key-answered",
+      origin: {},
+      createCrmLead: false,
+    })
+    expect(payload.createCrmLead).toBe(false)
   })
 
   it("buildPublicFormMetricQueuePayload usa eventKey e origin", () => {
@@ -126,6 +144,9 @@ describe("publishServerPublicFormMetricEvent", () => {
         questionId: null,
         visitorSessionId: "session_abcdefghij",
         origin: {},
+        answerMappingKey: null,
+        answerValue: null,
+        createCrmLead: true,
         receivedAt: "2026-08-14T12:00:00.000Z",
       },
       "PublicFormSubmissionUseCase",
@@ -140,7 +161,33 @@ describe("publishServerPublicFormMetricEvent", () => {
     expect(call[2].idempotencyKey).toBe("session:lead_created:form")
   })
 
-  it("falha de publish não propaga (log + ack local)", async () => {
+  it("encaminha idempotencyKey explícita (revisão de identidade no Radar)", async () => {
+    await publishServerPublicFormMetricEvent(
+      {
+        publicId: "11111111-1111-4111-8111-111111111111",
+        eventKey: "session:question_answered:qid",
+        eventType: "question_answered",
+        questionId: "qid",
+        visitorSessionId: "session_abcdefghij",
+        origin: {},
+        answerMappingKey: "phone",
+        answerValue: "(11) 98888-7777",
+        createCrmLead: true,
+        receivedAt: "2026-08-14T12:00:00.000Z",
+      },
+      "PublicFormProgressUseCase",
+      { idempotencyKey: "session:question_answered:qid:rev:abc123" },
+    )
+    const call = send.mock.calls[0] as unknown as [
+      string,
+      { eventKey: string },
+      { idempotencyKey: string },
+    ]
+    expect(call[1].eventKey).toBe("session:question_answered:qid")
+    expect(call[2].idempotencyKey).toBe("session:question_answered:qid:rev:abc123")
+  })
+
+  it("falha de publish retorna false sem propagar (log + ack local)", async () => {
     send.mockRejectedValueOnce(new Error("queue down"))
     await expect(
       publishServerPublicFormMetricEvent(
@@ -151,10 +198,13 @@ describe("publishServerPublicFormMetricEvent", () => {
           questionId: null,
           visitorSessionId: "session_abcdefghij",
           origin: {},
+          answerMappingKey: null,
+          answerValue: null,
+          createCrmLead: true,
           receivedAt: "2026-08-14T12:00:00.000Z",
         },
         "PublicFormSubmissionUseCase",
       ),
-    ).resolves.toBeUndefined()
+    ).resolves.toBe(false)
   })
 })

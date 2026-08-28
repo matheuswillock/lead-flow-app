@@ -41,6 +41,18 @@ const getAsaasApiUrl = () => {
 
 const getAsaasApiKey = () => process.env.ASAAS_API_KEY;
 
+/**
+ * Base URL de checkouts hospedados Asaas (`/c/...`), respeitando o ambiente.
+ * Produção → `www.asaas.com`; sandbox/local/CI → `sandbox.asaas.com`.
+ * Nunca apontar para produção fora do ambiente de produção.
+ */
+export const getAsaasCheckoutBaseUrl = (): string => {
+  if (getIsProduction()) {
+    return process.env.ASAAS_URL || "https://www.asaas.com";
+  }
+  return process.env.ASAAS_URL_sandbox || "https://sandbox.asaas.com";
+};
+
 // Headers padrão para requisições ao Asaas (usar getter para API key dinâmica)
 export const asaasHeaders = {
   'Content-Type': 'application/json',

@@ -33,7 +33,7 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
   },
 }))
 
-mock.module("@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase", () => ({
+mock.module("@/app/api/useCases/radar/syncPublicFormMetricToRadarFactory", () => ({
   syncPublicFormMetricToRadarUseCase: { execute: radarExecute },
 }))
 

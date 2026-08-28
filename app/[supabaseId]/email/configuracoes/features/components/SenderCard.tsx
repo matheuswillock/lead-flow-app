@@ -9,6 +9,7 @@ import {
   Plus,
   Star,
   Trash2,
+  AlertCircle,
 } from "lucide-react"
 import {
   AlertDialog,
@@ -21,6 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,6 +39,7 @@ import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { EmailSender } from "../context/EmailSettingsTypes"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
+import { buildDeliveryFromEmail } from "@/lib/email/resolve-campaign-from"
 
 function getInitials(name: string) {
   return name
@@ -105,7 +108,7 @@ function SenderForm({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               disabled={loading || lockEmail}
-              placeholder="Ex: deliveryby@mail.suaempresa.com.br"
+              placeholder="Ex: contato@mail.suaempresa.com.br"
             />
             {lockEmail ? (
               <FieldDescription>
@@ -266,6 +269,8 @@ export function SenderCard() {
     updatingSenderId,
     deletingSenderId,
     settingDefaultSenderId,
+    senderErrorMessage,
+    clearSenderErrorMessage,
     handleCreateSender,
     handleUpdateSender,
     handleDeleteSender,
@@ -282,15 +287,13 @@ export function SenderCard() {
     [defaultSenderId, senders]
   )
 
-  const fallbackFromHint = domainName
-    ? `deliveryby@${domainName}`
-    : "deliveryby@corretorstudio.com"
+  const fallbackFromHint = buildDeliveryFromEmail(domainName)
 
   return (
     <EmailSettingsSectionCard
       icon={Mail}
       title="Remetentes"
-      description="Gerencie os remetentes usados nas campanhas. Sem remetente cadastrado, o sistema usa o endereço deliveryby do domínio (ou da plataforma)."
+      description="Gerencie os remetentes usados nas campanhas. Sem remetente cadastrado, o sistema usa o endereço contato do domínio (ou da plataforma)."
       contentClassName="flex flex-col gap-5"
     >
       {loading ? (
@@ -335,7 +338,10 @@ export function SenderCard() {
               </div>
               <Button
                 type="button"
-                onClick={() => setAdding((current) => !current)}
+                onClick={() => {
+                  clearSenderErrorMessage()
+                  setAdding((current) => !current)
+                }}
                 disabled={creatingSender || !domainSendCapable}
               >
                 {creatingSender ? (
@@ -352,6 +358,14 @@ export function SenderCard() {
               </p>
             ) : null}
           </div>
+
+          {senderErrorMessage ? (
+            <Alert variant="destructive">
+              <AlertCircle data-icon="inline-start" />
+              <AlertTitle>Remetente não cadastrado</AlertTitle>
+              <AlertDescription>{senderErrorMessage}</AlertDescription>
+            </Alert>
+          ) : null}
 
           {adding && domainSendCapable ? (
             <SenderForm

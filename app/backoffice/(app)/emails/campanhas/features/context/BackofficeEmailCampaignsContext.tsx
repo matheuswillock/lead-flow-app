@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IBackofficeEmailCampaignsService } from "../services/IBackofficeEmailCampaignsService"
 import type {
   BackofficeEmailCampaignDispatchItem,
@@ -71,7 +72,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
       setTemplates(templateOptions)
     } catch (err) {
       console.error("[BackofficeEmailCampaignsContext][refresh]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar campanhas")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightRef.current = false
@@ -88,7 +89,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
         return true
       } catch (err) {
         console.error("[BackofficeEmailCampaignsContext][createCampaign]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao criar campanha")
+        toastUserError(err)
         return false
       } finally {
         setIsSaving(false)
@@ -107,7 +108,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
         return true
       } catch (err) {
         console.error("[BackofficeEmailCampaignsContext][updateCampaign]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao atualizar campanha")
+        toastUserError(err)
         return false
       } finally {
         setIsSaving(false)
@@ -124,7 +125,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
         toast.success("Campanha cancelada")
       } catch (err) {
         console.error("[BackofficeEmailCampaignsContext][cancelCampaign]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao cancelar campanha")
+        toastUserError(err)
       }
     },
     [service]
@@ -138,7 +139,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
         toast.success("Envio iniciado — acompanhe o progresso na lista")
       } catch (err) {
         console.error("[BackofficeEmailCampaignsContext][sendNow]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao enviar campanha")
+        toastUserError(err)
       }
     },
     [service]
@@ -150,7 +151,7 @@ export function BackofficeEmailCampaignsProvider({ children, service }: Provider
         return await service.listDispatches(id)
       } catch (err) {
         console.error("[BackofficeEmailCampaignsContext][listDispatches]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar histórico de disparos")
+        toastUserError(err)
         return []
       }
     },

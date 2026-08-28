@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useDeferredValue } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { backofficeStudioEmailService } from "../../services/BackofficeStudioEmailService"
 import type {
   StudioEmailCampaign,
@@ -158,7 +159,7 @@ export function useBackofficeCampanhas() {
       void fetchCampaigns()
     } catch (error) {
       console.error("[useBackofficeCampanhas] handleCreateCampaign error", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao criar campanha")
+      toastUserError(error)
     } finally {
       setWizardCreating(false)
     }
@@ -191,7 +192,7 @@ export function useBackofficeCampanhas() {
         }
       } catch (error) {
         console.error("[useBackofficeCampanhas] handleSend error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao disparar campanha")
+        toastUserError(error)
       } finally {
         setSendingId(null)
       }
@@ -218,7 +219,7 @@ export function useBackofficeCampanhas() {
         }
       } catch (error) {
         console.error("[useBackofficeCampanhas] handleCancel error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao cancelar campanha")
+        toastUserError(error)
       } finally {
         setCancelingId(null)
       }
@@ -240,7 +241,7 @@ export function useBackofficeCampanhas() {
         }
       } catch (error) {
         console.error("[useBackofficeCampanhas] handleArchive error", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao arquivar campanha")
+        toastUserError(error)
       } finally {
         setArchivingId(null)
       }
@@ -307,7 +308,7 @@ export function useBackofficeCampanhas() {
       void fetchCampaigns()
     } catch (error) {
       console.error("[useBackofficeCampanhas] handleUpdateCampaign error", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao atualizar campanha")
+      toastUserError(error)
     } finally {
       setEditSaving(false)
     }

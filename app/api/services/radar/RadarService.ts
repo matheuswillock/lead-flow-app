@@ -36,7 +36,7 @@ import {
 import { resolveInterpolationValuesForProfile } from "@/lib/radar/resolve-recipient-interpolation"
 import { resolveGenderUpdateFromEmailContact } from "@/lib/radar/email-contact-gender"
 import type { RadarGender, RadarGenderSource } from "@/lib/radar/gender"
-import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
+import { evaluateEmailForAudienceWithFlags } from "@/lib/email/audience-prevalidation"
 import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
 import { resolveLeadStatusMilestoneEventType } from "@/lib/radar/lead-milestone-map"
 import {
@@ -656,15 +656,18 @@ export class RadarService {
       updatedAt: Date
       customFields: Prisma.JsonValue
     },
-    counters: SyncCounters
+    counters: SyncCounters,
+    globallyBouncedEmails: ReadonlySet<string> = new Set()
   ): Promise<void> {
     try {
-      const emailValidation = evaluateEmailForAudience(contact.email)
-      const sendableEmail =
-        emailValidation.ok && !contact.isBounced ? emailValidation.email : null
+      const emailValidation = evaluateEmailForAudienceWithFlags(contact.email, {
+        isGloballyBounced:
+          contact.isBounced || globallyBouncedEmails.has(contact.email.trim().toLowerCase()),
+      })
+      const sendableEmail = emailValidation.ok ? emailValidation.email : null
 
       const phoneFromCustom = contact.name
-        ? await this.repo.findLeadPhoneByEmail(scope.teamId, contact.email.trim().toLowerCase())
+        ? await this.repo.findLeadPhoneByEmail(scope.teamId, contact.email)
         : null
       const hasValidPhone = Boolean(
         contact.name && phoneFromCustom && isValidRadarPrimaryIdentity(phoneFromCustom.phone, contact.name)
@@ -776,7 +779,8 @@ export class RadarService {
     if (filters.emailContactId) {
       const contact = await this.repo.findEmailContactById(filters.emailContactId)
       if (contact && contact.list.teamId === scope.teamId) {
-        await this.processEmailContactForRadar(scope, contact, counters)
+        const bouncedEmails = await this.repo.findBouncedEmails([contact.email])
+        await this.processEmailContactForRadar(scope, contact, counters, bouncedEmails)
       }
       return counters
     }
@@ -785,9 +789,10 @@ export class RadarService {
 
     for (const list of lists) {
       const contacts = await this.repo.findEmailContacts(list.id)
+      const bouncedEmails = await this.repo.findBouncedEmails(contacts.map((contact) => contact.email))
 
       for (const contact of contacts) {
-        await this.processEmailContactForRadar(scope, contact, counters)
+        await this.processEmailContactForRadar(scope, contact, counters, bouncedEmails)
       }
     }
 
@@ -1032,88 +1037,79 @@ export class RadarService {
   }
 
   /**
-   * Contagem legada em memória — mantida temporariamente para validação
-   * comparativa. Remove após validar equivalência dos números em produção.
+   * Contagem de um único segmento de sistema.
+   *
+   * Sai do mesmo predicado SQL da listagem (`listSegmentProfileIds`), então
+   * `countSegmentProfiles === listSegmentProfileIds().length` é verdade por
+   * construção, não por sincronização manual.
    */
-  async countSegmentsLegacy(scope: RadarTeamScope): Promise<SegmentCount[]> {
-    const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
-
-    const rawLeadStatuses = await this.repo.findLeadStatuses(
-      scope.teamId,
-      profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
-    )
-    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
-
-    const counts: Record<RadarSegmentSlug, number> = {
-      email_marketable: 0,
-      email_blocked: 0,
-      opened_not_clicked: 0,
-      clicked_not_closed: 0,
-      engaged_no_lead: 0,
-      portfolio_renewal_due: 0,
-      inactive_recent_campaign: 0,
-      portfolio_clients: 0,
-      crm_clients: 0,
-    }
-
-    const now = Date.now()
-    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
-
-    for (const profile of profiles) {
-      for (const slug of Object.keys(counts) as RadarSegmentSlug[]) {
-        if (profileMatchesRadarSegment(profile, slug, leadStatuses, now, recentMs)) {
-          counts[slug] += 1
-        }
-      }
-    }
-
-    return (Object.keys(SEGMENT_META) as RadarSegmentSlug[]).map((slug) => ({
-      slug,
-      ...SEGMENT_META[slug],
-      count: counts[slug],
-    }))
+  async countSegmentProfiles(scope: RadarTeamScope, segment: RadarSegmentSlug): Promise<number> {
+    return this.repo.countFixedSegmentSQL(scope.teamId, segment, RECENT_CAMPAIGN_WINDOW_DAYS)
   }
 
-  async listSegmentProfileIds(scope: RadarTeamScope, segment: RadarSegmentSlug): Promise<string[]> {
-    const segments = await this.countSegments(scope)
-    if (!segments.find((s) => s.slug === segment)) return []
-
-    const profiles = await this.repo.listProfilesForSegmentation(scope.teamId)
-
-    const rawLeadStatuses = await this.repo.findLeadStatuses(
+  /**
+   * Página de ids do segmento de sistema — filtrada, ordenada e paginada no
+   * banco.
+   *
+   * Substitui a varredura em memória que carregava a base inteira do time e
+   * fatiava a página com `slice` (R6): duas verdades em relação ao card e a
+   * origem do P2035 na rota de perfis de segmento.
+   */
+  async listSegmentProfileIds(
+    scope: RadarTeamScope,
+    segment: RadarSegmentSlug,
+    pagination: { skip: number; take: number }
+  ): Promise<string[]> {
+    return this.repo.listFixedSegmentProfileIdsSQL(
       scope.teamId,
-      profiles.flatMap((p) => p.identities.map((i) => i.normalizedValue))
+      segment,
+      pagination,
+      RECENT_CAMPAIGN_WINDOW_DAYS
     )
-    const leadStatuses = toSegmentLeadStatusMap(rawLeadStatuses)
-
-    const now = Date.now()
-    const recentMs = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    const ids: string[] = []
-
-    for (const profile of profiles) {
-      if (profileMatchesRadarSegment(profile, segment, leadStatuses, now, recentMs)) {
-        ids.push(profile.id)
-      }
-    }
-
-    return ids
   }
 
   async listCampaignSegmentProfileIds(scope: RadarTeamScope, campaignId: string): Promise<string[]> {
     return this.repo.findProfileIdsByEmailCampaign(scope.teamId, campaignId)
   }
 
-  async getMetrics(scope: RadarTeamScope, precomputedSegments?: SegmentCount[]) {
+  /**
+   * Métricas do dashboard do Radar.
+   *
+   * `precomputedSegments` distingue três situações que a UI precisa saber
+   * separar (R8/DA3):
+   * - `undefined` — ninguém contou ainda; conta aqui.
+   * - `SegmentCount[]` — contagem válida; deriva os números dela.
+   * - `null` — a contagem de sistema FALHOU. Os derivados saem `null`
+   *   (desconhecido), nunca `0`. Zero aqui é o "dashboard zerado": um número
+   *   que parece medido, não é, e ainda entrava no cache.
+   */
+  async getMetrics(scope: RadarTeamScope, precomputedSegments?: SegmentCount[] | null) {
     const [totalProfiles, segments] = await Promise.all([
       this.repo.countProfiles(scope),
-      precomputedSegments ? Promise.resolve(precomputedSegments) : this.countSegments(scope),
+      precomputedSegments === undefined
+        ? this.countSegments(scope)
+        : Promise.resolve(precomputedSegments),
     ])
+
+    if (segments === null) {
+      return {
+        totalProfiles,
+        marketable: null as number | null,
+        blocked: null as number | null,
+        engaged: null as number | null,
+      }
+    }
 
     const marketable = segments.find((s) => s.slug === "email_marketable")?.count ?? 0
     const blocked = segments.find((s) => s.slug === "email_blocked")?.count ?? 0
     const engaged = segments.find((s) => s.slug === "opened_not_clicked")?.count ?? 0
 
-    return { totalProfiles, marketable, blocked, engaged }
+    return {
+      totalProfiles,
+      marketable: marketable as number | null,
+      blocked: blocked as number | null,
+      engaged: engaged as number | null,
+    }
   }
 
   async handleEmailWebhookEvent(input: {
@@ -1131,7 +1127,7 @@ export class RadarService {
     const normalizedEmail = normalizeRadarEmail(input.recipientEmail)
 
     const lead = input.recipientName
-      ? await this.repo.findLeadPhoneByEmail(input.teamId, normalizedEmail)
+      ? await this.repo.findLeadPhoneByEmail(input.teamId, input.recipientEmail)
       : null
     const hasValidPhone = Boolean(
       input.recipientName && lead?.phone && isValidRadarPrimaryIdentity(lead.phone, input.recipientName)

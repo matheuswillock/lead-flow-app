@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { invalidateTeamLeadsCache } from "@/lib/cache/invalidation";
 import { readXlsxRowsFromBuffer } from "@/lib/spreadsheet/readXlsxRows";
-import { prisma } from "@/app/api/infra/data/prisma";
 import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation";
+import { findTeamBlocklistedEmails } from "@/lib/email/email-contact-blocklist";
 import {
   isLostStatus,
   mapHealthPlan,
@@ -105,24 +106,12 @@ export async function POST(request: NextRequest) {
       if (cnpj) cnpjs.add(cnpj);
     });
 
-    const existingLeads =
-      emails.size || cnpjs.size
-        ? await prisma.lead.findMany({
-            where: {
-              teamId,
-              OR: [
-                emails.size ? { email: { in: Array.from(emails) } } : undefined,
-                cnpjs.size ? { cnpj: { in: Array.from(cnpjs) } } : undefined,
-              ].filter(Boolean) as any,
-            },
-            select: {
-              id: true,
-              email: true,
-              cnpj: true,
-              status: true,
-            },
-          })
-        : [];
+    const existingLeads = await leadRepository.findImportConflicts(
+      teamId,
+      Array.from(emails),
+      Array.from(cnpjs)
+    );
+    const blocklistedEmails = await findTeamBlocklistedEmails(teamId);
 
     const existingByEmail = new Map<string, typeof existingLeads[number]>();
     const existingByCnpj = new Map<string, typeof existingLeads[number]>();
@@ -135,6 +124,7 @@ export async function POST(request: NextRequest) {
     let created = 0;
     let skipped = 0;
     let sanitized = 0;
+    let emailFlagged = 0;
     const errors: string[] = [];
 
     for (const row of dataRows) {
@@ -219,12 +209,20 @@ export async function POST(request: NextRequest) {
       }
 
       created += 1;
+      if (email) {
+        const persistedEmail = normalizeEmail(email);
+        const audience = evaluateEmailForAudience(persistedEmail);
+        if (!audience.ok || blocklistedEmails.has(persistedEmail)) {
+          emailFlagged += 1;
+        }
+      }
     }
 
     const result = {
       created,
       skipped,
       sanitized,
+      emailFlagged,
       errors: errors.slice(0, 10),
     };
 

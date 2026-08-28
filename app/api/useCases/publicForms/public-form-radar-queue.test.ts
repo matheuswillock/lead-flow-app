@@ -15,5 +15,7 @@ describe("submission/progress Radar via fila", () => {
     expect(src).not.toContain("syncPublicFormMetricToRadarInline")
     expect(src).not.toContain('from "next/server"')
     expect(src).toContain("publishServerPublicFormMetricEvent")
+    expect(src).not.toContain("CreateCrmLeadFromRadarFormGateUseCase")
+    expect(src).not.toContain("upsertLeadFromFormAnswers")
   })
 })

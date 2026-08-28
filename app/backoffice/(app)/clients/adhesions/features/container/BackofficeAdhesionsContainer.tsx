@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Copy, Edit, FileText, MailCheck, MoreHorizontal, RefreshCw, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -192,7 +193,7 @@ export function BackofficeAdhesionsContainer() {
       toast.success("Link de adesão gerado")
     } catch (err) {
       console.error("[BackofficeAdhesionsContainer][resend]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao reenviar adesão")
+      toastUserError(err)
     } finally {
       setResendingId(null)
     }
@@ -207,7 +208,7 @@ export function BackofficeAdhesionsContainer() {
       toast.success("Convite reenviado com sucesso", { id: toastId })
     } catch (err) {
       console.error("[BackofficeAdhesionsContainer][resendInvite]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao reenviar convite", { id: toastId })
+      toastUserError(err, { id: toastId })
     } finally {
       setResendingInviteId(null)
     }
@@ -221,7 +222,7 @@ export function BackofficeAdhesionsContainer() {
       await copyLink(result.publicUrl)
     } catch (err) {
       console.error("[BackofficeAdhesionsContainer][copyPublicUrl]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao copiar link de adesão")
+      toastUserError(err)
     } finally {
       setCopyingId(null)
     }
@@ -241,7 +242,7 @@ export function BackofficeAdhesionsContainer() {
       )
     } catch (err) {
       console.error("[BackofficeAdhesionsContainer][copyInvoiceUrl]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao copiar link de fatura")
+      toastUserError(err)
     } finally {
       setCopyingInvoiceId(null)
     }
@@ -256,7 +257,7 @@ export function BackofficeAdhesionsContainer() {
       await fetchAdhesions({ page: pagination.page })
     } catch (err) {
       console.error("[BackofficeAdhesionsContainer][deletePending]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao excluir adesão")
+      toastUserError(err)
     } finally {
       setDeletingId(null)
       setDeleteTarget(null)

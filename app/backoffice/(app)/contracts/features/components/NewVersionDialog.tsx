@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { Loader2, FilePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -70,7 +71,7 @@ export function NewVersionDialog({
                 selectedFileLabel="Nova versão"
                 onClearFile={() => setFile(null)}
                 onFileSelected={setFile}
-                onError={(message) => toast.error(message)}
+                onError={(message) => toast.error(toUserToastMessage(message))}
                 disabled={isSaving}
               />
             </Field>

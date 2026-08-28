@@ -9,6 +9,7 @@ import {
   type LeadTransfersData,
   type LeadTransfersFiltersState,
 } from "./LeadTransfersTypes";
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 type DateRangeField =
   | "transferDate"
@@ -47,7 +48,7 @@ export function useLeadTransfersHook() {
         setData(result);
         lastSuccessKeyRef.current = key;
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao buscar transferências";
+        const message = toUserToastMessage(err);
         setError(message);
       } finally {
         if (inFlightKeyRef.current === key) {

@@ -5,6 +5,7 @@ import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContex
 import type { IBackofficeFormTemplatesService } from "../services/IBackofficeFormTemplatesService"
 import type { BackofficeFormTemplatesContextValue } from "./BackofficeFormTemplatesTypes"
 import { useBackofficeFormTemplatesHook } from "./BackofficeFormTemplatesHook"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 const BackofficeFormTemplatesContext = createContext<BackofficeFormTemplatesContextValue | undefined>(
   undefined,
@@ -45,7 +46,7 @@ export function BackofficeFormTemplatesProvider({
       } catch (err) {
         return {
           isValid: false,
-          errorMessages: [err instanceof Error ? err.message : "Erro ao publicar template"],
+          errorMessages: [toUserToastMessage(err)],
         }
       } finally {
         setSaving(false)
@@ -64,7 +65,7 @@ export function BackofficeFormTemplatesProvider({
       } catch (err) {
         return {
           isValid: false,
-          errorMessages: [err instanceof Error ? err.message : "Erro ao despublicar template"],
+          errorMessages: [toUserToastMessage(err)],
         }
       } finally {
         setSaving(false)

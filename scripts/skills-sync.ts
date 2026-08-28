@@ -51,6 +51,9 @@ async function loadExternalSkillNames(): Promise<Set<string>> {
 
 interface SkillFrontmatter {
   description?: string;
+  // Opt-in: skills that must always be loaded by Cursor, not just considered
+  // by relevance. Defaults to false (relevance-based) when omitted.
+  alwaysApply?: string;
 }
 
 function parseFrontmatter(content: string): {
@@ -100,11 +103,12 @@ function renderCursorAdapter(
   description: string,
   sourceName: string,
   body: string,
+  alwaysApply: boolean,
 ): string {
   return [
     "---",
     `description: ${yamlDoubleQuote(description)}`,
-    "alwaysApply: false",
+    `alwaysApply: ${alwaysApply}`,
     "---",
     "",
     renderGeneratedHeader(sourceName),
@@ -235,12 +239,13 @@ async function syncSkills(): Promise<void> {
     const { frontmatter, body } = parseFrontmatter(rawContent);
 
     const description = frontmatter.description ?? baseName;
+    const alwaysApply = frontmatter.alwaysApply === "true";
 
     // Cursor adapter
     const cursorPath = path.join(CURSOR_SKILLS_DIR, `${baseName}.mdc`);
     await writeIfChanged(
       cursorPath,
-      renderCursorAdapter(description, sourceLabel, body),
+      renderCursorAdapter(description, sourceLabel, body, alwaysApply),
       `.cursor/skills/${baseName}.mdc`,
     );
 

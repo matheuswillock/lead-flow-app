@@ -12,6 +12,7 @@ import type {
   BetaTeamScope,
 } from "./BackofficeBetaTypes"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 type AddDialogStep = "search" | "teams"
 
@@ -292,7 +293,7 @@ export function BackofficeBetaProvider({ children, betaService }: Props) {
       setAddDialogOpen(false)
       resetDialogState()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao salvar grupo beta"
+      const message = toUserToastMessage(err)
       toast.error(message)
     } finally {
       setIsAdding(false)
@@ -325,7 +326,7 @@ export function BackofficeBetaProvider({ children, betaService }: Props) {
         )
         toast.success("Master removido do grupo beta")
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Erro ao remover do grupo beta"
+        const message = toUserToastMessage(err)
         toast.error(message)
       } finally {
         setIsRemoving((prev) => ({ ...prev, [key]: false }))

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, Fragment, memo } from "react"
 import { MoreVertical } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -257,7 +258,7 @@ function MessageBubbleInner({ message, previousMessage = null }: MessageBubblePr
           toast.error("Ação indisponível neste provedor")
           return
         }
-        toast.error(error instanceof Error ? error.message : "Não foi possível aplicar a ação")
+        toastUserError(error)
       } finally {
         setActionPending(false)
       }
@@ -283,7 +284,7 @@ function MessageBubbleInner({ message, previousMessage = null }: MessageBubblePr
           toast.error("Reação indisponível neste provedor")
           return
         }
-        toast.error(error instanceof Error ? error.message : "Não foi possível reagir")
+        toastUserError(error)
       } finally {
         setActionPending(false)
       }

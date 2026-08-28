@@ -1,5 +1,6 @@
 import { Prisma, UserRole, SubscriptionStatus, SubscriptionPlan, type BackofficeAdhesionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import type {
   BackofficeAdhesionOptions,
   BackofficeAdhesionWithRelations,
@@ -358,7 +359,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
 
   async findProfileIdByEmail(email: string): Promise<string | null> {
     const profile = await prisma.profile.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
+      where: { email: { equals: escapeLikePattern(email), mode: "insensitive" } },
       select: { id: true },
     })
 
@@ -570,5 +571,46 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         data: { status: previousLeadStatus },
       }),
     ])
+  }
+
+  async updateLeadEmail(leadId: string, email: string): Promise<void> {
+    await prisma.backofficeLead.update({
+      where: { id: leadId },
+      data: { email },
+    })
+  }
+
+  async findProfileEmailById(profileId: string): Promise<string | null> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { email: true },
+    })
+    return profile?.email ?? null
+  }
+
+  async updateProfileEmail(profileId: string, email: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { email },
+    })
+  }
+
+  async syncLeadAndProfileEmails(input: {
+    leadId: string
+    profileId: string | null
+    email: string
+  }): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.backofficeLead.update({
+        where: { id: input.leadId },
+        data: { email: input.email },
+      })
+      if (input.profileId) {
+        await tx.profile.update({
+          where: { id: input.profileId },
+          data: { email: input.email },
+        })
+      }
+    })
   }
 }

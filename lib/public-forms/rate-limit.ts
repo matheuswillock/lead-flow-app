@@ -58,8 +58,11 @@ export async function consumePublicFormRateLimit(
       RETURNING "count", "resetAt"
     `
   } catch (error) {
-    console.error("[consumePublicFormRateLimit] DB error, failing open:", error)
-    return { allowed: true, retryAfterSeconds: 0 }
+    // Fail-closed: instabilidade no banco não pode virar rate limit
+    // desligado — é justo quando o sistema está sob carga que precisa da
+    // proteção. Backoff curto porque é bem provável ser uma falha transitória.
+    console.error("[consumePublicFormRateLimit] DB error, failing closed:", error)
+    return { allowed: false, retryAfterSeconds: 30 }
   }
 
   const row = rows[0]
@@ -77,6 +80,13 @@ export async function consumePublicFormRateLimit(
   }
 }
 
+/**
+ * Só por IP. `visitorSessionId` chega no corpo JSON (cliente escreve via
+ * `document.cookie`, sem HttpOnly) — combiná-lo na chave do rate limit
+ * enfraquecia a proteção por IP: rotacionar o UUID a cada request abria um
+ * bucket novo. Reintroduzir isso exige um identificador lido pelo servidor
+ * (cookie HttpOnly), não um valor que o próprio cliente controla.
+ */
 export function publicFormRequestFingerprint(request: Request) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
   return forwarded || request.headers.get("x-real-ip") || "unknown"

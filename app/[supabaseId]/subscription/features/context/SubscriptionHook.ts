@@ -8,6 +8,7 @@ import type {
   UpdateSubscriptionCreditsDTO,
   UpdatePaymentMethodDTO
 } from '../types/subscription.types';
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 export function useSubscriptionHook({
   supabaseId,
@@ -40,7 +41,7 @@ export function useSubscriptionHook({
     } catch (error) {
       setState(prev => ({ 
         ...prev, 
-        error: error instanceof Error ? error.message : 'Erro ao carregar assinatura', 
+        error: toUserToastMessage(error), 
         isLoading: false 
       }));
     }
@@ -63,7 +64,7 @@ export function useSubscriptionHook({
     } catch (error) {
       setState(prev => ({ 
         ...prev, 
-        error: error instanceof Error ? error.message : 'Erro ao cancelar assinatura',
+        error: toUserToastMessage(error),
         isLoading: false
       }));
       throw error;
@@ -79,7 +80,7 @@ export function useSubscriptionHook({
     } catch (error) {
       setState(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Erro ao sincronizar assinatura',
+        error: toUserToastMessage(error),
         isLoading: false
       }));
       throw error;
@@ -103,7 +104,7 @@ export function useSubscriptionHook({
     } catch (error) {
       setState(prev => ({ 
         ...prev, 
-        error: error instanceof Error ? error.message : 'Erro ao atualizar método de pagamento',
+        error: toUserToastMessage(error),
         isLoading: false
       }));
       throw error;

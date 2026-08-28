@@ -182,7 +182,7 @@ async function main() {
     );
   }
 
-  const affected = await prisma.lead.findMany({
+  const candidates = await prisma.lead.findMany({
     where,
     select: {
       id: true,
@@ -198,7 +198,14 @@ async function main() {
     orderBy: { createdAt: "desc" },
   })
 
-  console.info(`[audit-fake-email-attribution-leads] ${affected.length} leads campanha sem submissão`)
+  // Mesmo guard do cleanup: leads recuperados manualmente (originMetadata.backfill)
+  // batem o predicado de "campanha sem submission" mas não são fantasmas.
+  const affected = candidates.filter((lead) => !(lead.originMetadata as Record<string, unknown> | null)?.backfill)
+  const excludedByBackfill = candidates.length - affected.length
+
+  console.info(
+    `[audit-fake-email-attribution-leads] ${affected.length} leads campanha sem submissão${excludedByBackfill ? ` (${excludedByBackfill} excluído(s) por originMetadata.backfill)` : ""}`,
+  )
 
   const formViewedSince = window?.fromInclusive ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const recentFormViewed = await prisma.publicFormMetricEvent.count({

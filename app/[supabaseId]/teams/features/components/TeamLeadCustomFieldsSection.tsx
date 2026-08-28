@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,7 +110,7 @@ export function TeamLeadCustomFieldsSection({
       }
       setDefinitions(Array.isArray(payload.result) ? payload.result : []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar campos personalizados");
+      toastUserError(error);
     } finally {
       setLoading(false);
     }
@@ -195,7 +196,7 @@ export function TeamLeadCustomFieldsSection({
       setDialogOpen(false);
       await loadDefinitions();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar campo");
+      toastUserError(error);
     } finally {
       setIsSaving(false);
     }
@@ -220,7 +221,7 @@ export function TeamLeadCustomFieldsSection({
       setDeleteTarget(null);
       await loadDefinitions();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao remover campo");
+      toastUserError(error);
     } finally {
       setIsDeleting(false);
     }

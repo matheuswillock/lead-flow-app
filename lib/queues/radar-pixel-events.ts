@@ -35,10 +35,11 @@ export function buildRadarPixelEventIdempotencyKey(
 }
 
 export async function publishRadarPixelEvent(
-  payload: RadarPixelEventPayload
+  payload: RadarPixelEventPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RADAR_PIXEL_EVENTS_TOPIC, payload, {
-    idempotencyKey: buildRadarPixelEventIdempotencyKey(payload),
+    idempotencyKey: options?.idempotencyKey ?? buildRadarPixelEventIdempotencyKey(payload),
     retentionSeconds: RADAR_PIXEL_EVENTS_RETENTION_SECONDS,
   })
 }

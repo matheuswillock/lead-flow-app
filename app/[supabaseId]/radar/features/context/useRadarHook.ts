@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import { removeProfileFromSegmentList } from "@/lib/radar/radar-segment-promote-list"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { radarFrontendService } from "../services/RadarService"
+import { radarFrontendService, RadarDuplicateLeadError } from "../services/RadarService"
 import { buildProfileHref, buildTabHref } from "../utils/radarSegmentBuilderUtils"
 import {
   buildCampaignRadarSegmentSlug,
@@ -14,6 +15,7 @@ import {
 import type {
   RadarCustomSegmentListItem,
   RadarMetrics,
+  RadarDuplicateLeadCandidate,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
@@ -23,6 +25,7 @@ import type {
 } from "./RadarTypes"
 import type { CustomSegmentInput, CustomSegmentUpdateInput } from "../services/IRadarService"
 import type { RadarExportFormat, RadarExportRow } from "@/lib/radar/exportRadarProfiles"
+import type { RadarProfileFormItem } from "@/lib/radar/profile-forms"
 import { downloadRadarExportFile } from "../utils/downloadRadarExport"
 
 export type RadarTab = "perfis" | "segmentos"
@@ -53,6 +56,8 @@ export function useRadarHookFn() {
   const [isLoadingTouchpoints, setIsLoadingTouchpoints] = useState(false)
   const [contracts, setContracts] = useState<RadarProfileContracts | null>(null)
   const [isLoadingContracts, setIsLoadingContracts] = useState(false)
+  const [profileForms, setProfileForms] = useState<RadarProfileFormItem[] | null>(null)
+  const [isLoadingProfileForms, setIsLoadingProfileForms] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [isPreviewingAudience, setIsPreviewingAudience] = useState(false)
@@ -69,6 +74,12 @@ export function useRadarHookFn() {
   const [segmentProfilesTarget, setSegmentProfilesTarget] = useState<RadarSegmentProfilesTarget | null>(null)
   const [segmentProfilesItems, setSegmentProfilesItems] = useState<RadarProfileDetail[]>([])
   const [segmentProfilesTotal, setSegmentProfilesTotal] = useState(0)
+  /** Promoção parada esperando o usuário confirmar que quer criar mesmo com duplicata. */
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    profileId: string
+    source?: "profile-sheet" | "segment-list"
+    candidates: RadarDuplicateLeadCandidate[]
+  } | null>(null)
   const [segmentProfilesPage, setSegmentProfilesPage] = useState(1)
   const [isLoadingSegmentProfiles, setIsLoadingSegmentProfiles] = useState(false)
   const pageSize = 20
@@ -80,6 +91,7 @@ export function useRadarHookFn() {
   const autoOpenedProfileIdRef = useRef<string | null>(null)
   const touchpointsProfileIdRef = useRef<string | null>(null)
   const contractsProfileIdRef = useRef<string | null>(null)
+  const formsProfileIdRef = useRef<string | null>(null)
   const deepLinkSegmentRef = useRef<string | null>(null)
   const [campaignDeepLinkSegment, setCampaignDeepLinkSegment] = useState<RadarSegment | null>(null)
 
@@ -180,6 +192,7 @@ export function useRadarHookFn() {
       setDetailEventsPage(1)
       setTouchpoints(null)
       setContracts(null)
+      setProfileForms(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -206,8 +219,10 @@ export function useRadarHookFn() {
       // a request estava em voo (ex.: sheet fechada e reaberta para outro perfil).
       touchpointsProfileIdRef.current = profileId
       contractsProfileIdRef.current = profileId
+      formsProfileIdRef.current = profileId
       setIsLoadingTouchpoints(true)
       setIsLoadingContracts(true)
+      setIsLoadingProfileForms(true)
       void (async () => {
         try {
           const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
@@ -230,6 +245,17 @@ export function useRadarHookFn() {
           if (contractsProfileIdRef.current === profileId) setIsLoadingContracts(false)
         }
       })()
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileForms(supabaseId, activeTeamId, profileId)
+          if (formsProfileIdRef.current !== profileId) return
+          setProfileForms(result.items)
+        } catch (formsError) {
+          console.error("[useRadarHookFn][loadProfileForms]", formsError)
+        } finally {
+          if (formsProfileIdRef.current === profileId) setIsLoadingProfileForms(false)
+        }
+      })()
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -243,6 +269,8 @@ export function useRadarHookFn() {
     touchpointsProfileIdRef.current = null
     setContracts(null)
     contractsProfileIdRef.current = null
+    setProfileForms(null)
+    formsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -316,7 +344,7 @@ export function useRadarHookFn() {
           return true
         } catch (createError) {
           console.error("[useRadarHookFn][createCustomSegment]", createError)
-          toast.error(createError instanceof Error ? createError.message : "Não foi possível criar o segmento.")
+          toastUserError(createError)
           return false
         }
       })
@@ -337,7 +365,7 @@ export function useRadarHookFn() {
           return true
         } catch (updateError) {
           console.error("[useRadarHookFn][updateCustomSegment]", updateError)
-          toast.error(updateError instanceof Error ? updateError.message : "Não foi possível atualizar o segmento.")
+          toastUserError(updateError)
           return false
         }
       })
@@ -366,7 +394,7 @@ export function useRadarHookFn() {
           return true
         } catch (deleteError) {
           console.error("[useRadarHookFn][deleteCustomSegment]", deleteError)
-          toast.error(deleteError instanceof Error ? deleteError.message : "Não foi possível remover o segmento.")
+          toastUserError(deleteError)
           return false
         }
       })
@@ -399,11 +427,7 @@ export function useRadarHookFn() {
           return true
         } catch (materializeError) {
           console.error("[useRadarHookFn][materializeContactList]", materializeError)
-          toast.error(
-            materializeError instanceof Error
-              ? materializeError.message
-              : "Não foi possível criar a lista de contatos."
-          )
+          toastUserError(materializeError)
           return false
         }
       })
@@ -443,9 +467,7 @@ export function useRadarHookFn() {
           return true
         } catch (exportError) {
           console.error("[useRadarHookFn][exportFilteredProfiles]", exportError)
-          toast.error(
-            exportError instanceof Error ? exportError.message : "Não foi possível exportar os perfis."
-          )
+          toastUserError(exportError)
           return false
         }
       })
@@ -504,11 +526,7 @@ export function useRadarHookFn() {
           return true
         } catch (exportError) {
           console.error("[useRadarHookFn][exportSegmentMembers]", exportError)
-          toast.error(
-            exportError instanceof Error
-              ? exportError.message
-              : "Não foi possível exportar o segmento."
-          )
+          toastUserError(exportError)
           return false
         }
       })
@@ -695,11 +713,7 @@ export function useRadarHookFn() {
           return true
         } catch (materializeError) {
           console.error("[useRadarHookFn][materializeSegmentToContactList]", materializeError)
-          toast.error(
-            materializeError instanceof Error
-              ? materializeError.message
-              : "Não foi possível criar a lista de contatos."
-          )
+          toastUserError(materializeError)
           return false
         }
       })
@@ -712,13 +726,33 @@ export function useRadarHookFn() {
   const promoteProfileToLead = useCallback(
     async (
       profileId: string,
-      options?: { source?: "profile-sheet" | "segment-list" }
+      options?: {
+        source?: "profile-sheet" | "segment-list"
+        /** Reenvio depois de o usuário confirmar no diálogo de duplicata. */
+        confirmDuplicate?: boolean
+      }
     ): Promise<boolean> => {
       if (!supabaseId || !activeTeamId) return false
       const result = await withMutationLock(async () => {
         try {
-          await radarFrontendService.promoteProfileToLead(supabaseId, activeTeamId, profileId)
-          toast.success("Lead criado a partir do perfil Radar.")
+          const promoted = await radarFrontendService.promoteProfileToLead(
+            supabaseId,
+            activeTeamId,
+            profileId,
+            { confirmDuplicate: options?.confirmDuplicate }
+          )
+          setDuplicatePrompt(null)
+
+          if (promoted.identityLinked === false) {
+            // O Lead EXISTE; repetir criaria um segundo. O aviso é honesto e
+            // desencoraja o retry.
+            toast.warning(
+              "Lead criado, mas o vínculo com o perfil Radar não foi confirmado. Ele será refeito no próximo sync."
+            )
+          } else {
+            toast.success("Lead criado a partir do perfil Radar.")
+          }
+
           if (options?.source === "segment-list") {
             let removedFromList = false
             setSegmentProfilesItems((prev) => {
@@ -735,12 +769,20 @@ export function useRadarHookFn() {
           await loadDashboard()
           return true
         } catch (promoteError) {
+          // Duplicata não é falha: o backend devolveu 409 com os candidatos e
+          // está esperando confirmação. Abrir o diálogo em vez de torrar num
+          // toast é o que torna o fluxo completável.
+          if (promoteError instanceof RadarDuplicateLeadError) {
+            setDuplicatePrompt({
+              profileId,
+              source: options?.source,
+              candidates: promoteError.candidates,
+            })
+            return false
+          }
+
           console.error("[useRadarHookFn][promoteProfileToLead]", promoteError)
-          toast.error(
-            promoteError instanceof Error
-              ? promoteError.message
-              : "Não foi possível promover o perfil a Lead."
-          )
+          toastUserError(promoteError)
           return false
         }
       })
@@ -748,6 +790,17 @@ export function useRadarHookFn() {
     },
     [activeTeamId, loadDashboard, openProfile, supabaseId, withMutationLock]
   )
+
+  /** Reenvia a promoção que ficou pendente de confirmação de duplicata. */
+  const confirmDuplicatePromotion = useCallback(async (): Promise<boolean> => {
+    if (!duplicatePrompt) return false
+    return promoteProfileToLead(duplicatePrompt.profileId, {
+      source: duplicatePrompt.source,
+      confirmDuplicate: true,
+    })
+  }, [duplicatePrompt, promoteProfileToLead])
+
+  const dismissDuplicatePromotion = useCallback(() => setDuplicatePrompt(null), [])
 
   const updateProfileGender = useCallback(
     async (profileId: string, gender: "male" | "female" | "unknown"): Promise<boolean> => {
@@ -760,11 +813,7 @@ export function useRadarHookFn() {
           return true
         } catch (updateError) {
           console.error("[useRadarHookFn][updateProfileGender]", updateError)
-          toast.error(
-            updateError instanceof Error
-              ? updateError.message
-              : "Não foi possível atualizar o gênero do perfil."
-          )
+          toastUserError(updateError)
           return false
         }
       })
@@ -830,9 +879,14 @@ export function useRadarHookFn() {
     isLoadingTouchpoints,
     contracts,
     isLoadingContracts,
+    profileForms,
+    isLoadingProfileForms,
     previewSegmentContactList,
     materializeSegmentToContactList,
     promoteProfileToLead,
+    duplicatePrompt,
+    confirmDuplicatePromotion,
+    dismissDuplicatePromotion,
     updateProfileGender,
     reload: loadDashboard,
   }

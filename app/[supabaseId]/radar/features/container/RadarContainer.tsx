@@ -49,6 +49,9 @@ export function RadarContainer() {
     customSegments,
     metrics,
     fixedSegmentsError,
+    duplicatePrompt,
+    confirmDuplicatePromotion,
+    dismissDuplicatePromotion,
     selectedProfile,
     detailEvents,
     detailEventsTotal,
@@ -99,6 +102,8 @@ export function RadarContainer() {
     isLoadingTouchpoints,
     contracts,
     isLoadingContracts,
+    profileForms,
+    isLoadingProfileForms,
     reload,
   } = useRadarContext()
 
@@ -190,10 +195,13 @@ export function RadarContainer() {
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[
+            // Derivados vêm `null` quando a contagem de segmentos de sistema
+            // falha: DESCONHECIDO, não zero. Imprimir `0` aqui era o
+            // "dashboard zerado" que o backend acabou de parar de cachear (R8).
             { label: "Perfis unificados", value: metrics?.totalProfiles ?? 0 },
-            { label: "Aptos para e-mail", value: metrics?.marketable ?? 0 },
-            { label: "Bloqueados", value: metrics?.blocked ?? 0 },
-            { label: "Com engajamento recente", value: metrics?.engaged ?? 0 },
+            { label: "Aptos para e-mail", value: metrics?.marketable ?? "—" },
+            { label: "Bloqueados", value: metrics?.blocked ?? "—" },
+            { label: "Com engajamento recente", value: metrics?.engaged ?? "—" },
           ].map((card) => (
             <Card key={card.label}>
               <CardHeader className="pb-2">
@@ -401,6 +409,8 @@ export function RadarContainer() {
           isLoadingTouchpoints={isLoadingTouchpoints}
           contracts={contracts}
           isLoadingContracts={isLoadingContracts}
+          profileForms={profileForms}
+          isLoadingProfileForms={isLoadingProfileForms}
           onPromoteToLead={
             selectedProfile
               ? () => promoteProfileToLead(selectedProfile.id)
@@ -468,6 +478,54 @@ export function RadarContainer() {
                 }}
               >
                 {isCreatingContactList ? "Criando…" : "Criar lista"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/*
+          Duplicata na promoção é fluxo, não erro: o backend responde 409 com os
+          candidatos e espera confirmação. Sem este diálogo o usuário via só a
+          mensagem e ficava sem saída (auditoria CDP §4 R5).
+        */}
+        <AlertDialog
+          open={Boolean(duplicatePrompt)}
+          onOpenChange={(open) => !open && dismissDuplicatePromotion()}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Já existe lead parecido. Criar mesmo assim?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {duplicatePrompt?.candidates.length
+                  ? "Encontramos no CRM lead(s) com contato parecido com o deste perfil:"
+                  : "O CRM apontou um possível lead duplicado para este perfil."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            {duplicatePrompt?.candidates.length ? (
+              <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto text-sm">
+                {duplicatePrompt.candidates.map((candidate) => (
+                  <li key={candidate.id} className="rounded-md border p-2">
+                    <p className="font-medium">{candidate.name ?? "Sem nome"}</p>
+                    <p className="text-muted-foreground">
+                      {[candidate.phone, candidate.email].filter(Boolean).join(" · ") ||
+                        "Sem contato cadastrado"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={mutationLock}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={mutationLock}
+                onClick={(e) => {
+                  e.preventDefault()
+                  void confirmDuplicatePromotion()
+                }}
+              >
+                {mutationLock ? "Criando…" : "Criar assim mesmo"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
