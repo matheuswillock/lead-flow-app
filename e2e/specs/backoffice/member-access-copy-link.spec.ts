@@ -148,6 +148,9 @@ test.describe("backoffice clients member access link", () => {
     const resolvedBaseUrl = baseURL ?? "http://127.0.0.1:3000";
     expect(created.masterProfileId, "Cliente E2E não criado").not.toBeNull();
     expect(created.memberProfileId, "Membro E2E não criado").not.toBeNull();
+    if (!created.masterProfileId || !created.memberProfileId) {
+      throw new Error("Registros E2E de acesso não foram criados");
+    }
 
     const unauthenticatedResponse = await request.post(
       `${resolvedBaseUrl}/api/v1/backoffice/members/${created.memberProfileId}/access-email`,
@@ -178,8 +181,16 @@ test.describe("backoffice clients member access link", () => {
 
     const response = await accessRequest;
     expect(response.status()).toBe(200);
-    const requestBody = response.request().postDataJSON() as { mode?: string; deliver?: string };
-    expect(requestBody).toEqual({ mode: "invite", deliver: "link" });
+    const requestBody = response.request().postDataJSON() as {
+      mode?: string;
+      deliver?: string;
+      accountMasterId?: string;
+    };
+    expect(requestBody).toEqual({
+      mode: "invite",
+      deliver: "link",
+      accountMasterId: created.masterProfileId,
+    });
 
     await expect(page.getByText("Link de convite copiado para a área de transferência.")).toBeVisible({
       timeout: 15_000,
