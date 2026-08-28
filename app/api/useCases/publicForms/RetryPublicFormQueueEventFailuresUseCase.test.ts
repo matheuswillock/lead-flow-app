@@ -11,12 +11,18 @@ const publishPublicFormMetricEventMock = mock(
 const publishPublicFormSubmissionEventMock = mock(
   async (_payload: unknown, _options?: { idempotencyKey?: string }) => ({ messageId: "msg-1" }),
 )
+const publishPublicFormProgressEventMock = mock(
+  async (_payload: unknown, _options?: { idempotencyKey?: string }) => ({ messageId: "msg-1" }),
+)
 
 mock.module("@/lib/queues/public-form-metric-events", () => ({
   publishPublicFormMetricEvent: publishPublicFormMetricEventMock,
 }))
 mock.module("@/lib/queues/public-form-submission-events", () => ({
   publishPublicFormSubmissionEvent: publishPublicFormSubmissionEventMock,
+}))
+mock.module("@/lib/queues/public-form-progress-events", () => ({
+  publishPublicFormProgressEvent: publishPublicFormProgressEventMock,
 }))
 
 const { RetryPublicFormQueueEventFailuresUseCase } = await import(
@@ -39,9 +45,11 @@ describe("RetryPublicFormQueueEventFailuresUseCase (republish-to-queue)", () => 
     requeueIfProcessingMock.mockClear()
     publishPublicFormMetricEventMock.mockClear()
     publishPublicFormSubmissionEventMock.mockClear()
+    publishPublicFormProgressEventMock.mockClear()
     claimDueMock.mockImplementation(async () => [])
     publishPublicFormMetricEventMock.mockImplementation(async () => ({ messageId: "msg-1" }))
     publishPublicFormSubmissionEventMock.mockImplementation(async () => ({ messageId: "msg-1" }))
+    publishPublicFormProgressEventMock.mockImplementation(async () => ({ messageId: "msg-1" }))
     markRetryOrFailedMock.mockImplementation(async () => "retried")
   })
 
@@ -75,6 +83,31 @@ describe("RetryPublicFormQueueEventFailuresUseCase (republish-to-queue)", () => 
     expect(publishPublicFormSubmissionEventMock).not.toHaveBeenCalled()
     expect(markResolvedMock).toHaveBeenCalledWith("row-1")
     expect(result.result).toMatchObject({ claimed: 1, resolved: 1, retried: 0, failed: 0 })
+  })
+
+  it("kind=progress: republica mantendo o eventId causal", async () => {
+    const payload = {
+      publicId: "pub-1",
+      schemaVersion: 1,
+      eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      occurredAt: "2026-08-21T00:00:00.000Z",
+      trigger: "blur",
+      visitorSessionId: "session-1",
+      answers: [],
+      origin: {},
+      idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }
+    claimDueMock.mockImplementation(async () => [
+      { id: "row-progress", kind: "progress", idempotencyKey: payload.eventId, payload, attemptCount: 1 },
+    ])
+
+    const result = await new RetryPublicFormQueueEventFailuresUseCase(repository).execute()
+
+    expect(result.isValid).toBe(true)
+    expect(publishPublicFormProgressEventMock).toHaveBeenCalledWith(
+      payload,
+      expect.objectContaining({ idempotencyKey: expect.stringContaining("outbox-retry") }),
+    )
   })
 
   it("kind=submission: republica na fila public-form-submission-events e marca resolved", async () => {

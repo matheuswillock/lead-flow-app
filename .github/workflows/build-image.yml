@@ -1,0 +1,72 @@
+# ESQUELETO — build da imagem de produção (Vercel → Coolify)
+#
+# INERTE DE PROPÓSITO: só `workflow_dispatch`. Não adicionar gatilho de push
+# até o Dockerfile estar validado (ver deploy/coolify/README.md §Armadilhas).
+#
+# Por que `ubuntu-latest` e não os runners self-hosted: os runners foram criados
+# sem acesso ao Docker, e a nota `VPS/GitHub Actions Self-Hosted` tem guardrail
+# explícito ("o runner não deve poder docker compose na stack Bethânia").
+# Buildar imagem lá furaria essa separação de privilégio. Typecheck/lint/test
+# continuam nos self-hosted, que é onde os minutos realmente pesavam.
+
+name: Build image (Coolify)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente alvo do build
+        type: choice
+        options: [staging, prod]
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build & push ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # TODO: os NEXT_PUBLIC_* são inlinados no bundle (armadilha 4), então a
+      # imagem é específica do ambiente. Mesmo SHA, dois builds, duas tags.
+      # Guardar os valores por ambiente em GitHub Environments, não em secrets
+      # soltos — os NEXT_PUBLIC_* são públicos por definição, mas versioná-los
+      # por ambiente evita subir staging apontando para o banco de produção.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}-${{ inputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Armadilha 5: BuildKit secret, nunca build-arg.
+          secrets: |
+            sentry=${{ secrets.SENTRY_AUTH_TOKEN }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+            NEXT_PUBLIC_ENCRYPTION_KEY=${{ vars.NEXT_PUBLIC_ENCRYPTION_KEY }}
+            NEXT_PUBLIC_REALTIME_DISABLED=${{ vars.NEXT_PUBLIC_REALTIME_DISABLED }}
+            NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY=${{ vars.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY }}
+            NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER=${{ vars.NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER }}
+
+      # TODO: disparar o deploy no Coolify por webhook.
+      # App e worker DEVEM subir da MESMA tag — ver README §Version skew.
+      # - run: curl -fsS -X POST "$COOLIFY_WEBHOOK_APP"
+      # - run: curl -fsS -X POST "$COOLIFY_WEBHOOK_WORKER"

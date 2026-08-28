@@ -43,6 +43,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -438,7 +439,7 @@ export function BackofficeCrmTable() {
         await updateLeadStatus(lead.id, status)
       } catch (err) {
         console.error("[BackofficeCrmTable][handleStatusChange]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao atualizar status")
+        toastUserError(err)
       } finally {
         setPendingStatusLeadId(null)
       }
@@ -480,7 +481,7 @@ export function BackofficeCrmTable() {
       setLeadToDelete(null)
     } catch (err) {
       console.error("[BackofficeCrmTable][confirmDeleteLead]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao remover lead")
+      toastUserError(err)
     } finally {
       setIsDeletingLead(false)
     }

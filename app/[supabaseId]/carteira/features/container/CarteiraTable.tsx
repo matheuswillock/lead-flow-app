@@ -9,7 +9,7 @@ import {
   Eye,
   MoreHorizontal,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -365,7 +365,7 @@ export function CarteiraTable() {
       setDetailData(result);
     } catch (err) {
       setIsDetailOpen(false);
-      toast.error(err instanceof Error ? err.message : 'Erro ao buscar detalhe');
+      toastUserError(err);
     } finally {
       setIsDetailLoading(false);
     }

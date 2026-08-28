@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { backofficeStudioEmailService } from "../../services/BackofficeStudioEmailService"
 import type { StudioEmailTemplate } from "../../services/IBackofficeStudioEmailService"
 
@@ -39,7 +40,7 @@ export function useBackofficeTemplates(
       setTemplates(list)
       lastKeyRef.current = key
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar templates")
+      toastUserError(err)
     } finally {
       setLoading(false)
       inFlightRef.current = false
@@ -66,7 +67,7 @@ export function useBackofficeTemplates(
         )
         return true
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao criar template")
+        toastUserError(err)
         return false
       } finally {
         setCreating(false)

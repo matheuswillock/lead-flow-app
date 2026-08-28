@@ -1,8 +1,14 @@
 import { BackofficeEmailCampaignUseCase } from "@/app/api/useCases/backofficeEmailCampaign/BackofficeEmailCampaignUseCase"
 import {
+  buildBackofficeEmailCampaignDispatchIdempotencyKey,
   handleBackofficeEmailCampaignDispatchCallback,
+  BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC,
   type BackofficeEmailCampaignDispatchWakePayload,
 } from "@/lib/queues/backoffice-email-campaign-dispatch"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -31,7 +37,8 @@ function makeUseCase() {
 export async function processBackofficeEmailCampaignDispatchMessage(
   message: BackofficeEmailCampaignDispatchWakePayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<BackofficeEmailCampaignUseCase, "processDispatchQueueBatch"> = makeUseCase()
+  useCase: Pick<BackofficeEmailCampaignUseCase, "processDispatchQueueBatch"> = makeUseCase(),
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[BackofficeEmailCampaignDispatchQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -63,6 +70,14 @@ export async function processBackofficeEmailCampaignDispatchMessage(
       dispatchId: message.dispatchId,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC,
+      idempotencyKey: buildBackofficeEmailCampaignDispatchIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

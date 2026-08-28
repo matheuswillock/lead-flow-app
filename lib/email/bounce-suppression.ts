@@ -1,5 +1,6 @@
 export const MAILBOX_FULL_BOUNCE_SUBTYPE = "MailboxFull"
 export const CONTENT_REJECTED_BOUNCE_SUBTYPE = "ContentRejected"
+export const PERMANENT_BOUNCE_TYPE = "Permanent"
 
 export type BounceSuppressionInput = {
   type?: string | null
@@ -12,9 +13,13 @@ export function isMailboxFullBounce(input: BounceSuppressionInput): boolean {
   return (input.message ?? "").toLowerCase().includes("inbox was full")
 }
 
-/** Stamp global de isBounced: qualquer bounce, exceto caixa cheia. */
+export function isPermanentBounce(input: BounceSuppressionInput): boolean {
+  return (input.type ?? "").toLowerCase() === PERMANENT_BOUNCE_TYPE.toLowerCase()
+}
+
+/** Stamp global de isBounced: somente bounce Permanent. */
 export function shouldSuppressContactOnBounce(input: BounceSuppressionInput): boolean {
-  return !isMailboxFullBounce(input)
+  return isPermanentBounce(input)
 }
 
 export function shouldStampIsBouncedFromEventMetadata(

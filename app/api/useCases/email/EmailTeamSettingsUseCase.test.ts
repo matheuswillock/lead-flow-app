@@ -1,81 +1,79 @@
 import { describe, expect, it, mock, beforeEach } from "bun:test"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import type {
+  EmailTeamSenderRecord,
+  EmailTeamSettingsRecord,
+  EmailTeamSettingsSnapshot,
+  IEmailTeamSettingsRepository,
+} from "@/app/api/infra/data/repositories/emailTeamSettings/IEmailTeamSettingsRepository"
+import { EmailTeamSettingsUseCase } from "./EmailTeamSettingsUseCase"
 
-const settingsFindUniqueMock = mock(async () => null as Record<string, unknown> | null)
-const senderCountMock = mock(async () => 0)
-const senderCreateMock = mock(async () => ({
+const DEFAULT_SENDER: EmailTeamSenderRecord = {
   id: "sender-1",
   name: "Vendas",
   email: "vendas@empresaxyz.com.br",
   replyTo: null,
   isDefault: true,
-}))
-const senderFindFirstMock = mock(async () => ({
-  id: "sender-1",
-  name: "Vendas",
-  email: "vendas@empresaxyz.com.br",
-  replyTo: null,
-  isDefault: true,
-}))
-const senderUpdateMock = mock(async () => ({
-  id: "sender-1",
-  name: "Vendas",
-  email: "vendas@empresaxyz.com.br",
-  replyTo: null,
-  isDefault: true,
-}))
-const senderFindManyMock = mock(async () => [
-  {
-    id: "sender-1",
-    name: "Vendas",
-    email: "vendas@empresaxyz.com.br",
+}
+
+function settingsRecord(
+  overrides: Partial<EmailTeamSettingsRecord> = {}
+): EmailTeamSettingsRecord {
+  return {
+    fromName: "Corretor Studio",
+    fromEmail: "contato@corretorstudio.com",
     replyTo: null,
-    isDefault: true,
-  },
-])
-const senderUpdateManyMock = mock(async () => ({ count: 0 }))
-const settingsUpsertMock = mock(async () => ({}))
-
-const txMock = {
-  emailTeamSender: {
-    count: senderCountMock,
-    create: senderCreateMock,
-    findFirst: senderFindFirstMock,
-    findMany: senderFindManyMock,
-    update: senderUpdateMock,
-    updateMany: senderUpdateManyMock,
-  },
-  emailTeamSettings: {
-    findUnique: settingsFindUniqueMock,
-    upsert: settingsUpsertMock,
-  },
+    dispatchBlockedDates: null,
+    dispatchTimeFrom: null,
+    dispatchTimeTo: null,
+    dispatchAllowedRoles: ["manager", "backoffice"],
+    templateCreateRoles: ["manager", "backoffice"],
+    templateApprovalRequired: false,
+    templateApprovalRoles: ["manager", "backoffice"],
+    blockedDispatchDays: [],
+    resendDomainId: null,
+    resendDomainName: null,
+    resendDomainStatus: null,
+    resendDomainRegion: null,
+    resendDomainConnectedAt: null,
+    resendOpenTracking: false,
+    resendClickTracking: false,
+    ...overrides,
+  }
 }
 
-const transactionMock = mock(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock))
-
-const prismaMock = {
-  emailTeamSettings: {
-    findUnique: settingsFindUniqueMock,
-  },
-  emailTeamSender: {
-    count: senderCountMock,
-    create: senderCreateMock,
-    findFirst: senderFindFirstMock,
-    findMany: senderFindManyMock,
-    update: senderUpdateMock,
-    updateMany: senderUpdateManyMock,
-  },
-  $transaction: transactionMock,
+function emptySnapshot(): EmailTeamSettingsSnapshot {
+  return { settings: null, senders: [], variables: [] }
 }
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: prismaMock,
-  default: prismaMock,
-}))
-
-const { EmailTeamSettingsUseCase } = await import(
-  "@/app/api/useCases/email/EmailTeamSettingsUseCase"
+const findSettingsMock = mock(async (): Promise<EmailTeamSettingsRecord | null> => null)
+const createSenderMock = mock(async (): Promise<EmailTeamSenderRecord> => DEFAULT_SENDER)
+const updateSenderMock = mock(async (): Promise<EmailTeamSenderRecord | null> => DEFAULT_SENDER)
+const deleteSenderMock = mock(async (): Promise<boolean> => true)
+const promoteSenderToDefaultMock = mock(
+  async (): Promise<EmailTeamSettingsSnapshot | null> => emptySnapshot()
 )
+
+/**
+ * Fake do repositório injetado no construtor. Substitui o antigo `mock.module`
+ * do Prisma: o UseCase não conhece mais o client, então não há o que interceptar
+ * no nível de módulo.
+ */
+function buildSettingsRepository(): IEmailTeamSettingsRepository {
+  return {
+    findSettings: findSettingsMock,
+    listSenders: mock(async () => []),
+    countSenders: mock(async () => 0),
+    findSettingsSnapshot: mock(async () => emptySnapshot()),
+    saveDispatchPolicy: mock(async () => emptySnapshot()),
+    createSender: createSenderMock,
+    updateSender: updateSenderMock,
+    deleteSender: deleteSenderMock,
+    promoteSenderToDefault: promoteSenderToDefaultMock,
+    saveConnectedDomain: mock(async () => {}),
+    clearConnectedDomain: mock(async () => {}),
+  }
+}
 
 const teamCtx: TeamAccess = {
   supabaseId: "supa-1",
@@ -94,54 +92,21 @@ const teamCtx: TeamAccess = {
 }
 
 function resetMocks() {
-  settingsFindUniqueMock.mockClear()
-  senderCountMock.mockClear()
-  senderCreateMock.mockClear()
-  senderFindFirstMock.mockClear()
-  senderUpdateMock.mockClear()
-  senderFindManyMock.mockClear()
-  senderUpdateManyMock.mockClear()
-  settingsUpsertMock.mockClear()
-  transactionMock.mockClear()
-  transactionMock.mockImplementation(async (fn: (tx: typeof txMock) => Promise<unknown>) =>
-    fn(txMock)
-  )
+  findSettingsMock.mockClear()
+  createSenderMock.mockClear()
+  updateSenderMock.mockClear()
+  deleteSenderMock.mockClear()
+  promoteSenderToDefaultMock.mockClear()
 
-  senderCountMock.mockResolvedValue(0)
-  senderCreateMock.mockResolvedValue({
-    id: "sender-1",
-    name: "Vendas",
-    email: "vendas@empresaxyz.com.br",
-    replyTo: null,
-    isDefault: true,
-  })
-  senderFindFirstMock.mockResolvedValue({
-    id: "sender-1",
-    name: "Vendas",
-    email: "vendas@empresaxyz.com.br",
-    replyTo: null,
-    isDefault: true,
-  })
-  senderUpdateMock.mockResolvedValue({
-    id: "sender-1",
-    name: "Vendas",
-    email: "vendas@empresaxyz.com.br",
-    replyTo: null,
-    isDefault: true,
-  })
-  senderFindManyMock.mockResolvedValue([
-    {
-      id: "sender-1",
-      name: "Vendas",
-      email: "vendas@empresaxyz.com.br",
-      replyTo: null,
-      isDefault: true,
-    },
-  ])
+  findSettingsMock.mockResolvedValue(null)
+  createSenderMock.mockResolvedValue(DEFAULT_SENDER)
+  updateSenderMock.mockResolvedValue(DEFAULT_SENDER)
+  deleteSenderMock.mockResolvedValue(true)
+  promoteSenderToDefaultMock.mockResolvedValue(emptySnapshot())
 }
 
 describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-capable", () => {
-  const uc = new EmailTeamSettingsUseCase()
+  const uc = new EmailTeamSettingsUseCase({ settingsRepo: buildSettingsRepository() })
 
   beforeEach(() => {
     resetMocks()
@@ -149,10 +114,7 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
 
   describe("createSender", () => {
     it("domínio null + e-mail fora da plataforma → bloqueia", async () => {
-      settingsFindUniqueMock.mockResolvedValue({
-        resendDomainName: null,
-        resendDomainStatus: null,
-      })
+      findSettingsMock.mockResolvedValue(settingsRecord())
 
       const output = await uc.createSender(
         { name: "Bruno", email: "bruno@backstageclub.com.br" },
@@ -161,16 +123,19 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toMatch(/domínio/i)
-      expect(transactionMock).not.toHaveBeenCalled()
+      // Asserção de ORDEM: a guarda precisa bloquear ANTES de qualquer escrita.
+      expect(createSenderMock).not.toHaveBeenCalled()
     })
 
     it("domínio setado com status pending/failed → bloqueia", async () => {
       for (const status of ["pending", "failed"] as const) {
         resetMocks()
-        settingsFindUniqueMock.mockResolvedValue({
-          resendDomainName: "empresaxyz.com.br",
-          resendDomainStatus: status,
-        })
+        findSettingsMock.mockResolvedValue(
+          settingsRecord({
+            resendDomainName: "empresaxyz.com.br",
+            resendDomainStatus: status,
+          })
+        )
 
         const output = await uc.createSender(
           { name: "Vendas", email: "vendas@empresaxyz.com.br" },
@@ -179,31 +144,17 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
 
         expect(output.isValid).toBe(false)
         expect(output.errorMessages[0]).toMatch(/domínio/i)
-        expect(transactionMock).not.toHaveBeenCalled()
+        expect(createSenderMock).not.toHaveBeenCalled()
       }
     })
 
     it("verified + e-mail no domínio → ok", async () => {
-      settingsFindUniqueMock.mockResolvedValue({
-        resendDomainName: "empresaxyz.com.br",
-        resendDomainStatus: "verified",
-      })
-      senderCreateMock.mockResolvedValue({
-        id: "sender-1",
-        name: "Vendas",
-        email: "vendas@empresaxyz.com.br",
-        replyTo: null,
-        isDefault: true,
-      })
-      senderFindManyMock.mockResolvedValue([
-        {
-          id: "sender-1",
-          name: "Vendas",
-          email: "vendas@empresaxyz.com.br",
-          replyTo: null,
-          isDefault: true,
-        },
-      ])
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "empresaxyz.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
 
       const output = await uc.createSender(
         { name: "Vendas", email: "vendas@empresaxyz.com.br" },
@@ -211,30 +162,70 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
       )
 
       expect(output.isValid).toBe(true)
-      expect(transactionMock).toHaveBeenCalled()
+      expect(createSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio mail e e-mail no domínio raiz → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "mail.libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.createSender(
+        { name: "Alexandre", email: "alexandre@libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(createSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio raiz e e-mail com prefixo mail → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.createSender(
+        { name: "Alexandre", email: "alexandre@mail.libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(createSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio mail e e-mail em outro subdomínio raiz → bloqueia", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "mail.libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.createSender(
+        { name: "Alexandre", email: "alexandre@app.libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toContain("@mail.libercorretora.com.br")
+      expect(createSenderMock).not.toHaveBeenCalled()
     })
 
     it("e-mail @corretorstudio.com (plataforma) → sempre ok", async () => {
-      settingsFindUniqueMock.mockResolvedValue({
-        resendDomainName: null,
-        resendDomainStatus: null,
-      })
-      senderCreateMock.mockResolvedValue({
+      findSettingsMock.mockResolvedValue(settingsRecord())
+      createSenderMock.mockResolvedValue({
         id: "sender-platform",
         name: "Plataforma",
         email: "contato@corretorstudio.com",
         replyTo: null,
         isDefault: true,
       })
-      senderFindManyMock.mockResolvedValue([
-        {
-          id: "sender-platform",
-          name: "Plataforma",
-          email: "contato@corretorstudio.com",
-          replyTo: null,
-          isDefault: true,
-        },
-      ])
 
       const output = await uc.createSender(
         { name: "Plataforma", email: "contato@corretorstudio.com" },
@@ -242,16 +233,13 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
       )
 
       expect(output.isValid).toBe(true)
-      expect(transactionMock).toHaveBeenCalled()
+      expect(createSenderMock).toHaveBeenCalled()
     })
   })
 
   describe("updateSender", () => {
     it("domínio null + e-mail fora da plataforma → bloqueia", async () => {
-      settingsFindUniqueMock.mockResolvedValue({
-        resendDomainName: null,
-        resendDomainStatus: null,
-      })
+      findSettingsMock.mockResolvedValue(settingsRecord())
 
       const output = await uc.updateSender(
         "sender-1",
@@ -261,16 +249,18 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
 
       expect(output.isValid).toBe(false)
       expect(output.errorMessages[0]).toMatch(/domínio/i)
-      expect(transactionMock).not.toHaveBeenCalled()
+      expect(updateSenderMock).not.toHaveBeenCalled()
     })
 
     it("domínio setado com status pending/failed → bloqueia", async () => {
       for (const status of ["pending", "failed"] as const) {
         resetMocks()
-        settingsFindUniqueMock.mockResolvedValue({
-          resendDomainName: "empresaxyz.com.br",
-          resendDomainStatus: status,
-        })
+        findSettingsMock.mockResolvedValue(
+          settingsRecord({
+            resendDomainName: "empresaxyz.com.br",
+            resendDomainStatus: status,
+          })
+        )
 
         const output = await uc.updateSender(
           "sender-1",
@@ -280,22 +270,17 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
 
         expect(output.isValid).toBe(false)
         expect(output.errorMessages[0]).toMatch(/domínio/i)
-        expect(transactionMock).not.toHaveBeenCalled()
+        expect(updateSenderMock).not.toHaveBeenCalled()
       }
     })
 
     it("verified + e-mail no domínio → ok", async () => {
-      settingsFindUniqueMock.mockResolvedValue({
-        resendDomainName: "empresaxyz.com.br",
-        resendDomainStatus: "verified",
-      })
-      senderUpdateMock.mockResolvedValue({
-        id: "sender-1",
-        name: "Vendas",
-        email: "vendas@empresaxyz.com.br",
-        replyTo: null,
-        isDefault: true,
-      })
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "empresaxyz.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
 
       const output = await uc.updateSender(
         "sender-1",
@@ -304,30 +289,54 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
       )
 
       expect(output.isValid).toBe(true)
-      expect(transactionMock).toHaveBeenCalled()
+      expect(updateSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio mail e e-mail no domínio raiz → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "mail.libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.updateSender(
+        "sender-1",
+        { name: "Alexandre", email: "alexandre@libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(updateSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio raiz e e-mail com prefixo mail → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.updateSender(
+        "sender-1",
+        { name: "Alexandre", email: "alexandre@mail.libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(updateSenderMock).toHaveBeenCalled()
     })
 
     it("e-mail @corretorstudio.com (plataforma) → sempre ok", async () => {
-      settingsFindUniqueMock.mockResolvedValue({
-        resendDomainName: null,
-        resendDomainStatus: null,
-      })
-      senderUpdateMock.mockResolvedValue({
+      findSettingsMock.mockResolvedValue(settingsRecord())
+      updateSenderMock.mockResolvedValue({
         id: "sender-1",
         name: "Plataforma",
         email: "contato@corretorstudio.com",
         replyTo: null,
         isDefault: true,
       })
-      senderFindManyMock.mockResolvedValue([
-        {
-          id: "sender-1",
-          name: "Plataforma",
-          email: "contato@corretorstudio.com",
-          replyTo: null,
-          isDefault: true,
-        },
-      ])
 
       const output = await uc.updateSender(
         "sender-1",
@@ -336,7 +345,54 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
       )
 
       expect(output.isValid).toBe(true)
-      expect(transactionMock).toHaveBeenCalled()
+      expect(updateSenderMock).toHaveBeenCalled()
     })
+  })
+})
+
+/**
+ * O repositório sinaliza "remetente inexistente neste time" por valor de retorno
+ * (null/false), e não mais por `throw new Error("NOT_FOUND")`. Estes testes
+ * travam essa tradução: um retorno vazio interpretado como sucesso devolveria
+ * Output válido com `result` nulo e a UI removeria o remetente da tela sem que
+ * nada tivesse acontecido no banco.
+ */
+describe("EmailTeamSettingsUseCase — remetente inexistente", () => {
+  const uc = new EmailTeamSettingsUseCase({ settingsRepo: buildSettingsRepository() })
+
+  beforeEach(() => {
+    resetMocks()
+  })
+
+  it("updateSender com id de outro time → 'Remetente não encontrado'", async () => {
+    findSettingsMock.mockResolvedValue(settingsRecord())
+    updateSenderMock.mockResolvedValue(null)
+
+    const output = await uc.updateSender(
+      "sender-de-outro-time",
+      { name: "Plataforma", email: "contato@corretorstudio.com" },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe("Remetente não encontrado")
+  })
+
+  it("deleteSender com id de outro time → 'Remetente não encontrado'", async () => {
+    deleteSenderMock.mockResolvedValue(false)
+
+    const output = await uc.deleteSender("sender-de-outro-time", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe("Remetente não encontrado")
+  })
+
+  it("setDefaultSender com id de outro time → 'Remetente não encontrado'", async () => {
+    promoteSenderToDefaultMock.mockResolvedValue(null)
+
+    const output = await uc.setDefaultSender("sender-de-outro-time", teamCtx)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe("Remetente não encontrado")
   })
 })

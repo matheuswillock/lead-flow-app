@@ -14,6 +14,21 @@ mock.module("@/lib/queues/asaas-webhook-events", () => ({
   ASAAS_WEBHOOK_EVENTS_RETENTION_SECONDS: 60 * 60 * 24 * 7,
 }))
 
+/**
+ * Só o repositório é stubado — `queue-processing-failure` roda de verdade. É o
+ * que faz a chave e o `reason` assertados aqui serem os mesmos que produção
+ * grava; reimplementar os helpers dentro do mock passaria sempre.
+ */
+const recordTerminalFailure = mock(async (_input: unknown) => {})
+const upsertFromProcessingFailure = mock(async (_input: unknown) => {})
+
+mock.module(
+  "@/app/api/infra/data/repositories/queueProcessingFailure/QueueProcessingFailureRepository",
+  () => ({
+    queueProcessingFailureRepository: { recordTerminalFailure, upsertFromProcessingFailure },
+  }),
+)
+
 mock.module("@/app/api/webhooks/asaas/processAsaasWebhookEvent", () => ({
   processAsaasWebhookEvent: mock(async () => {}),
 }))
@@ -106,6 +121,44 @@ describe("processAsaasWebhookEventMessage", () => {
     expect(markFailed).not.toHaveBeenCalled()
   })
 
+  /**
+   * T-Q3.2 + review #1042. Payload malformado é falha **terminal**: se entrasse
+   * como `pending`, o cron de retry republicaria o mesmo payload e o ciclo
+   * fila↔outbox não fecharia nunca. O `reason` nomeia o campo que faltou.
+   */
+  it("T-Q3.2 — payload inválido grava dead-letter TERMINAL nomeando o campo, e acka", async () => {
+    recordTerminalFailure.mockClear()
+    upsertFromProcessingFailure.mockClear()
+
+    await expect(
+      processAsaasWebhookEventMessage(
+        { eventId: "evt-1" } as AsaasWebhookEventPayload,
+        metadata,
+        deps,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(process).not.toHaveBeenCalled()
+    expect(upsertFromProcessingFailure).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "asaas-webhook-events",
+        idempotencyKey: "evt-1",
+        lastError: "campos obrigatórios ausentes: body",
+      }),
+    )
+  })
+
+  it("T-Q3.2 — sem chave no payload, a linha usa o messageId como idempotencyKey", async () => {
+    recordTerminalFailure.mockClear()
+
+    await processAsaasWebhookEventMessage({} as AsaasWebhookEventPayload, metadata, deps)
+
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "invalid-payload:msg-1" }),
+    )
+  })
+
   it("process lança: marca failed sem 3º argumento e propaga throw para retry", async () => {
     process.mockRejectedValueOnce(new Error("persist failed"))
 
@@ -118,6 +171,27 @@ describe("processAsaasWebhookEventMessage", () => {
     expect(markFailed).toHaveBeenCalledTimes(1)
     expect(markFailed).toHaveBeenCalledWith("evt-1", "persist failed")
     expect(markFailed.mock.calls[0]?.length).toBe(2)
+  })
+
+  it("deliveryCount excedeu o limite: helper acka após markFailed (cron Asaas segue)", async () => {
+    const ackDeadLetter = mock(async () => true)
+    process.mockRejectedValueOnce(new Error("persist failed"))
+
+    await expect(
+      processAsaasWebhookEventMessage(baseMessage(), { ...metadata, deliveryCount: 20 }, {
+        ...deps,
+        ackDeadLetter,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(markFailed).toHaveBeenCalledWith("evt-1", "persist failed")
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "asaas-webhook-events",
+        idempotencyKey: "evt-1",
+        deliveryCount: 20,
+      }),
+    )
   })
 
   it("markFailed também falha: ainda propaga o erro original de process", async () => {

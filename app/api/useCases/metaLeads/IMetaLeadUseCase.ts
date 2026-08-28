@@ -22,6 +22,17 @@ export interface IMetaLeadUseCase {
    * @returns Output com resultado do processamento
    */
   processWebhook(payload: any, managerId?: string): Promise<Output>;
+
+  /**
+   * Valida a assinatura HMAC do webhook do Meta.
+   *
+   * Exposto aqui para que a rota nao precise importar o MetaLeadService
+   * diretamente — a camada de UseCase e a unica que fala com Services.
+   *
+   * @param signature - Conteudo do header `x-hub-signature-256`
+   * @param rawBody - Corpo cru da requisicao, antes de qualquer parse
+   */
+  validateWebhookSignature(signature: string, rawBody: string): boolean;
 }
 
 /**

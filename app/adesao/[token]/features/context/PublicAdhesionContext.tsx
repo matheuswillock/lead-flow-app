@@ -17,6 +17,7 @@ import type {
   PublicAdhesionDetails,
   PublicAdhesionPayment,
 } from "./PublicAdhesionTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 interface PublicAdhesionContextValue {
   token: string
@@ -61,7 +62,7 @@ export function PublicAdhesionProvider({
       lastSuccessKey.current = requestKey
     } catch (err) {
       console.error("[PublicAdhesionContext][loadDetails]", err)
-      setError(err instanceof Error ? err.message : "Link de adesão indisponível")
+      setError(toUserToastMessage(err))
     } finally {
       setIsLoading(false)
       inFlightKey.current = null
@@ -77,7 +78,7 @@ export function PublicAdhesionProvider({
         setPayment(response)
       } catch (err) {
         console.error("[PublicAdhesionContext][submitCheckout]", err)
-        throw new Error(err instanceof Error ? err.message : "Erro ao gerar pagamento")
+        throw new Error(toUserToastMessage(err))
       } finally {
         setIsSubmitting(false)
       }
@@ -96,7 +97,7 @@ export function PublicAdhesionProvider({
         setPayment(response)
       } catch (err) {
         console.error("[PublicAdhesionContext][refreshPaymentStatus]", err)
-        throw new Error(err instanceof Error ? err.message : "Erro ao verificar pagamento")
+        throw new Error(toUserToastMessage(err))
       } finally {
         paymentRefreshInFlightKey.current = null
       }

@@ -6,6 +6,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
 import { normalizePhoneE164 } from "@/lib/studio-bot/phone";
 import { STUDIO_BOT_OUTBOX_MAX_ATTEMPTS } from "@/lib/studio-bot/outbox-retry";
 import {
@@ -48,7 +49,7 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
 
   async findProfileByEmail(email: string) {
     return prisma.profile.findFirst({
-      where: { email: { equals: email.trim(), mode: "insensitive" } },
+      where: { email: { equals: escapeLikePattern(email.trim()), mode: "insensitive" } },
       select: { id: true, activeTeamId: true, email: true, fullName: true },
     });
   }

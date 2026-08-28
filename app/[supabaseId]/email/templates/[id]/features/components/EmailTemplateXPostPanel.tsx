@@ -4,6 +4,7 @@ import { useCallback, useState } from "react"
 import { useParams } from "next/navigation"
 import { AtSign, Copy, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -18,7 +19,7 @@ function notifyXPostError(context: string, error: unknown, fallback: string) {
   if (!isApiRequestError(error)) {
     console.error(context, error)
   }
-  toast.error(error instanceof Error ? error.message : fallback)
+  toast.error(toUserToastMessage(error instanceof Error ? error : fallback))
 }
 
 export function EmailTemplateXPostPanel({ embedded = false }: { embedded?: boolean }) {

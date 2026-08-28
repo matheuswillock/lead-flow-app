@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Archive, BarChart3, Copy, Ellipsis, FileText, Plus, Settings } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
@@ -78,6 +79,7 @@ import type {
 import { publicFormsClientService } from "../services/PublicFormsService"
 import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggregation";
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -541,7 +543,7 @@ function SettingsSheet({
         setDraft(value)
         setInitial(value)
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : "Erro ao carregar"))
+      .catch((error) => toastUserError(error))
   }, [ids, open])
 
   function requestOpenChange(next: boolean) {
@@ -566,7 +568,7 @@ function SettingsSheet({
       toast.success("Configurações salvas")
       onOpenChange(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar")
+      toastUserError(error)
     } finally {
       setSaving(false)
     }
@@ -729,7 +731,7 @@ function AnalyticsDialog({
       })
       .then(setData)
       .catch((error) =>
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar métricas"),
+        toastUserError(error),
       )
       .finally(() => setLoading(false))
   }, [from, id, ids, publicationId, to])
@@ -934,15 +936,21 @@ function AnalyticsDialog({
               </TabsContent>
               <TabsContent value="funnel" className="space-y-2">
                 {questions.map((question) => {
+                  // Junta por identidade de snapshot COM reserva na FK — ver
+                  // `metricEventMatchesQuestion`. A FK é `SetNull`: pergunta
+                  // deletada e recriada zera o `questionId` do histórico, e casar
+                  // só por id exibia "0/0" para pergunta com respostas
+                  // persistidas. Mas a chave sozinha também não basta: quando as
+                  // duas existem e divergem, é o id que resolve.
                   const questionEvents = events.filter(
                     (event) =>
                       event.publicationId === question.publicationId &&
-                      event.questionId === question.id,
+                      metricEventMatchesQuestion(event, question),
                   )
                   const metric = (type: string) =>
                     questionEvents
                       .filter((event) => event.eventType === type)
-                      .reduce((sum, event) => sum + event._count._all, 0)
+                      .reduce((sum, event) => sum + (event.uniqueSessions ?? event._count._all), 0)
                   const viewed = metric("question_viewed")
                   const answered = metric("question_answered")
                   const skipped = metric("question_skipped")

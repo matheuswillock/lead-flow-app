@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import {
+  CONTENT_REJECTED_BOUNCE_SUBTYPE,
   isMailboxFullBounce,
+  isPermanentBounce,
   shouldStampIsBouncedFromEventMetadata,
   shouldSuppressContactOnBounce,
 } from "./bounce-suppression"
@@ -26,7 +28,7 @@ describe("shouldSuppressContactOnBounce", () => {
     expect(isMailboxFullBounce({ message: "inbox was full" })).toBe(true)
   })
 
-  it("stamp Permanent e ContentRejected (Terra)", () => {
+  it("stamp só Permanent — ContentRejected (Terra) não stamp", () => {
     expect(
       shouldSuppressContactOnBounce({
         type: "Permanent",
@@ -34,22 +36,39 @@ describe("shouldSuppressContactOnBounce", () => {
         message: "hard bounce",
       })
     ).toBe(true)
+    expect(isPermanentBounce({ type: "Permanent" })).toBe(true)
     expect(
       shouldSuppressContactOnBounce({
         type: "Transient",
-        subType: "ContentRejected",
+        subType: CONTENT_REJECTED_BOUNCE_SUBTYPE,
         message: "content that the provider doesn't allow",
       })
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  it("lê bounceSubType e bounceMessage do metadata do evento", () => {
+  it("não stamp sem bounceType", () => {
+    expect(
+      shouldSuppressContactOnBounce({
+        subType: "General",
+        message: "hard bounce",
+      })
+    ).toBe(false)
+  })
+
+  it("lê bounceType Permanent do metadata do evento", () => {
     expect(
       shouldStampIsBouncedFromEventMetadata({
         bounceType: "Transient",
-        bounceSubType: "ContentRejected",
+        bounceSubType: CONTENT_REJECTED_BOUNCE_SUBTYPE,
         bounceMessage: "content that the provider doesn't allow",
         bounceDiagnosticCode: ["smtp; 554 5.7.1"],
+      })
+    ).toBe(false)
+    expect(
+      shouldStampIsBouncedFromEventMetadata({
+        bounceType: "Permanent",
+        bounceSubType: "General",
+        bounceMessage: "user unknown",
       })
     ).toBe(true)
     expect(
@@ -59,5 +78,110 @@ describe("shouldSuppressContactOnBounce", () => {
         bounceMessage: "The recipient's inbox was full.",
       })
     ).toBe(false)
+  })
+})
+
+/**
+ * Trava de decisão de produto, não teste de comportamento.
+ *
+ * A supressão por bounce é intencionalmente GLOBAL: não filtra por time. Já
+ * houve tentativa de "corrigir" isso como se fosse falta de escopo. Estes
+ * testes falham se alguém adicionar `teamId` às consultas, forçando a leitura
+ * do racional antes de mudar.
+ */
+describe("escopo da supressão por bounce (decisão de produto)", () => {
+  it("findBouncedEmails não filtra por time", async () => {
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailContactList/EmailContactListRepository.ts",
+    ).text()
+    const body = source.slice(
+      source.indexOf("async findBouncedEmails"),
+      source.indexOf("async createContacts"),
+    )
+
+    expect(body).not.toContain("teamId")
+    expect(body).toContain("isBounced: true")
+  })
+
+  it("o stamp de bounce é global, ao contrário do de reclamação", async () => {
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+    const complainedBranch = source.slice(
+      source.indexOf('if (eventType === "complained")'),
+      source.indexOf("if (log.campaignId)"),
+    )
+
+    // Bounce: propriedade do endereço, vale para qualquer remetente.
+    expect(bouncedBranch).not.toContain("teamId")
+    // Reclamação: relação destinatário-remetente, por time.
+    expect(complainedBranch).toContain("teamId")
+  })
+
+  it("o stamp casa e-mail sem depender de caixa (contatos não são normalizados na escrita)", async () => {
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+
+    expect(bouncedBranch).toContain("toLowerCase()")
+  })
+
+  it("o stamp compara por igualdade indexável, sem função sobre a coluna", async () => {
+    // `lower("email") = lower($1)` corrige o curinga mas mantém o Seq Scan:
+    // função sobre a coluna não usa o `@@index([email])`. Medido em 200k
+    // linhas: Index Scan 0,036 ms (4 buffers) vs Seq Scan 161,7 ms (1666
+    // buffers). Isso roda dentro da transação do webhook que segura o lock da
+    // campanha, com `maxConcurrency: 12` na fila do Resend — uma rajada de
+    // bounce vira 12 varreduras completas simultâneas.
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+    const code = bouncedBranch
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n")
+
+    expect(code).not.toContain("lower(")
+    expect(code).toContain("email: { in:")
+  })
+
+  it("o stamp NÃO usa mode: insensitive — o Prisma traduz para ILIKE e abre curinga", async () => {
+    // Medido com Prisma 6.19.3 contra o Postgres local: o filtro
+    // `{ equals: <email>, mode: "insensitive" }` gera
+    // `WHERE "email" ILIKE $1` com o valor CRU, sem escape. Em Postgres, `_`
+    // casa um caractere e `%` casa N — então um bounce em
+    // `maria_silva@gmail.com` carimbava também `maria.silva@gmail.com` e
+    // `maria-silva@gmail.com`. Como este stamp é global (sem teamId), o falso
+    // positivo atravessava todos os times, e `isBounced` exclui de todo
+    // disparo. `nome_sobrenome` vs `nome.sobrenome` é justamente a colisão
+    // mais comum em base importada.
+    const source = await Bun.file(
+      "app/api/infra/data/repositories/emailLog/EmailLogRepository.ts",
+    ).text()
+    const bouncedBranch = source.slice(
+      source.indexOf('if (eventType === "bounced")'),
+      source.indexOf('if (eventType === "complained")'),
+    )
+    // Sem as linhas de comentário — elas citam ILIKE justamente para explicar
+    // por que ele não pode aparecer no código.
+    const code = bouncedBranch
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n")
+
+    expect(code).not.toContain('mode: "insensitive"')
+    expect(code.toUpperCase()).not.toContain("ILIKE")
   })
 })

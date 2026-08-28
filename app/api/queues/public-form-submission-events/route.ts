@@ -3,7 +3,19 @@ import {
   PublicFormSubmissionUseCase,
   type PublicFormSubmissionBackgroundJob,
 } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
-import { handlePublicFormSubmissionEventsCallback } from "@/lib/queues/public-form-submission-events"
+import {
+  handlePublicFormSubmissionEventsCallback,
+  PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC,
+} from "@/lib/queues/public-form-submission-events"
+import {
+  ackAfterMaxDeliveries,
+  buildInvalidPayloadIdempotencyKey,
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+  type AckAfterMaxDeliveriesFn,
+  type DeadLetterInvalidPayloadFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -23,6 +35,8 @@ export async function processPublicFormSubmissionEventMessage(
   message: PublicFormSubmissionBackgroundJob,
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormSubmissionUseCase, "processInBackground"> = publicFormSubmissionUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
+  deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[PublicFormSubmissionEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -34,10 +48,24 @@ export async function processPublicFormSubmissionEventMessage(
     requestKey: message?.requestKey,
   })
 
-  if (!message?.submissionId || !message?.requestKey || !message?.snapshot) {
-    console.error("[PublicFormSubmissionEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    submissionId: message?.submissionId,
+    requestKey: message?.requestKey,
+    snapshot: message?.snapshot,
+  })
+  if (missingFields.length > 0) {
+    console.error("[PublicFormSubmissionEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       message,
+      missingFields,
+    })
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await deadLetter({
+      topic: PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.requestKey, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
     })
     return
   }
@@ -57,6 +85,14 @@ export async function processPublicFormSubmissionEventMessage(
       requestKey: message.requestKey,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: PUBLIC_FORM_SUBMISSION_EVENTS_TOPIC,
+      idempotencyKey: message.requestKey,
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

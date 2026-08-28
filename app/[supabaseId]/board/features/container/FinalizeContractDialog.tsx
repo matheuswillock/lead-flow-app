@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, ChevronLeft, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
+import { toUserToastMessage } from '@/lib/ui/to-user-toast-message';
 import { useTimezone } from '@/app/context/TimezoneContext';
 import { startOfDayInTz } from '@/lib/dates';
 import {
@@ -347,7 +348,7 @@ export function FinalizeContractDialog({
         { id: loadingToast, duration: 5000 }
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao finalizar contrato';
+      const msg = toUserToastMessage(err);
       toast.error(msg, { id: loadingToast, duration: 5000 });
       setError(msg);
       onOpenChange(true);

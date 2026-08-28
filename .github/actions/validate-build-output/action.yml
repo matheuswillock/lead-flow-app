@@ -1,0 +1,100 @@
+name: Validate build output
+description: >-
+  Falha quando o build "passou" mas o que ele produziu não serve. Um exit code
+  zero do Next/Vercel não prova que a saída está utilizável — em 21-22/08/2026
+  três deploys de produção consecutivos foram publicados a partir de builds
+  verdes cujo artefato estava incompleto, e o erro só aparecia no `vercel
+  deploy`, já do outro lado da transferência entre runners.
+
+inputs:
+  mode:
+    description: >-
+      `next` para `bun run build` (checa o .next). `vercel` para
+      `vercel build --prod` (checa também .vercel/output e o filePathMap).
+    required: false
+    default: next
+
+runs:
+  using: composite
+  steps:
+    - name: Validar saída do build
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        fail() { echo "::error::$1"; exit 1; }
+
+        # --- .next: comum aos dois modos ---------------------------------
+        [ -d .next ] || fail "build nao produziu .next"
+
+        # BUILD_ID só é escrito no fim do build; sua ausência é o sinal mais
+        # confiável de build interrompido que terminou com exit 0.
+        [ -f .next/BUILD_ID ] || fail ".next/BUILD_ID ausente — build nao concluiu"
+        [ -s .next/BUILD_ID ] || fail ".next/BUILD_ID vazio — build nao concluiu"
+
+        [ -d .next/server ] || fail ".next/server ausente — nada de servidor foi emitido"
+        [ -f .next/required-server-files.json ] \
+          || fail ".next/required-server-files.json ausente — build incompleto"
+
+        echo "  BUILD_ID: $(cat .next/BUILD_ID)"
+        echo "  .next: $(du -sh .next | cut -f1)"
+
+        if [ "${{ inputs.mode }}" != "vercel" ]; then
+          echo "Build output OK (modo next)."
+          exit 0
+        fi
+
+        # --- modo vercel: o artefato que vai virar deploy -----------------
+        [ -d .vercel/output ] || fail "vercel build nao produziu .vercel/output"
+        [ -f .vercel/output/config.json ] || fail ".vercel/output/config.json ausente"
+
+        FUNCS="$(find .vercel/output/functions -name '.vc-config.json' 2>/dev/null | wc -l)"
+        [ "$FUNCS" -gt 0 ] || fail ".vercel/output nao tem nenhuma funcao — artefato inutil"
+        echo "  funcoes: $FUNCS"
+
+        # Mesma checagem que o `vercel deploy --prebuilt` faz ao subir: todo
+        # caminho do `filePathMap` precisa existir. Rodando aqui, um build que
+        # gerou saída inconsistente falha na origem, com os arquivos nomeados,
+        # em vez de só estourar no deploy (ou pior, publicar algo quebrado).
+        node -e '
+          const fs = require("fs");
+          const path = require("path");
+
+          const missing = new Set();
+          let configs = 0;
+          let refs = 0;
+
+          const walk = (dir) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                walk(full);
+                continue;
+              }
+              if (entry.name !== ".vc-config.json") continue;
+              configs += 1;
+              let config;
+              try {
+                config = JSON.parse(fs.readFileSync(full, "utf8"));
+              } catch {
+                process.stderr.write(`::error::.vc-config.json ilegivel: ${full}\n`);
+                process.exit(1);
+              }
+              for (const target of Object.values(config.filePathMap ?? {})) {
+                refs += 1;
+                if (!fs.existsSync(target)) missing.add(target);
+              }
+            }
+          };
+
+          walk(".vercel/output/functions");
+          process.stdout.write(`  filePathMap: ${configs} configs, ${refs} refs\n`);
+
+          if (missing.size === 0) process.exit(0);
+
+          process.stderr.write(`::error::${missing.size} arquivo(s) referenciado(s) pelo build nao existem\n`);
+          for (const file of [...missing].slice(0, 15)) process.stderr.write(`  ${file}\n`);
+          process.exit(1);
+        '
+
+        echo "Build output OK (modo vercel)."

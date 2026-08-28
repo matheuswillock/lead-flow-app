@@ -12,6 +12,13 @@ mock.module("@/lib/queues/backoffice-email-campaign-dispatch", () => ({
   publishBackofficeEmailCampaignDispatchWake: mock(async () => ({ messageId: "mid-test" })),
   BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_TOPIC: "backoffice-email-campaign-dispatch",
   BACKOFFICE_EMAIL_CAMPAIGN_DISPATCH_RETENTION_SECONDS: 60 * 60 * 24 * 7,
+  buildBackofficeEmailCampaignDispatchIdempotencyKey: (
+    payload: BackofficeEmailCampaignDispatchWakePayload,
+  ) => `${payload.dispatchId}:${payload.reason}`,
+}))
+
+mock.module("@/lib/queues/queue-processing-failure", () => ({
+  ackAfterMaxDeliveries: mock(async () => false),
 }))
 
 type QueueMessageMetadata = {
@@ -71,6 +78,26 @@ describe("processBackofficeEmailCampaignDispatchMessage", () => {
         processDispatchQueueBatch,
       })
     ).rejects.toThrow("P2024")
+  })
+
+  it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
+    const ackDeadLetter = mock(async () => true)
+    processDispatchQueueBatch.mockRejectedValueOnce(new Error("P2024"))
+    await expect(
+      processBackofficeEmailCampaignDispatchMessage(
+        baseMessage(),
+        { ...metadata, deliveryCount: 20 },
+        { processDispatchQueueBatch },
+        ackDeadLetter,
+      ),
+    ).resolves.toBeUndefined()
+    expect(ackDeadLetter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: "backoffice-email-campaign-dispatch",
+        idempotencyKey: "dispatch-1:start",
+        deliveryCount: 20,
+      }),
+    )
   })
 
   it("não lança quando o use case retorna isValid=false (resultado apenas logado)", async () => {

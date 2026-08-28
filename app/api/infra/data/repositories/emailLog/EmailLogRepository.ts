@@ -1,8 +1,10 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Prisma } from "@prisma/client"
+import { randomUUID } from "crypto"
 import type {
   ApplyEmailLogWebhookInput,
   CreateTeamEmailLogInput,
+  ExpireStaleQueuedLogsOptions,
   IEmailLogRepository,
   MarkSentEntry,
 } from "./IEmailLogRepository"
@@ -14,6 +16,26 @@ export class EmailLogRepository implements IEmailLogRepository {
   async findByResendEmailId(resendEmailId: string) {
     return prisma.emailLog.findUnique({
       where: { resendEmailId },
+      select: {
+        id: true,
+        teamId: true,
+        status: true,
+        recipientEmail: true,
+        recipientName: true,
+        campaignId: true,
+        dispatchId: true,
+        deliveredAt: true,
+        openedAt: true,
+        clickedAt: true,
+        bouncedAt: true,
+        complainedAt: true,
+      },
+    })
+  }
+
+  async findCampaignWebhookRecordById(teamId: string, emailLogId: string) {
+    return prisma.emailLog.findFirst({
+      where: { id: emailLogId, teamId, category: "campaign" },
       select: {
         id: true,
         teamId: true,
@@ -116,18 +138,78 @@ export class EmailLogRepository implements IEmailLogRepository {
             return
           }
 
-          await tx.emailLog.update({
-            where: { id: log.id },
-            data: {
-              ...(shouldUpdateStatus && { status: eventType as never }),
-              ...timestampUpdate,
-            },
-          })
+          // Reivindica o primeiro evento deste tipo de forma ATÔMICA: o filtro
+          // no próprio campo de timestamp faz o banco decidir quem venceu.
+          //
+          // O guard anterior comparava `log.<tipo>At`, lido ANTES da transação.
+          // Dois caminhos concorrentes — clique first-party e webhook do Resend,
+          // ou duas visualizações do mesmo formulário — leem `null` juntos e
+          // ambos incrementam o contador. A unique do EmailEvent não segura,
+          // porque ela inclui `occurredAt` e os dois carimbos diferem.
+          const timestampFieldName = timestampField[eventType]
+          const statusUpdate = shouldUpdateStatus
+            ? { status: eventType as never }
+            : {}
 
+          let claimedFirstEvent = false
+          if (timestampFieldName) {
+            const claim = await tx.emailLog.updateMany({
+              where: { id: log.id, [timestampFieldName]: null },
+              data: { ...statusUpdate, ...timestampUpdate },
+            })
+            claimedFirstEvent = claim.count === 1
+          } else if (shouldUpdateStatus) {
+            // Tipos sem timestamp próprio (sent, failed, suppressed, …) não têm
+            // contador de campanha; só a promoção de status.
+            await tx.emailLog.update({ where: { id: log.id }, data: statusUpdate })
+          }
+
+          // Bounce é GLOBAL de propósito, ao contrário de `complained` logo
+          // abaixo. Não é falta de escopo: um bounce permanente significa que a
+          // caixa não existe, o que vale para qualquer remetente. Tratar como
+          // sinal compartilhado evita que cada time redescubra o mesmo endereço
+          // morto pagando com a própria reputação de domínio.
+          //
+          // Medido em 22/08/2026: 11.535 contatos (16,7% dos 69.094 marcados)
+          // estão suprimidos por evidência de outro time, em 8 times. Escopar
+          // por time devolveria esses endereços para envio e geraria uma onda
+          // de re-bounce concentrada — decisão de produto foi manter global.
+          //
+          // O `shouldStampIsBouncedFromEventMetadata` já restringe a bounce
+          // `Permanent` (ver lib/email/bounce-suppression.ts); soft bounce e
+          // caixa cheia não carimbam.
           if (eventType === "bounced") {
             if (shouldStampIsBouncedFromEventMetadata(metadata)) {
+              // Igualdade sobre a coluna, nunca padrão nem função.
+              //
+              // `mode: "insensitive"` não serve: medido com Prisma 6.19.3, ele
+              // vira `WHERE "email" ILIKE $1` com o valor CRU, sem escape nem
+              // ESCAPE. Em Postgres `_` casa um caractere e `%` casa N, então
+              // um bounce em `maria_silva@…` carimbava `maria.silva@…` e
+              // `maria-silva@…` junto. Como este stamp é global, o falso
+              // positivo suprimia o endereço em todos os times, sem trilha.
+              // ILIKE também descarta o `@@index([email])`: medido em 200k
+              // linhas, Index Scan 0,036 ms vira Seq Scan 161,7 ms — dentro da
+              // transação do webhook que segura o lock da campanha, com
+              // `maxConcurrency: 12` na fila do Resend.
+              //
+              // `lower("email") = lower($1)` resolveria o curinga mas mantém o
+              // Seq Scan, porque a função sobre a coluna também não usa o
+              // btree. Sem índice funcional, a única forma indexável é comparar
+              // com as variantes literais.
+              //
+              // Duas variantes bastam: o endereço como saiu no envio e sua
+              // forma minúscula. Não cobre caixa mista arbitrária divergente do
+              // que foi enviado — mas essa linha já é invisível para os
+              // leitores, que normalizam a entrada e comparam com `in`
+              // case-sensitive (EmailContactListRepository.findBouncedEmails),
+              // então carimbá-la não mudaria nenhum comportamento hoje.
+              const bouncedAddress = log.recipientEmail.trim()
               await tx.emailContact.updateMany({
-                where: { email: log.recipientEmail },
+                where: {
+                  email: { in: [...new Set([bouncedAddress, bouncedAddress.toLowerCase()])] },
+                  isBounced: false,
+                },
                 data: { isBounced: true },
               })
             }
@@ -151,13 +233,15 @@ export class EmailLogRepository implements IEmailLogRepository {
             }
           }
 
-          if (log.campaignId) {
+          // `claimedFirstEvent` — e não a leitura pré-transação — é o que
+          // garante que cada contador sobe no máximo uma vez por destinatário.
+          if (log.campaignId && claimedFirstEvent) {
             const campaignIncrements: Record<string, number> = {}
-            if (eventType === "delivered" && !log.deliveredAt) campaignIncrements.totalDelivered = 1
-            if (eventType === "opened" && !log.openedAt) campaignIncrements.totalOpened = 1
-            if (eventType === "clicked" && !log.clickedAt) campaignIncrements.totalClicked = 1
-            if (eventType === "bounced" && !log.bouncedAt) campaignIncrements.totalBounced = 1
-            if (eventType === "complained" && !log.complainedAt) campaignIncrements.totalComplained = 1
+            if (eventType === "delivered") campaignIncrements.totalDelivered = 1
+            if (eventType === "opened") campaignIncrements.totalOpened = 1
+            if (eventType === "clicked") campaignIncrements.totalClicked = 1
+            if (eventType === "bounced") campaignIncrements.totalBounced = 1
+            if (eventType === "complained") campaignIncrements.totalComplained = 1
 
             if (Object.keys(campaignIncrements).length > 0) {
               // lock order: campaign then dispatch (must match EmailCampaignUseCase completion)
@@ -282,6 +366,114 @@ export class EmailLogRepository implements IEmailLogRepository {
           metadata: { errorMessage },
         },
       })
+    })
+  }
+
+  /**
+   * Irmão de `markFailed` para recusa da **nossa** pré-validação, não do
+   * provedor.
+   *
+   * A diferença importa para o usuário: `failed` é retentável (o Resend pode
+   * ter recusado por rate limit, cota, erro transitório), enquanto `suppressed`
+   * é terminal — typo de domínio, provedor morto, endereço genérico e bounce
+   * anterior reprovam de novo na mesma regra determinística. Reenviar só queima
+   * reputação de domínio e cota.
+   *
+   * `CAMPAIGN_RETRY_EXCLUDE_LOG_STATUSES` já trata `suppressed` como não
+   * retentável; este método é o que finalmente escreve esse status.
+   */
+  async markSuppressed(
+    logId: string,
+    eventId: string,
+    reason: string,
+    occurredAt: Date
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.emailLog.update({
+        where: { id: logId },
+        data: { status: "suppressed" },
+      })
+
+      await tx.emailEvent.create({
+        data: {
+          id: eventId,
+          logId,
+          type: "suppressed",
+          occurredAt,
+          // `errorMessage`, não `reason`: é a única chave que a linha do tempo
+          // do log lê (CampaignLogsTab). Gravar em `reason` deixava o motivo da
+          // recusa persistido num campo que nenhum consumidor abre — o suporte
+          // via o evento "Recusado" sem explicação nenhuma.
+          metadata: { errorMessage: reason },
+        },
+      })
+    })
+  }
+
+  /**
+   * Log `queued` **órfão** (sem `dispatchId`) e parado além do prazo vira
+   * `failed` — em lote, porque o backlog medido em produção era de 13.936
+   * linhas e um `markFailed` por linha significaria 13.936 transações.
+   *
+   * `dispatchId: null` é o predicado inteiro, de propósito. Uma versão anterior
+   * também pegava log sob disparo terminal (`status <> 'sending'`) — que é
+   * exatamente o conjunto que `reclaimCompletedDispatchesWithQueuedLogs` reabre
+   * para drenar. Com o reclaim limitado a 5 disparos por tick, esta varredura
+   * horária mataria destinatários ainda recuperáveis, e o reclaim seguinte
+   * reabriria um disparo já sem `queued`. Log com disparo tem dono; só o órfão
+   * não tem, e é dele que este cron cuida.
+   */
+  async expireStaleQueuedLogs(options: ExpireStaleQueuedLogsOptions): Promise<number> {
+    const staleLogs = await prisma.emailLog.findMany({
+      where: {
+        status: "queued",
+        sentAt: null,
+        resendEmailId: null,
+        createdAt: { lt: options.olderThan },
+        dispatchId: null,
+      },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: options.limit,
+    })
+    if (staleLogs.length === 0) return 0
+
+    const occurredAt = new Date()
+    const logIds = staleLogs.map((log) => log.id)
+
+    return await prisma.$transaction(async (tx) => {
+      // `UPDATE ... RETURNING` em vez de `updateMany`: o evento de falha precisa
+      // nascer das linhas que a escrita **de fato** mudou, não das que a leitura
+      // selecionou. O `findMany` acima roda fora da transação, então entre ele e
+      // aqui um `markSent` pode ter tirado a linha de `queued`, um reclaim pode
+      // tê-la anexado a um disparo, ou uma segunda execução do cron pode ter
+      // pego o mesmo lote. Emitir evento por id lido criaria falha falsa para
+      // e-mail que saiu, e devolver `logIds.length` inflaria o número que o cron
+      // reporta.
+      const expired = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "corretor_studio_email_logs"
+        SET "status" = 'failed'::"email_log_status"
+        WHERE "id" = ANY(${logIds}::uuid[])
+          AND "status" = 'queued'::"email_log_status"
+          AND "dispatchId" IS NULL
+        RETURNING "id"
+      `
+      if (expired.length === 0) return 0
+
+      await tx.emailEvent.createMany({
+        data: expired.map((log) => ({
+          id: randomUUID(),
+          logId: log.id,
+          type: "failed" as const,
+          occurredAt,
+          metadata: { errorMessage: options.errorMessage },
+        })),
+        // Reexecução do mesmo lote no mesmo instante não pode explodir por
+        // `@@unique([logId, type, occurredAt])`.
+        skipDuplicates: true,
+      })
+
+      return expired.length
     })
   }
 }

@@ -1,4 +1,5 @@
-import { prisma } from "@/app/api/infra/data/prisma";
+import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
+import type { ApplicablePendingAction } from "@/app/api/infra/data/repositories/pendingAction/IPendingActionRepository";
 import { Output } from "@/lib/output";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
@@ -19,69 +20,7 @@ type ApplyPendingActionOptions = {
   waivedReason?: string;
 };
 
-async function findActionByCheckoutId(checkoutId: string) {
-  return prisma.pendingAction.findFirst({
-    where: { checkoutId },
-    include: {
-      master: {
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          functions: true,
-          cpfCnpj: true,
-          phone: true,
-          postalCode: true,
-          address: true,
-          addressNumber: true,
-          neighborhood: true,
-          complement: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
-          subscriptionNextDueDate: true,
-          subscriptionCycle: true,
-          hasPermanentSubscription: true,
-          hasUnlimitedUsers: true,
-          timezone: true,
-        },
-      },
-    },
-  });
-}
-
-async function findActionById(id: string) {
-  return prisma.pendingAction.findUnique({
-    where: { id },
-    include: {
-      master: {
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          functions: true,
-          cpfCnpj: true,
-          phone: true,
-          postalCode: true,
-          address: true,
-          addressNumber: true,
-          neighborhood: true,
-          complement: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
-          subscriptionNextDueDate: true,
-          subscriptionCycle: true,
-          hasPermanentSubscription: true,
-          hasUnlimitedUsers: true,
-          timezone: true,
-        },
-      },
-    },
-  });
-}
-
-type ResolvedPendingAction = NonNullable<Awaited<ReturnType<typeof findActionById>>>;
+type ResolvedPendingAction = ApplicablePendingAction;
 type PendingActionPayload = Record<string, any>;
 type CreatedPendingUser = {
   profileId: string;
@@ -117,7 +56,7 @@ const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfi
 
 export class PendingActionUseCase {
   async applyPendingActionByCheckout(checkoutId: string, paymentId?: string): Promise<Output> {
-    const action = await findActionByCheckoutId(checkoutId);
+    const action = await pendingActionRepository.findApplicableByCheckoutId(checkoutId);
     if (!action) {
       return new Output(false, [], ["Ação pendente não encontrada"], null);
     }
@@ -126,34 +65,7 @@ export class PendingActionUseCase {
   }
 
   async applyPendingActionByPaymentId(paymentId: string): Promise<Output> {
-    let action = await prisma.pendingAction.findFirst({
-      where: { paymentId },
-      include: {
-        master: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            functions: true,
-            cpfCnpj: true,
-            phone: true,
-            postalCode: true,
-            address: true,
-            addressNumber: true,
-            neighborhood: true,
-            complement: true,
-            asaasCustomerId: true,
-            asaasSubscriptionId: true,
-            subscriptionStatus: true,
-            subscriptionNextDueDate: true,
-            subscriptionCycle: true,
-            hasPermanentSubscription: true,
-            hasUnlimitedUsers: true,
-            timezone: true,
-          },
-        },
-      },
-    });
+    let action = await pendingActionRepository.findApplicableByPaymentId(paymentId);
 
     if (!action) {
       try {
@@ -162,13 +74,10 @@ export class PendingActionUseCase {
 
         if (externalReference?.startsWith("pending-action-")) {
           const actionId = externalReference.replace("pending-action-", "");
-          action = await findActionById(actionId);
+          action = await pendingActionRepository.findApplicableById(actionId);
 
           if (action && !action.paymentId) {
-            await prisma.pendingAction.update({
-              where: { id: action.id },
-              data: { paymentId },
-            });
+            await pendingActionRepository.updatePaymentId(action.id, paymentId);
             action = { ...action, paymentId };
           }
         }
@@ -194,7 +103,7 @@ export class PendingActionUseCase {
     pendingActionId: string,
     options: { reason: string }
   ): Promise<Output> {
-    const action = await findActionById(pendingActionId);
+    const action = await pendingActionRepository.findApplicableById(pendingActionId);
     if (!action) {
       return new Output(false, [], ["Ação pendente não encontrada"], null);
     }
@@ -264,10 +173,7 @@ export class PendingActionUseCase {
         );
       }
 
-      await prisma.pendingAction.update({
-        where: { id: action.id },
-        data: { paymentId: null },
-      });
+      await pendingActionRepository.clearPaymentId(action.id);
       action.paymentId = null;
     }
 
@@ -308,7 +214,7 @@ export class PendingActionUseCase {
     const paymentStatus = options?.paymentStatus ?? "CONFIRMED";
 
     try {
-      const appliedResult = await prisma.$transaction(async (tx) => {
+      const appliedResult = await pendingActionRepository.runInTransaction(async (tx) => {
         if (action.actionType === "create_team") {
           return this.applyCreateTeam(tx, action, paymentId);
         }
@@ -356,28 +262,18 @@ export class PendingActionUseCase {
             reason: `Atualização recorrente após ${action.actionType}`,
           });
 
-          await prisma.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              payload: {
-                ...(action.payload as PendingActionPayload),
-                paymentStatus,
-                subscriptionSyncStatus: "updated",
-                subscriptionUpdatedAt: new Date().toISOString(),
-              },
-            },
+          await pendingActionRepository.updatePayload(action.id, {
+            ...(action.payload as PendingActionPayload),
+            paymentStatus,
+            subscriptionSyncStatus: "updated",
+            subscriptionUpdatedAt: new Date().toISOString(),
           });
         } catch (subscriptionError) {
           console.error("[PendingActionUseCase] Falha ao sincronizar assinatura recorrente:", subscriptionError);
-          await prisma.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              payload: {
-                ...(action.payload as PendingActionPayload),
-                paymentStatus,
-                subscriptionSyncStatus: "failed",
-              },
-            },
+          await pendingActionRepository.updatePayload(action.id, {
+            ...(action.payload as PendingActionPayload),
+            paymentStatus,
+            subscriptionSyncStatus: "failed",
           });
         }
       }
@@ -386,15 +282,12 @@ export class PendingActionUseCase {
     } catch (error: any) {
       console.error("Erro ao aplicar ação pendente:", error);
 
-      await prisma.pendingAction.update({
-        where: { id: action.id },
-        data: {
-          status: "failed",
-          paymentId: paymentId ?? action.paymentId,
-          payload: {
-            ...(action.payload as PendingActionPayload),
-            paymentStatus: "FAILED",
-          },
+      await pendingActionRepository.markFailed({
+        id: action.id,
+        paymentId: paymentId ?? action.paymentId,
+        payload: {
+          ...(action.payload as PendingActionPayload),
+          paymentStatus: "FAILED",
         },
       });
 
@@ -414,66 +307,35 @@ export class PendingActionUseCase {
       throw new Error("Nome do time não informado na ação pendente");
     }
 
-    const team = await tx.team.create({
-      data: {
-        name: teamName,
-        masterId: action.masterId,
-        isDefault: false,
-      },
+    const team = await pendingActionRepository.createTeam(tx, {
+      name: teamName,
+      masterId: action.masterId,
+      isDefault: false,
     });
 
-    await tx.teamMember.upsert({
-      where: {
-        teamId_profileId: {
-          teamId: team.id,
-          profileId: action.masterId,
-        },
-      },
-      update: {
-        role: "manager",
-        functions: action.master.functions ?? [],
-      },
-      create: {
-        teamId: team.id,
-        profileId: action.masterId,
-        role: "manager",
-        functions: action.master.functions ?? [],
-      },
+    await pendingActionRepository.upsertTeamManagerMembership(tx, {
+      teamId: team.id,
+      profileId: action.masterId,
+      functions: action.master.functions ?? [],
     });
 
     const requesterProfileId = payload.requestedByProfileId as string | undefined;
     const requesterFunctions = (payload.requestedByFunctions as UserFunction[] | undefined) ?? [];
     if (requesterProfileId && requesterProfileId !== action.masterId) {
-      await tx.teamMember.upsert({
-        where: {
-          teamId_profileId: {
-            teamId: team.id,
-            profileId: requesterProfileId,
-          },
-        },
-        update: {
-          role: "manager",
-          functions: requesterFunctions,
-        },
-        create: {
-          teamId: team.id,
-          profileId: requesterProfileId,
-          role: "manager",
-          functions: requesterFunctions,
-        },
+      await pendingActionRepository.upsertTeamManagerMembership(tx, {
+        teamId: team.id,
+        profileId: requesterProfileId,
+        functions: requesterFunctions,
       });
     }
 
-    await tx.pendingAction.update({
-      where: { id: action.id },
-      data: {
-        status: "applied",
-        paymentId: paymentId ?? action.paymentId,
-        teamId: team.id,
-        payload: {
-          ...payload,
-          paymentStatus: "CONFIRMED",
-        },
+    await pendingActionRepository.markApplied(tx, {
+      id: action.id,
+      paymentId: paymentId ?? action.paymentId,
+      teamId: team.id,
+      payload: {
+        ...payload,
+        paymentStatus: "CONFIRMED",
       },
     });
 
@@ -493,42 +355,33 @@ export class PendingActionUseCase {
       throw new Error("Dados insuficientes para adicionar membro");
     }
 
-    const existingMember = await tx.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId,
-        },
-      },
+    const alreadyMember = await pendingActionRepository.hasTeamMembership(tx, {
+      teamId,
+      profileId,
     });
 
-    if (!existingMember) {
+    if (!alreadyMember) {
       const role = (payload.role || "operator") as UserRole;
-      await tx.teamMember.create({
-        data: {
-          teamId,
-          profileId,
-          role,
-          functions: (payload.functions as UserFunction[] | undefined) ?? [],
-          canCreateAccountUsers: role === "manager" && payload.canCreateAccountUsers === true,
-          canManageAccountTeams: role === "manager" && payload.canManageAccountTeams === true,
-          canTransferAccountLeads:
-            (role === "manager" || role === "backoffice") &&
-            payload.canTransferAccountLeads === true,
-        },
+      await pendingActionRepository.createTeamMember(tx, {
+        teamId,
+        profileId,
+        role,
+        functions: (payload.functions as UserFunction[] | undefined) ?? [],
+        canCreateAccountUsers: role === "manager" && payload.canCreateAccountUsers === true,
+        canManageAccountTeams: role === "manager" && payload.canManageAccountTeams === true,
+        canTransferAccountLeads:
+          (role === "manager" || role === "backoffice") &&
+          payload.canTransferAccountLeads === true,
       });
     }
 
-    await tx.pendingAction.update({
-      where: { id: action.id },
-      data: {
-        status: "applied",
-        paymentId: paymentId ?? action.paymentId,
-        teamId,
-        payload: {
-          ...payload,
-          paymentStatus: "CONFIRMED",
-        },
+    await pendingActionRepository.markApplied(tx, {
+      id: action.id,
+      paymentId: paymentId ?? action.paymentId,
+      teamId,
+      payload: {
+        ...payload,
+        paymentStatus: "CONFIRMED",
       },
     });
 
@@ -565,93 +418,62 @@ export class PendingActionUseCase {
           payload.canViewAllTeams === true,
       };
 
-    let profile = await tx.profile.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
-      select: { id: true },
-    });
+    let profile = await pendingActionRepository.findProfileIdByEmail(tx, email);
 
     if (!profile) {
-      profile = await tx.profile.create({
-        data: {
-          fullName: name,
-          email,
-          role,
-          functions,
-          managerId: action.masterId,
-          isMaster: false,
-        },
-        select: { id: true },
+      profile = await pendingActionRepository.createManagedProfile(tx, {
+        fullName: name,
+        email,
+        role,
+        functions,
+        managerId: action.masterId,
       });
     } else {
-      await tx.profile.update({
-        where: { id: profile.id },
-        data: {
-          fullName: name,
-          managerId: action.masterId,
-        },
+      await pendingActionRepository.assignProfileManager(tx, {
+        profileId: profile.id,
+        fullName: name,
+        managerId: action.masterId,
       });
     }
 
-    const existingMember = await tx.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: profile.id,
-        },
-      },
+    const alreadyMember = await pendingActionRepository.hasTeamMembership(tx, {
+      teamId,
+      profileId: profile.id,
     });
 
-    if (!existingMember) {
-      await tx.teamMember.create({
-        data: {
-          teamId,
-          profileId: profile.id,
-          role,
-          functions,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
-          canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
-          canViewAllTeams: delegatedPermissions.canViewAllTeams,
-        },
-      });
+    const teamMemberAccess = {
+      teamId,
+      profileId: profile.id,
+      role,
+      functions,
+      canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+      canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+      canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
+      canViewAllTeams: delegatedPermissions.canViewAllTeams,
+    };
+
+    if (!alreadyMember) {
+      await pendingActionRepository.createTeamMemberAccess(tx, teamMemberAccess);
     } else {
-      await tx.teamMember.update({
-        where: {
-          teamId_profileId: {
-            teamId,
-            profileId: profile.id,
-          },
-        },
-        data: {
-          role,
-          functions,
-          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
-          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
-          canTransferAccountLeads: delegatedPermissions.canTransferAccountLeads,
-          canViewAllTeams: delegatedPermissions.canViewAllTeams,
-        },
-      });
+      await pendingActionRepository.updateTeamMemberAccess(tx, teamMemberAccess);
     }
 
     const nextPaymentId =
       paymentStatus === "WAIVED" ? null : (paymentId ?? action.paymentId);
 
-    await tx.pendingAction.update({
-      where: { id: action.id },
-      data: {
-        status: "applied",
-        paymentId: nextPaymentId,
-        teamId,
-        payload: {
-          ...payload,
-          paymentStatus,
-          ...(applyOptions?.waivedReason
-            ? {
-                waivedReason: applyOptions.waivedReason,
-                waivedAt: new Date().toISOString(),
-              }
-            : {}),
-        },
+    await pendingActionRepository.markApplied(tx, {
+      id: action.id,
+      paymentId: nextPaymentId,
+      teamId,
+      payload: {
+        ...payload,
+        paymentStatus,
+        ...(applyOptions?.waivedReason
+          ? {
+              waivedReason: applyOptions.waivedReason,
+              waivedAt: new Date().toISOString(),
+            }
+          : {}),
       },
     });
 
@@ -679,45 +501,28 @@ export class PendingActionUseCase {
       throw new Error("Dados insuficientes para transferir time");
     }
 
-    const team = await tx.team.findUnique({
-      where: { id: teamId },
-      select: { masterId: true },
-    });
+    const team = await pendingActionRepository.findTeamOwner(tx, teamId);
 
     if (!team) {
       throw new Error("Time não encontrado");
     }
 
-    await tx.team.update({
-      where: { id: teamId },
-      data: { masterId: newMasterId },
+    await pendingActionRepository.transferTeamOwnership(tx, { teamId, newMasterId });
+
+    await pendingActionRepository.promoteMembershipToManager(tx, {
+      teamId,
+      profileId: newMasterId,
     });
 
-    await tx.teamMember.update({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: newMasterId,
-        },
-      },
-      data: { role: "manager" },
-    });
+    await pendingActionRepository.promoteProfileToMaster(tx, newMasterId);
 
-    await tx.profile.update({
-      where: { id: newMasterId },
-      data: { isMaster: true },
-    });
-
-    await tx.pendingAction.update({
-      where: { id: action.id },
-      data: {
-        status: "applied",
-        paymentId: paymentId ?? action.paymentId,
-        teamId,
-        payload: {
-          ...payload,
-          paymentStatus: "CONFIRMED",
-        },
+    await pendingActionRepository.markApplied(tx, {
+      id: action.id,
+      paymentId: paymentId ?? action.paymentId,
+      teamId,
+      payload: {
+        ...payload,
+        paymentStatus: "CONFIRMED",
       },
     });
 
@@ -742,15 +547,12 @@ export class PendingActionUseCase {
       users: addedUserCredits,
     });
 
-    await tx.pendingAction.update({
-      where: { id: action.id },
-      data: {
-        status: "applied",
-        paymentId: paymentId ?? action.paymentId,
-        payload: {
-          ...payload,
-          paymentStatus: "CONFIRMED",
-        },
+    await pendingActionRepository.markApplied(tx, {
+      id: action.id,
+      paymentId: paymentId ?? action.paymentId,
+      payload: {
+        ...payload,
+        paymentStatus: "CONFIRMED",
       },
     });
 
@@ -767,10 +569,7 @@ export class PendingActionUseCase {
       return;
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { id: profileId },
-      select: { email: true, fullName: true },
-    });
+    const profile = await pendingActionRepository.findProfileContact(profileId);
 
     const email = profileEmail || profile?.email;
     if (!email) {
@@ -820,10 +619,10 @@ export class PendingActionUseCase {
 
       const supabaseUserId = (data as any)?.user?.id as string | undefined;
       if (supabaseUserId) {
-        await prisma.profile.update({
-          where: { id: createdUser.profileId },
-          data: { supabaseId: supabaseUserId },
-        });
+        await pendingActionRepository.linkProfileSupabaseIdentity(
+          createdUser.profileId,
+          supabaseUserId
+        );
       }
 
       await emailService.sendOperatorInviteEmail({

@@ -7,7 +7,7 @@ import {
   recordWhatsAppWebhookProcessingFailure,
   recordWhatsAppWebhookProcessingSuccess,
 } from "@/lib/whatsapp/whatsapp-webhook-failure-alert"
-import { sanitizeWhatsAppWebhookPayload } from "@/lib/whatsapp/sanitize-webhook-payload"
+import { sanitizeWebhookPayload } from "@/lib/webhooks/sanitize-webhook-payload"
 import { processWhatsAppWebhookOutboxUseCase } from "@/app/api/useCases/whatsapp/ProcessWhatsAppWebhookOutboxUseCase"
 import { Prisma } from "@prisma/client"
 
@@ -78,7 +78,7 @@ export async function POST(
       teamId: config.teamId,
       providerEventId: buildProviderEventId(eventType, providerMessageId, ack, eventId),
       eventType: eventType || "openwa",
-      payload: sanitizeWhatsAppWebhookPayload(rawEvent) as Prisma.InputJsonValue,
+      payload: sanitizeWebhookPayload(rawEvent) as Prisma.InputJsonValue,
     })
 
     after(async () => {

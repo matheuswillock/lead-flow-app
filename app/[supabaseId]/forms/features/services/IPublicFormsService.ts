@@ -24,12 +24,27 @@ export interface PublicFormAnalytics {
     version: number
     publishedAt: string
     endedAt: string | null
-    questions: Array<{ id: string; title: string; position: number }>
+    questions: Array<{
+      id: string
+      title: string
+      position: number
+      /** Identidade estável da pergunta; junta com `events[].questionKey`. */
+      questionKey: string | null
+    }>
   }>
   events: Array<{
     eventType: string
     publicationId: string
     questionId: string | null
+    /**
+     * Chave de junção imune a delete/recriação da pergunta. `questionId` fica
+     * NULL nos eventos órfãos (FK `SetNull`), então casar por id perdia
+     * respostas que existem de verdade.
+     */
+    questionKey: string | null
+    /** Sessões únicas. */
+    uniqueSessions: number
+    /** @deprecated Alias de `uniqueSessions`. */
     _count: { _all: number }
   }>
   totals: {

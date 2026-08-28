@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, Eye, EyeOff, Mail } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -59,7 +60,7 @@ export function BackofficeMemberDeleteDialog({
       onOpenChange(false)
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao excluir conta")
+      toastUserError(err)
     } finally {
       setIsDeleting(false)
       inFlight.current = false

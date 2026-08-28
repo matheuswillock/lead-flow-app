@@ -52,6 +52,7 @@ export default defineConfig({
             ...process.env,
             APP_ENV: process.env.APP_ENV || "test",
             E2E_TEST_MODE: process.env.E2E_TEST_MODE || "true",
+            PUBLIC_FORM_LEAD_GATE_MODE: process.env.PUBLIC_FORM_LEAD_GATE_MODE || "radar",
           },
         },
       }),

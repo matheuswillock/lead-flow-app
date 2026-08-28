@@ -1,0 +1,114 @@
+# .github/workflows/production-drift-guard.yml
+name: Production Drift Guard
+
+# Rede de segurança independente do pipeline de deploy.
+#
+# As checagens dentro de `ci-main.yml` só existem enquanto aquele job roda. Elas
+# não enxergam: job de deploy pulado, deploy manual pela CLI/dashboard, rollback
+# acidental, ou promoção de um deployment antigo. Em 19-22/08/2026 produção ficou
+# 3 dias em `16bf5dd3` enquanto `main` avançava, e nada acusou — o pipeline
+# reportava verde porque o passo de deploy mascarava o exit code do CLI.
+#
+# Este workflow compara, de fora, o SHA que está servindo produção com o HEAD de
+# `main`. Qualquer causa de divergência cai aqui.
+on:
+  schedule:
+    # A cada 30 min: janela de detecção curta o bastante para agir no mesmo dia
+    # e barata (2 execuções/hora).
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-drift:
+    name: Produção está no SHA de main?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Comparar SHA de produção com main
+        run: |
+          set -euo pipefail
+
+          EXPECTED_SHA="$(git rev-parse HEAD)"
+          echo "main HEAD: $EXPECTED_SHA"
+
+          API="https://api.vercel.com/v6/deployments?limit=1&state=READY&target=production"
+          if [ -n "${VERCEL_PROJECT_ID:-}" ]; then
+            API="${API}&projectId=${VERCEL_PROJECT_ID}"
+          fi
+          if [ -n "${VERCEL_ORG_ID:-}" ]; then
+            API="${API}&teamId=${VERCEL_ORG_ID}"
+          fi
+
+          RESPONSE="$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" "$API")"
+
+          # `GRACE_MINUTES` evita alarme durante a janela normal entre o merge e
+          # o fim do deploy. Só divergências mais antigas que isso são incidente.
+          RESPONSE="$RESPONSE" EXPECTED_SHA="$EXPECTED_SHA" GRACE_MINUTES=45 \
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+          node -e '
+            const data = JSON.parse(process.env.RESPONSE ?? "{}");
+            const expected = process.env.EXPECTED_SHA ?? "";
+            const graceMs = Number(process.env.GRACE_MINUTES ?? 45) * 60 * 1000;
+            const deployment = data.deployments?.[0];
+
+            if (!deployment) {
+              process.stderr.write("::error::nenhum deployment READY de producao retornado pela API\n");
+              process.exit(1);
+            }
+
+            const liveSha = deployment.meta?.githubCommitSha ?? "";
+            const createdAt = deployment.created ?? deployment.createdAt ?? 0;
+            const ageMs = Date.now() - Number(createdAt);
+            const ageMin = Math.round(ageMs / 60000);
+
+            process.stdout.write(`producao: sha=${liveSha || "(sem meta)"} idade=${ageMin}min url=${deployment.url ?? "?"}\n`);
+
+            if (liveSha === expected) {
+              process.stdout.write("OK: producao esta no HEAD de main.\n");
+              process.exit(0);
+            }
+
+            // Deployment recém-criado: pode ser o deploy do push atual ainda
+            // propagando, ou main ter avançado agora. Não alarmar ainda.
+            if (ageMs < graceMs) {
+              process.stdout.write(`Divergente, mas dentro da janela de ${graceMs / 60000}min — sem alarme.\n`);
+              process.exit(0);
+            }
+
+            const message = liveSha
+              ? `Producao esta em ${liveSha.slice(0, 8)} ha ${ageMin}min, mas main esta em ${expected.slice(0, 8)}.`
+              : `Deployment de producao (${ageMin}min) nao tem githubCommitSha — impossivel provar a versao servida.`;
+
+            process.stderr.write("::error::" + message + "\n");
+
+            const webhook = process.env.SLACK_WEBHOOK_URL;
+            if (!webhook) {
+              process.stderr.write("::warning::SLACK_DEPLOY_WEBHOOK_URL nao configurado — alerta so no Actions\n");
+              process.exit(1);
+            }
+
+            fetch(webhook, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: `:rotating_light: *Lead Flow — produção divergente de main*\n${message}\n${process.env.RUN_URL}`,
+              }),
+            })
+              .then((r) => process.stdout.write(`slack=${r.status}\n`))
+              .catch((e) => process.stderr.write(`slack falhou: ${e}\n`))
+              .finally(() => process.exit(1));
+          '
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}

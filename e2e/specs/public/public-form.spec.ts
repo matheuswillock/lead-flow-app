@@ -6,6 +6,8 @@
  * - Cookie cs_form_vs criado no mount (Fase E)
  * - onBlur dispara POST /progress com o valor do campo (Fase D1)
  * - Prefill via cs_el pré-preenche nome/e-mail (Fase C)
+ * - Nome 3–30, sem @; e-mail digitado no Nome copia para e-mail vazio
+ * - Gate A+C no blur: formulário só encaminha question_answered; Lead nasce no Radar/DB
  */
 
 import { expect, test } from "@playwright/test"
@@ -13,6 +15,7 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 
 const QUESTION_NAME_ID = "11111111-1111-4111-8111-111111111101"
 const QUESTION_EMAIL_ID = "11111111-1111-4111-8111-111111111102"
+const QUESTION_PHONE_ID = "11111111-1111-4111-8111-111111111103"
 const E2E_PUBLIC_ID = "e2e00000-0000-4000-8000-000000000001"
 const E2E_EMAIL_LOG_ID = "e2e10000-0000-4000-8000-000000000001"
 
@@ -88,6 +91,23 @@ function buildSnapshot(formId, publicId) {
         whatsappPhone: null,
         whatsappMessage: null,
       },
+      {
+        id: QUESTION_PHONE_ID,
+        position: 3,
+        type: "phone",
+        title: "Qual o seu telefone?",
+        description: null,
+        placeholder: null,
+        required: true,
+        scoreWeight: 0,
+        options: [],
+        mappingTarget: "native_field",
+        mappingKey: "phone",
+        url: null,
+        config: null,
+        whatsappPhone: null,
+        whatsappMessage: null,
+      },
     ],
     rules: [],
     scoreBands: [],
@@ -124,6 +144,21 @@ async function arrangePublicForm() {
   })
 
   const snapshot = buildSnapshot(form.id, form.publicId)
+
+  await prisma.publicFormQuestion.deleteMany({ where: { formId: form.id } })
+  await prisma.publicFormQuestion.createMany({
+    data: snapshot.questions.map((question) => ({
+      id: question.id,
+      formId: form.id,
+      type: question.type,
+      title: question.title,
+      required: question.required,
+      scoreWeight: question.scoreWeight,
+      position: question.position,
+      mappingTarget: question.mappingTarget,
+      mappingKey: question.mappingKey,
+    })),
+  })
 
   const publication = await prisma.publicFormPublication.upsert({
     where: { formId_version: { formId: form.id, version: 1 } },
@@ -210,7 +245,10 @@ test.describe("app/forms/[publicId]", () => {
 
     await page.waitForTimeout(800)
 
-    expect(progressRequests.length, "Nenhuma request POST /progress disparada após blur").toBeGreaterThan(0)
+    expect(
+      progressRequests.length,
+      "Nenhuma request POST /progress disparada após blur",
+    ).toBeGreaterThan(0)
 
     const body = JSON.parse(progressRequests[0])
     expect(body.answers).toHaveLength(1)
@@ -225,6 +263,210 @@ test.describe("app/forms/[publicId]", () => {
 
     const nameInput = page.getByRole("textbox").first()
     await expect(nameInput).toHaveValue("Destinatário E2E", { timeout: 10_000 })
+  })
+
+  test("bloqueia Continuar quando o nome tem menos de 3 caracteres", async ({ page }) => {
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("Jo")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
+  })
+
+  test("bloqueia Continuar quando o nome tem só espaços", async ({ page }) => {
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("   ")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome com pelo menos 3 caracteres")).toBeVisible()
+  })
+
+  test("e-mail no campo nome copia para e-mail vazio e bloqueia Continuar até nome de pessoa", async ({
+    page,
+  }) => {
+    const progressRequests = []
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/progress")) {
+        progressRequests.push(req.postData() ?? "")
+      }
+    })
+
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill("user@example.com")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeDisabled()
+
+    await nameInput.blur()
+    await expect(page.getByText("Informe um nome de pessoa, não um e-mail")).toBeVisible()
+    await page.waitForTimeout(800)
+
+    expect(progressRequests.length, "Blur deve persistir mesmo com nome inválido").toBeGreaterThan(
+      0,
+    )
+    const body = JSON.parse(progressRequests[0])
+    expect(body.answers[0].value).toBe("user@example.com")
+
+    await nameInput.fill("Maria Silva")
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
+  })
+
+  test("A+C no blur: formulário só encaminha question_answered; Lead nasce no Radar/DB", async ({
+    page,
+  }) => {
+    const prisma = getPrisma()
+    const uniqueSuffix = String(Date.now()).slice(-4)
+    const leadName = `Maria Radarac ${uniqueSuffix}`
+    const phone = `1198888${uniqueSuffix}`
+
+    await page.goto(`/forms/${publicId}`)
+    await page.getByRole("button", { name: /começar/i }).click()
+
+    const nameInput = page.getByRole("textbox").first()
+    await nameInput.fill(leadName)
+    await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await page.getByRole("button", { name: /continuar/i }).click()
+
+    await expect(page.getByText("Qual o seu telefone?")).toBeVisible()
+    const phoneInput = page.getByRole("textbox").first()
+    const progressAfterPhone = page.waitForResponse(
+      (response) => response.url().includes("/progress") && response.request().method() === "POST",
+    )
+    await phoneInput.fill(phone)
+    await phoneInput.blur()
+    const progressResponse = await progressAfterPhone
+    expect(progressResponse.status()).toBe(202)
+    const progressJson = (await progressResponse.json()) as {
+      result?: { leadId?: unknown; leadCreated?: unknown }
+    }
+    expect(progressJson.result?.leadId).toBeUndefined()
+    expect(progressJson.result?.leadCreated).toBeUndefined()
+
+    await expect
+      .poll(
+        async () => {
+          return prisma.lead.findFirst({
+            where: { teamId, name: leadName },
+            select: { id: true, teamId: true },
+          })
+        },
+        { timeout: 15_000 },
+      )
+      .toMatchObject({ teamId })
+  })
+
+  // T-F0.4 — SPEC 40 E0/DA6. As duas populações que o cron de re-despacho
+  // precisa distinguir, medidas pelo HTTP real: o envio carimba
+  // `submitRequestedAt` (o dispatcher pode resgatá-lo se o enqueue falhar); a
+  // casca do `/progress` fica sem carimbo (o dispatcher nunca a completa).
+  test("envio real carimba submitRequestedAt; casca de progresso fica sem carimbo", async ({
+    request,
+  }) => {
+    const prisma = getPrisma()
+    const suffix = String(Date.now()).slice(-6)
+    const submitSession = `e2eSubmit${suffix}0000000`
+    const progressSession = `e2eProgress${suffix}00000`
+
+    const submitResponse = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-submit-${suffix}`,
+        visitorSessionId: submitSession,
+        origin: {},
+        answers: [
+          { questionId: QUESTION_NAME_ID, value: `Maria Envio ${suffix}` },
+          { questionId: QUESTION_PHONE_ID, value: `1197777${suffix.slice(-4)}` },
+        ],
+      },
+    })
+    expect(submitResponse.status()).toBe(201)
+
+    const progressResponse = await request.post(`/api/q/public-forms/${publicId}/progress`, {
+      data: {
+        visitorSessionId: progressSession,
+        origin: {},
+        answers: [{ questionId: QUESTION_NAME_ID, value: `Maria Parcial ${suffix}` }],
+      },
+    })
+    expect(progressResponse.status()).toBe(202)
+
+    const submitted = await prisma.publicFormSubmission.findUnique({
+      where: { requestKey: `e2e-submit-${suffix}` },
+      select: { submitRequestedAt: true },
+    })
+    expect(submitted?.submitRequestedAt).not.toBeNull()
+
+    const partial = await prisma.publicFormSubmission.findFirst({
+      where: { visitorSessionId: progressSession },
+      select: { submitRequestedAt: true, status: true },
+    })
+    expect(partial, "Casca de progresso não foi criada").toBeTruthy()
+    expect(partial.submitRequestedAt).toBeNull()
+    expect(partial.status).toBe("processing")
+  })
+
+  // T-F1.4 — SPEC 40 E1. `required` é invariante do servidor: POST direto (sem
+  // UI, como um bot ou um outbox reenviando parcial) com o telefone obrigatório
+  // faltando recebe 422 com código por pergunta; com o payload completo, 201.
+  test("POST incompleto recebe 422 com código por pergunta; completo recebe 201", async ({
+    request,
+  }) => {
+    const prisma = getPrisma()
+    const suffix = String(Date.now()).slice(-6)
+
+    const incomplete = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-invalid-${suffix}`,
+        origin: {},
+        answers: [{ questionId: QUESTION_NAME_ID, value: `Maria Incompleta ${suffix}` }],
+      },
+    })
+
+    expect(incomplete.status()).toBe(422)
+    const incompleteBody = await incomplete.json()
+    expect(incompleteBody.isValid).toBe(false)
+    expect(incompleteBody.result.validation).toEqual([
+      { questionId: QUESTION_PHONE_ID, code: "required" },
+    ])
+
+    const notPersisted = await prisma.publicFormSubmission.findUnique({
+      where: { requestKey: `e2e-invalid-${suffix}` },
+      select: { id: true },
+    })
+    expect(notPersisted, "422 não pode criar submissão").toBeNull()
+
+    const complete = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-valid-${suffix}`,
+        origin: {},
+        answers: [
+          { questionId: QUESTION_NAME_ID, value: `Maria Completa ${suffix}` },
+          { questionId: QUESTION_PHONE_ID, value: `1197777${suffix.slice(-4)}` },
+        ],
+      },
+    })
+
+    expect(complete.status()).toBe(201)
+    const persisted = await prisma.publicFormSubmission.findUnique({
+      where: { requestKey: `e2e-valid-${suffix}` },
+      select: { id: true },
+    })
+    expect(persisted).not.toBeNull()
   })
 
   test("estado de loading exibe Skeleton enquanto carrega o snapshot", async ({ page }) => {

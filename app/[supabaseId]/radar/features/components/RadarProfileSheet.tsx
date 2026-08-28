@@ -37,10 +37,13 @@ import type {
   RadarProfileDetail,
   RadarProfileTouchpoints,
 } from "../context/RadarTypes"
+import type { RadarProfileFormItem } from "@/lib/radar/profile-forms"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 import { PromoteRadarProfileAlertDialog } from "./PromoteRadarProfileAlertDialog"
+import { isRealLeadIdentity } from "@/lib/radar/lead-identity"
 import { RadarEngagementBadge } from "./RadarEngagementBadge"
+import { RadarProfileFormsTab } from "./RadarProfileFormsTab"
 import {
   buildLeadCrmHref,
   filterDisplayableIdentities,
@@ -180,6 +183,8 @@ type RadarProfileSheetProps = {
   isLoadingTouchpoints: boolean
   contracts: RadarProfileContracts | null
   isLoadingContracts: boolean
+  profileForms: RadarProfileFormItem[] | null
+  isLoadingProfileForms: boolean
   onPromoteToLead?: () => Promise<boolean>
   onUpdateGender?: (gender: RadarGender) => Promise<boolean>
 }
@@ -197,6 +202,8 @@ export function RadarProfileSheet({
   isLoadingTouchpoints,
   contracts,
   isLoadingContracts,
+  profileForms,
+  isLoadingProfileForms,
   onPromoteToLead,
   onUpdateGender,
 }: RadarProfileSheetProps) {
@@ -206,7 +213,10 @@ export function RadarProfileSheet({
   const [isPromotingToLead, setIsPromotingToLead] = useState(false)
   const [genderDraft, setGenderDraft] = useState<RadarGender>("unknown")
   const [isSavingGender, setIsSavingGender] = useState(false)
-  const hasLeadIdentity = profile?.identities.some((identity) => identity.type === "lead_id") ?? false
+  // Reserva `pending:` não é vínculo: contá-la esconderia "Promover a Lead"
+  // para sempre num perfil cuja reserva ficou órfã, mesmo com o backend já
+  // aceitando a retomada.
+  const hasLeadIdentity = profile?.identities.some(isRealLeadIdentity) ?? false
   const displayableIdentities = profile ? filterDisplayableIdentities(profile.identities) : []
   const emailIdentities = profile
     ? profile.identities.filter((identity) => identity.type === "email")
@@ -421,6 +431,7 @@ export function RadarProfileSheet({
                 <TabsList className="flex h-auto flex-wrap gap-1">
                   <TabsTrigger value="resumo">Resumo</TabsTrigger>
                   <TabsTrigger value="contatos">Contatos</TabsTrigger>
+                  <TabsTrigger value="formularios">Formulários</TabsTrigger>
                   <TabsTrigger value="contratos">Contratos</TabsTrigger>
                   <TabsTrigger value="identidades">Identidades</TabsTrigger>
                   <TabsTrigger value="consentimentos">Consentimentos</TabsTrigger>
@@ -526,6 +537,10 @@ export function RadarProfileSheet({
                       </div>
                     </>
                   )}
+                </TabsContent>
+
+                <TabsContent value="formularios" className="flex flex-col gap-3">
+                  <RadarProfileFormsTab items={profileForms} isLoading={isLoadingProfileForms} />
                 </TabsContent>
 
                 <TabsContent value="contratos" className="flex flex-col gap-3">

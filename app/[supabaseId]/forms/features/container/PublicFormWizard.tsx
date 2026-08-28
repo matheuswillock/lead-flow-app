@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
 import { ArrowLeft, Check, Eye, GripVertical, HelpCircle, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { cn } from "@/lib/utils"
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { useOptionalUser } from "@/app/context/UserContext"
@@ -446,7 +447,7 @@ export function PublicFormWizard({
             setDraft(withCatalog)
           }
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+          toastUserError(error)
         } finally {
           if (!cancelled) setLoading(false)
         }
@@ -509,7 +510,7 @@ export function PublicFormWizard({
           setDraft(withCatalog)
         }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar")
+        toastUserError(error)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -546,7 +547,7 @@ export function PublicFormWizard({
         if (!formId) router.replace(host.formHref(saved.id))
         return saved
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+        toastUserError(e)
         return null
       } finally {
         setSaving(false)
@@ -564,7 +565,7 @@ export function PublicFormWizard({
         if (!currentId) router.replace(host.formHref(f.id))
         return f
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+        toastUserError(e)
         return null
       } finally {
         setSaving(false)
@@ -582,7 +583,7 @@ export function PublicFormWizard({
       if (!currentId) router.replace(`/${params.supabaseId}/forms/${f.id}`)
       return f
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar")
+      toastUserError(e)
       return null
     } finally {
       setSaving(false)
@@ -619,7 +620,7 @@ export function PublicFormWizard({
       toast.success("Formulário publicado")
       router.push(listHref)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível publicar")
+      toastUserError(e)
     } finally {
       setPublishing(false)
     }
@@ -810,6 +811,7 @@ export function PublicFormWizard({
                 isCatalogTemplate={isCatalogTemplate}
                 onPublish={() => void publish()}
                 onGoToStep={setStep}
+                change={change}
               />
             )}
             <div className="mt-10 flex justify-between">
@@ -2773,16 +2775,24 @@ function Review({
   isCatalogTemplate = false,
   onPublish,
   onGoToStep,
+  change,
 }: {
   draft: PublicFormDraftInput
   publishing: boolean
   isCatalogTemplate?: boolean
   onPublish: () => void
   onGoToStep: (step: number) => void
+  change: (p: Partial<PublicFormDraftInput>) => void
 }) {
   const questionErrors = getQuestionStepErrors(d, {
     mode: isCatalogTemplate ? "catalog-template" : "form",
   })
+  // Telefone, não "telefone ou e-mail": quem cria o lead é
+  // `canCreateLeadFromExtracted`, que exige telefone brasileiro válido. Ver o
+  // comentário de `CONTACT_QUESTION_ERROR` em `validate-public-form-draft.ts`.
+  const hasMappedContactQuestion = d.questions.some(
+    (question) => question.mappingTarget === "native_field" && question.mappingKey === "phone",
+  )
   const checks = [
     { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
     { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 2 },
@@ -2794,9 +2804,31 @@ function Review({
     ...(isCatalogTemplate
       ? []
       : [
+          // SPEC 40 E4/DA4: nome sozinho não gera lead pela regra vigente. O
+          // check acompanha a validação do servidor — inclusive a saída pelo
+          // opt-out logo abaixo, senão o formulário de pesquisa fica bloqueado
+          // sem alternativa.
+          //
+          // Fica dentro do ramo não-catálogo (review #1058): o servidor roda a
+          // regra só em `mode: "form"`, e o switch de pesquisa é escondido para
+          // template. Cobrar contato ali travava o botão de publicar num draft
+          // que o backend aceita, sem nenhuma saída na tela.
+          {
+            ok: Boolean(d.leadCaptureDisabled) || hasMappedContactQuestion,
+            text: "Telefone mapeado",
+            step: 2,
+          },
           {
             ok: !d.schedulingEnabled || d.eligibleCloserIds.length > 0,
             text: "Closer selecionado para agenda",
+            step: 2,
+          },
+          // A reunião nasce presa ao lead: sem captação, o visitante escolhe o
+          // horário e nenhuma reunião é criada. O servidor recusa a publicação —
+          // o check antecipa isso aqui, onde ainda dá para consertar.
+          {
+            ok: !(d.leadCaptureDisabled && d.schedulingEnabled),
+            text: "Agenda compatível com a captação de leads",
             step: 2,
           },
         ]),
@@ -2830,6 +2862,21 @@ function Review({
           ))}
         </ul>
       </div>
+      {isCatalogTemplate ? null : (
+        <label className="flex items-center justify-between gap-4 rounded-lg border p-4">
+          <div>
+            <p className="font-medium">Formulário de pesquisa (não capta leads)</p>
+            <p className="text-sm text-muted-foreground">
+              Publica sem telefone mapeado. Em troca, este formulário não cria leads no
+              CRM, some do funil de leads e não pode usar a agenda — a reunião nasce presa ao lead.
+            </p>
+          </div>
+          <Switch
+            checked={Boolean(d.leadCaptureDisabled)}
+            onCheckedChange={(value) => change({ leadCaptureDisabled: value })}
+          />
+        </label>
+      )}
       {!ready ? (
         <Alert variant="destructive">
           <AlertDescription>Conclua os itens pendentes antes de publicar.</AlertDescription>

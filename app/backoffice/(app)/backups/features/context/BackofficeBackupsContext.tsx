@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { IBackofficeBackupsService } from "../services/IBackofficeBackupsService"
 import { useBackofficeBackupsHook } from "./BackofficeBackupsHook"
 import type { BackofficeBackupItem } from "./BackofficeBackupsTypes"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 interface BackofficeBackupsContextValue {
   service: IBackofficeBackupsService
@@ -53,7 +54,7 @@ export function BackofficeBackupsProvider({
       lastSuccessRef.current = true
     } catch (err) {
       console.error("[BackofficeBackupsProvider][refresh]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar backups")
+      setError(toUserToastMessage(err))
       lastSuccessRef.current = false
     } finally {
       setIsLoading(false)

@@ -1,0 +1,44 @@
+# ESQUELETO — ver deploy/coolify/README.md
+# Objetivo: contexto de build pequeno e, principalmente, ZERO segredo na imagem.
+
+# Segredos — nunca entram no contexto de build
+.env
+.env.*
+!.env.example
+!.env.evolution.example
+
+# Git / CI
+.git
+.github
+.husky
+
+# Dependências e artefatos locais
+node_modules
+.next
+out
+coverage
+playwright-report
+test-results
+
+# Infra que não pertence à imagem da aplicação
+docker-compose*.yml
+deploy
+n8n
+supabase-evolution
+legacy
+
+# Testes e2e (não vão para runtime)
+e2e
+
+# Editor / SO
+.vscode
+.idea
+.DS_Store
+*.log
+
+# Documentação e governança
+*.md
+!README.md
+.governance
+.cursor
+postman

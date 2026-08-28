@@ -20,10 +20,11 @@ export type AsaasWebhookEventPayload = {
 }
 
 export async function publishAsaasWebhookEvent(
-  payload: AsaasWebhookEventPayload
+  payload: AsaasWebhookEventPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(ASAAS_WEBHOOK_EVENTS_TOPIC, payload, {
-    idempotencyKey: payload.eventId,
+    idempotencyKey: options?.idempotencyKey ?? payload.eventId,
     retentionSeconds: ASAAS_WEBHOOK_EVENTS_RETENTION_SECONDS,
   })
 }

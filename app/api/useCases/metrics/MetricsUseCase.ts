@@ -11,6 +11,9 @@ import { addDaysInTz, endOfDayInTz, startOfDayInTz, addMonthsInTz, DEFAULT_TZ } 
 
 const defaultDashboardInfosService = new DashboardInfosService();
 
+/** Teto de tags de time co-declaradas numa entrada de dashboard de conta. */
+const MAX_AGGREGATED_TEAM_TAGS = 50;
+
 async function getCachedDashboardMetrics(
   activeTeamId: string,
   teamIds: string[],
@@ -25,10 +28,23 @@ async function getCachedDashboardMetrics(
   endDateISO: string,
 ): Promise<DashboardMetrics> {
   "use cache";
+  // A entrada de escopo "all" precisa carregar as tags de TODOS os times agregados,
+  // e nao apenas accountDashboard: toda mutacao de lead ja dispara teamDashboard(teamId),
+  // entao co-declarar essas tags torna a entrada de conta alcancavel por todos os sites
+  // de invalidacao existentes, sem plumbar masterId por eles.
+  cacheTag(cacheTags.teamDashboard(activeTeamId));
   if (teamScope === "all") {
     cacheTag(cacheTags.accountDashboard(masterId));
-  } else {
-    cacheTag(cacheTags.teamDashboard(activeTeamId));
+
+    if (teamIds.length <= MAX_AGGREGATED_TEAM_TAGS) {
+      for (const aggregatedTeamId of teamIds) {
+        cacheTag(cacheTags.teamDashboard(aggregatedTeamId));
+      }
+    } else {
+      console.warn(
+        `[MetricsUseCase] Conta ${masterId} agrega ${teamIds.length} times (limite ${MAX_AGGREGATED_TEAM_TAGS}); dashboard de conta invalida apenas por accountDashboard.`,
+      );
+    }
   }
   cacheLife({ stale: 30, revalidate: 60 });
 
@@ -98,9 +114,19 @@ export class MetricsUseCase implements IMetricsUseCase {
         endDate = dates.endDate;
       }
 
-      const resolvedStart = startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const resolvedEnd = endDate ?? new Date();
-      const teamIds = filters.teamIds?.length ? filters.teamIds : [filters.teamId];
+      // As datas viram argumento de `getCachedDashboardMetrics`, ou seja, chave
+      // de cache. Um `new Date()` cru traria precisao de milissegundo e daria
+      // uma chave nova a cada request — o cache nunca daria hit e ainda
+      // gravaria uma entrada por chamada. Arredondar para a fronteira do dia no
+      // fuso do usuario mantem a chave estavel ao longo do dia.
+      const timezone = ctx.userTimezone ?? DEFAULT_TZ;
+      const now = new Date();
+      const resolvedStart =
+        startDate ?? startOfDayInTz(addDaysInTz(now, -30, timezone), timezone);
+      const resolvedEnd = endDate ?? endOfDayInTz(now, timezone);
+      // Ordenado porque o array faz parte da chave de cache de getCachedDashboardMetrics:
+      // sem isso [a,b] e [b,a] gerariam duas entradas para a mesma consulta.
+      const teamIds = [...(filters.teamIds?.length ? filters.teamIds : [filters.teamId])].sort();
       const teamScope = filters.teamScope ?? "active";
       const masterId = filters.masterId ?? filters.teamId;
 

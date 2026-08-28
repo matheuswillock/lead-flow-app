@@ -97,4 +97,77 @@ describe("isResendDomainSnapshotInSync", () => {
       )
     ).toBe(true)
   })
+
+  describe("derivação do DNS de envio", () => {
+    // O time real que motivou a mudança: `partially_failed` porque só o CNAME
+    // de tracking falhou, com DKIM e SPF verificados desde sempre. Status,
+    // região e flags nunca mudam — então antes desta comparação o reconciler
+    // dizia "em dia" e nunca derivava o flag, deixando o gate travado até
+    // alguém clicar "Verificar DNS" na mão.
+    const liberPersistido = {
+      resendDomainStatus: "partially_failed",
+      resendDomainRegion: "us-east-1",
+      resendOpenTracking: false,
+      resendClickTracking: false,
+      resendSendingDnsVerified: false,
+    }
+    const liberRemoto = {
+      status: "partially_failed",
+      region: "us-east-1",
+      openTracking: false,
+      clickTracking: false,
+      records: [
+        { record: "DKIM", status: "verified" },
+        { record: "SPF", status: "verified" },
+        { record: "Tracking", status: "failed" },
+      ],
+    }
+
+    it("caso Liber: tudo igual, mas o flag está desatualizado → NÃO está em dia", () => {
+      expect(isResendDomainSnapshotInSync(liberPersistido, liberRemoto)).toBe(false)
+    })
+
+    it("mesmo caso com o flag já correto → está em dia", () => {
+      expect(
+        isResendDomainSnapshotInSync(
+          { ...liberPersistido, resendSendingDnsVerified: true },
+          liberRemoto
+        )
+      ).toBe(true)
+    })
+
+    it("quebra de DNS só nos registros é detectada com status inalterado", () => {
+      // O inverso: estava íntegro, o DKIM caiu, o status agregado não mudou.
+      expect(
+        isResendDomainSnapshotInSync(
+          { ...liberPersistido, resendSendingDnsVerified: true },
+          {
+            ...liberRemoto,
+            records: [
+              { record: "DKIM", status: "failed" },
+              { record: "SPF", status: "verified" },
+              { record: "Tracking", status: "failed" },
+            ],
+          }
+        )
+      ).toBe(false)
+    })
+
+    it("resposta sem records não força reconciliação", () => {
+      // Ausência de dado não é evidência de mudança. Se disparasse o sync aqui,
+      // todo ciclo do cron reescreveria todos os domínios sem motivo.
+      expect(
+        isResendDomainSnapshotInSync(
+          { ...liberPersistido, resendSendingDnsVerified: true },
+          { status: "partially_failed", region: "us-east-1" }
+        )
+      ).toBe(true)
+    })
+
+    it("persistido sem o campo é tratado como false", () => {
+      // Linhas anteriores à migration não trazem o campo no tipo opcional.
+      const { resendSendingDnsVerified: _omitido, ...semCampo } = liberPersistido
+      expect(isResendDomainSnapshotInSync(semCampo, liberRemoto)).toBe(false)
+    })
+  })
 })

@@ -23,6 +23,7 @@ import {
   MAX_BATCH_SEND_ATTEMPTS,
   resendBatchRetryBackoffMs,
 } from "@/lib/email/is-retryable-resend-batch-error"
+import { logResendMonthlyQuotaIncident } from "@/lib/email/resend-quota-incident"
 import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import {
   interpolateEmailTemplate,
@@ -55,7 +56,8 @@ const MAX_INVALID_TO_BISECT_QUEUE = BATCH_SIZE * 2
  * da API; default documentado hoje é 10 req/s por time, mas pode variar por
  * plano). Não consome orçamento de conexão Postgres: os chunks concorrentes
  * seguem no mesmo isolate/consumer da fila `email-campaign-dispatch`
- * (`maxConcurrency: 1` em `vercel.json`), com o mesmo Prisma client.
+ * (`maxConcurrency: 4` em `vercel.json`; o mesmo `dispatchId` permanece
+ * serial via advisory lock), com o mesmo Prisma client.
  */
 function resolveDispatchChunkConcurrency(): number {
   const raw = Number(process.env.EMAIL_DISPATCH_CHUNK_CONCURRENCY ?? 1)
@@ -363,6 +365,18 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
                     name: errorName,
                   })
                 ) {
+                  // 429 de rate limit continua retentando (ver
+                  // `isRetryableResendBatchError`); 429 de cota aborta. A tag
+                  // aqui é o que transforma o aborto em incidente alertável em
+                  // vez de mais uma linha de `failed` no meio de 98.884.
+                  logResendMonthlyQuotaIncident({
+                    surface: "campaign_dispatch",
+                    teamId: params.teamId,
+                    campaignId: params.campaignId,
+                    dispatchId: params.dispatchId,
+                    recipientCount: sortedChunk.length,
+                    message: errorMessage,
+                  })
                   result.abortedReason = "monthly_quota_exceeded"
                   abortRemainingChunks = true
                   chunkQueue.length = 0

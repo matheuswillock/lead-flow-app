@@ -1,8 +1,14 @@
 import { radarPixelHitUseCase, RadarPixelHitUseCase } from "@/app/api/useCases/radar/RadarPixelHitUseCase"
 import {
+  buildRadarPixelEventIdempotencyKey,
   handleRadarPixelEventsCallback,
+  RADAR_PIXEL_EVENTS_TOPIC,
   type RadarPixelEventPayload,
 } from "@/lib/queues/radar-pixel-events"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -21,7 +27,8 @@ type QueueMessageMetadata = {
 export async function processRadarPixelEventMessage(
   message: RadarPixelEventPayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<RadarPixelHitUseCase, "persistQueuedHit"> = radarPixelHitUseCase
+  useCase: Pick<RadarPixelHitUseCase, "persistQueuedHit"> = radarPixelHitUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[RadarPixelEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -59,6 +66,14 @@ export async function processRadarPixelEventMessage(
       eventType: message.eventType,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RADAR_PIXEL_EVENTS_TOPIC,
+      idempotencyKey: buildRadarPixelEventIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

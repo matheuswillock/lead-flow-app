@@ -12,6 +12,7 @@ import {
   type PerformancePreset,
   type PerformanceTeamScope,
 } from './PerformanceTypes';
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
 
 export function usePerformanceHook() {
   const params = useParams();
@@ -63,7 +64,7 @@ export function usePerformanceHook() {
       setData(result);
       setLastFetchedAt(new Date());
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao buscar performance';
+      const message = toUserToastMessage(err);
       setError(message);
     } finally {
       setIsLoading(false);

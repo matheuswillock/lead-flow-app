@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { connection } from "next/server"
 import { LandingHeader } from "@/components/landing/landingHeader"
 import { LandingHero } from "@/components/landing/LandingHero"
 import { OperatorsMarquee } from "@/components/landing/OperatorsMarquee"
@@ -17,11 +16,11 @@ import { getAbsoluteUrl } from "@/lib/metadata/share"
 import { featurePanelsData } from "@/lib/landing/feature-panels-data"
 import { faqData } from "@/lib/landing/faq-data"
 import { getLandingStats } from "@/lib/landing/public-stats"
-import { buildStatsData } from "@/lib/landing/stats-data"
+import { buildStatsData, hasPublishableStats } from "@/lib/landing/stats-data"
 
 const homeTitle = "Corretor Studio | CRM, Radar e Campanhas para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas. Solicite uma demonstração gratuita e aumente sua conversão."
+  "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas de conversão. Solicite uma demonstração gratuita."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
@@ -30,12 +29,10 @@ export const metadata: Metadata = createPublicPageMetadata({
 })
 
 export default async function HomePage() {
-  await connection()
-
   const websiteUrl = getAbsoluteUrl("/")
   const logoUrl = getAbsoluteUrl("/corretor-studio-icon.svg")
   const landingStats = await getLandingStats()
-  const statsData = buildStatsData(landingStats)
+  const statsData = hasPublishableStats(landingStats) ? buildStatsData(landingStats) : null
 
   const graphSchema = {
     "@context": "https://schema.org",
@@ -115,7 +112,7 @@ export default async function HomePage() {
           <LandingHero />
           <OperatorsMarquee />
           <FeatureCarousel />
-          <StatsBand stats={statsData} />
+          {statsData ? <StatsBand stats={statsData} /> : null}
           <IntegrationsSection />
           <HowItWorksSteps />
           <FaqSection />

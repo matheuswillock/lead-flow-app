@@ -18,6 +18,7 @@ import type {
 import { MetricTrendIndicator } from "./MetricTrendIndicator"
 import { TrackingDegradedAlert } from "./TrackingDegradedAlert"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 const service = new CampaignAnalyticsService()
 const MAX_COMPARE = 3
@@ -116,7 +117,7 @@ export function CampaignComparePanel({
       })
       .catch((err: unknown) => {
         if (requestId !== requestSeqRef.current) return
-        setError(err instanceof Error ? err.message : "Erro ao comparar")
+        setError(toUserToastMessage(err))
       })
       .finally(() => {
         if (requestId === requestSeqRef.current) {
@@ -186,7 +187,10 @@ export function CampaignComparePanel({
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <TrackingDegradedAlert warnings={data?.trackingWarnings} />
+      <TrackingDegradedAlert
+        warnings={data?.trackingWarnings}
+        blocked={data?.trackingDispatchBlocked}
+      />
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-3">

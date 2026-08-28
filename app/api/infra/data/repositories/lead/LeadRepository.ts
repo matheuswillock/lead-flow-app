@@ -1,4 +1,4 @@
-import { ILeadRepository, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
+import { ILeadRepository, type LeadAuthorizationSnapshot, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
@@ -190,6 +190,21 @@ export class LeadRepository implements ILeadRepository {
             attachments: true,
           },
         },
+      },
+    });
+  }
+
+  async findAuthorizationSnapshotById(id: string): Promise<LeadAuthorizationSnapshot | null> {
+    return await prisma.lead.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        teamId: true,
+        status: true,
+        closerId: true,
+        assignedTo: true,
+        isTransfer: true,
+        meetingDate: true,
       },
     });
   }
@@ -1336,6 +1351,62 @@ export class LeadRepository implements ILeadRepository {
           },
         },
       });
+    });
+  }
+
+  async findCnpjConflictInTeam(input: { teamId: string; cnpj: string; excludeLeadId?: string }) {
+    return await prisma.lead.findFirst({
+      where: {
+        teamId: input.teamId,
+        cnpj: input.cnpj,
+        ...(input.excludeLeadId && { NOT: { id: input.excludeLeadId } }),
+      },
+      select: { id: true, leadCode: true, name: true },
+    });
+  }
+
+  async findTransferConflictsInTeam(input: {
+    targetTeamId: string;
+    excludeLeadId: string;
+    filters: Prisma.LeadWhereInput[];
+  }) {
+    return await prisma.lead.findMany({
+      where: {
+        teamId: input.targetTeamId,
+        NOT: { id: input.excludeLeadId },
+        OR: input.filters,
+      },
+      select: { id: true, email: true, cnpj: true, leadCode: true, name: true, status: true },
+    });
+  }
+
+  async deleteWithSchedule(input: { leadId: string; scheduleId: string | null }): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      if (input.scheduleId) {
+        await tx.leadsSchedule.delete({ where: { id: input.scheduleId } });
+      }
+
+      await tx.lead.delete({ where: { id: input.leadId } });
+    });
+  }
+
+  async findDuplicateByManagerAndEmail(managerId: string, email: string) {
+    return await prisma.lead.findFirst({
+      where: { managerId, email },
+      select: { id: true, teamId: true, leadCode: true, name: true, email: true },
+    });
+  }
+
+  async clearTransferFlag(id: string): Promise<LeadRecord> {
+    return await prisma.lead.update({
+      where: { id },
+      data: { isTransfer: false },
+      include: {
+        manager: { select: { id: true, fullName: true, email: true } },
+        assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+        closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+        _count: { select: { attachments: true } },
+      },
     });
   }
 }

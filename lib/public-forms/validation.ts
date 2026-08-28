@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { inverseRuleAction } from "./engine"
 import { normalizeThankYouPages } from "./thank-you-pages"
-import { PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
+import { PUBLIC_FORM_CLIENT_EVENT_TYPES, PUBLIC_FORM_THANK_YOU_TARGET } from "./types"
 import type { PublicFormDraftInput } from "./types"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -145,6 +145,8 @@ export const publicFormDraftSchema = z
     meetingDurationMinutes: z.number().int().min(5).max(480).default(30),
     schedulingMessage: text,
     formKind: z.enum(["standard", "health_plan_simulator"]).default("standard"),
+    /** SPEC 40 E4/DA4 — opt-out de captação (form de pesquisa). */
+    leadCaptureDisabled: z.boolean().default(false),
     questions: z.array(question).max(200).default([]),
     rules: z
       .array(
@@ -269,6 +271,9 @@ export const publicFormSubmissionSchema = z.object({
   requestKey: z.string().min(8).max(200),
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
+  schemaVersion: z.literal(1).optional(),
+  eventId: uuid.optional(),
+  occurredAt: z.string().datetime().optional(),
   scheduling: z.object({ startsAt: z.string().datetime() }).optional(),
   thankYouPageId: uuid.optional(),
   visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/).optional(),
@@ -279,19 +284,31 @@ export const publicFormProgressSchema = z.object({
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
   lastQuestionId: uuid.optional(),
+  schemaVersion: z.literal(1).optional(),
+  eventId: uuid.optional(),
+  occurredAt: z.string().datetime().optional(),
+  trigger: z.enum(["blur", "change", "page_flush", "submit_reconciliation"]).optional(),
 })
 
 export const publicFormMetricEventSchema = z.object({
   visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/),
-  eventType: z.enum([
-    "form_viewed",
-    "form_started",
-    "question_viewed",
-    "question_answered",
-    "question_skipped",
-    "form_completed",
-  ]),
+  // `/events` aceita somente a taxonomia do cliente. `question_answered`,
+  // eventos de CRM e `form_abandoned`/`form_resumed` são server-side: o Zod os
+  // rejeita antes de qualquer efeito, senão o navegador poderia forjar jornada.
+  eventType: z.enum(PUBLIC_FORM_CLIENT_EVENT_TYPES),
   questionId: uuid.optional(),
   eventKey: z.string().regex(/^[A-Za-z0-9:_-]{16,250}$/),
   origin: z.record(z.string(), z.unknown()).default({}),
+  schemaVersion: z.literal(1).optional(),
+  eventId: uuid.optional(),
+  occurredAt: z.string().datetime().optional(),
+  answerValue: z.string().max(2000).optional(),
+  /** Página atual da jornada; nunca carrega respostas. */
+  pageId: uuid.optional(),
+  pageIndex: z.number().int().min(0).max(500).optional(),
+  /** `form_validation_failed` carrega apenas IDs e códigos — nunca valores. */
+  validationCodes: z
+    .array(z.object({ questionId: uuid, code: z.string().max(64) }))
+    .max(200)
+    .optional(),
 })

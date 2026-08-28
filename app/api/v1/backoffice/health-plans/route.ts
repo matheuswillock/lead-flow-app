@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeHealthPlanUseCase } from "@/app/api/useCases/backofficeHealthPlan/BackofficeHealthPlanUseCase"
+import { invalidateHealthPlansCache } from "@/lib/cache/invalidation"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const createSchema = z.object({
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
       ...parsed.data,
       createdBy: access.access.profileId,
     })
+    if (output.isValid) {
+      invalidateHealthPlansCache()
+    }
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

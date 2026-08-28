@@ -3,9 +3,15 @@ import {
   ProcessRadarProfileSyncUseCase,
 } from "@/app/api/useCases/radar/ProcessRadarProfileSyncUseCase"
 import {
+  buildRadarProfileSyncIdempotencyKey,
   handleRadarProfileSyncCallback,
+  RADAR_PROFILE_SYNC_TOPIC,
   type RadarProfileSyncPayload,
 } from "@/lib/queues/radar-profile-sync"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 export const maxDuration = 300
 
@@ -32,7 +38,8 @@ const VALID_SOURCES = new Set([
 export async function processRadarProfileSyncMessage(
   message: RadarProfileSyncPayload,
   metadata: QueueMessageMetadata,
-  useCase: Pick<ProcessRadarProfileSyncUseCase, "execute"> = processRadarProfileSyncUseCase
+  useCase: Pick<ProcessRadarProfileSyncUseCase, "execute"> = processRadarProfileSyncUseCase,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[RadarProfileSyncQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -70,6 +77,14 @@ export async function processRadarProfileSyncMessage(
       teamId: message.teamId,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RADAR_PROFILE_SYNC_TOPIC,
+      idempotencyKey: buildRadarProfileSyncIdempotencyKey(message),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

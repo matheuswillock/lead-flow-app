@@ -34,19 +34,12 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import { useParams } from "next/navigation"
+import {
+  EMAIL_LOG_STATUS_FILTER_OPTIONS,
+  resolveEmailLogStatusBadge,
+} from "@/lib/email/email-log-status-badge"
 
 const service = new CampanhasService()
-
-const STATUS_CONFIG: Record<CampaignLogStatus, { label: string; className: string }> = {
-  queued: { label: "Na fila", className: "border bg-transparent text-muted-foreground" },
-  sent: { label: "Enviado", className: "border-semantic-info-border bg-semantic-info-surface text-semantic-info" },
-  delivered: { label: "Entregue", className: "border-semantic-info-border bg-semantic-info-surface text-semantic-info" },
-  opened: { label: "Aberto", className: "border-semantic-new-border bg-semantic-new-surface text-semantic-new" },
-  clicked: { label: "Clicado", className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success" },
-  bounced: { label: "Bounce", className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger" },
-  complained: { label: "Reclamação", className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning" },
-  failed: { label: "Falhou", className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger" },
-}
 
 const EVENT_LABELS: Record<string, string> = {
   sent: "Enviado",
@@ -58,18 +51,10 @@ const EVENT_LABELS: Record<string, string> = {
   delivery_delayed: "Atraso na entrega",
   unsubscribed: "Descadastrado",
   failed: "Falhou",
+  suppressed: "Recusado",
 }
 
-const STATUS_FILTER_OPTIONS = [
-  { value: "queued", label: "Na fila" },
-  { value: "sent", label: "Enviado" },
-  { value: "delivered", label: "Entregue" },
-  { value: "opened", label: "Aberto" },
-  { value: "clicked", label: "Clicado" },
-  { value: "bounced", label: "Bounce" },
-  { value: "complained", label: "Reclamação" },
-  { value: "failed", label: "Falhou" },
-]
+const STATUS_FILTER_OPTIONS = EMAIL_LOG_STATUS_FILTER_OPTIONS
 
 function getAudienceLabel(log: CampaignEmailLog): string {
   if (log.dispatch?.radarSegmentSlug) return `Segmento Radar: ${log.dispatch.radarSegmentSlug}`
@@ -246,7 +231,7 @@ export function CampaignLogsTab({ campaignId, dispatchProgressKey }: CampaignLog
               </TableRow>
             ) : (
               logs.map((log) => {
-                const statusCfg = STATUS_CONFIG[log.status]
+                const statusCfg = resolveEmailLogStatusBadge(log.status)
                 return (
                   <TableRow key={log.id}>
                     <TableCell>
@@ -339,8 +324,8 @@ export function CampaignLogsTab({ campaignId, dispatchProgressKey }: CampaignLog
               </div>
               <div className="flex flex-col gap-1">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</p>
-                <Badge className={STATUS_CONFIG[selectedLog.status].className}>
-                  {STATUS_CONFIG[selectedLog.status].label}
+                <Badge className={resolveEmailLogStatusBadge(selectedLog.status).className}>
+                  {resolveEmailLogStatusBadge(selectedLog.status).label}
                 </Badge>
               </div>
               <Separator />

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Copy, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -173,7 +174,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       setLogs(logResult.items);
       setLogsTotal(logResult.total);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao carregar webhook");
+      toastUserError(error);
     } finally {
       setLoading(false);
     }
@@ -223,7 +224,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       setWebhook(updated);
       toast.success("Status atualizado");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao alterar status");
+      toastUserError(error);
     } finally {
       setActionPending(false);
     }
@@ -238,7 +239,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       setLogsPage(1);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha no teste");
+      toastUserError(error);
     } finally {
       setActionPending(false);
     }
@@ -263,7 +264,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
         });
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao salvar configuração");
+      toastUserError(error);
     } finally {
       setSaving(false);
     }

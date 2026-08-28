@@ -26,10 +26,11 @@ export function buildRadarBulkImportIdempotencyKey(
 }
 
 export async function publishRadarBulkImportBatch(
-  payload: RadarBulkImportPayload
+  payload: RadarBulkImportPayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RADAR_BULK_IMPORT_TOPIC, payload, {
-    idempotencyKey: buildRadarBulkImportIdempotencyKey(payload),
+    idempotencyKey: options?.idempotencyKey ?? buildRadarBulkImportIdempotencyKey(payload),
     retentionSeconds: RADAR_BULK_IMPORT_RETENTION_SECONDS,
   })
 }

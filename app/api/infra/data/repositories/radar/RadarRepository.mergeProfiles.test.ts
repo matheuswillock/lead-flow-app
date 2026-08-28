@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
-import {
-  DEFAULT_ENGAGEMENT_CONFIG,
-  computeEngagementScore,
-} from "@/lib/radar/engagement-score"
+import { DEFAULT_ENGAGEMENT_CONFIG, computeEngagementScore } from "@/lib/radar/engagement-score"
 
 type EventRow = {
   id: string
@@ -23,6 +20,7 @@ let lastScoreUpdate: { profileId: string; teamId: string; score: number; band: s
 
 const tx = {
   radarIdentity: {
+    findMany: mock(async () => []),
     updateMany: mock(async () => ({ count: 1 })),
   },
   radarSourceLink: {
@@ -38,15 +36,17 @@ const tx = {
       return []
     }),
     findFirst: mock(async () => null),
-    update: mock(async ({ where, data }: { where: { id: string }; data: { profileId: string } }) => {
-      const idx = losingEvents.findIndex((event) => event.id === where.id)
-      if (idx >= 0) {
-        const [moved] = losingEvents.splice(idx, 1)
-        winningEvents.push({ ...moved, sourceId: moved.sourceId })
-        void data
-      }
-      return {}
-    }),
+    update: mock(
+      async ({ where, data }: { where: { id: string }; data: { profileId: string } }) => {
+        const idx = losingEvents.findIndex((event) => event.id === where.id)
+        if (idx >= 0) {
+          const [moved] = losingEvents.splice(idx, 1)
+          winningEvents.push({ ...moved, sourceId: moved.sourceId })
+          void data
+        }
+        return {}
+      },
+    ),
     delete: mock(async () => ({})),
   },
   radarChannelConsent: {
@@ -56,6 +56,15 @@ const tx = {
     delete: mock(async () => ({})),
   },
   radarProfile: {
+    findUnique: mock(async ({ where }: { where: { id: string } }) => ({
+      displayName: where.id === "win-profile" ? "Maria" : "Visitante Anônimo",
+      normalizedName: where.id === "win-profile" ? "maria" : "visitante anonimo",
+      displayPhone: null,
+      normalizedPhone: null,
+      primaryEmail: null,
+      normalizedPrimaryEmail: null,
+    })),
+    update: mock(async () => ({})),
     delete: mock(async () => ({})),
   },
 }
@@ -90,7 +99,7 @@ const prismaMock = {
           band: data.engagementBand,
         }
         return { count: 1 }
-      }
+      },
     ),
   },
   backofficeRadarEngagementWeight: {
@@ -109,11 +118,10 @@ const prismaMock = {
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
+  withPrismaRetry: <T>(operation: () => Promise<T>) => operation(),
 }))
 
-const { RadarRepository } = await import(
-  "@/app/api/infra/data/repositories/radar/RadarRepository"
-)
+const { RadarRepository } = await import("@/app/api/infra/data/repositories/radar/RadarRepository")
 
 describe("RadarRepository.mergeProfiles (E3a)", () => {
   beforeEach(() => {
@@ -160,7 +168,7 @@ describe("RadarRepository.mergeProfiles (E3a)", () => {
       })),
       { "form.completed": 25, "email.clicked": 12 },
       DEFAULT_ENGAGEMENT_CONFIG,
-      new Date()
+      new Date(),
     )
 
     expect(lastScoreUpdate?.score).toBe(expected.score)
@@ -170,7 +178,7 @@ describe("RadarRepository.mergeProfiles (E3a)", () => {
       [{ eventType: "email.clicked", occurredAt: recent }],
       { "form.completed": 25, "email.clicked": 12 },
       DEFAULT_ENGAGEMENT_CONFIG,
-      new Date()
+      new Date(),
     )
     expect(lastScoreUpdate!.score).toBeGreaterThan(winnerOnly.score)
   })

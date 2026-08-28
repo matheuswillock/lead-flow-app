@@ -213,15 +213,19 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     }
   }
 
-  async sendAccessEmail(
-    memberId: string,
+  async sendAccessEmail(input: {
+    memberId: string
+    accountMasterId: string
     mode: "invite" | "reset_password"
-  ): Promise<{ email: string }> {
+  }): Promise<{ email: string }> {
     return parseOutput<{ email: string }>(
-      await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
+      await fetch(`${API_CLIENT_BASE}/backoffice/members/${input.memberId}/access-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({
+          mode: input.mode,
+          accountMasterId: input.accountMasterId,
+        }),
       }),
       "Erro ao enviar e-mail de acesso"
     )

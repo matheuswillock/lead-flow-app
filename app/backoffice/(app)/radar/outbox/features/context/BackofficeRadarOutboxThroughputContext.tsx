@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext";
 import type {
   IBackofficeRadarOutboxThroughputService,
@@ -54,7 +55,7 @@ export function BackofficeRadarOutboxThroughputProvider({
         toast.success(result.successMessages?.[0] ?? "Vazão salva com sucesso.");
         return true;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Erro ao salvar vazão");
+        toastUserError(error);
         return false;
       } finally {
         setSaving(false);

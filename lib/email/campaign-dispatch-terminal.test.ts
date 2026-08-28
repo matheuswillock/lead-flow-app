@@ -5,6 +5,7 @@ import {
   isNewTerminalDispatch,
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   resolveCampaignDispatchTerminal,
+  resolveCampaignExitToast,
 } from "./campaign-dispatch-terminal"
 import { formatCampaignDispatchProgressLabel } from "./campaign-dispatch-progress"
 
@@ -61,6 +62,7 @@ describe("resolveCampaignDispatchTerminal", () => {
           acceptedCount: 3,
           failedCount: 0,
           queuedCount: 7,
+          suppressedCount: 0,
           retryFailedOnly: false,
           errorMessage: null,
           updatedAt: "t1",
@@ -84,6 +86,7 @@ describe("resolveCampaignDispatchTerminal", () => {
         acceptedCount: 0,
         failedCount: 10,
           queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: "Resend timeout",
         updatedAt: "t2",
@@ -116,6 +119,7 @@ describe("resolveCampaignDispatchTerminal", () => {
         acceptedCount: 7,
         failedCount: 3,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: null,
         updatedAt: "t3",
@@ -171,6 +175,7 @@ describe("banner global + toast final sem realtime confiável", () => {
         acceptedCount: 0,
         failedCount: 10,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: "API down",
         updatedAt: "t1",
@@ -205,6 +210,7 @@ describe("banner global + toast final sem realtime confiável", () => {
         acceptedCount: 7,
         failedCount: 3,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: null,
         updatedAt: "t2",
@@ -249,6 +255,7 @@ describe("banner global + toast final sem realtime confiável", () => {
         acceptedCount: 0,
         failedCount: 20,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: "créditos insuficientes",
         updatedAt: "t3",
@@ -289,6 +296,7 @@ describe("banner global + toast final sem realtime confiável", () => {
         acceptedCount: 12,
         failedCount: 8,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: null,
         updatedAt: "t4",
@@ -338,6 +346,7 @@ describe("realtime UPDATE leave-sending — totalSent stale", () => {
         acceptedCount: 7,
         failedCount: 3,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: null,
         updatedAt: "t-update",
@@ -373,6 +382,7 @@ describe("realtime UPDATE leave-sending — totalSent stale", () => {
         acceptedCount: 15,
         failedCount: 5,
         queuedCount: 0,
+        suppressedCount: 0,
         retryFailedOnly: false,
         errorMessage: null,
         updatedAt: "t-zero",
@@ -383,6 +393,75 @@ describe("realtime UPDATE leave-sending — totalSent stale", () => {
     expect(terminal.completionKind).toBe("partial")
     expect(terminal.acceptedCount).toBe(15)
     expect(terminal.completionKind).not.toBe(bannedHeuristicFromZeroSent)
+  })
+})
+
+describe("resolveCampaignExitToast — nunca celebrar disparo que não aconteceu (incidente Calli, 2026-08-27)", () => {
+  it("terminal resolvido (disparo realmente concluído) → emite o toast terminal normalmente", () => {
+    const terminal = resolveCampaignDispatchTerminal({
+      status: "sent",
+      totalRecipients: 5,
+      totalSent: 5,
+    })!
+
+    const decision = resolveCampaignExitToast({
+      name: "Campanha A",
+      status: "sent",
+      terminal,
+    })
+
+    expect(decision.emit).toBe(true)
+    if (decision.emit) {
+      expect(decision.toast.type).toBe("success")
+    }
+  })
+
+  it("status failed sem terminal resolvido (fallback) → emite erro com o errorMessage atual", () => {
+    const decision = resolveCampaignExitToast({
+      name: "Campanha B",
+      status: "failed",
+      terminal: null,
+      errorMessage: "créditos insuficientes",
+    })
+
+    expect(decision.emit).toBe(true)
+    if (decision.emit) {
+      expect(decision.toast.type).toBe("error")
+      expect(decision.toast.message).toContain("créditos insuficientes")
+    }
+  })
+
+  it("regressão Calli: recusa pré-dispatch (campanha volta a draft, terminal null) NÃO emite toast de sucesso", () => {
+    // O gate de Radar recusou o disparo antes de criar qualquer EmailCampaignDispatch:
+    // status nunca saiu de "draft" no servidor. resolveCampaignDispatchTerminal
+    // corretamente devolve null (não é sending/failed/sent/partially_sent) — o bug
+    // era o watcher tratar "terminal null e não-failed" como sucesso por padrão.
+    const decision = resolveCampaignExitToast({
+      name: "Campanha Calli",
+      status: "draft",
+      terminal: null,
+    })
+
+    expect(decision.emit).toBe(false)
+  })
+
+  it("recusa pré-dispatch de campanha agendada (status scheduled, terminal null) também NÃO emite sucesso", () => {
+    const decision = resolveCampaignExitToast({
+      name: "Campanha Agendada",
+      status: "scheduled",
+      terminal: null,
+    })
+
+    expect(decision.emit).toBe(false)
+  })
+
+  it("status canceled/archived sem terminal resolvido também não inventa sucesso", () => {
+    expect(
+      resolveCampaignExitToast({ name: "X", status: "canceled", terminal: null }).emit
+    ).toBe(false)
+    expect(
+      resolveCampaignExitToast({ name: "X", status: "archived", terminal: null }).emit
+    ).toBe(false)
   })
 })
 

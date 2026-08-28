@@ -1,8 +1,3 @@
-import {
-  E2E_MASTER_EMAIL,
-  E2E_MASTER_SUPABASE_ID,
-} from "@/lib/e2e/constants";
-
 export type E2eJwtClaims = {
   sub: string;
   email: string;
@@ -82,8 +77,8 @@ export async function verifyE2eJwt(token: string): Promise<E2eJwtClaims | null> 
 
   const payload = decodeJson<Partial<E2eJwtClaims>>(payloadB64);
   if (!payload) return null;
-  if (payload.sub !== E2E_MASTER_SUPABASE_ID) return null;
-  if (payload.email !== E2E_MASTER_EMAIL) return null;
+  if (typeof payload.sub !== "string" || payload.sub.trim().length === 0) return null;
+  if (typeof payload.email !== "string" || payload.email.trim().length === 0) return null;
   if (typeof payload.iat !== "number" || typeof payload.exp !== "number") return null;
 
   const nowSeconds = Math.floor(Date.now() / 1000);

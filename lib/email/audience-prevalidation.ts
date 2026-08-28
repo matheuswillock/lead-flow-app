@@ -70,6 +70,7 @@ export const AUDIENCE_REASON_TYPO_DOMAIN = "Domínio com erro de digitação"
 export const AUDIENCE_REASON_DEAD_ISP = "Provedor de e-mail desativado"
 export const AUDIENCE_REASON_ROLE = "Endereço genérico não permitido"
 export const AUDIENCE_REASON_BOUNCED = "E-mail com bounce anterior"
+export const AUDIENCE_REASON_BLOCKLISTED = "E-mail na lista de bloqueados do time"
 
 export type AudienceEmailValidation = ResendRecipientEmailValidation
 

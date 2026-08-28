@@ -1,9 +1,15 @@
 import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import type { RadarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 import {
+  buildRadarEngagementScoreUpdateIdempotencyKey,
   handleRadarEngagementScoreUpdatesCallback,
+  RADAR_ENGAGEMENT_SCORE_UPDATES_TOPIC,
   type RadarEngagementScoreUpdatePayload,
 } from "@/lib/queues/radar-engagement-score-updates"
+import {
+  ackAfterMaxDeliveries,
+  type AckAfterMaxDeliveriesFn,
+} from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
   messageId: string
@@ -20,7 +26,8 @@ type QueueMessageMetadata = {
 export async function processRadarEngagementScoreUpdateMessage(
   message: RadarEngagementScoreUpdatePayload,
   metadata: QueueMessageMetadata,
-  repository: Pick<RadarRepository, "updateEngagementScore"> = radarRepository
+  repository: Pick<RadarRepository, "updateEngagementScore"> = radarRepository,
+  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
 ): Promise<void> {
   console.info("[RadarEngagementScoreUpdatesQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -55,6 +62,17 @@ export async function processRadarEngagementScoreUpdateMessage(
       teamId: message.teamId,
       error,
     })
+    const acked = await ackDeadLetter({
+      deliveryCount: metadata.deliveryCount,
+      topic: RADAR_ENGAGEMENT_SCORE_UPDATES_TOPIC,
+      idempotencyKey: buildRadarEngagementScoreUpdateIdempotencyKey(
+        message.teamId,
+        message.profileId,
+      ),
+      payload: message,
+      lastError: error,
+    })
+    if (acked) return
     throw error
   }
 }

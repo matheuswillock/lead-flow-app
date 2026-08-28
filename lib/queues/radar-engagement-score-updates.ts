@@ -28,13 +28,13 @@ export function buildRadarEngagementScoreUpdateIdempotencyKey(
 }
 
 export async function publishRadarEngagementScoreUpdate(
-  payload: RadarEngagementScoreUpdatePayload
+  payload: RadarEngagementScoreUpdatePayload,
+  options?: { idempotencyKey?: string },
 ): Promise<{ messageId: string | null }> {
   return queue.send(RADAR_ENGAGEMENT_SCORE_UPDATES_TOPIC, payload, {
-    idempotencyKey: buildRadarEngagementScoreUpdateIdempotencyKey(
-      payload.teamId,
-      payload.profileId
-    ),
+    idempotencyKey:
+      options?.idempotencyKey ??
+      buildRadarEngagementScoreUpdateIdempotencyKey(payload.teamId, payload.profileId),
     retentionSeconds: RADAR_ENGAGEMENT_SCORE_UPDATES_RETENTION_SECONDS,
   })
 }

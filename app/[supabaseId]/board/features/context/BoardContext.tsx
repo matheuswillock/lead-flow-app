@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useMemo, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import {
   isAllowedStatusTransitionFromProductGates,
 } from "@/lib/leadStatusTransitionRules";
@@ -1163,7 +1164,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         // estado local permanece inalterado. Não há necessidade de refetch.
         console.error('Erro ao atualizar status do lead:', error);
 
-        toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status do lead.', {
+        toastUserError(error, {
           id: loadingToast,
           duration: 4000,
         });
@@ -1375,9 +1376,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         setPendingSalesInfoGateDrop(null);
         return true;
       } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Erro ao salvar informações de venda do lead."
-        );
+        toastUserError(error);
         return false;
       }
     },
@@ -1434,9 +1433,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         setPendingCloserGateDrop(null);
         return true;
       } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Erro ao salvar closer do lead."
-        );
+        toastUserError(error);
         return false;
       }
     },
@@ -1493,9 +1490,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         setPendingLeadInfoGateDrop(null);
         return true;
       } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Erro ao salvar informações do lead."
-        );
+        toastUserError(error);
         return false;
       }
     },

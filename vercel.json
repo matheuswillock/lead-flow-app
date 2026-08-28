@@ -99,6 +99,17 @@
           "topic": "email-campaign-dispatch",
           "retryAfterSeconds": 30,
           "initialDelaySeconds": 0,
+          "maxConcurrency": 4
+        }
+      ]
+    },
+    "app/api/queues/email-campaign-dispatch-overflow/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "email-campaign-dispatch-overflow",
+          "retryAfterSeconds": 30,
+          "initialDelaySeconds": 0,
           "maxConcurrency": 1
         }
       ]
@@ -130,6 +141,17 @@
         {
           "type": "queue/v2beta",
           "topic": "public-form-submission-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
+    "app/api/queues/public-form-progress-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "public-form-progress-events",
           "retryAfterSeconds": 60,
           "initialDelaySeconds": 0,
           "maxConcurrency": 2
@@ -258,6 +280,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/v1/email/cron/drain-orphan-events",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/integrations/webhooks/cron/retry-asaas-webhook-failures",
       "schedule": "*/5 * * * *"
     },
@@ -266,8 +292,32 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/v1/email/cron/reconcile-campaign-counters",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/v1/email/cron/expire-stale-queued-logs",
+      "schedule": "20 * * * *"
+    },
+    {
       "path": "/api/v1/public-forms/cron/retry-queue-event-failures",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/public-forms/cron/dispatch-pending-submissions",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/public-forms/cron/mark-abandoned-sessions",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/queues/cron/retry-processing-failures",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/queues/cron/mark-stale-cron-executions",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

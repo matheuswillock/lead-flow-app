@@ -15,11 +15,32 @@ import type {
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
+  RadarProfileForms,
   RadarSegmentDeleteResult,
   RadarSegmentRules,
   RadarSyncResult,
+  RadarDuplicateLeadCandidate,
+  RadarPromoteToLeadResult,
 } from "../context/RadarTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+
+/**
+ * Duplicata na promoção é fluxo, não erro terminal.
+ *
+ * `parseOutput` lança `Error` e descarta o `result`, então os candidatos que o
+ * backend devolve no 409 morriam ali: a UI só via a mensagem "possível lead
+ * duplicado", sem nenhum caminho para confirmar. Este erro carrega os
+ * candidatos para o hook poder oferecer a confirmação.
+ */
+export class RadarDuplicateLeadError extends Error {
+  constructor(
+    message: string,
+    readonly candidates: RadarDuplicateLeadCandidate[]
+  ) {
+    super(message)
+    this.name = "RadarDuplicateLeadError"
+  }
+}
 
 async function parseOutput<T>(res: Response): Promise<T> {
   const json = (await res.json().catch(() => null)) as {
@@ -30,6 +51,18 @@ async function parseOutput<T>(res: Response): Promise<T> {
 
   if (json && typeof json.isValid === "boolean") {
     if (!json.isValid) {
+      const result = json.result as {
+        requiresDuplicateConfirmation?: boolean
+        duplicateCandidates?: RadarDuplicateLeadCandidate[]
+      } | null
+
+      if (result?.requiresDuplicateConfirmation) {
+        throw new RadarDuplicateLeadError(
+          json.errorMessages?.join(", ") || "Possível lead duplicado neste time",
+          result.duplicateCandidates ?? []
+        )
+      }
+
       throw new Error(json.errorMessages?.join(", ") || `HTTP ${res.status}`)
     }
     return json.result as T
@@ -196,13 +229,21 @@ export class RadarFrontendService implements IRadarService {
   async promoteProfileToLead(
     supabaseId: string,
     teamId: string,
-    profileId: string
-  ): Promise<{ leadId: string; radarProfileId: string }> {
+    profileId: string,
+    options?: { confirmDuplicate?: boolean }
+  ): Promise<RadarPromoteToLeadResult> {
+    const confirmDuplicate = options?.confirmDuplicate === true
     const res = await fetch(`${this.baseUrl}/profiles/${profileId}/promote-to-lead`, {
       method: "POST",
-      headers: this.buildHeaders(supabaseId, teamId),
+      headers: {
+        ...this.buildHeaders(supabaseId, teamId),
+        ...(confirmDuplicate ? { "Content-Type": "application/json" } : {}),
+      },
+      // Sem confirmação o POST continua sem body — é o backend que decide se
+      // há duplicata e devolve 409 com os candidatos.
+      ...(confirmDuplicate ? { body: JSON.stringify({ confirmDuplicate: true }) } : {}),
     })
-    return parseOutput<{ leadId: string; radarProfileId: string }>(res)
+    return parseOutput<RadarPromoteToLeadResult>(res)
   }
 
   async updateProfileGender(
@@ -465,6 +506,18 @@ export class RadarFrontendService implements IRadarService {
       headers: this.buildHeaders(supabaseId, teamId),
     })
     return parseOutput<RadarProfileTouchpoints>(res)
+  }
+
+  async getProfileForms(
+    supabaseId: string,
+    teamId: string,
+    profileId: string
+  ): Promise<RadarProfileForms> {
+    const res = await fetch(`${this.baseUrl}/profiles/${profileId}/forms`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    return parseOutput<RadarProfileForms>(res)
   }
 
   async getProfileContracts(

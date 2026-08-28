@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { Copy, ImagePlus, Loader2, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,7 +34,7 @@ function notifyAssetsError(context: string, error: unknown, fallback: string) {
   if (!isApiRequestError(error)) {
     console.error(context, error)
   }
-  toast.error(error instanceof Error ? error.message : fallback)
+  toast.error(toUserToastMessage(error instanceof Error ? error : fallback))
 }
 
 function buildImgSnippet(asset: EmailTemplateAssetItem): string {

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { IBackofficeLeadQuickEntryService } from "../services/IBackofficeLeadQuickEntryService"
 import type {
   BackofficeLeadQuickEntryFormData,
@@ -59,7 +60,7 @@ export function BackofficeLeadQuickEntryProvider({ children, service }: Provider
         return true
       } catch (err) {
         console.error("[BackofficeLeadQuickEntryContext][submit]", err)
-        toast.error(err instanceof Error ? err.message : "Erro ao cadastrar lead")
+        toastUserError(err)
         return false
       } finally {
         setIsSubmitting(false)

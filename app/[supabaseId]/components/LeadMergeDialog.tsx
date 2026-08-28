@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
+import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status";
@@ -173,7 +174,7 @@ export function LeadMergeDialog({
       onOpenChange(false);
       await onMerged();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao mesclar leads");
+      toastUserError(error);
     } finally {
       setMerging(false);
     }

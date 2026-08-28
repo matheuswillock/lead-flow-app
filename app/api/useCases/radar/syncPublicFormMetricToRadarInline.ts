@@ -1,10 +1,7 @@
 import { after } from "next/server"
 import type { PublicFormMetricType } from "@prisma/client"
-import { teamHasRadarFeature } from "@/lib/radar/team-has-radar-feature"
-import {
-  syncPublicFormMetricToRadarUseCase,
-  type SyncPublicFormMetricToRadarInput,
-} from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
+import type { SyncPublicFormMetricToRadarInput } from "@/app/api/useCases/radar/SyncPublicFormMetricToRadarUseCase"
+import { syncPublicFormMetricToRadarUseCase } from "@/app/api/useCases/radar/syncPublicFormMetricToRadarFactory"
 
 /**
  * Espelha um `PublicFormMetricEvent` já persistido em `RadarEvent` (D8).
@@ -12,7 +9,7 @@ import {
  * ser encerrada antes de completar quando a resposta HTTP já foi enviada.
  */
 export function syncPublicFormMetricToRadarInline(
-  input: SyncPublicFormMetricToRadarInput & { teamId: string | null | undefined }
+  input: SyncPublicFormMetricToRadarInput & { teamId: string | null | undefined },
 ): void {
   const teamId = input.teamId
   if (!teamId) return
@@ -20,15 +17,19 @@ export function syncPublicFormMetricToRadarInline(
 
   after(async () => {
     try {
-      const hasFeature = await teamHasRadarFeature(teamId)
-      if (!hasFeature) return
-      await syncPublicFormMetricToRadarUseCase.execute({
+      const output = await syncPublicFormMetricToRadarUseCase.execute({
         ...input,
         teamId,
         eventType: input.eventType as PublicFormMetricType | string,
       })
+      if (!output.isValid) {
+        throw new Error(
+          output.errorMessages.join("; ") || "Falha ao sincronizar formulário no Radar",
+        )
+      }
     } catch (error) {
       console.error("[syncPublicFormMetricToRadarInline]", error)
+      throw error
     }
   })
 }
