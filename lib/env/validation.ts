@@ -97,13 +97,28 @@ export const envSchema = z.object({
   SLACK_EMAIL_CREDITS_WEBHOOK_URL: urlSchema.optional().describe('Slack Incoming Webhook URL for email credits purchase interest'),
   SLACK_BACKOFFICE_LEADS_WEBHOOK_URL: urlSchema.describe('Slack Incoming Webhook URL for backoffice lead events'),
 
-  // Asaas Payment Gateway
+  // Asaas Payment Gateway (conta "primary" — nova, CNPJ correto; nomes de env
+  // atuais mantidos por DA1 de [[10 — Fundações Multi-conta — Backend]])
   ASAAS_API_KEY: asaasApiKeySchema.describe('Asaas API key'),
-  ASAAS_WALLET_ID: nonEmptyString.describe('Asaas wallet ID'),
+  // Rebaixado a opcional (E2, m12/H8): git grep do dia (30/08) confirma zero
+  // consumidores no código — nenhum call-site lê ASAAS_WALLET_ID. Não sai do
+  // schema: §8.1 do plano de migração o mantém como parte do flip atômico do
+  // E6 por consistência; removê-lo do Vercel é decisão de ops fora deste PR.
+  ASAAS_WALLET_ID: nonEmptyString.optional().describe('Asaas wallet ID (sem consumidor no código — ver E2 de 10)'),
   ASAAS_WEBHOOK_TOKEN: nonEmptyString.describe('Asaas webhook verification token'),
   ASAAS_ENV: asaasEnvSchema.describe('Asaas environment'),
   ASAAS_URL: urlSchema.describe('Asaas API base URL'),
   ASAAS_URL_sandbox: urlSchema.describe('Asaas sandbox API base URL'),
+
+  // Asaas — conta "legacy" (antiga, somente leitura). Opcionais: pré-cutover
+  // elas não existem; `resolveAsaasAccount("legacy")` (lib/asaas/asaas-account.ts)
+  // lança em runtime com mensagem clara se forem pedidas sem estarem configuradas.
+  ASAAS_LEGACY_API_KEY: asaasApiKeySchema.optional().describe('Asaas API key da conta legacy (antiga) — opcional pré-cutover'),
+  ASAAS_LEGACY_WEBHOOK_TOKEN: nonEmptyString.optional().describe('Token de webhook da conta legacy — opcional pré-cutover'),
+  // ASAAS_LEGACY_SANDBOX_API_KEY (par de ASAAS_SANDBOX_API_KEY) não entra
+  // neste schema — a chave sandbox atual também não entra; ambas são lidas
+  // direto de process.env só pela guarda E2E (e2e/support/asaas.ts), fora
+  // da validação de runtime da aplicação.
 
   // App URLs
   NEXT_PUBLIC_APP_URL: urlSchema.describe('Public app URL'),
