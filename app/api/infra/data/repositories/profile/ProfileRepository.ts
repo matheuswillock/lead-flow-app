@@ -1,5 +1,6 @@
 import prisma, { withPrismaRetry } from "@/app/api/infra/data/prisma";
 import type { UserRole, Profile, Prisma } from "@prisma/client";
+import type { AsaasAccountId } from "@/lib/asaas";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
 import { isManagerLikeRole } from "@/lib/roles";
@@ -1005,9 +1006,12 @@ class PrismaProfileRepository implements IProfileRepository {
     }
 
     async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
+        // E5 de [[10 — Fundações Multi-conta — Backend]] (DA1/M4.7): todo
+        // customer novo nasce na conta primary — os únicos chamadores deste
+        // método gravam um customerId recém-criado via AsaasCustomerGateway.
         await prisma.profile.update({
             where: { id: profileId },
-            data: { asaasCustomerId },
+            data: { asaasCustomerId, asaasCustomerAccount: "primary" },
         });
     }
 
@@ -1071,6 +1075,69 @@ class PrismaProfileRepository implements IProfileRepository {
           },
         },
       },
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // CheckoutAsaasUseCase (E5 de [[10 — Fundações Multi-conta — Backend]])
+  // ---------------------------------------------------------------------
+
+  async markProfileCheckoutTrialStarted(profileId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { subscriptionStatus: "trial", subscriptionPlan: "manager_base" },
+    });
+  }
+
+  async clearAsaasCustomerId(supabaseId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { supabaseId },
+      data: { asaasCustomerId: null },
+    });
+  }
+
+  async createOperatorProfileFromPendingOperator(input: {
+    supabaseId: string;
+    fullName: string;
+    email: string;
+    role: UserRole;
+    functions: ("SDR" | "CLOSER")[];
+    managerId: string;
+  }): Promise<Profile> {
+    return prisma.profile.create({
+      data: {
+        supabaseId: input.supabaseId,
+        fullName: input.fullName,
+        email: input.email,
+        role: input.role,
+        functions: input.functions,
+        managerId: input.managerId,
+        subscriptionStatus: "active",
+        subscriptionPlan: null,
+      },
+    });
+  }
+
+  async incrementOperatorCount(profileId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { operatorCount: { increment: 1 } },
+    });
+  }
+
+  async findByAsaasSubscriptionIdAndAccount(
+    subscriptionId: string,
+    account: AsaasAccountId
+  ): Promise<Profile | null> {
+    return prisma.profile.findFirst({
+      where: { asaasSubscriptionId: subscriptionId, asaasSubscriptionAccount: account },
+    });
+  }
+
+  async activateSubscription(profileId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { subscriptionStatus: "active", subscriptionStartDate: new Date() },
     });
   }
 }

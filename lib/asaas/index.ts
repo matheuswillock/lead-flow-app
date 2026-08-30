@@ -115,8 +115,10 @@ export async function asaasFetch(endpoint: string, options?: RequestInit) {
   return createAsaasClient("primary").request(endpoint, options)
 }
 
-// Função legada mantida para compatibilidade (pré-E5; aposentada quando o
-// helper `createAsaasCustomer` migrar para AsaasCustomerGateway).
+// Função legada mantida para compatibilidade — usada por AddOnCheckoutUseCase
+// para pagamentos (nunca customers, ver E5: createAsaasCustomer foi
+// aposentado daqui; criação de customer passa exclusivamente por
+// AsaasCustomerGateway, app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway.ts).
 export async function asaas(path: string, init?: RequestInit) {
   const account = resolveAsaasAccount("primary")
   if (!account.apiKey) {
@@ -130,14 +132,4 @@ export async function asaas(path: string, init?: RequestInit) {
   const res = await fetch(`${apiRoot}${path}`, { ...init, headers, cache: "no-store" })
   if (!res.ok) throw new Error(`Asaas ${res.status}: ${await res.text()}`)
   return res.json()
-}
-
-/** Exemplo: criar cliente no Asaas */
-export async function createAsaasCustomer(payload: {
-  name: string
-  email?: string
-  cpfCnpj?: string
-  phone?: string
-}) {
-  return asaas("/customers", { method: "POST", body: JSON.stringify(payload) })
 }

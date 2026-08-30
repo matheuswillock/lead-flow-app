@@ -1,6 +1,7 @@
 import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
 import { asaasApi, asaasFetch, type AsaasAccountId } from "@/lib/asaas"
+import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
   BACKOFFICE_ADHESION_CYCLE_MONTHS,
@@ -1640,6 +1641,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
   }
 
+  /**
+   * E5 de [[10 — Fundações Multi-conta — Backend]] (DA5/M4.8): criação de
+   * customer via AsaasCustomerGateway — nunca POST /customers direto. Estes
+   * dois caminhos criam o customer ANTES de existir um Profile (checkout de
+   * adesão pré-conversão), por isso usam `adhesionId` em vez de `profileId`
+   * — o gateway resolve o mesmo `externalReference` que já era montado à
+   * mão aqui (`backoffice-adhesion-<id>`), e agora também fixa
+   * `notificationDisabled: true`, que faltava nos dois (§4 da auditoria).
+   */
   private async ensureAsaasCustomer(
     adhesion: BackofficeAdhesionWithRelations,
     input: BackofficeAdhesionCheckoutInput
@@ -1648,23 +1658,20 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return adhesion.asaasCustomerId
     }
 
-    const customer = await asaasFetch(asaasApi.customers, {
-      method: "POST",
-      body: JSON.stringify({
-        name: input.fullName,
-        email: input.email,
-        cpfCnpj: input.cpfCnpj,
-        mobilePhone: input.phone,
-        postalCode: input.postalCode,
-        address: input.address,
-        addressNumber: input.addressNumber,
-        complement: input.complement ?? undefined,
-        province: input.neighborhood,
-        externalReference: `backoffice-adhesion-${adhesion.id}`,
-      }),
+    const customer = await asaasCustomerGateway.createCustomer({
+      adhesionId: adhesion.id,
+      name: input.fullName,
+      email: input.email,
+      cpfCnpj: input.cpfCnpj,
+      mobilePhone: input.phone,
+      postalCode: input.postalCode,
+      address: input.address,
+      addressNumber: input.addressNumber,
+      complement: input.complement ?? undefined,
+      province: input.neighborhood,
     })
 
-    return String(customer.id)
+    return customer.id
   }
 
   private async createExternalAsaasCustomer(input: {
@@ -1674,25 +1681,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     cpfCnpj: string
     phone: string
   }): Promise<string> {
-    const customer = await asaasFetch(asaasApi.customers, {
-      method: "POST",
-      body: JSON.stringify({
-        name: input.fullName,
-        email: input.email,
-        cpfCnpj: input.cpfCnpj,
-        mobilePhone: input.phone,
-        externalReference: `backoffice-adhesion-${input.adhesionId}`,
-        observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",
-      }),
+    const customer = await asaasCustomerGateway.createCustomer({
+      adhesionId: input.adhesionId,
+      name: input.fullName,
+      email: input.email,
+      cpfCnpj: input.cpfCnpj,
+      mobilePhone: input.phone,
+      observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",
     })
 
-    const customerId = customer?.id
-    if (!customerId) {
-      throw new Error(
-        `Asaas não retornou um ID válido para o cliente criado (adhesionId: ${input.adhesionId})`
-      )
-    }
-    return String(customerId)
+    return customer.id
   }
 
   private async createAsaasPayment(

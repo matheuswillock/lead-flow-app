@@ -332,7 +332,7 @@ export async function processAsaasWebhookEvent(
       const { checkoutAsaasUseCase } = await import(
         "@/app/api/useCases/subscriptions/CheckoutAsaasUseCase"
       );
-      const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id!);
+      const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id!, account);
 
       if (!activationResult.isValid) {
         console.error("[AsaasWebhookRoute][process] subscription activation failed", {
