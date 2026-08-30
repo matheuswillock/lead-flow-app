@@ -31,8 +31,11 @@ mock.module("next/server", () => {
   }
 })
 
+const captureMessageMock = mock(() => {})
+
 mock.module("@sentry/nextjs", () => ({
   captureException: mock(() => {}),
+  captureMessage: captureMessageMock,
 }))
 
 mock.module("@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository", () => ({
@@ -100,6 +103,7 @@ function resetMocks() {
   processAsaasWebhookEventMock.mockReset()
   publishAsaasWebhookEventMock.mockReset()
   publishAsaasWebhookEventMock.mockResolvedValue({ messageId: "mid-test" })
+  captureMessageMock.mockClear()
 }
 
 describe("Asaas webhook route", () => {
@@ -132,6 +136,44 @@ describe("Asaas webhook route", () => {
 
     expect(response.status).toBe(401)
     expect(claimForProcessingMock).not.toHaveBeenCalled()
+  })
+
+  it("T-10.18 (E7): 401 de token ausente dispara Sentry.captureMessage com tag auth-rejected", async () => {
+    resetMocks()
+
+    await POST(makeRequest(VALID_BODY, {}))
+
+    expect(captureMessageMock).toHaveBeenCalledTimes(1)
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      })
+    )
+  })
+
+  it("T-10.18 (E7): 401 de token inválido dispara Sentry.captureMessage com tag auth-rejected", async () => {
+    resetMocks()
+
+    await POST(makeRequest(VALID_BODY, { "asaas-access-token": "wrong-token" }))
+
+    expect(captureMessageMock).toHaveBeenCalledTimes(1)
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      })
+    )
+  })
+
+  it("T-10.18 (E7): 200 (fluxo feliz) NÃO dispara Sentry.captureMessage de auth-rejected", async () => {
+    resetMocks()
+    claimForProcessingMock.mockResolvedValue("process")
+
+    const response = await POST(makeRequest(VALID_BODY))
+
+    expect(response.status).toBe(200)
+    expect(captureMessageMock).not.toHaveBeenCalled()
   })
 
   it("payment sem ID → 200 com mensagem ignorado, sem chamar claimForProcessing", async () => {

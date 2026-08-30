@@ -27,6 +27,11 @@ export async function POST(request: NextRequest) {
 
     if (!receivedToken) {
       console.error("[AsaasWebhookRoute][POST] Token não fornecido");
+      // E7 (C36): observabilidade mínima do 401 em série — sintoma
+      // precursor da fila pausada pelo Asaas (15 falhas consecutivas).
+      Sentry.captureMessage("[AsaasWebhookRoute] Token não fornecido", {
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      });
       return NextResponse.json(
         { error: "Unauthorized: Token não fornecido" },
         { status: 401 }
@@ -39,6 +44,10 @@ export async function POST(request: NextRequest) {
 
     if (!account) {
       console.error("[AsaasWebhookRoute][POST] Token inválido");
+      // E7 (C36): idem — ver comentário acima.
+      Sentry.captureMessage("[AsaasWebhookRoute] Token inválido", {
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      });
       return NextResponse.json(
         { error: "Unauthorized: Token inválido" },
         { status: 401 }
