@@ -67,4 +67,23 @@ describe("envSchema — envs legacy do Asaas (E2)", () => {
     })
     expect(result.success).toBe(false)
   })
+
+  // Achado de review (cursor[bot], PR #1100): .optional() do Zod só aceita
+  // `undefined` — string vazia ("") ainda cai na validação de formato e
+  // FALHA. .env.example/.env.test.example documentam as duas vars legacy
+  // vazias (`ASAAS_LEGACY_API_KEY=`) como o estado pré-cutover — copiar o
+  // arquivo como está faz a app recusar subir (EnvService.validate() →
+  // process.exit(1) no startup/build, lib/env/startup-validation.ts).
+  it("trata string vazia como ausente — copiar .env.example não derruba o boot (achado de review)", () => {
+    const result = envSchema.safeParse({
+      ...BASE_VALID_ENV,
+      ASAAS_LEGACY_API_KEY: "",
+      ASAAS_LEGACY_WEBHOOK_TOKEN: "",
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.ASAAS_LEGACY_API_KEY).toBeUndefined()
+      expect(result.data.ASAAS_LEGACY_WEBHOOK_TOKEN).toBeUndefined()
+    }
+  })
 })

@@ -55,6 +55,21 @@ const booleanStringSchema = z
   })
   .transform((val) => val === 'true');
 
+/**
+ * Var opcional que também deve aceitar string vazia como "ausente" — não só
+ * `undefined`. Zod's `.optional()` sozinho só isenta `undefined`; uma var
+ * documentada como `KEY=` (vazia) em .env.example/.env.test.example (estado
+ * pré-cutover de ASAAS_LEGACY_*, achado de review no PR #1100) ainda cai na
+ * validação de formato do schema base e falha. O preprocess normaliza `""`
+ * para `undefined` antes do schema rodar.
+ */
+function optionalWhenBlank<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    schema.optional()
+  );
+}
+
 // Main environment variables schema
 export const envSchema = z.object({
   // Supabase
@@ -104,7 +119,7 @@ export const envSchema = z.object({
   // consumidores no código — nenhum call-site lê ASAAS_WALLET_ID. Não sai do
   // schema: §8.1 do plano de migração o mantém como parte do flip atômico do
   // E6 por consistência; removê-lo do Vercel é decisão de ops fora deste PR.
-  ASAAS_WALLET_ID: nonEmptyString.optional().describe('Asaas wallet ID (sem consumidor no código — ver E2 de 10)'),
+  ASAAS_WALLET_ID: optionalWhenBlank(nonEmptyString).describe('Asaas wallet ID (sem consumidor no código — ver E2 de 10)'),
   ASAAS_WEBHOOK_TOKEN: nonEmptyString.describe('Asaas webhook verification token'),
   ASAAS_ENV: asaasEnvSchema.describe('Asaas environment'),
   ASAAS_URL: urlSchema.describe('Asaas API base URL'),
@@ -113,8 +128,8 @@ export const envSchema = z.object({
   // Asaas — conta "legacy" (antiga, somente leitura). Opcionais: pré-cutover
   // elas não existem; `resolveAsaasAccount("legacy")` (lib/asaas/asaas-account.ts)
   // lança em runtime com mensagem clara se forem pedidas sem estarem configuradas.
-  ASAAS_LEGACY_API_KEY: asaasApiKeySchema.optional().describe('Asaas API key da conta legacy (antiga) — opcional pré-cutover'),
-  ASAAS_LEGACY_WEBHOOK_TOKEN: nonEmptyString.optional().describe('Token de webhook da conta legacy — opcional pré-cutover'),
+  ASAAS_LEGACY_API_KEY: optionalWhenBlank(asaasApiKeySchema).describe('Asaas API key da conta legacy (antiga) — opcional pré-cutover'),
+  ASAAS_LEGACY_WEBHOOK_TOKEN: optionalWhenBlank(nonEmptyString).describe('Token de webhook da conta legacy — opcional pré-cutover'),
   // ASAAS_LEGACY_SANDBOX_API_KEY (par de ASAAS_SANDBOX_API_KEY) não entra
   // neste schema — a chave sandbox atual também não entra; ambas são lidas
   // direto de process.env só pela guarda E2E (e2e/support/asaas.ts), fora
